@@ -28,7 +28,8 @@ Research in Artificial Life has long sought to understand the universal principl
 5. [Conclusion](#5-conclusion)
 6. [A Call for Collaboration: Concrete Research Avenues](#6-a-call-for-collaboration-concrete-research-avenues)
 7. [Project Status, Roadmap, and Community](#7-project-status-roadmap-and-community)
-8. [References](#8-references)
+8. [Acknowledgements](#8-acknowledgements)
+9. [References](#9-references)
 
 ## 1. Introduction
 
@@ -389,9 +390,13 @@ A live, detailed version of our roadmap, outlining specific tasks and current pr
 - **Technical Specifications**: The [Virtual Machine and Assembly Language Specification](https://github.com/evochora/evochora/blob/main/docs/ASSEMBLY_SPEC.md) provides a complete technical reference.
 
 
+## 8. Acknowledgements
+_Full disclosure: I used AI tools to accelerate the writing and formatting of this documentation, but the scientific vision, the hypotheses on open-endedness, and the 'digital physics' definitions are my own original research._
+
+
 The software is open-source and released under the MIT License.
 
-## 8. References
+## 9. References
 
 - <a id="ref-ackley-2013"></a>Ackley, D. H. (2013). Indefinite scalability for living computation. In *Artificial Life 13* (pp. 603-610). MIT Press.
 - <a id="ref-bedau-2000"></a>Bedau, M. A., Snyder, E., & Packard, N. H. (2000). A classification of long-term evolutionary dynamics. In *Artificial Life VII* (pp. 228-237). MIT Press.

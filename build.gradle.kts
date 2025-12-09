@@ -1,5 +1,6 @@
 import com.google.protobuf.gradle.*
 import java.util.Properties
+import org.gradle.jvm.application.tasks.CreateStartScripts
 
 // Show deprecation details for test sources to fix root causes
 tasks.withType<JavaCompile>().configureEach {
@@ -94,6 +95,22 @@ dependencies {
 
 application {
     mainClass.set("org.evochora.cli.CommandLineInterface")
+}
+
+// Fix for Windows "Input line is too long" error
+tasks.named<CreateStartScripts>("startScripts") {
+    doLast {
+        val windowsScriptFile = windowsScript
+        if (windowsScriptFile.exists()) {
+            val content = windowsScriptFile.readText()
+            // Replace the long classpath with a wildcard classpath
+            val newContent = content.replace(
+                Regex("set CLASSPATH=.*"),
+                "set CLASSPATH=%APP_HOME%\\\\lib\\\\*"
+            )
+            windowsScriptFile.writeText(newContent)
+        }
+    }
 }
 
 // Konfiguriere den run-Task für interaktive Eingabe
