@@ -32,4 +32,4 @@ Scientific Context: There is a draft whitepaper with deeper details (Note: This 
 
 **I am looking for contributors to help improve the compiler, physics, or pipeline and to discuss artificial physics that can lead to higher emergent complexity.**
 
-_Full disclosure: I used AI tools to accelerate the coding of the Java boilerplate and the web frontends, but the architecture, the custom virtual machine design, and the 'physics' of the world are my own engineering. I'm happy to answer any technical questions about the tech stack or archtecture_
+_Full disclosure: I used AI tools to accelerate the coding of the Java boilerplate and the web frontends, but the architecture, the custom virtual machine design, and the 'physics' of the world are my own engineering. I'm happy to answer any technical questions about the tech stack or architecture_
