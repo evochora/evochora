@@ -36,7 +36,7 @@
 
 ## Table of Contents
 
-- I. [The Mission: Breaking the "Boring Billion"](#i-the-mission-breaking-the-boring-billion)
+- I. [The "Boring Billion" as Inspiration](#i-the-boring-billion-as-inspiration)
 - II. [The Platform](#ii-the-platform)
   - [Key Features](#key-features)
   - [Why Evochora? (Comparison)](#why-evochora-comparison)
@@ -57,20 +57,21 @@
 
 <br>
 
-## I. The Mission: Breaking the "Boring Billion"
+## I. The "Boring Billion" as Inspiration
 
-For nearly a billion years, Earth’s evolution slipped into the “Boring Billion” — a long stretch of slow innovation, likely held back by the energetic limits of prokaryotic life. Traditional ALife platforms (like Tierra or Avida), while being pioneering landmarks in the field, are stuck in a similar trap: their stability depends on artificial constraints (like hard-coded rewards or global culling), which prevent the emergence of open-ended complexity.
+Earth's evolution experienced a "Boring Billion"—a long period of slow innovation, likely held back by the energetic limits of prokaryotic life. This parallel is fascinating when looking at Artificial Life. Pioneering platforms like Tierra and Avida often introduce artificial constraints (like global culling or task-based rewards) to ensure population stability. These are effective, but they also probably sacrifice long-term evolvability by creating a very specific and constant selection pressure.
 
-**Evochora aims to fix this by simulating rigorous physics.**
+Evochora is an experiment to explore an alternative. What if the primary constraint isn't an external rule, but the physics of the world itself? In Evochora, organisms are fully embodied. They occupy space and underlie thermodynamic constraints. Survival is not a task to be solved, but a constant energetic balancing act.
 
-Instead of executing scripts in a sandbox, agents are fully embodied. They occupy space and must harvest energy to pay for every CPU cycle. This architecture opens a path to experimentally investigate Major Evolutionary Transitions:
+This approach appears to be viable, and the results are encouraging:
+* **A Working Primordial:** There is a self-replicating organism (see video) capable of sustaining populations for over 500,000 ticks. It navigates, harvests resources, and copies its 1500-instruction genome without any central oversight or pre-defined rewards.
 
-* **The Milestone:** There is a viable self-replication primordial (see video) capable of sustaining populations for over 500,000 ticks. Agents navigate the grid, harvest resources, and copy their 1500-instruction genome without central oversight.
+The stable primordial organism is just the starting point. The platform's true potential lies in extending its physics to tackle deeper questions. The architecture is a foundation for future research, and here are some of the next frontiers it's designed to explore:
 
-**Examples of current research:**
-* **The Physics of Stability:** Unlike legacy systems that "patch" aggressive replication with artificial rules, Evochora is implementing Thermodynamics. By introducing energy and entropy, it aims to stabilize the "Grey Goo" problem *without* sacrificing the evolvability of the code.
-* **The Frontier (Ecosystems & Niche Construction):** Evochora is build with flexible physics to be extended with complex Reaction Chains (e.g., `A + B -> Energy + Entropy`). This is designed to enable the emergence of trophic levels, where the waste of one species becomes the resource for another.
-* **The Frontier (Digital Eukaryogenesis):** The VM allows organisms to `FORK` internal execution threads. We should investigate whether this can facilitate the evolution of "Digital Mitochondria"—dedicated background threads for metabolism—paving the way for true multicellularity.
+*   **Stability through Thermodynamics:** Can "grey goo" scenarios be prevented not by artificial rules, but by energy and entropy? The hypothesis is that thermodynamic constraints alone could be enough to foster stable ecosystems *without* sacrificing the evolvability of the code.
+*   **Emergent Ecosystems & Niche Construction:** The physics engine is designed to be extensible with reaction chains (e.g., `A + B -> Energy + C`). This would create a testbed for exploring if trophic levels can emerge spontaneously, allowing organisms to alter their environment by creating waste that becomes a resource for others—a process known as Niche Construction.
+*   **Robust Genomes & Communication:** To make genomes more resilient to mutations, a future extension could replace rigid memory addresses with "fuzzy jumps" that target patterns in the code. A basic signaling mechanism would also allow organisms to coordinate, both internally between threads and externally with neighbors, laying the groundwork for social behavior.
+*   **Internal Parallelism (Digital Eukaryogenesis?):** The VM allows an organism to `FORK` its execution. With a signaling system in place for coordination, this could enable an internal division of labor—for instance, one thread for metabolism and another for replication. While true multicellularity is a very distant goal, this is a fascinating step to investigate if this mechanism could bring us one step closer to cellular coordination.
 
 👉 **[Read the full Scientific Overview](docs/SCIENTIFIC_OVERVIEW.md)** or **[Jump to Quick Start](#quick-start-run-a-simulation)**
 
@@ -79,30 +80,33 @@ Instead of executing scripts in a sandbox, agents are fully embodied. They occup
 ## II. The Platform
 
 ## Key Features
-- **N-Dimensional Spatial Worlds**: Configurable grid size and dimensionality (2D to n-D), bounded or toroidal topology.
-- **High-Performance Simulation Core**: The core runs on a flattened `int32` memory grid for maximum CPU cache locality, avoiding Java object overhead.
-- **Embodied Agency**: Organisms have no "god mode" access. They must navigate via instruction pointers (IP) and data pointers (DPs) to interact with the world.
-- **Intrinsic Selection Pressure**: Survival requires active energy foraging; every instruction costs thermodynamic energy.
-- **Custom Compiler Stack**: Includes a full multi-pass compiler converting high-level `EvoASM` assembly into raw executable molecules.
-- **Distributed Architecture**: The simulation engine is decoupled from analytics (via Protobuf/Queue) to allow massive scaling from local laptops to distributed cloud clusters.
-- **Extensible Physics**: Pluggable systems for energy distribution, mutation models, and reaction chemistry.
-- **Full Determinism**: Reproducible experiments via fixed random seeds and deterministic conflict resolution.
+- **Spatial Worlds**: Configurable grid size and dimensionality (2D to n-D), bounded or toroidal shape containing molecules of different types.
+- **Simulation Core**: The core runs on a flattened `int32` memory grid for maximum CPU cache locality, avoiding Java object overhead.
+- **Embodied Agency**: Organisms must navigate via instruction pointers (IP) and data pointers (DPs) to interact with the molecules in their direct surrounding, and know nothing about the simulation itself.
+- **Compiler Stack**: Includes a custom multi-pass compiler converting high-level and spatial `EvoASM` assembly into raw executable molecules.
+- **Selection Pressure**: Survival requires actively dealing with thermodynamics. Every instruction costs energy and/or creates entropy that organisms need to manage.
+- **Data Pipeline**: The simulation engine is decoupled from data processing to index and analyze raw simulation data (via Protobuf/Queue). The pipeline supports horizontal scaling in cloud infrastructure.
+- **Web Frontends**: Simulation runs can be visualized and analyzed. The visualizer allows inspection of every simulation step and debugging of internal state and `EvoASM` execution for each organism. The analyzer can visualize population and environment metrics, and a video renderer can render full simulation runs. (all 2D only currently)
+- **Extensibility**: Plugin systems for the simulation, the VM, each compiler pass, and the analyzer allow for customization.
+- **Determinism**: The simulation is deterministic, ensuring experiments are reproducible with a given seed.
 
 <br>
 
-## Why Evochora? (Comparison)
+## Contextualizing Evochora in ALife Research
 
-| Feature / Aspect | Tierra (Ray, 1991) | Avida (Ofria et al., 2004) | Lenia (Chan, 2019) | **Evochora (Current)** |
+Evochora builds on the legacy of seminal Artificial Life platforms. This comparison highlights the different scientific questions and design trade-offs each system explores, positioning Evochora's focus on embodied agents and extensible physics.
+
+| Feature / Aspect | Tierra (Ray, 1991) | Avida (Ofria et al., 2004) | Lenia (Chan, 2019) | Evochora |
 | :--- | :--- | :--- | :--- | :--- |
 | **Core Concept** | Self-replicating code in linear RAM ("Soup") | Agents solving logic tasks in 2D grid | Continuous cellular automata (Math-Biology) | Embodied agents in n-Dimensional space |
-| **Physics / Environment** | CPU cycles & memory access (Fixed) | Rewards for logical tasks (NOT, AND) (Fixed) | Differential equations (flow, kernel) (Fixed) | Extensible via Plugins (e.g., Energy, Mutation*) |
+| **Physics / Environment** | CPU cycles & memory access (Fixed) | Rewards for logical tasks (NOT, AND) (Fixed) | Differential equations (flow, kernel) (Fixed) | Extensible via Plugins (e.g., Energy, Mutation)¹ |
 | **Organism Body** | Disembodied (Code string only) | Disembodied (CPU + Memory buffer) | Morphological patterns (solitons) | Embodied (IP + DPs navigating spatial grid) |
-| **Interaction Model** | Parasitism (reading neighbor's RAM) | Limited (mostly competition for space) | Collision, fusion & repulsion of patterns | Direct & Spatial (via DPs) & Signaling* |
-| **Evolutionary Driver** | Implicit competition for memory/CPU | Directed (user-defined rewards) | Spontaneous pattern formation | Open-ended potential (via metabolic & spatial constraints) |
-| **Execution Model** | Sequential (Single IP) | Sequential (Single IP) | Parallel (Continuous dynamics) | Parallel & Multi-threaded (via FORK)* |
+| **Interaction Model** | Parasitism (reading neighbor's RAM) | Limited (mostly competition for space) | Collision, fusion & repulsion of patterns | Direct & Spatial (via DPs) & Signaling¹ |
+| **Evolutionary Driver** | Implicit competition for memory/CPU | Directed (user-defined rewards) | Spontaneous pattern formation | Metabolic & spatial constraints |
+| **Execution Model** | Sequential (Single IP) | Sequential (Single IP) | Parallel (Continuous dynamics) | Parallel & Multi-threaded (via FORK)¹ |
 | **Primary Research Focus** | Ecology of code & parasites | Evolution of complex logic functions | Self-organizing morphology | Bioenergetics & Major Transitions |
 
-*\* Features supported by the core architecture and identified as primary research avenues.*
+¹ These capabilities are supported by the core architecture and represent key future research directions.
 
 <br>
 
