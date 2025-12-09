@@ -112,13 +112,16 @@ Evochora builds on the legacy of seminal Artificial Life platforms. This compari
 
 ## Looking for Contributors
 
-Evochora addresses the stagnation of current ALife systems by creating a "digital universe" where the rules of physics are not pre-supposed but are themselves objects of research. By making these "laws" modular and extensible, the scientific community is invited to collaboratively explore what properties an environment must possess for Open-Ended Evolution to emerge. Evochora is seeking for support of Systems Engineers and ALife Researchers to help design and implement basically every part of the system. Some examples:
+Evochora is an open-source project and thrives on collaboration. The goal is to build a shared, flexible tool for the ALife community. We are looking for Systems Engineers and ALife Researchers to help design and implement the next wave of features. This is a great opportunity to shape the core physics of a digital world.
 
-- **Thermodynamics (Entropy)**: Designing a system-wide energy loss model to naturally suppress infinite loops and drive efficiency.
-- **Spatial Ownership**: Implementing VM-level "property rights" to distinguish between aggressive overwriting (attacks) and offspring placement.
-- **Fuzzy Addressing (SignalGP)**: Moving from absolute memory addresses to pattern-matching jumps to make the genome resilient to mutation and enable Digital Eukaryogenesis.
+Some of the open challenges we're currently thinking about are:
 
-👉 **Deep dive into the problems:** [Read OPEN_RESEARCH_QUESTIONS.md](docs/OPEN_RESEARCH_QUESTIONS.md)
+- **Thermodynamics (Entropy):** How can we model thermodynamics system-wide to naturally suppress infinite loops and drive population stability?
+- **Spatial Ownership:** Improve VM-level "property rights" for organisms to make aggressive overwriting unsustainable and further drive population stability?
+- **Fuzzy Addressing (SignalGP):** Can we move from absolute memory addresses to pattern-matching jumps to make the genome more resilient to mutation?
+
+This is just a starting point, and we're open to new ideas.
+👉 **For a deeper dive, check out the [OPEN_RESEARCH_QUESTIONS.md](docs/OPEN_RESEARCH_QUESTIONS.md)**
 
 <br>
 
@@ -486,7 +489,7 @@ Some key directions for the technical evolution of Evochora:
 
 ---
 
-_Full disclosure: This system is build using AI coding tools extensively, but definitely not on autopilot. You can't build a custom VM, a compiler, and a distributed data pipeline by just pressing 'generate'. The workflow involved creating precise specifications for every module and rigorously reviewing/debugging the AI's output. The AI wrote the syntax, but the architecture and the logic are 100% manually engineered and verified._
+_Full disclosure on the development process: This project makes extensive use of AI coding assistants. The philosophy here is that the human role is always to define the architecture, write the specifications, and then rigorously guide, review, and debug the generated code. It's a collaborative process where humans steer the overall design and logic._
 
 ---
 
