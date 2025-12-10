@@ -1,15 +1,16 @@
 services:
   evochora:
     build:
-      context: ../../..  # Gehe drei Ebenen hoch zum Projekt-Root
-      dockerfile: infrastructure/docker/evochora-node/Dockerfile # Pfad zum Dockerfile
+      context: ../../..
+      dockerfile: infrastructure/docker/evochora-node/Dockerfile
     image: ghcr.io/evochora/evochora:${IMAGE_TAG:-latest}
     user: "${UID:-1000}:${GID:-1000}"
-    ports:
-      # Map host ports to container ports
-      - "80:8081"      # Javalin Web UI (Extern: 80 -> Intern: 8081)
-      - "8082:8082"    # H2 Web Console (Extern: 8082 -> Intern: 8082)
-      - "9092:9092"    # H2 TCP Server (Extern: 9092 -> Intern: 9092)
+    # Ports are no longer published directly to the host.
+    # The Caddy reverse proxy will handle all incoming traffic.
+    # ports:
+    #   - "80:8081"
+    #   - "8082:8082"
+    #   - "9092:9092"
     volumes:
       # Mount host directories into the container for persistent data
       - ./evochora-data/storage:/home/appuser/app/data/storage
@@ -17,9 +18,7 @@ services:
       # Mount the configuration file into the container's config directory (read-only)
       - ./evochora.conf:/home/appuser/app/config/evochora.conf:ro
     environment:
-      # === JVM Options & Konfigurations-Overrides via System Properties (-D) ===
-      # Dies ist die zuverlässigste Methode, da System Properties die höchste Priorität
-      # in der Konfigurations-Lade-Kette der Anwendung haben.
+      # === JVM Options & Configuration Overrides via System Properties (-D) ===
       - >
         JAVA_OPTS=
         -Xmx16g
@@ -35,3 +34,25 @@ services:
         -Dnode.processes.h2-tcp-server.options.database.jdbcUrl="jdbc:h2:/home/appuser/app/data/database/indexdb;MODE=PostgreSQL;DB_CLOSE_ON_EXIT=FALSE;DB_CLOSE_DELAY=-1;CACHE_SIZE=262144"
 
     restart: unless-stopped
+
+  caddy:
+    image: caddy:latest
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp" # Required for HTTP/3
+    volumes:
+      # Mount the Caddy configuration file (read-only)
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Persist Caddy's state, including acquired SSL certificates
+      - caddy_data:/data
+    environment:
+      # The domain name for automatic HTTPS.
+      # This will be read from the .env file on the server.
+      - DOMAIN_NAME=${DOMAIN_NAME}
+      - LOG_LEVEL=INFO
+
+# Docker volume for persisting Caddy's data (e.g., SSL certs)
+volumes:
+  caddy_data: {}

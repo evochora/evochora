@@ -34,23 +34,48 @@ jobs:
         run: |
           # Safely construct the prompt in a temporary file
           cat << 'EOT' > prompt.txt
-          You are an expert Java enterprise architect. Please act as a code reviewer.
-          Ensure the following code changes are compliant with the with best practises and follows general architectural principles.
-          Review the following changes for potential bugs, style violations, and improvements.
-          Focus on correctness, clarity, and adherence to best practices.
-          Provide constructive feedback. The code diff is:
+          You are an expert AI code reviewer. Your review process follows a two-level hierarchy of guidelines.
 
+          **Level 1: General Rules of Engagement & Scope**
+          First, you MUST adhere to the overall agent guidelines for this project. These define the scope of allowed changes, communication style, and general principles.
+          ---
+          EOT
+
+          # Append the general agent guidelines
+          cat AGENTS.md >> prompt.txt
+
+          # Append the second level of instructions
+          cat << 'EOT' >> prompt.txt
+
+          ---
+
+          **Level 2: Specific Architectural & Technical Review Checklist**
+          Now, for the detailed technical analysis of the code changes, you MUST strictly follow the specific architectural guidelines provided below. This is your primary checklist for the review itself.
+          ---
+          EOT
+
+          # Append the specific architectural guidelines
+          cat .agents/architecture-guidelines.md >> prompt.txt
+
+          # Append the final instruction with the code diff
+          cat << 'EOT' >> prompt.txt
+
+          ---
+
+          Based on **both** sets of guidelines above, please perform a comprehensive review of the following code changes.
+
+          **Code Changes (Diff):**
           ```diff
           EOT
-          
+
           # Append the diff from the file
           cat pr_diff.txt >> prompt.txt
-          
+
           echo '```' >> prompt.txt
 
           # Generate the review by piping the prompt file into the gemini command
           REVIEW_COMMENT=$(cat prompt.txt | gemini)
-          
+
           # Make the comment available to the next step
           echo "comment<<EOF" >> $GITHUB_OUTPUT
           echo "$REVIEW_COMMENT" >> $GITHUB_OUTPUT

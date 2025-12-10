@@ -75,6 +75,12 @@ The compiler can be invoked in multiple equivalent ways. For details and example
 The compiler produces a JSON `ProgramArtifact` with machine code layout, labels, registers, procedures, environment properties, and source/ token maps that can be used for debugging and analysis.
 
 ## Agent Guidelines
+
+There is a central document for AI agent guidelines that defines architectural principles and review standards. All agents, automated workflows, and human developers should adhere to these rules.
+
+- **Single Source of Truth:** [`/.agents/architecture-guidelines.md`](/.agents/architecture-guidelines.md)
+
+### General Principles
 - **Allowed changes**: Refactors, bug fixes, unit tests, documentation improvements, safe dependency updates (patch/minor versions)
 - **Avoid without explicit request**: Core configuration changes, architectural modifications, breaking changes
 - **Code quality**: Prefer minimal diffs, write comprehensive tests, maintain existing code style

@@ -27,21 +27,28 @@ jobs:
 
       - name: Copy configuration to server
         run: |
+          # Copy the main configuration files to the server.
+          # The new Caddyfile is now included here.
           scp -o StrictHostKeyChecking=no infrastructure/docker/docker-compose.yml ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/app/docker-compose.yml
+          scp -o StrictHostKeyChecking=no infrastructure/docker/Caddyfile ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/app/Caddyfile
           scp -o StrictHostKeyChecking=no evochora.conf ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/app/evochora.conf
 
-      - name: Deploy using Docker Compose
+      - name: Create .env file and Deploy with Docker Compose
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+            set -e # Exit immediately if a command exits with a non-zero status.
             cd ~/app
             
-            # Export the image tag for docker-compose to use
-            export IMAGE_TAG=${{ github.event.inputs.tag }}
+            # --- NEW: Create .env file from GitHub Secret ---
+            # This makes the domain name available to docker-compose on the server.
+            echo "DOMAIN_NAME=${{ secrets.DOMAIN_NAME }}" > .env
+            echo "IMAGE_TAG=${{ github.event.inputs.tag }}" >> .env
             
-            # Pull the new version from the registry
+            # Pull the new image version from the registry
+            # docker-compose will use IMAGE_TAG from the .env file
             docker compose pull
             
-            # Stop and restart the service, passing UID/GID directly to the command.
-            # This is the most robust way to ensure docker-compose sees the variables.
+            # Stop and restart the service(s).
+            # UID/GID are passed to ensure correct file permissions for mounted volumes.
             UID=$(id -u) GID=$(id -g) docker compose up -d
           EOF

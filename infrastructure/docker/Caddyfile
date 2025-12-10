@@ -1,0 +1,11 @@
+{$DOMAIN_NAME}
+
+# Reverse proxy all requests to the evochora service on port 8081.
+# Caddy will automatically handle HTTP to HTTPS redirection.
+reverse_proxy evochora:8081
+
+# Configure logging
+log {
+    level {$LOG_LEVEL}
+    output stdout
+}
