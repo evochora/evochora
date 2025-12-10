@@ -36,21 +36,31 @@ FROM eclipse-temurin:21-jre-jammy
 # Clean up apt cache to keep the image small.
 RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
 
-# Create a non-root user and group with explicit IDs to match host volume permissions.
-RUN useradd --create-home --shell /bin/bash appuser
+# Accept UID and GID as build arguments to match the host user.
+# Default to 1000 if not provided.
+ARG UID=1000
+ARG GID=1000
+
+# Create a non-root group and user with the provided, dynamic IDs.
+# This ensures file ownership inside the container matches the runtime user.
+RUN groupadd -g $GID -o appgroup
+RUN useradd --uid $UID --gid $GID --create-home --shell /bin/bash appuser
 
 # Set the main working directory in the new user's home
 WORKDIR /home/appuser/app
 
 # The build stage created a clean distribution in build/install/evochora
 # Copy the pre-built application directly from the known path
-COPY --from=builder /app/build/install/evochora/ .
+COPY --from=builder --chown=$UID:$GID /app/build/install/evochora/ .
+
+# Explicitly set execute permission on the start script.
+# This is a robust way to ensure it's always executable.
+RUN chmod +x bin/evochora
 
 # Create directories for data volumes that will be mounted
-RUN mkdir -p data/storage data/database config
-
-# Change ownership of all application files to the non-root user
-RUN chown -R appuser:appuser /home/appuser/app
+# Use a single RUN layer for efficiency
+RUN mkdir -p data/storage data/database config && \
+    chown -R $UID:$GID /home/appuser/app/data
 
 # Switch to the non-root user
 USER appuser
