@@ -1,18 +1,16 @@
-
-
-
 <div align="center">
 
   <img width="465" height="74" alt="logo" src="https://github.com/user-attachments/assets/4724aed1-a596-4e03-9c3c-41f791b0babd" />
   <br><code>Simulator for Foundational Artificial Life Research</code>
 
   <br><br>
+  **Evochora is a research-oriented artificial life simulator designed to investigate conditions under which emergent and increasing complexity can arise without global culling or task-based rewards**
 
   <a href="http://evochora.org" style="font-size: 1.5em; font-weight: bold; text-decoration: none;">👉 SEE LIVE DEMO</a>
   <br>
   <sub>Runs in your browser. No installation required.</sub>
 
-  
+  <br>
 
   <a href="https://opensource.org/licenses/MIT">
     <img src="https://img.shields.io/badge/License-MIT-2ea44f?style=flat&logo=opensourceinitiative&logoColor=white" height="28">
@@ -34,12 +32,21 @@
 
 <br>
 
+## What is Evochora?
+Evochora is a research-oriented artificial life simulator that runs fully embodied organisms on a custom virtual machine in an n-dimensional environment. The system already supports a functional primordial organism written in EvoASM, Evochora’s own assembly language, compiled via a multi-pass compiler extensible with plugins.
+The simulation separates the hot execution path from the cold data processing path, allowing experimental runs to be analyzed efficiently and supporting future horizontal scaling. Evochora’s design contrasts with previous platforms such as Tierra or Avida by embedding organisms in a spatial and energetic environment rather than applying external task-based rewards or global culling.
+
+👉 **[Jump to Quick Start](#quick-start-run-a-simulation)** to run your own simulations
+<br>or proceed reading for more details and background
+
+<br>
+
 ## Table of Contents
 
 - I. [The "Boring Billion" as Inspiration](#i-the-boring-billion-as-inspiration)
 - II. [The Platform](#ii-the-platform)
   - [Key Features](#key-features)
-  - [Why Evochora? (Comparison)](#why-evochora-comparison)
+  - [Contextualizing Evochora in ALife research (Comparison)](#contextualizing-evochora-in-alife-research)
   - [Request for Comments & Collaboration](#request-for-comments--collaboration)
 - III. [System Architecture](#iii-system-architecture)
   - [Compiler](#compiler)
@@ -59,7 +66,7 @@
 
 ## I. The "Boring Billion" as Inspiration
 
-Earth's evolution experienced a "Boring Billion"—a long period of slow innovation, likely held back by the energetic limits of prokaryotic life. This parallel is fascinating when looking at Artificial Life. Pioneering platforms like Tierra and Avida often introduce artificial constraints (like global culling or task-based rewards) to ensure population stability. These are effective, but they also probably sacrifice long-term evolvability by creating a very specific and constant selection pressure.
+Earth's evolution experienced a "Boring Billion"—a long period of slow innovation, likely held back by the energetic limits of prokaryotic life. This parallel is fascinating when looking at Artificial Life. Pioneering platforms like Tierra and Avida often introduce artificial constraints (like global culling or task-based rewards) to ensure population stability. These are effective, but it also introduces a strong, fixed selection pressures that may limit long-term evolvability.
 
 Evochora is an experiment to explore an alternative. What if the primary constraint isn't an external rule, but the physics of the world itself? In Evochora, organisms are fully embodied. They occupy space and underlie thermodynamic constraints. Survival is not a task to be solved, but a constant energetic balancing act.
 
@@ -346,7 +353,6 @@ The following diagram shows which frontend components communicate with which bac
 
 ### Requirements
 - Java 21 (JRE or JDK)
-- A terminal shell (Linux, macOS, WSL on Windows)
 
 ### Start the Simulation Node
 Download and unpack the latest distribution from the [GitHub Releases page](https://github.com/evochora/evochora/releases).
@@ -488,11 +494,12 @@ Some key directions for the technical evolution of Evochora:
     - [CLI Usage Guide](docs/CLI_USAGE.md)
     - [Assembly Specification](docs/ASSEMBLY_SPEC.md) (EvoASM – Evochora Assembly)
 
----
-
-_Full disclosure on the development process: This project makes extensive use of AI coding assistants. The philosophy here is that the human role is always to define the architecture, write the specifications, and then rigorously guide, review, and debug the generated code. It's a collaborative process where humans steer the overall design and logic._
+<br>
 
 ---
+
+_Full disclosure: This project uses AI coding assistants. Humans define the  architecture, write specifications, and review all generated code to ensure correctness and maintain the overall design._
+
 
 ## Logo
 
