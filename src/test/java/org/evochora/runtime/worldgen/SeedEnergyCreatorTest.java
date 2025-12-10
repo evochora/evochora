@@ -1,17 +1,18 @@
 package org.evochora.runtime.worldgen;
 
-import com.typesafe.config.ConfigFactory;
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Random;
+
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Random;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import com.typesafe.config.ConfigFactory;
 
 /**
  * Unit tests for the {@link SeedEnergyCreator}.
