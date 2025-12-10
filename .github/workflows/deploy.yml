@@ -39,16 +39,16 @@ jobs:
             set -e # Exit immediately if a command exits with a non-zero status.
             cd ~/app
             
-            # --- NEW: Create .env file from GitHub Secret ---
-            # This makes the domain name available to docker-compose on the server.
+            # Create the .env file from GitHub Secrets and server environment
             echo "DOMAIN_NAME=${{ secrets.DOMAIN_NAME }}" > .env
             echo "IMAGE_TAG=${{ github.event.inputs.tag }}" >> .env
+            echo "UID=$(id -u)" >> .env
+            echo "GID=$(id -g)" >> .env
             
             # Pull the new image version from the registry
-            # docker-compose will use IMAGE_TAG from the .env file
             docker compose pull
             
             # Stop and restart the service(s).
-            # UID/GID are passed to ensure correct file permissions for mounted volumes.
-            UID=$(id -u) GID=$(id -g) docker compose up -d
+            # docker-compose will now use UID and GID from the .env file.
+            docker compose up -d
           EOF
