@@ -1,7 +1,12 @@
 package org.evochora.datapipeline.services;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
+import static org.awaitility.Awaitility.await;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
+import java.nio.file.Path;
+import java.util.concurrent.TimeUnit;
+
 import org.evochora.datapipeline.ServiceManager;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.junit.extensions.logging.AllowLog;
@@ -13,12 +18,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.nio.file.Path;
-import java.util.concurrent.TimeUnit;
-
-import static org.awaitility.Awaitility.await;
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
