@@ -4,6 +4,11 @@ services:
       context: ../../..
       dockerfile: infrastructure/docker/evochora-node/Dockerfile
     image: ghcr.io/evochora/evochora:${IMAGE_TAG:-latest}
+    # Add Linux capabilities required for the entrypoint script
+    # to switch from root to the non-root appuser.
+    cap_add:
+      - SETGID
+      - SETUID
     # The user is now managed by the entrypoint.sh script to ensure correct permissions at runtime.
     # user: "${UID:-1000}:${GID:-1000}"
     # Ports are no longer published directly to the host.
