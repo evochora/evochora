@@ -57,7 +57,8 @@ RUN chown -R appuser:appuser /home/appuser/app
 
 # --- NEW: Add the runtime entrypoint script ---
 # Copy the entrypoint script and make it executable.
-COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+# The path must be relative to the build context (the repository root).
+COPY infrastructure/docker/evochora-node/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Switch to the non-root user. This is a security best practice,
