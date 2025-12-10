@@ -77,7 +77,7 @@ public class H2Database extends AbstractDatabaseResource
         HikariConfig hikariConfig = new HikariConfig();
         hikariConfig.setJdbcUrl(jdbcUrl);
         hikariConfig.setDriverClassName("org.h2.Driver"); // Explicitly set driver for Fat JAR compatibility
-        hikariConfig.setMaximumPoolSize(options.hasPath("maxPoolSize") ? options.getInt("maxPoolSize") : 25);
+        hikariConfig.setMaximumPoolSize(options.hasPath("maxPoolSize") ? options.getInt("maxPoolSize") : 10);
         hikariConfig.setMinimumIdle(options.hasPath("minIdle") ? options.getInt("minIdle") : 2);
         hikariConfig.setUsername(username);
         hikariConfig.setPassword(password);
@@ -1018,7 +1018,7 @@ public class H2Database extends AbstractDatabaseResource
     @Override
     public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
         // Read configuration values
-        int poolSize = options.hasPath("maxPoolSize") ? options.getInt("maxPoolSize") : 25;
+        int poolSize = options.hasPath("maxPoolSize") ? options.getInt("maxPoolSize") : 10;
         
         // Parse CACHE_SIZE from JDBC URL (in KB, default 16384 KB = 16 MB)
         long cacheSizeKb = parseCacheSizeFromUrl(getJdbcUrl(options));
