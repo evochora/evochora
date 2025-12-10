@@ -231,7 +231,7 @@ public class CommandLineInterface implements Callable<Integer> {
                 "  ■       ■ ■   ■   ■  ■      ■   ■  ■   ■  ■ ■    ■■■■■ \n" +
                 "  ■       ■ ■   ■   ■  ■   ■  ■   ■  ■   ■  ■  ■   ■   ■ \n" +
                 "  ■■■■■    ■     ■■■    ■■■   ■   ■   ■■■   ■   ■  ■   ■ \n" +
-                "   Distributed Laboratory for Embodied Artificial Life\n");
+                "   Simulator for Foundational Artificial Life Research\n");
             //"  ________      ______   _____ _    _  ____  _____            \n" +
             //" |  ____\\ \\    / / __ \\ / ____| |  | |/ __ \\|  __ \\     /\\    \n" +
             //" | |__   \\ \\  / / |  | | |    | |__| | |  | | |__) |   /  \\   \n" +

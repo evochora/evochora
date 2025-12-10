@@ -4,7 +4,7 @@
 <div align="center">
 
   <img width="465" height="74" alt="logo" src="https://github.com/user-attachments/assets/4724aed1-a596-4e03-9c3c-41f791b0babd" />
-  <br><code>Distributed Laboratory for Embodied Artificial Life</code>
+  <br><code>Simulator for Foundational Artificial Life Research</code>
 
   <br><br>
 
