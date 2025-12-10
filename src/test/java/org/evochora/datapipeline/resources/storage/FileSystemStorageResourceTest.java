@@ -1,18 +1,10 @@
 package org.evochora.datapipeline.resources.storage;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
-import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
-import org.evochora.datapipeline.api.resources.storage.StoragePath;
-import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.api.contracts.SimulationMetadata;
-import org.evochora.junit.extensions.logging.LogWatchExtension;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Tag;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.junit.jupiter.api.io.TempDir;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.File;
 import java.io.IOException;
@@ -28,7 +20,20 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import static org.junit.jupiter.api.Assertions.*;
+import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
+import org.evochora.junit.extensions.logging.LogWatchExtension;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
+
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 @Tag("unit")
 @ExtendWith(LogWatchExtension.class)
@@ -168,9 +173,11 @@ class FileSystemStorageResourceTest {
         Path testDir = Path.of(javaTmpDir, "evochora-test-sysprop");
         createdDirectories.add(testDir);
         
-        String configPath = String.join(File.separator, "${java.io.tmpdir}", "evochora-test-sysprop");
-        Map<String, String> configMap = Map.of("rootDirectory", configPath);
-        Config config = ConfigFactory.parseMap(configMap);
+        // Use ConfigFactory.parseMap for variable definitions to avoid systemProperties() caching issues
+        Config varsConfig = ConfigFactory.parseMap(Map.of("java.io.tmpdir", javaTmpDir));
+        Config config = ConfigFactory.parseString("rootDirectory = ${java.io.tmpdir}/evochora-test-sysprop")
+            .withFallback(varsConfig)
+            .resolve();
 
         FileSystemStorageResource storage = new FileSystemStorageResource("test-storage", config);
         assertNotNull(storage);
@@ -180,81 +187,74 @@ class FileSystemStorageResourceTest {
     void testVariableExpansion_EnvironmentVariable() {
         // Set a custom environment-like variable via system properties for testing
         String testDirPath = System.getProperty("java.io.tmpdir") + File.separator + "evochora-test-env";
-        System.setProperty("TEST_EVOCHORA_DIR", testDirPath);
         
         Path testDir = Path.of(testDirPath);
         createdDirectories.add(testDir);
 
-        try {
-            Map<String, String> configMap = Map.of("rootDirectory", "${TEST_EVOCHORA_DIR}");
-            Config config = ConfigFactory.parseMap(configMap);
+        // Use ConfigFactory.parseMap for the variable definition to avoid caching issues
+        Config varsConfig = ConfigFactory.parseMap(Map.of("TEST_EVOCHORA_DIR", testDirPath));
+        Config config = ConfigFactory.parseString("rootDirectory = ${TEST_EVOCHORA_DIR}")
+            .withFallback(varsConfig)
+            .resolve();
 
-            FileSystemStorageResource storage = new FileSystemStorageResource("test-storage", config);
-            assertNotNull(storage);
-        } finally {
-            System.clearProperty("TEST_EVOCHORA_DIR");
-        }
+        FileSystemStorageResource storage = new FileSystemStorageResource("test-storage", config);
+        assertNotNull(storage);
     }
 
     @Test
     void testVariableExpansion_MultipleVariables() {
         String javaTmpDir = System.getProperty("java.io.tmpdir");
-        System.setProperty("test.project", "evochora-multi-var-test");
         
         Path testDir = Path.of(javaTmpDir, "evochora-multi-var-test");
         createdDirectories.add(testDir);
 
-        try {
-            String configPath = String.join(File.separator, "${java.io.tmpdir}", "${test.project}", "data");
-            Map<String, String> configMap = Map.of("rootDirectory", configPath);
-            Config config = ConfigFactory.parseMap(configMap);
+        // Use ConfigFactory.parseMap for variable definitions to avoid systemProperties() caching issues
+        Config varsConfig = ConfigFactory.parseMap(Map.of(
+            "java.io.tmpdir", javaTmpDir,
+            "test.project", "evochora-multi-var-test"
+        ));
+        Config config = ConfigFactory.parseString("rootDirectory = ${java.io.tmpdir}/${test.project}/data")
+            .withFallback(varsConfig)
+            .resolve();
 
-            FileSystemStorageResource storage = new FileSystemStorageResource("test-storage", config);
-            assertNotNull(storage);
-        } finally {
-            System.clearProperty("test.project");
-        }
+        FileSystemStorageResource storage = new FileSystemStorageResource("test-storage", config);
+        assertNotNull(storage);
     }
 
     @Test
     void testVariableExpansion_UndefinedVariable() {
-        Map<String, String> configMap = Map.of("rootDirectory", "${THIS_VARIABLE_DOES_NOT_EXIST}/data");
-        Config config = ConfigFactory.parseMap(configMap);
-
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
-            new FileSystemStorageResource("test-storage", config);
-        });
-        assertTrue(exception.getMessage().contains("Undefined variable"));
+        // HOCON throws ConfigException.UnresolvedSubstitution when resolve() is called on undefined variables
+        // Note: Variables must be OUTSIDE quotes for HOCON to recognize them as substitutions
+        com.typesafe.config.ConfigException.UnresolvedSubstitution exception = 
+            assertThrows(com.typesafe.config.ConfigException.UnresolvedSubstitution.class, () -> {
+                ConfigFactory.parseString("rootDirectory = ${THIS_VARIABLE_DOES_NOT_EXIST}/data").resolve();
+            });
         assertTrue(exception.getMessage().contains("THIS_VARIABLE_DOES_NOT_EXIST"));
     }
 
     @Test
     void testVariableExpansion_UnclosedVariable() {
-        Map<String, String> configMap = Map.of("rootDirectory", "${user.home/data");
-        Config config = ConfigFactory.parseMap(configMap);
-
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
-            new FileSystemStorageResource("test-storage", config);
-        });
-        assertTrue(exception.getMessage().contains("Unclosed variable"));
+        // HOCON throws a parse exception for unclosed substitutions
+        com.typesafe.config.ConfigException.Parse exception = assertThrows(
+            com.typesafe.config.ConfigException.Parse.class, () -> {
+                ConfigFactory.parseString("rootDirectory = ${user.home/data").resolve();
+            });
+        // The error message should indicate a parsing problem
+        assertNotNull(exception.getMessage());
     }
 
     @Test
     void testVariableExpansion_MustBeAbsoluteAfterExpansion() {
-        System.setProperty("test.relative", "relative" + File.separator + "path");
+        // Use ConfigFactory.parseMap for the variable definition to avoid caching issues
+        Config varsConfig = ConfigFactory.parseMap(Map.of("test.relative", "relative/path"));
+        Config config = ConfigFactory.parseString("rootDirectory = ${test.relative}/data")
+            .withFallback(varsConfig)
+            .resolve();
 
-        try {
-            String configPath = "${test.relative}" + File.separator + "data";
-            Map<String, String> configMap = Map.of("rootDirectory", configPath);
-            Config config = ConfigFactory.parseMap(configMap);
-
-            IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
-                new FileSystemStorageResource("test-storage", config);
-            });
-            assertTrue(exception.getMessage().contains("must be an absolute path"));
-        } finally {
-            System.clearProperty("test.relative");
-        }
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
+            new FileSystemStorageResource("test-storage", config);
+        });
+        assertTrue(exception.getMessage().contains("must be an absolute path"));
     }
 
     @Test
@@ -275,9 +275,11 @@ class FileSystemStorageResourceTest {
         Path testDir = Path.of(javaTmpDir, "evochora-test");
         createdDirectories.add(testDir);
         
-        String configPath = String.join(File.separator, "${java.io.tmpdir}", "evochora-test");
-        Map<String, String> configMap = Map.of("rootDirectory", configPath);
-        Config config = ConfigFactory.parseMap(configMap);
+        // Use ConfigFactory.parseMap for variable definitions to avoid systemProperties() caching issues
+        Config varsConfig = ConfigFactory.parseMap(Map.of("java.io.tmpdir", javaTmpDir));
+        Config config = ConfigFactory.parseString("rootDirectory = ${java.io.tmpdir}/evochora-test")
+            .withFallback(varsConfig)
+            .resolve();
 
         FileSystemStorageResource storage = new FileSystemStorageResource("test-storage", config);
         assertNotNull(storage);

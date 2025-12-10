@@ -4,12 +4,10 @@
 
 package org.evochora.datapipeline.resources.database;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Tag;
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,7 +15,13 @@ import java.util.Comparator;
 import java.util.Map;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 /**
  * Unit tests for H2Database resource.
@@ -76,20 +80,22 @@ class H2DatabaseTest {
 
     @Test
     void testJdbcUrl_WithVariableExpansion() {
-        // When jdbcUrl contains variables, they should be expanded
+        // When jdbcUrl contains variables, they should be expanded via HOCON's resolve()
         String tmpDir = System.getProperty("java.io.tmpdir");
-        System.setProperty("test.db.dir", tmpDir);
         String uniqueDb = "h2-test-" + UUID.randomUUID();
         // Note: Don't set tempDbDirectory - H2 files in /tmp will be cleaned up automatically
         // Setting it to /tmp would cause cleanup to fail on systemd-private directories
         
-        Config config = ConfigFactory.parseString("jdbcUrl = \"jdbc:h2:${test.db.dir}/" + uniqueDb + ";MODE=PostgreSQL\"");
+        // Use ConfigFactory.parseMap for the variable definition to avoid caching issues
+        Config varsConfig = ConfigFactory.parseMap(Map.of("test.db.dir", tmpDir));
+        Config config = ConfigFactory.parseString("jdbcUrl = \"jdbc:h2:\"${test.db.dir}\"/" + uniqueDb + ";MODE=PostgreSQL\"")
+            .withFallback(varsConfig)
+            .resolve();
         
         H2Database db = new H2Database("test", config);
         
         assertNotNull(db);
         db.close();
-        System.clearProperty("test.db.dir");
     }
 
     @Test
@@ -107,17 +113,15 @@ class H2DatabaseTest {
 
     @Test
     void testJdbcUrl_WithUndefinedVariable() {
-        // When jdbcUrl contains undefined variable, it should throw exception
-        Config config = ConfigFactory.parseString(
-            "jdbcUrl = \"jdbc:h2:${this_var_does_not_exist_9999}/data;MODE=PostgreSQL\""
+        // When jdbcUrl contains undefined variable, HOCON's resolve() throws ConfigException.UnresolvedSubstitution
+        com.typesafe.config.ConfigException.UnresolvedSubstitution exception = assertThrows(
+            com.typesafe.config.ConfigException.UnresolvedSubstitution.class,
+            () -> ConfigFactory.parseString(
+                "jdbcUrl = \"jdbc:h2:\"${this_var_does_not_exist_9999}\"/data;MODE=PostgreSQL\""
+            ).resolve()
         );
         
-        IllegalArgumentException exception = assertThrows(
-            IllegalArgumentException.class,
-            () -> new H2Database("test", config)
-        );
-        
-        assertTrue(exception.getMessage().contains("Undefined variable"));
+        assertTrue(exception.getMessage().contains("this_var_does_not_exist_9999"));
     }
 
     // ===== Tests for Metrics =====

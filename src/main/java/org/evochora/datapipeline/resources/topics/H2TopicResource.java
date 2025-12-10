@@ -14,7 +14,6 @@ import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.topics.ITopicReader;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
 import org.evochora.datapipeline.utils.H2SchemaUtil;
-import org.evochora.datapipeline.utils.PathExpansion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -104,11 +103,6 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
             throw new IllegalArgumentException("'jdbcUrl' must be configured for H2TopicResource.");
         }
         String jdbcUrl = options.getString("jdbcUrl");
-        String expandedUrl = PathExpansion.expandPath(jdbcUrl);
-        if (!jdbcUrl.equals(expandedUrl)) {
-            log.debug("Expanded jdbcUrl: '{}' -> '{}'", jdbcUrl, expandedUrl);
-        }
-        jdbcUrl = expandedUrl;
         
         // HikariCP configuration (same pattern as H2Database)
         String username = options.hasPath("username") ? options.getString("username") : "sa";

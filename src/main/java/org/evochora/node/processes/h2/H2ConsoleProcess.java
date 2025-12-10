@@ -1,16 +1,16 @@
 package org.evochora.node.processes.h2;
 
-import com.typesafe.config.Config;
-import org.evochora.datapipeline.utils.PathExpansion;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
 import org.evochora.node.processes.AbstractProcess;
 import org.h2.tools.Server;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import com.typesafe.config.Config;
 
 /**
  * A manageable process that runs the H2 database web console on a separate port.
@@ -45,7 +45,7 @@ import java.util.Map;
  *
  * <p>Users must manually enter database connection details on first access:</p>
  * <ul>
- *   <li>JDBC URL: {@code jdbc:h2:~/evochora/data/evochora}</li>
+ *   <li>JDBC URL: {@code jdbc:h2:./data/database/evochora} (relative to working directory)</li>
  *   <li>Username: {@code sa}</li>
  *   <li>Password: (empty)</li>
  * </ul>
@@ -137,22 +137,18 @@ public class H2ConsoleProcess extends AbstractProcess {
     }
     
     /**
-     * Builds the JDBC URL from database configuration with path expansion.
-     * Uses {@link PathExpansion} to resolve system properties and environment variables.
+     * Builds the JDBC URL from database configuration.
+     * Variable substitution is handled by HOCON's native resolution.
      */
     private String getJdbcUrl(final Config dbConfig) {
         if (dbConfig.hasPath("jdbcUrl")) {
-            String jdbcUrl = dbConfig.getString("jdbcUrl");
-            // Expand variables in JDBC URL (e.g., ${user.home})
-            return PathExpansion.expandPath(jdbcUrl);
+            return dbConfig.getString("jdbcUrl");
         }
         if (!dbConfig.hasPath("dataDirectory")) {
-            return "jdbc:h2:~/evochora/data/evochora;MODE=PostgreSQL";
+            return "jdbc:h2:" + System.getProperty("user.dir") + "/data/database/evochora;MODE=PostgreSQL";
         }
         
         String dataDir = dbConfig.getString("dataDirectory");
-        // Expand variables in data directory path
-        dataDir = PathExpansion.expandPath(dataDir);
         
         return "jdbc:h2:" + dataDir + "/evochora;MODE=PostgreSQL";
     }

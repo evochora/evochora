@@ -51,3 +51,6 @@ bin/
 /savedSimulations/
 /evochora_data/
 vscode-evo/node_modules/*
+
+# Local configuration file (user-specific overrides)
+local.conf

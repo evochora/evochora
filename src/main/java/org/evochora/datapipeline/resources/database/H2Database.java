@@ -27,7 +27,6 @@ import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
 import org.evochora.datapipeline.resources.database.h2.IH2EnvStorageStrategy;
 import org.evochora.datapipeline.utils.H2SchemaUtil;
-import org.evochora.datapipeline.utils.PathExpansion;
 import org.evochora.datapipeline.utils.compression.CompressionCodecFactory;
 import org.evochora.datapipeline.utils.compression.ICompressionCodec;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
@@ -237,12 +236,7 @@ public class H2Database extends AbstractDatabaseResource
         if (!options.hasPath("jdbcUrl")) {
             throw new IllegalArgumentException("'jdbcUrl' must be configured for H2Database.");
         }
-        String jdbcUrl = options.getString("jdbcUrl");
-        String expandedUrl = PathExpansion.expandPath(jdbcUrl);
-        if (!jdbcUrl.equals(expandedUrl)) {
-            log.debug("Expanded jdbcUrl: '{}' -> '{}'", jdbcUrl, expandedUrl);
-        }
-        return expandedUrl;
+        return options.getString("jdbcUrl");
     }
 
     @Override

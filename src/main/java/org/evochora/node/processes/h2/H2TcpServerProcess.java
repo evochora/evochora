@@ -1,16 +1,16 @@
 package org.evochora.node.processes.h2;
 
-import com.typesafe.config.Config;
-import org.evochora.datapipeline.utils.PathExpansion;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
 import org.evochora.node.processes.AbstractProcess;
 import org.h2.tools.Server;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.sql.SQLException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import com.typesafe.config.Config;
 
 /**
  * A manageable process that runs the H2 TCP server to allow external database clients
@@ -40,7 +40,7 @@ import java.util.Map;
  * <p>
  * <strong>Connecting from external clients:</strong>
  * <ul>
- *   <li>JDBC URL: {@code jdbc:h2:tcp://localhost:9092/~/evochora/data/evochora}</li>
+ *   <li>JDBC URL: {@code jdbc:h2:tcp://localhost:9092/./data/database/evochora} (relative to working directory)</li>
  *   <li>Username: {@code sa}</li>
  *   <li>Password: (empty)</li>
  * </ul>
@@ -128,12 +128,11 @@ public class H2TcpServerProcess extends AbstractProcess {
         // Try to get database path from options
         if (options.hasPath("database.jdbcUrl")) {
             String jdbcUrl = options.getString("database.jdbcUrl");
-            String expandedUrl = PathExpansion.expandPath(jdbcUrl);
             
             // Extract database path from file-based JDBC URL
             // Example: jdbc:h2:/home/user/evochora/data/evochora;MODE=... -> /home/user/evochora/data/evochora
-            if (expandedUrl.startsWith("jdbc:h2:")) {
-                String dbPath = expandedUrl.substring(8); // Remove "jdbc:h2:"
+            if (jdbcUrl.startsWith("jdbc:h2:")) {
+                String dbPath = jdbcUrl.substring(8); // Remove "jdbc:h2:"
                 int semicolonIndex = dbPath.indexOf(';');
                 if (semicolonIndex > 0) {
                     dbPath = dbPath.substring(0, semicolonIndex);
@@ -143,8 +142,8 @@ public class H2TcpServerProcess extends AbstractProcess {
             }
         }
         
-        // Fallback: use default path
-        return "jdbc:h2:tcp://localhost:" + tcpPort + "/~/evochora/data/evochora";
+        // Fallback: use default path (relative to working directory)
+        return "jdbc:h2:tcp://localhost:" + tcpPort + "/" + System.getProperty("user.dir") + "/data/database/evochora";
     }
 
     /**
