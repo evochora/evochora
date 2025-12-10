@@ -12,11 +12,11 @@ TARGET_GID=${GID:-1000}
 echo "Starting entrypoint script..."
 echo "Target User: $TARGET_UID:$TARGET_GID"
 
-# Change the ownership of the application and data directories.
-# This is the critical step to allow the non-root user to write to
-# mounted host volumes.
-echo "Fixing permissions for /home/appuser/app..."
-chown -R "$TARGET_UID:$TARGET_GID" /home/appuser/app
+# Change the ownership of the data directories only.
+# We explicitly avoid touching /home/appuser/app because it may contain
+# read-only mounts (like evochora.conf) which would cause chown to fail.
+echo "Fixing permissions for /home/appuser/app/data..."
+chown -R "$TARGET_UID:$TARGET_GID" /home/appuser/app/data
 
 echo "Permissions fixed. Switching to user $TARGET_UID:$TARGET_GID and starting application..."
 
