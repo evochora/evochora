@@ -4,11 +4,6 @@ services:
       context: ../../..
       dockerfile: infrastructure/docker/evochora-node/Dockerfile
     image: ghcr.io/evochora/evochora:${IMAGE_TAG:-latest}
-    # Add a security option to run the container without the restrictive
-    # default AppArmor profile. This is necessary to allow the entrypoint script
-    # to change the user ID (via gosu), which is blocked on some hardened systems.
-    security_opt:
-      - apparmor:unconfined
     # The user is now managed by the entrypoint.sh script to ensure correct permissions at runtime.
     # user: "${UID:-1000}:${GID:-1000}"
     # Ports are no longer published directly to the host.
