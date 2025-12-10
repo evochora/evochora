@@ -1,34 +1,26 @@
 #!/bin/bash
 set -e
 
-# This script is run as root. It prepares the container to run the application
-# as a non-root user with the same UID/GID as the host user.
+# This script is run as root. It ensures that the application's data directories
+# are owned by the user that will run the process, as specified by the UID/GID
+# environment variables passed from the host.
 
-# Default to 1000 if UID/GID are not provided.
-# This ensures the script works even outside of the docker-compose setup.
+# Default to 1000 if not set.
 TARGET_UID=${UID:-1000}
 TARGET_GID=${GID:-1000}
 
-# Get the current UID and GID of appuser inside the container
-CURRENT_UID=$(id -u appuser)
-CURRENT_GID=$(id -g appuser)
+echo "Starting entrypoint script..."
+echo "Target User: $TARGET_UID:$TARGET_GID"
 
-# If the user/group ID's don't match the target, update them.
-if [ "$CURRENT_UID" != "$TARGET_UID" ] || [ "$CURRENT_GID" != "$TARGET_GID" ]; then
-    echo "Updating appuser's UID/GID from $CURRENT_UID:$CURRENT_GID to $TARGET_UID:$TARGET_GID"
-    
-    # Change the group ID for appuser
-    groupmod -o -g "$TARGET_GID" appuser
-    
-    # Change the user ID for appuser and update its home directory ownership
-    usermod -o -u "$TARGET_UID" -g "$TARGET_GID" -d /home/appuser appuser
+# Change the ownership of the application and data directories.
+# This is the critical step to allow the non-root user to write to
+# mounted host volumes.
+echo "Fixing permissions for /home/appuser/app..."
+chown -R "$TARGET_UID:$TARGET_GID" /home/appuser/app
 
-    # Fix ownership of the home directory and application files
-    chown -R appuser:appuser /home/appuser
-fi
+echo "Permissions fixed. Switching to user $TARGET_UID:$TARGET_GID and starting application..."
 
-# IMPORTANT: Drop privileges and execute the main application command.
-# "gosu" is a lightweight alternative to "su" and "sudo", designed for containers.
-# It executes the given command as the specified user, and it does not re-fork,
-# so the application becomes PID 1 (or the main process).
-exec gosu appuser "$@"
+# Drop privileges and execute the main application command as the specified user.
+# IMPORTANT: We execute as the TARGET_UID, not as the username 'appuser'.
+# This directly starts the process with the correct host user ID.
+exec gosu "$TARGET_UID:$TARGET_GID" "$@"

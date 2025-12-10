@@ -63,7 +63,7 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Switch to the non-root user. This is a security best practice,
 # although the entrypoint itself runs as root to fix permissions.
-USER appuser
+# USER appuser
 
 # Expose the application's ports for external access
 # 8081: Javalin Web UI & API
