@@ -21,7 +21,6 @@ import java.util.stream.Stream;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.storage.IAnalyticsStorageRead;
 import org.evochora.datapipeline.api.resources.storage.IAnalyticsStorageWrite;
-import org.evochora.datapipeline.utils.PathExpansion;
 import org.evochora.datapipeline.utils.compression.ICompressionCodec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,13 +39,12 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
             throw new IllegalArgumentException("rootDirectory is required for FileSystemStorageResource");
         }
         String rootPath = options.getString("rootDirectory");
-        String expandedPath = PathExpansion.expandPath(rootPath);
-        this.rootDirectory = new File(expandedPath);
+        this.rootDirectory = new File(rootPath);
         if (!this.rootDirectory.isAbsolute()) {
-            throw new IllegalArgumentException("rootDirectory must be an absolute path: " + expandedPath);
+            throw new IllegalArgumentException("rootDirectory must be an absolute path: " + rootPath);
         }
         if (!this.rootDirectory.exists() && !this.rootDirectory.mkdirs()) {
-            throw new IllegalArgumentException("Failed to create rootDirectory: " + expandedPath);
+            throw new IllegalArgumentException("Failed to create rootDirectory: " + rootPath);
         }
     }
 

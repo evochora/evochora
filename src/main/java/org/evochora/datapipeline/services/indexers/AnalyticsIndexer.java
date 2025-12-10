@@ -33,7 +33,6 @@ import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.storage.IAnalyticsStorageWrite;
-import org.evochora.datapipeline.utils.PathExpansion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -108,8 +107,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
             ? options.getString("tempDirectory") 
             : System.getProperty("java.io.tmpdir") + "/evochora/analytics/" + name;
         
-        String expandedPath = PathExpansion.expandPath(tempPathStr);
-        this.tempDirectory = Paths.get(expandedPath);
+        this.tempDirectory = Paths.get(tempPathStr);
         
         // Load DuckDB driver once
         loadDuckDbDriver();

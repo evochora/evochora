@@ -27,7 +27,6 @@ import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.topics.ITopicReader;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
-import org.evochora.datapipeline.utils.PathExpansion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -180,13 +179,12 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
                     if (persistenceEnabled) {
                         String dataDir = options.hasPath("embedded.dataDirectory") 
                             ? options.getString("embedded.dataDirectory") 
-                            : "${user.home}/evochora/data/artemis";
+                            : System.getProperty("user.dir") + "/data/topic";
                         
-                        String expandedDataDir = PathExpansion.expandPath(dataDir);
-                        config.setJournalDirectory(expandedDataDir + "/journal");
-                        config.setBindingsDirectory(expandedDataDir + "/bindings");
-                        config.setLargeMessagesDirectory(expandedDataDir + "/largemessages");
-                        config.setPagingDirectory(expandedDataDir + "/paging");
+                        config.setJournalDirectory(dataDir + "/journal");
+                        config.setBindingsDirectory(dataDir + "/bindings");
+                        config.setLargeMessagesDirectory(dataDir + "/largemessages");
+                        config.setPagingDirectory(dataDir + "/paging");
                     }
                     
                     // Transports
