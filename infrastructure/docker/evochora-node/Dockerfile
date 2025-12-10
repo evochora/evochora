@@ -32,37 +32,36 @@ RUN --mount=type=cache,target=/root/.gradle/caches \
 # ====================================================================================
 FROM eclipse-temurin:21-jre-jammy
 
-# Install runtime dependencies required by the application, like ffmpeg for video rendering.
-# Clean up apt cache to keep the image small.
-RUN apt-get update && apt-get install -y ffmpeg && rm -rf /var/lib/apt/lists/*
+# Install runtime dependencies and gosu for privilege dropping.
+# gosu is a lightweight su/sudo alternative ideal for containers.
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ffmpeg gosu && \
+    rm -rf /var/lib/apt/lists/*
 
-# Accept UID and GID as build arguments to match the host user.
-# Default to 1000 if not provided.
-ARG UID=1000
-ARG GID=1000
-
-# Create a non-root group and user with the provided, dynamic IDs.
-# This ensures file ownership inside the container matches the runtime user.
-RUN groupadd -g $GID -o appgroup
-RUN useradd --uid $UID --gid $GID --create-home --shell /bin/bash appuser
+# Create a non-root user and group with a default ID.
+# The entrypoint script will adjust this to match the host user at runtime.
+RUN useradd --create-home --shell /bin/bash appuser
 
 # Set the main working directory in the new user's home
 WORKDIR /home/appuser/app
 
 # The build stage created a clean distribution in build/install/evochora
 # Copy the pre-built application directly from the known path
-COPY --from=builder --chown=$UID:$GID /app/build/install/evochora/ .
-
-# Explicitly set execute permission on the start script.
-# This is a robust way to ensure it's always executable.
-RUN chmod +x bin/evochora
+COPY --from=builder /app/build/install/evochora/ .
 
 # Create directories for data volumes that will be mounted
-# Use a single RUN layer for efficiency
-RUN mkdir -p data/storage data/database config && \
-    chown -R $UID:$GID /home/appuser/app/data
+RUN mkdir -p data/storage data/database config
 
-# Switch to the non-root user
+# Change ownership of all application files to the non-root user
+RUN chown -R appuser:appuser /home/appuser/app
+
+# --- NEW: Add the runtime entrypoint script ---
+# Copy the entrypoint script and make it executable.
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Switch to the non-root user. This is a security best practice,
+# although the entrypoint itself runs as root to fix permissions.
 USER appuser
 
 # Expose the application's ports for external access
@@ -71,6 +70,11 @@ USER appuser
 # 9092: H2 TCP Server
 EXPOSE 8081 8082 9092
 
-# The command to run the application using the start script from distZip,
-# with the global --config option placed correctly before subcommands.
+# --- NEW: Set the entrypoint ---
+# This script will run as root, fix permissions, and then execute the CMD
+# as the non-root 'appuser'.
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+
+# The command to run the application. This is passed as arguments ("$@")
+# to the entrypoint script.
 CMD ["bin/evochora", "--config", "config/evochora.conf", "node", "run"]

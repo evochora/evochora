@@ -3,13 +3,9 @@ services:
     build:
       context: ../../..
       dockerfile: infrastructure/docker/evochora-node/Dockerfile
-      # Pass UID and GID from the .env file to the Docker build process.
-      # This allows the Dockerfile to create a user with matching IDs.
-      args:
-        UID: ${UID}
-        GID: ${GID}
     image: ghcr.io/evochora/evochora:${IMAGE_TAG:-latest}
-    user: "${UID:-1000}:${GID:-1000}"
+    # The user is now managed by the entrypoint.sh script to ensure correct permissions at runtime.
+    # user: "${UID:-1000}:${GID:-1000}"
     # Ports are no longer published directly to the host.
     # The Caddy reverse proxy will handle all incoming traffic.
     # ports:
