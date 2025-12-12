@@ -1,7 +1,21 @@
 package org.evochora.cli.commands;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
+import java.io.File;
+import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.channels.Channels;
+import java.nio.channels.WritableByteChannel;
+import java.util.List;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+
 import org.evochora.cli.CliResourceFactory;
 import org.evochora.cli.rendering.SimulationRenderer;
 import org.evochora.cli.rendering.StatisticsBarRenderer;
@@ -13,24 +27,12 @@ import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
+
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
-
-import java.io.File;
-import java.io.OutputStream;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.channels.Channels;
-import java.nio.channels.WritableByteChannel;
-import java.util.List;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 @Command(name = "video", description = "Renders a simulation run to an MP4 video file using ffmpeg.")
 public class RenderVideoCommand implements Callable<Integer> {
@@ -340,11 +342,12 @@ public class RenderVideoCommand implements Callable<Integer> {
             int yOffset = 0;
             
             if (overlayRunId) {
-                // Static text - escape single quotes in run ID
-                String escapedRunId = targetRunId.replace("'", "'\\''");
+                // Static text - escape single quotes by doubling them for ffmpeg
+                String runText = "Run: " + targetRunId;
+                String escapedRunText = runText.replace("'", "''");
                 filterParts.add(String.format(
-                    "drawtext=text='Run: %s':x=%s:y=%d:fontsize=%d:fontcolor=%s",
-                    escapedRunId, xPos, Integer.parseInt(yPos) + yOffset, overlayFontSize, overlayColor
+                    "drawtext=text='%s':x=%s:y=%d:fontsize=%d:fontcolor=%s",
+                    escapedRunText, xPos, Integer.parseInt(yPos) + yOffset, overlayFontSize, overlayColor
                 ));
                 yOffset += overlayFontSize + 5; // Add spacing between lines
             }
@@ -357,9 +360,13 @@ public class RenderVideoCommand implements Callable<Integer> {
                     firstRenderableTick += samplingInterval;
                 }
                 // Expression: (n * samplingInterval) + firstRenderableTick
+                // According to ffmpeg docs: %{expr:...} should be used without quotes
+                // Colons must be escaped: Tick: becomes Tick\: and %{expr: becomes %{expr\:
+                // In Java, \\\\ produces a single \ in the output string
+                String tickText = String.format("Tick\\\\:%%{expr\\\\:(n*%d)+%d}", samplingInterval, firstRenderableTick);
                 filterParts.add(String.format(
-                    "drawtext=text='Tick: %%{expr:(n*%d)+%d}':x=%s:y=%d:fontsize=%d:fontcolor=%s",
-                    samplingInterval, firstRenderableTick, xPos, Integer.parseInt(yPos) + yOffset, overlayFontSize, overlayColor
+                    "drawtext=text=%s:x=%s:y=%d:fontsize=%d:fontcolor=%s",
+                    tickText, xPos, Integer.parseInt(yPos) + yOffset, overlayFontSize, overlayColor
                 ));
                 yOffset += overlayFontSize + 5;
             }
@@ -368,9 +375,13 @@ public class RenderVideoCommand implements Callable<Integer> {
                 // Time in seconds: time = (n / fps) where n is frame number (0-indexed)
                 // Format as "Time: X.XX s"
                 // Expression syntax: n/fps for seconds, (n%fps)*100/fps for hundredths
+                // According to ffmpeg docs: %{expr:...} should be used without quotes
+                // Colons must be escaped: Time: becomes Time\: and %{expr: becomes %{expr\:
+                // In Java, \\\\ produces a single \ in the output string
+                String timeText = String.format("Time\\\\: %%{expr\\\\:n/%d}\\\\.%%{expr\\\\:((n%%%d)*100)/%d} s", fps, fps, fps);
                 filterParts.add(String.format(
-                    "drawtext=text='Time: %%{expr:n/%d}\\\\.%%{expr:((n%%%d)*100)/%d} s':x=%s:y=%d:fontsize=%d:fontcolor=%s",
-                    fps, fps, fps, xPos, Integer.parseInt(yPos) + yOffset, overlayFontSize, overlayColor
+                    "drawtext=text=%s:x=%s:y=%d:fontsize=%d:fontcolor=%s",
+                    timeText, xPos, Integer.parseInt(yPos) + yOffset, overlayFontSize, overlayColor
                 ));
                 yOffset += overlayFontSize + 5;
             }
@@ -378,6 +389,8 @@ public class RenderVideoCommand implements Callable<Integer> {
             // Combine all filters with comma
             if (!filterParts.isEmpty() && !"webm".equalsIgnoreCase(format)) {
                 String filterComplex = String.join(",", filterParts);
+                // DEBUG: Print the exact filter string to diagnose parsing issues
+                //System.err.println("DEBUG: ffmpeg filter string: " + filterComplex);
                 ffmpegArgs.add("-vf");
                 ffmpegArgs.add(filterComplex);
             }
@@ -463,14 +476,14 @@ public class RenderVideoCommand implements Callable<Integer> {
             if (startTick != null || endTick != null) {
                 try {
                     // Use tick-filtered listing for better performance
-                    scanResult = storage.listBatchFiles(targetRunId + "/", continuationTokenForScan, 1000, 
+                    scanResult = storage.listBatchFiles(targetRunId + "/raw/", continuationTokenForScan, 1000, 
                         effectiveStartTick, effectiveEndTick);
                 } catch (Exception e) {
                     // Fallback to unfiltered listing if tick filtering not supported
-                    scanResult = storage.listBatchFiles(targetRunId + "/", continuationTokenForScan, 1000);
+                    scanResult = storage.listBatchFiles(targetRunId + "/raw/", continuationTokenForScan, 1000);
                 }
             } else {
-                scanResult = storage.listBatchFiles(targetRunId + "/", continuationTokenForScan, 1000);
+                scanResult = storage.listBatchFiles(targetRunId + "/raw/", continuationTokenForScan, 1000);
             }
             for (StoragePath path : scanResult.getFilenames()) {
                 scannedBatches++;
@@ -550,7 +563,7 @@ public class RenderVideoCommand implements Callable<Integer> {
                 String continuationTokenForMax = null;
                 StoragePath lastBatchPath = null;
                 do {
-                    BatchFileListResult maxResult = storage.listBatchFiles(targetRunId + "/", continuationTokenForMax, 1000);
+                    BatchFileListResult maxResult = storage.listBatchFiles(targetRunId + "/raw/", continuationTokenForMax, 1000);
                     for (StoragePath path : maxResult.getFilenames()) {
                         String filename = path.asString();
                         int batchIdx = filename.lastIndexOf("/batch_");
@@ -735,14 +748,14 @@ public class RenderVideoCommand implements Callable<Integer> {
                 BatchFileListResult result;
                 if (startTick != null || endTick != null) {
                     try {
-                        result = storage.listBatchFiles(targetRunId + "/", continuationToken, 100,
+                        result = storage.listBatchFiles(targetRunId + "/raw/", continuationToken, 100,
                             effectiveStartTick, effectiveEndTick);
                     } catch (Exception e) {
                         // Fallback to unfiltered listing
-                        result = storage.listBatchFiles(targetRunId + "/", continuationToken, 100);
+                        result = storage.listBatchFiles(targetRunId + "/raw/", continuationToken, 100);
                     }
                 } else {
-                    result = storage.listBatchFiles(targetRunId + "/", continuationToken, 100);
+                    result = storage.listBatchFiles(targetRunId + "/raw/", continuationToken, 100);
                 }
                 
                 for (StoragePath path : result.getFilenames()) {
