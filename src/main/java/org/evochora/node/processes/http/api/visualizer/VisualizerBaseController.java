@@ -1,9 +1,9 @@
 package org.evochora.node.processes.http.api.visualizer;
 
-import com.typesafe.config.Config;
-import io.javalin.Javalin;
-import io.javalin.http.Context;
-import io.javalin.http.HttpStatus;
+import java.sql.SQLException;
+import java.util.HashMap;
+import java.util.Map;
+
 import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
 import org.evochora.datapipeline.api.resources.database.OrganismNotFoundException;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
@@ -12,9 +12,11 @@ import org.evochora.node.spi.ServiceRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.sql.SQLException;
-import java.util.HashMap;
-import java.util.Map;
+import com.typesafe.config.Config;
+
+import io.javalin.Javalin;
+import io.javalin.http.Context;
+import io.javalin.http.HttpStatus;
 
 /**
  * Base controller for visualizer API endpoints with shared functionality.
@@ -68,7 +70,7 @@ public abstract class VisualizerBaseController extends AbstractController {
             ctx.status(HttpStatus.BAD_REQUEST).json(createErrorBody(HttpStatus.BAD_REQUEST, e.getMessage()));
         });
         app.exception(NoRunIdException.class, (e, ctx) -> {
-            LOGGER.warn("No run ID available for request {}: {}", ctx.path(), e.getMessage());
+            LOGGER.debug("No run ID available for request {}: {}", ctx.path(), e.getMessage());
             ctx.status(HttpStatus.NOT_FOUND).json(createErrorBody(HttpStatus.NOT_FOUND, e.getMessage()));
         });
         app.exception(TickNotFoundException.class, (e, ctx) -> {
@@ -84,11 +86,21 @@ public abstract class VisualizerBaseController extends AbstractController {
             ctx.status(HttpStatus.TOO_MANY_REQUESTS).json(createErrorBody(HttpStatus.TOO_MANY_REQUESTS, "Server is under heavy load, please try again later"));
         });
         app.exception(SQLException.class, (e, ctx) -> {
-            LOGGER.error("Database error for request {}", ctx.path(), e);
-            ctx.status(HttpStatus.INTERNAL_SERVER_ERROR).json(createErrorBody(HttpStatus.INTERNAL_SERVER_ERROR, "Database error occurred"));
+            // H2 error codes: 42102 = Table not found, 42104 = Schema not found
+            // These indicate client requested data that doesn't exist (404, not 500)
+            if (e.getErrorCode() == 42102 || e.getErrorCode() == 42104) {
+                LOGGER.debug("Table/schema not found for request {}: {}", ctx.path(), e.getMessage());
+                ctx.status(HttpStatus.NOT_FOUND).json(createErrorBody(HttpStatus.NOT_FOUND, 
+                    "Requested data not available. The simulation may have been created with a different schema version."));
+            } else {
+                LOGGER.error("Database error for request {}: {}", ctx.path(), e.getMessage());
+                LOGGER.debug("Database error stack trace", e);
+                ctx.status(HttpStatus.INTERNAL_SERVER_ERROR).json(createErrorBody(HttpStatus.INTERNAL_SERVER_ERROR, "Database error occurred"));
+            }
         });
         app.exception(Exception.class, (e, ctx) -> {
-            LOGGER.error("Unhandled exception for request {}", ctx.path(), e);
+            LOGGER.error("Unhandled exception for request {}: {}", ctx.path(), e.getMessage());
+            LOGGER.debug("Unhandled exception stack trace", e);
             ctx.status(HttpStatus.INTERNAL_SERVER_ERROR).json(createErrorBody(HttpStatus.INTERNAL_SERVER_ERROR, "An internal server error occurred"));
         });
     }

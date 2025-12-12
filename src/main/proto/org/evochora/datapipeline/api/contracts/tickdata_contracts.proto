@@ -382,3 +382,19 @@ message CellState {
 message CellStateList {
   repeated CellState cells = 1;
 }
+
+// Wrapper message for efficient BLOB storage of organism states in databases.
+// Used by SingleBlobOrgStrategy to serialize organism lists for compact storage.
+//
+// USAGE:
+// - Write: OrganismStateList.newBuilder().addAllOrganisms(tick.getOrganismsList()).build().toByteArray()
+// - Read: OrganismStateList.parseFrom(blob).getOrganismsList()
+//
+// RATIONALE: Row-per-organism-per-tick creates millions of rows (100 organisms × 200k ticks = 20M rows).
+// BLOB strategy reduces this to 200k rows (one per tick), improving H2 MERGE performance by ~100×.
+//
+// STORAGE: ~10-50 KB per tick (100 organisms × 500 bytes protobuf + overhead)
+// With zstd compression: ~2-10 KB per tick
+message OrganismStateList {
+  repeated OrganismState organisms = 1;
+}

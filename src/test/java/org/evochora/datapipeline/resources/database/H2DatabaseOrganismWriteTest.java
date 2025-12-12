@@ -8,8 +8,8 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
-import org.evochora.datapipeline.api.contracts.OrganismRuntimeState;
 import org.evochora.datapipeline.api.contracts.OrganismState;
+import org.evochora.datapipeline.api.contracts.OrganismStateList;
 import org.evochora.datapipeline.api.contracts.ProcFrame;
 import org.evochora.datapipeline.api.contracts.RegisterValue;
 import org.evochora.datapipeline.api.contracts.TickData;
@@ -71,7 +71,8 @@ class H2DatabaseOrganismWriteTest {
             database.doCreateOrganismTables(conn); // second call must not fail
 
             assertThat(tableExists(conn, "organisms")).isTrue();
-            assertThat(tableExists(conn, "organism_states")).isTrue();
+            // SingleBlobOrgStrategy uses organism_ticks instead of organism_states
+            assertThat(tableExists(conn, "organism_ticks")).isTrue();
         }
     }
 
@@ -97,20 +98,19 @@ class H2DatabaseOrganismWriteTest {
                 assertThat(rs.getInt("cnt")).isEqualTo(1);
             }
 
-            // organism_states: single row
-            try (ResultSet rs = conn.createStatement().executeQuery("SELECT COUNT(*) AS cnt FROM organism_states")) {
+            // organism_ticks: single row (SingleBlobOrgStrategy stores all organisms per tick in one BLOB)
+            try (ResultSet rs = conn.createStatement().executeQuery("SELECT COUNT(*) AS cnt FROM organism_ticks")) {
                 assertThat(rs.next()).isTrue();
                 assertThat(rs.getInt("cnt")).isEqualTo(1);
             }
 
-            // runtime_state_blob round-trip
+            // organisms_blob round-trip (BLOB contains OrganismStateList)
             try (PreparedStatement stmt = conn.prepareStatement(
-                    "SELECT runtime_state_blob FROM organism_states WHERE tick_number = ? AND organism_id = ?")) {
+                    "SELECT organisms_blob FROM organism_ticks WHERE tick_number = ?")) {
                 stmt.setLong(1, 1L);
-                stmt.setInt(2, 1);
                 try (ResultSet rs = stmt.executeQuery()) {
                     assertThat(rs.next()).isTrue();
-                    byte[] blob = rs.getBytes("runtime_state_blob");
+                    byte[] blob = rs.getBytes("organisms_blob");
                     assertThat(blob).isNotNull();
                     assertThat(blob.length).isGreaterThan(0);
 
@@ -123,10 +123,16 @@ class H2DatabaseOrganismWriteTest {
                     }
                     byte[] decompressed = bos.toByteArray();
 
-                    OrganismRuntimeState state = OrganismRuntimeState.parseFrom(decompressed);
+                    // BLOB contains OrganismStateList (all organisms for this tick)
+                    OrganismStateList orgList = OrganismStateList.parseFrom(decompressed);
+                    assertThat(orgList.getOrganismsCount()).isEqualTo(1);
+                    
+                    OrganismState state = orgList.getOrganisms(0);
+                    assertThat(state.getOrganismId()).isEqualTo(1);
                     assertThat(state.getDataRegistersCount()).isEqualTo(1);
                     assertThat(state.getCallStackCount()).isEqualTo(1);
                     assertThat(state.getInstructionFailed()).isTrue();
+                    assertThat(state.hasFailureReason()).isTrue();
                     assertThat(state.getFailureReason()).isEqualTo("test-failure");
                     
                     // Verify instruction execution data
@@ -135,10 +141,10 @@ class H2DatabaseOrganismWriteTest {
                     assertThat(state.getInstructionRawArgumentsCount()).isEqualTo(2);
                     assertThat(state.hasInstructionEnergyCost()).isTrue();
                     assertThat(state.getInstructionEnergyCost()).isEqualTo(5);
-                    assertThat(state.hasInstructionIpBeforeFetch()).isTrue();
-                    assertThat(state.getInstructionIpBeforeFetch().getComponentsCount()).isEqualTo(2);
-                    assertThat(state.hasInstructionDvBeforeFetch()).isTrue();
-                    assertThat(state.getInstructionDvBeforeFetch().getComponentsCount()).isEqualTo(2);
+                    assertThat(state.hasIpBeforeFetch()).isTrue();
+                    assertThat(state.getIpBeforeFetch().getComponentsCount()).isEqualTo(2);
+                    assertThat(state.hasDvBeforeFetch()).isTrue();
+                    assertThat(state.getDvBeforeFetch().getComponentsCount()).isEqualTo(2);
                 }
             }
         }

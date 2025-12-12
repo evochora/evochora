@@ -4,7 +4,6 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.ArrayList;
 import java.util.List;
 
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
@@ -20,6 +19,7 @@ import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
 import org.evochora.datapipeline.resources.database.h2.IH2EnvStorageStrategy;
+import org.evochora.datapipeline.resources.database.h2.IH2OrgStorageStrategy;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -56,14 +56,18 @@ public class H2DatabaseReader implements IDatabaseReader {
     private final Connection connection;
     private final H2Database database;
     private final IH2EnvStorageStrategy envStrategy;
+    private final IH2OrgStorageStrategy orgStrategy;
     private final String runId;
     private boolean closed = false;
     
     public H2DatabaseReader(Connection connection, H2Database database, 
-                           IH2EnvStorageStrategy envStrategy, String runId) {
+                           IH2EnvStorageStrategy envStrategy, 
+                           IH2OrgStorageStrategy orgStrategy,
+                           String runId) {
         this.connection = connection;
         this.database = database;
         this.envStrategy = envStrategy;
+        this.orgStrategy = orgStrategy;
         this.runId = runId;
     }
     
@@ -169,50 +173,8 @@ public class H2DatabaseReader implements IDatabaseReader {
             throw new IllegalArgumentException("tickNumber must be non-negative");
         }
 
-        String sql = """
-            SELECT s.organism_id, s.energy, s.ip, s.dv, s.data_pointers, s.active_dp_index,
-                   o.parent_id, o.birth_tick
-            FROM organism_states s
-            LEFT JOIN organisms o ON s.organism_id = o.organism_id
-            WHERE s.tick_number = ?
-            ORDER BY s.organism_id
-            """;
-
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
-            stmt.setLong(1, tickNumber);
-            try (ResultSet rs = stmt.executeQuery()) {
-                List<OrganismTickSummary> result = new ArrayList<>();
-                while (rs.next()) {
-                    int organismId = rs.getInt("organism_id");
-                    int energy = rs.getInt("energy");
-                    byte[] ipBytes = rs.getBytes("ip");
-                    byte[] dvBytes = rs.getBytes("dv");
-                    byte[] dpBytes = rs.getBytes("data_pointers");
-                    int activeDpIndex = rs.getInt("active_dp_index");
-                    
-                    // Static info from organisms table (may be null if JOIN fails)
-                    int parentIdRaw = rs.getInt("parent_id");
-                    Integer parentId = rs.wasNull() ? null : parentIdRaw;
-                    long birthTick = rs.getLong("birth_tick");
-
-                    int[] ip = OrganismStateConverter.decodeVector(ipBytes);
-                    int[] dv = OrganismStateConverter.decodeVector(dvBytes);
-                    int[][] dataPointers = OrganismStateConverter.decodeDataPointers(dpBytes);
-
-                    result.add(new OrganismTickSummary(
-                            organismId,
-                            energy,
-                            ip,
-                            dv,
-                            dataPointers,
-                            activeDpIndex,
-                            parentId,
-                            birthTick
-                    ));
-                }
-                return result;
-            }
-        }
+        // Delegate to organism storage strategy
+        return orgStrategy.readOrganismsAtTick(connection, tickNumber);
     }
 
     @Override
@@ -242,61 +204,149 @@ public class H2DatabaseReader implements IDatabaseReader {
         EnvironmentProperties envProps = extractEnvironmentProperties(metadata);
         int[] envDimensions = envProps.getWorldShape();
 
-        String sql = """
-            SELECT energy, ip, dv, data_pointers, active_dp_index, runtime_state_blob
-            FROM organism_states
-            WHERE tick_number = ? AND organism_id = ?
-            """;
+        // Read organism state from strategy (BLOB-based for SingleBlobOrgStrategy)
+        org.evochora.datapipeline.api.contracts.OrganismState orgState = 
+                orgStrategy.readSingleOrganismState(connection, tickNumber, organismId);
+        
+        if (orgState == null) {
+            throw new OrganismNotFoundException(
+                    "No organism state for id " + organismId + " at tick " + tickNumber);
+        }
+        
+        // Convert OrganismState to OrganismRuntimeView using the converter
+        OrganismRuntimeView state = convertOrganismStateToRuntimeView(orgState, envDimensions);
 
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
-            stmt.setLong(1, tickNumber);
-            stmt.setInt(2, organismId);
-
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (!rs.next()) {
-                    throw new OrganismNotFoundException(
-                            "No organism state for id " + organismId + " at tick " + tickNumber);
+        // Resolve "next" instruction from tick+1 if sampling_interval=1
+        InstructionView nextInstruction = null;
+        int samplingInterval = (int) metadata.getSamplingInterval();
+        if (samplingInterval == 1) {
+            try {
+                OrganismRuntimeView nextState = readOrganismStateForTick(tickNumber + 1, organismId, envDimensions);
+                if (nextState != null && nextState.instructions != null && nextState.instructions.last != null) {
+                    nextInstruction = nextState.instructions.last;
                 }
-
-                int energy = rs.getInt("energy");
-                byte[] ipBytes = rs.getBytes("ip");
-                byte[] dvBytes = rs.getBytes("dv");
-                byte[] dpBytes = rs.getBytes("data_pointers");
-                int activeDpIndex = rs.getInt("active_dp_index");
-                byte[] blobBytes = rs.getBytes("runtime_state_blob");
-
-                int[] ip = OrganismStateConverter.decodeVector(ipBytes);
-                int[] dv = OrganismStateConverter.decodeVector(dvBytes);
-                int[][] dataPointers = OrganismStateConverter.decodeDataPointers(dpBytes);
-                OrganismRuntimeView state = OrganismStateConverter.decodeRuntimeState(
-                        energy, ip, dv, dataPointers, activeDpIndex, blobBytes, envDimensions);
-
-                // Resolve "next" instruction from tick+1 if sampling_interval=1
-                InstructionView nextInstruction = null;
-                int samplingInterval = (int) metadata.getSamplingInterval();
-                if (samplingInterval == 1) {
-                    try {
-                        OrganismRuntimeView nextState = readOrganismStateForTick(tickNumber + 1, organismId, envDimensions);
-                        if (nextState != null && nextState.instructions != null && nextState.instructions.last != null) {
-                            nextInstruction = nextState.instructions.last;
-                        }
-                    } catch (OrganismNotFoundException e) {
-                        // tick+1 doesn't exist - nextInstruction remains null
-                    }
-                }
-
-                // Update state with resolved next instruction
-                InstructionsView instructions = new InstructionsView(state.instructions.last, nextInstruction);
-                OrganismRuntimeView stateWithInstructions = new OrganismRuntimeView(
-                        state.energy, state.ip, state.dv, state.dataPointers, state.activeDpIndex,
-                        state.dataRegisters, state.procedureRegisters, state.formalParamRegisters,
-                        state.locationRegisters, state.dataStack, state.locationStack, state.callStack,
-                        state.instructionFailed, state.failureReason, state.failureCallStack,
-                        instructions);
-
-                return new OrganismTickDetails(organismId, tickNumber, staticInfo, stateWithInstructions);
+            } catch (OrganismNotFoundException e) {
+                // tick+1 doesn't exist - nextInstruction remains null
             }
         }
+
+        // Update state with resolved next instruction
+        InstructionsView instructions = new InstructionsView(state.instructions.last, nextInstruction);
+        OrganismRuntimeView stateWithInstructions = new OrganismRuntimeView(
+                state.energy, state.ip, state.dv, state.dataPointers, state.activeDpIndex,
+                state.dataRegisters, state.procedureRegisters, state.formalParamRegisters,
+                state.locationRegisters, state.dataStack, state.locationStack, state.callStack,
+                state.instructionFailed, state.failureReason, state.failureCallStack,
+                instructions);
+
+        return new OrganismTickDetails(organismId, tickNumber, staticInfo, stateWithInstructions);
+    }
+    
+    /**
+     * Converts an OrganismState Protobuf message to OrganismRuntimeView DTO.
+     * <p>
+     * This conversion extracts all fields from the Protobuf and uses OrganismStateConverter
+     * for complex nested structures.
+     *
+     * @param orgState OrganismState Protobuf object
+     * @param envDimensions Environment dimensions for instruction resolution
+     * @return OrganismRuntimeView DTO
+     * @throws SQLException if conversion fails
+     */
+    private OrganismRuntimeView convertOrganismStateToRuntimeView(
+            org.evochora.datapipeline.api.contracts.OrganismState orgState,
+            int[] envDimensions) throws SQLException {
+        
+        int energy = orgState.getEnergy();
+        int[] ip = OrganismStateConverter.vectorToArray(orgState.getIp());
+        int[] dv = OrganismStateConverter.vectorToArray(orgState.getDv());
+        
+        // Convert data pointers
+        int[][] dataPointers = new int[orgState.getDataPointersCount()][];
+        for (int i = 0; i < orgState.getDataPointersCount(); i++) {
+            dataPointers[i] = OrganismStateConverter.vectorToArray(orgState.getDataPointers(i));
+        }
+        int activeDpIndex = orgState.getActiveDpIndex();
+        
+        // Convert registers
+        java.util.List<org.evochora.datapipeline.api.resources.database.dto.RegisterValueView> dataRegs = 
+                new java.util.ArrayList<>();
+        for (var rv : orgState.getDataRegistersList()) {
+            dataRegs.add(OrganismStateConverter.convertRegisterValue(rv));
+        }
+        
+        java.util.List<org.evochora.datapipeline.api.resources.database.dto.RegisterValueView> procRegs = 
+                new java.util.ArrayList<>();
+        for (var rv : orgState.getProcedureRegistersList()) {
+            procRegs.add(OrganismStateConverter.convertRegisterValue(rv));
+        }
+        
+        java.util.List<org.evochora.datapipeline.api.resources.database.dto.RegisterValueView> fprRegs = 
+                new java.util.ArrayList<>();
+        for (var rv : orgState.getFormalParamRegistersList()) {
+            fprRegs.add(OrganismStateConverter.convertRegisterValue(rv));
+        }
+        
+        java.util.List<int[]> locationRegs = new java.util.ArrayList<>();
+        for (var v : orgState.getLocationRegistersList()) {
+            locationRegs.add(OrganismStateConverter.vectorToArray(v));
+        }
+        
+        // Convert stacks
+        java.util.List<org.evochora.datapipeline.api.resources.database.dto.RegisterValueView> dataStack = 
+                new java.util.ArrayList<>();
+        for (var rv : orgState.getDataStackList()) {
+            dataStack.add(OrganismStateConverter.convertRegisterValue(rv));
+        }
+        
+        java.util.List<int[]> locationStack = new java.util.ArrayList<>();
+        for (var v : orgState.getLocationStackList()) {
+            locationStack.add(OrganismStateConverter.vectorToArray(v));
+        }
+        
+        java.util.List<org.evochora.datapipeline.api.resources.database.dto.ProcFrameView> callStack = 
+                new java.util.ArrayList<>();
+        for (var frame : orgState.getCallStackList()) {
+            callStack.add(OrganismStateConverter.convertProcFrame(frame));
+        }
+        
+        java.util.List<org.evochora.datapipeline.api.resources.database.dto.ProcFrameView> failureStack = 
+                new java.util.ArrayList<>();
+        for (var frame : orgState.getFailureCallStackList()) {
+            failureStack.add(OrganismStateConverter.convertProcFrame(frame));
+        }
+        
+        // Resolve instruction
+        InstructionView lastInstruction = null;
+        if (orgState.hasInstructionOpcodeId() && envDimensions != null) {
+            // Read register values before execution
+            java.util.Map<Integer, org.evochora.datapipeline.api.resources.database.dto.RegisterValueView> registerValuesBefore = 
+                    new java.util.HashMap<>();
+            for (var entry : orgState.getInstructionRegisterValuesBeforeMap().entrySet()) {
+                registerValuesBefore.put(entry.getKey(), OrganismStateConverter.convertRegisterValue(entry.getValue()));
+            }
+            
+            lastInstruction = OrganismStateConverter.resolveInstructionView(
+                    orgState.getInstructionOpcodeId(),
+                    orgState.getInstructionRawArgumentsList(),
+                    orgState.hasInstructionEnergyCost() ? orgState.getInstructionEnergyCost() : 0,
+                    orgState.hasIpBeforeFetch() ? OrganismStateConverter.vectorToArray(orgState.getIpBeforeFetch()) : null,
+                    orgState.hasDvBeforeFetch() ? OrganismStateConverter.vectorToArray(orgState.getDvBeforeFetch()) : null,
+                    orgState.getInstructionFailed(),
+                    orgState.hasFailureReason() ? orgState.getFailureReason() : null,
+                    dataRegs, procRegs, fprRegs, locationRegs, envDimensions, registerValuesBefore
+            );
+        }
+        InstructionsView instructions = new InstructionsView(lastInstruction, null);
+        
+        return new OrganismRuntimeView(
+                energy, ip, dv, dataPointers, activeDpIndex,
+                dataRegs, procRegs, fprRegs, locationRegs,
+                dataStack, locationStack, callStack,
+                orgState.getInstructionFailed(),
+                orgState.hasFailureReason() ? orgState.getFailureReason() : null,
+                failureStack, instructions
+        );
     }
 
     /**
@@ -311,36 +361,16 @@ public class H2DatabaseReader implements IDatabaseReader {
      */
     private OrganismRuntimeView readOrganismStateForTick(long tickNumber, int organismId, int[] envDimensions)
             throws SQLException, OrganismNotFoundException {
-        String sql = """
-            SELECT energy, ip, dv, data_pointers, active_dp_index, runtime_state_blob
-            FROM organism_states
-            WHERE tick_number = ? AND organism_id = ?
-            """;
-
-        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
-            stmt.setLong(1, tickNumber);
-            stmt.setInt(2, organismId);
-
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (!rs.next()) {
-                    throw new OrganismNotFoundException(
-                            "No organism state for id " + organismId + " at tick " + tickNumber);
-                }
-
-                int energy = rs.getInt("energy");
-                byte[] ipBytes = rs.getBytes("ip");
-                byte[] dvBytes = rs.getBytes("dv");
-                byte[] dpBytes = rs.getBytes("data_pointers");
-                int activeDpIndex = rs.getInt("active_dp_index");
-                byte[] blobBytes = rs.getBytes("runtime_state_blob");
-
-                int[] ip = OrganismStateConverter.decodeVector(ipBytes);
-                int[] dv = OrganismStateConverter.decodeVector(dvBytes);
-                int[][] dataPointers = OrganismStateConverter.decodeDataPointers(dpBytes);
-                return OrganismStateConverter.decodeRuntimeState(
-                        energy, ip, dv, dataPointers, activeDpIndex, blobBytes, envDimensions);
-            }
+        // Read organism state from strategy (BLOB-based for SingleBlobOrgStrategy)
+        org.evochora.datapipeline.api.contracts.OrganismState orgState = 
+                orgStrategy.readSingleOrganismState(connection, tickNumber, organismId);
+        
+        if (orgState == null) {
+            throw new OrganismNotFoundException(
+                    "No organism state for id " + organismId + " at tick " + tickNumber);
         }
+        
+        return convertOrganismStateToRuntimeView(orgState, envDimensions);
     }
 
     private OrganismStaticInfo readOrganismStaticInfo(int organismId) throws SQLException {

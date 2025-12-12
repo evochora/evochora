@@ -741,7 +741,6 @@ class EnvironmentControllerIntegrationTest {
     }
 
     @Test
-    @ExpectLog(level = LogLevel.WARN, messagePattern = ".*No environment ticks available.*")
     void getTicks_returns404WhenNoTicks() throws Exception {
         // Given: Test run with metadata but no ticks
         String runId = "test-run-" + UUID.randomUUID();

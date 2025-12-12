@@ -1,8 +1,7 @@
 package org.evochora.node.processes.http.api.visualizer;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
-import io.javalin.Javalin;
+import static io.restassured.RestAssured.given;
+
 import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
 import org.evochora.datapipeline.resources.database.H2Database;
 import org.evochora.junit.extensions.logging.ExpectLog;
@@ -15,7 +14,10 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-import static io.restassured.RestAssured.given;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
+
+import io.javalin.Javalin;
 
 /**
  * Phase 3 error handling tests: HTTP error responses and edge cases.
@@ -71,7 +73,6 @@ class EnvironmentControllerErrorHandlingTest {
     }
 
     @Test
-    @ExpectLog(level = LogLevel.WARN, messagePattern = ".*No run ID available.*Run ID not found.*")
     void getEnvironment_returns404OnInvalidRunId() {
         // When: Make request with non-existent runId
         given()
@@ -112,7 +113,6 @@ class EnvironmentControllerErrorHandlingTest {
     }
 
     @Test
-    @ExpectLog(level = LogLevel.WARN, messagePattern = ".*No run ID available.*")
     void getEnvironment_returns404OnNoRuns() {
         // Given: Empty database (no runs)
         // When: Make request without runId parameter
@@ -127,7 +127,6 @@ class EnvironmentControllerErrorHandlingTest {
     }
 
     @Test
-    @ExpectLog(level = LogLevel.WARN, messagePattern = ".*No run ID available.*")
     void getEnvironment_returns404OnNonExistentRun() {
         // Given: Database without proper schema for this runId
         // When: Make request for non-existent runId
