@@ -1,7 +1,5 @@
 package org.evochora.datapipeline.resources.database;
 
-import java.io.ByteArrayOutputStream;
-import java.io.OutputStream;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -15,9 +13,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.evochora.datapipeline.api.contracts.DataPointerList;
-import org.evochora.datapipeline.api.contracts.OrganismRuntimeState;
-import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
@@ -26,9 +21,8 @@ import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
 import org.evochora.datapipeline.resources.database.h2.IH2EnvStorageStrategy;
+import org.evochora.datapipeline.resources.database.h2.IH2OrgStorageStrategy;
 import org.evochora.datapipeline.utils.H2SchemaUtil;
-import org.evochora.datapipeline.utils.compression.CompressionCodecFactory;
-import org.evochora.datapipeline.utils.compression.ICompressionCodec;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.evochora.datapipeline.utils.protobuf.ProtobufConverter;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -59,8 +53,15 @@ public class H2Database extends AbstractDatabaseResource
     // Environment storage strategy (loaded via reflection)
     private final IH2EnvStorageStrategy envStorageStrategy;
     
+    // Organism storage strategy (loaded via reflection)
+    private final IH2OrgStorageStrategy orgStorageStrategy;
+    
     // PreparedStatement cache for environment writes (per connection)
     private final Map<Connection, PreparedStatement> envWriteStmtCache = new ConcurrentHashMap<>();
+    
+    // PreparedStatement caches for organism writes (per connection)
+    private final Map<Connection, PreparedStatement> orgStaticStmtCache = new ConcurrentHashMap<>();
+    private final Map<Connection, PreparedStatement> orgStatesStmtCache = new ConcurrentHashMap<>();
     
     // Metadata cache (LRU with automatic eviction)
     private final Map<String, SimulationMetadata> metadataCache;
@@ -133,6 +134,9 @@ public class H2Database extends AbstractDatabaseResource
         // Load environment storage strategy via reflection
         this.envStorageStrategy = loadEnvironmentStorageStrategy(options);
         
+        // Load organism storage strategy via reflection
+        this.orgStorageStrategy = loadOrganismStorageStrategy(options);
+        
         // Initialize metadata cache
         this.maxCacheSize = options.hasPath("metadataCacheSize") 
             ? options.getInt("metadataCacheSize") 
@@ -191,6 +195,81 @@ public class H2Database extends AbstractDatabaseResource
             );
             log.debug("Using default SingleBlobStrategy (no compression)");
             return strategy;
+        }
+    }
+    
+    /**
+     * Loads organism storage strategy via reflection.
+     * <p>
+     * Configuration:
+     * <pre>
+     * h2OrganismStrategy {
+     *   className = "org.evochora.datapipeline.resources.database.h2.SingleBlobOrgStrategy"
+     *   options {
+     *     compression {
+     *       codec = "zstd"
+     *       level = 3
+     *     }
+     *   }
+     * }
+     * </pre>
+     * 
+     * @param options Database configuration
+     * @return Loaded strategy instance
+     */
+    private IH2OrgStorageStrategy loadOrganismStorageStrategy(Config options) {
+        if (options.hasPath("h2OrganismStrategy")) {
+            Config strategyConfig = options.getConfig("h2OrganismStrategy");
+            String strategyClassName = strategyConfig.getString("className");
+            
+            // Extract options for strategy (defaults to empty config if missing)
+            Config strategyOptions = strategyConfig.hasPath("options")
+                ? strategyConfig.getConfig("options")
+                : ConfigFactory.empty();
+            
+            IH2OrgStorageStrategy strategy = createOrgStorageStrategy(strategyClassName, strategyOptions);
+            log.debug("Loaded organism storage strategy: {} with options: {}", 
+                     strategyClassName, strategyOptions.hasPath("compression.codec") 
+                         ? strategyOptions.getString("compression.codec") 
+                         : "none");
+            return strategy;
+        } else {
+            // Default: SingleBlobOrgStrategy without compression
+            Config emptyConfig = ConfigFactory.empty();
+            IH2OrgStorageStrategy strategy = createOrgStorageStrategy(
+                "org.evochora.datapipeline.resources.database.h2.SingleBlobOrgStrategy",
+                emptyConfig
+            );
+            log.debug("Using default SingleBlobOrgStrategy (no compression)");
+            return strategy;
+        }
+    }
+    
+    /**
+     * Creates organism storage strategy instance via reflection.
+     * 
+     * @param className Fully qualified strategy class name
+     * @param strategyConfig Configuration for strategy
+     * @return Strategy instance
+     */
+    private IH2OrgStorageStrategy createOrgStorageStrategy(String className, Config strategyConfig) {
+        try {
+            Class<?> strategyClass = Class.forName(className);
+            return (IH2OrgStorageStrategy) strategyClass
+                .getDeclaredConstructor(Config.class)
+                .newInstance(strategyConfig);
+        } catch (ClassNotFoundException e) {
+            throw new IllegalArgumentException(
+                "Organism storage strategy class not found: " + className, e);
+        } catch (ClassCastException e) {
+            throw new IllegalArgumentException(
+                "Organism storage strategy class must implement IH2OrgStorageStrategy: " + className, e);
+        } catch (NoSuchMethodException e) {
+            throw new IllegalArgumentException(
+                "Organism storage strategy must have public constructor(Config): " + className, e);
+        } catch (Exception e) {
+            throw new IllegalArgumentException(
+                "Failed to instantiate organism storage strategy: " + className, e);
         }
     }
 
@@ -406,59 +485,23 @@ public class H2Database extends AbstractDatabaseResource
     // ========================================================================
 
     /**
-     * Creates {@code organisms} and {@code organism_states} tables for the current schema.
+     * Creates organism tables using the configured storage strategy.
      * <p>
-     * Uses {@link H2SchemaUtil#executeDdlIfNotExists(Statement, String, String)} for
-     * concurrent-safe DDL execution.
+     * Delegates to {@link IH2OrgStorageStrategy#createTables(Connection)} for
+     * strategy-specific table creation (BLOB vs row-per-organism).
      */
     @Override
     protected void doCreateOrganismTables(Object connection) throws Exception {
         Connection conn = (Connection) connection;
-
-        try (Statement stmt = conn.createStatement()) {
-            // Static organism metadata table
-            H2SchemaUtil.executeDdlIfNotExists(
-                stmt,
-                "CREATE TABLE IF NOT EXISTS organisms (" +
-                "  organism_id INT PRIMARY KEY," +
-                "  parent_id INT NULL," +
-                "  birth_tick BIGINT NOT NULL," +
-                "  program_id TEXT NOT NULL," +
-                "  initial_position BYTEA NOT NULL" +
-                ")",
-                "organisms"
-            );
-
-            // Per-tick organism state table
-            H2SchemaUtil.executeDdlIfNotExists(
-                stmt,
-                "CREATE TABLE IF NOT EXISTS organism_states (" +
-                "  tick_number BIGINT NOT NULL," +
-                "  organism_id INT NOT NULL," +
-                "  energy INT NOT NULL," +
-                "  ip BYTEA NOT NULL," +
-                "  dv BYTEA NOT NULL," +
-                "  data_pointers BYTEA NOT NULL," +
-                "  active_dp_index INT NOT NULL," +
-                "  runtime_state_blob BYTEA NOT NULL," +
-                "  PRIMARY KEY (tick_number, organism_id)" +
-                ")",
-                "organism_states"
-            );
-
-            // Optional helper index for per-organism history queries
-            H2SchemaUtil.executeDdlIfNotExists(
-                stmt,
-                "CREATE INDEX IF NOT EXISTS idx_organism_states_org ON organism_states (organism_id)",
-                "idx_organism_states_org"
-            );
-        }
-
+        orgStorageStrategy.createTables(conn);
         conn.commit();
     }
 
     /**
-     * Writes organism static and per-tick state using MERGE for idempotency.
+     * Writes organism static and per-tick state using the configured storage strategy.
+     * <p>
+     * Delegates to {@link IH2OrgStorageStrategy} for strategy-specific write logic
+     * (BLOB per tick vs row per organism per tick).
      */
     @Override
     protected void doWriteOrganismStates(Object connection, List<TickData> ticks) throws Exception {
@@ -468,108 +511,28 @@ public class H2Database extends AbstractDatabaseResource
             return;
         }
 
-        ICompressionCodec codec = CompressionCodecFactory.create(
-                getOptions().hasPath("organismRuntimeStateCompression")
-                        ? getOptions().getConfig("organismRuntimeStateCompression")
-                        : ConfigFactory.empty()
-        );
-
-        PreparedStatement organismsStmt = null;
-        PreparedStatement statesStmt = null;
-
         try {
-            organismsStmt = conn.prepareStatement(
-                    "MERGE INTO organisms (" +
-                            "organism_id, parent_id, birth_tick, program_id, initial_position" +
-                            ") KEY (organism_id) VALUES (?, ?, ?, ?, ?)"
-            );
-
-            statesStmt = conn.prepareStatement(
-                    "MERGE INTO organism_states (" +
-                            "tick_number, organism_id, energy, ip, dv, data_pointers, active_dp_index, runtime_state_blob" +
-                            ") KEY (tick_number, organism_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-            );
-
-            for (TickData tick : ticks) {
-                long tickNumber = tick.getTickNumber();
-                for (OrganismState org : tick.getOrganismsList()) {
-                    // Static table MERGE
-                    organismsStmt.setInt(1, org.getOrganismId());
-                    if (org.hasParentId()) {
-                        organismsStmt.setInt(2, org.getParentId());
-                    } else {
-                        organismsStmt.setNull(2, java.sql.Types.INTEGER);
-                    }
-                    organismsStmt.setLong(3, org.getBirthTick());
-                    organismsStmt.setString(4, org.getProgramId());
-                    organismsStmt.setBytes(5, org.getInitialPosition().toByteArray());
-                    organismsStmt.addBatch();
-
-                    // Runtime state blob
-                    OrganismRuntimeState.Builder runtimeStateBuilder = OrganismRuntimeState.newBuilder()
-                            .addAllDataRegisters(org.getDataRegistersList())
-                            .addAllProcedureRegisters(org.getProcedureRegistersList())
-                            .addAllFormalParamRegisters(org.getFormalParamRegistersList())
-                            .addAllLocationRegisters(org.getLocationRegistersList())
-                            .addAllDataStack(org.getDataStackList())
-                            .addAllLocationStack(org.getLocationStackList())
-                            .addAllCallStack(org.getCallStackList())
-                            .setInstructionFailed(org.getInstructionFailed())
-                            .setFailureReason(org.hasFailureReason() ? org.getFailureReason() : "")
-                            .addAllFailureCallStack(org.getFailureCallStackList());
-                    
-                    // Instruction execution data
-                    if (org.hasInstructionOpcodeId()) {
-                        runtimeStateBuilder.setInstructionOpcodeId(org.getInstructionOpcodeId());
-                    }
-                    if (org.getInstructionRawArgumentsCount() > 0) {
-                        runtimeStateBuilder.addAllInstructionRawArguments(org.getInstructionRawArgumentsList());
-                    }
-                    if (org.hasInstructionEnergyCost()) {
-                        runtimeStateBuilder.setInstructionEnergyCost(org.getInstructionEnergyCost());
-                    }
-                    if (org.hasIpBeforeFetch()) {
-                        runtimeStateBuilder.setInstructionIpBeforeFetch(org.getIpBeforeFetch());
-                    }
-                    if (org.hasDvBeforeFetch()) {
-                        runtimeStateBuilder.setInstructionDvBeforeFetch(org.getDvBeforeFetch());
-                    }
-                    if (org.getInstructionRegisterValuesBeforeCount() > 0) {
-                        runtimeStateBuilder.putAllInstructionRegisterValuesBefore(org.getInstructionRegisterValuesBeforeMap());
-                    }
-                    
-                    OrganismRuntimeState runtimeState = runtimeStateBuilder.build();
-
-                    byte[] blobBytes;
-                    try (ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                         OutputStream out = codec.wrapOutputStream(baos)) {
-                        runtimeState.writeTo(out);
-                        out.flush();
-                        blobBytes = baos.toByteArray();
-                    }
-
-                    // Per-tick state MERGE
-                    statesStmt.setLong(1, tickNumber);
-                    statesStmt.setInt(2, org.getOrganismId());
-                    statesStmt.setInt(3, org.getEnergy());
-                    statesStmt.setBytes(4, org.getIp().toByteArray());
-                    statesStmt.setBytes(5, org.getDv().toByteArray());
-
-                    // data_pointers: serialize list of Vectors into DataPointerList
-                    DataPointerList dpList = DataPointerList.newBuilder()
-                            .addAllDataPointers(org.getDataPointersList())
-                            .build();
-                    statesStmt.setBytes(6, dpList.toByteArray());
-
-                    statesStmt.setInt(7, org.getActiveDpIndex());
-                    statesStmt.setBytes(8, blobBytes);
-                    statesStmt.addBatch();
+            // Get or create cached PreparedStatements for this connection
+            PreparedStatement organismsStmt = orgStaticStmtCache.computeIfAbsent(conn, c -> {
+                try {
+                    return c.prepareStatement(orgStorageStrategy.getOrganismsMergeSql());
+                } catch (SQLException e) {
+                    throw new RuntimeException("Failed to prepare organisms statement", e);
                 }
-            }
-
-            organismsStmt.executeBatch();
-            statesStmt.executeBatch();
-
+            });
+            
+            PreparedStatement statesStmt = orgStatesStmtCache.computeIfAbsent(conn, c -> {
+                try {
+                    return c.prepareStatement(orgStorageStrategy.getStatesMergeSql());
+                } catch (SQLException e) {
+                    throw new RuntimeException("Failed to prepare organism states statement", e);
+                }
+            });
+            
+            // Delegate to strategy
+            orgStorageStrategy.writeOrganisms(conn, organismsStmt, ticks);
+            orgStorageStrategy.writeStates(conn, statesStmt, ticks);
+            
             conn.commit();
 
         } catch (Exception e) {
@@ -582,17 +545,6 @@ public class H2Database extends AbstractDatabaseResource
                 throw (SQLException) e;
             }
             throw new SQLException("Failed to write organism states", e);
-        } finally {
-            if (organismsStmt != null) {
-                try {
-                    organismsStmt.close();
-                } catch (SQLException ignored) { }
-            }
-            if (statesStmt != null) {
-                try {
-                    statesStmt.close();
-                } catch (SQLException ignored) { }
-            }
         }
     }
 
@@ -819,7 +771,7 @@ public class H2Database extends AbstractDatabaseResource
         try {
             Connection conn = dataSource.getConnection();
             H2SchemaUtil.setSchema(conn, runId);
-            return new H2DatabaseReader(conn, this, envStorageStrategy, runId);
+            return new H2DatabaseReader(conn, this, envStorageStrategy, orgStorageStrategy, runId);
         } catch (SQLException e) {
             throw new RuntimeException("Failed to create reader for runId: " + runId, e);
         }
@@ -941,8 +893,11 @@ public class H2Database extends AbstractDatabaseResource
     }
     
     /**
-     * Queries the organism_states table to find the minimum and maximum tick numbers.
+     * Queries the organism table to find the minimum and maximum tick numbers.
      * Returns null if no ticks exist.
+     * <p>
+     * Delegates to {@link IH2OrgStorageStrategy#getAvailableTickRange(Connection)} for
+     * strategy-specific table query (organism_ticks vs organism_states).
      *
      * @param conn The database connection (schema already set)
      * @param runId The simulation run ID (for logging/debugging, schema already contains this run)
@@ -952,32 +907,8 @@ public class H2Database extends AbstractDatabaseResource
     org.evochora.datapipeline.api.resources.database.dto.TickRange getOrganismTickRangeInternal(
             Connection conn, String runId) throws SQLException {
         try {
-            // Query min and max tick numbers from organism_states table
-            // Schema is already set by the connection (via H2DatabaseReader)
-            PreparedStatement stmt = conn.prepareStatement(
-                "SELECT MIN(tick_number) as min_tick, MAX(tick_number) as max_tick " +
-                "FROM organism_states"
-            );
-            ResultSet rs = stmt.executeQuery();
-            
             queriesExecuted.incrementAndGet();
-            
-            if (!rs.next()) {
-                // No rows in table
-                return null;
-            }
-            
-            // Check if result is null (table exists but empty, or all ticks deleted)
-            long minTick = rs.getLong("min_tick");
-            long maxTick = rs.getLong("max_tick");
-            
-            if (rs.wasNull()) {
-                // Table exists but is empty
-                return null;
-            }
-            
-            return new org.evochora.datapipeline.api.resources.database.dto.TickRange(minTick, maxTick);
-            
+            return orgStorageStrategy.getAvailableTickRange(conn);
         } catch (SQLException e) {
             // Table doesn't exist yet (no ticks written)
             if (e.getErrorCode() == 42104 || e.getErrorCode() == 42102 || 

@@ -168,9 +168,10 @@ class OrganismIndexerIntegrationTest {
                 assertThat(rs.next()).isTrue();
                 assertThat(rs.getInt("cnt")).isEqualTo(1);
             }
-            try (var rs = conn.createStatement().executeQuery("SELECT COUNT(*) AS cnt FROM organism_states")) {
+            // SingleBlobOrgStrategy stores all organisms per tick in one BLOB row
+            try (var rs = conn.createStatement().executeQuery("SELECT COUNT(*) AS cnt FROM organism_ticks")) {
                 assertThat(rs.next()).isTrue();
-                assertThat(rs.getInt("cnt")).isEqualTo(2); // two ticks, same organism
+                assertThat(rs.getInt("cnt")).isEqualTo(2); // two ticks (each with all organisms in one BLOB)
             }
         }
     }
