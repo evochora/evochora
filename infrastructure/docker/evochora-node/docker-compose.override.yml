@@ -1,8 +1,8 @@
 services:
   evochora:
     volumes:
-      # Mountet die local.conf zusätzlich in den Container (neben der evochora.conf)
+      # Additionally override the default configuration by mounting the local.conf in the container (besides the evochora.conf)
       - ./local.conf:/home/appuser/app/config/local.conf:ro
     
-    # Überschreibt den Start-Befehl, um die local.conf zu nutzen
+    # Override the start command to use the local.conf
     command: ["bin/evochora", "--config", "config/local.conf", "node", "run"]
