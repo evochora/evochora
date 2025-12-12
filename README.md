@@ -6,7 +6,7 @@
   <br><br>
   **Evochora is a research-oriented artificial life simulator designed to investigate conditions under which emergent and increasing complexity can arise without global culling or task-based rewards**
 
-  <a href="http://evochora.org" style="font-size: 1.5em; font-weight: bold; text-decoration: none;">👉 SEE LIVE DEMO</a>
+  <a href="http://evochora.org" style="font-size: 1.5em; font-weight: bold; text-decoration: none;" target="_blank">👉 SEE LIVE DEMO</a>
   <br>
   <sub>Runs in your browser. No installation required.</sub>
 
