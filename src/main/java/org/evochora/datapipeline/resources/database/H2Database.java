@@ -448,6 +448,10 @@ public class H2Database extends AbstractDatabaseResource
         // H2 Database's internal locking mechanism (MVMap.tryLock()) uses Thread.sleep()
         // which throws InterruptedException if thread is interrupted
         boolean wasInterrupted = Thread.interrupted();
+        
+        // Note: Cached statement is intentionally NOT closed in finally block.
+        // Its lifecycle is tied to the connection - HikariCP closes all open
+        // statements when the connection is returned to the pool.
         try {
             // Get or create PreparedStatement for this connection
             PreparedStatement stmt = envWriteStmtCache.computeIfAbsent(conn, c -> {
@@ -511,6 +515,9 @@ public class H2Database extends AbstractDatabaseResource
             return;
         }
 
+        // Note: Cached statements are intentionally NOT closed in finally block.
+        // Their lifecycle is tied to the connection - HikariCP closes all open
+        // statements when the connection is returned to the pool.
         try {
             // Get or create cached PreparedStatements for this connection
             PreparedStatement organismsStmt = orgStaticStmtCache.computeIfAbsent(conn, c -> {
