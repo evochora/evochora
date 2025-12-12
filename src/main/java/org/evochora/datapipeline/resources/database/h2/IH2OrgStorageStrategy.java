@@ -6,8 +6,6 @@ import java.sql.SQLException;
 import java.util.List;
 
 import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.api.resources.database.OrganismNotFoundException;
-import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 import org.evochora.datapipeline.api.resources.database.dto.TickRange;
 
@@ -107,19 +105,6 @@ public interface IH2OrgStorageStrategy {
      */
     List<OrganismTickSummary> readOrganismsAtTick(Connection conn, long tickNumber) 
             throws SQLException;
-    
-    /**
-     * Reads detailed state of a single organism at the given tick.
-     *
-     * @param conn Database connection (schema already set)
-     * @param tickNumber Tick to read
-     * @param organismId Organism identifier
-     * @return Detailed organism state
-     * @throws SQLException if database read fails
-     * @throws OrganismNotFoundException if organism doesn't exist at this tick
-     */
-    OrganismTickDetails readOrganismDetails(Connection conn, long tickNumber, int organismId) 
-            throws SQLException, OrganismNotFoundException;
     
     /**
      * Returns the available tick range for organism data.

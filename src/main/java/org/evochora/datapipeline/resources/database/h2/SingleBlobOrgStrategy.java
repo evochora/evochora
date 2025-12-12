@@ -17,8 +17,6 @@ import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.OrganismStateList;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.Vector;
-import org.evochora.datapipeline.api.resources.database.OrganismNotFoundException;
-import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 import org.evochora.datapipeline.api.resources.database.dto.TickRange;
 import org.evochora.datapipeline.utils.H2SchemaUtil;
@@ -233,16 +231,6 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
         }
         
         return result;
-    }
-    
-    @Override
-    public OrganismTickDetails readOrganismDetails(Connection conn, long tickNumber, int organismId) 
-            throws SQLException, OrganismNotFoundException {
-        // Full details require environment metadata for instruction resolution.
-        // This is handled by H2DatabaseReader which calls readSingleOrganismState() instead.
-        throw new UnsupportedOperationException(
-            "readOrganismDetails with full instruction resolution requires environment metadata. " +
-            "Use H2DatabaseReader.readOrganismDetails() which handles metadata lookup.");
     }
     
     @Override

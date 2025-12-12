@@ -31,8 +31,6 @@ import org.evochora.datapipeline.resources.database.H2Database;
 import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
 import org.evochora.datapipeline.resources.topics.H2TopicResource;
 import org.evochora.datapipeline.services.indexers.EnvironmentIndexer;
-import org.evochora.junit.extensions.logging.ExpectLog;
-import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.node.spi.ServiceRegistry;
 import org.junit.jupiter.api.AfterEach;
@@ -258,7 +256,6 @@ class SimulationControllerIntegrationTest {
     }
 
     @Test
-    @ExpectLog(level = LogLevel.WARN, messagePattern = ".*No run ID available.*")
     void getMetadata_returns404OnNoRuns() {
         // Given: Empty database (no runs)
         // Setup HTTP server

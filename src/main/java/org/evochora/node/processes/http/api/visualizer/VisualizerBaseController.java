@@ -86,9 +86,17 @@ public abstract class VisualizerBaseController extends AbstractController {
             ctx.status(HttpStatus.TOO_MANY_REQUESTS).json(createErrorBody(HttpStatus.TOO_MANY_REQUESTS, "Server is under heavy load, please try again later"));
         });
         app.exception(SQLException.class, (e, ctx) -> {
-            LOGGER.error("Database error for request {}: {}", ctx.path(), e.getMessage());
-            LOGGER.debug("Database error stack trace", e);
-            ctx.status(HttpStatus.INTERNAL_SERVER_ERROR).json(createErrorBody(HttpStatus.INTERNAL_SERVER_ERROR, "Database error occurred"));
+            // H2 error codes: 42102 = Table not found, 42104 = Schema not found
+            // These indicate client requested data that doesn't exist (404, not 500)
+            if (e.getErrorCode() == 42102 || e.getErrorCode() == 42104) {
+                LOGGER.debug("Table/schema not found for request {}: {}", ctx.path(), e.getMessage());
+                ctx.status(HttpStatus.NOT_FOUND).json(createErrorBody(HttpStatus.NOT_FOUND, 
+                    "Requested data not available. The simulation may have been created with a different schema version."));
+            } else {
+                LOGGER.error("Database error for request {}: {}", ctx.path(), e.getMessage());
+                LOGGER.debug("Database error stack trace", e);
+                ctx.status(HttpStatus.INTERNAL_SERVER_ERROR).json(createErrorBody(HttpStatus.INTERNAL_SERVER_ERROR, "Database error occurred"));
+            }
         });
         app.exception(Exception.class, (e, ctx) -> {
             LOGGER.error("Unhandled exception for request {}: {}", ctx.path(), e.getMessage());
