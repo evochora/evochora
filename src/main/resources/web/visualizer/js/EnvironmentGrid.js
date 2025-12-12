@@ -283,7 +283,8 @@ export class EnvironmentGrid {
                  type: this.detailedRenderer.typeMapping[cell.moleculeType] ?? 0,
                  value: cell.moleculeValue,
                  ownerId: cell.ownerId,
-                 opcodeName: cell.opcodeName || null
+                 opcodeName: cell.opcodeName || null,
+                 marker: cell.marker || 0
              });
         }
 
@@ -718,12 +719,13 @@ export class EnvironmentGrid {
 
         const typeName = this.getTypeName(cell.type);
         const opcodeInfo = (cell.opcodeName && (cell.ownerId !== 0 || cell.value !== 0)) ? `(${cell.opcodeName})` : '';
+        const markerInfo = cell.marker ? ` M:${cell.marker}` : '';
 
         this.tooltip.innerHTML = `
             <span class="tooltip-coords">[${gridX}|${gridY}]</span>
             <span class="tooltip-type">${typeName}:${cell.value}${opcodeInfo}</span>
             <span class="tooltip-separator">•</span>
-            <span class="tooltip-owner">Owner: ${cell.ownerId || 0}</span>
+            <span class="tooltip-owner">Owner: ${cell.ownerId || 0}${markerInfo}</span>
         `;
 
         const { clientX, clientY } = event;

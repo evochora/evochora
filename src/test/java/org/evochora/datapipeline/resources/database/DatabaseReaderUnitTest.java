@@ -1,12 +1,17 @@
 package org.evochora.datapipeline.resources.database;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
 import org.evochora.datapipeline.api.resources.database.dto.CellWithCoordinates;
 import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
  * Phase 1 unit tests: Interface contracts and data classes
@@ -45,7 +50,7 @@ class DatabaseReaderUnitTest {
     @Test
     void cellWithCoordinates_serializesCorrectly() throws Exception {
         CellWithCoordinates cell = new CellWithCoordinates(
-            new int[]{5, 10}, "DATA", 255, 7, null
+            new int[]{5, 10}, "DATA", 255, 7, null, 0
         );
         
         ObjectMapper mapper = new ObjectMapper();
@@ -74,7 +79,7 @@ class DatabaseReaderUnitTest {
     @Test
     void cellWithCoordinates_handles3DCoordinates() throws Exception {
         CellWithCoordinates cell = new CellWithCoordinates(
-            new int[]{5, 10, 15}, "ENERGY", 128, 42, null
+            new int[]{5, 10, 15}, "ENERGY", 128, 42, null, 0
         );
         
         ObjectMapper mapper = new ObjectMapper();

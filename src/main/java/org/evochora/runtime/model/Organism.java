@@ -60,6 +60,8 @@ public class Organism {
     private int activeDpIndex;
     private int[] dv;
     private int er;
+    private int sr; // Entropy Register
+    private int mr; // Molecule Marker Register
     private final List<Object> drs;
     private final List<Object> prs;
     private final List<Object> fprs;
@@ -130,6 +132,8 @@ public class Organism {
             this.dps.add(Arrays.copyOf(startIp, startIp.length));
         }
         this.er = initialEnergy;
+        this.sr = 0;
+        this.mr = 0;
         this.logger = logger;
         this.simulation = simulation;
         this.dv = new int[startIp.length];
@@ -580,6 +584,19 @@ public class Organism {
     public void setLastInstructionExecution(InstructionExecutionData data) { this.lastInstructionExecution = data; }
     /** @return The current energy level (ER). */
     public int getEr() { return er; }
+    /** @return The current entropy level (SR). */
+    public int getSr() { return sr; }
+    /** @return The current molecule marker (MR). */
+    public int getMr() { return mr; }
+
+    /**
+     * Sets the molecule marker (MR). The value is masked to 4 bits (0-15).
+     * @param value The new marker value.
+     */
+    public void setMr(int value) {
+        this.mr = value & 0xF; // Ensure value is within 4 bits
+    }
+
     /** @return A copy of the list of Data Registers (DRs). */
     public List<Object> getDrs() { return new ArrayList<>(drs); }
     /** @return true if the organism is dead, false otherwise. */

@@ -74,6 +74,10 @@ public class H2Database extends AbstractDatabaseResource
         final String username = options.hasPath("username") ? options.getString("username") : "sa";
         final String password = options.hasPath("password") ? options.getString("password") : "";
 
+        // Validate database directory exists BEFORE attempting to connect
+        // This prevents H2 from printing stack traces when the filesystem is not mounted
+        validateDatabasePath(name, jdbcUrl);
+
         HikariConfig hikariConfig = new HikariConfig();
         hikariConfig.setJdbcUrl(jdbcUrl);
         hikariConfig.setDriverClassName("org.h2.Driver"); // Explicitly set driver for Fat JAR compatibility
@@ -1024,5 +1028,57 @@ public class H2Database extends AbstractDatabaseResource
         }
         
         return 16384; // H2 default
+    }
+    
+    /**
+     * Validates that the database path is accessible before attempting to connect.
+     * <p>
+     * This prevents H2 from printing stack traces when the filesystem is not mounted
+     * or the directory doesn't exist. By checking early, we can provide a clear
+     * error message without the noise of H2's internal exception handling.
+     *
+     * @param name    Resource name for error messages
+     * @param jdbcUrl JDBC URL to validate
+     * @throws RuntimeException if the database path is not accessible
+     */
+    private static void validateDatabasePath(String name, String jdbcUrl) {
+        // Extract database file path from JDBC URL
+        // Example: jdbc:h2:/home/user/data/db;MODE=... -> /home/user/data/db
+        // Example: jdbc:h2:file:/tmp/test;MODE=... -> /tmp/test
+        if (!jdbcUrl.startsWith("jdbc:h2:")) {
+            return; // Not a file-based H2 URL, skip validation
+        }
+        
+        String dbPath = jdbcUrl.substring(8); // Remove "jdbc:h2:"
+        
+        // Skip validation for in-memory databases
+        if (dbPath.startsWith("mem:")) {
+            return;
+        }
+        
+        // Remove file: prefix if present
+        if (dbPath.startsWith("file:")) {
+            dbPath = dbPath.substring(5);
+        }
+        
+        // Remove URL parameters
+        int semicolonIndex = dbPath.indexOf(';');
+        if (semicolonIndex > 0) {
+            dbPath = dbPath.substring(0, semicolonIndex);
+        }
+        
+        // Skip validation for temp directories (used in tests)
+        if (dbPath.startsWith("/tmp/") || dbPath.startsWith(System.getProperty("java.io.tmpdir"))) {
+            return;
+        }
+        
+        java.io.File dbFile = new java.io.File(dbPath);
+        java.io.File parentDir = dbFile.getParentFile();
+        
+        if (parentDir != null && !parentDir.exists()) {
+            throw new RuntimeException(String.format(
+                "Cannot create H2 database '%s': parent directory does not exist: %s",
+                name, parentDir.getAbsolutePath()));
+        }
     }
 }

@@ -215,6 +215,17 @@ message OrganismState {
   // Source: InstructionExecutionData.registerValuesBefore
   // Only present if an instruction was executed in this tick
   map<int32, RegisterValue> instruction_register_values_before = 28;
+
+  // ===== Special Registers =====
+
+  // Entropy register (SR) - read-only register for randomness
+  // Source: Organism.getSr()
+  int32 entropy_register = 29;
+
+  // Molecule marker register (MR) - determines marker value for written molecules
+  // Source: Organism.getMr()
+  // Value range: 0-15 (4 bits)
+  int32 molecule_marker_register = 30;
 }
 
 // Aggregated runtime state for organism indexing.
@@ -264,6 +275,17 @@ message OrganismRuntimeState {
   // Source: InstructionExecutionData.registerValuesBefore
   // Only present if an instruction was executed in this tick
   map<int32, RegisterValue> instruction_register_values_before = 16;
+
+  // ===== Special Registers =====
+
+  // Entropy register (SR) - read-only register for randomness
+  // Source: Organism.getSr()
+  int32 entropy_register = 17;
+
+  // Molecule marker register (MR) - determines marker value for written molecules
+  // Source: Organism.getMr()
+  // Value range: 0-15 (4 bits)
+  int32 molecule_marker_register = 18;
 }
 
 // Wrapper for encoding all data pointers in one column for indexing.
@@ -368,6 +390,11 @@ message CellState {
   // Source: Molecule.getOwnerId()
   // Used to track which organism's program occupies this cell
   int32 owner_id = 4;
+
+  // Marker value of the molecule (0-15)
+  // Source: Molecule.getMarker() >> Config.MARKER_SHIFT
+  // Used to tag molecules written by organisms for future FORK operations
+  int32 marker = 5;
 }
 
 // Wrapper message for efficient BLOB storage in databases.

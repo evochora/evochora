@@ -438,6 +438,10 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         builder.setIpBeforeFetch(convertVectorReuse(o.getIpBeforeFetch(), vectorBuilder));
         builder.setDvBeforeFetch(convertVectorReuse(o.getDvBeforeFetch(), vectorBuilder));
 
+        // Special registers
+        builder.setEntropyRegister(o.getSr());
+        builder.setMoleculeMarkerRegister(o.getMr());
+
         return builder.build();
     }
 
@@ -465,7 +469,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             cellBuilder.setFlatIndex(flatIndex)
                     .setMoleculeType(moleculeInt & org.evochora.runtime.Config.TYPE_MASK)
                     .setMoleculeValue(extractSignedValue(moleculeInt))
-                    .setOwnerId(ownerId);
+                    .setOwnerId(ownerId)
+                    .setMarker((moleculeInt & org.evochora.runtime.Config.MARKER_MASK) >> org.evochora.runtime.Config.MARKER_SHIFT);
 
             tickBuilder.addCells(cellBuilder.build());
         });

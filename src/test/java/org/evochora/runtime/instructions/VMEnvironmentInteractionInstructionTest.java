@@ -1,5 +1,7 @@
 package org.evochora.runtime.instructions;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.Instruction;
@@ -8,10 +10,8 @@ import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
 
 /**
  * Contains low-level unit tests for the execution of environment interaction instructions (PEEK, POKE)
@@ -328,6 +328,55 @@ public class VMEnvironmentInteractionInstructionTest {
         assertThat(org.getEr()).isEqualTo(expectedEnergy).as("Energy should be consumed correctly: base 1 + poke 5 = 6 (no peek costs on empty cell)");
     }
 
+
+    /**
+     * Tests that POKE correctly uses the organism's MR (Molecule Marker Register)
+     * when writing a molecule to the environment.
+     * This verifies that the marker is propagated from the organism to the written molecule.
+     */
+    @Test
+    @Tag("unit")
+    void testPokeUsesMarkerFromMrRegister() {
+        int[] vec = new int[]{0, 1};
+        int payload = new Molecule(Config.TYPE_DATA, 42).toInt();
+        
+        // Set the organism's MR to a specific value
+        int expectedMarker = 7;
+        org.setMr(expectedMarker);
+        
+        org.setDr(0, payload);
+        org.setDr(1, vec);
+
+        placeInstruction("POKE", 0, 1);
+        int[] targetPos = org.getTargetCoordinate(org.getDp(0), vec, environment);
+
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
+        
+        // Verify the molecule was written with the correct marker
+        Molecule writtenMolecule = environment.getMolecule(targetPos);
+        assertThat(writtenMolecule.value()).isEqualTo(42).as("Molecule value should be 42");
+        assertThat(writtenMolecule.type()).isEqualTo(Config.TYPE_DATA).as("Molecule type should be DATA");
+        
+        // Extract the raw marker value by shifting back
+        int actualMarker = writtenMolecule.marker() >> Config.MARKER_SHIFT;
+        assertThat(actualMarker).isEqualTo(expectedMarker)
+            .as("Molecule marker should be set from organism's MR register");
+    }
+
+    /**
+     * Tests that MR is masked to 4 bits (0-15) when set.
+     */
+    @Test
+    @Tag("unit")
+    void testMrIsMaskedTo4Bits() {
+        // Set MR to a value larger than 4 bits
+        org.setMr(0xFF); // 255 in decimal
+        
+        // Verify it was masked to 4 bits
+        assertThat(org.getMr()).isEqualTo(0xF).as("MR should be masked to 4 bits (0-15)");
+    }
 
     @org.junit.jupiter.api.AfterEach
     void assertNoInstructionFailure() {

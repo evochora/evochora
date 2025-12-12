@@ -226,7 +226,8 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
                 dataPointersToArray(org),
                 org.getActiveDpIndex(),
                 parentId,
-                birthTick
+                birthTick,
+                org.getEntropyRegister()
             ));
         }
         

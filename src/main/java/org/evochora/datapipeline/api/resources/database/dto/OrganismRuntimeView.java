@@ -27,6 +27,10 @@ public final class OrganismRuntimeView {
     public final List<ProcFrameView> failureCallStack;
     public final InstructionsView instructions;
 
+    // Special registers
+    public final int entropyRegister;         // SR
+    public final int moleculeMarkerRegister;  // MR
+
     public OrganismRuntimeView(int energy,
                                int[] ip,
                                int[] dv,
@@ -42,7 +46,9 @@ public final class OrganismRuntimeView {
                                boolean instructionFailed,
                                String failureReason,
                                List<ProcFrameView> failureCallStack,
-                               InstructionsView instructions) {
+                               InstructionsView instructions,
+                               int entropyRegister,
+                               int moleculeMarkerRegister) {
         this.energy = energy;
         this.ip = ip;
         this.dv = dv;
@@ -59,6 +65,8 @@ public final class OrganismRuntimeView {
         this.failureReason = failureReason;
         this.failureCallStack = failureCallStack;
         this.instructions = instructions;
+        this.entropyRegister = entropyRegister;
+        this.moleculeMarkerRegister = moleculeMarkerRegister;
     }
 }
 

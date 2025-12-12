@@ -131,22 +131,8 @@ export class OrganismPanelManager {
      * @private
      */
     renderOrganismRow(org, isSelected, showDeselect = false) {
-        // Format Parent (clickable if parent is alive)
-        let parentDisplay = '-';
-        if (org.parentId != null) {
-            const isParentAlive = this.currentOrganisms.some(o => String(o.id) === String(org.parentId));
-            if (isParentAlive) {
-                parentDisplay = `<span class="clickable-parent" data-parent-id="${org.parentId}">#${org.parentId}</span>`;
-            } else {
-                parentDisplay = `#${org.parentId}`;
-            }
-        }
-        
-        // Format Birth (clickable to jump to tick)
-        let birthDisplay = '-';
-        if (org.birthTick != null) {
-            birthDisplay = `<span class="clickable-tick" data-tick="${org.birthTick}">${org.birthTick}</span>`;
-        }
+        // Format SR (entropy register)
+        const srDisplay = org.entropyRegister != null ? org.entropyRegister : 0;
         
         // Format IP with direction arrow
         let ipDisplay = '-';
@@ -181,8 +167,7 @@ export class OrganismPanelManager {
                  data-organism-id="${org.id}">
                 <span class="organism-col organism-col-id" style="color: ${org.color}">#${org.id}</span>
                 <span class="organism-col organism-col-er">ER:${org.energy}</span>
-                <span class="organism-col organism-col-parent"><span class="organism-label">P:</span>${parentDisplay}</span>
-                <span class="organism-col organism-col-birth"><span class="organism-label">B:</span>${birthDisplay}</span>
+                <span class="organism-col organism-col-sr">SR:${srDisplay}</span>
                 <span class="organism-col organism-col-ip"><span class="organism-label">IP:</span>${ipDisplay}</span>
                 <span class="organism-col organism-col-dps"><span class="organism-label">DPs:</span></span>
                 <span class="organism-col organism-col-dp0">${dp0Display}</span>

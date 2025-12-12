@@ -181,6 +181,22 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
                             ? options.getString("embedded.dataDirectory") 
                             : System.getProperty("user.dir") + "/data/topic";
                         
+                        // Validate data directory exists and is writable
+                        java.io.File dataDirFile = new java.io.File(dataDir);
+                        java.io.File parentDir = dataDirFile.getParentFile();
+                        
+                        if (parentDir != null && !parentDir.exists()) {
+                            throw new RuntimeException("Data directory parent does not exist: " + parentDir.getAbsolutePath());
+                        }
+                        
+                        if (!dataDirFile.exists() && !dataDirFile.mkdirs()) {
+                            throw new RuntimeException("Cannot create data directory: " + dataDirFile.getAbsolutePath());
+                        }
+                        
+                        if (!dataDirFile.canWrite()) {
+                            throw new RuntimeException("Data directory is not writable: " + dataDirFile.getAbsolutePath());
+                        }
+                        
                         config.setJournalDirectory(dataDir + "/journal");
                         config.setBindingsDirectory(dataDir + "/bindings");
                         config.setLargeMessagesDirectory(dataDir + "/largemessages");

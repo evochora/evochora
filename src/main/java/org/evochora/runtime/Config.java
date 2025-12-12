@@ -84,17 +84,32 @@ public final class Config {
     /**
      * The number of bits used to represent the value part of a cell.
      */
-    public static final int VALUE_BITS = 16;
+    public static final int VALUE_BITS = 20;
 
     /**
      * The number of bits used to represent the type part of a cell.
      */
-    public static final int TYPE_BITS = 4;
+    public static final int TYPE_BITS = 8;
+
+    /**
+     * The number of bits used to represent the marker part of a cell.
+     */
+    public static final int MARKER_BITS = 4;
 
     /**
      * The bit offset for the type information within a cell's integer representation.
      */
     public static final int TYPE_SHIFT = VALUE_BITS;
+
+    /**
+     * The bit offset for the marker information within a cell's integer representation.
+     */
+    public static final int MARKER_SHIFT = TYPE_SHIFT + TYPE_BITS;
+
+    /**
+     * A bitmask to extract the marker information from a cell's integer representation.
+     */
+    public static final int MARKER_MASK = ((1 << MARKER_BITS) - 1) << MARKER_SHIFT;
 
     /**
      * A bitmask to extract the type information from a cell's integer representation.

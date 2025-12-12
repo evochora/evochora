@@ -155,12 +155,21 @@ export class AppController {
                 }
             }
 
-            // Fetch tick range
-            const tickRange = await this.environmentApi.fetchTickRange(this.state.runId);
-            if (tickRange && tickRange.maxTick !== undefined) {
-                this.state.maxTick = tickRange.maxTick;
-                this.headerbar.updateTickDisplay(this.state.currentTick, this.state.maxTick);
+            // Fetch tick ranges from both environment and organism APIs
+            const [envTickRange, orgTickRange] = await Promise.all([
+                this.environmentApi.fetchTickRange(this.state.runId).catch(() => null),
+                this.organismApi.fetchTickRange(this.state.runId).catch(() => null)
+            ]);
+            
+            // Use minimum of both maxTicks
+            if (envTickRange?.maxTick !== undefined && orgTickRange?.maxTick !== undefined) {
+                this.state.maxTick = Math.min(envTickRange.maxTick, orgTickRange.maxTick);
+            } else if (envTickRange?.maxTick !== undefined) {
+                this.state.maxTick = envTickRange.maxTick;
+            } else if (orgTickRange?.maxTick !== undefined) {
+                this.state.maxTick = orgTickRange.maxTick;
             }
+            this.headerbar.updateTickDisplay(this.state.currentTick, this.state.maxTick);
 
             // Load initial tick for new run
             await this.navigateToTick(this.state.currentTick, true);
@@ -317,6 +326,54 @@ export class AppController {
                     this.instructionView.update(null, this.state.currentTick);
                 }
                 
+                // Update info section (Birth, MR, Parent)
+                const infoEl = document.querySelector('[data-section="info"]');
+                if (infoEl && staticInfo && state) {
+                    const birthTick = staticInfo.birthTick;
+                    const mrValue = state.moleculeMarkerRegister != null ? state.moleculeMarkerRegister : 0;
+                    const parentId = staticInfo.parentId;
+                    
+                    // Birth is clickable (navigates to tick)
+                    const birthDisplay = birthTick != null 
+                        ? `<span class="clickable-tick" data-tick="${birthTick}">${birthTick}</span>` 
+                        : '-';
+                    
+                    // Parent is clickable only if alive
+                    let parentDisplay = '-';
+                    if (parentId != null) {
+                        const isParentAlive = this.organismPanelManager?.currentOrganisms?.some(
+                            o => String(o.id) === String(parentId)
+                        );
+                        if (isParentAlive) {
+                            parentDisplay = `<span class="clickable-parent" data-parent-id="${parentId}">#${parentId}</span>`;
+                        } else {
+                            parentDisplay = `#${parentId}`;
+                        }
+                    }
+                    
+                    infoEl.innerHTML = `<div class="organism-info-line">Birth: ${birthDisplay}  MR: ${mrValue}  Parent: ${parentDisplay}</div>`;
+                    
+                    // Bind click handlers
+                    infoEl.querySelectorAll('.clickable-tick').forEach(el => {
+                        el.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            const tick = parseInt(el.dataset.tick, 10);
+                            if (!isNaN(tick)) {
+                                this.navigateToTick(tick);
+                            }
+                        });
+                    });
+                    infoEl.querySelectorAll('.clickable-parent').forEach(el => {
+                        el.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            const pId = el.dataset.parentId;
+                            if (pId) {
+                                this.selectOrganism(pId);
+                            }
+                        });
+                    });
+                }
+                
                 // Update state view with runtime data (starts with DP, no IP/DV/ER)
                 if (state) {
                     const previousState = (isForwardStep && this.state.previousOrganismDetails && 
@@ -418,12 +475,20 @@ export class AppController {
                 }
             }
             
-            // Load tick range for maxTick
-            const tickRange = await this.environmentApi.fetchTickRange(this.state.runId);
-            if (tickRange) {
-                this.state.maxTick = tickRange.maxTick;
-                this.headerbar.updateTickDisplay(this.state.currentTick, this.state.maxTick);
+            // Load tick range for maxTick (minimum of environment and organism ranges)
+            const [envTickRange, orgTickRange] = await Promise.all([
+                this.environmentApi.fetchTickRange(this.state.runId).catch(() => null),
+                this.organismApi.fetchTickRange(this.state.runId).catch(() => null)
+            ]);
+            
+            if (envTickRange?.maxTick !== undefined && orgTickRange?.maxTick !== undefined) {
+                this.state.maxTick = Math.min(envTickRange.maxTick, orgTickRange.maxTick);
+            } else if (envTickRange?.maxTick !== undefined) {
+                this.state.maxTick = envTickRange.maxTick;
+            } else if (orgTickRange?.maxTick !== undefined) {
+                this.state.maxTick = orgTickRange.maxTick;
             }
+            this.headerbar.updateTickDisplay(this.state.currentTick, this.state.maxTick);
             
             // Wait for layout to be calculated before loading initial viewport
             // This ensures correct viewport size calculation on first load,
@@ -465,15 +530,25 @@ export class AppController {
      */
     async updateMaxTick() {
         try {
-            const tickRange = await this.environmentApi.fetchTickRange(this.state.runId);
-            if (tickRange && tickRange.maxTick !== undefined) {
-                const oldMaxTick = this.state.maxTick;
-                const newMaxTick = tickRange.maxTick;
-                
-                if (newMaxTick !== oldMaxTick) {
-                    this.state.maxTick = newMaxTick;
-                    this.headerbar.updateTickDisplay(this.state.currentTick, this.state.maxTick);
-                }
+            // Fetch both environment and organism tick ranges in parallel
+            const [envTickRange, orgTickRange] = await Promise.all([
+                this.environmentApi.fetchTickRange(this.state.runId).catch(() => null),
+                this.organismApi.fetchTickRange(this.state.runId).catch(() => null)
+            ]);
+            
+            // Calculate effective maxTick as the minimum of both (where available)
+            let newMaxTick = null;
+            if (envTickRange?.maxTick !== undefined && orgTickRange?.maxTick !== undefined) {
+                newMaxTick = Math.min(envTickRange.maxTick, orgTickRange.maxTick);
+            } else if (envTickRange?.maxTick !== undefined) {
+                newMaxTick = envTickRange.maxTick;
+            } else if (orgTickRange?.maxTick !== undefined) {
+                newMaxTick = orgTickRange.maxTick;
+            }
+            
+            if (newMaxTick !== null && newMaxTick !== this.state.maxTick) {
+                this.state.maxTick = newMaxTick;
+                this.headerbar.updateTickDisplay(this.state.currentTick, this.state.maxTick);
             }
         } catch (error) {
             // Silently fail - don't interrupt navigation if update fails
@@ -677,6 +752,7 @@ export class AppController {
             return {
                 id: String(organism.organismId),
                 energy: organism.energy || 0,
+                entropyRegister: organism.entropyRegister || 0,
                 color: this.getOrganismColor(organism.organismId, organism.energy),
                 ip: organism.ip,
                 dv: organism.dv,

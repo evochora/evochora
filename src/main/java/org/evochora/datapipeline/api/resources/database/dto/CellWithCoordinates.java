@@ -14,5 +14,6 @@ public record CellWithCoordinates(
     String moleculeType,
     int moleculeValue,
     int ownerId,
-    String opcodeName
+    String opcodeName,
+    int marker
 ) {}

@@ -304,6 +304,10 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
                     int[] dv = OrganismStateConverter.decodeVector(dvBytes);
                     int[][] dataPointers = OrganismStateConverter.decodeDataPointers(dpBytes);
 
+                    // SR is stored in runtime_state_blob, not as a separate column.
+                    // For backward compatibility, we return 0 (old data has no SR).
+                    int entropyRegister = 0;
+
                     result.add(new OrganismTickSummary(
                             organismId,
                             energy,
@@ -312,7 +316,8 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
                             dataPointers,
                             activeDpIndex,
                             parentId,
-                            birthTick
+                            birthTick,
+                            entropyRegister
                     ));
                 }
                 return result;

@@ -244,6 +244,9 @@ message PlacedMolecule {
 
   // Molecule value (meaning depends on type)
   int32 value = 2;
+
+  // Molecule marker
+  int32 marker = 3;
 }
 
 // Maps a linear address to source code location.

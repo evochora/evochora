@@ -118,7 +118,8 @@ public class H2DatabaseReader implements IDatabaseReader {
                     moleculeTypeName,
                     cell.getMoleculeValue(),
                     cell.getOwnerId(),
-                    opcodeName
+                    opcodeName,
+                    cell.getMarker()
                 );
             })
             .collect(java.util.stream.Collectors.toList());
@@ -237,7 +238,7 @@ public class H2DatabaseReader implements IDatabaseReader {
                 state.dataRegisters, state.procedureRegisters, state.formalParamRegisters,
                 state.locationRegisters, state.dataStack, state.locationStack, state.callStack,
                 state.instructionFailed, state.failureReason, state.failureCallStack,
-                instructions);
+                instructions, state.entropyRegister, state.moleculeMarkerRegister);
 
         return new OrganismTickDetails(organismId, tickNumber, staticInfo, stateWithInstructions);
     }
@@ -345,7 +346,9 @@ public class H2DatabaseReader implements IDatabaseReader {
                 dataStack, locationStack, callStack,
                 orgState.getInstructionFailed(),
                 orgState.hasFailureReason() ? orgState.getFailureReason() : null,
-                failureStack, instructions
+                failureStack, instructions,
+                orgState.getEntropyRegister(),
+                orgState.getMoleculeMarkerRegister()
         );
     }
 

@@ -1,5 +1,9 @@
 package org.evochora.runtime.isa.instructions;
 
+import java.util.Iterator;
+import java.util.List;
+import java.util.NoSuchElementException;
+
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
@@ -8,10 +12,6 @@ import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-
-import java.util.Iterator;
-import java.util.List;
-import java.util.NoSuchElementException;
 
 /**
  * Handles environment interaction instructions like POKE and PEEK.
@@ -92,7 +92,10 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
                 organism.instructionFailed("POKE: Cannot write vectors to the world.");
                 return;
             }
-            Molecule toWrite = org.evochora.runtime.model.Molecule.fromInt((Integer) valueToWrite);
+            Molecule toWriteRaw = org.evochora.runtime.model.Molecule.fromInt((Integer) valueToWrite);
+            // Add the organism's current marker to the molecule being written (shifted to correct position)
+            Molecule toWrite = new Molecule(toWriteRaw.type(), toWriteRaw.value(), organism.getMr() << Config.MARKER_SHIFT);
+            
             int additionalCost = 0;
             if (toWrite.type() == Config.TYPE_ENERGY || toWrite.type() == Config.TYPE_STRUCTURE) {
                 additionalCost = Math.abs(toWrite.toScalarValue());
@@ -253,7 +256,10 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
                 organism.instructionFailed("PPK: Cannot write vectors to the world.");
                 return;
             }
-            Molecule toWrite = org.evochora.runtime.model.Molecule.fromInt((Integer) valueToWrite);
+            Molecule toWriteRaw = org.evochora.runtime.model.Molecule.fromInt((Integer) valueToWrite);
+            // Add the organism's current marker to the molecule being written (shifted to correct position)
+            Molecule toWrite = new Molecule(toWriteRaw.type(), toWriteRaw.value(), organism.getMr() << Config.MARKER_SHIFT);
+
             int additionalCost = 0;
             if (toWrite.type() == Config.TYPE_ENERGY || toWrite.type() == Config.TYPE_STRUCTURE) {
                 additionalCost = Math.abs(toWrite.toScalarValue());

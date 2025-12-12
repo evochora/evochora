@@ -4,21 +4,22 @@
 
 package org.evochora.node.processes.http.api.visualizer;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+
+import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
 import org.evochora.datapipeline.api.resources.database.dto.CellWithCoordinates;
 import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
-import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
 import org.evochora.node.spi.ServiceRegistry;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import static org.mockito.Mockito.mock;
-
-import static org.assertj.core.api.Assertions.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 /**
  * Phase 3 unit tests: HTTP request parsing and response formatting (no database I/O)
@@ -255,6 +256,6 @@ class EnvironmentControllerUnitTest {
     }
 
     private CellWithCoordinates createCellWithCoordinates(int[] coordinates, String moleculeType, int moleculeValue, int ownerId) {
-        return new CellWithCoordinates(coordinates, moleculeType, moleculeValue, ownerId, null);
+        return new CellWithCoordinates(coordinates, moleculeType, moleculeValue, ownerId, null, 0);
     }
 }

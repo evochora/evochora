@@ -48,7 +48,7 @@ public final class PlaceLayoutHandler implements ILayoutDirectiveHandler {
             throw new CompilationException("Unknown molecule type in .PLACE directive: " + ts + ". " + e.getMessage());
         }
         long value = val instanceof IrValue.Int64 iv ? iv.value() : 0L;
-        return new PlacedMolecule(type, (int) value);
+        return new PlacedMolecule(type, (int) value, 0);
     }
 
     private List<int[]> generateCoordinates(IPlacementArgument placement, LayoutContext context) throws CompilationException {
