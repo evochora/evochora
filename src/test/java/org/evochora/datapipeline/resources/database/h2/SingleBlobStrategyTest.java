@@ -1,12 +1,30 @@
 package org.evochora.datapipeline.resources.database.h2;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.List;
+
 import org.evochora.datapipeline.api.contracts.CellState;
 import org.evochora.datapipeline.api.contracts.CellStateList;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.utils.compression.NoneCodec;
 import org.evochora.datapipeline.utils.compression.ZstdCodec;
+import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -14,19 +32,8 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import com.google.protobuf.InvalidProtocolBufferException;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
-import java.sql.Statement;
-import java.util.List;
-
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
-import org.evochora.junit.extensions.logging.ExpectLog;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 /**
  * Unit tests for SingleBlobStrategy.
@@ -83,33 +90,28 @@ class SingleBlobStrategyTest {
     }
     
     @Test
-    void testCreateTables_CreatesTableAndIndex() throws SQLException {
+    void testCreateTables_CreatesTableOnly() throws SQLException {
         // Given: Strategy with no compression
         strategy = new SingleBlobStrategy(ConfigFactory.empty());
         
         // When: Create tables
         strategy.createTables(mockConnection, 2);
         
-        // Then: Should execute both CREATE TABLE and CREATE INDEX
-        verify(mockStatement, times(2)).execute(anyString());
+        // Then: Should execute only CREATE TABLE (no index needed for PK)
+        verify(mockStatement, times(1)).execute(anyString());
         
-        // Verify SQL strings contain expected keywords
+        // Verify SQL string
         ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
-        verify(mockStatement, times(2)).execute(sqlCaptor.capture());
+        verify(mockStatement, times(1)).execute(sqlCaptor.capture());
         
         List<String> executedSql = sqlCaptor.getAllValues();
-        assertThat(executedSql).hasSize(2);
+        assertThat(executedSql).hasSize(1);
         
         // First call: CREATE TABLE
         assertThat(executedSql.get(0))
             .contains("CREATE TABLE IF NOT EXISTS environment_ticks")
             .contains("tick_number BIGINT PRIMARY KEY")
             .contains("cells_blob BYTEA NOT NULL");
-        
-        // Second call: CREATE INDEX
-        assertThat(executedSql.get(1))
-            .contains("CREATE INDEX IF NOT EXISTS idx_env_tick")
-            .contains("ON environment_ticks (tick_number)");
     }
     
     @Test

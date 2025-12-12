@@ -133,6 +133,7 @@ public class HttpServerProcess extends AbstractProcess {
                     "text/css",
                     "application/javascript"
                 );
+                gzipHandler.addExcludedMimeTypes("application/octet-stream");
                 handler.insertHandler(gzipHandler);
             });
             

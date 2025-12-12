@@ -1,6 +1,8 @@
 package org.evochora.datapipeline.services.indexers;
 
-import com.typesafe.config.Config;
+import java.util.List;
+import java.util.Map;
+
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
@@ -12,8 +14,7 @@ import org.evochora.runtime.model.EnvironmentProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.List;
-import java.util.Map;
+import com.typesafe.config.Config;
 
 /**
  * Indexes environment cell states from TickData for efficient spatial queries.
@@ -66,7 +67,7 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> implement
     public EnvironmentIndexer(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
         this.database = getRequiredResource("database", IResourceSchemaAwareEnvironmentDataWriter.class);
-        this.insertBatchSize = options.hasPath("insertBatchSize") ? options.getInt("insertBatchSize") : 25;
+        this.insertBatchSize = options.hasPath("insertBatchSize") ? options.getInt("insertBatchSize") : 20;
     }
     
     // Use default components: METADATA + BUFFERING
@@ -153,24 +154,26 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> implement
      * <p>
      * <strong>Calculation:</strong> insertBatchSize × bytesPerEnvironmentTick (100% occupancy)
      * <p>
-     * The buffer holds List<TickData> where each tick contains CellState for all cells.
+     * The buffer holds List&lt;TickData&gt; where each tick contains CellState for all cells.
      * At 100% occupancy, every cell in the environment is filled with organisms or energy.
+     * Each CellState consumes ~{@value SimulationParameters#BYTES_PER_CELL} bytes in Java heap.
      */
     @Override
     public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
         // Each tick contains environment cells at 100% occupancy
-        // ~100 bytes per cell for full cell state (position, energy, content type, flags)
+        // BYTES_PER_CELL bytes per CellState in Java heap (Protobuf + object overhead)
         long bytesPerTick = params.estimateEnvironmentBytesPerTick();
         long totalBytes = (long) insertBatchSize * bytesPerTick;
         
-        // Add TickData wrapper overhead (~200 bytes per tick for protobuf metadata)
-        long wrapperOverhead = (long) insertBatchSize * 200;
+        // Add TickData wrapper overhead per tick
+        long wrapperOverhead = (long) insertBatchSize * SimulationParameters.TICKDATA_WRAPPER_OVERHEAD;
         totalBytes += wrapperOverhead;
         
-        String explanation = String.format("%d insertBatchSize × %s/tick (100%% cells = %d × ~100B)",
+        String explanation = String.format("%d insertBatchSize × %s/tick (100%% cells = %d × %dB)",
             insertBatchSize,
             SimulationParameters.formatBytes(bytesPerTick),
-            params.totalCells());
+            params.totalCells(),
+            SimulationParameters.BYTES_PER_CELL);
         
         return List.of(new MemoryEstimate(
             serviceName,

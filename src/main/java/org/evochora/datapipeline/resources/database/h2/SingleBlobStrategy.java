@@ -112,6 +112,7 @@ public class SingleBlobStrategy extends AbstractH2EnvStorageStrategy {
     public void createTables(Connection conn, int dimensions) throws SQLException {
         try (Statement stmt = conn.createStatement()) {
             // Use H2SchemaUtil for concurrent-safe DDL execution
+            // Note: No additional index needed - tick_number is PRIMARY KEY (automatic B-tree index)
             H2SchemaUtil.executeDdlIfNotExists(
                 stmt,
             "CREATE TABLE IF NOT EXISTS environment_ticks (" +
@@ -119,13 +120,6 @@ public class SingleBlobStrategy extends AbstractH2EnvStorageStrategy {
             "  cells_blob BYTEA NOT NULL" +
             ")",
                 "environment_ticks"
-            );
-            
-            // ALSO use H2SchemaUtil for index (same race condition!)
-            H2SchemaUtil.executeDdlIfNotExists(
-                stmt,
-                "CREATE INDEX IF NOT EXISTS idx_env_tick ON environment_ticks (tick_number)",
-                "idx_env_tick"
             );
         }
         

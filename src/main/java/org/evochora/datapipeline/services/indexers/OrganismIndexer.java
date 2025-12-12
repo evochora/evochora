@@ -1,6 +1,8 @@
 package org.evochora.datapipeline.services.indexers;
 
-import com.typesafe.config.Config;
+import java.util.List;
+import java.util.Map;
+
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
@@ -10,8 +12,7 @@ import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareOrga
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.List;
-import java.util.Map;
+import com.typesafe.config.Config;
 
 /**
  * Indexer for organism data (static and per-tick state) based on TickData.
@@ -45,7 +46,7 @@ public class OrganismIndexer<ACK> extends AbstractBatchIndexer<ACK> implements I
     public OrganismIndexer(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
         this.database = getRequiredResource("database", IResourceSchemaAwareOrganismDataWriter.class);
-        this.insertBatchSize = options.hasPath("insertBatchSize") ? options.getInt("insertBatchSize") : 25;
+        this.insertBatchSize = options.hasPath("insertBatchSize") ? options.getInt("insertBatchSize") : 100;
     }
 
     /**
@@ -102,24 +103,26 @@ public class OrganismIndexer<ACK> extends AbstractBatchIndexer<ACK> implements I
      * <p>
      * <strong>Calculation:</strong> insertBatchSize × bytesPerOrganismTick (100% organisms)
      * <p>
-     * The buffer holds List<TickData> where each tick contains OrganismState for all organisms.
+     * The buffer holds List&lt;TickData&gt; where each tick contains OrganismState for all organisms.
      * At worst-case, maxOrganisms are alive simultaneously.
+     * Each OrganismState consumes ~{@value SimulationParameters#BYTES_PER_ORGANISM} bytes in Java heap.
      */
     @Override
     public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
         // Each tick contains organism states at 100% capacity
-        // ~500 bytes per organism for full state (registers, stacks, code reference, position)
+        // BYTES_PER_ORGANISM bytes per OrganismState in Java heap (nested Protobuf messages)
         long bytesPerTick = params.estimateOrganismBytesPerTick();
         long totalBytes = (long) insertBatchSize * bytesPerTick;
         
-        // Add TickData wrapper overhead (~200 bytes per tick for protobuf metadata)
-        long wrapperOverhead = (long) insertBatchSize * 200;
+        // Add TickData wrapper overhead per tick
+        long wrapperOverhead = (long) insertBatchSize * SimulationParameters.TICKDATA_WRAPPER_OVERHEAD;
         totalBytes += wrapperOverhead;
         
-        String explanation = String.format("%d insertBatchSize × %s/tick (100%% organisms = %d × ~500B)",
+        String explanation = String.format("%d insertBatchSize × %s/tick (100%% organisms = %d × %dB)",
             insertBatchSize,
             SimulationParameters.formatBytes(bytesPerTick),
-            params.maxOrganisms());
+            params.maxOrganisms(),
+            SimulationParameters.BYTES_PER_ORGANISM);
         
         return List.of(new MemoryEstimate(
             serviceName,

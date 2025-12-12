@@ -13,6 +13,13 @@ package org.evochora.datapipeline.api.memory;
  * days of simulation! Memory estimation should always be conservative to prevent
  * OOM errors during long-running simulations.
  * <p>
+ * <strong>Memory Size Constants (Java Heap after Protobuf deserialization):</strong>
+ * <ul>
+ *   <li>{@link #BYTES_PER_CELL}: 56 bytes - CellState with 4 int32 fields + Protobuf overhead</li>
+ *   <li>{@link #BYTES_PER_ORGANISM}: 800 bytes - OrganismState with nested Vectors, RegisterValues, stacks</li>
+ *   <li>{@link #TICKDATA_WRAPPER_OVERHEAD}: 500 bytes - TickData wrapper (simulation_run_id, rng_state, etc.)</li>
+ * </ul>
+ * <p>
  * <strong>Usage:</strong> Created by ServiceManager from pipeline configuration
  * and passed to all {@link IMemoryEstimatable} components for estimation.
  *
@@ -30,6 +37,45 @@ public record SimulationParameters(
     int totalCells,
     int maxOrganisms
 ) {
+    
+    /**
+     * Bytes per CellState in Java heap after Protobuf deserialization.
+     * <p>
+     * Breakdown:
+     * <ul>
+     *   <li>Object header: 12 bytes</li>
+     *   <li>GeneratedMessageV3 base fields: 20 bytes</li>
+     *   <li>4 int32 fields (flat_index, molecule_type, molecule_value, owner_id): 16 bytes</li>
+     *   <li>Alignment padding: 8 bytes</li>
+     * </ul>
+     * Total: ~56 bytes per CellState
+     */
+    public static final int BYTES_PER_CELL = 56;
+    
+    /**
+     * Bytes per OrganismState in Java heap after Protobuf deserialization.
+     * <p>
+     * Breakdown:
+     * <ul>
+     *   <li>Object header + base fields: 80 bytes</li>
+     *   <li>Strings (program_id, failure_reason): 60 bytes</li>
+     *   <li>7 Vector messages (ip, initial_position, dv, ip_before_fetch, dv_before_fetch, etc.): 280 bytes</li>
+     *   <li>RegisterValue lists (data_registers, procedure_registers, formal_param_registers): 120 bytes</li>
+     *   <li>Vector lists (location_registers, data_pointers): 80 bytes</li>
+     *   <li>Stacks (data_stack, location_stack, call_stack): 120 bytes</li>
+     *   <li>Maps (instruction_register_values_before): 60 bytes</li>
+     * </ul>
+     * Total: ~800 bytes per OrganismState
+     */
+    public static final int BYTES_PER_ORGANISM = 800;
+    
+    /**
+     * Overhead bytes for TickData wrapper (excluding cells and organisms).
+     * <p>
+     * Includes: simulation_run_id (String), tick_number, capture_time_ms,
+     * rng_state (bytes), strategy_states (list), total_organisms_created.
+     */
+    public static final int TICKDATA_WRAPPER_OVERHEAD = 500;
     
     /**
      * Creates SimulationParameters from environment shape and max organisms.
@@ -74,46 +120,48 @@ public record SimulationParameters(
     }
     
     /**
-     * Calculates an estimate for bytes per tick at worst-case.
+     * Calculates total bytes per TickData in Java heap at worst-case.
      * <p>
-     * Uses conservative byte estimates:
+     * Uses measured byte estimates based on Protobuf message analysis:
      * <ul>
-     *   <li>Per cell: ~20 bytes (position, energy, organism ID)</li>
-     *   <li>Per organism: ~500 bytes (registers, stacks, code, position)</li>
+     *   <li>Per cell: {@value #BYTES_PER_CELL} bytes (CellState in Java heap)</li>
+     *   <li>Per organism: {@value #BYTES_PER_ORGANISM} bytes (OrganismState in Java heap)</li>
+     *   <li>Wrapper overhead: {@value #TICKDATA_WRAPPER_OVERHEAD} bytes</li>
      * </ul>
      *
-     * @return Estimated bytes per tick at 100% occupancy.
+     * @return Estimated bytes per TickData at 100% environment occupancy and max organisms.
      */
     public long estimateBytesPerTick() {
-        long cellBytes = (long) totalCells * 20;       // ~20 bytes per cell
-        long organismBytes = (long) maxOrganisms * 500; // ~500 bytes per organism
-        return cellBytes + organismBytes;
+        return estimateEnvironmentBytesPerTick() + estimateOrganismBytesPerTick() + TICKDATA_WRAPPER_OVERHEAD;
     }
     
     /**
      * Calculates bytes for environment cells only (for environment-specific indexers).
      * <p>
-     * Environment cells are stored as compressed BLOBs. Each cell in the BLOB
-     * contains approximately 100 bytes (position, energy, content type, flags).
+     * Each CellState in Java heap consumes approximately {@value #BYTES_PER_CELL} bytes:
+     * <ul>
+     *   <li>Object header: 12 bytes</li>
+     *   <li>GeneratedMessageV3 base: 20 bytes</li>
+     *   <li>4 int32 fields: 16 bytes</li>
+     *   <li>Alignment: 8 bytes</li>
+     * </ul>
      *
      * @return Estimated bytes for all cells at 100% occupancy.
      */
     public long estimateEnvironmentBytesPerTick() {
-        // ~100 bytes per cell for full cell state (including metadata)
-        return (long) totalCells * 100;
+        return (long) totalCells * BYTES_PER_CELL;
     }
     
     /**
      * Calculates bytes for organisms only (for organism-specific indexers).
      * <p>
-     * Organism state includes static data (code, birth info) and per-tick
-     * runtime state (registers, stacks, energy, position).
+     * Each OrganismState in Java heap consumes approximately {@value #BYTES_PER_ORGANISM} bytes
+     * due to nested Protobuf messages (Vectors, RegisterValues, ProcFrames, etc.).
      *
      * @return Estimated bytes for all organisms at 100% capacity.
      */
     public long estimateOrganismBytesPerTick() {
-        // ~500 bytes per organism for full runtime state
-        return (long) maxOrganisms * 500;
+        return (long) maxOrganisms * BYTES_PER_ORGANISM;
     }
     
     @Override
@@ -126,7 +174,9 @@ public record SimulationParameters(
         }
         sb.append("], totalCells=").append(totalCells);
         sb.append(", maxOrganisms=").append(maxOrganisms);
-        sb.append(", ~").append(formatBytes(estimateBytesPerTick())).append("/tick]");
+        sb.append(", env=").append(formatBytes(estimateEnvironmentBytesPerTick()));
+        sb.append(", org=").append(formatBytes(estimateOrganismBytesPerTick()));
+        sb.append(", total=").append(formatBytes(estimateBytesPerTick())).append("/tick]");
         return sb.toString();
     }
     
