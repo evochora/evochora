@@ -93,7 +93,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
     public AnalyticsIndexer(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
         this.analyticsOutput = getRequiredResource("analyticsOutput", IAnalyticsStorageWrite.class);
-        this.insertBatchSize = options.hasPath("insertBatchSize") ? options.getInt("insertBatchSize") : 25;
+        this.insertBatchSize = options.hasPath("insertBatchSize") ? options.getInt("insertBatchSize") : 20;
         
         // Configure hierarchical folder structure (same as PersistenceService)
         if (options.hasPath("folderStructure.levels")) {

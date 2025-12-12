@@ -50,18 +50,33 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
     // This GUARANTEES non-overlapping consecutive batch ranges
     private final Object drainLock = new Object();
     private final int coalescingDelayMs;
+    
+    // Optional: Override for memory estimation (bytes per item)
+    // If set, uses this value instead of SimulationParameters.estimateBytesPerTick()
+    // Useful for queues that don't hold TickData (e.g., metadata-queue holds SimulationMetadata)
+    private final long estimatedBytesPerItem;
 
     /**
      * Constructs an InMemoryBlockingQueue with the specified name and configuration.
      *
      * @param name    The name of the resource.
-     * @param options The TypeSafe Config object containing queue options like "capacity" and "metricsWindowSeconds".
+     * @param options The TypeSafe Config object containing queue options:
+     *                <ul>
+     *                  <li>{@code capacity} - Maximum queue size (default: 10)</li>
+     *                  <li>{@code metricsWindowSeconds} - Throughput calculation window (default: 5)</li>
+     *                  <li>{@code coalescingDelayMs} - Delay for batch coalescing (default: 0)</li>
+     *                  <li>{@code disableTimestamps} - Disable timestamp tracking (default: false)</li>
+     *                  <li>{@code estimatedBytesPerItem} - Override memory estimation per item in bytes.
+     *                      If not set, uses {@link SimulationParameters#estimateBytesPerTick()} which
+     *                      assumes TickData. Set this for queues holding other types (e.g., metadata-queue
+     *                      holds SimulationMetadata with ProgramArtifacts, ~5 MB per item).</li>
+     *                </ul>
      * @throws IllegalArgumentException if the configuration is invalid (e.g., non-positive capacity).
      */
     public InMemoryBlockingQueue(String name, Config options) {
         super(name, options);
         Config defaults = ConfigFactory.parseMap(Map.of(
-                "capacity", 25,  // Default: 25 (memory-optimized)
+                "capacity", 10,  // Default: 10 (memory-optimized for large environments)
                 "metricsWindowSeconds", 5,
                 "coalescingDelayMs", 0  // Default: no coalescing
         ));
@@ -73,11 +88,17 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
             this.coalescingDelayMs = finalConfig.getInt("coalescingDelayMs");
             this.disableTimestamps = finalConfig.hasPath("disableTimestamps")
                     && finalConfig.getBoolean("disableTimestamps");
+            // Optional: Override for memory estimation (0 = use SimulationParameters.estimateBytesPerTick())
+            this.estimatedBytesPerItem = finalConfig.hasPath("estimatedBytesPerItem")
+                    ? finalConfig.getLong("estimatedBytesPerItem") : 0;
             if (capacity <= 0) {
                 throw new IllegalArgumentException("Capacity must be positive for resource '" + name + "'.");
             }
             if (coalescingDelayMs < 0) {
                 throw new IllegalArgumentException("coalescingDelayMs cannot be negative for resource '" + name + "'.");
+            }
+            if (estimatedBytesPerItem < 0) {
+                throw new IllegalArgumentException("estimatedBytesPerItem cannot be negative for resource '" + name + "'.");
             }
             this.queue = new ArrayBlockingQueue<>(capacity);
             this.throughputCounter = new SlidingWindowCounter(metricsWindowSeconds);
@@ -402,30 +423,36 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
     /**
      * {@inheritDoc}
      * <p>
-     * Estimates memory for a queue at full capacity with worst-case tick sizes.
+     * Estimates memory for a queue at full capacity with worst-case item sizes.
      * <p>
-     * <strong>Calculation:</strong> capacity × bytesPerTick (100% occupancy)
+     * <strong>Calculation:</strong> capacity × bytesPerItem (100% occupancy)
+     * <p>
+     * If {@code estimatedBytesPerItem} is configured, uses that value for item size estimation.
+     * Otherwise, assumes each item is a TickData and uses {@link SimulationParameters#estimateBytesPerTick()}.
      * <p>
      * This is a worst-case estimate assuming:
      * <ul>
      *   <li>Queue is completely full</li>
-     *   <li>Each item is a TickData with 100% environment occupancy</li>
-     *   <li>Maximum configured organisms per tick</li>
+     *   <li>Each item has the estimated size (TickData default, or custom override)</li>
      * </ul>
      */
     @Override
     public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
-        // Each queue item is a TickData with full environment + organisms
-        long bytesPerTick = params.estimateBytesPerTick();
-        long totalBytes = (long) capacity * bytesPerTick;
+        // Use custom estimation if configured, otherwise assume TickData
+        long bytesPerItem = estimatedBytesPerItem > 0 
+                ? estimatedBytesPerItem 
+                : params.estimateBytesPerTick();
+        long totalBytes = (long) capacity * bytesPerItem;
         
         // Add overhead for TimestampedObject wrapper (~32 bytes per entry)
         long wrapperOverhead = (long) capacity * 32;
         totalBytes += wrapperOverhead;
         
-        String explanation = String.format("%d capacity × %s/tick + %s wrapper overhead",
+        String itemType = estimatedBytesPerItem > 0 ? "item (custom)" : "tick";
+        String explanation = String.format("%d capacity × %s/%s + %s wrapper overhead",
             capacity,
-            SimulationParameters.formatBytes(bytesPerTick),
+            SimulationParameters.formatBytes(bytesPerItem),
+            itemType,
             SimulationParameters.formatBytes(wrapperOverhead));
         
         return List.of(new MemoryEstimate(

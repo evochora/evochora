@@ -606,7 +606,6 @@ public class AnalyticsController implements IController {
                 ctx.header("Cache-Control", "max-age=3600"); // Cache for 1 hour
                 
                 byte[] mergedBytes = Files.readAllBytes(mergedFile);
-                ctx.header("Content-Length", String.valueOf(mergedBytes.length));
                 ctx.result(mergedBytes);
 
             } finally {
