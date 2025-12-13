@@ -114,8 +114,15 @@ public final class Config {
 
     /**
      * A bitmask to extract the marker information from a cell's integer representation.
+     * This mask is shifted to the marker's bit position.
      */
     public static final int MARKER_MASK = ((1 << MARKER_BITS) - 1) << MARKER_SHIFT;
+
+    /**
+     * A bitmask to constrain raw marker values to valid range (0-15 for 4-bit marker).
+     * Use this when masking raw values, not when extracting from packed integers.
+     */
+    public static final int MARKER_VALUE_MASK = (1 << MARKER_BITS) - 1;
 
     /**
      * A bitmask to extract the type information from a cell's integer representation.

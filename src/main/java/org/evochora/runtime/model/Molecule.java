@@ -36,7 +36,7 @@ public record Molecule(int type, int value, int marker) {
         }
         // Otherwise, the type is always combined with the value.
         // Marker must be shifted to its correct bit position.
-        return ((this.marker() & ((1 << Config.MARKER_BITS) - 1)) << Config.MARKER_SHIFT)
+        return ((this.marker() & Config.MARKER_VALUE_MASK) << Config.MARKER_SHIFT)
              | this.type()
              | (this.value() & Config.VALUE_MASK);
     }

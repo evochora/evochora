@@ -606,7 +606,7 @@ public class Organism {
      * @param value The new marker value.
      */
     public void setMr(int value) {
-        this.mr = value & 0xF; // Ensure value is within 4 bits
+        this.mr = value & Config.MARKER_VALUE_MASK;
     }
 
     /** @return A copy of the list of Data Registers (DRs). */

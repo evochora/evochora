@@ -1,16 +1,16 @@
 package org.evochora.runtime.isa.instructions;
 
+import java.util.List;
+import java.util.Random;
+
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Environment;
-
-import java.util.List;
-import java.util.Random;
 
 /**
  * Handles a wide variety of state-related instructions, such as TURN, SYNC, NRG, FORK,
@@ -623,8 +623,8 @@ public class StateInstruction extends Instruction {
             return;
         }
 
-        // Extract value and mask to MARKER_BITS (4 bits)
-        int markerValue = source.value() & ((1 << Config.MARKER_BITS) - 1);
+        // Extract value and mask to valid marker range
+        int markerValue = source.value() & Config.MARKER_VALUE_MASK;
         organism.setMr(markerValue);
     }
 }

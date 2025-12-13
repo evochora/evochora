@@ -1,17 +1,17 @@
 package org.evochora.runtime;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
+
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.InstructionArgumentType;
 import org.evochora.runtime.isa.InstructionSignature;
+import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Environment;
-
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
 
 /**
  * The core of the execution environment.
@@ -165,7 +165,7 @@ public class VirtualMachine {
             return;
         }
 
-        if (organism.getSr() > Config.MAX_ORGANISM_ENTROPY) {
+        if (organism.getSr() >= Config.MAX_ORGANISM_ENTROPY) {
             organism.kill("Entropy limit exceeded");
             return;
         }
