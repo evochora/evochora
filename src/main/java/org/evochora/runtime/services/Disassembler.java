@@ -31,25 +31,25 @@ public class Disassembler {
                 return null; // Outside boundaries or invalid coordinates
             }
             
-            int opcodeId = opcodeMolecule.toInt();
+            int opcodeId = opcodeMolecule.value();  // Use value only, not packed int
             String opcodeName = Instruction.getInstructionNameById(opcodeId);
 
             // Handle unknown opcodes
             if ("UNKNOWN".equals(opcodeName)) {
-                return new DisassemblyData(opcodeId, "UNKNOWN_OP (" + opcodeId + ")", new int[0], new int[0][]);
+                return new DisassemblyData(opcodeId, "UNKNOWN_OP (" + opcodeId + ")", new Molecule[0], new int[0][]);
             }
 
             // Get the instruction signature
             Optional<InstructionSignature> signatureOpt = Instruction.getSignatureById(opcodeId);
             if (signatureOpt.isEmpty()) {
-                return new DisassemblyData(opcodeId, opcodeName, new int[0], new int[0][]);
+                return new DisassemblyData(opcodeId, opcodeName, new Molecule[0], new int[0][]);
             }
 
             InstructionSignature signature = signatureOpt.get();
 
             // Read the arguments
             int totalArgs = calculateTotalArguments(signature, reader.getShape().length);
-            int[] argValues = new int[totalArgs];
+            Molecule[] args = new Molecule[totalArgs];
             int[][] argPositions = new int[totalArgs][];
             int[] currentPos = instructionPointer.clone();
             int actualArgCount = 0;
@@ -71,7 +71,7 @@ public class Disassembler {
                             break;
                         }
                         
-                        argValues[actualArgCount] = argMolecule.toInt();
+                        args[actualArgCount] = argMolecule;
                         argPositions[actualArgCount] = currentPos.clone();
                         actualArgCount++;
                     }
@@ -89,7 +89,7 @@ public class Disassembler {
                             break;
                         }
                         
-                        argValues[actualArgCount] = argMolecule.toInt();
+                        args[actualArgCount] = argMolecule;
                         argPositions[actualArgCount] = currentPos.clone();
                         actualArgCount++;
                     }
@@ -105,19 +105,19 @@ public class Disassembler {
                         break;
                     }
                     
-                    argValues[actualArgCount] = argMolecule.toInt();
+                    args[actualArgCount] = argMolecule;
                     argPositions[actualArgCount] = currentPos.clone();
                     actualArgCount++;
                 }
             }
 
             // Create properly sized arrays with only the arguments we actually found
-            int[] finalArgValues = new int[actualArgCount];
+            Molecule[] finalArgs = new Molecule[actualArgCount];
             int[][] finalArgPositions = new int[actualArgCount][];
-            System.arraycopy(argValues, 0, finalArgValues, 0, actualArgCount);
+            System.arraycopy(args, 0, finalArgs, 0, actualArgCount);
             System.arraycopy(argPositions, 0, finalArgPositions, 0, actualArgCount);
 
-            return new DisassemblyData(opcodeId, opcodeName, finalArgValues, finalArgPositions);
+            return new DisassemblyData(opcodeId, opcodeName, finalArgs, finalArgPositions);
 
         } catch (Exception e) {
             // Log error and return null

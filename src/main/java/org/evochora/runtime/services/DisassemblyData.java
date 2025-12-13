@@ -1,16 +1,17 @@
 package org.evochora.runtime.services;
 
+import org.evochora.runtime.model.Molecule;
+
 /**
  * A simple data structure for disassembly results.
- * Contains only primitive values without objects for maximum performance.
- * @param opcodeId The ID of the opcode.
+ * @param opcodeId The ID of the opcode (value part of the CODE molecule).
  * @param opcodeName The name of the opcode.
- * @param argValues The values of the arguments.
- * @param argPositions The positions of the arguments.
+ * @param args The argument molecules (with type, value, and marker).
+ * @param argPositions The positions of the arguments in the environment.
  */
 public record DisassemblyData(
     int opcodeId,
     String opcodeName,
-    int[] argValues,
+    Molecule[] args,
     int[][] argPositions
 ) {}

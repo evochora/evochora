@@ -88,4 +88,21 @@ class StateInstructionCompilerTest extends CompilerTestBase {
             assertThat(artifact.machineCodeLayout()).isNotEmpty();
         });
     }
+
+    @Test
+    void testSMR_operations() {
+        String source = String.join("\n",
+                "SMR %DR0",
+                "SMRI DATA:5",
+                "SMRS"
+        );
+        List<String> lines = List.of(source.split("\n"));
+        assertDoesNotThrow(() -> {
+            ProgramArtifact artifact = compiler.compile(lines, "smr_auto.s", testEnvProps);
+            assertThat(artifact).isNotNull();
+            assertThat(artifact.machineCodeLayout()).isNotEmpty();
+            // Verify correct opcodes are generated (using linear addresses from layout)
+            assertThat(artifact.machineCodeLayout().values()).contains(192, 193, 194);
+        });
+    }
 }

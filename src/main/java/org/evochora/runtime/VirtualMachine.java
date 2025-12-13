@@ -51,7 +51,7 @@ public class VirtualMachine {
             }
         }
 
-        int opcodeId = molecule.toInt();
+        int opcodeId = molecule.value();  // Use value only, not packed int (which includes marker)
         java.util.function.BiFunction<Organism, Environment, Instruction> planner = Instruction.getPlannerById(opcodeId);
         if (planner != null) {
             return planner.apply(organism, this.environment);
@@ -160,6 +160,11 @@ public class VirtualMachine {
 
         if (organism.getEr() <= 0) {
             organism.kill("Ran out of energy");
+            return;
+        }
+
+        if (organism.getSr() > Config.MAX_ORGANISM_ENTROPY) {
+            organism.kill("Entropy limit exceeded");
             return;
         }
 

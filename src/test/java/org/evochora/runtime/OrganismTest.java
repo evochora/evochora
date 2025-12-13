@@ -1,17 +1,17 @@
 package org.evochora.runtime;
 
-import org.evochora.runtime.isa.Instruction;
-import org.evochora.runtime.model.Molecule;
-import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Environment;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.Tag;
+import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Deque;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.model.Organism;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
 
 /**
  * Contains unit tests for the core logic of the {@link Organism} class.
@@ -183,5 +183,134 @@ public class OrganismTest {
         int[] vec = new int[]{3, 4};
         org.setFpr(0, vec);
         assertThat(org.getFpr(0)).isEqualTo(vec);
+    }
+
+    // ==================== Cell Accessibility Tests ====================
+
+    /**
+     * Verifies that a cell is accessible only when owned by the organism itself.
+     * Parent-owned cells are now treated as foreign (not accessible).
+     */
+    @Test
+    @Tag("unit")
+    void testIsCellAccessible_OwnedBySelf_ReturnsTrue() {
+        Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
+        sim.addOrganism(org);
+        
+        assertThat(org.isCellAccessible(org.getId())).isTrue();
+    }
+
+    /**
+     * Verifies that parent-owned cells are NOT accessible to child organisms.
+     * This is a behavioral change: children can no longer access parent molecules.
+     */
+    @Test
+    @Tag("unit")
+    void testIsCellAccessible_OwnedByParent_ReturnsFalse() {
+        Organism parent = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
+        sim.addOrganism(parent);
+        
+        Organism child = Organism.create(sim, new int[]{1, 0}, 100, sim.getLogger());
+        child.setParentId(parent.getId());
+        sim.addOrganism(child);
+        
+        // Parent-owned cells should NOT be accessible to child
+        assertThat(child.isCellAccessible(parent.getId())).isFalse();
+    }
+
+    /**
+     * Verifies that cells owned by other organisms are not accessible.
+     */
+    @Test
+    @Tag("unit")
+    void testIsCellAccessible_OwnedByOther_ReturnsFalse() {
+        Organism org1 = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
+        Organism org2 = Organism.create(sim, new int[]{1, 0}, 100, sim.getLogger());
+        sim.addOrganism(org1);
+        sim.addOrganism(org2);
+        
+        assertThat(org1.isCellAccessible(org2.getId())).isFalse();
+    }
+
+    /**
+     * Verifies that unowned cells (ownerId=0) are not accessible.
+     */
+    @Test
+    @Tag("unit")
+    void testIsCellAccessible_Unowned_ReturnsFalse() {
+        Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
+        sim.addOrganism(org);
+        
+        assertThat(org.isCellAccessible(0)).isFalse();
+    }
+
+    // ==================== MR Register Tests ====================
+
+    /**
+     * Verifies that the MR register is correctly masked to 4 bits.
+     */
+    @Test
+    @Tag("unit")
+    void testMrRegister_MaskedTo4Bits() {
+        Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
+        
+        org.setMr(15); // Max 4-bit value
+        assertThat(org.getMr()).isEqualTo(15);
+        
+        org.setMr(20); // Exceeds 4 bits: 20 & 0xF = 4
+        assertThat(org.getMr()).isEqualTo(4);
+        
+        org.setMr(0);
+        assertThat(org.getMr()).isEqualTo(0);
+    }
+
+    /**
+     * Verifies that the MR register starts at 0.
+     */
+    @Test
+    @Tag("unit")
+    void testMrRegister_DefaultsToZero() {
+        Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
+        assertThat(org.getMr()).isEqualTo(0);
+    }
+
+    // ==================== Death Cleanup Tests ====================
+
+    /**
+     * Verifies that when an organism dies, all its owned cells have their
+     * ownership and marker cleared to 0.
+     */
+    @Test
+    @Tag("unit")
+    void testDeathClearsOwnershipAndMarker() {
+        Organism org = Organism.create(sim, new int[]{10, 10}, 100, sim.getLogger());
+        sim.addOrganism(org);
+        
+        // Place some molecules owned by this organism with marker=5
+        org.setMr(5);
+        int[] cell1 = new int[]{20, 20};
+        int[] cell2 = new int[]{21, 21};
+        Molecule mol = new Molecule(Config.TYPE_DATA, 42, org.getMr());
+        environment.setMolecule(mol, org.getId(), cell1);
+        environment.setMolecule(mol, org.getId(), cell2);
+        
+        // Verify ownership and marker before death
+        assertThat(environment.getOwnerId(cell1)).isEqualTo(org.getId());
+        assertThat(environment.getOwnerId(cell2)).isEqualTo(org.getId());
+        assertThat(environment.getMolecule(cell1).marker()).isEqualTo(5);
+        assertThat(environment.getMolecule(cell2).marker()).isEqualTo(5);
+        
+        // Clear ownership (simulates what happens when organism dies in tick)
+        environment.clearOwnershipFor(org.getId());
+        
+        // Verify ownership and marker are cleared
+        assertThat(environment.getOwnerId(cell1)).isEqualTo(0);
+        assertThat(environment.getOwnerId(cell2)).isEqualTo(0);
+        assertThat(environment.getMolecule(cell1).marker()).isEqualTo(0);
+        assertThat(environment.getMolecule(cell2).marker()).isEqualTo(0);
+        
+        // Molecule value and type should remain unchanged
+        assertThat(environment.getMolecule(cell1).value()).isEqualTo(42);
+        assertThat(environment.getMolecule(cell1).type()).isEqualTo(Config.TYPE_DATA);
     }
 }

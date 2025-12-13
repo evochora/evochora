@@ -2,6 +2,8 @@
 package org.evochora.runtime.model;
 
 import org.evochora.runtime.Config;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Represents a molecule in the environment, with a type and a value.
@@ -10,6 +12,8 @@ import org.evochora.runtime.Config;
  * @param marker The marker of the molecule.
  */
 public record Molecule(int type, int value, int marker) {
+    
+    private static final Logger LOG = LoggerFactory.getLogger(Molecule.class);
 
     /**
      * Convenience constructor for creating a molecule with a default marker of 0.
@@ -31,7 +35,10 @@ public record Molecule(int type, int value, int marker) {
             return 0;
         }
         // Otherwise, the type is always combined with the value.
-        return this.marker() | this.type() | (this.value() & Config.VALUE_MASK);
+        // Marker must be shifted to its correct bit position.
+        return ((this.marker() & ((1 << Config.MARKER_BITS) - 1)) << Config.MARKER_SHIFT)
+             | this.type()
+             | (this.value() & Config.VALUE_MASK);
     }
 
     /**
@@ -59,12 +66,21 @@ public record Molecule(int type, int value, int marker) {
         if (fullValue == 0) {
             return new Molecule(Config.TYPE_CODE, 0, 0);
         }
-        int marker = fullValue & Config.MARKER_MASK;
+        // Extract marker and shift it back to 0-15 range
+        int marker = (fullValue & Config.MARKER_MASK) >> Config.MARKER_SHIFT;
         int type = fullValue & Config.TYPE_MASK;
         int rawValue = fullValue & Config.VALUE_MASK;
         if ((rawValue & (1 << (Config.VALUE_BITS - 1))) != 0) {
             rawValue |= ~((1 << Config.VALUE_BITS) - 1);
         }
+        
+        // Invariant check: CODE:0 must have marker=0
+        if (type == Config.TYPE_CODE && rawValue == 0 && marker != 0) {
+            LOG.error("CODE:0 molecule with marker={} - fixing to marker=0", marker,
+                      new IllegalStateException("Invariant violation: CODE:0 must have marker=0"));
+            marker = 0;
+        }
+        
         return new Molecule(type, rawValue, marker);
     }
 
@@ -111,6 +127,6 @@ public record Molecule(int type, int value, int marker) {
     @Override
     public String toString() {
         String typePrefix = MoleculeTypeRegistry.typeToName(this.type());
-        return typePrefix + ":" + this.toScalarValue() + " M:" + (this.marker() >> Config.MARKER_SHIFT);
+        return typePrefix + ":" + this.toScalarValue() + " M:" + this.marker();
     }
 }

@@ -4,10 +4,12 @@ package org.evochora.runtime.model;
 import java.util.Arrays;
 import java.util.function.IntConsumer;
 
-import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
-import it.unimi.dsi.fastutil.ints.IntSet;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.IEnvironmentReader;
+
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
+import it.unimi.dsi.fastutil.ints.IntSet;
 
 /**
  * Represents the simulation environment, managing the grid of molecules and their owners.
@@ -21,6 +23,10 @@ public class Environment implements IEnvironmentReader {
 
     // Sparse cell tracking for performance optimization (using primitive int indices)
     private final IntSet occupiedIndices;
+    
+    // Ownership index: maps ownerId -> set of flat indices owned by that organism
+    // Enables O(1) lookup of all cells owned by a specific organism (for FORK transfer, death cleanup)
+    private final Int2ObjectOpenHashMap<IntOpenHashSet> cellsByOwner;
     
     /**
      * Environment properties that can be shared with other components.
@@ -62,6 +68,9 @@ public class Environment implements IEnvironmentReader {
         
         // Initialize sparse cell tracking if enabled (using primitive int indices for performance)
         this.occupiedIndices = Config.ENABLE_SPARSE_CELL_TRACKING ? new IntOpenHashSet() : null;
+        
+        // Initialize ownership index
+        this.cellsByOwner = new Int2ObjectOpenHashMap<>();
     }
 
     /**
@@ -141,6 +150,12 @@ public class Environment implements IEnvironmentReader {
         if (index != -1) {
             int packed = molecule.toInt();
             this.grid[index] = packed;
+            
+            // Update ownership index
+            int oldOwner = this.ownerGrid[index];
+            if (oldOwner != ownerId) {
+                updateOwnershipIndex(index, oldOwner, ownerId);
+            }
             this.ownerGrid[index] = ownerId;
             
             // Update sparse cell tracking if enabled
@@ -171,6 +186,11 @@ public class Environment implements IEnvironmentReader {
     public void setOwnerId(int ownerId, int... coord) {
         int index = getFlatIndex(coord);
         if (index != -1) {
+            // Update ownership index
+            int oldOwner = this.ownerGrid[index];
+            if (oldOwner != ownerId) {
+                updateOwnershipIndex(index, oldOwner, ownerId);
+            }
             this.ownerGrid[index] = ownerId;
             
             // Update sparse cell tracking if enabled
@@ -265,6 +285,29 @@ public class Environment implements IEnvironmentReader {
     }
 
     /**
+     * Updates the ownership index when a cell's owner changes.
+     * @param flatIndex The flat index of the cell.
+     * @param oldOwner The previous owner ID.
+     * @param newOwner The new owner ID.
+     */
+    private void updateOwnershipIndex(int flatIndex, int oldOwner, int newOwner) {
+        // Remove from old owner's set
+        if (oldOwner != 0) {
+            IntOpenHashSet oldSet = cellsByOwner.get(oldOwner);
+            if (oldSet != null) {
+                oldSet.remove(flatIndex);
+                if (oldSet.isEmpty()) {
+                    cellsByOwner.remove(oldOwner);
+                }
+            }
+        }
+        // Add to new owner's set
+        if (newOwner != 0) {
+            cellsByOwner.computeIfAbsent(newOwner, k -> new IntOpenHashSet()).add(flatIndex);
+        }
+    }
+
+    /**
      * Iterates all occupied cells using flat indices (OPTIMIZATION #2: Primitive API).
      * This method provides zero-overhead iteration with direct flat index access.
      * Enables JIT inlining when used with non-capturing method references.
@@ -321,31 +364,78 @@ public class Environment implements IEnvironmentReader {
     }
 
     /**
-     * Functional interface for sparse cell iteration (coordinate-based).
+     * Transfers ownership of molecules from one organism to another based on marker matching.
+     * <p>
+     * This method iterates over all occupied cells and transfers ownership from {@code fromOwnerId}
+     * to {@code toOwnerId} for molecules where the marker matches {@code markerToMatch}.
+     * After transfer, the marker of each transferred molecule is reset to 0.
+     * <p>
+     * <strong>Performance:</strong> O(occupied cells) - iterates using sparse cell tracking.
+     * For typical simulations with ~5% occupancy, this is much faster than full grid iteration.
+     *
+     * @param fromOwnerId   The current owner ID whose molecules should be transferred.
+     * @param toOwnerId     The new owner ID to assign to matching molecules.
+     * @param markerToMatch The marker value that molecules must have to be transferred.
+     * @return The number of molecules transferred.
      */
-    @FunctionalInterface
-    public interface OccupiedCellConsumer {
-        void accept(int[] coordinate, int moleculeInt, int ownerId);
+    public int transferOwnership(int fromOwnerId, int toOwnerId, int markerToMatch) {
+        IntOpenHashSet fromSet = cellsByOwner.get(fromOwnerId);
+        if (fromSet == null || fromSet.isEmpty()) {
+            return 0;
+        }
+
+        // Collect indices to transfer (can't modify during iteration)
+        it.unimi.dsi.fastutil.ints.IntList toTransfer = new it.unimi.dsi.fastutil.ints.IntArrayList();
+
+        fromSet.forEach((int flatIndex) -> {
+            int moleculeInt = grid[flatIndex];
+            int marker = (moleculeInt & Config.MARKER_MASK) >> Config.MARKER_SHIFT;
+            if (marker == markerToMatch) {
+                toTransfer.add(flatIndex);
+            }
+        });
+
+        // Transfer ownership and reset marker
+        IntOpenHashSet toSet = cellsByOwner.computeIfAbsent(toOwnerId, k -> new IntOpenHashSet());
+        for (int i = 0; i < toTransfer.size(); i++) {
+            int flatIndex = toTransfer.getInt(i);
+            ownerGrid[flatIndex] = toOwnerId;
+            // Reset marker to 0: clear marker bits and keep value/type
+            grid[flatIndex] = grid[flatIndex] & ~Config.MARKER_MASK;
+            // Update ownership index
+            fromSet.remove(flatIndex);
+            toSet.add(flatIndex);
+        }
+        
+        // Clean up empty set
+        if (fromSet.isEmpty()) {
+            cellsByOwner.remove(fromOwnerId);
+        }
+
+        return toTransfer.size();
     }
 
     /**
-     * Iterates all occupied cells with coordinate information (LEGACY API).
-     *
-     * @deprecated Use {@link #forEachOccupiedIndex(IntConsumer)} for better performance.
-     *             This method is kept for backward compatibility but adds ~75% overhead
-     *             compared to the primitive API.
-     *
-     * @param consumer Callback invoked for each occupied cell
+     * Clears ownership of all cells owned by the specified organism.
+     * Sets owner to 0 and resets marker to 0 for all affected cells.
+     * Called when an organism dies to release its molecules.
+     * 
+     * @param ownerId The ID of the organism whose ownership should be cleared.
+     * @return The number of cells that were cleared.
      */
-    @Deprecated
-    public void forEachOccupiedCell(OccupiedCellConsumer consumer) {
-        if (occupiedIndices == null) return;
+    public int clearOwnershipFor(int ownerId) {
+        IntOpenHashSet owned = cellsByOwner.remove(ownerId);
+        if (owned == null || owned.isEmpty()) {
+            return 0;
+        }
 
-        // Implement using primitive API for consistency
-        forEachOccupiedIndex(flatIndex -> {
-            int[] coord = getCoordinateFromIndex(flatIndex);
-            consumer.accept(coord, grid[flatIndex], ownerGrid[flatIndex]);
+        int count = owned.size();
+        owned.forEach((int flatIndex) -> {
+            ownerGrid[flatIndex] = 0;
+            // Reset marker to 0
+            grid[flatIndex] = grid[flatIndex] & ~Config.MARKER_MASK;
         });
+        
+        return count;
     }
-
 }

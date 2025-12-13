@@ -305,7 +305,7 @@ public class Organism {
      */
     public void skipNextInstruction(Environment environment) {
         int[] currentInstructionIp = this.getIpBeforeFetch();
-        int currentInstructionOpcode = environment.getMolecule(currentInstructionIp).toInt();
+        int currentInstructionOpcode = environment.getMolecule(currentInstructionIp).value();
         int currentInstructionLength = Instruction.getInstructionLengthById(currentInstructionOpcode, environment);
 
         int[] nextInstructionIp = currentInstructionIp;
@@ -313,7 +313,7 @@ public class Organism {
             nextInstructionIp = getNextInstructionPosition(nextInstructionIp, this.getDvBeforeFetch(), environment);
         }
 
-        int nextOpcode = environment.getMolecule(nextInstructionIp).toInt();
+        int nextOpcode = environment.getMolecule(nextInstructionIp).value();
         int lengthToSkip = Instruction.getInstructionLengthById(nextOpcode, environment);
 
         int[] finalIp = nextInstructionIp;
@@ -535,23 +535,15 @@ public class Organism {
 
     /**
      * Checks if a cell, identified by its owner's ID, is accessible to this organism.
-     * A cell is considered accessible if it is owned by the organism itself or its direct parent.
+     * A cell is considered accessible only if it is owned by the organism itself.
+     * Parent-owned cells are treated as foreign.
      *
      * @param ownerId The ID of the cell's owner.
-     * @return {@code true} if the cell is accessible, otherwise {@code false}.
+     * @return {@code true} if the cell is accessible (owned by this organism), otherwise {@code false}.
      */
     public boolean isCellAccessible(int ownerId) {
-        // A cell is always accessible to its owner.
-        if (ownerId == this.id) {
-            return true;
-        }
-        // A cell is also accessible if it belongs to the direct parent.
-        Integer parent = this.getParentId();
-        if (parent != null && ownerId == parent) {
-            return true;
-        }
-        // Otherwise, it's considered foreign.
-        return false;
+        // A cell is only accessible to its owner.
+        return ownerId == this.id;
     }
 
     /** @return The simulation tick number at which the organism was born. */

@@ -93,8 +93,9 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
                 return;
             }
             Molecule toWriteRaw = org.evochora.runtime.model.Molecule.fromInt((Integer) valueToWrite);
-            // Add the organism's current marker to the molecule being written (shifted to correct position)
-            Molecule toWrite = new Molecule(toWriteRaw.type(), toWriteRaw.value(), organism.getMr() << Config.MARKER_SHIFT);
+            // For CODE:0, marker must be 0 (empty cells have no properties)
+            int marker = (toWriteRaw.type() == Config.TYPE_CODE && toWriteRaw.value() == 0) ? 0 : organism.getMr();
+            Molecule toWrite = new Molecule(toWriteRaw.type(), toWriteRaw.value(), marker);
             
             int additionalCost = 0;
             if (toWrite.type() == Config.TYPE_ENERGY || toWrite.type() == Config.TYPE_STRUCTURE) {
@@ -257,8 +258,9 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
                 return;
             }
             Molecule toWriteRaw = org.evochora.runtime.model.Molecule.fromInt((Integer) valueToWrite);
-            // Add the organism's current marker to the molecule being written (shifted to correct position)
-            Molecule toWrite = new Molecule(toWriteRaw.type(), toWriteRaw.value(), organism.getMr() << Config.MARKER_SHIFT);
+            // For CODE:0, marker must be 0 (empty cells have no properties)
+            int marker = (toWriteRaw.type() == Config.TYPE_CODE && toWriteRaw.value() == 0) ? 0 : organism.getMr();
+            Molecule toWrite = new Molecule(toWriteRaw.type(), toWriteRaw.value(), marker);
 
             int additionalCost = 0;
             if (toWrite.type() == Config.TYPE_ENERGY || toWrite.type() == Config.TYPE_STRUCTURE) {

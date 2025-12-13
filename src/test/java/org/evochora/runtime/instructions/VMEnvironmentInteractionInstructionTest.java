@@ -359,9 +359,8 @@ public class VMEnvironmentInteractionInstructionTest {
         assertThat(writtenMolecule.value()).isEqualTo(42).as("Molecule value should be 42");
         assertThat(writtenMolecule.type()).isEqualTo(Config.TYPE_DATA).as("Molecule type should be DATA");
         
-        // Extract the raw marker value by shifting back
-        int actualMarker = writtenMolecule.marker() >> Config.MARKER_SHIFT;
-        assertThat(actualMarker).isEqualTo(expectedMarker)
+        // Molecule.marker() now returns the marker value directly (0-15 range)
+        assertThat(writtenMolecule.marker()).isEqualTo(expectedMarker)
             .as("Molecule marker should be set from organism's MR register");
     }
 

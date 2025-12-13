@@ -26,6 +26,12 @@ public final class Config {
     public static final int MAX_ORGANISM_ENERGY = 32767; // avoid register overflow using NRG instruction (16 bit)
 
     /**
+     * The maximum entropy an organism can accumulate before death.
+     * When SR exceeds this value, the organism dies.
+     */
+    public static final int MAX_ORGANISM_ENTROPY = 32767; // same as MAX_ORGANISM_ENERGY for now
+
+    /**
      * If true, enforces strict type checking during operations.
      */
     public static final boolean STRICT_TYPING = true;

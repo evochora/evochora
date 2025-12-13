@@ -109,6 +109,11 @@ public class StateInstruction extends Instruction {
                 case "GDVS":
                     handleGdv(opName, operands);
                     break;
+                case "SMR":
+                case "SMRI":
+                case "SMRS":
+                    handleSmr(opName, operands);
+                    break;
                 default:
                     organism.instructionFailed("Unknown state instruction: " + opName);
             }
@@ -157,6 +162,10 @@ public class StateInstruction extends Instruction {
             child.setBirthTick(simulation.getCurrentTick());
             child.setProgramId(organism.getProgramId());
             simulation.addNewOrganism(child);
+
+            // Transfer ownership of molecules with matching marker to the child
+            int parentMr = organism.getMr();
+            simulation.getEnvironment().transferOwnership(organism.getId(), child.getId(), parentMr);
         } else {
             organism.instructionFailed("FORK failed due to insufficient energy or invalid parameters.");
         }
@@ -306,6 +315,10 @@ public class StateInstruction extends Instruction {
                 child.setBirthTick(simulation.getCurrentTick());
                 child.setProgramId(organism.getProgramId());
                 simulation.addNewOrganism(child);
+
+                // Transfer ownership of molecules with matching marker to the child
+                int parentMr = organism.getMr();
+                environment.transferOwnership(organism.getId(), child.getId(), parentMr);
             } else {
                 organism.instructionFailed("FRKI failed due to insufficient energy or invalid parameters.");
             }
@@ -333,6 +346,10 @@ public class StateInstruction extends Instruction {
                 child.setBirthTick(simulation.getCurrentTick());
                 child.setProgramId(organism.getProgramId());
                 simulation.addNewOrganism(child);
+
+                // Transfer ownership of molecules with matching marker to the child
+                int parentMr = organism.getMr();
+                environment.transferOwnership(organism.getId(), child.getId(), parentMr);
             } else {
                 organism.instructionFailed("FRKS failed due to insufficient energy or invalid parameters.");
             }
@@ -559,5 +576,55 @@ public class StateInstruction extends Instruction {
             int targetReg = operands.get(0).rawSourceId();
             writeOperand(targetReg, currentDv);
         }
+    }
+
+    /**
+     * Handles the SMR, SMRI, and SMRS instructions (Set Molecule marker Register).
+     * Sets the organism's MR register to the value from the operand.
+     * <p>
+     * The operand must be of type DATA. The value is masked to MARKER_BITS (4 bits).
+     * If the operand type is not DATA, the instruction fails.
+     *
+     * @param opName   The instruction name (SMR, SMRI, or SMRS)
+     * @param operands The operands containing the value to set
+     */
+    private void handleSmr(String opName, List<Operand> operands) {
+        Molecule source;
+
+        if ("SMRS".equals(opName)) {
+            // Stack variant: pop value from stack
+            if (organism.getDataStack().isEmpty()) {
+                organism.instructionFailed("SMRS requires a value on the data stack.");
+                return;
+            }
+            Object stackValue = organism.getDataStack().pop();
+            if (!(stackValue instanceof Integer intValue)) {
+                organism.instructionFailed("SMRS requires a scalar value on the stack.");
+                return;
+            }
+            source = Molecule.fromInt(intValue);
+        } else {
+            // Register or Immediate variant
+            if (operands.size() != 1) {
+                organism.instructionFailed("Invalid operands for " + opName + ".");
+                return;
+            }
+            Object value = operands.get(0).value();
+            if (!(value instanceof Integer intValue)) {
+                organism.instructionFailed(opName + " requires a scalar operand.");
+                return;
+            }
+            source = Molecule.fromInt(intValue);
+        }
+
+        // Type check: must be DATA
+        if (source.type() != Config.TYPE_DATA) {
+            organism.instructionFailed(opName + " requires DATA type operand.");
+            return;
+        }
+
+        // Extract value and mask to MARKER_BITS (4 bits)
+        int markerValue = source.value() & ((1 << Config.MARKER_BITS) - 1);
+        organism.setMr(markerValue);
     }
 }
