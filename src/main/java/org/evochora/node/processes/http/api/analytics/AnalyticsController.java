@@ -547,9 +547,12 @@ public class AnalyticsController implements IController {
             return;
         }
         
-        // Default LOD
+        // Auto-select LOD if not specified (prefer higher LOD with fewer files for faster loading)
         if (lod == null || lod.isBlank()) {
-            lod = "lod0";
+            lod = autoSelectLod(runId, metric);
+            if (lod == null) {
+                lod = "lod0"; // Fallback
+            }
         }
         
         try {
