@@ -164,7 +164,10 @@ export function render(canvas, data, config) {
                         ticks: { 
                             color: '#888',
                             callback: function(value) {
-                                return value.toFixed(0) + (isPercentage ? '%' : '');
+                                // Use decimals when Y-axis max is small (< 10)
+                                const max = this.max || 100;
+                                const decimals = max < 10 ? 1 : 0;
+                                return value.toFixed(decimals) + (isPercentage ? '%' : '');
                             }
                         },
                         grid: { color: '#333', drawBorder: false }

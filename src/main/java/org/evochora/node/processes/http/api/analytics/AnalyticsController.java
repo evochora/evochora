@@ -428,8 +428,10 @@ public class AnalyticsController implements IController {
             fileList.append("'").append(path).append("'");
         }
 
+        // union_by_name=true allows merging Parquet files with different schemas
+        // (e.g., old files without avg_entropy, new files with it)
         String sql = String.format(
-            "SELECT * FROM read_parquet([%s]) ORDER BY tick",
+            "SELECT * FROM read_parquet([%s], union_by_name=true) ORDER BY tick",
             fileList
         );
 
@@ -582,7 +584,15 @@ public class AnalyticsController implements IController {
                             continue;
                         }
                     }
-                    tempFiles.add(tempFile);
+                    
+                    // Validate file is readable (catches files still being written)
+                    try {
+                        validateParquetFile(tempFile);
+                        tempFiles.add(tempFile);
+                    } catch (Exception e) {
+                        log.debug("Skipping unreadable Parquet file (may still be written): {}", file);
+                        Files.deleteIfExists(tempFile);
+                    }
                 }
                 
                 if (tempFiles.isEmpty()) {
@@ -593,17 +603,26 @@ public class AnalyticsController implements IController {
                 // 3. Merge Parquet files using DuckDB
                 mergedFile = tempDir.resolve("merged.parquet");
                 mergeParquetFiles(tempFiles, mergedFile);
+                
+                // 3a. Validate merged file is readable (catches race conditions with incomplete writes)
+                long rowCount = validateParquetFile(mergedFile);
+                if (rowCount == 0) {
+                    ctx.status(404).result("No data available yet for metric: " + metric);
+                    return;
+                }
 
                 long duration = System.currentTimeMillis() - startTime;
-                log.debug("Merged {}/{}/{}: {} files into {} bytes in {}ms", 
-                    runId, metric, lod, parquetFiles.size(), Files.size(mergedFile), duration);
+                log.debug("Merged {}/{}/{}: {} files into {} bytes ({} rows) in {}ms", 
+                    runId, metric, lod, parquetFiles.size(), Files.size(mergedFile), rowCount, duration);
 
                 // 4. Read merged file to memory and send to client
                 // Note: Cannot use InputStream streaming because Javalin's ctx.result(InputStream)
                 // is asynchronous, and the finally block would delete the file before streaming completes.
                 ctx.contentType("application/octet-stream");
                 ctx.header("Content-Disposition", "attachment; filename=\"" + metric + "_" + lod + ".parquet\"");
-                ctx.header("Cache-Control", "max-age=3600"); // Cache for 1 hour
+                // Short cache to allow quick refresh while simulation is running
+                // Browser will revalidate after 5 seconds
+                ctx.header("Cache-Control", "max-age=5");
                 
                 byte[] mergedBytes = Files.readAllBytes(mergedFile);
                 ctx.result(mergedBytes);
@@ -652,14 +671,42 @@ public class AnalyticsController implements IController {
         }
 
         String outputPath = outputFile.toAbsolutePath().toString().replace("\\", "/");
+        // union_by_name=true allows merging Parquet files with different schemas
+        // (e.g., old files without avg_entropy, new files with it)
         String sql = String.format(
-            "COPY (SELECT * FROM read_parquet([%s]) ORDER BY tick) TO '%s' (FORMAT PARQUET, CODEC 'ZSTD')",
+            "COPY (SELECT * FROM read_parquet([%s], union_by_name=true) ORDER BY tick) TO '%s' (FORMAT PARQUET, CODEC 'ZSTD')",
             fileList, outputPath
         );
 
         try (Connection conn = DriverManager.getConnection("jdbc:duckdb:");
              Statement stmt = conn.createStatement()) {
             stmt.execute(sql);
+        }
+    }
+    
+    /**
+     * Validates that a Parquet file is readable and returns its row count.
+     * This catches race conditions where files are still being written.
+     *
+     * @param parquetFile Path to the Parquet file
+     * @return Number of rows in the file
+     * @throws Exception if file is not readable
+     */
+    private long validateParquetFile(Path parquetFile) throws Exception {
+        if (!duckDbDriverLoaded) {
+            throw new IllegalStateException("DuckDB driver not available");
+        }
+        
+        String path = parquetFile.toAbsolutePath().toString().replace("\\", "/");
+        String sql = String.format("SELECT COUNT(*) FROM read_parquet('%s')", path);
+        
+        try (Connection conn = DriverManager.getConnection("jdbc:duckdb:");
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            if (rs.next()) {
+                return rs.getLong(1);
+            }
+            return 0;
         }
     }
 

@@ -13,7 +13,7 @@ import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
 
 /**
- * Generates population metrics (alive count, total deaths, avg energy) in Parquet format.
+ * Generates population metrics (alive count, avg energy, avg entropy) in Parquet format.
  * <p>
  * This plugin demonstrates the simplified plugin API: only define schema and row extraction,
  * the indexer handles all I/O (DuckDB, Parquet, storage).
@@ -23,6 +23,7 @@ import org.evochora.datapipeline.api.contracts.TickData;
  *   <li>{@code tick} - Simulation tick number</li>
  *   <li>{@code alive_count} - Number of living organisms</li>
  *   <li>{@code avg_energy} - Average energy per organism</li>
+ *   <li>{@code avg_entropy} - Average entropy per organism</li>
  * </ul>
  * <p>
  * <strong>Note:</strong> 'Dead count per tick' is not tracked because TickData only contains
@@ -34,6 +35,7 @@ public class PopulationMetricsPlugin extends AbstractAnalyticsPlugin {
         .column("tick", ColumnType.BIGINT)
         .column("alive_count", ColumnType.INTEGER)
         .column("avg_energy", ColumnType.DOUBLE)
+        .column("avg_entropy", ColumnType.DOUBLE)
         .build();
 
     @Override
@@ -43,23 +45,27 @@ public class PopulationMetricsPlugin extends AbstractAnalyticsPlugin {
 
     @Override
     public List<Object[]> extractRows(TickData tick) {
-        // Count alive organisms and sum energy
+        // Count alive organisms and sum energy/entropy
         int alive = 0;
         long totalEnergy = 0;
+        long totalEntropy = 0;
         
         for (OrganismState org : tick.getOrganismsList()) {
             alive++;
             totalEnergy += org.getEnergy();
+            totalEntropy += org.getEntropyRegister();
         }
         
-        // Calculate average energy
+        // Calculate averages
         double avgEnergy = alive > 0 ? (double) totalEnergy / alive : 0.0;
+        double avgEntropy = alive > 0 ? (double) totalEntropy / alive : 0.0;
         
         // Return single row for this tick
         return Collections.singletonList(new Object[] {
             tick.getTickNumber(),   // tick (BIGINT)
             alive,                   // alive_count (INTEGER)
-            avgEnergy                // avg_energy (DOUBLE)
+            avgEnergy,               // avg_energy (DOUBLE)
+            avgEntropy               // avg_entropy (DOUBLE)
         });
     }
 
@@ -68,7 +74,7 @@ public class PopulationMetricsPlugin extends AbstractAnalyticsPlugin {
         ManifestEntry entry = new ManifestEntry();
         entry.id = metricId;
         entry.name = "Population Overview";
-        entry.description = "Overview of alive organisms, and average energy over time.";
+        entry.description = "Overview of alive organisms, average energy, and average entropy over time.";
         
         // Generate dataSources for all configured LOD levels
         entry.dataSources = new HashMap<>();
@@ -82,7 +88,7 @@ public class PopulationMetricsPlugin extends AbstractAnalyticsPlugin {
         entry.visualization.config = new HashMap<>();
         entry.visualization.config.put("x", "tick");
         entry.visualization.config.put("y", List.of("alive_count"));
-        entry.visualization.config.put("y2", List.of("avg_energy")); // Second axis
+        entry.visualization.config.put("y2", List.of("avg_energy", "avg_entropy")); // Second axis
 
         return entry;
     }
