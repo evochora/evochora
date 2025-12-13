@@ -27,8 +27,6 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.utils.compression.NoneCodec;
 import org.evochora.datapipeline.utils.compression.ZstdCodec;
-import org.evochora.junit.extensions.logging.ExpectLog;
-import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -254,9 +252,6 @@ class SingleBlobOrgStrategyTest {
     }
     
     @Test
-    @ExpectLog(level = LogLevel.WARN,
-               loggerPattern = "org.evochora.datapipeline.resources.database.h2.SingleBlobOrgStrategy",
-               messagePattern = ".*has no organisms - skipping.*")
     void testWriteStates_TickWithoutOrganisms() throws SQLException {
         // Given: Strategy with tick that has no organisms
         strategy = new SingleBlobOrgStrategy(ConfigFactory.empty());

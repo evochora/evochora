@@ -252,14 +252,15 @@ header {
     color: #888;
 }
 
-.organism-col-parent {
-    width: 60px;
+.organism-col-sr {
+    width: 120px;
     color: #888;
 }
 
-.organism-col-birth {
-    width: 75px;
+/* Info line in organism state view */
+.organism-info-line {
     color: #888;
+    font-style: italic;
 }
 
 .organism-col-ip {

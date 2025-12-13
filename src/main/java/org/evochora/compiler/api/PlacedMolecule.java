@@ -7,5 +7,15 @@ package org.evochora.compiler.api;
  *
  * @param type The type of the symbol (e.g., CODE, DATA, ENERGY).
  * @param value The value of the symbol.
+ * @param marker The marker of the molecule.
  */
-public record PlacedMolecule(int type, int value) {}
+public record PlacedMolecule(int type, int value, int marker) {
+    /**
+     * Convenience constructor for creating a placed molecule with a default marker of 0.
+     * @param type The type of the molecule.
+     * @param value The value of the molecule.
+     */
+    public PlacedMolecule(int type, int value) {
+        this(type, value, 0);
+    }
+}

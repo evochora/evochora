@@ -158,7 +158,7 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
         int writtenCount = 0;
         for (TickData tick : ticks) {
             if (tick.getOrganismsList().isEmpty()) {
-                log.warn("Tick {} has no organisms - skipping organism_ticks write", tick.getTickNumber());
+                log.debug("Tick {} has no organisms - skipping organism_ticks write", tick.getTickNumber());
                 continue;
             }
             
@@ -226,7 +226,8 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
                 dataPointersToArray(org),
                 org.getActiveDpIndex(),
                 parentId,
-                birthTick
+                birthTick,
+                org.getEntropyRegister()
             ));
         }
         

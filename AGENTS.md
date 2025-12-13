@@ -234,7 +234,12 @@ There is a central document for AI agent guidelines that defines architectural p
 - For orchestration logs: use ServiceManager/Node for INFO, keep service/resource details at DEBUG
 
 **Stack Traces:**
-- NEVER log exceptions with `log.error(..., exception)` - framework logs them at DEBUG level
+- **Expected errors** (configuration, user input, known failure modes): NO stack trace
+  - `log.warn("msg", args)` or `log.error("msg", args)` without exception parameter
+  - Stack trace available at DEBUG level if needed for support
+- **Unexpected errors / Bugs** (invariant violations, should-never-happen conditions): WITH stack trace
+  - `log.error("msg", args, new IllegalStateException("Invariant violation"))` 
+  - These indicate bugs that need immediate attention and debugging
 - For transient errors: `log.warn("msg", args)` without exception parameter
 - For fatal errors: `log.error("msg", args)` then throw exception
 - For interruption/shutdown: `log.debug("msg", args)` then re-throw
@@ -260,9 +265,16 @@ log.debug("H2 database '{}' connection pool started (max={}, minIdle={})", name,
 log.warn("Failed to send message to queue '{}'", queueName);
 recordError("SEND_FAILED", "Queue full", "Queue: " + queueName);
 
-// Good - Fatal error (ERROR)
+// Good - Fatal error (ERROR) - expected, no stack trace
 log.error("Cannot initialize database connection pool for '{}'", dbName);
 throw new RuntimeException("Database initialization failed");
+
+// Good - Bug detection (ERROR) - unexpected, WITH stack trace
+if (type == TYPE_CODE && value == 0 && marker != 0) {
+    log.error("CODE:0 with marker={} - fixing to marker=0", marker,
+              new IllegalStateException("Invariant violation: CODE:0 must have marker=0"));
+    marker = 0;
+}
 
 // Good - Interruption (DEBUG)
 log.debug("Service '{}' interrupted during queue.take()", serviceName);

@@ -37,7 +37,7 @@ public class NopInstruction extends Instruction {
      * @return The planned instruction.
      */
     public static Instruction plan(Organism organism, Environment environment) {
-        int fullOpcodeId = environment.getMolecule(organism.getIp()).toInt();
+        int fullOpcodeId = environment.getMolecule(organism.getIp()).value();
         return new NopInstruction(organism, fullOpcodeId);
     }
 }

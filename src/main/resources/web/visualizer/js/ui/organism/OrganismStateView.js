@@ -414,6 +414,7 @@ export class OrganismStateView {
             (JSON.stringify(state.callStack) !== JSON.stringify(previousState.callStack));
         
         // Format state view (IP, DV, ER, DPs are shown in BasicInfoView changeable-box, not here)
+        // Birth, MR, Parent are shown in the separate info section above
         const stateLines = `DR:  ${formatRegisters(state.dataRegisters, true, previousState?.dataRegisters)}\nPR:  ${formatRegisters(state.procedureRegisters, true, previousState?.procedureRegisters)}\nFPR: ${formatRegisters(state.formalParamRegisters, true, previousState?.formalParamRegisters)}\nLR:  ${formatRegisters(state.locationRegisters, true, previousState?.locationRegisters)}\n${dataStackChanged ? '<div class="changed-line">DS:  ' : 'DS:  '}${formatStack(state.dataStack, state.dataRegisters?.length || 8, true)}${dataStackChanged ? '</div>' : ''}\n${locationStackChanged ? '<div class="changed-line">LS:  ' : 'LS:  '}${formatStack(state.locationStack, state.dataRegisters?.length || 8, true)}${locationStackChanged ? '</div>' : ''}\n${callStackChanged ? '<div class="changed-line">CS:  ' : 'CS:  '}${formatCallStack(state.callStack, state)}${callStackChanged ? '</div>' : ''}`;
 
         el.innerHTML = `<div class="code-view" style="font-size:0.9em;">${stateLines}</div>`;

@@ -1,5 +1,7 @@
 package org.evochora.runtime.instructions;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.Instruction;
@@ -8,10 +10,8 @@ import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
 
 /**
  * Contains low-level unit tests for the execution of environment interaction instructions (PEEK, POKE)
@@ -328,6 +328,99 @@ public class VMEnvironmentInteractionInstructionTest {
         assertThat(org.getEr()).isEqualTo(expectedEnergy).as("Energy should be consumed correctly: base 1 + poke 5 = 6 (no peek costs on empty cell)");
     }
 
+
+    /**
+     * Tests that POKE correctly uses the organism's MR (Molecule Marker Register)
+     * when writing a molecule to the environment.
+     * This verifies that the marker is propagated from the organism to the written molecule.
+     */
+    @Test
+    @Tag("unit")
+    void testPokeUsesMarkerFromMrRegister() {
+        int[] vec = new int[]{0, 1};
+        int payload = new Molecule(Config.TYPE_DATA, 42).toInt();
+        
+        // Set the organism's MR to a specific value
+        int expectedMarker = 7;
+        org.setMr(expectedMarker);
+        
+        org.setDr(0, payload);
+        org.setDr(1, vec);
+
+        placeInstruction("POKE", 0, 1);
+        int[] targetPos = org.getTargetCoordinate(org.getDp(0), vec, environment);
+
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
+        
+        // Verify the molecule was written with the correct marker
+        Molecule writtenMolecule = environment.getMolecule(targetPos);
+        assertThat(writtenMolecule.value()).isEqualTo(42).as("Molecule value should be 42");
+        assertThat(writtenMolecule.type()).isEqualTo(Config.TYPE_DATA).as("Molecule type should be DATA");
+        
+        // Molecule.marker() now returns the marker value directly (0-15 range)
+        assertThat(writtenMolecule.marker()).isEqualTo(expectedMarker)
+            .as("Molecule marker should be set from organism's MR register");
+    }
+
+    /**
+     * Tests that MR is masked to 4 bits (0-15) when set.
+     */
+    @Test
+    @Tag("unit")
+    void testMrIsMaskedTo4Bits() {
+        // Set MR to a value larger than 4 bits
+        org.setMr(0xFF); // 255 in decimal
+        
+        // Verify it was masked to 4 bits
+        assertThat(org.getMr()).isEqualTo(0xF).as("MR should be masked to 4 bits (0-15)");
+    }
+
+    // ==================== Entropy Tests ====================
+
+    @Test
+    @Tag("unit")
+    void testEntropyIncreasesWithInstructionExecution() {
+        // Given: Organism starts with SR=0
+        assertThat(org.getSr()).isEqualTo(0);
+        
+        // Place a simple NOP instruction
+        placeInstruction("NOP");
+        
+        // When: Execute one tick
+        sim.tick();
+        
+        // Then: Entropy should have increased (instruction cost = 1)
+        assertThat(org.getSr()).isGreaterThan(0);
+    }
+
+    @Test
+    @Tag("unit")
+    void testPokeReducesEntropy() {
+        // Given: Organism with some entropy
+        org.addSr(100);
+        int initialSr = org.getSr();
+        assertThat(initialSr).isEqualTo(100);
+        
+        // Setup POKE to write DATA:50 to an empty cell
+        int moleculeValue = 50;
+        int[] vec = new int[]{0, 1};
+        org.setDr(0, new Molecule(Config.TYPE_DATA, moleculeValue).toInt());
+        org.setDr(1, vec);
+        placeInstruction("POKE", 0, 1);
+        
+        // When: Execute one tick
+        sim.tick();
+        
+        // Then: Entropy should have decreased by the molecule value
+        // (minus the instruction cost which adds entropy)
+        // Net effect: +1 (instruction cost) - 50 (molecule value) = -49
+        assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
+        assertThat(org.getSr()).isLessThan(initialSr);
+        // Entropy should be: 100 + 1 (cost) - 50 (dissipation) = 51
+        assertThat(org.getSr()).isEqualTo(51);
+    }
 
     @org.junit.jupiter.api.AfterEach
     void assertNoInstructionFailure() {

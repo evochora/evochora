@@ -384,6 +384,10 @@ public abstract class Instruction {
         // New: GDVR and GDVS (get DV value)
         registerFamily(StateInstruction.class, Map.of(188, "GDVR"), List.of(OperandSource.REGISTER));
         registerFamily(StateInstruction.class, Map.of(189, "GDVS"), List.of());
+        // New: SMR family (set molecule marker register)
+        registerFamily(StateInstruction.class, Map.of(192, "SMR"), List.of(OperandSource.REGISTER));
+        registerFamily(StateInstruction.class, Map.of(193, "SMRI"), List.of(OperandSource.IMMEDIATE));
+        registerFamily(StateInstruction.class, Map.of(194, "SMRS"), List.of());
     }
 
     private static final int DEFAULT_VECTOR_DIMS = 2;
@@ -419,7 +423,7 @@ public abstract class Instruction {
 
                 BiFunction<Organism, Environment, Instruction> planner = (org, world) -> {
                     try {
-                        return constructor.newInstance(org, world.getMolecule(org.getIp()).toInt());
+                        return constructor.newInstance(org, world.getMolecule(org.getIp()).value());
                     } catch (Exception e) { throw new RuntimeException("Failed to plan instruction " + name, e); }
                 };
 

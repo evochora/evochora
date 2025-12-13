@@ -104,6 +104,10 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
         }
         String jdbcUrl = options.getString("jdbcUrl");
         
+        // Validate database directory exists BEFORE attempting to connect
+        // This prevents H2 from printing stack traces when the filesystem is not mounted
+        validateDatabasePath(name, jdbcUrl);
+        
         // HikariCP configuration (same pattern as H2Database)
         String username = options.hasPath("username") ? options.getString("username") : "sa";
         String password = options.hasPath("password") ? options.getString("password") : "";
@@ -426,6 +430,61 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
         if (dataSource != null && !dataSource.isClosed()) {
             dataSource.close();
             log.debug("H2 topic '{}' connection pool closed", getResourceName());
+        }
+    }
+    
+    /**
+     * Validates that the database path is accessible before attempting to connect.
+     * <p>
+     * This prevents H2 from printing stack traces when the filesystem is not mounted
+     * or the directory doesn't exist.
+     *
+     * @param name    Resource name for error messages
+     * @param jdbcUrl JDBC URL to validate
+     * @throws RuntimeException if the database path is not accessible
+     */
+    private static void validateDatabasePath(String name, String jdbcUrl) {
+        if (!jdbcUrl.startsWith("jdbc:h2:")) {
+            return;
+        }
+        
+        String dbPath = jdbcUrl.substring(8);
+        
+        if (dbPath.startsWith("mem:")) {
+            return;
+        }
+        
+        if (dbPath.startsWith("file:")) {
+            dbPath = dbPath.substring(5);
+        }
+        
+        int semicolonIndex = dbPath.indexOf(';');
+        if (semicolonIndex > 0) {
+            dbPath = dbPath.substring(0, semicolonIndex);
+        }
+        
+        // Skip validation for temp directories (used in tests)
+        if (dbPath.startsWith("/tmp/") || dbPath.startsWith(System.getProperty("java.io.tmpdir"))) {
+            return;
+        }
+        
+        java.io.File dbFile = new java.io.File(dbPath);
+        java.io.File parentDir = dbFile.getParentFile();
+        
+        if (parentDir != null && !parentDir.exists()) {
+            // Try to create the directory if grandparent exists
+            java.io.File grandparentDir = parentDir.getParentFile();
+            if (grandparentDir != null && grandparentDir.exists()) {
+                if (!parentDir.mkdirs()) {
+                    throw new RuntimeException(String.format(
+                        "Cannot create H2 topic '%s': failed to create directory: %s",
+                        name, parentDir.getAbsolutePath()));
+                }
+            } else {
+                throw new RuntimeException(String.format(
+                    "Cannot create H2 topic '%s': parent directory does not exist: %s",
+                    name, parentDir.getAbsolutePath()));
+            }
         }
     }
 }

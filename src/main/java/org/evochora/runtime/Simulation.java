@@ -128,10 +128,18 @@ public class Simulation {
         resolveConflicts(plannedInstructions);
 
         for (Instruction instruction : plannedInstructions) {
+            Organism organism = instruction.getOrganism();
+            boolean wasAlive = !organism.isDead();
+            
             if (instruction.isExecutedInTick()) {
                 vm.execute(instruction, this);
             }
-            Organism organism = instruction.getOrganism();
+            
+            // Clear ownership if organism died during this tick
+            if (wasAlive && organism.isDead()) {
+                environment.clearOwnershipFor(organism.getId());
+            }
+            
             if (organism.isLoggingEnabled()) {
                 LOG.debug("Tick={} Org={} Instr={} Status={}",
                         currentTick,

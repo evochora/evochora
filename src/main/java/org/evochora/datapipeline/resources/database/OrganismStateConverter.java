@@ -661,7 +661,9 @@ public final class OrganismStateConverter {
                 state.getInstructionFailed(),
                 state.getFailureReason(),
                 failureStack,
-                instructions
+                instructions,
+                state.getEntropyRegister(),
+                state.getMoleculeMarkerRegister()
         );
     }
 }

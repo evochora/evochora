@@ -26,6 +26,12 @@ public final class Config {
     public static final int MAX_ORGANISM_ENERGY = 32767; // avoid register overflow using NRG instruction (16 bit)
 
     /**
+     * The maximum entropy an organism can accumulate before death.
+     * When SR exceeds this value, the organism dies.
+     */
+    public static final int MAX_ORGANISM_ENTROPY = 32767; // same as MAX_ORGANISM_ENERGY for now
+
+    /**
      * If true, enforces strict type checking during operations.
      */
     public static final boolean STRICT_TYPING = true;
@@ -84,17 +90,39 @@ public final class Config {
     /**
      * The number of bits used to represent the value part of a cell.
      */
-    public static final int VALUE_BITS = 16;
+    public static final int VALUE_BITS = 20;
 
     /**
      * The number of bits used to represent the type part of a cell.
      */
-    public static final int TYPE_BITS = 4;
+    public static final int TYPE_BITS = 8;
+
+    /**
+     * The number of bits used to represent the marker part of a cell.
+     */
+    public static final int MARKER_BITS = 4;
 
     /**
      * The bit offset for the type information within a cell's integer representation.
      */
     public static final int TYPE_SHIFT = VALUE_BITS;
+
+    /**
+     * The bit offset for the marker information within a cell's integer representation.
+     */
+    public static final int MARKER_SHIFT = TYPE_SHIFT + TYPE_BITS;
+
+    /**
+     * A bitmask to extract the marker information from a cell's integer representation.
+     * This mask is shifted to the marker's bit position.
+     */
+    public static final int MARKER_MASK = ((1 << MARKER_BITS) - 1) << MARKER_SHIFT;
+
+    /**
+     * A bitmask to constrain raw marker values to valid range (0-15 for 4-bit marker).
+     * Use this when masking raw values, not when extracting from packed integers.
+     */
+    public static final int MARKER_VALUE_MASK = (1 << MARKER_BITS) - 1;
 
     /**
      * A bitmask to extract the type information from a cell's integer representation.

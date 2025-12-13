@@ -1,17 +1,17 @@
 package org.evochora.runtime;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
+
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.InstructionArgumentType;
 import org.evochora.runtime.isa.InstructionSignature;
+import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Environment;
-
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
 
 /**
  * The core of the execution environment.
@@ -51,7 +51,7 @@ public class VirtualMachine {
             }
         }
 
-        int opcodeId = molecule.toInt();
+        int opcodeId = molecule.value();  // Use value only, not packed int (which includes marker)
         java.util.function.BiFunction<Organism, Environment, Instruction> planner = Instruction.getPlannerById(opcodeId);
         if (planner != null) {
             return planner.apply(organism, this.environment);
@@ -135,7 +135,9 @@ public class VirtualMachine {
         // Track energy before execution to calculate total cost
         int energyBefore = organism.getEr();
         
-        organism.takeEr(instruction.getCost(organism, this.environment, rawArgs));
+        int instructionCost = instruction.getCost(organism, this.environment, rawArgs);
+        organism.takeEr(instructionCost);
+        organism.addSr(instructionCost);  // Entropy generation: every action generates entropy
 
         ExecutionContext context = new ExecutionContext(organism, this.environment, false); // Always run in debug mode
         ProgramArtifact artifact = simulation.getProgramArtifacts().get(organism.getProgramId());
@@ -160,6 +162,11 @@ public class VirtualMachine {
 
         if (organism.getEr() <= 0) {
             organism.kill("Ran out of energy");
+            return;
+        }
+
+        if (organism.getSr() >= Config.MAX_ORGANISM_ENTROPY) {
+            organism.kill("Entropy limit exceeded");
             return;
         }
 

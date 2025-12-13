@@ -60,6 +60,8 @@ public class Organism {
     private int activeDpIndex;
     private int[] dv;
     private int er;
+    private int sr; // Entropy Register
+    private int mr; // Molecule Marker Register
     private final List<Object> drs;
     private final List<Object> prs;
     private final List<Object> fprs;
@@ -130,6 +132,8 @@ public class Organism {
             this.dps.add(Arrays.copyOf(startIp, startIp.length));
         }
         this.er = initialEnergy;
+        this.sr = 0;
+        this.mr = 0;
         this.logger = logger;
         this.simulation = simulation;
         this.dv = new int[startIp.length];
@@ -301,7 +305,7 @@ public class Organism {
      */
     public void skipNextInstruction(Environment environment) {
         int[] currentInstructionIp = this.getIpBeforeFetch();
-        int currentInstructionOpcode = environment.getMolecule(currentInstructionIp).toInt();
+        int currentInstructionOpcode = environment.getMolecule(currentInstructionIp).value();
         int currentInstructionLength = Instruction.getInstructionLengthById(currentInstructionOpcode, environment);
 
         int[] nextInstructionIp = currentInstructionIp;
@@ -309,7 +313,7 @@ public class Organism {
             nextInstructionIp = getNextInstructionPosition(nextInstructionIp, this.getDvBeforeFetch(), environment);
         }
 
-        int nextOpcode = environment.getMolecule(nextInstructionIp).toInt();
+        int nextOpcode = environment.getMolecule(nextInstructionIp).value();
         int lengthToSkip = Instruction.getInstructionLengthById(nextOpcode, environment);
 
         int[] finalIp = nextInstructionIp;
@@ -512,6 +516,26 @@ public class Organism {
     }
 
     /**
+     * Adds entropy to the organism's Entropy Register (SR).
+     * The value is clamped to MAX_ORGANISM_ENTROPY.
+     *
+     * @param amount The amount of entropy to add.
+     */
+    public void addSr(int amount) { 
+        this.sr = Math.min(this.sr + amount, Config.MAX_ORGANISM_ENTROPY); 
+    }
+
+    /**
+     * Subtracts entropy from the organism's Entropy Register (SR).
+     * The value is clamped to 0 (cannot go negative).
+     *
+     * @param amount The amount of entropy to subtract.
+     */
+    public void takeSr(int amount) { 
+        this.sr = Math.max(0, this.sr - amount); 
+    }
+
+    /**
      * Sets a flag to prevent the VM from automatically advancing the IP at the end of the tick.
      *
      * @param skip {@code true} to skip the IP advance.
@@ -531,23 +555,15 @@ public class Organism {
 
     /**
      * Checks if a cell, identified by its owner's ID, is accessible to this organism.
-     * A cell is considered accessible if it is owned by the organism itself or its direct parent.
+     * A cell is considered accessible only if it is owned by the organism itself.
+     * Parent-owned cells are treated as foreign.
      *
      * @param ownerId The ID of the cell's owner.
-     * @return {@code true} if the cell is accessible, otherwise {@code false}.
+     * @return {@code true} if the cell is accessible (owned by this organism), otherwise {@code false}.
      */
     public boolean isCellAccessible(int ownerId) {
-        // A cell is always accessible to its owner.
-        if (ownerId == this.id) {
-            return true;
-        }
-        // A cell is also accessible if it belongs to the direct parent.
-        Integer parent = this.getParentId();
-        if (parent != null && ownerId == parent) {
-            return true;
-        }
-        // Otherwise, it's considered foreign.
-        return false;
+        // A cell is only accessible to its owner.
+        return ownerId == this.id;
     }
 
     /** @return The simulation tick number at which the organism was born. */
@@ -580,6 +596,19 @@ public class Organism {
     public void setLastInstructionExecution(InstructionExecutionData data) { this.lastInstructionExecution = data; }
     /** @return The current energy level (ER). */
     public int getEr() { return er; }
+    /** @return The current entropy level (SR). */
+    public int getSr() { return sr; }
+    /** @return The current molecule marker (MR). */
+    public int getMr() { return mr; }
+
+    /**
+     * Sets the molecule marker (MR). The value is masked to 4 bits (0-15).
+     * @param value The new marker value.
+     */
+    public void setMr(int value) {
+        this.mr = value & Config.MARKER_VALUE_MASK;
+    }
+
     /** @return A copy of the list of Data Registers (DRs). */
     public List<Object> getDrs() { return new ArrayList<>(drs); }
     /** @return true if the organism is dead, false otherwise. */

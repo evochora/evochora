@@ -29,6 +29,7 @@
   .ORG 0|2
   CONTINUE_INIT:                                  # State laden
     STATIC2_LOAD %DIRMASK %SIDEVEC
+    SMRI DATA:1                                   # Marker auf 1 setzen für Ownership-Transfer bei FORK
     JMPI CONTINUE_INIT2
 
   .ORG 0|3
@@ -348,6 +349,7 @@
     SETI %SIDEVEC DATA:0
 
   CONTINUE_STORE_STATE:
+    SMRI DATA:0                                   # Marker zurücksetzen vor Rückkehr
     # vor RET: "in einem Rutsch" speichern
     STATIC2_STORE %DIRMASK %SIDEVEC
     RET

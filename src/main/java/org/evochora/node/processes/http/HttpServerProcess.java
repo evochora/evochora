@@ -249,7 +249,13 @@ public class HttpServerProcess extends AbstractProcess {
                 try {
                     registerController(def, app);
                 } catch (final Exception e) {
-                    LOGGER.error("Failed to register controller at path '{}'", def.basePath, e);
+                    // Extract root cause message for clean error output (no stack trace)
+                    Throwable cause = e;
+                    while (cause.getCause() != null && cause.getCause() != cause) {
+                        cause = cause.getCause();
+                    }
+                    String causeMsg = cause.getMessage() != null ? cause.getMessage() : cause.getClass().getSimpleName();
+                    LOGGER.error("Failed to register controller at path '{}': {}", def.basePath, causeMsg);
                 }
             }
         }

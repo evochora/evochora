@@ -1,5 +1,7 @@
 package org.evochora.runtime.instructions;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.Instruction;
@@ -8,10 +10,8 @@ import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
 
 /**
  * Contains low-level unit tests for the execution of various state-related instructions
@@ -483,6 +483,127 @@ public class VMStateInstructionTest {
         assertThat(child).isNotNull();
         assertThat(child.getDv()).isEqualTo(childDv);
         assertThat(child.getParentId()).isEqualTo(org.getId());
+    }
+
+    // ==================== SMR Instruction Tests ====================
+
+    @Test
+    @Tag("unit")
+    void testSmr_SetsMarkerRegisterFromDataRegister() {
+        int markerValue = 7;
+        org.setDr(0, new Molecule(Config.TYPE_DATA, markerValue).toInt());
+        
+        placeInstruction("SMR", 0); // SMR %DR0
+        sim.tick();
+        
+        assertThat(org.getMr()).isEqualTo(markerValue);
+    }
+
+    @Test
+    @Tag("unit")
+    void testSmri_SetsMarkerRegisterFromImmediate() {
+        int markerValue = 12;
+        
+        placeInstruction("SMRI", new Molecule(Config.TYPE_DATA, markerValue).toInt());
+        sim.tick();
+        
+        assertThat(org.getMr()).isEqualTo(markerValue);
+    }
+
+    @Test
+    @Tag("unit")
+    void testSmrs_SetsMarkerRegisterFromStack() {
+        int markerValue = 9;
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, markerValue).toInt());
+        
+        placeInstruction("SMRS");
+        sim.tick();
+        
+        assertThat(org.getMr()).isEqualTo(markerValue);
+        assertThat(org.getDataStack().isEmpty()).isTrue();
+    }
+
+    @Test
+    @Tag("unit")
+    void testSmr_MasksValueTo4Bits() {
+        // Value 20 = 0b10100, should be masked to 0b0100 = 4
+        int largeValue = 20;
+        org.setDr(0, new Molecule(Config.TYPE_DATA, largeValue).toInt());
+        
+        placeInstruction("SMR", 0);
+        sim.tick();
+        
+        assertThat(org.getMr()).isEqualTo(4); // 20 & 0xF = 4
+    }
+
+    @Test
+    @Tag("unit")
+    void testSmr_FailsWithNonDataType() {
+        // Set register to ENERGY type instead of DATA
+        org.setDr(0, new Molecule(Config.TYPE_ENERGY, 5).toInt());
+        
+        placeInstruction("SMR", 0);
+        sim.tick();
+        
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("DATA");
+        
+        // Reset for afterEach check
+        org.resetTickState();
+    }
+
+    // ==================== FORK with Ownership Transfer Tests ====================
+
+    @Test
+    @Tag("unit")
+    void testFork_TransfersOwnershipBasedOnMarker() {
+        // Setup: Parent organism places molecules with marker=3
+        org.setMr(3);
+        int[] moleculePos1 = new int[]{10, 10};
+        int[] moleculePos2 = new int[]{11, 11};
+        int[] moleculePos3 = new int[]{12, 12}; // Different marker
+        
+        // Place molecules owned by parent with marker 3
+        Molecule mol1 = new Molecule(Config.TYPE_DATA, 100, 3);
+        Molecule mol2 = new Molecule(Config.TYPE_STRUCTURE, 50, 3);
+        Molecule mol3 = new Molecule(Config.TYPE_DATA, 200, 5); // Different marker
+        
+        environment.setMolecule(mol1, org.getId(), moleculePos1);
+        environment.setMolecule(mol2, org.getId(), moleculePos2);
+        environment.setMolecule(mol3, org.getId(), moleculePos3);
+        
+        // Prepare FORK: delta=1|0, energy=100, dv=1|0
+        org.setDr(0, new int[]{1, 0}); // delta
+        org.setDr(1, new Molecule(Config.TYPE_DATA, 100).toInt()); // energy
+        org.setDr(2, new int[]{1, 0}); // childDv
+        
+        // Place empty cell for child IP
+        int[] childIpPos = org.getTargetCoordinate(org.getActiveDp(), new int[]{1, 0}, environment);
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, 0), childIpPos);
+        
+        placeInstruction("FORK", 0, 1, 2);
+        sim.tick();
+        
+        // Find child organism
+        Organism child = sim.getOrganisms().stream()
+            .filter(o -> o.getId() != org.getId())
+            .findFirst()
+            .orElse(null);
+        assertThat(child).isNotNull();
+        
+        // Molecules with marker=3 should now be owned by child
+        assertThat(environment.getOwnerId(moleculePos1)).isEqualTo(child.getId());
+        assertThat(environment.getOwnerId(moleculePos2)).isEqualTo(child.getId());
+        
+        // Molecule with marker=5 should still be owned by parent
+        assertThat(environment.getOwnerId(moleculePos3)).isEqualTo(org.getId());
+        
+        // Transferred molecules should have marker reset to 0
+        assertThat(environment.getMolecule(moleculePos1).marker()).isEqualTo(0);
+        assertThat(environment.getMolecule(moleculePos2).marker()).isEqualTo(0);
+        
+        // Non-transferred molecule keeps its marker
+        assertThat(environment.getMolecule(moleculePos3).marker()).isEqualTo(5);
     }
 
     @org.junit.jupiter.api.AfterEach
