@@ -131,8 +131,12 @@ export class OrganismPanelManager {
      * @private
      */
     renderOrganismRow(org, isSelected, showDeselect = false) {
-        // Format SR (entropy register)
-        const srDisplay = org.entropyRegister != null ? org.entropyRegister : 0;
+        // Format SR (entropy register) with percentage (aligned: "  0%     0" to "100% 32767")
+        const MAX_ENTROPY = 32767;
+        const srValue = org.entropyRegister != null ? org.entropyRegister : 0;
+        const srPercent = String(Math.round((srValue / MAX_ENTROPY) * 100)).padStart(3);
+        const srValuePadded = String(srValue).padStart(5);
+        const srDisplay = `${srPercent}% ${srValuePadded}`;
         
         // Format IP with direction arrow
         let ipDisplay = '-';

@@ -135,7 +135,9 @@ public class VirtualMachine {
         // Track energy before execution to calculate total cost
         int energyBefore = organism.getEr();
         
-        organism.takeEr(instruction.getCost(organism, this.environment, rawArgs));
+        int instructionCost = instruction.getCost(organism, this.environment, rawArgs);
+        organism.takeEr(instructionCost);
+        organism.addSr(instructionCost);  // Entropy generation: every action generates entropy
 
         ExecutionContext context = new ExecutionContext(organism, this.environment, false); // Always run in debug mode
         ProgramArtifact artifact = simulation.getProgramArtifacts().get(organism.getProgramId());

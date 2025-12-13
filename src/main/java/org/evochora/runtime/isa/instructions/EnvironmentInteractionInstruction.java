@@ -104,6 +104,9 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
                 additionalCost = 5;
             }
             if (additionalCost > 0) organism.takeEr(additionalCost);
+            
+            // Entropy dissipation: POKE reduces entropy by the molecule's value
+            organism.takeSr(Math.abs(toWrite.toScalarValue()));
 
             if (environment.getMolecule(targetCoordinate).isEmpty()) {
                 // For CODE:0, always set owner to 0
@@ -269,6 +272,9 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
                 additionalCost = 5;
             }
             if (additionalCost > 0) organism.takeEr(additionalCost);
+            
+            // Entropy dissipation: PPK (like POKE) reduces entropy by the molecule's value
+            organism.takeSr(Math.abs(toWrite.toScalarValue()));
 
             // Write the new value (cell is now empty, so this should always succeed)
             // For CODE:0, always set owner to 0

@@ -516,6 +516,26 @@ public class Organism {
     }
 
     /**
+     * Adds entropy to the organism's Entropy Register (SR).
+     * The value is clamped to MAX_ORGANISM_ENTROPY.
+     *
+     * @param amount The amount of entropy to add.
+     */
+    public void addSr(int amount) { 
+        this.sr = Math.min(this.sr + amount, Config.MAX_ORGANISM_ENTROPY); 
+    }
+
+    /**
+     * Subtracts entropy from the organism's Entropy Register (SR).
+     * The value is clamped to 0 (cannot go negative).
+     *
+     * @param amount The amount of entropy to subtract.
+     */
+    public void takeSr(int amount) { 
+        this.sr = Math.max(0, this.sr - amount); 
+    }
+
+    /**
      * Sets a flag to prevent the VM from automatically advancing the IP at the end of the tick.
      *
      * @param skip {@code true} to skip the IP advance.

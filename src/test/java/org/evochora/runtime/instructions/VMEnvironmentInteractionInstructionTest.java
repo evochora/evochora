@@ -377,6 +377,51 @@ public class VMEnvironmentInteractionInstructionTest {
         assertThat(org.getMr()).isEqualTo(0xF).as("MR should be masked to 4 bits (0-15)");
     }
 
+    // ==================== Entropy Tests ====================
+
+    @Test
+    @Tag("unit")
+    void testEntropyIncreasesWithInstructionExecution() {
+        // Given: Organism starts with SR=0
+        assertThat(org.getSr()).isEqualTo(0);
+        
+        // Place a simple NOP instruction
+        placeInstruction("NOP");
+        
+        // When: Execute one tick
+        sim.tick();
+        
+        // Then: Entropy should have increased (instruction cost = 1)
+        assertThat(org.getSr()).isGreaterThan(0);
+    }
+
+    @Test
+    @Tag("unit")
+    void testPokeReducesEntropy() {
+        // Given: Organism with some entropy
+        org.addSr(100);
+        int initialSr = org.getSr();
+        assertThat(initialSr).isEqualTo(100);
+        
+        // Setup POKE to write DATA:50 to an empty cell
+        int moleculeValue = 50;
+        int[] vec = new int[]{0, 1};
+        org.setDr(0, new Molecule(Config.TYPE_DATA, moleculeValue).toInt());
+        org.setDr(1, vec);
+        placeInstruction("POKE", 0, 1);
+        
+        // When: Execute one tick
+        sim.tick();
+        
+        // Then: Entropy should have decreased by the molecule value
+        // (minus the instruction cost which adds entropy)
+        // Net effect: +1 (instruction cost) - 50 (molecule value) = -49
+        assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
+        assertThat(org.getSr()).isLessThan(initialSr);
+        // Entropy should be: 100 + 1 (cost) - 50 (dissipation) = 51
+        assertThat(org.getSr()).isEqualTo(51);
+    }
+
     @org.junit.jupiter.api.AfterEach
     void assertNoInstructionFailure() {
         // Only assert no failure for tests that don't expect failures
