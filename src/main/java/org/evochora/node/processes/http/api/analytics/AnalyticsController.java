@@ -627,6 +627,12 @@ public class AnalyticsController implements IController {
                 // Browser will revalidate after 5 seconds
                 ctx.header("Cache-Control", "max-age=5");
                 
+                // Expose metadata for client-side debugging
+                ctx.header("X-LOD-Level", lod);
+                ctx.header("X-File-Count", String.valueOf(tempFiles.size()));
+                ctx.header("X-Row-Count", String.valueOf(rowCount));
+                ctx.header("X-Process-Time-Ms", String.valueOf(duration));
+                
                 byte[] mergedBytes = Files.readAllBytes(mergedFile);
                 ctx.result(mergedBytes);
 

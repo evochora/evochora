@@ -124,7 +124,10 @@ export async function query(sql) {
         return rows;
     }
     
-    /**
+        // Counter for unique file names
+    let fileCounter = 0;
+    
+/**
      * Registers a Parquet file blob and queries it with the provided SQL.
      * Used for client-side DuckDB WASM queries on merged Parquet from server.
      * 
@@ -137,7 +140,8 @@ export async function queryParquetBlob(parquetBlob, sql) {
             await init();
         }
         
-        const fileName = 'data.parquet';
+        // Use unique filename to avoid conflicts with parallel queries
+        const fileName = `data_${++fileCounter}.parquet`;
         
         // Register the blob as a file in DuckDB's virtual filesystem
         await db.registerFileHandle(fileName, parquetBlob, duckdbModule.DuckDBDataProtocol.BROWSER_FILEREADER, true);

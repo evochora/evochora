@@ -79,12 +79,15 @@ export async function queryData(runId, metric, lod = null) {
      * 
      * @param {string} metric - Metric identifier (e.g., 'vital_stats')
      * @param {string} [runId] - Optional run ID. If not specified, server uses latest.
-     * @param {string} [lod='lod0'] - LOD level
-     * @returns {Promise<Blob>} Merged Parquet file as Blob
+     * @param {string} [lod=null] - LOD level. If null, server auto-selects optimal LOD.
+     * @returns {Promise<{blob: Blob, metadata: {lod: string, fileCount: number, rowCount: number, processTimeMs: number}}>}
      * @throws {Error} With code 'NO_DATA' if metric has no data yet
      */
-export async function fetchParquetBlob(metric, runId = null, lod = 'lod0') {
-        let url = `${BASE_PATH}/parquet?metric=${encodeURIComponent(metric)}&lod=${encodeURIComponent(lod)}`;
+export async function fetchParquetBlob(metric, runId = null, lod = null) {
+        let url = `${BASE_PATH}/parquet?metric=${encodeURIComponent(metric)}`;
+        if (lod) {
+            url += `&lod=${encodeURIComponent(lod)}`;
+        }
         if (runId) {
             url += `&runId=${encodeURIComponent(runId)}`;
         }
@@ -99,6 +102,16 @@ export async function fetchParquetBlob(metric, runId = null, lod = 'lod0') {
             const text = await response.text();
             throw new Error(`API Error ${response.status}: ${text || response.statusText}`);
         }
-        return await response.blob();
+        
+        // Extract metadata from response headers
+        const metadata = {
+            lod: response.headers.get('X-LOD-Level') || 'unknown',
+            fileCount: parseInt(response.headers.get('X-File-Count') || '0', 10),
+            rowCount: parseInt(response.headers.get('X-Row-Count') || '0', 10),
+            processTimeMs: parseInt(response.headers.get('X-Process-Time-Ms') || '0', 10)
+        };
+        
+        const blob = await response.blob();
+        return { blob, metadata };
 }
 
