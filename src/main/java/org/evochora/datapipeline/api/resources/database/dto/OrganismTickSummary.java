@@ -9,15 +9,24 @@ package org.evochora.datapipeline.api.resources.database.dto;
  */
 public final class OrganismTickSummary {
 
+    /** The unique organism identifier. */
     public final int organismId;
+    /** The current energy level (ER). */
     public final int energy;
+    /** The instruction pointer coordinates. */
     public final int[] ip;
+    /** The direction vector for IP advancement. */
     public final int[] dv;
+    /** The data pointer coordinates (one per DP index). */
     public final int[][] dataPointers;
+    /** The index of the currently active data pointer (0 or 1). */
     public final int activeDpIndex;
+    /** The parent organism ID, or {@code null} if this is a primordial organism. */
     public final Integer parentId;
+    /** The tick at which the organism was born. */
     public final long birthTick;
-    public final int entropyRegister;  // SR
+    /** The entropy register (SR) value - thermodynamic constraint. */
+    public final int entropyRegister;
 
     /**
      * Creates a new organism tick summary.
