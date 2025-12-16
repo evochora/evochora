@@ -208,14 +208,30 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
         List<String> results = new ArrayList<>();
 
         try (Stream<Path> stream = Files.walk(searchDir.toPath())) {
-            List<String> allFiles = stream
-                    // Filter .tmp files BEFORE checking isRegularFile to avoid race conditions
-                    .filter(p -> {
-                        String filename = p.getFileName().toString();
-                        // Filter out temporary files (.UUID.tmp suffix)
-                        return !filename.endsWith(".tmp");
-                    })
-                    .filter(Files::isRegularFile)
+            // Use iterator to catch NoSuchFileException during iteration
+            java.util.Iterator<Path> iterator = stream.iterator();
+            List<Path> validPaths = new ArrayList<>();
+            
+            while (iterator.hasNext()) {
+                try {
+                    Path path = iterator.next();
+                    // Skip .tmp files and directories
+                    String filename = path.getFileName().toString();
+                    if (!filename.endsWith(".tmp") && Files.isRegularFile(path)) {
+                        validPaths.add(path);
+                    }
+                } catch (java.io.UncheckedIOException e) {
+                    // Unwrap UncheckedIOException to check underlying cause
+                    // Files.walk() wraps NoSuchFileException in UncheckedIOException when files are deleted during traversal
+                    if (e.getCause() instanceof java.nio.file.NoSuchFileException) {
+                        log.debug("Ignoring file deleted during traversal");
+                        continue;
+                    }
+                    throw e;
+                }
+            }
+            
+            List<String> allFiles = validPaths.stream()
                     .map(p -> rootPath.relativize(p))
                     .map(Path::toString)
                     .map(s -> s.replace(File.separatorChar, '/'))

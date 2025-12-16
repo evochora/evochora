@@ -6,7 +6,7 @@ I am a 48-year-old ex-computer scientist returning to coding after a 20-year hia
 
 Scientific ALife simulators often hit a complexity ceiling. My hypothesis is that overcoming this requires a modular platform for flexible experimentation with "digital physics" rather than hard-coded rules. 
 
-Evochora was designed to be this platform. Its core philosophy is to test these hypotheses without modifying the engine, which is enabled by plugin systems throughout:
+Evochora was designed to be this platform. Its core philosophy is to test these hypotheses without modifying the core engine, which is enabled by plugin systems throughout:
 
     *VM & Compiler*: Turing-complete VM with configurable registers/stacks. Multi-pass compiler for EvoASM (Lexer → Parser → Semantic Analysis → IR → Layout → Linker → Emitter). Both extensible via plugins—add instructions, constraints, optimization passes, or syntax extension without touching core code.
 
@@ -17,7 +17,7 @@ Evochora was designed to be this platform. Its core philosophy is to test these 
 *Current Status & Next Steps*:
 A primordial replicator (written in EvoASM) is functional. I was able to overcome the expected initial genome degeneration (organisms corrupting neighbors) by enforcing configurable thermodynamic policies. Now populations are much more stable, which allows to shift the focus from survival to evolvability. Next things I want to address:
 
-* Mutation Model: I want to build a plugin system that that allows for experimentation with different mutation models (from simple bitflip to complex genome rearrangements)
+* Mutation Model: I want to build a plugin system that allows for experimentation with different mutation models (from simple bitflip to complex genome rearrangements)
 
 * Fuzzy Addressing: I intend to investigate fuzzy jump targets (inspired by SignalGP) to decouple instruction targets from physical memory addresses, potentially improving genomic resilience.
 

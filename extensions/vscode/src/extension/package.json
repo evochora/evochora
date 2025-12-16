@@ -2,7 +2,7 @@
   "name": "evochora-syntax",
   "displayName": "Evochora Assembly Syntax",
   "description": "Syntax highlighting for Evochora Assembly (.evo files)",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "publisher": "evochora",
   "engines": {
     "vscode": "^1.80.0"
