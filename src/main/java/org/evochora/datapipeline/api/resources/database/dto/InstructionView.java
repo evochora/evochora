@@ -32,8 +32,15 @@ public final class InstructionView {
 
     /**
      * Total energy cost for executing this instruction.
+     * Positive values = energy consumption, negative values = energy gain.
      */
     public final int energyCost;
+
+    /**
+     * Total entropy delta for executing this instruction.
+     * Positive values = entropy generation, negative values = entropy dissipation.
+     */
+    public final int entropyDelta;
 
     /**
      * Instruction pointer position before instruction fetch.
@@ -64,6 +71,7 @@ public final class InstructionView {
      * @param arguments     Resolved and formatted arguments
      * @param argumentTypes Argument types as strings (e.g., "REGISTER", "IMMEDIATE")
      * @param energyCost    Total energy cost for executing this instruction
+     * @param entropyDelta  Total entropy delta for executing this instruction
      * @param ipBeforeFetch Instruction pointer position before instruction fetch
      * @param dvBeforeFetch Direction vector before instruction fetch
      * @param failed        Whether the instruction execution failed
@@ -74,6 +82,7 @@ public final class InstructionView {
                           List<InstructionArgumentView> arguments,
                           List<String> argumentTypes,
                           int energyCost,
+                          int entropyDelta,
                           int[] ipBeforeFetch,
                           int[] dvBeforeFetch,
                           boolean failed,
@@ -83,6 +92,7 @@ public final class InstructionView {
         this.arguments = arguments;
         this.argumentTypes = argumentTypes;
         this.energyCost = energyCost;
+        this.entropyDelta = entropyDelta;
         this.ipBeforeFetch = ipBeforeFetch;
         this.dvBeforeFetch = dvBeforeFetch;
         this.failed = failed;

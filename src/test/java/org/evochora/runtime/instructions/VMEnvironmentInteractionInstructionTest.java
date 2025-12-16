@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
+import org.evochora.test.utils.SimulationTestUtils;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
@@ -34,7 +35,7 @@ public class VMEnvironmentInteractionInstructionTest {
     @BeforeEach
     void setUp() {
         environment = new Environment(new int[]{100, 100}, true);
-        sim = new Simulation(environment);
+        sim = SimulationTestUtils.createSimulation(environment);
         org = Organism.create(sim, startPos, 2000, sim.getLogger());
         sim.addOrganism(org);
     }
@@ -48,8 +49,7 @@ public class VMEnvironmentInteractionInstructionTest {
         placeInstruction(name);
         int[] currentPos = org.getIp();
         for (int arg : args) {
-            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
-            environment.setMolecule(new Molecule(Config.TYPE_DATA, arg), currentPos);
+            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment);            environment.setMolecule(new Molecule(Config.TYPE_DATA, arg), currentPos);
         }
     }
 
@@ -57,11 +57,9 @@ public class VMEnvironmentInteractionInstructionTest {
         int opcode = Instruction.getInstructionIdByName(name);
         environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
-        currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
-        environment.setMolecule(new Molecule(Config.TYPE_DATA, reg), currentPos);
+        currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment);        environment.setMolecule(new Molecule(Config.TYPE_DATA, reg), currentPos);
         for (int val : vector) {
-            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
-            environment.setMolecule(new Molecule(Config.TYPE_DATA, val), currentPos);
+            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment);            environment.setMolecule(new Molecule(Config.TYPE_DATA, val), currentPos);
         }
     }
 
@@ -78,8 +76,7 @@ public class VMEnvironmentInteractionInstructionTest {
         org.setDr(1, vec);
 
         placeInstruction("POKE", 0, 1);
-        int[] targetPos = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED
-
+        int[] targetPos = org.getTargetCoordinate(org.getDp(0), vec, environment);
         sim.tick();
 
         assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
@@ -100,8 +97,7 @@ public class VMEnvironmentInteractionInstructionTest {
 
         placeInstruction("POKI", 0, 0, 1);
         int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED
-
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment);
         sim.tick();
 
         assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
@@ -123,8 +119,7 @@ public class VMEnvironmentInteractionInstructionTest {
         org.getDataStack().push(payload);
 
         placeInstruction("POKS");
-        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED
-
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment);
         sim.tick();
 
         assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
@@ -140,10 +135,8 @@ public class VMEnvironmentInteractionInstructionTest {
     @Test
     @Tag("unit")
     void testPeek() {
-        org.setDp(0, org.getIp()); // CORRECTED
-        int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED
-        int payload = new Molecule(Config.TYPE_DATA, 7).toInt();
+        org.setDp(0, org.getIp());        int[] vec = new int[]{0, 1};
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment);        int payload = new Molecule(Config.TYPE_DATA, 7).toInt();
         environment.setMolecule(Molecule.fromInt(payload), target);
 
         org.setDr(1, vec);
@@ -161,10 +154,8 @@ public class VMEnvironmentInteractionInstructionTest {
     @Test
     @Tag("unit")
     void testPeki() {
-        org.setDp(0, org.getIp()); // CORRECTED
-        int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED
-        int payload = new Molecule(Config.TYPE_DATA, 11).toInt();
+        org.setDp(0, org.getIp());        int[] vec = new int[]{0, 1};
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment);        int payload = new Molecule(Config.TYPE_DATA, 11).toInt();
         environment.setMolecule(Molecule.fromInt(payload), target);
 
         placeInstructionWithVector("PEKI", 0, vec);
@@ -181,10 +172,8 @@ public class VMEnvironmentInteractionInstructionTest {
     @Test
     @Tag("unit")
     void testPeks() {
-        org.setDp(0, org.getIp()); // CORRECTED
-        int[] vec = new int[]{-1, 0};
-        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED
-        int payload = new Molecule(Config.TYPE_DATA, 9).toInt();
+        org.setDp(0, org.getIp());        int[] vec = new int[]{-1, 0};
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment);        int payload = new Molecule(Config.TYPE_DATA, 9).toInt();
         environment.setMolecule(Molecule.fromInt(payload), target);
 
         org.getDataStack().push(vec);
@@ -206,9 +195,9 @@ public class VMEnvironmentInteractionInstructionTest {
         int originalPayload = new Molecule(Config.TYPE_DATA, 99).toInt();
         int newPayload = new Molecule(Config.TYPE_DATA, 111).toInt();
         
-        // Set up target cell with original content
+        // Set up target cell with original content (owned by foreign organism to test foreign peek costs)
         int[] targetPos = org.getTargetCoordinate(org.getDp(0), vec, environment);
-        environment.setMolecule(Molecule.fromInt(originalPayload), targetPos);
+        environment.setMolecule(Molecule.fromInt(originalPayload), 999, targetPos); // Foreign owner ID 999
         
         // Set up registers: target reg, vector reg
         org.setDr(0, newPayload); // register contains value to write, will receive peeked value
@@ -223,9 +212,9 @@ public class VMEnvironmentInteractionInstructionTest {
         assertThat(org.getDr(0)).isEqualTo(originalPayload).as("Register should contain DATA:99 (read from cell 0|1)");
         assertThat(environment.getMolecule(targetPos).toInt()).isEqualTo(newPayload).as("Cell should contain DATA:111 (written from %DR0)");
         
-        // Verify energy costs: PPKR(DATA->DATA) costs base 1 + 5 (peek) + 5 (poke) = 11
-        int expectedEnergy = 2000 - 1 - 5 - 5;
-        assertThat(org.getEr()).isEqualTo(expectedEnergy).as("Energy should be consumed correctly: base 1 + peek 5 + poke 5 = 11");
+        // Verify energy costs: PPKR(DATA->DATA) costs peek 5 (foreign DATA) + poke 6 (DATA) = 11
+        int expectedEnergy = 2000 - 5 - 6;
+        assertThat(org.getEr()).isEqualTo(expectedEnergy).as("Energy should be consumed correctly: peek 5 + poke 6 = 11");
     }
 
     /**
@@ -242,7 +231,7 @@ public class VMEnvironmentInteractionInstructionTest {
         // Set up target cell with original content at the position where PPKI will actually look
         // PPKI will look at [5, 6] (DP + [0, 1])
         int[] targetPos = org.getTargetCoordinate(org.getDp(0), vec, environment);
-        environment.setMolecule(Molecule.fromInt(originalPayload), targetPos);
+        environment.setMolecule(Molecule.fromInt(originalPayload), 999, targetPos); // Foreign owner ID 999
         
         
         // Set up register: contains value to write, will receive peeked value
@@ -258,9 +247,9 @@ public class VMEnvironmentInteractionInstructionTest {
         assertThat(org.getDr(0)).isEqualTo(originalPayload).as("Register should contain DATA:99 (read from cell 0|1)");
         assertThat(environment.getMolecule(targetPos).toInt()).isEqualTo(newPayload).as("Cell should contain DATA:111 (written from %DR0)");
         
-        // Verify energy costs: PPKI(DATA->DATA) costs base 1 + 5 (peek) + 5 (poke) = 11
-        int expectedEnergy = initialEr - 1 - 5 - 5;
-        assertThat(org.getEr()).isEqualTo(expectedEnergy).as("Energy should be consumed correctly: base 1 + peek 5 + poke 5 = 11");
+        // Verify energy costs: PPKI(DATA->DATA) costs peek 5 (foreign DATA) + poke 6 (DATA) = 11
+        int expectedEnergy = initialEr - 5 - 6;
+        assertThat(org.getEr()).isEqualTo(expectedEnergy).as("Energy should be consumed correctly: peek 5 + poke 6 = 11");
     }
 
     /**
@@ -274,9 +263,9 @@ public class VMEnvironmentInteractionInstructionTest {
         int originalPayload = new Molecule(Config.TYPE_DATA, 99).toInt();
         int newPayload = new Molecule(Config.TYPE_DATA, 111).toInt();
         
-        // Set up target cell with original content
+        // Set up target cell with original content (owned by foreign organism to test foreign peek costs)
         int[] targetPos = org.getTargetCoordinate(org.getDp(0), vec, environment);
-        environment.setMolecule(Molecule.fromInt(originalPayload), targetPos);
+        environment.setMolecule(Molecule.fromInt(originalPayload), 999, targetPos); // Foreign owner ID 999
         
         // Set up stack: new value and vector (PPKS reads vector from stack)
         org.getDataStack().push(vec);
@@ -291,9 +280,9 @@ public class VMEnvironmentInteractionInstructionTest {
         assertThat(org.getDataStack().pop()).isEqualTo(originalPayload).as("Stack should contain DATA:99 (read from cell 0|1)");
         assertThat(environment.getMolecule(targetPos).toInt()).isEqualTo(newPayload).as("Cell should contain DATA:111 (written from stack)");
         
-        // Verify energy costs: PPKS(DATA->DATA) costs base 1 + 5 (peek) + 5 (poke) = 11
-        int expectedEnergy = 2000 - 1 - 5 - 5;
-        assertThat(org.getEr()).isEqualTo(expectedEnergy).as("Energy should be consumed correctly: base 1 + peek 5 + poke 5 = 11");
+        // Verify energy costs: PPKS(DATA->DATA) costs peek 5 (foreign DATA) + poke 6 (DATA) = 11
+        int expectedEnergy = 2000 - 5 - 6;
+        assertThat(org.getEr()).isEqualTo(expectedEnergy).as("Energy should be consumed correctly: peek 5 + poke 6 = 11");
     }
 
     /**
@@ -323,9 +312,9 @@ public class VMEnvironmentInteractionInstructionTest {
         assertThat(org.getDr(0)).isEqualTo(emptyMolecule).as("Register should contain empty molecule (CODE:0) when cell was empty");
         assertThat(environment.getMolecule(targetPos).toInt()).isEqualTo(newPayload).as("Cell should contain the new molecule that was written");
         
-        // Verify energy costs: PPKR on empty cell: base 1 + 5 (poke only, no peek costs) = 6
-        int expectedEnergy = 2000 - 1 - 5;
-        assertThat(org.getEr()).isEqualTo(expectedEnergy).as("Energy should be consumed correctly: base 1 + poke 5 = 6 (no peek costs on empty cell)");
+        // Verify energy costs: PPKR on empty cell: peek 0 (unowned empty) + poke 6 (DATA) = 6
+        int expectedEnergy = 2000 - 0 - 6;
+        assertThat(org.getEr()).isEqualTo(expectedEnergy).as("Energy should be consumed correctly: peek 0 + poke 6 = 6 (no peek costs on empty cell)");
     }
 
 
@@ -414,12 +403,14 @@ public class VMEnvironmentInteractionInstructionTest {
         sim.tick();
         
         // Then: Entropy should have decreased by the molecule value
-        // (minus the instruction cost which adds entropy)
-        // Net effect: +1 (instruction cost) - 50 (molecule value) = -49
+        // POKE with DATA:50 costs: 6 energy (from test config)
+        // POKE does NOT generate entropy from energy cost (only dissipates entropy)
+        // Entropy dissipated: 50 (molecule value, entropy-permille = -1000 means 100% dissipation)
+        // Net effect: 0 - 50 = -50
         assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
         assertThat(org.getSr()).isLessThan(initialSr);
-        // Entropy should be: 100 + 1 (cost) - 50 (dissipation) = 51
-        assertThat(org.getSr()).isEqualTo(51);
+        // Entropy should be: 100 + 0 (no generation) - 50 (dissipation) = 50
+        assertThat(org.getSr()).isEqualTo(50);
     }
 
     @org.junit.jupiter.api.AfterEach

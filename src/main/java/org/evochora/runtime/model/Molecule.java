@@ -124,6 +124,26 @@ public record Molecule(int type, int value, int marker) {
         environment.setOwnerId(ownerId, coord);
     }
 
+    /**
+     * Translates a molecule type name (e.g., "ENERGY") to its integer constant (e.g., Config.TYPE_ENERGY).
+     * This method is the single source of truth for parsing type names from configuration.
+     *
+     * @param typeName The name of the molecule type (case-insensitive).
+     * @return An Optional containing the integer constant if found, or empty if unknown.
+     */
+    public static java.util.Optional<Integer> getTypeConstantByName(String typeName) {
+        if (typeName == null) {
+            return java.util.Optional.empty();
+        }
+        return switch (typeName.toUpperCase()) {
+            case "CODE" -> java.util.Optional.of(Config.TYPE_CODE);
+            case "DATA" -> java.util.Optional.of(Config.TYPE_DATA);
+            case "ENERGY" -> java.util.Optional.of(Config.TYPE_ENERGY);
+            case "STRUCTURE" -> java.util.Optional.of(Config.TYPE_STRUCTURE);
+            default -> java.util.Optional.empty();
+        };
+    }
+
     @Override
     public String toString() {
         String typePrefix = MoleculeTypeRegistry.typeToName(this.type());

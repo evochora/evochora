@@ -1,17 +1,18 @@
 package org.evochora.runtime.instructions;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.evochora.test.utils.SimulationTestUtils;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
 
 /**
  * Contains low-level unit tests for the execution of conditional instructions by the virtual machine.
@@ -34,7 +35,7 @@ public class VMConditionalInstructionTest {
     @BeforeEach
     void setUp() {
         environment = new Environment(new int[]{100, 100}, true);
-        sim = new Simulation(environment);
+        sim = SimulationTestUtils.createSimulation(environment);
         // Create a dummy organism to ensure the main test organism does not have ID 0
         Organism.create(sim, new int[]{-1, -1}, 1, sim.getLogger());
         org = Organism.create(sim, startPos, 1000, sim.getLogger());
@@ -545,8 +546,7 @@ public class VMConditionalInstructionTest {
     @Tag("unit")
     void testIfmr_Owned_ExecutesNext() {
         org.setDr(1, new int[]{0, 1}); // unit vector
-        int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment); // CORRECTED
-        environment.setOwnerId(org.getId(), target);
+        int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);        environment.setOwnerId(org.getId(), target);
         placeInstruction("IFMR", 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFMR")));
         sim.tick();
@@ -1041,6 +1041,255 @@ public class VMConditionalInstructionTest {
         org.getDataStack().push(new int[]{0, 1});
         placeInstruction("INMS");
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INMS")));
+        sim.tick();
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
+    }
+
+    // ===== Foreign Ownership Tests (IFF*, INF*) =====
+
+    @Test
+    @Tag("unit")
+    void testIffr_Foreign_ExecutesNext() {
+        org.setDr(1, new int[]{0, 1}); // unit vector
+        int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
+        environment.setOwnerId(999, target); // Foreign owner
+        placeInstruction("IFFR", 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFFR")));
+        sim.tick();
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testIffr_NotForeign_SkipsNext() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.setDr(1, new int[]{0, 1}); // unit vector
+        // Vacant (no owner) - not foreign
+        placeInstruction("IFFR", 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFFR")));
+        sim.tick();
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testIffr_Own_SkipsNext() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.setDr(1, new int[]{0, 1}); // unit vector
+        int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
+        environment.setOwnerId(org.getId(), target); // Own
+        placeInstruction("IFFR", 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFFR")));
+        sim.tick();
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testInfr_Foreign_SkipsNext() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.setDr(1, new int[]{0, 1}); // unit vector
+        int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
+        environment.setOwnerId(999, target); // Foreign owner
+        placeInstruction("INFR", 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INFR")));
+        sim.tick();
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testInfr_NotForeign_ExecutesNext() {
+        org.setDr(1, new int[]{0, 1}); // unit vector
+        // Vacant (no owner) - should execute next
+        placeInstruction("INFR", 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INFR")));
+        sim.tick();
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testIffi_Foreign_ExecutesNext() {
+        int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
+        environment.setOwnerId(999, target); // Foreign owner
+        placeInstructionWithVector("IFFI", 0, 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFFI")));
+        sim.tick();
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testInfi_Foreign_SkipsNext() {
+        int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
+        environment.setOwnerId(999, target); // Foreign owner - INFI should skip when foreign
+        placeInstructionWithVector("INFI", 0, 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INFI")));
+        sim.tick();
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testIffs_Foreign_ExecutesNext() {
+        org.getDataStack().push(new int[]{0, 1});
+        int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
+        environment.setOwnerId(999, target); // Foreign owner
+        placeInstruction("IFFS");
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFFS")));
+        sim.tick();
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testInfs_Foreign_SkipsNext() {
+        org.getDataStack().push(new int[]{0, 1});
+        int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
+        environment.setOwnerId(999, target); // Foreign owner - INFS should skip when foreign
+        placeInstruction("INFS");
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INFS")));
+        sim.tick();
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
+    }
+
+    // ===== Vacant Ownership Tests (IFV*, INV*) =====
+
+    @Test
+    @Tag("unit")
+    void testIfvr_Vacant_ExecutesNext() {
+        org.setDr(1, new int[]{0, 1}); // unit vector
+        // Vacant (no owner, ownerId == 0)
+        placeInstruction("IFVR", 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFVR")));
+        sim.tick();
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testIfvr_NotVacant_SkipsNext() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.setDr(1, new int[]{0, 1}); // unit vector
+        int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
+        environment.setOwnerId(999, target); // Foreign owner
+        placeInstruction("IFVR", 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFVR")));
+        sim.tick();
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testIfvr_Own_SkipsNext() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.setDr(1, new int[]{0, 1}); // unit vector
+        int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
+        environment.setOwnerId(org.getId(), target); // Own
+        placeInstruction("IFVR", 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFVR")));
+        sim.tick();
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testInvr_Vacant_SkipsNext() {
+        org.setDr(1, new int[]{0, 1}); // unit vector
+        // Vacant (no owner)
+        placeInstruction("INVR", 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INVR")));
+        sim.tick();
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testInvr_NotVacant_ExecutesNext() {
+        org.setDr(1, new int[]{0, 1}); // unit vector
+        int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
+        environment.setOwnerId(999, target); // Foreign owner
+        placeInstruction("INVR", 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INVR")));
+        sim.tick();
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testIfvi_Vacant_ExecutesNext() {
+        // Vacant (no owner) - IFVI should execute next when vacant
+        placeInstructionWithVector("IFVI", 0, 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFVI")));
+        sim.tick();
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testInvi_Vacant_SkipsNext() {
+        // Vacant (no owner) - INVI should skip when vacant
+        placeInstructionWithVector("INVI", 0, 1);
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INVI")));
+        sim.tick();
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testIfvs_Vacant_ExecutesNext() {
+        org.getDataStack().push(new int[]{0, 1});
+        // Vacant (no owner) - IFVS should execute next when vacant
+        placeInstruction("IFVS");
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFVS")));
+        sim.tick();
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertNoInstructionFailure();
+    }
+
+    @Test
+    @Tag("unit")
+    void testInvs_Vacant_SkipsNext() {
+        org.getDataStack().push(new int[]{0, 1});
+        // Vacant (no owner) - INVS should skip when vacant
+        placeInstruction("INVS");
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INVS")));
         sim.tick();
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());

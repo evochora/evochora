@@ -1,15 +1,16 @@
 package org.evochora.runtime;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Environment;
+import org.evochora.test.utils.SimulationTestUtils;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
-
-import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Test;
 
 /**
  * Tests the energy consumption and harvesting logic for various instructions.
@@ -30,7 +31,7 @@ public class EnergyCostTest {
     @BeforeEach
     void setUp() {
         environment = new Environment(new int[]{100, 100}, true);
-        sim = new Simulation(environment);
+        sim = SimulationTestUtils.createSimulation(environment);
     }
 
     private void placeInstruction(Organism org, String name, Integer... args) {
@@ -38,7 +39,6 @@ public class EnergyCostTest {
         environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
         for (int arg : args) {
-            // CORRECTED: Parameter order for getNextInstructionPosition
             currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment);
             environment.setMolecule(new Molecule(Config.TYPE_DATA, arg), currentPos);
         }
@@ -53,10 +53,10 @@ public class EnergyCostTest {
     void testPokeConsumesEnergyOnSuccess() {
         Organism org = Organism.create(sim, new int[]{10, 10}, 1000, sim.getLogger());
         sim.addOrganism(org);
-        org.setDp(0, org.getIp()); // CORRECTED: Use DP 0
+        org.setDp(0, org.getIp());
 
         int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED: Use DP 0
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment);
 
         // ensure target is empty
         environment.setMolecule(new Molecule(Config.TYPE_CODE, 0), target);
@@ -72,8 +72,8 @@ public class EnergyCostTest {
 
         assertThat(org.isInstructionFailed()).as("POKE should succeed on empty cell").isFalse();
         assertThat(environment.getMolecule(target).toInt()).isEqualTo(payload);
-        // POKE(DATA) costs base 1 + 5
-        assertThat(org.getEr()).isLessThanOrEqualTo(initialEr - 1 - 5);
+        // POKE(DATA) costs 6 (from test config, replicating old behavior of 1 base + 5 DATA)
+        assertThat(org.getEr()).isEqualTo(initialEr - 6);
     }
 
     /**
@@ -86,10 +86,10 @@ public class EnergyCostTest {
     void testPokeConsumesEnergyEvenOnOccupiedTarget() {
         Organism org = Organism.create(sim, new int[]{20, 20}, 1000, sim.getLogger());
         sim.addOrganism(org);
-        org.setDp(0, org.getIp()); // CORRECTED: Use DP 0
+        org.setDp(0, org.getIp());
 
         int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED: Use DP 0
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment);
 
         // Make target occupied
         environment.setMolecule(new Molecule(Config.TYPE_DATA, 1), target);
@@ -104,9 +104,8 @@ public class EnergyCostTest {
         sim.tick();
 
         assertThat(org.isInstructionFailed()).as("POKE should fail on occupied cell").isTrue();
-        // With new model we charge during PEEK consumption logic; for POKE we charge base+type only if executed
-        // Occupied cell -> no execution -> no additional type cost
-        assertThat(org.getEr()).isLessThanOrEqualTo(initialEr - 1);
+        // With new model: Occupied cell -> no execution -> no instruction cost, but error penalty still applies
+        assertThat(org.getEr()).isEqualTo(initialEr - 10); // Error penalty cost = 10
         // Target content should remain unchanged due to failure
         assertThat(environment.getMolecule(target).toInt()).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
     }
@@ -120,13 +119,13 @@ public class EnergyCostTest {
     void testPeekDataConsumesEnergy() {
         Organism org = Organism.create(sim, new int[]{30, 30}, 1000, sim.getLogger());
         sim.addOrganism(org);
-        org.setDp(0, org.getIp()); // CORRECTED: Use DP 0
+        org.setDp(0, org.getIp());
 
         int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED: Use DP 0
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment);
 
         int dataVal = new Molecule(Config.TYPE_DATA, 33).toInt();
-        environment.setMolecule(Molecule.fromInt(dataVal), target);
+        environment.setMolecule(Molecule.fromInt(dataVal), 999, target); // Foreign owner ID 999
 
         org.setDr(1, vec); // vector register
         int initialEr = org.getEr();
@@ -149,10 +148,10 @@ public class EnergyCostTest {
     void testPeekStructureOwnedBySelf_NoEnergyCost() {
         Organism org = Organism.create(sim, new int[]{40, 40}, 1000, sim.getLogger());
         sim.addOrganism(org);
-        org.setDp(0, org.getIp()); // CORRECTED: Use DP 0
+        org.setDp(0, org.getIp());
 
         int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED: Use DP 0
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment);
 
         int structVal = new Molecule(Config.TYPE_STRUCTURE, 10).toInt();
         environment.setMolecule(Molecule.fromInt(structVal), target);
@@ -166,9 +165,8 @@ public class EnergyCostTest {
 
         assertThat(org.isInstructionFailed()).isFalse();
         assertThat(org.getDr(0)).isEqualTo(structVal);
-        // No cost on self-owned structure; allow small per-tick overhead tolerance
-        assertThat(org.getEr()).isGreaterThanOrEqualTo(initialEr - 1);
-        assertThat(org.getEr()).isLessThanOrEqualTo(initialEr);
+        // No cost on self-owned structure (no base cost anymore)
+        assertThat(org.getEr()).isEqualTo(initialEr);
     }
 
     /**
@@ -180,10 +178,10 @@ public class EnergyCostTest {
     void testPeekStructureForeignConsumesEnergy() {
         Organism org = Organism.create(sim, new int[]{50, 50}, 1000, sim.getLogger());
         sim.addOrganism(org);
-        org.setDp(0, org.getIp()); // CORRECTED: Use DP 0
+        org.setDp(0, org.getIp());
 
         int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED: Use DP 0
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment);
 
         int structVal = new Molecule(Config.TYPE_STRUCTURE, 12).toInt();
         environment.setMolecule(Molecule.fromInt(structVal), target);
@@ -211,24 +209,23 @@ public class EnergyCostTest {
     void testPeekEnergyHarvestsAndClampsToMax() {
         Organism org = Organism.create(sim, new int[]{60, 60}, 100, sim.getLogger());
         sim.addOrganism(org);
-        org.setDp(0, org.getIp()); // CORRECTED: Use DP 0
+        org.setDp(0, org.getIp());
 
         int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED: Use DP 0
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment);
 
         int energyAvailable = 80;
         environment.setMolecule(new Molecule(Config.TYPE_ENERGY, energyAvailable), target);
 
         org.setDr(1, vec);
         int initialEr = org.getEr();
-        int expectedHarvest = Math.min(energyAvailable, Config.MAX_ORGANISM_ENERGY - initialEr);
+        int expectedHarvest = Math.min(energyAvailable, org.getMaxEnergy() - initialEr);
 
         placeInstruction(org, "PEEK", 0, 1);
         sim.tick();
 
         assertThat(org.isInstructionFailed()).isFalse();
-        // Final ER should be within [initial + harvest - 1, initial + harvest] to tolerate small per-tick overhead
-        assertThat(org.getEr()).isGreaterThanOrEqualTo(initialEr + expectedHarvest - 1);
-        assertThat(org.getEr()).isLessThanOrEqualTo(initialEr + expectedHarvest);
+        // Final ER should be initial + harvest (no base cost anymore for ENERGY)
+        assertThat(org.getEr()).isEqualTo(initialEr + expectedHarvest);
     }
 }

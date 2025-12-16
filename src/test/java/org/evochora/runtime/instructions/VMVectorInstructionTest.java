@@ -2,6 +2,7 @@ package org.evochora.runtime.instructions;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
+import org.evochora.test.utils.SimulationTestUtils;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
@@ -33,7 +34,7 @@ public class VMVectorInstructionTest {
     @BeforeEach
     void setUp() {
         environment = new Environment(new int[]{100, 100}, true);
-        sim = new Simulation(environment);
+        sim = SimulationTestUtils.createSimulation(environment);
         org = Organism.create(sim, startPos, 2000, sim.getLogger());
         sim.addOrganism(org);
     }
@@ -197,7 +198,7 @@ public class VMVectorInstructionTest {
     @Tag("unit")
     void testRtri3dOtherAxesUnaffected() {
         Environment env3d = new Environment(new int[]{50, 50, 50}, true);
-        Simulation sim3d = new Simulation(env3d);
+        Simulation sim3d = SimulationTestUtils.createSimulation(env3d);
         Organism org3d = Organism.create(sim3d, new int[]{5, 5, 5}, 2000, sim3d.getLogger());
         sim3d.addOrganism(org3d);
 

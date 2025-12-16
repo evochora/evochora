@@ -31,6 +31,8 @@
     HARVEST_RANDOM_DIR:
       # Zufällige Richtung wählen (NACH dem State-Load!)
       SPNR %MASK                       # %MASK := passierbare Richtungen (Bitmaske)
+      IFI %MASK DATA:0                  # Prüfe ob überhaupt eine Richtung passierbar ist
+        JMPI HARVEST_STUCK              # Wenn nicht, zurück zum IP
       RBIR %DIR %MASK
       B2VR %DIR %DIR
       V2BR %FWD_MASK %DIR
@@ -57,10 +59,17 @@
       STATIC3_STORE %FWD_MASK %KIDX %KLEFT
       RET
 
+    HARVEST_STUCK:
+      # Keine Richtung passierbar: zurück zum IP und neu starten
+      SYNC                              # Setzt DP = IP
+      JMPI HARVEST_START                # Zurück zum Anfang
+
     .ORG 0|5
     HARVEST_MOVE:
       # 2) Vorwärts passierbar?
       SPNR %MASK
+      IFI %MASK DATA:0                  # Prüfe ob überhaupt eine Richtung passierbar ist
+        JMPI HARVEST_STUCK              # Wenn nicht, zurück zum IP
       ANDR %MASK %FWD_MASK
       IFI %MASK DATA:0
         JMPI HARVEST_TURN

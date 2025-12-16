@@ -90,6 +90,7 @@ dependencies {
     testFixturesImplementation("org.junit.jupiter:junit-jupiter-api:5.10.2")
     testFixturesImplementation("ch.qos.logback:logback-classic:1.5.6")
     testFixturesImplementation("com.google.protobuf:protobuf-java:3.25.3")
+    testFixturesImplementation("com.typesafe:config:1.4.3")
 
 }
 

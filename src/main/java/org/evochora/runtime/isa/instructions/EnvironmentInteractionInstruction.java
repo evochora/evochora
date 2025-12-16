@@ -97,16 +97,7 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             int marker = (toWriteRaw.type() == Config.TYPE_CODE && toWriteRaw.value() == 0) ? 0 : organism.getMr();
             Molecule toWrite = new Molecule(toWriteRaw.type(), toWriteRaw.value(), marker);
             
-            int additionalCost = 0;
-            if (toWrite.type() == Config.TYPE_ENERGY || toWrite.type() == Config.TYPE_STRUCTURE) {
-                additionalCost = Math.abs(toWrite.toScalarValue());
-            } else if (toWrite.type() == Config.TYPE_CODE || toWrite.type() == Config.TYPE_DATA) {
-                additionalCost = 5;
-            }
-            if (additionalCost > 0) organism.takeEr(additionalCost);
-            
-            // Entropy dissipation: POKE reduces entropy by the molecule's value
-            organism.takeSr(Math.abs(toWrite.toScalarValue()));
+            // Energy costs and entropy dissipation are now handled by the thermodynamic policy in VirtualMachine
 
             if (environment.getMolecule(targetCoordinate).isEmpty()) {
                 // For CODE:0, always set owner to 0
@@ -148,23 +139,11 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         }
 
         Object valueToStore;
+        // Energy costs and gains are now handled by the thermodynamic policy in VirtualMachine
         if (s.type() == Config.TYPE_ENERGY) {
-            int energyToTake = Math.min(s.toScalarValue(), Config.MAX_ORGANISM_ENERGY - organism.getEr());
-            organism.addEr(energyToTake);
+            int energyToTake = Math.min(s.toScalarValue(), organism.getMaxEnergy() - organism.getEr());
             valueToStore = new Molecule(Config.TYPE_ENERGY, energyToTake).toInt();
         } else {
-            int ownerId = environment.getOwnerId(targetCoordinate);
-            if (s.type() == Config.TYPE_STRUCTURE) {
-                if (!organism.isCellAccessible(ownerId)) {
-                    int cost = Math.abs(s.toScalarValue());
-                    if (cost > 0) organism.takeEr(cost);
-                }
-            } else if (s.type() == Config.TYPE_CODE || s.type() == Config.TYPE_DATA) {
-                // Treat ownerId==0 as foreign/neutral for cost purposes
-                if (!(ownerId == organism.getId() && ownerId != 0)) {
-                    organism.takeEr(5);
-                }
-            }
             valueToStore = s.toInt();
         }
 
@@ -220,24 +199,11 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
                 // If cell is empty, store empty molecule (CODE:0)
                 valueToStore = new Molecule(Config.TYPE_CODE, 0).toInt();
             } else {
-                // Calculate PEEK costs
+                // Energy costs and gains are now handled by the thermodynamic policy in VirtualMachine
                 if (currentMolecule.type() == Config.TYPE_ENERGY) {
-                    int energyToTake = Math.min(currentMolecule.toScalarValue(), Config.MAX_ORGANISM_ENERGY - organism.getEr());
-                    organism.addEr(energyToTake);
+                    int energyToTake = Math.min(currentMolecule.toScalarValue(), organism.getMaxEnergy() - organism.getEr());
                     valueToStore = new Molecule(Config.TYPE_ENERGY, energyToTake).toInt();
                 } else {
-                    int ownerId = environment.getOwnerId(targetCoordinate);
-                    if (currentMolecule.type() == Config.TYPE_STRUCTURE) {
-                        if (!organism.isCellAccessible(ownerId)) {
-                            int cost = Math.abs(currentMolecule.toScalarValue());
-                            if (cost > 0) organism.takeEr(cost);
-                        }
-                    } else if (currentMolecule.type() == Config.TYPE_CODE || currentMolecule.type() == Config.TYPE_DATA) {
-                        // Treat ownerId==0 as foreign/neutral for cost purposes
-                        if (!(ownerId == organism.getId() && ownerId != 0)) {
-                            organism.takeEr(5);
-                        }
-                    }
                     valueToStore = currentMolecule.toInt();
                 }
             }
@@ -265,16 +231,7 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             int marker = (toWriteRaw.type() == Config.TYPE_CODE && toWriteRaw.value() == 0) ? 0 : organism.getMr();
             Molecule toWrite = new Molecule(toWriteRaw.type(), toWriteRaw.value(), marker);
 
-            int additionalCost = 0;
-            if (toWrite.type() == Config.TYPE_ENERGY || toWrite.type() == Config.TYPE_STRUCTURE) {
-                additionalCost = Math.abs(toWrite.toScalarValue());
-            } else if (toWrite.type() == Config.TYPE_CODE || toWrite.type() == Config.TYPE_DATA) {
-                additionalCost = 5;
-            }
-            if (additionalCost > 0) organism.takeEr(additionalCost);
-            
-            // Entropy dissipation: PPK (like POKE) reduces entropy by the molecule's value
-            organism.takeSr(Math.abs(toWrite.toScalarValue()));
+            // Energy costs and entropy dissipation are now handled by the thermodynamic policy in VirtualMachine
 
             // Write the new value (cell is now empty, so this should always succeed)
             // For CODE:0, always set owner to 0

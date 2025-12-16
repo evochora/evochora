@@ -18,19 +18,19 @@ public final class Config {
     /**
      * The energy cost deducted from an organism when an error occurs during execution.
      */
-    public static final int ERROR_PENALTY_COST = 500;
+    //public static final int ERROR_PENALTY_COST = 500;
 
     /**
      * The maximum energy an organism can accumulate.
      */
-    public static final int MAX_ORGANISM_ENERGY = 32767; // avoid register overflow using NRG instruction (16 bit)
+    //public static final int MAX_ORGANISM_ENERGY = 32767; // avoid register overflow using NRG instruction (16 bit)
 
     /**
      * The maximum entropy an organism can accumulate before death.
      * When SR exceeds this value, the organism dies.
      */
     // TODO: needs to be stored in metadata and used from there! Curently hardcoded in OrganismPanelManager.js!
-    public static final int MAX_ORGANISM_ENTROPY = 32767/4;
+    //public static final int MAX_ORGANISM_ENTROPY = 32767/4;
 
     /**
      * If true, enforces strict type checking during operations.

@@ -98,9 +98,20 @@ export class TickPanelManager {
      * @param {boolean} visible - True to show expanded panel, false to show collapsed state
      */
     setVisible(visible) {
+        const wasVisible = this.isVisible();
         this.panel.classList.toggle('hidden', !visible);
         this.collapsed.classList.toggle('hidden', visible);
         localStorage.setItem(TickPanelManager.STORAGE_KEY, visible ? 'true' : 'false');
+        
+        // When panel is expanded (was collapsed, now visible), focus and select the input field
+        // This allows immediate typing without having to clear the current tick number
+        if (visible && !wasVisible && this.tickInput) {
+            // Use setTimeout to ensure the panel is visible before focusing
+            setTimeout(() => {
+                this.tickInput.focus();
+                this.tickInput.select();
+            }, 0);
+        }
     }
 
     /**

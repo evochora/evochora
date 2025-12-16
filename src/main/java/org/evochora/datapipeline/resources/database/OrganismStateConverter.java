@@ -326,6 +326,7 @@ public final class OrganismStateConverter {
             int opcodeId,
             List<Integer> rawArguments,
             int energyCost,
+            int entropyDelta,
             int[] ipBeforeFetch,
             int[] dvBeforeFetch,
             boolean failed,
@@ -369,6 +370,7 @@ public final class OrganismStateConverter {
                     java.util.Collections.emptyList(), // No arguments for unknown instructions
                     java.util.Collections.emptyList(), // No argument types without signature
                     energyCost,
+                    entropyDelta,
                     ipBeforeFetch != null ? ipBeforeFetch : new int[0],
                     dvBeforeFetch != null ? dvBeforeFetch : new int[0],
                     true, // Always true for unknown opcodes (runtime sets instructionFailed=true)
@@ -522,6 +524,7 @@ public final class OrganismStateConverter {
                 resolvedArgs,
                 argumentTypesList,
                 energyCost,
+                entropyDelta,
                 ipBeforeFetch != null ? ipBeforeFetch : new int[0],
                 dvBeforeFetch != null ? dvBeforeFetch : new int[0],
                 failed,
@@ -631,6 +634,7 @@ public final class OrganismStateConverter {
                     state.getInstructionOpcodeId(),
                     state.getInstructionRawArgumentsList(),
                     state.getInstructionEnergyCost(),
+                    state.hasInstructionEntropyDelta() ? state.getInstructionEntropyDelta() : 0,
                     state.hasInstructionIpBeforeFetch() ? vectorToArray(state.getInstructionIpBeforeFetch()) : null,
                     state.hasInstructionDvBeforeFetch() ? vectorToArray(state.getInstructionDvBeforeFetch()) : null,
                     state.getInstructionFailed(),

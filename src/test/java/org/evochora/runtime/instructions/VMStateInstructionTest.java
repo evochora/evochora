@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
+import org.evochora.test.utils.SimulationTestUtils;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
@@ -34,7 +35,7 @@ public class VMStateInstructionTest {
     @BeforeEach
     void setUp() {
         environment = new Environment(new int[]{100, 100}, true);
-        sim = new Simulation(environment);
+        sim = SimulationTestUtils.createSimulation(environment);
         org = Organism.create(sim, startPos, 1000, sim.getLogger());
         sim.addOrganism(org);
     }
@@ -44,8 +45,7 @@ public class VMStateInstructionTest {
         environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
         for (int arg : args) {
-            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
-            environment.setMolecule(new Molecule(Config.TYPE_DATA, arg), currentPos);
+            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment);            environment.setMolecule(new Molecule(Config.TYPE_DATA, arg), currentPos);
         }
     }
 
@@ -53,11 +53,9 @@ public class VMStateInstructionTest {
         int opcode = Instruction.getInstructionIdByName(name);
         environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
-        currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
-        environment.setMolecule(new Molecule(Config.TYPE_DATA, reg), currentPos);
+        currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment);        environment.setMolecule(new Molecule(Config.TYPE_DATA, reg), currentPos);
         for (int val : vector) {
-            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
-            environment.setMolecule(new Molecule(Config.TYPE_DATA, val), currentPos);
+            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment);            environment.setMolecule(new Molecule(Config.TYPE_DATA, val), currentPos);
         }
     }
 
@@ -66,8 +64,7 @@ public class VMStateInstructionTest {
         environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
         for (int val : vector) {
-            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
-            environment.setMolecule(new Molecule(Config.TYPE_DATA, val), currentPos);
+            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment);            environment.setMolecule(new Molecule(Config.TYPE_DATA, val), currentPos);
         }
     }
 
@@ -95,8 +92,7 @@ public class VMStateInstructionTest {
         int[] expected = org.getIp();
         placeInstruction("SYNC");
         sim.tick();
-        assertThat(org.getDp(0)).isEqualTo(expected); // CORRECTED
-    }
+        assertThat(org.getDp(0)).isEqualTo(expected);    }
 
     /**
      * Tests the NRG instruction (get energy to register).
@@ -132,8 +128,7 @@ public class VMStateInstructionTest {
     @Test
     @Tag("unit")
     void testDiff() {
-        org.setDp(0, org.getIp()); // CORRECTED
-        placeInstruction("DIFF", 0);
+        org.setDp(0, org.getIp());        placeInstruction("DIFF", 0);
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new int[]{0, 0});
     }
@@ -302,14 +297,11 @@ public class VMStateInstructionTest {
     @Test
     @Tag("unit")
     void testSeek() {
-        org.setDp(0, org.getIp()); // CORRECTED
-        int[] vec = new int[]{0, 1};
+        org.setDp(0, org.getIp());        int[] vec = new int[]{0, 1};
         org.setDr(0, vec);
-        int[] expected = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED
-        placeInstruction("SEEK", 0);
+        int[] expected = org.getTargetCoordinate(org.getDp(0), vec, environment);        placeInstruction("SEEK", 0);
         sim.tick();
-        assertThat(org.getDp(0)).isEqualTo(expected); // CORRECTED
-    }
+        assertThat(org.getDp(0)).isEqualTo(expected);    }
 
     /**
      * Tests the SEKI instruction (move DP by immediate vector).
@@ -318,13 +310,10 @@ public class VMStateInstructionTest {
     @Test
     @Tag("unit")
     void testSeki() {
-        org.setDp(0, org.getIp()); // CORRECTED
-        int[] vec = new int[]{0, 1};
-        int[] expected = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED
-        placeInstructionWithVectorOnly("SEKI", vec);
+        org.setDp(0, org.getIp());        int[] vec = new int[]{0, 1};
+        int[] expected = org.getTargetCoordinate(org.getDp(0), vec, environment);        placeInstructionWithVectorOnly("SEKI", vec);
         sim.tick();
-        assertThat(org.getDp(0)).isEqualTo(expected); // CORRECTED
-    }
+        assertThat(org.getDp(0)).isEqualTo(expected);    }
 
     /**
      * Tests the SEKS instruction (move DP by stack vector).
@@ -333,14 +322,11 @@ public class VMStateInstructionTest {
     @Test
     @Tag("unit")
     void testSeks() {
-        org.setDp(0, org.getIp()); // CORRECTED
-        int[] vec = new int[]{-1, 0};
-        int[] expected = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED
-        org.getDataStack().push(vec);
+        org.setDp(0, org.getIp());        int[] vec = new int[]{-1, 0};
+        int[] expected = org.getTargetCoordinate(org.getDp(0), vec, environment);        org.getDataStack().push(vec);
         placeInstruction("SEKS");
         sim.tick();
-        assertThat(org.getDp(0)).isEqualTo(expected); // CORRECTED
-    }
+        assertThat(org.getDp(0)).isEqualTo(expected);    }
 
     /**
      * Tests the SCAN instruction (read cell content without consuming).
@@ -349,10 +335,8 @@ public class VMStateInstructionTest {
     @Test
     @Tag("unit")
     void testScan() {
-        org.setDp(0, org.getIp()); // CORRECTED
-        int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED
-        int payload = new Molecule(Config.TYPE_STRUCTURE, 3).toInt();
+        org.setDp(0, org.getIp());        int[] vec = new int[]{0, 1};
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment);        int payload = new Molecule(Config.TYPE_STRUCTURE, 3).toInt();
         environment.setMolecule(Molecule.fromInt(payload), target);
 
         org.setDr(1, vec);
@@ -370,10 +354,8 @@ public class VMStateInstructionTest {
     @Test
     @Tag("unit")
     void testScni() {
-        org.setDp(0, org.getIp()); // CORRECTED
-        int[] vec = new int[]{0, 1};
-        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED
-        int payload = new Molecule(Config.TYPE_CODE, 42).toInt();
+        org.setDp(0, org.getIp());        int[] vec = new int[]{0, 1};
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment);        int payload = new Molecule(Config.TYPE_CODE, 42).toInt();
         environment.setMolecule(Molecule.fromInt(payload), target);
 
         placeInstructionWithVector("SCNI", 0, vec);
@@ -390,10 +372,8 @@ public class VMStateInstructionTest {
     @Test
     @Tag("unit")
     void testScns() {
-        org.setDp(0, org.getIp()); // CORRECTED
-        int[] vec = new int[]{-1, 0};
-        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED
-        int payload = new Molecule(Config.TYPE_ENERGY, 5).toInt();
+        org.setDp(0, org.getIp());        int[] vec = new int[]{-1, 0};
+        int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment);        int payload = new Molecule(Config.TYPE_ENERGY, 5).toInt();
         environment.setMolecule(Molecule.fromInt(payload), target);
 
         org.getDataStack().push(vec);

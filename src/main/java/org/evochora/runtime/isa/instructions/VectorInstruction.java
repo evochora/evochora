@@ -235,7 +235,7 @@ public class VectorInstruction extends Instruction {
         if (nonZeroIndex == -1) return -1;
         boolean positive = vector[nonZeroIndex] > 0;
         int bitIndex = nonZeroIndex * 2 + (positive ? 0 : 1);
-        if (nonZeroIndex >= 8) return -1;
+        if (nonZeroIndex >= Config.VALUE_BITS / 2) return -1;
         return 1 << bitIndex;
     }
 
@@ -248,7 +248,7 @@ public class VectorInstruction extends Instruction {
         int[] vec = new int[dims];
         int axis = bit / 2;
         int dirBit = bit % 2;
-        if (axis >= dims || axis >= 8) {
+        if (axis >= dims || axis >= Config.VALUE_BITS / 2) {
             return null;
         }
         vec[axis] = (dirBit == 0) ? 1 : -1;

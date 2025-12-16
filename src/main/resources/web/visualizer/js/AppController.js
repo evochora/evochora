@@ -48,6 +48,7 @@ export class AppController {
             previousOrganismDetails: null, // For change detection in details
             isZoomedOut: initialZoom, // Zoom state (persisted)
             organisms: [], // Current organisms for the tick
+            metadata: null, // Simulation metadata (includes organism config)
         };
         this.programArtifactCache = new Map(); // Cache for program artifacts
         
@@ -143,6 +144,7 @@ export class AppController {
 
             // Fetch metadata for new run
             const metadata = await this.simulationApi.fetchMetadata(this.state.runId);
+            this.state.metadata = metadata; // Store metadata for use by components
             if (metadata?.environment?.shape) {
                 this.state.worldShape = Array.from(metadata.environment.shape);
                 this.renderer.updateWorldShape(this.state.worldShape);
@@ -153,6 +155,10 @@ export class AppController {
                         this.programArtifactCache.set(program.programId, program);
                     }
                 }
+            }
+            // Update organism panel manager with metadata
+            if (this.organismPanelManager) {
+                this.organismPanelManager.setMetadata(metadata);
             }
 
             // Fetch tick ranges from both environment and organism APIs
@@ -453,6 +459,7 @@ export class AppController {
             // Load metadata for world shape
             const metadata = await this.simulationApi.fetchMetadata(this.state.runId, { signal });
             if (metadata) {
+                this.state.metadata = metadata; // Store metadata for use by components
                 if (metadata.runId && !this.state.runId) {
                     this.state.runId = metadata.runId;
                 }
@@ -472,6 +479,11 @@ export class AppController {
                         }
                     }
                     console.debug(`Cached ${this.programArtifactCache.size} program artifacts.`);
+                }
+                
+                // Update organism panel manager with metadata
+                if (this.organismPanelManager) {
+                    this.organismPanelManager.setMetadata(metadata);
                 }
             }
             

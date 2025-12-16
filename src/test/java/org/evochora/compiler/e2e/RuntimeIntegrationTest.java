@@ -9,6 +9,7 @@ import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.EnvironmentProperties;
+import org.evochora.test.utils.SimulationTestUtils;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -61,7 +62,7 @@ public class RuntimeIntegrationTest {
 
 		// Create a small environment and simulation
 		Environment env = new Environment(envProps);
-		Simulation sim = new Simulation(env);
+		Simulation sim = SimulationTestUtils.createSimulation(env);
 
 		// Place program at origin (0,0)
 		for (Map.Entry<int[], Integer> e : artifact.machineCodeLayout().entrySet()) {
@@ -115,7 +116,7 @@ public class RuntimeIntegrationTest {
         assertThat(artifact).isNotNull();
 
         Environment env = new Environment(envProps);
-        Simulation sim = new Simulation(env);
+        Simulation sim = SimulationTestUtils.createSimulation(env);
         sim.setProgramArtifacts(Collections.emptyMap());
 
         for (Map.Entry<int[], Integer> e : artifact.machineCodeLayout().entrySet()) {
@@ -189,7 +190,7 @@ public class RuntimeIntegrationTest {
         );
 
         Environment env = new Environment(envProps);
-        Simulation sim = new Simulation(env);
+        Simulation sim = SimulationTestUtils.createSimulation(env);
 
         for (Map.Entry<int[], Integer> e : correctArtifact.machineCodeLayout().entrySet()) {
             env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());

@@ -1,16 +1,24 @@
 package org.evochora.runtime;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.isa.IEnvironmentModifyingInstruction;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.spi.IRandomProvider;
+import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
-import java.util.stream.Collectors;
+import com.typesafe.config.Config;
 
 /**
  * Manages the core simulation loop, including organism lifecycle, instruction execution,
@@ -20,6 +28,8 @@ import java.util.stream.Collectors;
 public class Simulation {
     private static final Logger LOG = LoggerFactory.getLogger(Simulation.class);
     private final Environment environment;
+    private final ThermodynamicPolicyManager policyManager;
+    private final Config organismConfig;
     private final VirtualMachine vm;
     private final List<Organism> organisms;
     private long currentTick = 0L;
@@ -52,11 +62,23 @@ public class Simulation {
     /**
      * Constructs a new Simulation instance.
      * @param environment The simulation environment.
+     * @param policyManager The manager for thermodynamic policies.
+     * @param organismConfig Configuration for organisms (energy limits, etc.).
      */
-    public Simulation(Environment environment) {
+    public Simulation(Environment environment, ThermodynamicPolicyManager policyManager, Config organismConfig) {
         this.environment = environment;
+        this.policyManager = policyManager;
+        this.organismConfig = organismConfig;
         this.organisms = new ArrayList<>();
         this.vm = new VirtualMachine(this);
+    }
+
+    public ThermodynamicPolicyManager getPolicyManager() {
+        return policyManager;
+    }
+
+    public Config getOrganismConfig() {
+        return organismConfig;
     }
 
     /**
@@ -132,7 +154,7 @@ public class Simulation {
             boolean wasAlive = !organism.isDead();
             
             if (instruction.isExecutedInTick()) {
-                vm.execute(instruction, this);
+                vm.execute(instruction);
             }
             
             // Clear ownership if organism died during this tick

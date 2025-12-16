@@ -247,6 +247,9 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
         if (org.hasInstructionEnergyCost()) {
             runtimeStateBuilder.setInstructionEnergyCost(org.getInstructionEnergyCost());
         }
+        if (org.hasInstructionEntropyDelta()) {
+            runtimeStateBuilder.setInstructionEntropyDelta(org.getInstructionEntropyDelta());
+        }
         if (org.hasIpBeforeFetch()) {
             runtimeStateBuilder.setInstructionIpBeforeFetch(org.getIpBeforeFetch());
         }
@@ -434,6 +437,9 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
         }
         if (runtimeState.hasInstructionEnergyCost()) {
             builder.setInstructionEnergyCost(runtimeState.getInstructionEnergyCost());
+        }
+        if (runtimeState.hasInstructionEntropyDelta()) {
+            builder.setInstructionEntropyDelta(runtimeState.getInstructionEntropyDelta());
         }
         if (runtimeState.hasInstructionIpBeforeFetch()) {
             builder.setIpBeforeFetch(runtimeState.getInstructionIpBeforeFetch());

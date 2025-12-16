@@ -48,6 +48,7 @@ public class Organism {
         int opcodeId,
         List<Integer> rawArguments,
         int energyCost,
+        int entropyDelta,
         java.util.Map<Integer, Object> registerValuesBefore
     ) {}
 
@@ -113,6 +114,8 @@ public class Organism {
     private final Simulation simulation;
     private final int[] initialPosition;
     private final Random random;
+    private final int maxEnergy;
+    private final int maxEntropy;
     
 
     /**
@@ -131,6 +134,12 @@ public class Organism {
         for (int i = 0; i < Config.NUM_DATA_POINTERS; i++) {
             this.dps.add(Arrays.copyOf(startIp, startIp.length));
         }
+        
+        // Load limits from simulation config (required, no fallback)
+        com.typesafe.config.Config orgConfig = simulation.getOrganismConfig();
+        this.maxEnergy = orgConfig.getInt("max-energy");
+        this.maxEntropy = orgConfig.getInt("max-entropy");
+
         this.er = initialEnergy;
         this.sr = 0;
         this.mr = 0;
@@ -503,7 +512,7 @@ public class Organism {
      * @param amount The amount of energy to add.
      */
     public void addEr(int amount) { 
-        this.er = Math.min(this.er + amount, Config.MAX_ORGANISM_ENERGY); 
+        this.er = Math.min(this.er + amount, this.maxEnergy); 
     }
 
     /**
@@ -517,12 +526,12 @@ public class Organism {
 
     /**
      * Adds entropy to the organism's Entropy Register (SR).
-     * The value is clamped to MAX_ORGANISM_ENTROPY.
+     * The value is clamped between 0 and MAX_ORGANISM_ENTROPY.
      *
-     * @param amount The amount of entropy to add.
+     * @param amount The amount of entropy to add (can be negative for dissipation).
      */
     public void addSr(int amount) { 
-        this.sr = Math.min(this.sr + amount, Config.MAX_ORGANISM_ENTROPY); 
+        this.sr = Math.max(0, Math.min(this.sr + amount, this.maxEntropy)); 
     }
 
     /**
@@ -534,6 +543,9 @@ public class Organism {
     public void takeSr(int amount) { 
         this.sr = Math.max(0, this.sr - amount); 
     }
+    
+    public int getMaxEnergy() { return maxEnergy; }
+    public int getMaxEntropy() { return maxEntropy; }
 
     /**
      * Sets a flag to prevent the VM from automatically advancing the IP at the end of the tick.

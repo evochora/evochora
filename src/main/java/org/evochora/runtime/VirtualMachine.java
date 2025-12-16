@@ -1,17 +1,21 @@
 package org.evochora.runtime;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.internal.services.ExecutionContext;
+import org.evochora.runtime.isa.IEnvironmentModifyingInstruction;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.InstructionArgumentType;
 import org.evochora.runtime.isa.InstructionSignature;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.spi.thermodynamics.IThermodynamicPolicy;
+import org.evochora.runtime.spi.thermodynamics.ThermodynamicContext;
 
 /**
  * The core of the execution environment.
@@ -22,6 +26,7 @@ import org.evochora.runtime.model.Organism;
 public class VirtualMachine {
 
     private final Environment environment;
+    private final Simulation simulation; // Store simulation reference
 
     /**
      * Creates a new VM bound to a specific environment.
@@ -30,6 +35,7 @@ public class VirtualMachine {
      */
     public VirtualMachine(Simulation simulation) {
         this.environment = simulation.getEnvironment();
+        this.simulation = simulation;
     }
 
     /**
@@ -66,9 +72,8 @@ public class VirtualMachine {
      * This method potentially modifies the state of the organism and the environment.
      *
      * @param instruction The planned instruction to be executed.
-     * @param simulation  The simulation that provides the context for execution.
      */
-    public void execute(Instruction instruction, Simulation simulation) {
+    public void execute(Instruction instruction) {
         Organism organism = instruction.getOrganism();
         if (organism.isDead()) {
             return;
@@ -132,30 +137,73 @@ public class VirtualMachine {
             }
         }
         
-        // Track energy before execution to calculate total cost
+        // Track energy and entropy before execution to calculate total changes
         int energyBefore = organism.getEr();
+        int entropyBefore = organism.getSr();
         
-        int instructionCost = instruction.getCost(organism, this.environment, rawArgs);
-        organism.takeEr(instructionCost);
-        organism.addSr(instructionCost);  // Entropy generation: every action generates entropy
+        // --- Thermodynamic Logic Start ---
+        
+        // 1. Resolve operands once for thermodynamics AND execution
+        // Note: resolveOperands may modify organism state (stack pop), so it must be called exactly once per instruction
+        List<Instruction.Operand> resolvedOperands = instruction.resolveOperands(this.environment);
+        instruction.setPreResolvedOperands(resolvedOperands);
+
+        // 2. Determine target info (only for env-modifying instructions that need it)
+        Optional<ThermodynamicContext.TargetInfo> targetInfo = Optional.empty();
+        if (instruction instanceof IEnvironmentModifyingInstruction) {
+            IEnvironmentModifyingInstruction envInstr = (IEnvironmentModifyingInstruction) instruction;
+            List<int[]> targets = envInstr.getTargetCoordinates();
+            if (targets != null && !targets.isEmpty()) {
+                // For simplicity, we only consider the first target for thermodynamics of single-cell ops like PEEK/POKE
+                int[] coord = targets.get(0);
+                Molecule molecule = this.environment.getMolecule(coord);
+                int ownerId = this.environment.getOwnerId(coord);
+                targetInfo = Optional.of(new ThermodynamicContext.TargetInfo(coord, molecule, ownerId));
+            }
+        }
+
+        // 3. Create Context (minimal overhead - record allocation)
+        ThermodynamicContext thermoContext = new ThermodynamicContext(
+            instruction, organism, this.environment, resolvedOperands, targetInfo
+        );
+
+        // 4. Calculate Thermodynamics using Policy (optimized: single call, array lookup)
+        IThermodynamicPolicy policy = this.simulation.getPolicyManager().getPolicy(instruction);
+        IThermodynamicPolicy.Thermodynamics thermo = policy.getThermodynamics(thermoContext);
+
+        // 5. Apply effects
+        // Energy: positive = consumption (takeEr), negative = gain (addEr with clamping)
+        int energyCost = thermo.energyCost();
+        if (energyCost > 0) {
+            organism.takeEr(energyCost);
+        } else if (energyCost < 0) {
+            organism.addEr(-energyCost); // addEr clamps to maxEnergy
+        }
+        organism.addSr(thermo.entropyDelta());
+        
+        // --- Thermodynamic Logic End ---
 
         ExecutionContext context = new ExecutionContext(organism, this.environment, false); // Always run in debug mode
-        ProgramArtifact artifact = simulation.getProgramArtifacts().get(organism.getProgramId());
+        ProgramArtifact artifact = this.simulation.getProgramArtifacts().get(organism.getProgramId());
         instruction.execute(context, artifact);
 
         if (organism.isInstructionFailed()) {
-            organism.takeEr(Config.ERROR_PENALTY_COST);
+            int penalty = this.simulation.getOrganismConfig().getInt("error-penalty-cost");
+            organism.takeEr(penalty);
         }
 
-        // Calculate total energy cost
+        // Calculate total energy cost and entropy delta
         int energyAfter = organism.getEr();
-        int energyCost = energyBefore - energyAfter;
+        int totalEnergyCost = energyBefore - energyAfter;
+        int entropyAfter = organism.getSr();
+        int totalEntropyDelta = entropyAfter - entropyBefore;
 
         // Store instruction execution data for history tracking
         Organism.InstructionExecutionData executionData = new Organism.InstructionExecutionData(
             instruction.getFullOpcodeId(),
             rawArgs,
-            energyCost,
+            totalEnergyCost,
+            totalEntropyDelta,
             registerValuesBefore
         );
         organism.setLastInstructionExecution(executionData);
@@ -165,7 +213,7 @@ public class VirtualMachine {
             return;
         }
 
-        if (organism.getSr() >= Config.MAX_ORGANISM_ENTROPY) {
+        if (organism.getSr() >= organism.getMaxEntropy()) {
             organism.kill("Entropy limit exceeded");
             return;
         }

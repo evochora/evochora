@@ -331,6 +331,7 @@ public class H2DatabaseReader implements IDatabaseReader {
                     orgState.getInstructionOpcodeId(),
                     orgState.getInstructionRawArgumentsList(),
                     orgState.hasInstructionEnergyCost() ? orgState.getInstructionEnergyCost() : 0,
+                    orgState.hasInstructionEntropyDelta() ? orgState.getInstructionEntropyDelta() : 0,
                     orgState.hasIpBeforeFetch() ? OrganismStateConverter.vectorToArray(orgState.getIpBeforeFetch()) : null,
                     orgState.hasDvBeforeFetch() ? OrganismStateConverter.vectorToArray(orgState.getDvBeforeFetch()) : null,
                     orgState.getInstructionFailed(),

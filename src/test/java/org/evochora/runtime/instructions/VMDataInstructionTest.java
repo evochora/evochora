@@ -2,6 +2,7 @@ package org.evochora.runtime.instructions;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
+import org.evochora.test.utils.SimulationTestUtils;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -34,7 +35,7 @@ public class VMDataInstructionTest {
     @BeforeEach
     void setUp() {
         environment = new Environment(new int[]{100, 100}, true);
-        sim = new Simulation(environment);
+        sim = SimulationTestUtils.createSimulation(environment);
         org = Organism.create(sim, startPos, 1000, sim.getLogger());
         sim.addOrganism(org);
     }
@@ -44,8 +45,7 @@ public class VMDataInstructionTest {
         environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
         for (int arg : args) {
-            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
-            environment.setMolecule(Molecule.fromInt(arg), currentPos);
+            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment);            environment.setMolecule(Molecule.fromInt(arg), currentPos);
         }
     }
 
@@ -53,11 +53,9 @@ public class VMDataInstructionTest {
         int opcode = Instruction.getInstructionIdByName(name);
         environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
-        currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
-        environment.setMolecule(new Molecule(Config.TYPE_DATA, reg), currentPos);
+        currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment);        environment.setMolecule(new Molecule(Config.TYPE_DATA, reg), currentPos);
         for (int val : vector) {
-            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
-            environment.setMolecule(new Molecule(Config.TYPE_DATA, val), currentPos);
+            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment);            environment.setMolecule(new Molecule(Config.TYPE_DATA, val), currentPos);
         }
     }
 
@@ -66,8 +64,7 @@ public class VMDataInstructionTest {
         environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
         int[] currentPos = org.getIp();
         for (int val : vector) {
-            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment); // CORRECTED
-            environment.setMolecule(new Molecule(Config.TYPE_DATA, val), currentPos);
+            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment);            environment.setMolecule(new Molecule(Config.TYPE_DATA, val), currentPos);
         }
     }
 
@@ -190,7 +187,7 @@ public class VMDataInstructionTest {
         
         // Erstelle eine neue Simulation mit dem kompilierten Code
         Environment testEnv = new Environment(new int[]{100, 100}, true);
-        Simulation testSim = new Simulation(testEnv);
+        Simulation testSim = SimulationTestUtils.createSimulation(testEnv);
         Organism testOrg = Organism.create(testSim, new int[]{0, 0}, 1000, testSim.getLogger());
         testSim.addOrganism(testOrg);
         

@@ -106,8 +106,17 @@ export class OrganismInstructionView {
         // Format arguments
         const argsStr = this.formatArguments(instruction.arguments);
         
-        // Format energy cost (right-aligned, no parentheses)
-        const energyStr = instruction.energyCost > 0 ? `-${instruction.energyCost}` : '';
+        // Format thermodynamics: ER:-1/SR:+1 format
+        const formatThermodynamics = (energyCost, entropyDelta) => {
+            const erStr = energyCost > 0 ? `-${energyCost}` : energyCost < 0 ? `+${Math.abs(energyCost)}` : '0';
+            const srStr = entropyDelta > 0 ? `+${entropyDelta}` : entropyDelta < 0 ? `${entropyDelta}` : '0';
+            return `ER:${erStr}/SR:${srStr}`;
+        };
+        
+        const thermoStr = formatThermodynamics(
+            instruction.energyCost || 0,
+            instruction.entropyDelta !== undefined ? instruction.entropyDelta : 0
+        );
         
         // Build instruction line
         const prefix = isLast ? 'Last: ' : 'Next: ';
@@ -120,9 +129,7 @@ export class OrganismInstructionView {
         const failedClass = instruction.failed ? ' failed-instruction' : '';
         
         let html = `<div class="instruction-line${failedClass}"${titleAttr}><span class="instruction-content">${instructionPart}</span>`;
-        if (energyStr) {
-            html += `<span class="instruction-energy">${energyStr}</span>`;
-        }
+        html += `<span class="instruction-energy">${thermoStr}</span>`;
         html += `</div>`;
         return html;
     }

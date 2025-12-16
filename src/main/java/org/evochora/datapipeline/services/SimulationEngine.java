@@ -28,6 +28,7 @@ import org.evochora.datapipeline.api.contracts.InstructionMapping;
 import org.evochora.datapipeline.api.contracts.LabelMapping;
 import org.evochora.datapipeline.api.contracts.LineTokenLookup;
 import org.evochora.datapipeline.api.contracts.LinearAddressToCoord;
+import org.evochora.datapipeline.api.contracts.OrganismConfig;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.PlacedMoleculeMapping;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
@@ -52,6 +53,7 @@ import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Organism.ProcFrame;
 import org.evochora.runtime.spi.IRandomProvider;
+import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
 
 import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
@@ -141,7 +143,13 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         this.energyStrategies = initializeEnergyStrategies(options.getConfigList("energyStrategies"), this.randomProvider, envProps);
 
         Environment environment = new Environment(envProps);
-        this.simulation = new Simulation(environment);
+        
+        Config runtimeConfig = options.hasPath("runtime") ? options.getConfig("runtime") : com.typesafe.config.ConfigFactory.empty();
+        Config thermoConfig = runtimeConfig.hasPath("thermodynamics") ? runtimeConfig.getConfig("thermodynamics") : com.typesafe.config.ConfigFactory.empty();
+        ThermodynamicPolicyManager policyManager = new ThermodynamicPolicyManager(thermoConfig);
+        Config organismConfig = runtimeConfig.hasPath("organism") ? runtimeConfig.getConfig("organism") : com.typesafe.config.ConfigFactory.empty();
+
+        this.simulation = new Simulation(environment, policyManager, organismConfig);
         this.simulation.setRandomProvider(this.randomProvider);
         this.simulation.setProgramArtifacts(compiledPrograms);
 
@@ -342,6 +350,16 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
         builder.setResolvedConfigJson(options.root().render(ConfigRenderOptions.concise()));
 
+        // Add organism configuration from runtime.organism
+        Config organismConfig = this.simulation.getOrganismConfig();
+        if (organismConfig != null) {
+            OrganismConfig.Builder orgConfigBuilder = OrganismConfig.newBuilder();
+            orgConfigBuilder.setMaxEnergy(organismConfig.getInt("max-energy"));
+            orgConfigBuilder.setMaxEntropy(organismConfig.getInt("max-entropy"));
+            orgConfigBuilder.setErrorPenaltyCost(organismConfig.getInt("error-penalty-cost"));
+            builder.setOrganismConfig(orgConfigBuilder.build());
+        }
+
         return builder.build();
     }
 
@@ -421,6 +439,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 builder.addInstructionRawArguments(arg);
             }
             builder.setInstructionEnergyCost(executionData.energyCost());
+            builder.setInstructionEntropyDelta(executionData.entropyDelta());
             
             // Register values before execution (for annotation display)
             if (executionData.registerValuesBefore() != null && !executionData.registerValuesBefore().isEmpty()) {

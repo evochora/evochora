@@ -52,8 +52,19 @@ export class OrganismPanelManager {
         // Store current organisms and selection
         this.currentOrganisms = [];
         this.selectedId = null;
+        
+        // Store metadata for accessing organism config (max-entropy, etc.)
+        this.metadata = null;
 
         this.init();
+    }
+    
+    /**
+     * Sets the simulation metadata for accessing organism configuration.
+     * @param {object|null} metadata - The simulation metadata object
+     */
+    setMetadata(metadata) {
+        this.metadata = metadata;
     }
 
     /**
@@ -131,8 +142,9 @@ export class OrganismPanelManager {
      * @private
      */
     renderOrganismRow(org, isSelected, showDeselect = false) {
-        // Format SR (entropy register) with percentage (aligned: "  0%     0" to "100% 32767")
-        const MAX_ENTROPY = 32767/4; // TODO: needs to be stored in metadata and used from there!
+        // Format SR (entropy register) with percentage (aligned: "  0%     0" to "100% maxEntropy")
+        // Read max-entropy from metadata, fallback to 8191 for old data without metadata
+        const MAX_ENTROPY = this.metadata?.organismConfig?.maxEntropy ?? 8191;
         const srValue = org.entropyRegister != null ? org.entropyRegister : 0;
         const srPercent = String(Math.round((srValue / MAX_ENTROPY) * 100)).padStart(3);
         const srValuePadded = String(srValue).padStart(5);
