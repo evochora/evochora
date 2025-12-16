@@ -193,6 +193,26 @@ class SimulationToPersistenceIntegrationTest {
                             "metadataOutput", "queue-out:metadata-queue"
                         ),
                         "options", Map.of(
+                            "runtime", Map.of(
+                                "organism", Map.of(
+                                    "max-energy", 32767,
+                                    "max-entropy", 8191,
+                                    "error-penalty-cost", 500
+                                ),
+                                "thermodynamics", Map.of(
+                                    "default", Map.of(
+                                        "className", "org.evochora.runtime.thermodynamics.impl.UniversalThermodynamicPolicy",
+                                        "options", Map.of(
+                                            "base-energy", 1,
+                                            "base-entropy", 1
+                                        )
+                                    ),
+                                    "overrides", Map.of(
+                                        "instructions", Map.of(),
+                                        "families", Map.of()
+                                    )
+                                )
+                            ),
                             "maxTicks", 100,
                             "samplingInterval", 10,
                             "environment", Map.of(
@@ -281,6 +301,26 @@ class SimulationToPersistenceIntegrationTest {
                             "metadataOutput", "queue-out:metadata-queue"
                         ),
                         "options", Map.of(
+                            "runtime", Map.of(
+                                "organism", Map.of(
+                                    "max-energy", 32767,
+                                    "max-entropy", 8191,
+                                    "error-penalty-cost", 500
+                                ),
+                                "thermodynamics", Map.of(
+                                    "default", Map.of(
+                                        "className", "org.evochora.runtime.thermodynamics.impl.UniversalThermodynamicPolicy",
+                                        "options", Map.of(
+                                            "base-energy", 1,
+                                            "base-entropy", 1
+                                        )
+                                    ),
+                                    "overrides", Map.of(
+                                        "instructions", Map.of(),
+                                        "families", Map.of()
+                                    )
+                                )
+                            ),
                             "maxTicks", 50,
                             "samplingInterval", 5,
                             "environment", Map.of(

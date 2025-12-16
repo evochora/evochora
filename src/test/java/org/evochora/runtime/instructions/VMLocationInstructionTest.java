@@ -2,6 +2,7 @@ package org.evochora.runtime.instructions;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
+import org.evochora.test.utils.SimulationTestUtils;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
@@ -29,7 +30,7 @@ public class VMLocationInstructionTest {
         // A minimal environment is needed for organism creation
         Instruction.init();
         Environment environment = new Environment(new int[]{10, 10}, true);
-        sim = new Simulation(environment);
+        sim = SimulationTestUtils.createSimulation(environment);
         org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
         sim.addOrganism(org);
     }

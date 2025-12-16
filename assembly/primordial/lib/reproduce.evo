@@ -139,8 +139,12 @@
     INPR %DIRVEC                   # Wenn das Molekül nicht passierbar,...
       PEEK %TMP %DIRVEC            # ... dann lösche ich es
     SEEK %DIRVEC                   # Vorwärts
-    INPR %DIRVEC                   # Wenn das Molekül nicht passierbar,...
-      PEEK %TMP %DIRVEC            # ... dann lösche ich es
+    IFFR %DIRVEC                   # Ist die Zelle FREMD (anderer Organismus)?
+      JMPI CONTINUE_PREP_NEXT_REPRODUCTION # ... dann abbrechen
+    
+    INPR %DIRVEC                   # Wenn nicht passierbar (aber nicht fremd),...
+      PEEK %TMP %DIRVEC            # ... dann löschen (unowned oder eigen)
+    
     POKE %SHELL %DIRVEC            # Hülle schreiben
     SEEK %DIRVEC                   # Vorwärts
     #INPR %DIRVEC                   # Wenn das Molekül nicht passierbar,...
@@ -162,13 +166,13 @@
   .ORG 0|10
   # Loop: Nicht passierbares PEEKen, auf Hülle testen, Molekül vor uns auf den DS legen, vorwärts
   CONTINUE_READLINE:
-    INPR %DIRVEC                   # Wenn das Molekül nicht passierbar,...
-      PEEK %TMP %DIRVEC            # ... dann lösche ich es
-
     SCAN %TMP %DIRVEC              # Was liegt da vor mir?
     IFR %TMP %SHELL                # Ist es meine Hülle?...
       JMPI CONTINUE_WRITESTART     # ... Dann mit dem Schreiben anfangen
-
+    
+    INPR %DIRVEC                   # Wenn das Molekül nicht passierbar,...
+      PEEK %TMP %DIRVEC            # ... dann lösche ich es
+    
     PUSH %TMP                      # Molekül auf den DS legen
     SEEK %DIRVEC                   # Laufe vorwärts
     JMPI CONTINUE_READLINE
@@ -181,22 +185,25 @@
 
   .ORG 0|11
   CONTINUE_WRITELINE:              # Schreib Loop
-    ##INPR %DIRVEC                   # Wenn das Molekül nicht passierbar,...
-    ##  PEEK %TMP %DIRVEC            # ... dann lösche ich es
-
     POP %TMP                       # Nächstes Symbol von DS holen
 
     IFR %TMP %SHELL                # Kommt als nächstes das Terminator Symbol?
       JMPI CONTINUE_WRITEFINISH    # Dann Zeilenabschluss
 
-    ##POKE %TMP %DIRVEC              # Schreiben
-    PPKR %TMP %DIRVEC
+    # Defensive Prüfung vor PPKR: Nur bei FREMD abbrechen
+    IFFR %DIRVEC                   # Ist die Zelle FREMD?
+      JMPI CONTINUE_PREP_NEXT_REPRODUCTION # ... dann abbrechen
+    
+    PPKR %TMP %DIRVEC              # Atomisches Swap (lesen + schreiben)
 
     SETV %TMP 0|0
     IFR %SIDEVEC %TMP              # Wenn wir nicht an der Seite der Hülle sind, ...
       JMPI CONTINUE_WRITEFORWARD   # ... dann normale Zeile schreiben
 
-    # Hüllen Seite schreiben
+    # Hüllen Seite schreiben (auch defensiv)
+    IFFR %SIDEVEC                  # Ist die Seitenzelle FREMD?
+      JMPI CONTINUE_PREP_NEXT_REPRODUCTION # ... dann abbrechen
+    
     INPR %SIDEVEC                  # Wenn das Molekül nicht passierbar,...
       PEEK %TMP %SIDEVEC           # ... dann lösche ich es
     POKE %SHELL %SIDEVEC
@@ -207,6 +214,10 @@
 
   .ORG 0|12
   CONTINUE_WRITEFINISH:            # Hüllenabschluss schreiben, zurück zum Anfang und zur nächsten Zeile
+    # Defensive Prüfung vor PEEK
+    IFFR %DIRVEC                   # Ist die Zelle FREMD?
+      JMPI CONTINUE_PREP_NEXT_REPRODUCTION # ... dann abbrechen
+    
     INPR %DIRVEC                   # Wenn das Molekül nicht passierbar,...
       PEEK %TMP %DIRVEC            # ... dann lösche ich es
 
@@ -214,7 +225,10 @@
     IFR %SIDEVEC %TMP              # Wenn wir nicht an der Seite der Hülle sind, ...
       JMPI CONTINUE_WRITE_FINISH_END   # ... dann normale Zeile schreiben
 
-    # Hüllen Seite schreiben
+    # Hüllen Seite schreiben (auch defensiv)
+    IFFR %SIDEVEC                  # Ist die Seitenzelle FREMD?
+      JMPI CONTINUE_PREP_NEXT_REPRODUCTION # ... dann abbrechen
+    
     INPR %SIDEVEC                  # Wenn das Molekül nicht passierbar,...
       PEEK %TMP %SIDEVEC           # ... dann lösche ich es
     POKE %SHELL %SIDEVEC
@@ -222,7 +236,10 @@
 
   .ORG 0|13
   CONTINUE_WRITE_FINISH_END:
-    #SEEK %DIRVEC
+    # Defensive Prüfung vor PEEK und POKE
+    IFFR %DIRVEC                   # Ist die Zelle FREMD?
+      JMPI CONTINUE_PREP_NEXT_REPRODUCTION # ... dann abbrechen
+    
     INPR %DIRVEC                   # Wenn das Molekül nicht passierbar,...
       PEEK %TMP %DIRVEC            # ... dann lösche ich es
     POKE %SHELL %DIRVEC            # Hüllenabschluss der Zeile schreiben
@@ -235,10 +252,12 @@
   .ORG 0|14
   CONTINUE_WRITEFINISH_CORNER:
     # Ecke schreiben
-    #INPR %SIDEVEC                  # Wenn das Molekül nicht passierbar,...
-    #  PEEK %TMP %SIDEVEC           # ... dann lösche ich es
-    #POKE %SHELL %SIDEVEC
     SEEK %DIRVEC                   # Vorwärts
+    
+    # Defensive Prüfung vor PEEK und POKE
+    IFFR %SIDEVEC                  # Ist die Seitenzelle FREMD?
+      JMPI CONTINUE_PREP_NEXT_REPRODUCTION # ... dann abbrechen
+    
     INPR %SIDEVEC                  # Wenn das Molekül nicht passierbar,...
       PEEK %TMP %SIDEVEC           # ... dann lösche ich es
     POKE %SHELL %SIDEVEC
@@ -255,8 +274,12 @@
     SETV %SIDEVEC 0|0              # Es ist mindestens eine Zeile geschrieben, wir sind also nicht mehr in der ersten
     SKLR %CONTCORD                 # Zurück zum Anfang
 
-    # Eine Zeile nach unter
-    RTRI %DIRVEC DATA:1 DATA:0     # Nach recht drehen
+    # Eine Zeile nach unten - Defensive Prüfung
+    RTRI %DIRVEC DATA:1 DATA:0     # Nach rechts drehen
+    
+    IFFR %DIRVEC                   # Ist die Zelle FREMD?
+      JMPI CONTINUE_PREP_NEXT_REPRODUCTION # ... dann abbrechen
+    
     INPR %DIRVEC                   # Wenn das Molekül nicht passierbar,...
       PEEK %TMP %DIRVEC            # ... dann lösche ich es
     SEEK %DIRVEC                   # Vorwärts
@@ -306,6 +329,7 @@
     PUSI REPRODUCTION_CHILD_INITAL_ENERGY   # Energie für das Kind auf den DS legen
     GDVS                           # Kind bekommt selbe DV Richtung wie Elternorganismus
     FRKS                           # FORKen, Alle 3 Werte werden vom Stack entfernt
+    JMPI CONTINUE_PREP_NEXT_REPRODUCTION
 
     #SKLR %FORKCORD                 # Schreib DP an die obere rechte Ecke holen
     #SEEK %DIRVEC                   # 2x vorwärts neben die linke obere Ecke des Kindes
@@ -316,12 +340,15 @@
     #GDVS                           # Kind bekommt selbe DV Richtung wie Elternorganismus
     #FRKS                           # FORKen, Alle 3 Werte werden vom Stack entfernt
 
-    # Aufräumen und fertig
-    #SETV %SIDEVEC 0|-1             # %SIDEVEC auf links für neue Reproduktion
+  CONTINUE_PREP_NEXT_REPRODUCTION:
+    # Aufräumen und fertig - ROBUST gegen vorzeitigen Abbruch
     RTRI %DIRVEC DATA:0 DATA:1     # %DIRVEC wieder nach außen drehen
     RTRI %DIRVEC DATA:0 DATA:1
-    RTRI %SIDEVEC DATA:0 DATA:1    # %SIDEVEC auf links für neue Reproduktion
-    RTRI %SIDEVEC DATA:0 DATA:1
+    
+    # Setze %SIDEVEC auf links für neue Reproduktion
+    SETR %SIDEVEC %DIRVEC          # Kopiere %DIRVEC
+    RTRI %SIDEVEC DATA:0 DATA:1    # Rotiere 90° CCW = links relativ zu %DIRVEC
+    
     SETI %DIRMASK DATA:0           # Beim nächsten Mal wird eine Richtung neu zufällig gewählt
     CRLR %CONTCORD                 # Beim nächsten Mal brauchen wir eine leere Zeilen Koordinate, damit von vorne begonnen wird
     #CRLR %FORKCORD                 # Auch die Koordinate für das FORK muss neu berechnet werden

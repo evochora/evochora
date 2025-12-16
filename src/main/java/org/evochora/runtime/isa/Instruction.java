@@ -149,6 +149,12 @@ public abstract class Instruction {
      * @return A list of resolved operands.
      */
     public List<Operand> resolveOperands(Environment environment) {
+        if (this.preResolvedOperands != null) {
+            List<Operand> ops = this.preResolvedOperands;
+            this.preResolvedOperands = null; // Consume them to avoid reuse
+            return ops;
+        }
+
         List<Operand> resolved = new ArrayList<>();
         List<OperandSource> sources = OPERAND_SOURCES.get(fullOpcodeId);
         if (sources == null) return resolved;
@@ -158,6 +164,12 @@ public abstract class Instruction {
         for (OperandSource source : sources) {
             switch (source) {
                 case STACK:
+                    // For thermodynamic calculation, we peek instead of pop to avoid side effects
+                    // The instruction's execute() method will pop later and handle empty stack errors
+                    if (organism.getDataStack().isEmpty()) {
+                        // Stack is empty - return empty list, instruction will handle error later
+                        return new ArrayList<>();
+                    }
                     Object val = organism.getDataStack().pop();
                     resolved.add(new Operand(val, -1));
                     break;
@@ -291,6 +303,22 @@ public abstract class Instruction {
         registerFamily(ConditionalInstruction.class, Map.of(185, "INPR"), List.of(OperandSource.REGISTER));
         registerFamily(ConditionalInstruction.class, Map.of(186, "INPI"), List.of(OperandSource.VECTOR));
         registerFamily(ConditionalInstruction.class, Map.of(187, "INPS"), List.of(OperandSource.STACK));
+        
+        // New: Foreign ownership conditionals (IFF*, INF*)
+        registerFamily(ConditionalInstruction.class, Map.of(200, "IFFR"), List.of(OperandSource.REGISTER));
+        registerFamily(ConditionalInstruction.class, Map.of(201, "IFFI"), List.of(OperandSource.VECTOR));
+        registerFamily(ConditionalInstruction.class, Map.of(202, "IFFS"), List.of(OperandSource.STACK));
+        registerFamily(ConditionalInstruction.class, Map.of(203, "INFR"), List.of(OperandSource.REGISTER));
+        registerFamily(ConditionalInstruction.class, Map.of(204, "INFI"), List.of(OperandSource.VECTOR));
+        registerFamily(ConditionalInstruction.class, Map.of(205, "INFS"), List.of(OperandSource.STACK));
+        
+        // New: Vacant ownership conditionals (IFV*, INV*)
+        registerFamily(ConditionalInstruction.class, Map.of(206, "IFVR"), List.of(OperandSource.REGISTER));
+        registerFamily(ConditionalInstruction.class, Map.of(207, "IFVI"), List.of(OperandSource.VECTOR));
+        registerFamily(ConditionalInstruction.class, Map.of(208, "IFVS"), List.of(OperandSource.STACK));
+        registerFamily(ConditionalInstruction.class, Map.of(209, "INVR"), List.of(OperandSource.REGISTER));
+        registerFamily(ConditionalInstruction.class, Map.of(210, "INVI"), List.of(OperandSource.VECTOR));
+        registerFamily(ConditionalInstruction.class, Map.of(211, "INVS"), List.of(OperandSource.STACK));
 
         // ControlFlow-Family
         registerFamily(ControlFlowInstruction.class, Map.of(20, "JMPI", 34, "CALL"), List.of(OperandSource.LABEL));
@@ -582,6 +610,20 @@ public abstract class Instruction {
      */
     public enum ConflictResolutionStatus { NOT_APPLICABLE, WON_EXECUTION, LOST_TARGET_OCCUPIED, LOST_TARGET_EMPTY, LOST_LOWER_ID_WON, LOST_OTHER_REASON }
     protected ConflictResolutionStatus conflictStatus = ConflictResolutionStatus.NOT_APPLICABLE;
+    
+    private List<Operand> preResolvedOperands = null;
+
+    /**
+     * Sets pre-resolved operands for this instruction.
+     * This is used by the VirtualMachine to pass operands that were resolved
+     * for thermodynamic calculations to the execution phase, avoiding side effects
+     * from double resolution (like stack pops).
+     *
+     * @param operands The pre-resolved operands.
+     */
+    public void setPreResolvedOperands(List<Operand> operands) {
+        this.preResolvedOperands = operands;
+    }
 
     /**
      * Checks if the instruction was executed in the current tick.

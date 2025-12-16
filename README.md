@@ -382,6 +382,7 @@ Open the visualizer in your browser to see it:
 
 <br>
 
+
 ### Usage Modes
 
 Evochora supports multiple usage and deployment modes:
@@ -402,6 +403,19 @@ The current releases focus on the in-process mode; the distributed mode is part 
 Evochora is configured via a HOCON configuration file, typically named [`config/evochora.conf`](./evochora.conf).
 
 A complete example configuration is provided as [`config/evochora.conf`](./evochora.conf) in the repository and included in the distribution.
+
+### Writing Your Own Organisms
+
+Organisms are programmed in **EvoASM**, Evochora's custom assembly language. The primordial organism in `assembly/primordial/main.evo` is a good starting point.
+
+**Quick Start:**
+1. Edit or create a `.evo` file in `assembly/`
+2. Configure it in `evochora.conf` (see `simulation-engine.options.organisms`)
+3. Run `bin/evochora node run` - the engine compiles automatically
+
+**Resources:**
+- **Language Reference:** [docs/ASSEMBLY_SPEC.md](docs/ASSEMBLY_SPEC.md)
+- **Syntax Highlighting:** VS Code/Cursor extension in [`extensions/vscode/`](extensions/vscode/README.md)
 
 ### Command Line Interface (CLI)
 

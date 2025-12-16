@@ -81,6 +81,28 @@ class SimulationEngineIntegrationTest {
         programFile3D = tempDir.resolve("simple_3d.evo");
         Files.copy(Path.of("src/test/resources/org/evochora/datapipeline/services/simple_3d.evo"), programFile3D, StandardCopyOption.REPLACE_EXISTING);
 
+        // Create runtime configuration with default thermodynamic policy
+        Map<String, Object> runtimeConfig = Map.of(
+                "organism", Map.of(
+                        "max-energy", 32767,
+                        "max-entropy", 8191,
+                        "error-penalty-cost", 500
+                ),
+                "thermodynamics", Map.of(
+                        "default", Map.of(
+                                "className", "org.evochora.runtime.thermodynamics.impl.UniversalThermodynamicPolicy",
+                                "options", Map.of(
+                                        "base-energy", 1,
+                                        "base-entropy", 1
+                                )
+                        ),
+                        "overrides", Map.of(
+                                "instructions", Map.of(),
+                                "families", Map.of()
+                        )
+                )
+        );
+
         baseConfig = ConfigFactory.parseMap(Map.of(
                 "samplingInterval", 1,
                 "environment", Map.of(
@@ -93,7 +115,8 @@ class SimulationEngineIntegrationTest {
                         "placement", Map.of("positions", List.of(5, 5))
                 )),
                 "energyStrategies", Collections.emptyList(),
-                "seed", 12345L
+                "seed", 12345L,
+                "runtime", runtimeConfig
         ));
     }
 

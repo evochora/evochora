@@ -50,7 +50,11 @@ bin/
 /runs/
 /savedSimulations/
 /evochora_data/
-vscode-evo/node_modules/*
+
+# VS Code extension - ignore build artifacts but keep the distributed .vsix
+extensions/vscode/src/node_modules/
+extensions/vscode/src/*.vsix
+!extensions/vscode/evochora-syntax-*.vsix
 
 # Local configuration file (user-specific overrides)
 local.conf

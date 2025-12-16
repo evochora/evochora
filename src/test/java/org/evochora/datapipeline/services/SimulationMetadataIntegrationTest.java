@@ -314,6 +314,23 @@ class SimulationMetadataIntegrationTest {
                     metadataOutput = "queue-out:context-data"
                   }
                   options {
+                    runtime {
+                      organism {
+                        max-energy = 32767
+                        max-entropy = 8191
+                        error-penalty-cost = 500
+                      }
+                      thermodynamics {
+                        default: {
+                          className = "org.evochora.runtime.thermodynamics.impl.UniversalThermodynamicPolicy"
+                          options: { base-energy = 1, base-entropy = 1 }
+                        }
+                        overrides: {
+                          instructions: {}
+                          families: {}
+                        }
+                      }
+                    }
                     samplingInterval = 10
                     seed = 42
                     environment {

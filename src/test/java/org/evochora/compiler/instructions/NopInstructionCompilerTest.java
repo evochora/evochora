@@ -8,6 +8,7 @@ import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.test.utils.SimulationTestUtils;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -42,7 +43,7 @@ class NopInstructionCompilerTest extends CompilerTestBase {
                 env.setMolecule(Molecule.fromInt(entry.getValue()), entry.getKey());
             }
 
-            Simulation sim = new Simulation(env);
+            Simulation sim = SimulationTestUtils.createSimulation(env);
             Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
             sim.addOrganism(org);
 

@@ -6,6 +6,7 @@ import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Environment;
+import org.evochora.test.utils.SimulationTestUtils;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -31,7 +32,7 @@ public class SimulationTest {
     @BeforeEach
     void setUp() {
         environment = new Environment(new int[]{50, 50}, true);
-        sim = new Simulation(environment);
+        sim = SimulationTestUtils.createSimulation(environment);
     }
 
     private void placeInstruction(Organism org, String name, Integer... args) {
@@ -40,14 +41,12 @@ public class SimulationTest {
         environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), pos);
         int[] cur = pos;
         for (int arg : args) {
-            cur = org.getNextInstructionPosition(cur, org.getDv(), environment); // CORRECTED
-            environment.setMolecule(new Molecule(Config.TYPE_DATA, arg), cur);
+            cur = org.getNextInstructionPosition(cur, org.getDv(), environment);            environment.setMolecule(new Molecule(Config.TYPE_DATA, arg), cur);
         }
     }
 
     private int[] targetFromDp(Organism org, int[] vec) {
-        return org.getTargetCoordinate(org.getDp(0), vec, environment); // CORRECTED
-    }
+        return org.getTargetCoordinate(org.getDp(0), vec, environment);    }
 
     /**
      * Tests conflict resolution when two organisms target the same location.
@@ -60,14 +59,12 @@ public class SimulationTest {
     void testConflictResolutionSameTargetLowerIdWins() {
         Organism orgLow = Organism.create(sim, new int[]{0, 0}, 2000, sim.getLogger());
         orgLow.setDv(new int[]{1, 0});
-        orgLow.setDp(0, new int[]{0, 0}); // CORRECTED
-        int payloadLow = new Molecule(Config.TYPE_DATA, 11).toInt();
+        orgLow.setDp(0, new int[]{0, 0});        int payloadLow = new Molecule(Config.TYPE_DATA, 11).toInt();
         orgLow.setDr(0, payloadLow);
 
         Organism orgHigh = Organism.create(sim, new int[]{10, 0}, 2000, sim.getLogger());
         orgHigh.setDv(new int[]{1, 0});
-        orgHigh.setDp(0, new int[]{0, 0}); // CORRECTED
-        int payloadHigh = new Molecule(Config.TYPE_DATA, 22).toInt();
+        orgHigh.setDp(0, new int[]{0, 0});        int payloadHigh = new Molecule(Config.TYPE_DATA, 22).toInt();
         orgHigh.setDr(0, payloadHigh);
 
         sim.addOrganism(orgLow);
@@ -82,8 +79,8 @@ public class SimulationTest {
 
         assertThat(environment.getMolecule(target).toInt()).isEqualTo(payloadLow);
         assertThat(orgHigh.getEr()).isEqualTo(2000);
-        // New cost model: POKI(DATA) costs base 1 + 5
-        assertThat(orgLow.getEr()).isLessThanOrEqualTo(2000 - 5 - 1);
+        // POKI(DATA) costs 6 energy (no base cost, all in one)
+        assertThat(orgLow.getEr()).isLessThanOrEqualTo(2000 - 6);
         assertThat(orgLow.isInstructionFailed()).as("Winner failed: " + orgLow.getFailureReason()).isFalse();
         assertThat(orgHigh.isInstructionFailed()).as("Loser failed: " + orgHigh.getFailureReason()).isFalse();
     }
@@ -98,14 +95,12 @@ public class SimulationTest {
     void testNoConflictDifferentTargetsBothExecute() {
         Organism o1 = Organism.create(sim, new int[]{0, 0}, 2000, sim.getLogger());
         o1.setDv(new int[]{1, 0});
-        o1.setDp(0, new int[]{0, 0}); // CORRECTED
-        int v1 = new Molecule(Config.TYPE_DATA, 5).toInt();
+        o1.setDp(0, new int[]{0, 0});        int v1 = new Molecule(Config.TYPE_DATA, 5).toInt();
         o1.setDr(0, v1);
 
         Organism o2 = Organism.create(sim, new int[]{10, 0}, 2000, sim.getLogger());
         o2.setDv(new int[]{1, 0});
-        o2.setDp(0, new int[]{1, 0}); // CORRECTED
-        int v2 = new Molecule(Config.TYPE_DATA, 7).toInt();
+        o2.setDp(0, new int[]{1, 0});        int v2 = new Molecule(Config.TYPE_DATA, 7).toInt();
         o2.setDr(0, v2);
 
         sim.addOrganism(o1);
@@ -136,8 +131,7 @@ public class SimulationTest {
     void testSingleOrganismNoTargetStillExecutes() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 2000, sim.getLogger());
         org.setDv(new int[]{1, 0});
-        org.setDp(0, new int[]{0, 0}); // CORRECTED
-        sim.addOrganism(org);
+        org.setDp(0, new int[]{0, 0});        sim.addOrganism(org);
 
         placeInstruction(org, "POKS");
 

@@ -8,6 +8,7 @@ import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.evochora.test.utils.SimulationTestUtils;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -32,7 +33,7 @@ public class OrganismTest {
     @BeforeEach
     void setUp() {
         environment = new Environment(new int[]{100, 100}, true);
-        sim = new Simulation(environment);
+        sim = SimulationTestUtils.createSimulation(environment);
     }
 
     /**
@@ -135,9 +136,7 @@ public class OrganismTest {
         Organism org = Organism.create(sim, new int[]{10, 10}, 100, sim.getLogger());
         sim.addOrganism(org);
         // Set DP to somewhere else to ensure DP is used
-        org.setDp(0, new int[]{5, 5}); // CORRECTED
-        int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment); // CORRECTED
-        assertThat(target).isEqualTo(new int[]{5, 6});
+        org.setDp(0, new int[]{5, 5});        int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);        assertThat(target).isEqualTo(new int[]{5, 6});
     }
 
     /**

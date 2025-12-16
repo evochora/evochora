@@ -446,7 +446,7 @@ public class StateInstruction extends Instruction {
 
     private void handleScanPassableNeighbors(String opName, List<Operand> operands, Environment environment) {
         int dims = environment.getShape().length;
-        int scanDims = Math.min(dims, 8);
+        int scanDims = Math.min(dims, Config.VALUE_BITS / 2);
         int[] dp = organism.getActiveDp();
         int mask = 0;
         for (int d = 0; d < scanDims; d++) {
@@ -509,7 +509,7 @@ public class StateInstruction extends Instruction {
         }
 
         int dims = environment.getShape().length;
-        int scanDims = Math.min(dims, 8);
+        int scanDims = Math.min(dims, Config.VALUE_BITS / 2);
         int[] dp = organism.getActiveDp();
         int mask = 0;
         for (int d = 0; d < scanDims; d++) {

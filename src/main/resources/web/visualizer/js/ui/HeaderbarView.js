@@ -142,6 +142,15 @@ export class HeaderbarView {
             if (typeof maxTick === 'number' && maxTick > 0) {
                 input.max = String(Math.max(0, maxTick));
             }
+            
+            // Select text if panel is visible (so user can immediately type new tick)
+            const tickPanel = document.getElementById('tick-panel');
+            if (tickPanel && tickPanel.style.display !== 'none') {
+                setTimeout(() => {
+                    input.focus();
+                    input.select();
+                }, 0);
+            }
         }
         
         if (suffix) {

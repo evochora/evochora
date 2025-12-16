@@ -65,6 +65,27 @@ message SimulationMetadata {
   // Default: 1 (every tick)
   // Used by indexers for gap detection to distinguish missing batches from unsampled ticks
   int32 sampling_interval = 10;
+
+  // Organism runtime configuration (limits and penalties)
+  // Source: evochora.conf "runtime.organism" section
+  // Defines maximum energy, maximum entropy, and error penalty cost
+  OrganismConfig organism_config = 11;
+}
+
+// Configuration for organism runtime behavior.
+// Maps to runtime.organism configuration from evochora.conf
+message OrganismConfig {
+  // Maximum energy an organism can accumulate (ER register)
+  // Source: runtime.organism.max-energy
+  int32 max_energy = 1;
+
+  // Maximum entropy an organism can accumulate before death (SR register)
+  // Source: runtime.organism.max-entropy
+  int32 max_entropy = 2;
+
+  // Energy penalty applied when an instruction fails
+  // Source: runtime.organism.error-penalty-cost
+  int32 error_penalty_cost = 3;
 }
 
 // Configuration for the simulation environment (world grid).

@@ -25,7 +25,13 @@ public final class ConditionalUtils {
         Map.entry("IFMS", "INMS"), Map.entry("INMS", "IFMS"),
         Map.entry("IFPR", "INPR"), Map.entry("INPR", "IFPR"),
         Map.entry("IFPI", "INPI"), Map.entry("INPI", "IFPI"),
-        Map.entry("IFPS", "INPS"), Map.entry("INPS", "IFPS")
+        Map.entry("IFPS", "INPS"), Map.entry("INPS", "IFPS"),
+        Map.entry("IFFR", "INFR"), Map.entry("INFR", "IFFR"),
+        Map.entry("IFFI", "INFI"), Map.entry("INFI", "IFFI"),
+        Map.entry("IFFS", "INFS"), Map.entry("INFS", "IFFS"),
+        Map.entry("IFVR", "INVR"), Map.entry("INVR", "IFVR"),
+        Map.entry("IFVI", "INVI"), Map.entry("INVI", "IFVI"),
+        Map.entry("IFVS", "INVS"), Map.entry("INVS", "IFVS")
     );
 
     private static final Set<String> CONDITIONAL_OPCODES = NEGATED_OPCODES.keySet();

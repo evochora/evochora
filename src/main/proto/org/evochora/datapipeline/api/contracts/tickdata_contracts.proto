@@ -199,6 +199,12 @@ message OrganismState {
   // Only present if an instruction was executed in this tick
   optional int32 instruction_energy_cost = 24;
 
+  // Total entropy delta for executing the last instruction
+  // Source: InstructionExecutionData.entropyDelta
+  // Only present if an instruction was executed in this tick
+  // Positive values = entropy generation, negative values = entropy dissipation
+  optional int32 instruction_entropy_delta = 25;
+
   // Instruction pointer position at the beginning of the tick (before instruction execution)
   // Source: Organism.getIpBeforeFetch()
   // Used to reconstruct the position of the instruction in the program
@@ -258,6 +264,12 @@ message OrganismRuntimeState {
   // Source: InstructionExecutionData.energyCost
   // Only present if an instruction was executed in this tick
   optional int32 instruction_energy_cost = 13;
+  
+  // Total entropy delta for executing the last instruction
+  // Source: InstructionExecutionData.entropyDelta
+  // Only present if an instruction was executed in this tick
+  // Positive values = entropy generation, negative values = entropy dissipation
+  optional int32 instruction_entropy_delta = 31;
   
   // Instruction pointer position at the beginning of the tick (before instruction execution)
   // Source: Organism.getIpBeforeFetch()

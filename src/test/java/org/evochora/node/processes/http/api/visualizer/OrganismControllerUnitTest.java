@@ -89,7 +89,7 @@ class OrganismControllerUnitTest {
             InstructionArgumentView immArg = InstructionArgumentView.immediate(42, "DATA", 42);
             InstructionView lastInstruction = new InstructionView(
                     1, "SETI", List.of(regArg, immArg), List.of("REGISTER", "IMMEDIATE"),
-                    5, new int[]{1, 2}, new int[]{0, 1}, false, null);
+                    5, 0, new int[]{1, 2}, new int[]{0, 1}, false, null);
             InstructionsView instructions = new InstructionsView(lastInstruction, null);
 
             OrganismRuntimeView runtimeView = new OrganismRuntimeView(

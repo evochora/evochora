@@ -88,6 +88,62 @@ public class ConditionalInstruction extends Instruction {
                 }
                 return;
             }
+            if (opName.startsWith("IFF") || opName.startsWith("INF")) {
+                // Foreign ownership check: ownerId != 0 && ownerId != self.id
+                List<Operand> operands = resolveOperands(environment);
+                if (organism.isInstructionFailed()) {
+                    return;
+                }
+                if (operands.size() != 1) {
+                    organism.instructionFailed("Invalid operand count for " + opName);
+                    return;
+                }
+                Operand op = operands.get(0);
+                if (!(op.value() instanceof int[])) {
+                    organism.instructionFailed(opName + " requires a vector argument.");
+                    return;
+                }
+                int[] vector = (int[]) op.value();
+                if (!organism.isUnitVector(vector)) {
+                    return;
+                }
+                int[] targetCoordinate = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
+                int ownerId = environment.getOwnerId(targetCoordinate);
+                boolean isForeign = (ownerId != 0 && ownerId != organism.getId());
+                boolean conditionMet = opName.startsWith("IFF") ? isForeign : !isForeign;
+                if (!conditionMet) {
+                    organism.skipNextInstruction(environment);
+                }
+                return;
+            }
+            if (opName.startsWith("IFV") || opName.startsWith("INV")) {
+                // Vacant ownership check: ownerId == 0
+                List<Operand> operands = resolveOperands(environment);
+                if (organism.isInstructionFailed()) {
+                    return;
+                }
+                if (operands.size() != 1) {
+                    organism.instructionFailed("Invalid operand count for " + opName);
+                    return;
+                }
+                Operand op = operands.get(0);
+                if (!(op.value() instanceof int[])) {
+                    organism.instructionFailed(opName + " requires a vector argument.");
+                    return;
+                }
+                int[] vector = (int[]) op.value();
+                if (!organism.isUnitVector(vector)) {
+                    return;
+                }
+                int[] targetCoordinate = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
+                int ownerId = environment.getOwnerId(targetCoordinate);
+                boolean isVacant = (ownerId == 0);
+                boolean conditionMet = opName.startsWith("IFV") ? isVacant : !isVacant;
+                if (!conditionMet) {
+                    organism.skipNextInstruction(environment);
+                }
+                return;
+            }
             List<Operand> operands = resolveOperands(environment);
             if (organism.isInstructionFailed()) {
                 return;
