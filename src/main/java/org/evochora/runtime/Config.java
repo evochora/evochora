@@ -29,7 +29,6 @@ public final class Config {
      * The maximum entropy an organism can accumulate before death.
      * When SR exceeds this value, the organism dies.
      */
-    // TODO: needs to be stored in metadata and used from there! Curently hardcoded in OrganismPanelManager.js!
     //public static final int MAX_ORGANISM_ENTROPY = 32767/4;
 
     /**

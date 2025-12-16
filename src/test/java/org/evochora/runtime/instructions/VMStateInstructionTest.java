@@ -122,6 +122,33 @@ public class VMStateInstructionTest {
     }
 
     /**
+     * Tests the NTR instruction (get entropy to register).
+     * This is a unit test for the VM's instruction logic.
+     */
+    @Test
+    @Tag("unit")
+    void testNtr() {
+        placeInstruction("NTR", 0);
+        sim.tick();
+        int sr = org.getSr();
+        int regVal = (Integer) org.getDr(0);
+        assertThat(Molecule.fromInt(regVal).toScalarValue()).isEqualTo(sr);
+    }
+
+    /**
+     * Tests the NTRS instruction (get entropy to stack).
+     * This is a unit test for the VM's instruction logic.
+     */
+    @Test
+    @Tag("unit")
+    void testNtrs() {
+        placeInstruction("NTRS");
+        sim.tick();
+        int val = (Integer) org.getDataStack().pop();
+        assertThat(Molecule.fromInt(val).toScalarValue()).isEqualTo(org.getSr());
+    }
+
+    /**
      * Tests the DIFF instruction (get difference vector between DP and IP).
      * This is a unit test for the VM's instruction logic.
      */

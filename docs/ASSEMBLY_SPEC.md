@@ -100,6 +100,8 @@ The Energy Register (`ER`) holds the organism's life force. Energy is consumed b
 
 * **Checking Energy**: The `NRG` and `NRGS` instructions allow an organism to check its current energy level.
 
+* **Checking Entropy**: The `NTR` and `NTRS` instructions allow an organism to check its current entropy level.
+
 * **Death by Starvation**: If an organism's `ER` drops to zero or below, it dies and is removed from the simulation.
 
 #### Entropy Register (SR)
@@ -126,15 +128,14 @@ The energy costs and entropy changes for all instructions are configurable throu
 - **Energy Cost**: How much energy is consumed (positive) or gained (negative) when executing the instruction
 - **Entropy Delta**: How much entropy is generated (positive) or dissipated (negative) when executing the instruction
 
-**Policy Types**:
-- **Fixed Cost Policy**: Applies fixed energy and entropy values
-- **Peek Thermodynamic Policy**: Calculates costs based on molecule type and ownership (own/foreign/unowned)
-- **Poke Thermodynamic Policy**: Calculates costs based on the molecule being written
-- **Peek-Poke Thermodynamic Policy**: Combines peek and poke policies for atomic read-write operations
+**Universal Thermodynamic Policy**: All instructions use the `UniversalThermodynamicPolicy`, which supports flexible configuration through:
+- **Base Values**: `base-energy` and `base-entropy` applied to all executions
+- **Read Rules**: Applied when instructions read from environment cells (e.g., `PEEK`, `PEKI`, `PEKS`). Rules are organized by ownership (`own`, `foreign`, `unowned`) and molecule type (`ENERGY`, `STRUCTURE`, `CODE`, `DATA`, or `_default`)
+- **Write Rules**: Applied when instructions write to environment cells (e.g., `POKE`, `POKI`, `POKS`). Rules are organized by molecule type (`ENERGY`, `STRUCTURE`, `CODE`, `DATA`)
 
 **Default Behavior**: If no specific policy is configured for an instruction, a default policy applies. The default policy typically applies a base energy cost and generates entropy proportional to energy consumption.
 
-**Configuration Format**: Policies can specify both fixed values (`energy`, `entropy`) and permille-based proportional values (`energy-permille`, `entropy-permille`). When both are specified, they are added together.
+**Configuration Format**: Rules can specify both fixed values (`energy`, `entropy`) and permille-based proportional values (`energy-permille`, `entropy-permille`). When both are specified, they are added together. Permille values are calculated as a fraction of the organism's current energy or entropy (e.g., `energy-permille = 1000` means 100% of current energy).
 
 For detailed configuration examples and available policy options, refer to the `evochora.conf` configuration file.
 
@@ -384,6 +385,7 @@ Note on conflicts: If a world interaction loses conflict resolution for its targ
 * `POS %REG`, `POSS`: Stores the organism's position relative to its start (`IP` - `InitialIP`) in `<%REG>` or on the stack.
 * `DIFF %REG`, `DIFS`: Stores the vector `DP` - `IP` in `<%REG>` or on the stack.
 * `NRG %REG`, `NRGS`: Stores current `ER` in `<%REG>` or on the stack.
+* `NTR %REG`, `NTRS`: Stores current `SR` in `<%REG>` or on the stack.
 * `RAND %REG`, `RNDS`: Stores a random number [0, `<%REG>`) back into `<%REG>` or on the stack.
 * `GDVR %VEC_REG`, `GDVS`: Stores current `DV` in `<%VEC_REG>` or on the stack.
 * `FORK %DP_VEC_REG %NRG_REG %DV_VEC_REG`: Creates a child organism at `DP` + delta vector. After the child is created, all molecules owned by the parent that have a marker value equal to the parent's current `MR` are transferred to the child, and their markers are reset to 0. Additional energy may be consumed based on the energy amount transferred to the child.

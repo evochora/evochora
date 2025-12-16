@@ -33,6 +33,8 @@ class StateInstructionCompilerTest extends CompilerTestBase {
                 "SYNC",
                 "NRG %DR0",
                 "NRGS",
+                "NTR %DR0",
+                "NTRS",
                 "POS %DR0",
                 "POSS",
                 "DIFF %DR0",

@@ -350,9 +350,9 @@ public abstract class Instruction {
         registerFamily(StateInstruction.class, Map.of(12, "SEEK"), List.of(OperandSource.REGISTER));
         registerFamily(StateInstruction.class, Map.of(59, "SEKI"), List.of(OperandSource.VECTOR));
         registerFamily(StateInstruction.class, Map.of(84, "SEKS"), List.of(OperandSource.STACK));
-        registerFamily(StateInstruction.class, Map.of(11, "TURN", 17, "NRG", 19, "DIFF", 21, "POS", 55, "RAND"), List.of(OperandSource.REGISTER));
+        registerFamily(StateInstruction.class, Map.of(11, "TURN", 17, "NRG", 19, "DIFF", 21, "POS", 55, "RAND", 212, "NTR"), List.of(OperandSource.REGISTER));
         registerFamily(StateInstruction.class, Map.of(18, "FORK"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
-        registerFamily(StateInstruction.class, Map.of(13, "SYNC", 92, "NRGS"), List.of());
+        registerFamily(StateInstruction.class, Map.of(13, "SYNC", 92, "NRGS", 213, "NTRS"), List.of());
         // New: TRNI, TRNS, POSS, DIFS (allocate new IDs > current max 95?)
         registerFamily(StateInstruction.class, Map.of(96, "TRNI"), List.of(OperandSource.VECTOR));
         registerFamily(StateInstruction.class, Map.of(97, "TRNS"), List.of());

@@ -56,6 +56,10 @@ public class StateInstruction extends Instruction {
                 case "NRGS":
                     handleNrg(opName, operands);
                     break;
+                case "NTR":
+                case "NTRS":
+                    handleNtr(opName, operands);
+                    break;
                 case "FORK":
                     handleFork(operands, organism.getSimulation());
                     break;
@@ -141,6 +145,16 @@ public class StateInstruction extends Instruction {
             if (operands.size() != 1) { organism.instructionFailed("Invalid operands for NRG."); return; }
             int targetReg = operands.get(0).rawSourceId();
             writeOperand(targetReg, new Molecule(Config.TYPE_DATA, organism.getEr()).toInt());
+        }
+    }
+
+    private void handleNtr(String opName, List<Operand> operands) {
+        if ("NTRS".equals(opName)) {
+            organism.getDataStack().push(new Molecule(Config.TYPE_DATA, organism.getSr()).toInt());
+        } else {
+            if (operands.size() != 1) { organism.instructionFailed("Invalid operands for NTR."); return; }
+            int targetReg = operands.get(0).rawSourceId();
+            writeOperand(targetReg, new Molecule(Config.TYPE_DATA, organism.getSr()).toInt());
         }
     }
 

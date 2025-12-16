@@ -73,12 +73,12 @@ Evochora is an experiment to explore an alternative. What if the primary constra
 This approach appears to be viable, and the results are encouraging:
 * **A Working Primordial:** There is a self-replicating organism (see video) capable of sustaining populations for over 500,000 ticks. It navigates, harvests resources, and copies its 1500-instruction genome without any central oversight or pre-defined rewards.
 
-The stable primordial organism is just the starting point. The platform is designed to extend its physics to tackle deeper questions. The architecture serves as a foundation for future research, and here are some of the next frontiers it's designed to explore:
+With the primordial replicator organism and stable populations secured by implemented thermodynamic constraints now serving as a solid foundation, the platform is ready to tackle deeper questions. The focus shifts from basic survival mechanics to complex evolutionary dynamics. Here are the next frontiers for research:
 
-*   **Stability through Thermodynamics:** Can "grey goo" scenarios be prevented not by artificial rules, but by energy and entropy? The hypothesis is that thermodynamic constraints alone could be enough to foster stable ecosystems *without* sacrificing the evolvability of the code.
-*   **Emergent Ecosystems & Niche Construction:** The physics engine is designed to be extensible with reaction chains (e.g., `A + B -> Energy + C`). This would create a testbed for exploring if trophic levels can emerge spontaneously, allowing organisms to alter their environment by creating waste that becomes a resource for others—a process known as Niche Construction.
-*   **Robust Genomes & Communication:** To make genomes more resilient to mutations, a future extension could replace rigid memory addresses with "fuzzy jumps" that target patterns in the code. A basic signaling mechanism would also allow organisms to coordinate, both internally between threads and externally with neighbors, laying the groundwork for social behavior.
-*   **Internal Parallelism (Digital Eukaryogenesis?):** The VM allows an organism to `FORK` its execution. With a signaling system in place for coordination, this could enable an internal division of labor—for instance, one thread for metabolism and another for replication. While true multicellularity is a very distant goal, this is a fascinating step to investigate if this mechanism could bring us one step closer to cellular coordination.
+*   **Pluggable Mutation Models:** While the current system focuses on stability, the next major step is to implement a flexible mutation system as first-class plugins. This aims to allow experiments with different concepts of variation, from simple bit-flips to complex genomic rearrangements, to study their impact on evolvability.
+*   **Evolvability & Robustness:** We plan to experiment with "fuzzy jumps" (targeting code patterns instead of addresses) to understand how genomic resilience can evolve.
+*   **Internal Parallelism (Digital Eukaryogenesis):** The VM allows an organism to `FORK` its execution. With the new molecule marker system enabling signaling, we can now investigate if organisms evolve an internal division of labor—for instance, one thread for metabolism and another for replication. This is a fascinating step towards investigating cellular coordination.
+*   **Emergent Ecosystems & Niche Construction:** The physics engine is designed to be extensible with reaction chains (e.g., `A + B -> Energy + C`). This creates a testbed for exploring if trophic levels can emerge spontaneously, allowing organisms to alter their environment by creating waste that becomes a resource for others—a process known as Niche Construction.
 
 👉 **[Read the full Scientific Overview](docs/SCIENTIFIC_OVERVIEW.md)** or **[Jump to Quick Start](#quick-start-run-a-simulation)**
 
@@ -121,9 +121,9 @@ Evochora is an open-source project and thrives on collaboration. The goal is to 
 
 Some of the open challenges we're currently thinking about are:
 
-- **Thermodynamics (Entropy):** How can we model thermodynamics system-wide to naturally suppress infinite loops and drive population stability?
-- **Spatial Ownership:** Improve VM-level "property rights" for organisms to make aggressive overwriting unsustainable and further drive population stability?
+- **Evolution of Evolvability (Mutation Models):** How do different mutation regimes (e.g., bit-flips vs. genomic rearrangements) affect the long-term potential for complexity? We need to build a flexible plugin system to test this.
 - **Fuzzy Addressing (SignalGP):** Can we move from absolute memory addresses to pattern-matching jumps to make the genome more resilient to mutation?
+- **Signaling & Concurrency:** How can organisms utilize multiple execution contexts (via FORK) and internal signaling to evolve more complex behaviors (Digital Eukaryogenesis)?
 
 This is just a starting point, and we're open to new ideas.
 👉 **For a deeper dive, check out the [OPEN_RESEARCH_QUESTIONS.md](docs/OPEN_RESEARCH_QUESTIONS.md)**
@@ -252,7 +252,7 @@ The Runtime implements the simulation environment and its physical laws. It enfo
          |   |                                                       |   |
          |   |  Stacks:    [Data Stack] [Call Stack] [Loc. Stack]    |   |
          |   |                                                       |   |
-         |   |  Metabolism: [Energy Register (ER)] --(Cost)--> 0     |   |
+         |   |  Metabolism: [Thermodyamics (ER/SR)] --(Cost)--> 0    |   |
          |   +-------------------------------------------------------+   |
          +---------------------------------------------------------------+
 
