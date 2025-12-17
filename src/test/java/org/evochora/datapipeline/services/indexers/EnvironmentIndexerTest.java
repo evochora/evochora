@@ -12,8 +12,8 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import java.util.List;
 import java.util.Map;
 
-import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.CellStateTestHelper;
+import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;

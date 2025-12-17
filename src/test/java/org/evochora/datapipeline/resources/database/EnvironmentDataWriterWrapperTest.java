@@ -1,9 +1,15 @@
 package org.evochora.datapipeline.resources.database;
 
-import com.typesafe.config.ConfigFactory;
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+
 import org.evochora.datapipeline.CellStateTestHelper;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.ResourceContext;
+import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -11,13 +17,8 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
-import org.evochora.junit.extensions.logging.LogWatchExtension;
 
-import java.nio.file.Path;
-import java.util.List;
-import java.util.Map;
-
-import static org.assertj.core.api.Assertions.*;
+import com.typesafe.config.ConfigFactory;
 
 /**
  * Unit tests for EnvironmentDataWriterWrapper.

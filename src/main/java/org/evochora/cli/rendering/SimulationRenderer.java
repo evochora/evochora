@@ -1,18 +1,18 @@
 package org.evochora.cli.rendering;
 
-import org.evochora.datapipeline.api.contracts.CellDataColumns;
-import org.evochora.datapipeline.api.contracts.OrganismState;
-import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.api.contracts.Vector;
-import org.evochora.runtime.Config;
-import org.evochora.runtime.model.EnvironmentProperties;
-
 import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferInt;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+
+import org.evochora.datapipeline.api.contracts.CellDataColumns;
+import org.evochora.datapipeline.api.contracts.OrganismState;
+import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.Vector;
+import org.evochora.runtime.Config;
+import org.evochora.runtime.model.EnvironmentProperties;
 
 /**
  * Renders a single simulation tick to an image buffer.
