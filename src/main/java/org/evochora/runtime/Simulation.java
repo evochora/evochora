@@ -202,12 +202,9 @@ public class Simulation {
                         actionsByCoordinate.computeIfAbsent(coordAsList, k -> new ArrayList<>()).add(modInstruction);
                     }
                 } else {
-                    if (this.organisms.size() == 1) {
-                        instruction.setExecutedInTick(true);
-                    } else {
-                        instruction.setExecutedInTick(false);
-                        instruction.setConflictStatus(Instruction.ConflictResolutionStatus.LOST_OTHER_REASON);
-                    }
+                    // FIX: Always execute if no targets are specified (e.g. invalid arguments).
+                    // The instruction's execute() method will then run, detect the error, and fail gracefully.
+                    instruction.setExecutedInTick(true);
                 }
             } else {
                 instruction.setExecutedInTick(true);
