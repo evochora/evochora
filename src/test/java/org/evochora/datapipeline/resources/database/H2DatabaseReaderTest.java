@@ -97,17 +97,23 @@ class H2DatabaseReaderTest {
                 TickData.newBuilder()
                     .setTickNumber(10L)
                     .setSimulationRunId(runId)
-                    .addCells(CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0))
+                    .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                        CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
+                    )))
                     .build(),
                 TickData.newBuilder()
                     .setTickNumber(20L)
                     .setSimulationRunId(runId)
-                    .addCells(CellStateTestHelper.createCellStateBuilder(0, 101, 1, 60, 0))
+                    .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                        CellStateTestHelper.createCellStateBuilder(0, 101, 1, 60, 0).build()
+                    )))
                     .build(),
                 TickData.newBuilder()
                     .setTickNumber(30L)
                     .setSimulationRunId(runId)
-                    .addCells(CellStateTestHelper.createCellStateBuilder(0, 102, 1, 70, 0))
+                    .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                        CellStateTestHelper.createCellStateBuilder(0, 102, 1, 70, 0).build()
+                    )))
                     .build()
             );
 
@@ -183,7 +189,9 @@ class H2DatabaseReaderTest {
                 TickData.newBuilder()
                     .setTickNumber(42L)
                     .setSimulationRunId(runId)
-                    .addCells(CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0))
+                    .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                        CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
+                    )))
                     .build()
             );
 

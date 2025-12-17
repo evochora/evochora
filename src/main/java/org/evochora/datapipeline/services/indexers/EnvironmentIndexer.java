@@ -117,7 +117,7 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> implement
         database.writeEnvironmentCells(ticks, envProps);
         
         int totalCells = ticks.stream()
-            .mapToInt(t -> t.getCellsList().size())
+            .mapToInt(t -> t.getCellColumns().getFlatIndicesCount())
             .sum();
         
         log.debug("Flushed {} cells from {} ticks", totalCells, ticks.size());

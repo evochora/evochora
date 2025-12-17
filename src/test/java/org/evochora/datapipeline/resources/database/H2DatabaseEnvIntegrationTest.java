@@ -57,7 +57,9 @@ class H2DatabaseEnvIntegrationTest {
         EnvironmentProperties envProps = new EnvironmentProperties(new int[]{10, 10}, false);
         TickData tick = TickData.newBuilder()
             .setTickNumber(1L)
-            .addCells(CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0))
+            .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
+            )))
             .build();
         
         Object conn = database.acquireDedicatedConnection();
@@ -99,7 +101,9 @@ class H2DatabaseEnvIntegrationTest {
         EnvironmentProperties envProps = new EnvironmentProperties(new int[]{10, 10}, false);
         TickData tick = TickData.newBuilder()
             .setTickNumber(1L)
-            .addCells(CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0))
+            .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
+            )))
             .build();
         
         Object conn = database.acquireDedicatedConnection();

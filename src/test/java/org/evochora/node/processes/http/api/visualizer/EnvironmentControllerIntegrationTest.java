@@ -158,9 +158,11 @@ class EnvironmentControllerIntegrationTest {
             TickData.newBuilder()
                 .setTickNumber(1L)
                 .setSimulationRunId(runId)
-                .addCells(CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0))  // (0,0)
-                .addCells(CellStateTestHelper.createCellStateBuilder(5, 101, 2, 60, 0))  // (5,0)
-                .addCells(CellStateTestHelper.createCellStateBuilder(15, 102, 1, 70, 0)) // (5,1)
+                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                    CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build(),  // (0,0)
+                    CellStateTestHelper.createCellStateBuilder(5, 101, 2, 60, 0).build(),  // (5,0)
+                    CellStateTestHelper.createCellStateBuilder(15, 102, 1, 70, 0).build()  // (5,1)
+                )))
                 .build()
         );
 
@@ -241,7 +243,9 @@ class EnvironmentControllerIntegrationTest {
             TickData.newBuilder()
                 .setTickNumber(1L)
                 .setSimulationRunId(runId)
-                .addCells(CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0))
+                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                    CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
+                )))
                 .build()
         );
         
@@ -327,7 +331,9 @@ class EnvironmentControllerIntegrationTest {
             TickData.newBuilder()
                 .setTickNumber(1L)
                 .setSimulationRunId(oldRunId)
-                .addCells(CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0))
+                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                    CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
+                )))
                 .build()
         );
         
@@ -360,7 +366,9 @@ class EnvironmentControllerIntegrationTest {
             TickData.newBuilder()
                 .setTickNumber(1L)
                 .setSimulationRunId(newRunId)
-                .addCells(CellStateTestHelper.createCellStateBuilder(5, 200, 2, 75, 0))
+                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                    CellStateTestHelper.createCellStateBuilder(5, 200, 2, 75, 0).build()
+                )))
                 .build()
         );
         
@@ -420,7 +428,9 @@ class EnvironmentControllerIntegrationTest {
             TickData.newBuilder()
                 .setTickNumber(1L)
                 .setSimulationRunId(runId)
-                .addCells(CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0))
+                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                    CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
+                )))
                 .build()
         );
         
@@ -483,7 +493,9 @@ class EnvironmentControllerIntegrationTest {
             batches.add(TickData.newBuilder()
                 .setTickNumber(i + 1)
                 .setSimulationRunId(runId)
-                .addCells(CellStateTestHelper.createCellStateBuilder(0, 100 + i, 1, 50 + i, 0))
+                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                    CellStateTestHelper.createCellStateBuilder(0, 100 + i, 1, 50 + i, 0).build()
+                )))
                 .build());
         }
         
@@ -682,17 +694,23 @@ class EnvironmentControllerIntegrationTest {
             TickData.newBuilder()
                 .setTickNumber(10L)
                 .setSimulationRunId(runId)
-                .addCells(CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0))
+                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                    CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
+                )))
                 .build(),
             TickData.newBuilder()
                 .setTickNumber(20L)
                 .setSimulationRunId(runId)
-                .addCells(CellStateTestHelper.createCellStateBuilder(0, 101, 1, 60, 0))
+                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                    CellStateTestHelper.createCellStateBuilder(0, 101, 1, 60, 0).build()
+                )))
                 .build(),
             TickData.newBuilder()
                 .setTickNumber(30L)
                 .setSimulationRunId(runId)
-                .addCells(CellStateTestHelper.createCellStateBuilder(0, 102, 1, 70, 0))
+                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                    CellStateTestHelper.createCellStateBuilder(0, 102, 1, 70, 0).build()
+                )))
                 .build()
         );
 

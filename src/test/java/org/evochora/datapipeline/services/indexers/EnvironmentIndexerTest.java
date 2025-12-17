@@ -120,7 +120,9 @@ class EnvironmentIndexerTest {
         
         TickData tick = TickData.newBuilder()
             .setTickNumber(1L)
-            .addCells(CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0))
+            .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
+            )))
             .build();
         
         // When: Flush ticks
@@ -228,20 +230,26 @@ class EnvironmentIndexerTest {
         // Create 3 ticks with different cell counts
         TickData tick1 = TickData.newBuilder()
             .setTickNumber(1L)
-            .addCells(CellStateTestHelper.createCellStateBuilder(0, 100, 1, 10, 0))
-            .addCells(CellStateTestHelper.createCellStateBuilder(1, 101, 2, 20, 0))
+            .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                CellStateTestHelper.createCellStateBuilder(0, 100, 1, 10, 0).build(),
+                CellStateTestHelper.createCellStateBuilder(1, 101, 2, 20, 0).build()
+            )))
             .build();
         
         TickData tick2 = TickData.newBuilder()
             .setTickNumber(2L)
-            .addCells(CellStateTestHelper.createCellStateBuilder(2, 102, 1, 30, 0))
+            .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                CellStateTestHelper.createCellStateBuilder(2, 102, 1, 30, 0).build()
+            )))
             .build();
         
         TickData tick3 = TickData.newBuilder()
             .setTickNumber(3L)
-            .addCells(CellStateTestHelper.createCellStateBuilder(3, 103, 3, 40, 0))
-            .addCells(CellStateTestHelper.createCellStateBuilder(4, 104, 1, 50, 0))
-            .addCells(CellStateTestHelper.createCellStateBuilder(5, 105, 2, 60, 0))
+            .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                CellStateTestHelper.createCellStateBuilder(3, 103, 3, 40, 0).build(),
+                CellStateTestHelper.createCellStateBuilder(4, 104, 1, 50, 0).build(),
+                CellStateTestHelper.createCellStateBuilder(5, 105, 2, 60, 0).build()
+            )))
             .build();
         
         // When: Flush all ticks in one call
@@ -295,12 +303,16 @@ class EnvironmentIndexerTest {
         TickData tick1 = TickData.newBuilder().setTickNumber(1L).build(); // Empty
         TickData tick2 = TickData.newBuilder()
             .setTickNumber(2L)
-            .addCells(CellStateTestHelper.createCellStateBuilder(0, 100, 1, 10, 0))
+            .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                CellStateTestHelper.createCellStateBuilder(0, 100, 1, 10, 0).build()
+            )))
             .build();
         TickData tick3 = TickData.newBuilder().setTickNumber(3L).build(); // Empty
         TickData tick4 = TickData.newBuilder()
             .setTickNumber(4L)
-            .addCells(CellStateTestHelper.createCellStateBuilder(1, 101, 2, 20, 0))
+            .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                CellStateTestHelper.createCellStateBuilder(1, 101, 2, 20, 0).build()
+            )))
             .build();
         
         // When: Flush all ticks

@@ -204,8 +204,10 @@ class EnvironmentIndexerIntegrationTest {
             TickData.newBuilder()
                 .setTickNumber(1L)
                 .setSimulationRunId(runId)
-                .addCells(CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0))
-                .addCells(CellStateTestHelper.createCellStateBuilder(5, 101, 2, 60, 0))
+                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                    CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build(),
+                    CellStateTestHelper.createCellStateBuilder(5, 101, 2, 60, 0).build()
+                )))
                 .build()
         );
         
@@ -213,7 +215,9 @@ class EnvironmentIndexerIntegrationTest {
             TickData.newBuilder()
                 .setTickNumber(2L)
                 .setSimulationRunId(runId)
-                .addCells(CellStateTestHelper.createCellStateBuilder(1, 102, 1, 70, 0))
+                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                    CellStateTestHelper.createCellStateBuilder(1, 102, 1, 70, 0).build()
+                )))
                 .build()
         );
         
@@ -257,7 +261,9 @@ class EnvironmentIndexerIntegrationTest {
             TickData.newBuilder()
                 .setTickNumber(1L)
                 .setSimulationRunId(runId)
-                .addCells(CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0))
+                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                    CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
+                )))
                 .build()
         );
         
@@ -265,12 +271,16 @@ class EnvironmentIndexerIntegrationTest {
             TickData.newBuilder()
                 .setTickNumber(1L)  // SAME tick_number as batch1!
                 .setSimulationRunId(runId)
-                .addCells(CellStateTestHelper.createCellStateBuilder(3, 101, 2, 75, 0))
+                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                    CellStateTestHelper.createCellStateBuilder(3, 101, 2, 75, 0).build()
+                )))
                 .build(),
             TickData.newBuilder()
                 .setTickNumber(2L)  // Additional tick to ensure different storage path
                 .setSimulationRunId(runId)
-                .addCells(CellStateTestHelper.createCellStateBuilder(5, 102, 1, 60, 0))
+                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                    CellStateTestHelper.createCellStateBuilder(5, 102, 1, 60, 0).build()
+                )))
                 .build()
         );
         
@@ -316,7 +326,9 @@ class EnvironmentIndexerIntegrationTest {
                 TickData.newBuilder()
                     .setTickNumber(i + 1L)
                     .setSimulationRunId(runId)
-                    .addCells(CellStateTestHelper.createCellStateBuilder(i, 100 + i, 1, 50, 0))
+                    .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                        CellStateTestHelper.createCellStateBuilder(i, 100 + i, 1, 50, 0).build()
+                    )))
                     .build()
             );
             writeBatchAndNotify(runId, batch);

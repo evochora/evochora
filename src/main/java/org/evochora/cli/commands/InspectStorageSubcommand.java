@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.Callable;
 
+import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
@@ -194,14 +195,15 @@ public class InspectStorageSubcommand implements Callable<Integer> {
         
         // Calculate sizes
         long organismsSize = tick.getOrganismsList().stream().mapToLong(org.evochora.datapipeline.api.contracts.OrganismState::getSerializedSize).sum();
-        long cellsSize = tick.getCellsList().stream().mapToLong(org.evochora.datapipeline.api.contracts.CellState::getSerializedSize).sum();
+        long cellsSize = tick.getCellColumns().getSerializedSize();
+        int cellsCount = tick.getCellColumns().getFlatIndicesCount();
         
         out.println("=== Tick Data Summary ===");
         out.println("Simulation Run ID: " + tick.getSimulationRunId());
         out.println("Tick Number: " + tick.getTickNumber());
         out.println("Capture Time: " + java.time.Instant.ofEpochMilli(tick.getCaptureTimeMs()));
         out.printf("Organisms: %d alive (%s)%n", tick.getOrganismsCount(), formatBytes(organismsSize));
-        out.printf("Cells: %d non-empty (%s)%n", tick.getCellsCount(), formatBytes(cellsSize));
+        out.printf("Cells: %d non-empty (%s)%n", cellsCount, formatBytes(cellsSize));
         out.println("RNG State: " + tick.getRngState().size() + " bytes");
         out.println("Strategy States: " + tick.getStrategyStatesCount());
         
@@ -220,22 +222,27 @@ public class InspectStorageSubcommand implements Callable<Integer> {
             }
         }
         
-        if (tick.getCellsCount() > 0) {
+        if (cellsCount > 0) {
             out.println("\n=== Cell Summary ===");
-            tick.getCellsList().stream()
-                .limit(10) // Show first 10 cells
-                .forEach(cell -> {
-                    int moleculeInt = cell.getMoleculeData();
-                    int type = moleculeInt & Config.TYPE_MASK;
-                    int value = extractSignedValue(moleculeInt);
-                    out.printf("  Index: %d, Type: %d, Value: %d, Owner: %d%n",
-                        cell.getFlatIndex(),
-                        type,
-                        value,
-                        cell.getOwnerId());
-                });
-            if (tick.getCellsCount() > 10) {
-                out.println("  ... and " + (tick.getCellsCount() - 10) + " more cells");
+            CellDataColumns columns = tick.getCellColumns();
+            int limit = Math.min(10, cellsCount);
+            
+            for (int i = 0; i < limit; i++) {
+                int flatIndex = columns.getFlatIndices(i);
+                int moleculeInt = columns.getMoleculeData(i);
+                int ownerId = columns.getOwnerIds(i);
+                
+                int type = moleculeInt & Config.TYPE_MASK;
+                int value = extractSignedValue(moleculeInt);
+                
+                out.printf("  Index: %d, Type: %d, Value: %d, Owner: %d%n",
+                    flatIndex,
+                    type,
+                    value,
+                    ownerId);
+            }
+            if (cellsCount > 10) {
+                out.println("  ... and " + (cellsCount - 10) + " more cells");
             }
         }
     }

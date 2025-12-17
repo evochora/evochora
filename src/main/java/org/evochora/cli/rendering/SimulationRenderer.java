@@ -1,6 +1,6 @@
 package org.evochora.cli.rendering;
 
-import org.evochora.datapipeline.api.contracts.CellState;
+import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.Vector;
@@ -74,15 +74,21 @@ public class SimulationRenderer {
         // 2. Draw cells
         // Use EnvironmentProperties.flatIndexToCoordinates() for correct conversion
         // This handles strides correctly for any dimensionality (2D, 3D, etc.)
-        for (CellState cell : tick.getCellsList()) {
-            int[] coord = envProps.flatIndexToCoordinates(cell.getFlatIndex());
+        CellDataColumns columns = tick.getCellColumns();
+        int cellCount = columns.getFlatIndicesCount();
+        
+        for (int i = 0; i < cellCount; i++) {
+            int flatIndex = columns.getFlatIndices(i);
+            int moleculeInt = columns.getMoleculeData(i);
+            
+            int[] coord = envProps.flatIndexToCoordinates(flatIndex);
             
             // For 2D rendering, use first two coordinates
             // Note: This assumes 2D world for video rendering (which is standard)
             int x = coord[0];
             int y = coord[1];
             
-            int color = getCellColor(cell.getMoleculeData());
+            int color = getCellColor(moleculeInt);
             drawCell(x, y, color);
         }
 

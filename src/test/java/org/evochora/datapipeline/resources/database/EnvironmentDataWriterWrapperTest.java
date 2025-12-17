@@ -69,8 +69,10 @@ class EnvironmentDataWriterWrapperTest {
         EnvironmentProperties envProps = new EnvironmentProperties(new int[]{10, 10}, false);
         TickData tick = TickData.newBuilder()
             .setTickNumber(1L)
-            .addCells(CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0))
-            .addCells(CellStateTestHelper.createCellStateBuilder(1, 101, 1, 60, 0))
+            .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build(),
+                CellStateTestHelper.createCellStateBuilder(1, 101, 1, 60, 0).build()
+            )))
             .build();
         
         // When: Write cells
@@ -86,12 +88,16 @@ class EnvironmentDataWriterWrapperTest {
         EnvironmentProperties envProps = new EnvironmentProperties(new int[]{10, 10}, false);
         TickData tick1 = TickData.newBuilder()
             .setTickNumber(1L)
-            .addCells(CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0))
-            .addCells(CellStateTestHelper.createCellStateBuilder(1, 101, 1, 60, 0))
+            .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build(),
+                CellStateTestHelper.createCellStateBuilder(1, 101, 1, 60, 0).build()
+            )))
             .build();
         TickData tick2 = TickData.newBuilder()
             .setTickNumber(2L)
-            .addCells(CellStateTestHelper.createCellStateBuilder(2, 102, 1, 70, 0))
+            .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                CellStateTestHelper.createCellStateBuilder(2, 102, 1, 70, 0).build()
+            )))
             .build();
         
         // When: Write cells
@@ -136,7 +142,9 @@ class EnvironmentDataWriterWrapperTest {
         EnvironmentProperties envProps = new EnvironmentProperties(new int[]{10, 10}, false);
         TickData tick = TickData.newBuilder()
             .setTickNumber(1L)
-            .addCells(CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0))
+            .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
+            )))
             .build();
         wrapper.writeEnvironmentCells(List.of(tick), envProps);
         
@@ -174,7 +182,9 @@ class EnvironmentDataWriterWrapperTest {
         EnvironmentProperties envProps = new EnvironmentProperties(new int[]{10, 10}, false);
         TickData tick = TickData.newBuilder()
             .setTickNumber(1L)
-            .addCells(CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0))
+            .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
+            )))
             .build();
         wrapper.writeEnvironmentCells(List.of(tick), envProps);
     }

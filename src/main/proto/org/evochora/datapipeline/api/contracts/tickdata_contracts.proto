@@ -32,9 +32,7 @@ message TickData {
   repeated OrganismState organisms = 4;
 
   // All non-empty cells in the environment (sparse representation)
-  // Only includes cells where type!=0 OR value!=0 OR owner!=0
-  // Created by: iterating environment cells and filtering empty cells
-  repeated CellState cells = 5;
+  CellDataColumns cell_columns = 5;
 
   // Complete RNG state for checkpoint/resume
   // Created via: IRandomProvider.saveState()
@@ -360,6 +358,18 @@ message RegisterValue {
 // Cell State
 // ============================================================================
 
+// Columnar storage format for cell data.
+message CellDataColumns {
+  // Parallel array of flat indices (must be same length as molecule_data and owner_ids)
+  repeated int32 flat_indices = 1 [packed=true];
+  
+  // Parallel array of molecule data (packed int32: type, value, marker)
+  repeated int32 molecule_data = 2 [packed=true];
+  
+  // Parallel array of owner IDs
+  repeated int32 owner_ids = 3 [packed=true];
+}
+
 // Represents a single cell in the environment grid.
 // Maps to org.evochora.runtime.model.Molecule class.
 // Only non-empty cells are included (sparse representation).
@@ -399,18 +409,6 @@ message CellState {
   int32 owner_id = 4;
 }
 
-// Wrapper message for efficient BLOB storage in databases.
-// Used by SingleBlobStrategy to serialize cell lists for compact storage.
-//
-// USAGE:
-// - Write: CellStateList.newBuilder().addAllCells(tick.getCellsList()).build().toByteArray()
-// - Read: CellStateList.parseFrom(blob).getCellsList()
-//
-// STORAGE: ~1-2 KB per tick (1000 cells × 20 bytes protobuf + overhead)
-// With zstd compression: ~0.6 KB per tick (145× compression ratio)
-message CellStateList {
-  repeated CellState cells = 1;
-}
 
 // Wrapper message for efficient BLOB storage of organism states in databases.
 // Used by SingleBlobOrgStrategy to serialize organism lists for compact storage.

@@ -1,9 +1,49 @@
 package org.evochora.datapipeline;
 
+import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.CellState;
 import org.evochora.runtime.Config;
+import java.util.ArrayList;
+import java.util.List;
 
 public class CellStateTestHelper {
+
+    /**
+     * Converts a list of CellState objects into the optimized CellDataColumns format.
+     * Use this when building TickData in tests.
+     */
+    public static CellDataColumns createColumnsFromCells(Iterable<CellState> cells) {
+        CellDataColumns.Builder builder = CellDataColumns.newBuilder();
+        for (CellState cell : cells) {
+            builder.addFlatIndices(cell.getFlatIndex());
+            builder.addMoleculeData(cell.getMoleculeData());
+            builder.addOwnerIds(cell.getOwnerId());
+        }
+        return builder.build();
+    }
+    
+    /**
+     * Converts CellDataColumns back into a List of CellState objects.
+     * Useful for assertions in tests that expect lists.
+     */
+    public static List<CellState> createCellsFromColumns(CellDataColumns columns) {
+        List<CellState> result = new ArrayList<>();
+        int count = columns.getFlatIndicesCount();
+        
+        // Sanity check: all columns should be same length
+        if (columns.getMoleculeDataCount() != count || columns.getOwnerIdsCount() != count) {
+            throw new IllegalArgumentException("Column lengths mismatch in CellDataColumns");
+        }
+        
+        for (int i = 0; i < count; i++) {
+            result.add(CellState.newBuilder()
+                .setFlatIndex(columns.getFlatIndices(i))
+                .setMoleculeData(columns.getMoleculeData(i))
+                .setOwnerId(columns.getOwnerIds(i))
+                .build());
+        }
+        return result;
+    }
 
     /**
      * Creates a CellState builder with the molecule data correctly packed.

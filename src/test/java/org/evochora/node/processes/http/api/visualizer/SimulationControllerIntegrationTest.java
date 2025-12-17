@@ -150,7 +150,9 @@ class SimulationControllerIntegrationTest {
             TickData.newBuilder()
                 .setTickNumber(5L)
                 .setSimulationRunId(runId)
-                .addCells(CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0))
+                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                    CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
+                )))
                 .build()
         );
 
