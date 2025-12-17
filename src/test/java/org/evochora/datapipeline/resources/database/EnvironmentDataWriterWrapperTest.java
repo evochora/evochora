@@ -1,7 +1,7 @@
 package org.evochora.datapipeline.resources.database;
 
 import com.typesafe.config.ConfigFactory;
-import org.evochora.datapipeline.api.contracts.CellState;
+import org.evochora.datapipeline.CellStateTestHelper;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -69,18 +69,8 @@ class EnvironmentDataWriterWrapperTest {
         EnvironmentProperties envProps = new EnvironmentProperties(new int[]{10, 10}, false);
         TickData tick = TickData.newBuilder()
             .setTickNumber(1L)
-            .addCells(CellState.newBuilder()
-                .setFlatIndex(0)
-                .setOwnerId(100)
-                .setMoleculeType(1)
-                .setMoleculeValue(50)
-                .build())
-            .addCells(CellState.newBuilder()
-                .setFlatIndex(1)
-                .setOwnerId(101)
-                .setMoleculeType(1)
-                .setMoleculeValue(60)
-                .build())
+            .addCells(CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0))
+            .addCells(CellStateTestHelper.createCellStateBuilder(1, 101, 1, 60, 0))
             .build();
         
         // When: Write cells
@@ -96,12 +86,12 @@ class EnvironmentDataWriterWrapperTest {
         EnvironmentProperties envProps = new EnvironmentProperties(new int[]{10, 10}, false);
         TickData tick1 = TickData.newBuilder()
             .setTickNumber(1L)
-            .addCells(CellState.newBuilder().setFlatIndex(0).setOwnerId(100).setMoleculeType(1).setMoleculeValue(50).build())
-            .addCells(CellState.newBuilder().setFlatIndex(1).setOwnerId(101).setMoleculeType(1).setMoleculeValue(60).build())
+            .addCells(CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0))
+            .addCells(CellStateTestHelper.createCellStateBuilder(1, 101, 1, 60, 0))
             .build();
         TickData tick2 = TickData.newBuilder()
             .setTickNumber(2L)
-            .addCells(CellState.newBuilder().setFlatIndex(2).setOwnerId(102).setMoleculeType(1).setMoleculeValue(70).build())
+            .addCells(CellStateTestHelper.createCellStateBuilder(2, 102, 1, 70, 0))
             .build();
         
         // When: Write cells
@@ -146,7 +136,7 @@ class EnvironmentDataWriterWrapperTest {
         EnvironmentProperties envProps = new EnvironmentProperties(new int[]{10, 10}, false);
         TickData tick = TickData.newBuilder()
             .setTickNumber(1L)
-            .addCells(CellState.newBuilder().setFlatIndex(0).setOwnerId(100).setMoleculeType(1).setMoleculeValue(50).build())
+            .addCells(CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0))
             .build();
         wrapper.writeEnvironmentCells(List.of(tick), envProps);
         
@@ -184,7 +174,7 @@ class EnvironmentDataWriterWrapperTest {
         EnvironmentProperties envProps = new EnvironmentProperties(new int[]{10, 10}, false);
         TickData tick = TickData.newBuilder()
             .setTickNumber(1L)
-            .addCells(CellState.newBuilder().setFlatIndex(0).setOwnerId(100).setMoleculeType(1).setMoleculeValue(50).build())
+            .addCells(CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0))
             .build();
         wrapper.writeEnvironmentCells(List.of(tick), envProps);
     }

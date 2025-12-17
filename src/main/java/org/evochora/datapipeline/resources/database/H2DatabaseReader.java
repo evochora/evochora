@@ -107,19 +107,26 @@ public class H2DatabaseReader implements IDatabaseReader {
         return cells.stream()
             .map(cell -> {
                 int[] coords = envProps.flatIndexToCoordinates(cell.getFlatIndex());
-                String moleculeTypeName = MoleculeTypeRegistry.typeToName(cell.getMoleculeType());
+
+                int moleculeInt = cell.getMoleculeData();
+                int moleculeType = moleculeInt & Config.TYPE_MASK;
+                int moleculeValue = extractSignedValue(moleculeInt);
+                int marker = (moleculeInt & Config.MARKER_MASK) >> Config.MARKER_SHIFT;
+
+                String moleculeTypeName = MoleculeTypeRegistry.typeToName(moleculeType);
+                
                 // For CODE molecules, resolve opcode name from value
                 String opcodeName = null;
-                if (cell.getMoleculeType() == Config.TYPE_CODE) {
-                    opcodeName = Instruction.getInstructionNameById(cell.getMoleculeValue());
+                if (moleculeType == Config.TYPE_CODE) {
+                    opcodeName = Instruction.getInstructionNameById(moleculeValue);
                 }
                 return new CellWithCoordinates(
                     coords,
                     moleculeTypeName,
-                    cell.getMoleculeValue(),
+                    moleculeValue,
                     cell.getOwnerId(),
                     opcodeName,
-                    cell.getMarker()
+                    marker
                 );
             })
             .collect(java.util.stream.Collectors.toList());
@@ -422,4 +429,13 @@ public class H2DatabaseReader implements IDatabaseReader {
             throw new IllegalStateException("Reader already closed");
         }
     }
+
+    private static int extractSignedValue(int moleculeInt) {
+        int rawValue = moleculeInt & org.evochora.runtime.Config.VALUE_MASK;
+        if ((rawValue & (1 << (org.evochora.runtime.Config.VALUE_BITS - 1))) != 0) {
+            rawValue |= ~((1 << org.evochora.runtime.Config.VALUE_BITS) - 1);
+        }
+        return rawValue;
+    }
 }
+

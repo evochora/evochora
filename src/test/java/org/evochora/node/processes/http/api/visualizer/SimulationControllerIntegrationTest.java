@@ -18,7 +18,7 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import org.evochora.datapipeline.api.contracts.BatchInfo;
-import org.evochora.datapipeline.api.contracts.CellState;
+import org.evochora.datapipeline.CellStateTestHelper;
 import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
@@ -150,7 +150,7 @@ class SimulationControllerIntegrationTest {
             TickData.newBuilder()
                 .setTickNumber(5L)
                 .setSimulationRunId(runId)
-                .addCells(CellState.newBuilder().setFlatIndex(0).setOwnerId(100).setMoleculeType(1).setMoleculeValue(50).build())
+                .addCells(CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0))
                 .build()
         );
 

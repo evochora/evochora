@@ -19,6 +19,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
 
+import org.evochora.datapipeline.CellStateTestHelper;
 import org.evochora.datapipeline.api.contracts.CellState;
 import org.evochora.datapipeline.api.contracts.CellStateList;
 import org.evochora.datapipeline.api.contracts.TickData;
@@ -303,12 +304,7 @@ class SingleBlobStrategyTest {
     // Helper methods
     
     private CellState createCell(int flatIndex, int type, int value) {
-        return CellState.newBuilder()
-            .setFlatIndex(flatIndex)
-            .setMoleculeType(type)
-            .setMoleculeValue(value)
-            .setOwnerId(0)
-            .build();
+        return CellStateTestHelper.createCellState(flatIndex, 0, type, value, 0);
     }
     
     private TickData createTickWithCells(long tickNumber, int cellCount) {

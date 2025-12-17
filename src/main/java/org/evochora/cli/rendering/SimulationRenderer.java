@@ -82,7 +82,7 @@ public class SimulationRenderer {
             int x = coord[0];
             int y = coord[1];
             
-            int color = getCellColor(cell.getMoleculeType());
+            int color = getCellColor(cell.getMoleculeData());
             drawCell(x, y, color);
         }
 
@@ -167,10 +167,11 @@ public class SimulationRenderer {
         }
     }
 
-    private int getCellColor(int moleculeType) {
+    private int getCellColor(int moleculeInt) {
         // moleculeType contains the bitmasked value (e.g., 0x00000, 0x10000, 0x20000, 0x30000)
         // from CellState.molecule_type, which is set as: moleculeInt & Config.TYPE_MASK
         // We need to compare directly with the Config constants or extract the raw type ID
+        int moleculeType = moleculeInt & Config.TYPE_MASK;
         
         if (moleculeType == Config.TYPE_CODE) {
             return colorCodeBg;

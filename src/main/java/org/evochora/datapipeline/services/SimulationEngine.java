@@ -486,10 +486,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             // Reuse cell builder with flat_index (no coordinate conversion needed!)
             cellBuilder.clear();
             cellBuilder.setFlatIndex(flatIndex)
-                    .setMoleculeType(moleculeInt & org.evochora.runtime.Config.TYPE_MASK)
-                    .setMoleculeValue(extractSignedValue(moleculeInt))
-                    .setOwnerId(ownerId)
-                    .setMarker((moleculeInt & org.evochora.runtime.Config.MARKER_MASK) >> org.evochora.runtime.Config.MARKER_SHIFT);
+                    .setMoleculeData(moleculeInt)
+                    .setOwnerId(ownerId);
 
             tickBuilder.addCells(cellBuilder.build());
         });

@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.evochora.datapipeline.api.contracts.BatchInfo;
-import org.evochora.datapipeline.api.contracts.CellState;
+import org.evochora.datapipeline.CellStateTestHelper;
 import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
@@ -120,12 +120,7 @@ class EnvironmentIndexerTest {
         
         TickData tick = TickData.newBuilder()
             .setTickNumber(1L)
-            .addCells(CellState.newBuilder()
-                .setFlatIndex(0)
-                .setOwnerId(100)
-                .setMoleculeType(1)
-                .setMoleculeValue(50)
-                .build())
+            .addCells(CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0))
             .build();
         
         // When: Flush ticks
@@ -233,20 +228,20 @@ class EnvironmentIndexerTest {
         // Create 3 ticks with different cell counts
         TickData tick1 = TickData.newBuilder()
             .setTickNumber(1L)
-            .addCells(CellState.newBuilder().setFlatIndex(0).setOwnerId(100).setMoleculeType(1).setMoleculeValue(10).build())
-            .addCells(CellState.newBuilder().setFlatIndex(1).setOwnerId(101).setMoleculeType(2).setMoleculeValue(20).build())
+            .addCells(CellStateTestHelper.createCellStateBuilder(0, 100, 1, 10, 0))
+            .addCells(CellStateTestHelper.createCellStateBuilder(1, 101, 2, 20, 0))
             .build();
         
         TickData tick2 = TickData.newBuilder()
             .setTickNumber(2L)
-            .addCells(CellState.newBuilder().setFlatIndex(2).setOwnerId(102).setMoleculeType(1).setMoleculeValue(30).build())
+            .addCells(CellStateTestHelper.createCellStateBuilder(2, 102, 1, 30, 0))
             .build();
         
         TickData tick3 = TickData.newBuilder()
             .setTickNumber(3L)
-            .addCells(CellState.newBuilder().setFlatIndex(3).setOwnerId(103).setMoleculeType(3).setMoleculeValue(40).build())
-            .addCells(CellState.newBuilder().setFlatIndex(4).setOwnerId(104).setMoleculeType(1).setMoleculeValue(50).build())
-            .addCells(CellState.newBuilder().setFlatIndex(5).setOwnerId(105).setMoleculeType(2).setMoleculeValue(60).build())
+            .addCells(CellStateTestHelper.createCellStateBuilder(3, 103, 3, 40, 0))
+            .addCells(CellStateTestHelper.createCellStateBuilder(4, 104, 1, 50, 0))
+            .addCells(CellStateTestHelper.createCellStateBuilder(5, 105, 2, 60, 0))
             .build();
         
         // When: Flush all ticks in one call
@@ -300,12 +295,12 @@ class EnvironmentIndexerTest {
         TickData tick1 = TickData.newBuilder().setTickNumber(1L).build(); // Empty
         TickData tick2 = TickData.newBuilder()
             .setTickNumber(2L)
-            .addCells(CellState.newBuilder().setFlatIndex(0).setOwnerId(100).setMoleculeType(1).setMoleculeValue(10).build())
+            .addCells(CellStateTestHelper.createCellStateBuilder(0, 100, 1, 10, 0))
             .build();
         TickData tick3 = TickData.newBuilder().setTickNumber(3L).build(); // Empty
         TickData tick4 = TickData.newBuilder()
             .setTickNumber(4L)
-            .addCells(CellState.newBuilder().setFlatIndex(1).setOwnerId(101).setMoleculeType(2).setMoleculeValue(20).build())
+            .addCells(CellStateTestHelper.createCellStateBuilder(1, 101, 2, 20, 0))
             .build();
         
         // When: Flush all ticks

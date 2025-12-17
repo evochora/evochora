@@ -388,25 +388,15 @@ message CellState {
   //
   // Vector coordinate = 1;
 
-  // Type of molecule in this cell
-  // Source: Molecule.getType()
-  // Common types: CODE (instructions), DATA, ENERGY
-  int32 molecule_type = 2;
-
-  // Value of the molecule
-  // Source: Molecule.getValue()
-  // For CODE: encoded instruction, for DATA/ENERGY: numeric value
-  int32 molecule_value = 3;
+  // Combined molecule data using bitmask (type, value, marker).
+  // This is the packed int32 from the internal Molecule class.
+  // Use masks and shifts from org.evochora.runtime.Config to decode.
+  int32 molecule_data = 2;
 
   // ID of the organism that owns this cell (0 if unowned)
   // Source: Molecule.getOwnerId()
   // Used to track which organism's program occupies this cell
   int32 owner_id = 4;
-
-  // Marker value of the molecule (0-15)
-  // Source: Molecule.getMarker() >> Config.MARKER_SHIFT
-  // Used to tag molecules written by organisms for future FORK operations
-  int32 marker = 5;
 }
 
 // Wrapper message for efficient BLOB storage in databases.

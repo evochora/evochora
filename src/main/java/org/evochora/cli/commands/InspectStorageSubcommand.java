@@ -1,22 +1,24 @@
 package org.evochora.cli.commands;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
+import java.io.IOException;
+import java.util.List;
+import java.util.concurrent.Callable;
+
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
+import org.evochora.runtime.Config;
+
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.typesafe.config.ConfigFactory;
+
 import picocli.CommandLine.Command;
+import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.ParentCommand;
 import picocli.CommandLine.Spec;
-import picocli.CommandLine.Model.CommandSpec;
-
-import java.io.IOException;
-import java.util.List;
-import java.util.concurrent.Callable;
 
 @Command(
     name = "storage",
@@ -58,7 +60,7 @@ public class InspectStorageSubcommand implements Callable<Integer> {
 
     @Override
     public Integer call() throws Exception {
-        Config config = parent.getParent().getConfig();
+        com.typesafe.config.Config config = parent.getParent().getConfig();
         
         try {
             // Create storage resource
@@ -104,20 +106,20 @@ public class InspectStorageSubcommand implements Callable<Integer> {
         }
     }
 
-    private IBatchStorageRead createStorageResource(Config config) throws Exception {
+    private IBatchStorageRead createStorageResource(com.typesafe.config.Config config) throws Exception {
         // Get storage configuration
-        Config pipelineConfig = config.getConfig("pipeline");
-        Config resourcesConfig = pipelineConfig.getConfig("resources");
-        Config storageConfig = resourcesConfig.getConfig(storageName);
+        com.typesafe.config.Config pipelineConfig = config.getConfig("pipeline");
+        com.typesafe.config.Config resourcesConfig = pipelineConfig.getConfig("resources");
+        com.typesafe.config.Config storageConfig = resourcesConfig.getConfig(storageName);
         
         String className = storageConfig.getString("className");
-        Config options = storageConfig.hasPath("options") 
+        com.typesafe.config.Config options = storageConfig.hasPath("options") 
             ? storageConfig.getConfig("options") 
             : ConfigFactory.empty();
         
         // Create storage resource
         FileSystemStorageResource storage = (FileSystemStorageResource) Class.forName(className)
-            .getConstructor(String.class, Config.class)
+            .getConstructor(String.class, com.typesafe.config.Config.class)
             .newInstance(storageName, options);
         
         return storage;
@@ -199,10 +201,13 @@ public class InspectStorageSubcommand implements Callable<Integer> {
             tick.getCellsList().stream()
                 .limit(10) // Show first 10 cells
                 .forEach(cell -> {
+                    int moleculeInt = cell.getMoleculeData();
+                    int type = moleculeInt & Config.TYPE_MASK;
+                    int value = extractSignedValue(moleculeInt);
                     out.printf("  Index: %d, Type: %d, Value: %d, Owner: %d%n",
                         cell.getFlatIndex(),
-                        cell.getMoleculeType(),
-                        cell.getMoleculeValue(),
+                        type,
+                        value,
                         cell.getOwnerId());
                 });
             if (tick.getCellsCount() > 10) {
@@ -210,4 +215,13 @@ public class InspectStorageSubcommand implements Callable<Integer> {
             }
         }
     }
+
+    private static int extractSignedValue(int moleculeInt) {
+        int rawValue = moleculeInt & org.evochora.runtime.Config.VALUE_MASK;
+        if ((rawValue & (1 << (org.evochora.runtime.Config.VALUE_BITS - 1))) != 0) {
+            rawValue |= ~((1 << org.evochora.runtime.Config.VALUE_BITS) - 1);
+        }
+        return rawValue;
+    }
 }
+

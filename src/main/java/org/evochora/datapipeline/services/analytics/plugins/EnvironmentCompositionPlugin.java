@@ -143,10 +143,12 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
      * @param counts Array: [code, data, energy, structure, unknown]
      */
     private void countCell(CellState cell, long[] counts) {
-        int type = cell.getMoleculeType();
+        int moleculeInt = cell.getMoleculeData();
+        int type = moleculeInt & Config.TYPE_MASK;
+
         if (type == Config.TYPE_CODE) {
             // CODE:0 is empty space (regardless of owner)
-            if (cell.getMoleculeValue() != 0) {
+            if (extractSignedValue(moleculeInt) != 0) {
                 counts[0]++;
             }
             // CODE:0 not counted → will be part of emptyCells
@@ -159,6 +161,14 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
         } else {
             counts[4]++; // Unknown type
         }
+    }
+
+    private static int extractSignedValue(int moleculeInt) {
+        int rawValue = moleculeInt & org.evochora.runtime.Config.VALUE_MASK;
+        if ((rawValue & (1 << (org.evochora.runtime.Config.VALUE_BITS - 1))) != 0) {
+            rawValue |= ~((1 << org.evochora.runtime.Config.VALUE_BITS) - 1);
+        }
+        return rawValue;
     }
 
     @Override

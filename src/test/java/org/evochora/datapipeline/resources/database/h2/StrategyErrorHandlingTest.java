@@ -3,6 +3,7 @@ package org.evochora.datapipeline.resources.database.h2;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
+import org.evochora.datapipeline.CellStateTestHelper;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.database.*;
 import org.evochora.datapipeline.api.resources.ResourceContext;
@@ -251,19 +252,9 @@ class StrategyErrorHandlingTest {
                     org.evochora.datapipeline.api.contracts.CellStateList.newBuilder();
                 
                 // Add a few test cells
-                builder.addCells(org.evochora.datapipeline.api.contracts.CellState.newBuilder()
-                    .setFlatIndex(0)
-                    .setMoleculeType(1)
-                    .setMoleculeValue(255)
-                    .setOwnerId(0)
-                    .build());
+                builder.addCells(CellStateTestHelper.createCellState(0, 0, 1, 255, 0));
                 
-                builder.addCells(org.evochora.datapipeline.api.contracts.CellState.newBuilder()
-                    .setFlatIndex(1)
-                    .setMoleculeType(1)
-                    .setMoleculeValue(128)
-                    .setOwnerId(0)
-                    .build());
+                builder.addCells(CellStateTestHelper.createCellState(1, 0, 1, 128, 0));
                 
                 byte[] data = builder.build().toByteArray();
                 
