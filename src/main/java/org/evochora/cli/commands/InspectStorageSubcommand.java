@@ -67,7 +67,8 @@ public class InspectStorageSubcommand implements Callable<Integer> {
             IBatchStorageRead storage = createStorageResource(config);
             
             // Find batch file containing the tick
-            StoragePath batchPath = findBatchContainingTick(storage, runId, tickNumber);
+            // Use 0 as startTick to ensure we find batches starting before the target tick
+            StoragePath batchPath = findBatchContainingTick(storage, runId, tickNumber, 0);
             
             if (batchPath == null) {
                 spec.commandLine().getOut().println("No batch file found containing tick " + tickNumber + " for run " + runId);
@@ -125,31 +126,45 @@ public class InspectStorageSubcommand implements Callable<Integer> {
         return storage;
     }
 
-    private StoragePath findBatchContainingTick(IBatchStorageRead storage, String runId, long tickNumber) throws IOException {
-        // List batch files for the run
-        String prefix = runId + "/";
-        var result = storage.listBatchFiles(prefix, null, 1000, tickNumber, tickNumber);
+    private StoragePath findBatchContainingTick(IBatchStorageRead storage, String runId, long tickNumber, long searchStartTick) throws IOException {
+        // Search in the raw directory specifically to narrow down the search
+        String prefix = runId + "/raw/";
+        String continuationToken = null;
         
-        for (StoragePath filename : result.getFilenames()) {
-            // Check if this batch contains our tick
-            if (filename.asString().contains("batch_")) {
-                // Parse batch filename to get tick range
-                String[] parts = filename.asString().split("_");
-                if (parts.length >= 3) {
-                    try {
-                        long startTick = Long.parseLong(parts[1]);
-                        long endTick = Long.parseLong(parts[2].split("\\.")[0]);
-                        
-                        if (tickNumber >= startTick && tickNumber <= endTick) {
-                            return filename;
+        do {
+            var result = storage.listBatchFiles(prefix, continuationToken, 10000);
+            
+            for (StoragePath path : result.getFilenames()) {
+                String fullPath = path.asString();
+                String filename = new java.io.File(fullPath).getName();
+                
+                if (filename.startsWith("batch_")) {
+                    String[] parts = filename.split("_");
+                    if (parts.length >= 3) {
+                        try {
+                            long startTick = Long.parseLong(parts[1]);
+                            
+                            String endTickPart = parts[2];
+                            int firstDot = endTickPart.indexOf('.');
+                            if (firstDot > 0) {
+                                endTickPart = endTickPart.substring(0, firstDot);
+                            }
+                            
+                            long endTick = Long.parseLong(endTickPart);
+                            
+                            if (tickNumber >= startTick && tickNumber <= endTick) {
+                                return path;
+                            }
+                        } catch (NumberFormatException e) {
+                            continue;
                         }
-                    } catch (NumberFormatException e) {
-                        // Skip invalid filenames
-                        continue;
                     }
                 }
             }
-        }
+            
+            continuationToken = result.getNextContinuationToken();
+            
+        } while (continuationToken != null);
         
         return null;
     }
@@ -177,23 +192,32 @@ public class InspectStorageSubcommand implements Callable<Integer> {
     private void outputSummary(TickData tick) {
         var out = spec.commandLine().getOut();
         
+        // Calculate sizes
+        long organismsSize = tick.getOrganismsList().stream().mapToLong(org.evochora.datapipeline.api.contracts.OrganismState::getSerializedSize).sum();
+        long cellsSize = tick.getCellsList().stream().mapToLong(org.evochora.datapipeline.api.contracts.CellState::getSerializedSize).sum();
+        
         out.println("=== Tick Data Summary ===");
         out.println("Simulation Run ID: " + tick.getSimulationRunId());
         out.println("Tick Number: " + tick.getTickNumber());
         out.println("Capture Time: " + java.time.Instant.ofEpochMilli(tick.getCaptureTimeMs()));
-        out.println("Organisms: " + tick.getOrganismsCount() + " alive");
-        out.println("Cells: " + tick.getCellsCount() + " non-empty");
+        out.printf("Organisms: %d alive (%s)%n", tick.getOrganismsCount(), formatBytes(organismsSize));
+        out.printf("Cells: %d non-empty (%s)%n", tick.getCellsCount(), formatBytes(cellsSize));
         out.println("RNG State: " + tick.getRngState().size() + " bytes");
         out.println("Strategy States: " + tick.getStrategyStatesCount());
         
         if (tick.getOrganismsCount() > 0) {
             out.println("\n=== Organism Summary ===");
-            tick.getOrganismsList().forEach(org -> {
-                out.printf("  ID: %d, Energy: %d, Dead: %s%n", 
-                    org.getOrganismId(), 
-                    org.getEnergy(), 
-                    org.getIsDead());
-            });
+            tick.getOrganismsList().stream()
+                .limit(10)
+                .forEach(org -> {
+                    out.printf("  ID: %d, Energy: %d, Entropy: %d%n", 
+                        org.getOrganismId(), 
+                        org.getEnergy(),
+                        org.getEntropyRegister());
+                });
+            if (tick.getOrganismsCount() > 10) {
+                out.println("  ... and " + (tick.getOrganismsCount() - 10) + " more organisms");
+            }
         }
         
         if (tick.getCellsCount() > 0) {
@@ -214,6 +238,13 @@ public class InspectStorageSubcommand implements Callable<Integer> {
                 out.println("  ... and " + (tick.getCellsCount() - 10) + " more cells");
             }
         }
+    }
+
+    private String formatBytes(long bytes) {
+        if (bytes < 1024) return bytes + " B";
+        int exp = (int) (Math.log(bytes) / Math.log(1024));
+        String pre = "KMGTPE".charAt(exp-1) + "";
+        return String.format("%.1f %sB", bytes / Math.pow(1024, exp), pre);
     }
 
     private static int extractSignedValue(int moleculeInt) {

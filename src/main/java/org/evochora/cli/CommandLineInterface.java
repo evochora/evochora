@@ -1,7 +1,8 @@
 package org.evochora.cli;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
+import java.io.File;
+import java.util.concurrent.Callable;
+
 import org.evochora.cli.commands.CompileCommand;
 import org.evochora.cli.commands.InspectCommand;
 import org.evochora.cli.commands.RenderVideoCommand;
@@ -9,12 +10,13 @@ import org.evochora.cli.commands.node.NodeCommand;
 import org.evochora.cli.config.LoggingConfigurator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
+
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
-
-import java.io.File;
-import java.util.concurrent.Callable;
 
 @Command(
     name = "evochora",
@@ -141,13 +143,8 @@ public class CommandLineInterface implements Callable<Integer> {
         }
         LoggingConfigurator.configure(config);
 
-        // Welcome message - only show for plain text logging
-        if (config.hasPath("node.show-welcome-message") && config.getBoolean("node.show-welcome-message")) {
-            String logFormat = config.hasPath("logging.format") ? config.getString("logging.format") : "PLAIN";
-            if ("PLAIN".equalsIgnoreCase(logFormat)) {
-                showWelcomeMessage();
-            }
-        }
+        // Welcome message logic moved to NodeRunCommand
+        // (Only relevant for long-running node process)
 
         initialized = true;
     }
@@ -222,8 +219,15 @@ public class CommandLineInterface implements Callable<Integer> {
         }
     }
 
-    private void showWelcomeMessage() {
-        System.out.println("\nWelcome to...\n" +
+    public void showWelcomeMessage() {
+        // Check config again just to be safe, though caller usually checks too
+        if (config.hasPath("node.show-welcome-message") && config.getBoolean("node.show-welcome-message")) {
+            String logFormat = config.hasPath("logging.format") ? config.getString("logging.format") : "PLAIN";
+            if (!"PLAIN".equalsIgnoreCase(logFormat)) {
+                return;
+            }
+            
+            System.out.println("\nWelcome to...\n" +
                 "  ■■■■■  ■   ■   ■■■    ■■■   ■   ■   ■■■   ■■■■     ■   \n" +
                 "  ■      ■   ■  ■   ■  ■   ■  ■   ■  ■   ■  ■   ■   ■ ■  \n" +
                 "  ■      ■   ■  ■   ■  ■      ■   ■  ■   ■  ■   ■  ■   ■ \n" +
@@ -239,6 +243,7 @@ public class CommandLineInterface implements Callable<Integer> {
             //" | |____   \\  / | |__| | |____| |  | | |__| | | \\ \\  / ____ \\ \n" +
             //" |______|   \\/   \\____/ \\_____|_|  |_|\\____/|_|  \\_\\/_/    \\_\\\n\n" +
             //"            Advanced Evolution Simulation Platform\n");
+        }
     }
 
     public Config getConfig() {
