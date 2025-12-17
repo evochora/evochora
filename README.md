@@ -16,7 +16,7 @@
     <img src="https://img.shields.io/badge/License-MIT-2ea44f?style=flat&logo=opensourceinitiative&logoColor=white" height="28">
   </a>
   &nbsp;&nbsp;
-  <a href="https://discord.gg/1442908877648822466">
+  <a href="https://discord.gg/t9yEJc4MKX">
     <img src="https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat&logo=discord&logoColor=white" height="28">
   </a>
   &nbsp;&nbsp;
@@ -495,7 +495,7 @@ Some key directions for the technical evolution of Evochora:
 ## Community & Links
 
 - Discord (Community Chat):  
-  [![Discord](https://img.shields.io/discord/1442908877648822466?label=Join%20Community&logo=discord&style=flat-square)](https://discord.gg/1442908877648822466)
+  [![Discord](https://img.shields.io/discord/1442908877648822466?label=Join%20Community&logo=discord&style=flat-square)](https://discord.gg/t9yEJc4MKX)
 
 - Live Visualizer Demo:  
   http://evochora.org/

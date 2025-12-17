@@ -384,7 +384,7 @@ A live, detailed version of our roadmap, outlining specific tasks and current pr
 - **Live Demo**: A live instance of the visualizer is available at [http://evochora.org/](http://evochora.org/)
 - **Demo Simulation Video**: A video of a primordial organism simulation can be viewed here: [Direct Video Link](https://github-production-user-asset-6210df.s3.amazonaws.com/13830117/518864494-2dd2163a-6abe-4121-936d-eb46cc314859.mp4?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAVCODYLSA53PQK4ZA%2F20251126%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20251126T213314Z&X-Amz-Expires=300&X-Amz-Signature=77a7583f022cdd71315f73f0b4433168fef24a91cc1bc9df6f9f79bb0cd8a45e&X-Amz-SignedHeaders=host)
 - **Scientific Discussion**: [GitHub Discussions](https://github.com/evochora/evochora/discussions)
-- **Community Chat**: [Discord Server](https://discord.gg/1442908877648822466)
+- **Community Chat**: [Discord Server](https://discord.gg/t9yEJc4MKX)
 - **Roadmap**: [GitHub Project board](https://github.com/orgs/evochora/projects/1/views/1)
 - **Source Code**: [GitHub Repository](https://github.com/users/evochora/evochora)
 - **Technical Specifications**: The [Virtual Machine and Assembly Language Specification](https://github.com/evochora/evochora/blob/main/docs/ASSEMBLY_SPEC.md) provides a complete technical reference.

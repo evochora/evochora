@@ -30,7 +30,7 @@ Tech Stack: Java/Gradle. Full disclosure: AI was my primary coding partner (afte
 
 Repo: https://github.com/evochora/evochora
 Demo: http://evochora.org (live simulation + video)
-Discord: https://discord.gg/SXSDvfcm
+Discord: https://discord.gg/t9yEJc4MKX
 Whitepaper (draft!): https://github.com/evochora/evochora/blob/main/docs/SCIENTIFIC_OVERVIEW.md
 
 Happy to discuss any tech details or the scientific approach!
