@@ -13,8 +13,8 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
+import org.evochora.datapipeline.CellStateTestHelper;
 import org.evochora.datapipeline.api.contracts.BatchInfo;
-import org.evochora.datapipeline.api.contracts.CellState;
 import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
@@ -204,8 +204,10 @@ class EnvironmentIndexerIntegrationTest {
             TickData.newBuilder()
                 .setTickNumber(1L)
                 .setSimulationRunId(runId)
-                .addCells(CellState.newBuilder().setFlatIndex(0).setOwnerId(100).setMoleculeType(1).setMoleculeValue(50).build())
-                .addCells(CellState.newBuilder().setFlatIndex(5).setOwnerId(101).setMoleculeType(2).setMoleculeValue(60).build())
+                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                    CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build(),
+                    CellStateTestHelper.createCellStateBuilder(5, 101, 2, 60, 0).build()
+                )))
                 .build()
         );
         
@@ -213,7 +215,9 @@ class EnvironmentIndexerIntegrationTest {
             TickData.newBuilder()
                 .setTickNumber(2L)
                 .setSimulationRunId(runId)
-                .addCells(CellState.newBuilder().setFlatIndex(1).setOwnerId(102).setMoleculeType(1).setMoleculeValue(70).build())
+                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                    CellStateTestHelper.createCellStateBuilder(1, 102, 1, 70, 0).build()
+                )))
                 .build()
         );
         
@@ -257,7 +261,9 @@ class EnvironmentIndexerIntegrationTest {
             TickData.newBuilder()
                 .setTickNumber(1L)
                 .setSimulationRunId(runId)
-                .addCells(CellState.newBuilder().setFlatIndex(0).setOwnerId(100).setMoleculeType(1).setMoleculeValue(50).build())
+                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                    CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
+                )))
                 .build()
         );
         
@@ -265,12 +271,16 @@ class EnvironmentIndexerIntegrationTest {
             TickData.newBuilder()
                 .setTickNumber(1L)  // SAME tick_number as batch1!
                 .setSimulationRunId(runId)
-                .addCells(CellState.newBuilder().setFlatIndex(3).setOwnerId(101).setMoleculeType(2).setMoleculeValue(75).build())
+                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                    CellStateTestHelper.createCellStateBuilder(3, 101, 2, 75, 0).build()
+                )))
                 .build(),
             TickData.newBuilder()
                 .setTickNumber(2L)  // Additional tick to ensure different storage path
                 .setSimulationRunId(runId)
-                .addCells(CellState.newBuilder().setFlatIndex(5).setOwnerId(102).setMoleculeType(1).setMoleculeValue(60).build())
+                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                    CellStateTestHelper.createCellStateBuilder(5, 102, 1, 60, 0).build()
+                )))
                 .build()
         );
         
@@ -316,7 +326,9 @@ class EnvironmentIndexerIntegrationTest {
                 TickData.newBuilder()
                     .setTickNumber(i + 1L)
                     .setSimulationRunId(runId)
-                    .addCells(CellState.newBuilder().setFlatIndex(i).setOwnerId(100 + i).setMoleculeType(1).setMoleculeValue(50).build())
+                    .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                        CellStateTestHelper.createCellStateBuilder(i, 100 + i, 1, 50, 0).build()
+                    )))
                     .build()
             );
             writeBatchAndNotify(runId, batch);

@@ -24,6 +24,9 @@ public class NodeRunCommand implements Callable<Integer> {
     public Integer call() throws Exception {
         final Config config = parent.getParent().getConfig();
 
+        // Show welcome message only for node run
+        parent.getParent().showWelcomeMessage();
+
         final Node node = new Node(config);
         node.start();
 

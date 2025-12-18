@@ -8,11 +8,13 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import org.evochora.datapipeline.api.contracts.CellStateList;
+import org.evochora.datapipeline.api.contracts.CellDataColumns;
+import org.evochora.datapipeline.api.contracts.CellState;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
@@ -145,7 +147,7 @@ public class SingleBlobStrategy extends AbstractH2EnvStorageStrategy {
         // Filter out ticks with empty cell lists (shouldn't happen in practice)
         List<TickData> validTicks = ticks.stream()
             .filter(tick -> {
-                if (tick.getCellsList().isEmpty()) {
+                if (tick.getCellColumns().getFlatIndicesCount() == 0) {
                     log.warn("Tick {} has empty cell list - skipping database write", tick.getTickNumber());
                     return false;
                 }
@@ -175,9 +177,9 @@ public class SingleBlobStrategy extends AbstractH2EnvStorageStrategy {
     }
     
     /**
-     * Serializes tick cells to compressed BLOB using Protobuf CellStateList.
+     * Serializes tick cells to compressed BLOB using Protobuf CellDataColumns.
      * <p>
-     * <strong>Precondition:</strong> tick.getCellsList() must not be empty.
+     * <strong>Precondition:</strong> tick.getCellColumns() must not be empty.
      * This method is only called for ticks that passed the empty check in writeTicks().
      * 
      * @param tick The tick data containing cells to serialize (must have cells)
@@ -186,13 +188,11 @@ public class SingleBlobStrategy extends AbstractH2EnvStorageStrategy {
      */
     private byte[] serializeTickCells(TickData tick) throws SQLException {
         try {
-            CellStateList cellsList = CellStateList.newBuilder()
-                .addAllCells(tick.getCellsList())
-                .build();
+            CellDataColumns columns = tick.getCellColumns();
             
             ByteArrayOutputStream baos = new ByteArrayOutputStream();
             try (OutputStream compressed = codec.wrapOutputStream(baos)) {
-                cellsList.writeTo(compressed);
+                columns.writeTo(compressed);
             }
             
             return baos.toByteArray();
@@ -243,14 +243,23 @@ public class SingleBlobStrategy extends AbstractH2EnvStorageStrategy {
         }
         
         // 4. Deserialize Protobuf
-        CellStateList cellStateList;
+        CellDataColumns columns;
         try {
-            cellStateList = CellStateList.parseFrom(decompressed);
+            columns = CellDataColumns.parseFrom(decompressed);
         } catch (Exception e) {
-            throw new SQLException("Failed to deserialize CellStateList for tick " + tickNumber, e);
+            throw new SQLException("Failed to deserialize CellDataColumns for tick " + tickNumber, e);
         }
         
-        List<org.evochora.datapipeline.api.contracts.CellState> allCells = cellStateList.getCellsList();
+        List<org.evochora.datapipeline.api.contracts.CellState> allCells = new ArrayList<>();
+        int count = columns.getFlatIndicesCount();
+        
+        for (int i = 0; i < count; i++) {
+            allCells.add(CellState.newBuilder()
+                .setFlatIndex(columns.getFlatIndices(i))
+                .setMoleculeData(columns.getMoleculeData(i))
+                .setOwnerId(columns.getOwnerIds(i))
+                .build());
+        }
         
         // 5. Filter by region (if provided)
         if (region == null) {

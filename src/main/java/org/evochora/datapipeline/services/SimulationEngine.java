@@ -18,7 +18,7 @@ import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.datapipeline.api.contracts.CallSiteBinding;
-import org.evochora.datapipeline.api.contracts.CellState;
+import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.ColumnTokenLookup;
 import org.evochora.datapipeline.api.contracts.EnergyStrategyConfig;
 import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
@@ -465,76 +465,20 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     }
 
     private void extractCellStates(Environment env, TickData.Builder tickBuilder) {
-        CellState.Builder cellBuilder = CellState.newBuilder();
+        // Use parallel builders for SoA (Structure of Arrays) layout
+        // packed=true in protobuf ensures efficient storage without tag overhead per integer
+        CellDataColumns.Builder columnsBuilder = CellDataColumns.newBuilder();
 
-        // FLAT_INDEX OPTIMIZATION: Use flat_index directly in protobuf
-        // - Data size reduction: 80% (20 bytes → 4 bytes per cell coordinate)
-        // - CPU performance gain: 16% (eliminates getCoordinateFromIndex + Vector building)
-        // - Trade-off: Consumers must convert flat_index to coordinates using Environment.shape
-        //
-        // Required Environment methods for this approach:
-        // - forEachOccupiedIndex(IntConsumer) - provides flat_index iteration
-        // - getMoleculeInt(int flatIndex) - direct access by flat_index
-        // - getOwnerIdByIndex(int flatIndex) - direct access by flat_index
-        //
-        // If reverting to coordinate version, these methods can be removed from Environment
         env.forEachOccupiedIndex(flatIndex -> {
-            // Get molecule and owner directly using flat index
             int moleculeInt = env.getMoleculeInt(flatIndex);
             int ownerId = env.getOwnerIdByIndex(flatIndex);
 
-            // Reuse cell builder with flat_index (no coordinate conversion needed!)
-            cellBuilder.clear();
-            cellBuilder.setFlatIndex(flatIndex)
-                    .setMoleculeType(moleculeInt & org.evochora.runtime.Config.TYPE_MASK)
-                    .setMoleculeValue(extractSignedValue(moleculeInt))
-                    .setOwnerId(ownerId)
-                    .setMarker((moleculeInt & org.evochora.runtime.Config.MARKER_MASK) >> org.evochora.runtime.Config.MARKER_SHIFT);
-
-            tickBuilder.addCells(cellBuilder.build());
+            columnsBuilder.addFlatIndices(flatIndex);
+            columnsBuilder.addMoleculeData(moleculeInt);
+            columnsBuilder.addOwnerIds(ownerId);
         });
-    }
-
-    // COORDINATE VERSION (COMMENTED OUT): Original approach without flat_index exposure
-    // Use this version if flat_index trade-off becomes unfavorable
-    // Also uncomment Vector coordinate field in CellState protobuf message
-    //
-    // This version does NOT require flat_index exposure from Environment.
-    // The following methods can be removed from Environment if reverting:
-    // - forEachOccupiedIndex(IntConsumer)
-    // - getMoleculeInt(int flatIndex)
-    // - getOwnerIdByIndex(int flatIndex)
-    // - getCoordinateFromIndex(int flatIndex)
-    //
-    // private void extractCellStates(Environment env, TickData.Builder tickBuilder) {
-    //     Vector.Builder vectorBuilder = Vector.newBuilder();
-    //     CellState.Builder cellBuilder = CellState.newBuilder();
-    //
-    //     // Original approach: Environment provides coordinates directly
-    //     env.forEachOccupiedCell((coord, moleculeInt, ownerId) -> {
-    //         // Build coordinate vector for protobuf
-    //         vectorBuilder.clear();
-    //         for (int c : coord) {
-    //             vectorBuilder.addComponents(c);
-    //         }
-    //
-    //         // Reuse cell builder with coordinate
-    //         cellBuilder.clear();
-    //         cellBuilder.setCoordinate(vectorBuilder.build())
-    //                 .setMoleculeType(moleculeInt & org.evochora.runtime.Config.TYPE_MASK)
-    //                 .setMoleculeValue(extractSignedValue(moleculeInt))
-    //                 .setOwnerId(ownerId);
-    //
-    //         tickBuilder.addCells(cellBuilder.build());
-    //     });
-    // }
-
-    private static int extractSignedValue(int moleculeInt) {
-        int rawValue = moleculeInt & org.evochora.runtime.Config.VALUE_MASK;
-        if ((rawValue & (1 << (org.evochora.runtime.Config.VALUE_BITS - 1))) != 0) {
-            rawValue |= ~((1 << org.evochora.runtime.Config.VALUE_BITS) - 1);
-        }
-        return rawValue;
+        
+        tickBuilder.setCellColumns(columnsBuilder.build());
     }
 
     private static org.evochora.datapipeline.api.contracts.ProgramArtifact convertProgramArtifact(ProgramArtifact artifact) {

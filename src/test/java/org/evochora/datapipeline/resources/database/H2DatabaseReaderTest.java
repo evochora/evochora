@@ -6,7 +6,7 @@ import java.sql.Connection;
 import java.util.List;
 import java.util.UUID;
 
-import org.evochora.datapipeline.api.contracts.CellState;
+import org.evochora.datapipeline.CellStateTestHelper;
 import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.RegisterValue;
@@ -97,17 +97,23 @@ class H2DatabaseReaderTest {
                 TickData.newBuilder()
                     .setTickNumber(10L)
                     .setSimulationRunId(runId)
-                    .addCells(CellState.newBuilder().setFlatIndex(0).setOwnerId(100).setMoleculeType(1).setMoleculeValue(50).build())
+                    .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                        CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
+                    )))
                     .build(),
                 TickData.newBuilder()
                     .setTickNumber(20L)
                     .setSimulationRunId(runId)
-                    .addCells(CellState.newBuilder().setFlatIndex(0).setOwnerId(101).setMoleculeType(1).setMoleculeValue(60).build())
+                    .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                        CellStateTestHelper.createCellStateBuilder(0, 101, 1, 60, 0).build()
+                    )))
                     .build(),
                 TickData.newBuilder()
                     .setTickNumber(30L)
                     .setSimulationRunId(runId)
-                    .addCells(CellState.newBuilder().setFlatIndex(0).setOwnerId(102).setMoleculeType(1).setMoleculeValue(70).build())
+                    .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                        CellStateTestHelper.createCellStateBuilder(0, 102, 1, 70, 0).build()
+                    )))
                     .build()
             );
 
@@ -183,7 +189,9 @@ class H2DatabaseReaderTest {
                 TickData.newBuilder()
                     .setTickNumber(42L)
                     .setSimulationRunId(runId)
-                    .addCells(CellState.newBuilder().setFlatIndex(0).setOwnerId(100).setMoleculeType(1).setMoleculeValue(50).build())
+                    .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                        CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
+                    )))
                     .build()
             );
 

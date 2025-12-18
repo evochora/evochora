@@ -17,10 +17,12 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.List;
 
+import org.evochora.datapipeline.CellStateTestHelper;
+import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.CellState;
-import org.evochora.datapipeline.api.contracts.CellStateList;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.utils.compression.NoneCodec;
 import org.evochora.datapipeline.utils.compression.ZstdCodec;
@@ -219,8 +221,8 @@ class SingleBlobStrategyTest {
         
         // Verify it's valid protobuf by deserializing
         try {
-            CellStateList deserialized = CellStateList.parseFrom(serializedBlob);
-            assertThat(deserialized.getCellsList()).hasSize(2);
+            CellDataColumns deserialized = CellDataColumns.parseFrom(serializedBlob);
+            assertThat(deserialized.getFlatIndicesCount()).isEqualTo(2);
         } catch (InvalidProtocolBufferException e) {
             throw new RuntimeException("Failed to deserialize protobuf", e);
         }
@@ -303,19 +305,16 @@ class SingleBlobStrategyTest {
     // Helper methods
     
     private CellState createCell(int flatIndex, int type, int value) {
-        return CellState.newBuilder()
-            .setFlatIndex(flatIndex)
-            .setMoleculeType(type)
-            .setMoleculeValue(value)
-            .setOwnerId(0)
-            .build();
+        return CellStateTestHelper.createCellState(flatIndex, 0, type, value, 0);
     }
     
     private TickData createTickWithCells(long tickNumber, int cellCount) {
         TickData.Builder builder = TickData.newBuilder().setTickNumber(tickNumber);
+        List<CellState> cells = new ArrayList<>();
         for (int i = 0; i < cellCount; i++) {
-            builder.addCells(createCell(i, 1, i * 10));
+            cells.add(createCell(i, 1, i * 10));
         }
+        builder.setCellColumns(CellStateTestHelper.createColumnsFromCells(cells));
         return builder.build();
     }
 }

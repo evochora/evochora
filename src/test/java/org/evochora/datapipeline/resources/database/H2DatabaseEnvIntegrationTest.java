@@ -1,21 +1,23 @@
 package org.evochora.datapipeline.resources.database;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
-import org.evochora.datapipeline.api.contracts.CellState;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import java.nio.file.Path;
+import java.util.List;
+
+import org.evochora.datapipeline.CellStateTestHelper;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.io.TempDir;
-import org.evochora.junit.extensions.logging.LogWatchExtension;
 
-import java.nio.file.Path;
-import java.util.List;
-
-import static org.assertj.core.api.Assertions.*;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 /**
  * Integration tests for H2Database environment storage strategy loading.
@@ -57,12 +59,9 @@ class H2DatabaseEnvIntegrationTest {
         EnvironmentProperties envProps = new EnvironmentProperties(new int[]{10, 10}, false);
         TickData tick = TickData.newBuilder()
             .setTickNumber(1L)
-            .addCells(CellState.newBuilder()
-                .setFlatIndex(0)
-                .setOwnerId(100)
-                .setMoleculeType(1)
-                .setMoleculeValue(50)
-                .build())
+            .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
+            )))
             .build();
         
         Object conn = database.acquireDedicatedConnection();
@@ -104,12 +103,9 @@ class H2DatabaseEnvIntegrationTest {
         EnvironmentProperties envProps = new EnvironmentProperties(new int[]{10, 10}, false);
         TickData tick = TickData.newBuilder()
             .setTickNumber(1L)
-            .addCells(CellState.newBuilder()
-                .setFlatIndex(0)
-                .setOwnerId(100)
-                .setMoleculeType(1)
-                .setMoleculeValue(50)
-                .build())
+            .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
+            )))
             .build();
         
         Object conn = database.acquireDedicatedConnection();

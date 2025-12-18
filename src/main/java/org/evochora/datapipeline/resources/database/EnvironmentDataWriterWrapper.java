@@ -94,7 +94,7 @@ public class EnvironmentDataWriterWrapper extends AbstractDatabaseWrapper implem
             database.doWriteEnvironmentCells(ensureConnection(), ticks, envProps);
             
             // Update metrics - O(1) operations
-            int totalCells = ticks.stream().mapToInt(t -> t.getCellsList().size()).sum();
+            int totalCells = ticks.stream().mapToInt(t -> t.getCellColumns().getFlatIndicesCount()).sum();
             cellsWritten.addAndGet(totalCells);
             batchesWritten.incrementAndGet();
             
@@ -106,7 +106,7 @@ public class EnvironmentDataWriterWrapper extends AbstractDatabaseWrapper implem
             writeErrors.incrementAndGet();
             log.warn("Failed to write {} ticks with {} total cells: {}", 
                     ticks.size(), 
-                    ticks.stream().mapToInt(t -> t.getCellsList().size()).sum(),
+                    ticks.stream().mapToInt(t -> t.getCellColumns().getFlatIndicesCount()).sum(),
                     e.getMessage());
             recordError("WRITE_ENV_CELLS_FAILED", "Failed to write environment cells",
                        "Ticks: " + ticks.size() + ", Error: " + e.getMessage());

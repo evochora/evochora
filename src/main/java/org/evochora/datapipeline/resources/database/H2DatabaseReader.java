@@ -20,6 +20,7 @@ import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
 import org.evochora.datapipeline.resources.database.h2.IH2EnvStorageStrategy;
 import org.evochora.datapipeline.resources.database.h2.IH2OrgStorageStrategy;
+import org.evochora.datapipeline.utils.MoleculeDataUtils;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -107,19 +108,26 @@ public class H2DatabaseReader implements IDatabaseReader {
         return cells.stream()
             .map(cell -> {
                 int[] coords = envProps.flatIndexToCoordinates(cell.getFlatIndex());
-                String moleculeTypeName = MoleculeTypeRegistry.typeToName(cell.getMoleculeType());
+
+                int moleculeInt = cell.getMoleculeData();
+                int moleculeType = moleculeInt & Config.TYPE_MASK;
+                int moleculeValue = MoleculeDataUtils.extractSignedValue(moleculeInt);
+                int marker = (moleculeInt & Config.MARKER_MASK) >> Config.MARKER_SHIFT;
+
+                String moleculeTypeName = MoleculeTypeRegistry.typeToName(moleculeType);
+                
                 // For CODE molecules, resolve opcode name from value
                 String opcodeName = null;
-                if (cell.getMoleculeType() == Config.TYPE_CODE) {
-                    opcodeName = Instruction.getInstructionNameById(cell.getMoleculeValue());
+                if (moleculeType == Config.TYPE_CODE) {
+                    opcodeName = Instruction.getInstructionNameById(moleculeValue);
                 }
                 return new CellWithCoordinates(
                     coords,
                     moleculeTypeName,
-                    cell.getMoleculeValue(),
+                    moleculeValue,
                     cell.getOwnerId(),
                     opcodeName,
-                    cell.getMarker()
+                    marker
                 );
             })
             .collect(java.util.stream.Collectors.toList());
@@ -423,3 +431,4 @@ public class H2DatabaseReader implements IDatabaseReader {
         }
     }
 }
+

@@ -1,11 +1,14 @@
 package org.evochora.datapipeline.resources.database.h2;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
+import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
+import org.evochora.datapipeline.CellStateTestHelper;
+import org.evochora.datapipeline.api.contracts.CellState;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
-import org.evochora.datapipeline.api.resources.database.*;
 import org.evochora.datapipeline.api.resources.ResourceContext;
+import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
+import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataWriter;
+import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
 import org.evochora.datapipeline.resources.database.H2Database;
 import org.junit.jupiter.api.AfterEach;
@@ -13,8 +16,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.util.ArrayList;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
@@ -246,26 +252,16 @@ class StrategyErrorHandlingTest {
                     ")"
                 );
                 
-                // Build a simple CellStateList protobuf
-                org.evochora.datapipeline.api.contracts.CellStateList.Builder builder = 
-                    org.evochora.datapipeline.api.contracts.CellStateList.newBuilder();
+                // Build CellDataColumns protobuf
+                List<CellState> cells = new ArrayList<>();
                 
                 // Add a few test cells
-                builder.addCells(org.evochora.datapipeline.api.contracts.CellState.newBuilder()
-                    .setFlatIndex(0)
-                    .setMoleculeType(1)
-                    .setMoleculeValue(255)
-                    .setOwnerId(0)
-                    .build());
+                cells.add(CellStateTestHelper.createCellState(0, 0, 1, 255, 0));
                 
-                builder.addCells(org.evochora.datapipeline.api.contracts.CellState.newBuilder()
-                    .setFlatIndex(1)
-                    .setMoleculeType(1)
-                    .setMoleculeValue(128)
-                    .setOwnerId(0)
-                    .build());
+                cells.add(CellStateTestHelper.createCellState(1, 0, 1, 128, 0));
                 
-                byte[] data = builder.build().toByteArray();
+                CellDataColumns columns = CellStateTestHelper.createColumnsFromCells(cells);
+                byte[] data = columns.toByteArray();
                 
                 PreparedStatement stmt = conn.prepareStatement(
                     "INSERT INTO environment_ticks (tick_number, cells_blob) VALUES (?, ?)"

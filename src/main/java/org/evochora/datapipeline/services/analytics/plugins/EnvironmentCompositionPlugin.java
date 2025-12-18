@@ -9,10 +9,11 @@ import org.evochora.datapipeline.api.analytics.ColumnType;
 import org.evochora.datapipeline.api.analytics.ManifestEntry;
 import org.evochora.datapipeline.api.analytics.ParquetSchema;
 import org.evochora.datapipeline.api.analytics.VisualizationHint;
-import org.evochora.datapipeline.api.contracts.CellState;
+import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
+import org.evochora.datapipeline.utils.MoleculeDataUtils;
 import org.evochora.runtime.Config;
 
 /**
@@ -78,8 +79,8 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
         }
 
         // Direct access to the underlying list - NO COPYING to ArrayList
-        List<CellState> allCells = tick.getCellsList();
-        int cellsAvailable = allCells.size();
+        CellDataColumns columns = tick.getCellColumns();
+        int cellsAvailable = columns.getFlatIndicesCount();
         
         if (monteCarloSamples > 0 && cellsAvailable > monteCarloSamples) {
             // Sampling mode: Random sample without copying
@@ -88,7 +89,7 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
 
             for (int i = 0; i < monteCarloSamples; i++) {
                 int index = random.nextInt(cellsAvailable);
-                countCell(allCells.get(index), counts);
+                countCell(columns.getMoleculeData(index), counts);
             }
 
             // Extrapolate from sample to full cellsAvailable
@@ -101,9 +102,9 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
         } else {
             // Exact mode: count all non-empty cells
             long[] counts = new long[5];
-            for (CellState cell : allCells) {
-                countCell(cell, counts);
-        }
+            for (int i = 0; i < cellsAvailable; i++) {
+                countCell(columns.getMoleculeData(i), counts);
+            }
             codeCells = counts[0];
             dataCells = counts[1];
             energyCells = counts[2];
@@ -139,14 +140,15 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
      *   <li>Unknown type → unknown_cells</li>
      * </ul>
      *
-     * @param cell The cell to count
+     * @param moleculeInt The packed molecule integer
      * @param counts Array: [code, data, energy, structure, unknown]
      */
-    private void countCell(CellState cell, long[] counts) {
-        int type = cell.getMoleculeType();
+    private void countCell(int moleculeInt, long[] counts) {
+        int type = moleculeInt & Config.TYPE_MASK;
+
         if (type == Config.TYPE_CODE) {
             // CODE:0 is empty space (regardless of owner)
-            if (cell.getMoleculeValue() != 0) {
+            if (MoleculeDataUtils.extractSignedValue(moleculeInt) != 0) {
                 counts[0]++;
             }
             // CODE:0 not counted → will be part of emptyCells

@@ -37,6 +37,7 @@ bin/
 
 ### VS Code ###
 .vscode/
+.cursor/
 
 ### Mac OS ###
 .DS_Store
@@ -58,3 +59,4 @@ extensions/vscode/src/*.vsix
 
 # Local configuration file (user-specific overrides)
 local.conf
+
