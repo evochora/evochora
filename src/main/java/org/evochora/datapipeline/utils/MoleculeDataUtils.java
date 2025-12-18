@@ -2,6 +2,16 @@ package org.evochora.datapipeline.utils;
 
 import org.evochora.runtime.Config;
 
+/**
+ * Utility class for manipulating packed molecule data.
+ * <p>
+ * This class serves as the canonical location for packing and unpacking the
+ * {@code molecule_data} integer field defined in {@code tickdata_contracts.proto}.
+ * It encapsulates the bitwise operations required to handle the 
+ * {@code type}, {@code value}, and {@code marker} components packed into a single {@code int32}.
+ * <p>
+ * Constants for masks and shifts are defined in {@link org.evochora.runtime.Config}.
+ */
 public final class MoleculeDataUtils {
 
     private MoleculeDataUtils() {
@@ -25,4 +35,3 @@ public final class MoleculeDataUtils {
         return rawValue;
     }
 }
-
