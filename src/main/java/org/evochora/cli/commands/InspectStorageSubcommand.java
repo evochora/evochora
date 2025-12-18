@@ -9,6 +9,7 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
+import org.evochora.datapipeline.utils.MoleculeDataUtils;
 import org.evochora.runtime.Config;
 
 import com.google.gson.Gson;
@@ -233,7 +234,7 @@ public class InspectStorageSubcommand implements Callable<Integer> {
                 int ownerId = columns.getOwnerIds(i);
                 
                 int type = moleculeInt & Config.TYPE_MASK;
-                int value = extractSignedValue(moleculeInt);
+                int value = MoleculeDataUtils.extractSignedValue(moleculeInt);
                 
                 out.printf("  Index: %d, Type: %d, Value: %d, Owner: %d%n",
                     flatIndex,
@@ -252,14 +253,6 @@ public class InspectStorageSubcommand implements Callable<Integer> {
         int exp = (int) (Math.log(bytes) / Math.log(1024));
         String pre = "KMGTPE".charAt(exp-1) + "";
         return String.format("%.1f %sB", bytes / Math.pow(1024, exp), pre);
-    }
-
-    private static int extractSignedValue(int moleculeInt) {
-        int rawValue = moleculeInt & org.evochora.runtime.Config.VALUE_MASK;
-        if ((rawValue & (1 << (org.evochora.runtime.Config.VALUE_BITS - 1))) != 0) {
-            rawValue |= ~((1 << org.evochora.runtime.Config.VALUE_BITS) - 1);
-        }
-        return rawValue;
     }
 }
 

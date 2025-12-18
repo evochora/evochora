@@ -13,6 +13,7 @@ import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
+import org.evochora.datapipeline.utils.MoleculeDataUtils;
 import org.evochora.runtime.Config;
 
 /**
@@ -147,7 +148,7 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
 
         if (type == Config.TYPE_CODE) {
             // CODE:0 is empty space (regardless of owner)
-            if (extractSignedValue(moleculeInt) != 0) {
+            if (MoleculeDataUtils.extractSignedValue(moleculeInt) != 0) {
                 counts[0]++;
             }
             // CODE:0 not counted → will be part of emptyCells
@@ -160,14 +161,6 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
         } else {
             counts[4]++; // Unknown type
         }
-    }
-
-    private static int extractSignedValue(int moleculeInt) {
-        int rawValue = moleculeInt & org.evochora.runtime.Config.VALUE_MASK;
-        if ((rawValue & (1 << (org.evochora.runtime.Config.VALUE_BITS - 1))) != 0) {
-            rawValue |= ~((1 << org.evochora.runtime.Config.VALUE_BITS) - 1);
-        }
-        return rawValue;
     }
 
     @Override

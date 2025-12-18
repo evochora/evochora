@@ -20,6 +20,7 @@ import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
 import org.evochora.datapipeline.resources.database.h2.IH2EnvStorageStrategy;
 import org.evochora.datapipeline.resources.database.h2.IH2OrgStorageStrategy;
+import org.evochora.datapipeline.utils.MoleculeDataUtils;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -110,7 +111,7 @@ public class H2DatabaseReader implements IDatabaseReader {
 
                 int moleculeInt = cell.getMoleculeData();
                 int moleculeType = moleculeInt & Config.TYPE_MASK;
-                int moleculeValue = extractSignedValue(moleculeInt);
+                int moleculeValue = MoleculeDataUtils.extractSignedValue(moleculeInt);
                 int marker = (moleculeInt & Config.MARKER_MASK) >> Config.MARKER_SHIFT;
 
                 String moleculeTypeName = MoleculeTypeRegistry.typeToName(moleculeType);
@@ -428,14 +429,6 @@ public class H2DatabaseReader implements IDatabaseReader {
         if (closed) {
             throw new IllegalStateException("Reader already closed");
         }
-    }
-
-    private static int extractSignedValue(int moleculeInt) {
-        int rawValue = moleculeInt & org.evochora.runtime.Config.VALUE_MASK;
-        if ((rawValue & (1 << (org.evochora.runtime.Config.VALUE_BITS - 1))) != 0) {
-            rawValue |= ~((1 << org.evochora.runtime.Config.VALUE_BITS) - 1);
-        }
-        return rawValue;
     }
 }
 
