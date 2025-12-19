@@ -19,6 +19,7 @@ import org.apache.activemq.artemis.core.config.Configuration;
 import org.apache.activemq.artemis.core.config.impl.ConfigurationImpl;
 import org.apache.activemq.artemis.core.remoting.impl.invm.InVMAcceptorFactory;
 import org.apache.activemq.artemis.core.server.embedded.EmbeddedActiveMQ;
+import org.apache.activemq.artemis.core.settings.impl.AddressFullMessagePolicy;
 import org.apache.activemq.artemis.core.settings.impl.AddressSettings;
 import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
 import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
@@ -80,6 +81,8 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
     // Track reader delegates for stuck message detection
     private final Set<ArtemisTopicReaderDelegate<T>> readerDelegates = ConcurrentHashMap.newKeySet();
     
+    private final long maxSizeBytesForEstimation;
+
     // Watchdog for stuck message detection (null if claimTimeout disabled)
     private final ScheduledExecutorService watchdog;
 
@@ -102,6 +105,10 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
         this.baseTopicName = options.hasPath("topicName") ? options.getString("topicName") : name;
         this.effectiveTopicName = this.baseTopicName; // Default to base name until runId is set
         this.claimTimeoutSeconds = options.hasPath("claimTimeout") ? options.getInt("claimTimeout") : 300;
+        this.maxSizeBytesForEstimation = options.hasPath("embedded.addressSettings.maxSizeBytes")
+            ? options.getLong("embedded.addressSettings.maxSizeBytes")
+            : 20L * 1024 * 1024; // Default: 20MB. MUST match default in ensureEmbeddedBrokerStarted!
+
         
         // Start embedded broker if configured and using In-VM transport
         if (brokerUrl.startsWith("vm://")) {
@@ -240,6 +247,33 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
                         ? options.getInt("embedded.addressSettings.maxDeliveryAttempts")
                         : 0; // 0 = infinite (rely on application-level DLQ)
                     addressSettings.setMaxDeliveryAttempts(maxDeliveryAttempts);
+                    
+                    // --- START of pipeline-specific topic settings ---
+
+                    // Hardcode AddressFullMessagePolicy to PAGE to prevent blocking producers when RAM buffer is full.
+                    // This is a core requirement for the pipeline to not halt the simulation.
+                    addressSettings.setAddressFullMessagePolicy(AddressFullMessagePolicy.PAGE);
+
+                    // Configure max size in RAM before paging to disk. This is the main tuning parameter
+                    // for memory vs. disk I/O. A small buffer is fine as consumers are expected to be slow
+                    // and read from disk; this preserves heap for other resources.
+                    long maxSizeBytes = options.hasPath("embedded.addressSettings.maxSizeBytes")
+                        ? options.getLong("embedded.addressSettings.maxSizeBytes")
+                        : 20L * 1024 * 1024; // Default: 20MB. MUST match default in constructor!
+                    addressSettings.setMaxSizeBytes(maxSizeBytes);
+                    
+                    // Configure page size for on-disk message storage.
+                    int pageSizeBytes = options.hasPath("embedded.addressSettings.pageSizeBytes")
+                        ? options.getInt("embedded.addressSettings.pageSizeBytes")
+                        : 100 * 1024 * 1024; // Default: 100 MB page files (optimized for throughput)
+                    addressSettings.setPageSizeBytes(pageSizeBytes);
+
+                    // Hardcode retroactive message count to -1 (ALL messages) to ensure that any new
+                    // consumer group joining the topic receives the entire history from the beginning.
+                    // This is a core requirement for post-mortem analysis.
+                    addressSettings.setRetroactiveMessageCount(-1);
+
+                    // --- END of pipeline-specific topic settings ---
                     
                     // Dead Letter Queue address - required to suppress broker warnings
                     String deadLetterAddress = options.hasPath("embedded.addressSettings.deadLetterAddress")
@@ -451,14 +485,16 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
 
     @Override
     public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
-        // Estimate Artemis memory usage
-        // Embedded broker takes some heap (buffers, index)
-        long estimatedBytes = 64L * 1024 * 1024; // ~64MB baseline
+        // Estimate Artemis memory usage based on the configured maxSizeBytes for the address,
+        // which represents the max heap buffer before paging. Add a baseline for the broker itself.
+        long brokerBaseline = 32L * 1024 * 1024; // ~32MB baseline for broker internals
+        long estimatedBytes = brokerBaseline + this.maxSizeBytesForEstimation;
         
         return List.of(new MemoryEstimate(
             getResourceName(),
             estimatedBytes,
-            "Artemis Embedded Broker + Buffers",
+            "Artemis Broker (" + (brokerBaseline / 1024 / 1024) + "MB) + Topic Heap Buffer (" 
+                + (this.maxSizeBytesForEstimation / 1024 / 1024) + "MB)",
             MemoryEstimate.Category.TOPIC
         ));
     }
