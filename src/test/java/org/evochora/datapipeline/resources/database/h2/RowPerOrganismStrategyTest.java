@@ -128,6 +128,8 @@ class RowPerOrganismStrategyTest {
                 .contains("data_pointers BYTEA NOT NULL")
                 .contains("active_dp_index INT NOT NULL")
                 .contains("runtime_state_blob BYTEA NOT NULL")
+                .contains("entropy INT DEFAULT 0")
+                .contains("molecule_marker INT DEFAULT 0")
                 .contains("PRIMARY KEY (tick_number, organism_id)");
 
         // Third call: CREATE INDEX for per-organism history queries
@@ -150,7 +152,8 @@ class RowPerOrganismStrategyTest {
         assertThat(strategy.getStatesMergeSql())
                 .contains("MERGE INTO organism_states")
                 .contains("KEY (tick_number, organism_id)")
-                .contains("tick_number, organism_id, energy, ip, dv, data_pointers, active_dp_index, runtime_state_blob");
+                .contains("tick_number, organism_id, energy, ip, dv, data_pointers, active_dp_index, runtime_state_blob, entropy, molecule_marker")
+                .contains("VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
     }
 
     @Test
@@ -185,6 +188,8 @@ class RowPerOrganismStrategyTest {
         verify(mockPreparedStatement, times(3)).setBytes(eq(6), any(byte[].class)); // data_pointers
         verify(mockPreparedStatement, times(3)).setInt(eq(7), anyInt());   // active_dp_index
         verify(mockPreparedStatement, times(3)).setBytes(eq(8), any(byte[].class)); // runtime_state_blob
+        verify(mockPreparedStatement, times(3)).setInt(eq(9), anyInt()); // entropy
+        verify(mockPreparedStatement, times(3)).setInt(eq(10), anyInt()); // molecule_marker
         verify(mockPreparedStatement, times(3)).addBatch();
         verify(mockPreparedStatement, times(1)).executeBatch();
     }
@@ -375,7 +380,8 @@ class RowPerOrganismStrategyTest {
                 .contains("FROM organism_states s")
                 .contains("LEFT JOIN organisms o ON s.organism_id = o.organism_id")
                 .contains("WHERE s.tick_number = ?")
-                .contains("ORDER BY s.organism_id");
+                .contains("ORDER BY s.organism_id")
+                .contains("s.active_dp_index, s.entropy");
     }
 
     // ==================== Helper Methods ====================

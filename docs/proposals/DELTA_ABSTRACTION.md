@@ -1,127 +1,148 @@
-# Implementation Specification: Abstracted Environment State Projection (v2)
+# Implementation Specification: Abstracted Environment State Projection
 
 ## 1. Executive Summary
 
-This document provides a definitive, highly-detailed technical specification for implementing a delta-based state tracking system for the simulation environment. It is intended as a direct blueprint for implementation, leaving no ambiguity in class design, method logic, or data flow.
+This document provides a definitive, highly-detailed technical specification for implementing a high-performance, delta-based state tracking system.
 
-The core of the implementation is a new, independent module named `projection`, which provides a generic and reusable library for generating and reconstructing state. This library will be used by the `runtime` module for writing data and the `datapipeline` module for reading and serving data.
+**Critical Performance Requirements:**
+- **Zero-Allocation on Hot Paths:** No object allocation during simulation ticks or delta accumulation.
+- **Data-Oriented Design:** Usage of primitive arrays and `fastutil` collections to avoid boxing.
+- **Wait-Free Thread-Local Buffering:** Elimination of locks and contention in the hot path.
+- **Memory Efficiency:** Buffer recycling (Ping-Pong) instead of reallocation.
 
 ---
 
-## 2. Module & Package Structure
+## 2. Dependencies
 
-The following directory and file structure **must** be created.
+The implementation requires `fastutil` for primitive collections to avoid autoboxing.
+
+```groovy
+// build.gradle.kts
+implementation("it.unimi.dsi:fastutil:8.5.12")
+```
+
+---
+
+## 3. Module & Package Structure
 
 ```
 src/main/java/org/evochora/
 ├── projection/                     // NEW: Independent Core Module
 │   ├── api/
 │   │   ├── IStateReader.java         // Interface for a readable source state
-│   │   ├── IPayloadProvider.java   // Interface for a source of stored payloads
+│   │   ├── IPayloadProvider.java     // Interface for a source of stored payloads
 │   │   └── IReconstructedState.java  // Interface for a read-only reconstructed state view
 │   ├── dto/
-│   │   ├── StateFragment.java      // DTO: A single key-value piece of state (address, data)
-│   │   ├── StateSnapshot.java      // DTO: A full state snapshot
-│   │   └── StateDelta.java         // DTO: A state change (delta)
+│   │   ├── StateSnapshot.java        // DTO: Full state (Primitive Arrays)
+│   │   └── StateDelta.java           // DTO: Delta state (Primitive Arrays)
 │   ├── gen/
-│   │   └── PayloadGenerator.java   // Write-side logic for creating payloads
+│   │   └── PayloadGenerator.java     // Logic: Accumulates changes & generates payloads (Zero-Alloc)
 │   └── proj/
-│       ├── StateProjector.java     // Read-side logic for reconstructing state
-│       └── StateNotFoundException.java // Custom exception for the projector
+│       ├── StateProjector.java       // Logic: Reconstructs state from payloads
+│       ├── StatefulProjector.java    // Logic: Stateful streaming access
+│       └── StateNotFoundException.java
 │
 ├── runtime/                        // Depends on `projection`
 │   └── projection/
-│       └── EnvironmentStateAdapter.java // Adapter from `runtime.Environment` to `IStateReader`
+│       └── EnvironmentStateAdapter.java // Adapter: Environment -> IStateReader
 │
 └── datapipeline/                   // Depends on `projection`
     ├── contracts/
-    │   └── EnvironmentPayload.proto   // NEW: Protobuf definitions
+    │   └── EnvironmentPayload.proto   // Protobuf definitions
     └── provider/
-        ├── DatabasePayloadProvider.java // `IPayloadProvider` for the Database
-        └── StoragePayloadProvider.java  // `IPayloadProvider` for Raw Storage
+        ├── DatabasePayloadProvider.java
+        └── StoragePayloadProvider.java
 ```
 
 ---
 
-## 3. Core Module: `org.evochora.projection`
+## 4. Core Module: `org.evochora.projection`
 
-### 3.1. `projection.dto` - Data Transfer Objects
-
-These files **must** be created exactly as defined.
-
-**`StateFragment.java`**
-```java
-package org.evochora.projection.dto;
-
-/**
- * Represents a single addressable component of a state. This is a generic, context-free
- * representation of a key-value pair, where the key is a long address and the value is
- * its serialized byte data.
- *
- * @param address A unique identifier for this fragment within the state (e.g., a flat array index).
- * @param data The serialized byte representation of the fragment's value.
- */
-public record StateFragment(long address, byte[] data) {}
-```
+### 4.1. `projection.dto` - Primitive Data Records
 
 **`StateSnapshot.java`**
 ```java
 package org.evochora.projection.dto;
 
-import java.util.List;
+import java.util.Arrays;
 
-/**
- * Represents the complete state at a specific point in time (tick). It consists
- * of a collection of all StateFragments that constitute the full state.
- *
- * @param tickNumber The simulation tick this snapshot corresponds to.
- * @param fragments A list of all fragments making up the state.
- */
-public record StateSnapshot(long tickNumber, List<StateFragment> fragments) {}
+public record StateSnapshot(long tickNumber, long[] addresses, byte[] data, int cellSizeBytes) {
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof StateSnapshot that)) return false;
+        return tickNumber == that.tickNumber && 
+               cellSizeBytes == that.cellSizeBytes &&
+               Arrays.equals(addresses, that.addresses) && 
+               Arrays.equals(data, that.data);
+    }
+    @Override
+    public int hashCode() {
+        int result = Long.hashCode(tickNumber);
+        result = 31 * result + Arrays.hashCode(addresses);
+        result = 31 * result + Arrays.hashCode(data);
+        result = 31 * result + cellSizeBytes;
+        return result;
+    }
+}
 ```
 
 **`StateDelta.java`**
 ```java
 package org.evochora.projection.dto;
 
-import java.util.List;
+import java.util.Arrays;
 
-/**
- * Represents the changes to a state relative to a base tick. This can be used for both
- * incremental (tick N-1 -> N) and cumulative (tick Keyframe -> N) deltas.
- *
- * @param tickNumber The simulation tick this delta corresponds to.
- * @param baseTickNumber The tick number of the state this delta should be applied to.
- * @param changedFragments A list of fragments that have been added or have changed since the base tick.
- */
-public record StateDelta(long tickNumber, long baseTickNumber, List<StateFragment> changedFragments) {}
+public record StateDelta(long tickNumber, long baseTickNumber, long[] changedAddresses, byte[] changedData, int cellSizeBytes) {
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof StateDelta that)) return false;
+        return tickNumber == that.tickNumber && 
+               baseTickNumber == that.baseTickNumber &&
+               cellSizeBytes == that.cellSizeBytes &&
+               Arrays.equals(changedAddresses, that.changedAddresses) && 
+               Arrays.equals(changedData, that.changedData);
+    }
+    @Override
+    public int hashCode() {
+        int result = Long.hashCode(tickNumber);
+        result = 31 * result + Long.hashCode(baseTickNumber);
+        result = 31 * result + Arrays.hashCode(changedAddresses);
+        result = 31 * result + Arrays.hashCode(changedData);
+        result = 31 * result + cellSizeBytes;
+        return result;
+    }
+}
 ```
 
-### 3.2. `projection.api` - Core Interfaces
+### 4.2. `projection.api` - Core Interfaces
 
 **`IStateReader.java`**
+Optimized for zero-allocation data transfer using NIO buffers.
+
 ```java
 package org.evochora.projection.api;
 
 import org.evochora.projection.dto.StateSnapshot;
-import java.util.Map;
+import java.nio.ByteBuffer;
+import java.nio.LongBuffer;
 
 public interface IStateReader {
-    /**
-     * Creates a full snapshot of the current state. This is a potentially expensive
-     * operation that should only be called for keyframes.
-     * @param tickNumber The tick number to assign to the snapshot.
-     * @return A complete representation of the current state.
-     */
     StateSnapshot createSnapshot(long tickNumber);
 
     /**
-     * Retrieves all tracked changes since the last time this method was called,
-     * and clears the internal change buffer. This is the core of the efficient,
-     * active change tracking mechanism.
-     * @return A map of address to its new serialized data. Returns an empty map if no changes occurred.
+     * Drains pending changes into the provided sink buffers.
+     * Implementation must avoid allocation by writing directly to buffers.
+     * 
+     * @param addressSink Buffer for 64-bit addresses.
+     * @param dataSink    Buffer for raw byte data.
+     * @return Number of changes written.
      */
-    Map<Long, byte[]> drainChanges();
+    int drainChangesTo(LongBuffer addressSink, ByteBuffer dataSink);
+    
+    int getCellSizeBytes();
+    long getLastSnapshotSizeInBytes();
 }
 ```
 
@@ -135,11 +156,8 @@ import java.util.List;
 import java.util.Optional;
 
 public interface IPayloadProvider {
-    /** Finds the most recent Snapshot payload at or before the given tick. */
     Optional<StateSnapshot> findLatestSnapshot(long tickNumber);
-    /** Finds the most recent Cumulative Delta payload strictly after a base tick and at or before a target tick. */
     Optional<StateDelta> findLatestCumulativeDelta(long startTickExclusive, long endTickInclusive);
-    /** Finds all Incremental Delta payloads within a strict tick range, sorted by tick number ascending. */
     List<StateDelta> findIncrementalDeltas(long startTickExclusive, long endTickInclusive);
 }
 ```
@@ -152,102 +170,172 @@ import java.util.Optional;
 import java.util.Set;
 
 public interface IReconstructedState {
-    /** Returns the raw byte data for a given address, if it exists in the reconstructed state. */
     Optional<byte[]> getFragmentData(long address);
-    /** Returns the set of all addresses (keys) present in the reconstructed state. */
     Set<Long> getAddresses();
-    /** Returns the tick number this reconstructed state represents. */
     long getTickNumber();
 }
 ```
 
-### 3.3. `projection.gen.PayloadGenerator` - Write-Side Logic
+### 4.3. `projection.gen.PayloadGenerator` - ZERO-ALLOCATION Implementation
 
-This is a stateful class that **must** be instantiated once per simulation run.
+This class uses primitive collections (`fastutil`) to accumulate changes without creating `byte[]` objects for individual cells.
 
 ```java
 package org.evochora.projection.gen;
-// All required imports...
+
+import com.typesafe.config.Config;
+import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
+import it.unimi.dsi.fastutil.longs.LongArrayList;
+import it.unimi.dsi.fastutil.bytes.ByteArrayList;
+import org.evochora.projection.api.IStateReader;
+import org.evochora.projection.dto.StateDelta;
+import org.evochora.projection.dto.StateSnapshot;
+
+import java.nio.ByteBuffer;
+import java.nio.LongBuffer;
+import java.util.Optional;
 
 public final class PayloadGenerator<P> {
     private final IStateReader stateReader;
     private final IPayloadFactory<P> payloadFactory;
+    
+    // Config
     private final long deltaInterval;
     private final long keyframeInterval;
     private final long cumulativeDeltaInterval;
+    private final long maxCumulativeDeltaSizeBytes;
 
-    // State
-    private final Map<Long, byte[]> cumulativeChanges = new HashMap<>();
-    private final Map<Long, byte[]> incrementalChanges = new HashMap<>();
+    // Accumulators (Structure of Arrays)
+    // lookup: Maps Address -> Index in accAddresses/accData
+    private final Long2IntOpenHashMap lookup;
+    private final LongArrayList accAddresses;
+    private final ByteArrayList accData;
+    
     private long lastKeyframeTick = 0;
+    
+    // Transfer Buffers
+    private final LongBuffer addrBuffer;
+    private final ByteBuffer dataBuffer;
+    private final int cellSize;
 
     public PayloadGenerator(Config config, IStateReader stateReader, IPayloadFactory<P> payloadFactory) {
-        // ... constructor logic ...
+        this.stateReader = stateReader;
+        this.payloadFactory = payloadFactory;
+        this.cellSize = stateReader.getCellSizeBytes();
+        
+        this.deltaInterval = config.getLong("deltaInterval");
+        this.keyframeInterval = config.getLong("keyframeInterval");
+        this.cumulativeDeltaInterval = config.getLong("cumulativeDeltaInterval");
+        this.maxCumulativeDeltaSizeBytes = config.hasPath("maxCumulativeDeltaSizeBytes") 
+            ? config.getLong("maxCumulativeDeltaSizeBytes") : -1;
+
+        // Init Accumulators with reasonable defaults (resizable)
+        this.lookup = new Long2IntOpenHashMap(10000);
+        this.lookup.defaultReturnValue(-1);
+        this.accAddresses = new LongArrayList(10000);
+        this.accData = new ByteArrayList(10000 * cellSize);
+        
+        // Init Transfer Buffers
+        int maxChangesPerTick = 100000; // Configurable ideally
+        this.addrBuffer = LongBuffer.allocate(maxChangesPerTick);
+        this.dataBuffer = ByteBuffer.allocate(maxChangesPerTick * cellSize);
     }
 
     public Optional<P> generate(long tickNumber) {
-        // Step 1: Drain changes from the source. This MUST happen every tick to clear the buffer.
-        Map<Long, byte[]> newChanges = stateReader.drainChanges();
+        // 1. Drain changes (Zero-Alloc)
+        addrBuffer.clear();
+        dataBuffer.clear();
+        int count = stateReader.drainChangesTo(addrBuffer, dataBuffer);
+        
+        // 2. Merge into Accumulators (Zero-Alloc)
+        // We accumulate EVERY update, regardless of emission interval.
+        // This ensures no changes are lost if samplingInterval < deltaInterval.
+        
+        // Prepare buffers for reading
+        addrBuffer.flip();
+        dataBuffer.flip();
 
-        // Step 2: Check if this tick should be recorded. If not, discard changes and return.
-        if (tickNumber % deltaInterval != 0) {
-            return Optional.empty();
+        for (int i = 0; i < count; i++) {
+            long addr = addrBuffer.get();
+            // Note: dataBuffer position advances automatically if we read from it
+            // We need to read 'cellSize' bytes.
+            
+            int existingIndex = lookup.get(addr);
+            
+            if (existingIndex != -1) {
+                // Update existing: Overwrite bytes in accData
+                int startOffset = existingIndex * cellSize;
+                for (int b = 0; b < cellSize; b++) {
+                    accData.set(startOffset + b, dataBuffer.get());
+                }
+            } else {
+                // Insert new: Add to primitive lists
+                int newIndex = accAddresses.size();
+                lookup.put(addr, newIndex);
+                accAddresses.add(addr);
+                for (int b = 0; b < cellSize; b++) {
+                    accData.add(dataBuffer.get());
+                }
+            }
         }
         
-        // Step 3: Accumulate the drained changes for the current intervals.
-        cumulativeChanges.putAll(newChanges);
-        incrementalChanges.putAll(newChanges);
+        // 3. Check Interval
+        if (tickNumber % deltaInterval != 0) {
+            return Optional.empty(); // Keep accumulating
+        }
 
-        // Step 4: Determine payload type based on interval rules.
-        // A keyframe takes precedence over a cumulative delta.
-        if (tickNumber % keyframeInterval == 0) {
+        // 4. Determine Payload Type
+        boolean forceKeyframe = (tickNumber % keyframeInterval == 0);
+        
+        if (!forceKeyframe && maxCumulativeDeltaSizeBytes > 0) {
+            long currentSize = accData.size(); // Approximate size in bytes
+            if (currentSize > maxCumulativeDeltaSizeBytes) forceKeyframe = true;
+        }
+
+        if (forceKeyframe) {
             StateSnapshot snapshot = stateReader.createSnapshot(tickNumber);
             P payload = payloadFactory.createSnapshotPayload(snapshot);
-            
-            // Reset all state after a keyframe.
+            resetAccumulators();
             lastKeyframeTick = tickNumber;
-            cumulativeChanges.clear();
-            incrementalChanges.clear();
-            
             return Optional.of(payload);
         }
 
         if (tickNumber % cumulativeDeltaInterval == 0) {
-            List<StateFragment> fragments = mapToList(cumulativeChanges);
-            StateDelta delta = new StateDelta(tickNumber, lastKeyframeTick, fragments);
+            StateDelta delta = createDelta(tickNumber, lastKeyframeTick);
             P payload = payloadFactory.createCumulativeDeltaPayload(delta);
-            
-            // Incremental changes are reset, but cumulative changes persist until the next keyframe.
-            incrementalChanges.clear();
-            
+            // Cumulative delta covers everything.
+            // When a Cumulative Delta is emitted, it acts as a "checkpoint".
+            // We clear the accumulators because the next incremental delta will start from here.
+            resetAccumulators(); 
             return Optional.of(payload);
         }
 
-        // Default case: generate an incremental delta.
-        // Determine the base tick for the incremental delta. It's the last recorded tick.
-        long lastRecordedTick = Math.max(
-            (tickNumber / cumulativeDeltaInterval) * cumulativeDeltaInterval,
-            lastKeyframeTick
-        );
-        long baseTick = (tickNumber - deltaInterval < lastRecordedTick) ? lastRecordedTick : tickNumber - deltaInterval;
-
-        List<StateFragment> fragments = mapToList(incrementalChanges);
-        StateDelta delta = new StateDelta(tickNumber, baseTick, fragments);
+        // Incremental Delta
+        long baseTick = tickNumber - deltaInterval;
+        StateDelta delta = createDelta(tickNumber, baseTick);
         P payload = payloadFactory.createIncrementalDeltaPayload(delta);
-
-        incrementalChanges.clear();
-
+        
+        resetAccumulators();
         return Optional.of(payload);
     }
-    
-    private List<StateFragment> mapToList(Map<Long, byte[]> map) {
-        return map.entrySet().stream()
-            .map(e -> new StateFragment(e.getKey(), e.getValue()))
-            .collect(Collectors.toList());
+
+    private StateDelta createDelta(long tick, long baseTick) {
+        // Zero-copy if possible, or fast array copy
+        // StateDelta records take ownership of arrays. 
+        // We must copy because accumulators are reused.
+        
+        long[] addresses = accAddresses.toLongArray(); // fastutil copy
+        byte[] data = accData.toByteArray();           // fastutil copy
+        
+        return new StateDelta(tick, baseTick, addresses, data, cellSize);
     }
 
-    // This factory is the bridge between the generic DTOs and the specific Protobuf messages.
-    // It will be implemented in the `datapipeline` module.
+    private void resetAccumulators() {
+        lookup.clear();
+        accAddresses.clear();
+        accData.clear();
+    }
+    
     public interface IPayloadFactory<P> {
         P createSnapshotPayload(StateSnapshot snapshot);
         P createCumulativeDeltaPayload(StateDelta delta);
@@ -256,55 +344,71 @@ public final class PayloadGenerator<P> {
 }
 ```
 
-### 3.4. `projection.proj.StateProjector` - Read-Side Logic
+### 4.4. `projection.proj.StateProjector` - Stateless Read-Side Logic
 
-This is a stateless class that can be instantiated on-demand.
+Uses primitive maps for efficient reconstruction.
 
 ```java
 package org.evochora.projection.proj;
-// All required imports...
+
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+import org.evochora.projection.api.IPayloadProvider;
+import org.evochora.projection.api.IReconstructedState;
+import org.evochora.projection.dto.StateDelta;
+import org.evochora.projection.dto.StateSnapshot;
+
+import java.util.*;
 
 public final class StateProjector {
     private final IPayloadProvider payloadProvider;
-    public StateProjector(IPayloadProvider payloadProvider) { this.payloadProvider = payloadProvider; }
+    
+    public StateProjector(IPayloadProvider payloadProvider) { 
+        this.payloadProvider = payloadProvider; 
+    }
 
     public IReconstructedState projectState(long tickNumber) throws StateNotFoundException {
-        // Step 1: Find the foundational keyframe snapshot. This is mandatory.
+        // 1. Snapshot
         StateSnapshot snapshot = payloadProvider.findLatestSnapshot(tickNumber)
-            .orElseThrow(() -> new StateNotFoundException("Cannot reconstruct state: No snapshot found at or before tick " + tickNumber));
+            .orElseThrow(() -> new StateNotFoundException("No snapshot found for tick " + tickNumber));
         
-        // Step 2: Initialize the state with the snapshot's fragments. Use a HashMap for efficient updates.
-        final Map<Long, byte[]> stateMap = new HashMap<>();
-        snapshot.fragments().forEach(f -> stateMap.put(f.address(), f.data()));
+        int cellSize = snapshot.cellSizeBytes();
+        
+        // Use Fastutil primitive map for efficient storage
+        final Long2ObjectOpenHashMap<byte[]> stateMap = new Long2ObjectOpenHashMap<>(snapshot.addresses().length);
+        populateMap(stateMap, snapshot.addresses(), snapshot.data(), cellSize);
         
         long baseTick = snapshot.tickNumber();
 
-        // Step 3: Find the latest CUMULATIVE delta between the snapshot and the target tick.
-        Optional<StateDelta> cumulativeDeltaOpt = payloadProvider.findLatestCumulativeDelta(baseTick, tickNumber);
-        
-        if (cumulativeDeltaOpt.isPresent()) {
-            StateDelta cumulativeDelta = cumulativeDeltaOpt.get();
-            cumulativeDelta.changedFragments().forEach(f -> stateMap.put(f.address(), f.data()));
-            baseTick = cumulativeDelta.tickNumber();
+        // 2. Cumulative Delta
+        Optional<StateDelta> cumDelta = payloadProvider.findLatestCumulativeDelta(baseTick, tickNumber);
+        if (cumDelta.isPresent()) {
+            StateDelta delta = cumDelta.get();
+            populateMap(stateMap, delta.changedAddresses(), delta.changedData(), cellSize);
+            baseTick = delta.tickNumber();
         }
 
-        // Step 4: Find all INCREMENTAL deltas between the new base tick and the target tick.
-        List<StateDelta> incrementalDeltas = payloadProvider.findIncrementalDeltas(baseTick, tickNumber);
-        
-        // Step 5: Apply each incremental delta in sequence.
-        for (StateDelta delta : incrementalDeltas) {
-            delta.changedFragments().forEach(f -> stateMap.put(f.address(), f.data()));
+        // 3. Incremental Deltas
+        List<StateDelta> incDeltas = payloadProvider.findIncrementalDeltas(baseTick, tickNumber);
+        for (StateDelta delta : incDeltas) {
+            populateMap(stateMap, delta.changedAddresses(), delta.changedData(), cellSize);
         }
 
-        // Step 6: Return a read-only, memory-efficient view of the final reconstructed state.
         return new ReconstructedStateView(tickNumber, stateMap);
+    }
+
+    private void populateMap(Long2ObjectOpenHashMap<byte[]> map, long[] addrs, byte[] data, int cellSize) {
+        for (int i = 0; i < addrs.length; i++) {
+            byte[] cell = new byte[cellSize];
+            System.arraycopy(data, i * cellSize, cell, 0, cellSize);
+            map.put(addrs[i], cell);
+        }
     }
     
     private static class ReconstructedStateView implements IReconstructedState {
         private final long tickNumber;
-        private final Map<Long, byte[]> state;
+        private final Long2ObjectOpenHashMap<byte[]> state;
 
-        public ReconstructedStateView(long tickNumber, Map<Long, byte[]> state) {
+        public ReconstructedStateView(long tickNumber, Long2ObjectOpenHashMap<byte[]> state) {
             this.tickNumber = tickNumber;
             this.state = state;
         }
@@ -316,7 +420,7 @@ public final class StateProjector {
 
         @Override
         public Set<Long> getAddresses() {
-            return Collections.unmodifiableSet(state.keySet());
+            return state.keySet();
         }
 
         @Override
@@ -326,6 +430,43 @@ public final class StateProjector {
     }
 }
 ```
+
+### 4.5 `projection.proj.StatefulProjector`
+
+```java
+package org.evochora.projection.proj;
+
+import org.evochora.projection.api.IPayloadProvider;
+import org.evochora.projection.api.IReconstructedState;
+
+public class StatefulProjector {
+    private final IPayloadProvider payloadProvider;
+    private IReconstructedState currentState;
+
+    public StatefulProjector(IPayloadProvider provider) { this.payloadProvider = provider; }
+
+    public IReconstructedState seekTo(long tickNumber) throws StateNotFoundException {
+        this.currentState = new StateProjector(payloadProvider).projectState(tickNumber);
+        return this.currentState;
+    }
+
+    public IReconstructedState advanceToNext() {
+        // Note: This needs logic to fetch the *single next* delta from provider.
+        // For CLI/Video purposes, we assume strictly sequential access.
+        // Simplified implementation:
+        long nextTick = currentState.getTickNumber() + 1; // Or +deltaInterval
+        try {
+            // Re-use StateProjector logic or optimize by applying just one delta to internal map
+            // For now, delegate to full projection for correctness (can be optimized later)
+            this.currentState = new StateProjector(payloadProvider).projectState(nextTick);
+        } catch (StateNotFoundException e) {
+            return null;
+        }
+        return this.currentState;
+    }
+}
+```
+
 **`StateNotFoundException.java`**
 ```java
 package org.evochora.projection.proj;
@@ -336,129 +477,246 @@ public class StateNotFoundException extends Exception {
 
 ---
 
-## 4. `runtime` Module Integration
+## 5. `runtime` Module Integration
 
-### 4.1. `runtime.model.Environment` Modification
-The class will be modified for active change tracking.
+### 5.1. `runtime.model.Environment` - THREAD-LOCAL BUFFERING
+
+Optimized for **Wait-Free Concurrency** and **Zero-Garbage**.
+Uses `ThreadLocal` storage to eliminate locks in the hot path.
 
 ```java
 // In: src/main/java/org/evochora/runtime/model/Environment.java
-// Add a new private field:
-private final Map<Integer, Integer> changedCells = new HashMap<>(); // flatIndex -> packedMoleculeInt
 
-// Modify setMolecule(Molecule molecule, int ownerId, int... coord)
-// At the end of the method, add:
-this.changedCells.put(index, packed);
+import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
+import java.nio.ByteBuffer;
+import java.nio.LongBuffer;
+import java.util.concurrent.ConcurrentLinkedQueue;
 
-// Add the new public method for the adapter
-/**
- * Drains the tracked changes for consumption by the projection module.
- * Converts the specific internal format to the generic format required by IStateReader.
- * @return Map of address (long) to serialized data (byte[]).
- */
-public Map<Long, byte[]> drainChanges() {
-    if (changedCells.isEmpty()) {
-        return Collections.emptyMap();
+public class Environment {
+    // ... existing fields ...
+
+    // Registry of all thread-local buffers so the main thread can drain them
+    private final ConcurrentLinkedQueue<Int2IntOpenHashMap> threadBufferRegistry = new ConcurrentLinkedQueue<>();
+
+    // ThreadLocal storage for change tracking (Wait-Free)
+    // Each thread gets its own primitive map.
+    private final ThreadLocal<Int2IntOpenHashMap> localChangeBuffer = ThreadLocal.withInitial(() -> {
+        // Initial size 1024, Load Factor 0.75
+        Int2IntOpenHashMap map = new Int2IntOpenHashMap(1024);
+        // Register this buffer so drainChangesTo can access it later
+        threadBufferRegistry.add(map);
+        return map;
+    });
+
+    public void setMolecule(Molecule molecule, int ownerId, int... coord) {
+        int index = getFlatIndex(coord);
+        int packed = molecule.toInt();
+        
+        this.grid[index] = packed;
+        this.ownerGrid[index] = ownerId;
+        
+        // Zero-Overhead, Wait-Free Write
+        // No locks, no volatile write, pure L1-cache access
+        this.localChangeBuffer.get().put(index, packed);
+        
+        // ... sparse tracking logic ...
     }
-    
-    Map<Long, byte[]> drained = new HashMap<>();
-    ByteBuffer buffer = ByteBuffer.allocate(4);
-    for (Map.Entry<Integer, Integer> entry : changedCells.entrySet()) {
-        // Key: convert int to long. Value: convert int to byte[4].
-        buffer.clear();
-        drained.put(entry.getKey().longValue(), buffer.putInt(entry.getValue()).array());
+
+    /**
+     * Called by PayloadGenerator (Single Threaded Phase after Barrier).
+     * Drains all thread-local buffers and clears them (recycling).
+     */
+    public int drainChangesTo(LongBuffer addrSink, ByteBuffer dataSink) {
+        int totalChanges = 0;
+        
+        // Iterate over all registered thread buffers
+        // Note: threadBufferRegistry is concurrent, so safe to iterate.
+        // We assume all worker threads are PAUSED at the barrier here.
+        
+        for (Int2IntOpenHashMap buffer : threadBufferRegistry) {
+            // Skip empty buffers to avoid iterator overhead
+            if (buffer.isEmpty()) continue;
+            
+            // Fast iteration over primitive map
+            var iterator = buffer.int2IntEntrySet().iterator();
+            while (iterator.hasNext()) {
+                var entry = iterator.next();
+                addrSink.put((long) entry.getIntKey());
+                dataSink.putInt(entry.getIntValue());
+                totalChanges++;
+            }
+            
+            // CRITICAL: Clear the buffer to recycle the backing arrays.
+            // Do NOT remove from registry, as thread will reuse it next tick.
+            buffer.clear();
+        }
+        
+        return totalChanges;
     }
-    
-    changedCells.clear();
-    return drained;
 }
 ```
 
-### 4.2. `runtime.projection.EnvironmentStateAdapter`
-This new class adapts `Environment` to the `IStateReader` interface.
+### 5.2. `EnvironmentStateAdapter`
 
 ```java
-// In: src/main/java/org/evochora/runtime/projection/EnvironmentStateAdapter.java
 package org.evochora.runtime.projection;
-// imports...
+
+import org.evochora.projection.api.IStateReader;
+import org.evochora.projection.dto.StateSnapshot;
+import org.evochora.runtime.model.Environment;
+import java.nio.ByteBuffer;
+import java.nio.LongBuffer;
 
 public class EnvironmentStateAdapter implements IStateReader {
     private final Environment environment;
-    private final ByteBuffer buffer = ByteBuffer.allocate(4);
+    private static final int CELL_SIZE = 4; // int molecule packed
 
     public EnvironmentStateAdapter(Environment environment) {
         this.environment = environment;
     }
 
     @Override
+    public int getCellSizeBytes() { return CELL_SIZE; }
+
+    @Override
     public StateSnapshot createSnapshot(long tickNumber) {
-        List<StateFragment> fragments = new ArrayList<>();
-        environment.forEachOccupiedIndex(flatIndex -> {
-            int moleculeInt = environment.getMoleculeInt(flatIndex);
-            buffer.clear();
-            byte[] data = buffer.putInt(moleculeInt).array();
-            fragments.add(new StateFragment((long) flatIndex, data));
-        });
-        return new StateSnapshot(tickNumber, fragments);
+        // Implementation that efficiently extracts full state
+        // For this spec, we assume environment has a method for this or we iterate grid
+        // ... (Full implementation would traverse grid and fill arrays) ...
+        return new StateSnapshot(tickNumber, new long[0], new byte[0], CELL_SIZE); // Placeholder for brevity
     }
 
     @Override
-    public Map<Long, byte[]> drainChanges() {
-        return environment.drainChanges();
+    public int drainChangesTo(LongBuffer addrSink, ByteBuffer dataSink) {
+        return environment.drainChangesTo(addrSink, dataSink);
+    }
+
+    @Override
+    public long getLastSnapshotSizeInBytes() {
+        return 0; 
     }
 }
 ```
 
 ---
 
-## 5. `datapipeline` Module Integration
+## 6. `datapipeline` Module Integration
 
-### 5.1. `datapipeline.contracts.EnvironmentPayload.proto`
-This new file defines the on-disk format.
+### 6.1. `EnvironmentPayload.proto`
 
 ```protobuf
-// In: src/main/proto/EnvironmentPayload.proto
 syntax = "proto3";
 package org.evochora.datapipeline.contracts;
-import "TickData.proto"; // For CellDataColumns
 
 message EnvironmentSnapshot {
     int64 tick_number = 1;
-    CellDataColumns all_cells = 2;
+    bytes all_cells_data = 2; 
+    repeated int64 addresses = 3; 
+    int32 cell_size_bytes = 4;
 }
-// ... other message definitions as in the previous version ...
-message EnvironmentPayload { /* ... */ }
+
+message EnvironmentCumulativeDelta {
+    int64 tick_number = 1;
+    int64 base_tick_number = 2;
+    bytes changed_cells_data = 3;
+    repeated int64 changed_addresses = 4;
+    int32 cell_size_bytes = 5;
+}
+
+message EnvironmentIncrementalDelta {
+    int64 tick_number = 1;
+    int64 base_tick_number = 2;
+    bytes changed_cells_data = 3;
+    repeated int64 changed_addresses = 4;
+    int32 cell_size_bytes = 5;
+}
+
+message EnvironmentPayload {
+    oneof payload {
+        EnvironmentSnapshot snapshot = 1;
+        EnvironmentCumulativeDelta cumulative_delta = 2;
+        EnvironmentIncrementalDelta incremental_delta = 3;
+    }
+}
 ```
 
-### 5.2. `datapipeline.provider.DatabasePayloadProvider`
-This class adapts the database (which stores Protobuf) to the `IPayloadProvider` interface (which uses DTOs).
+### 6.2. `DatabasePayloadProvider`
+
+Uses Protobuf to generic DTO mapping.
 
 ```java
-// In: src/main/java/org/evochora/datapipeline/provider/DatabasePayloadProvider.java
-// ...
+package org.evochora.datapipeline.provider;
+
+import org.evochora.datapipeline.contracts.EnvironmentPayload;
+import org.evochora.projection.api.IPayloadProvider;
+import org.evochora.projection.dto.StateDelta;
+import org.evochora.projection.dto.StateSnapshot;
+import java.util.List;
+import java.util.Optional;
+import java.util.Collections;
+
 public class DatabasePayloadProvider implements IPayloadProvider {
-    // ... dbReader dependency ...
+    // ... Database Driver Dependency ...
+
     @Override
     public Optional<StateSnapshot> findLatestSnapshot(long tickNumber) {
-        // 1. dbReader.findLatestSnapshotBlob(tickNumber) -> Optional<EnvironmentSnapshot>
-        // 2. If present, convert it to the generic DTO.
-        return optionalProto.map(this::toGenericSnapshot);
+        // 1. Fetch byte[] blob from DB
+        // 2. Parse EnvironmentPayload proto
+        // 3. Map to StateSnapshot DTO
+        return Optional.empty(); 
     }
-    
-    private StateSnapshot toGenericSnapshot(EnvironmentSnapshot proto) {
-        // Logic to iterate over proto.getAllCells() (CellDataColumns)
-        // and create a List<StateFragment>.
+
+    @Override
+    public Optional<StateDelta> findLatestCumulativeDelta(long startTickExclusive, long endTickInclusive) {
+        return Optional.empty(); 
     }
-    // ... similar implementations for findLatestCumulativeDelta and findIncrementalDeltas ...
+
+    @Override
+    public List<StateDelta> findIncrementalDeltas(long startTickExclusive, long endTickInclusive) {
+        return Collections.emptyList();
+    }
 }
 ```
-
-### 5.3. `PersistenceService` Modification
-The `PersistenceService` input queue type will change from `TickData` to `EnvironmentPayload`. Its logic remains otherwise identical, as it treats the payload as an opaque blob to be written to storage.
 
 ---
 
-## 6. Configuration & Final Integration
+## 7. Configuration Changes
 
-The HOCON configuration and Dependency Injection setup will proceed as described in the previous version of this document. The `SimulationEngine` will instantiate the `EnvironmentStateAdapter` and the `PayloadGenerator`, orchestrating the write path. The `EnvironmentController`, CLI tools, and `AnalyticsIndexer` will instantiate the appropriate `IPayloadProvider` and use the `StateProjector` to reconstruct state on the read path.
+The following changes must be applied to `evochora.conf`.
+
+### 7.1. New Projection Section
+Add a new `projection` block to the `simulation-engine` configuration.
+
+```hocon
+    simulation-engine {
+      # ... existing config ...
+      
+      options {
+        # ... existing options ...
+
+        # NEW: Projection Configuration for Delta-Based State Tracking
+        projection {
+          # Capture delta every N ticks.
+          # Relationship to samplingInterval:
+          #   - samplingInterval (above) controls how often the engine *polls* for data.
+          #   - deltaInterval controls how often a payload is *emitted*.
+          #   - Ideally: set samplingInterval = deltaInterval for max performance.
+          #   - If samplingInterval=1 and deltaInterval=10: Generator accumulates 10 ticks, then emits.
+          deltaInterval = 10
+          
+          # Force a full Keyframe (Snapshot) every N ticks.
+          # MUST be a multiple of deltaInterval.
+          keyframeInterval = 1000
+          
+          # Emit a Cumulative Delta (from last keyframe) every N ticks.
+          # MUST be a multiple of deltaInterval.
+          # Allows faster seeking without loading 100 incremental deltas.
+          cumulativeDeltaInterval = 100
+          
+          # Optional: Force a Keyframe if cumulative delta size exceeds this limit (bytes).
+          # Safety net to prevent massive delta chains in chaotic simulations.
+          maxCumulativeDeltaSizeBytes = 5242880 # 5 MB
+        }
+      }
+    }
 ```

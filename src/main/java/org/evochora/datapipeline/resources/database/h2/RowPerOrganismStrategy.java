@@ -78,8 +78,8 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
 
     private static final String STATES_MERGE_SQL =
             "MERGE INTO organism_states (" +
-                    "tick_number, organism_id, energy, ip, dv, data_pointers, active_dp_index, runtime_state_blob" +
-                    ") KEY (tick_number, organism_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+                    "tick_number, organism_id, energy, ip, dv, data_pointers, active_dp_index, runtime_state_blob, entropy, molecule_marker" +
+                    ") KEY (tick_number, organism_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
     /**
      * Creates a new RowPerOrganismStrategy with the given configuration.
@@ -118,6 +118,8 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
                             "  data_pointers BYTEA NOT NULL," +
                             "  active_dp_index INT NOT NULL," +
                             "  runtime_state_blob BYTEA NOT NULL," +
+                            "  entropy INT DEFAULT 0," +
+                            "  molecule_marker INT DEFAULT 0," +
                             "  PRIMARY KEY (tick_number, organism_id)" +
                             ")",
                     "organism_states"
@@ -206,6 +208,8 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
                 stmt.setBytes(6, dataPointersBytes);
                 stmt.setInt(7, org.getActiveDpIndex());
                 stmt.setBytes(8, runtimeBlob);
+                stmt.setInt(9, org.getEntropyRegister());
+                stmt.setInt(10, org.getMoleculeMarkerRegister());
                 stmt.addBatch();
                 writtenCount++;
             }
@@ -235,7 +239,10 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
                 .addAllCallStack(org.getCallStackList())
                 .setInstructionFailed(org.getInstructionFailed())
                 .setFailureReason(org.hasFailureReason() ? org.getFailureReason() : "")
-                .addAllFailureCallStack(org.getFailureCallStackList());
+                .addAllFailureCallStack(org.getFailureCallStackList())
+                // Ensure entropy and marker registers are included in the runtime blob
+                .setEntropyRegister(org.getEntropyRegister())
+                .setMoleculeMarkerRegister(org.getMoleculeMarkerRegister());
 
         // Instruction execution data
         if (org.hasInstructionOpcodeId()) {
@@ -278,7 +285,7 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
     public List<OrganismTickSummary> readOrganismsAtTick(Connection conn, long tickNumber)
             throws SQLException {
         String sql = """
-                SELECT s.organism_id, s.energy, s.ip, s.dv, s.data_pointers, s.active_dp_index,
+                SELECT s.organism_id, s.energy, s.ip, s.dv, s.data_pointers, s.active_dp_index, s.entropy,
                        o.parent_id, o.birth_tick
                 FROM organism_states s
                 LEFT JOIN organisms o ON s.organism_id = o.organism_id
@@ -307,9 +314,8 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
                     int[] dv = OrganismStateConverter.decodeVector(dvBytes);
                     int[][] dataPointers = OrganismStateConverter.decodeDataPointers(dpBytes);
 
-                    // SR is stored in runtime_state_blob, not as a separate column.
-                    // For backward compatibility, we return 0 (old data has no SR).
-                    int entropyRegister = 0;
+                    // SR is now stored as a separate column for full equivalence
+                    int entropyRegister = rs.getInt("entropy");
 
                     result.add(new OrganismTickSummary(
                             organismId,
@@ -423,7 +429,10 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
                 .addAllLocationStack(runtimeState.getLocationStackList())
                 .addAllCallStack(runtimeState.getCallStackList())
                 .setInstructionFailed(runtimeState.getInstructionFailed())
-                .addAllFailureCallStack(runtimeState.getFailureCallStackList());
+                .addAllFailureCallStack(runtimeState.getFailureCallStackList())
+                // Restore entropy and marker registers from the runtime blob
+                .setEntropyRegister(runtimeState.getEntropyRegister())
+                .setMoleculeMarkerRegister(runtimeState.getMoleculeMarkerRegister());
 
         // Optional fields from runtime_state_blob
         if (!runtimeState.getFailureReason().isEmpty()) {
