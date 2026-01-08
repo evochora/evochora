@@ -218,6 +218,20 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
                     
                     // Disable JMX to reduce noise
                     config.setJMXManagementEnabled(false);
+
+                    // Configure global max disk usage percentage.
+                    // Default is -1 (disabled) for archival purposes, relying on external monitoring.
+                    // Artemis default is 90(%) which blocks producers when disk is nearly full.
+                    int maxDiskUsage = options.hasPath("embedded.maxDiskUsage")
+                        ? options.getInt("embedded.maxDiskUsage")
+                        : -1; // Default to -1 (disabled)
+                    config.setMaxDiskUsage(maxDiskUsage);
+
+                    if (maxDiskUsage == -1) {
+                        log.debug("Artemis global maxDiskUsage is disabled. The broker will use all available disk space.");
+                    } else {
+                        log.debug("Artemis global maxDiskUsage is set to {}%", maxDiskUsage);
+                    }
                     
                     // Address Settings for redelivery behavior (broker-side)
                     // These settings apply when a consumer connection is lost or transaction rolled back
