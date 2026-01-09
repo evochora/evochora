@@ -2,7 +2,7 @@ Evochora: Proposal for a new platform to research evolutionary emergent complexi
 
 Hi everyone,
 
-For the last 6 months, I've been working on Evochora, an Artificial Life platform exploring why digital evolution tends to stagnate. To develop this into a serious scientific simulation platform, I am looking for constructive feedback and potentially even contributors.
+For the last 6 months, I've been working on Evochora, an Artificial Life platform to explore why digital evolution tends to stagnate. It's designed as an evolving research platform to identify and overcome complexity hurdles one by one. I am looking for constructive feedback and potentially even contributors.
 
 *Core concept*
 Organisms consist of executable spatial low-level assembly code residing directly in a shared n-dimensional grid – their code is their physical body. They must mechanically navigate this grid to survive and replicate. No fitness functions, no goal culling, only physics.
@@ -10,9 +10,8 @@ Organisms consist of executable spatial low-level assembly code residing directl
 *Current Status*
 Right now the system consistently produces and maintains stable populations of digital organisms without manual tuning or scripted balancing. Early versions collapsed into grey goo as organisms corrupted each other's code. Thermodynamic constraints solved this: organisms must actively manage energy and entropy to survive, creating population-level stability without punishing mutations.
 
-
 *System Architecture*
-Evochora is still early-stage, but designed as an extensible research platform that can evolve with future research needs.
+Evochora is still early-stage, but designed for extensibility to evolve with future research needs.
 
 Currently operational:
  * Compiler: Multi-pass architecture, plugin-extensible at each phase

@@ -37,7 +37,10 @@
 <br>
 
 ## What is Evochora?
-Evochora is a research-oriented artificial life simulator that runs fully embodied organisms on a custom virtual machine in an n-dimensional environment. The system already supports a functional primordial organism written in EvoASM, Evochora’s own assembly language, compiled via a multi-pass compiler extensible with plugins.
+
+Evochora is an Artificial Life platform to explore why digital evolution tends to stagnate. It's designed as an evolving research system to identify and overcome complexity hurdles one by one—from stability to mutation tolerance to scaling. The goal is to expand the simulation's capabilities and refine its physical laws to explore what becomes possible next, without assuming where evolution will ultimately lead.
+
+Evochora executes organisms consisting of spatial low-level assembly code directly on a custom virtual machine in an n-dimensional environment. The system already supports a functional primordial organism written in EvoASM, Evochora’s own assembly language, compiled via a multi-pass compiler extensible with plugins.
 The simulation separates the hot execution path from the cold data processing path, allowing experimental runs to be analyzed efficiently and supporting future horizontal scaling. Evochora’s design contrasts with previous platforms such as Tierra or Avida by embedding organisms in a spatial and energetic environment rather than applying external task-based rewards or global culling.
 
 👉 **[Jump to Quick Start](#quick-start-run-a-simulation)** to run your own simulations
@@ -450,7 +453,7 @@ cd evochora
 # Build & test
 ./gradlew build
 
-# Run the node in dev mode (uses ./evochora.conf by default)
+!# Run the node in dev mode (uses ./evochora.conf by default)
 ./gradlew run --args="node run"
 ```
 
