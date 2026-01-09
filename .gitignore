@@ -51,6 +51,7 @@ bin/
 /runs/
 /savedSimulations/
 /evochora_data/
+/data/
 
 # VS Code extension - ignore build artifacts but keep the distributed .vsix
 extensions/vscode/src/node_modules/
