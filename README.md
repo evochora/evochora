@@ -384,7 +384,7 @@ This will:
 
 Once the node is running, it will by default execute the primordial organism defined in [`assembly/primordial/main.evo`](./assembly/primordial/main.evo) as configured in [`config/evochora.conf`](./evochora.conf).  
 
-Open the visualizer in your browser to see it:
+Open the web frontend in your browser:
 `http://localhost:8081/visualizer/`
 
 <br>
@@ -453,9 +453,12 @@ cd evochora
 # Build & test
 ./gradlew build
 
-!# Run the node in dev mode (uses ./evochora.conf by default)
+# Run the node in dev mode (uses ./evochora.conf by default)
 ./gradlew run --args="node run"
 ```
+
+Open the web frontend in your browser:
+`http://localhost:8081/visualizer/`
 
 See also:
 

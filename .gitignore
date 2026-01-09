@@ -46,7 +46,7 @@ bin/
 *.jar
 *.war
 
-# Log files
+# Log files and data directories
 *.log
 /runs/
 /savedSimulations/
