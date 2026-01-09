@@ -541,6 +541,8 @@ button:hover { background-color: #4a4a6a; }
     color: #e0e0e0;
     padding: 8px 44px 8px 8px; /* space for suffix */
     border-radius: 4px;
+    font-family: 'Roboto Mono', 'Courier New', monospace;
+    font-size: 14px;
 }
 .tick-input-wrapper input[type="number"]::-webkit-outer-spin-button,
 .tick-input-wrapper input[type="number"]::-webkit-inner-spin-button {
@@ -555,8 +557,9 @@ button:hover { background-color: #4a4a6a; }
     position: absolute;
     right: 8px;
     pointer-events: none;
-    color: #aaa;
-    font-size: 1em;
+    color: #888; /* Darker color for read-only part */
+    font-family: 'Roboto Mono', 'Courier New', monospace;
+    font-size: 14px;
 }
 
 /* Hauptcontainer (ohne Header) */
@@ -1018,4 +1021,9 @@ main.container {
 [data-tooltip]:hover::after {
     opacity: 1;
     visibility: visible;
+}
+
+.multiplier-wrapper input.tick-input {
+    width: 80px; /* Shorter width for multiplier */
+    padding-right: 36px; /* Space for suffix */
 }

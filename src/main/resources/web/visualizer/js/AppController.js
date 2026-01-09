@@ -145,6 +145,12 @@ export class AppController {
             // Fetch metadata for new run
             const metadata = await this.simulationApi.fetchMetadata(this.state.runId);
             this.state.metadata = metadata; // Store metadata for use by components
+            
+            // Update UI components that depend on metadata
+            this.tickPanelManager?.updateSamplingInfo(metadata?.samplingInterval || 1);
+            this.headerbar?.loadMultiplierForRun(this.state.runId); // Load after metadata is ready
+            this.headerbar?.updateTooltips();
+
             if (metadata?.environment?.shape) {
                 this.state.worldShape = Array.from(metadata.environment.shape);
                 this.renderer.updateWorldShape(this.state.worldShape);
@@ -276,7 +282,9 @@ export class AppController {
             hideBtn: document.getElementById('tick-panel-hide'),
             tickInput: document.getElementById('tick-input'),
             tickTotal: document.getElementById('tick-total-suffix'),
-            tickInfo: document.getElementById('tick-info')
+            tickInfo: document.getElementById('tick-info'),
+            multiplierWrapper: document.getElementById('multiplier-wrapper'),
+            multiplierSuffix: document.getElementById('multiplier-suffix')
         });
 
         // Organism panel
@@ -460,6 +468,12 @@ export class AppController {
             const metadata = await this.simulationApi.fetchMetadata(this.state.runId, { signal });
             if (metadata) {
                 this.state.metadata = metadata; // Store metadata for use by components
+
+                // Update sampling info in the UI
+                this.tickPanelManager?.updateSamplingInfo(metadata?.samplingInterval || 1);
+                this.headerbar?.loadMultiplierForRun(this.state.runId);
+                this.headerbar?.updateTooltips();
+                
                 if (metadata.runId && !this.state.runId) {
                     this.state.runId = metadata.runId;
                 }
@@ -580,7 +594,13 @@ export class AppController {
         // First, always update maxTick from the server to get the latest value.
         await this.updateMaxTick();
 
+        const samplingInterval = this.state.metadata?.samplingInterval || 1;
         let target = Math.max(0, tick); // Ensure we don't go below zero
+        
+        // Round down to the nearest sampling interval, unless it's 1
+        if (samplingInterval > 1) {
+            target = Math.floor(target / samplingInterval) * samplingInterval;
+        }
 
         // If maxTick is known, clamp the target to the new maximum.
         if (this.state.maxTick !== null) {

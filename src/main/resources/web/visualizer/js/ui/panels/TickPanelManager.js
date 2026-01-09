@@ -16,14 +16,21 @@ export class TickPanelManager {
      * @param {HTMLElement} options.tickInput - The tick input element
      * @param {HTMLElement} options.tickTotal - The tick total suffix element
      * @param {HTMLElement} options.tickInfo - The tick info display in collapsed state
+     * @param {HTMLElement} options.multiplierWrapper - The wrapper for the multiplier input.
+     * @param {HTMLElement} options.multiplierSuffix - The suffix for the multiplier input.
      */
-    constructor({ panel, collapsed, hideBtn, tickInput, tickTotal, tickInfo }) {
+    constructor({
+        panel, collapsed, hideBtn, tickInput, tickTotal, tickInfo,
+        multiplierWrapper, multiplierSuffix
+    }) {
         this.panel = panel;
         this.collapsed = collapsed;
         this.hideBtn = hideBtn;
         this.tickInput = tickInput;
         this.tickTotal = tickTotal;
         this.tickInfo = tickInfo;
+        this.multiplierWrapper = multiplierWrapper;
+        this.multiplierSuffix = multiplierSuffix;
         this.observer = null;
 
         this.init();
@@ -91,6 +98,18 @@ export class TickPanelManager {
         const current = this.tickInput?.value || '0';
         const total = this.tickTotal?.textContent || '/N/A';
         this.tickInfo.textContent = current + total;
+    }
+
+    /**
+     * Updates the UI based on the sampling interval.
+     * @param {number} interval - The sampling interval.
+     */
+    updateSamplingInfo(interval) {
+        if (!this.multiplierWrapper || !this.multiplierSuffix) return;
+
+        // Multiplier is always visible. The suffix indicates the step size.
+        this.multiplierSuffix.textContent = `x${interval}`;
+        this.multiplierWrapper.style.display = 'inline-flex';
     }
 
     /**

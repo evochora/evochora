@@ -11,6 +11,15 @@ export class HeaderbarView {
      */
     constructor(controller) {
         this.controller = controller;
+        this.elements = {
+            prevSmall: document.getElementById('btn-prev-small'),
+            nextSmall: document.getElementById('btn-next-small'),
+            prevLarge: document.getElementById('btn-prev-large'),
+            nextLarge: document.getElementById('btn-next-large'),
+            zoomToggle: document.getElementById('btn-zoom-toggle'),
+            tickInput: document.getElementById('tick-input'),
+            largeStepInput: document.getElementById('large-step-multiplier'),
+        };
         
         // Debouncing for keyboard navigation
         this.keyRepeatTimeout = null;
@@ -18,78 +27,128 @@ export class HeaderbarView {
         this.isKeyHeld = false;
         
         // Button event listeners
-        document.getElementById('btn-prev').addEventListener('click', () => {
-            this.controller.navigateToTick(this.controller.state.currentTick - 1);
-        });
+        this.elements.prevSmall.addEventListener('click', () => this.navigateInDirection('backward'));
+        this.elements.nextSmall.addEventListener('click', () => this.navigateInDirection('forward'));
+        this.elements.prevLarge.addEventListener('click', () => this.navigateLargeStep('backward'));
+        this.elements.nextLarge.addEventListener('click', () => this.navigateLargeStep('forward'));
+        this.elements.zoomToggle.addEventListener('click', () => this.controller.toggleZoom());
         
-        document.getElementById('btn-next').addEventListener('click', () => {
-            this.controller.navigateToTick(this.controller.state.currentTick + 1);
-        });
-        
-        document.getElementById('btn-zoom-toggle').addEventListener('click', () => {
-            this.controller.toggleZoom();
-        });
-        
-        const input = document.getElementById('tick-input');
-        
-        // Input field event listeners
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                const v = parseInt(input.value, 10);
-                if (!Number.isNaN(v)) {
-                    this.controller.navigateToTick(v);
-                    // Select all text after navigation so user can immediately type new number
-                    setTimeout(() => input.select(), 0);
-                }
-            } else if (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-                // Allow arrow keys to navigate even when input is focused
-                e.preventDefault();
-                this.handleGlobalKeyDown(e);
-                // Ensure input stays focused and text is selected
-                setTimeout(() => {
-                    input.focus();
-                    input.select();
-                }, 0);
-            } else if (e.key === 'Escape') {
-                // Escape: Blur the input field to exit focus
-                e.preventDefault();
-                input.blur();
-            }
-        });
-        
-        input.addEventListener('change', () => {
-            const v = parseInt(input.value, 10);
-            if (!Number.isNaN(v)) {
-                this.controller.navigateToTick(v);
-            }
-        });
-        
-        // Input field click - select all text
-        input.addEventListener('click', () => {
-            input.select();
-        });
-        
+        // Input field listeners
+        this.elements.tickInput.addEventListener('keydown', (e) => this.handleTickInputKeyDown(e));
+        this.elements.tickInput.addEventListener('change', () => this.handleTickInputChange());
+        this.elements.tickInput.addEventListener('click', () => this.elements.tickInput.select());
+        this.elements.largeStepInput.addEventListener('change', () => this.handleMultiplierChange());
+        this.elements.largeStepInput.addEventListener('keyup', () => this.handleMultiplierChange());
+        this.elements.largeStepInput.addEventListener('click', () => this.elements.largeStepInput.select());
+
         // Global keyboard shortcuts
         document.addEventListener('keydown', (e) => this.handleGlobalKeyDown(e));
-        
         document.addEventListener('keyup', (e) => {
-            if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+            if (['ArrowLeft', 'ArrowRight'].includes(e.key)) {
                 this.handleKeyRelease();
             }
         });
         
         // Reset keyboard events when window loses focus
-        window.addEventListener('blur', () => {
-            this.handleKeyRelease();
-        });
+        window.addEventListener('blur', () => this.handleKeyRelease());
     }
-    
+
+    /**
+     * Loads the multiplier for a specific runId from localStorage.
+     * @param {string} runId The ID of the run.
+     */
+    loadMultiplierForRun(runId) {
+        const defaultValue = '100';
+        let value = defaultValue;
+        if (runId) {
+            const key = `evochora-multiplier-${runId}`;
+            const storedValue = localStorage.getItem(key);
+            if (storedValue && !isNaN(parseInt(storedValue, 10))) {
+                value = storedValue;
+            }
+        }
+        this.elements.largeStepInput.value = value;
+        this.updateTooltips(); // Ensure tooltips are correct after loading
+    }
+
+    /**
+     * Saves the multiplier to localStorage and updates tooltips.
+     * @private
+     */
+    handleMultiplierChange() {
+        const runId = this.controller.state.runId;
+        if (runId) {
+            localStorage.setItem(`evochora-multiplier-${runId}`, this.elements.largeStepInput.value);
+        }
+        this.updateTooltips();
+    }
+
+    /**
+     * Formats a large number into a compact representation (e.g., 10k, 1.5M).
+     * @param {number} num The number to format.
+     * @returns {string} The formatted string.
+     */
+    formatNumber(num) {
+        if (num === null || num === undefined) return 'N/A';
+        if (num < 1000) return String(num);
+        if (num < 1000000) {
+            return (num / 1000).toFixed(num % 1000 !== 0 ? 1 : 0) + 'k';
+        }
+        return (num / 1000000).toFixed(num % 1000000 !== 0 ? 2 : 0) + 'M';
+    }
+
+    /**
+     * Updates tooltips for navigation buttons based on current step sizes.
+     */
+    updateTooltips() {
+        const samplingInterval = this.controller.state.metadata?.samplingInterval || 1;
+        const multiplier = parseInt(this.elements.largeStepInput.value, 10) || 100;
+        const largeStep = multiplier * samplingInterval;
+
+        this.elements.prevSmall.dataset.tooltip = `Step -${this.formatNumber(samplingInterval)} ticks (←)`;
+        this.elements.nextSmall.dataset.tooltip = `Step +${this.formatNumber(samplingInterval)} ticks (→)`;
+        this.elements.prevLarge.dataset.tooltip = `Step -${this.formatNumber(largeStep)} ticks (↓)`;
+        this.elements.nextLarge.dataset.tooltip = `Step +${this.formatNumber(largeStep)} ticks (↑)`;
+    }
+
+    /**
+     * Handles keydown events on the tick input field.
+     * @param {KeyboardEvent} e The keyboard event.
+     */
+    handleTickInputKeyDown(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            this.handleTickInputChange();
+            setTimeout(() => this.elements.tickInput.select(), 0);
+        } else if (['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+            e.preventDefault();
+            this.handleGlobalKeyDown(e);
+            setTimeout(() => {
+                this.elements.tickInput.focus();
+                this.elements.tickInput.select();
+            }, 0);
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            this.elements.tickInput.blur();
+        }
+    }
+
+    /**
+     * Handles the change event for the tick input field.
+     */
+    handleTickInputChange() {
+        const v = parseInt(this.elements.tickInput.value, 10);
+        if (!Number.isNaN(v)) {
+            this.controller.navigateToTick(v);
+        }
+    }
+
     /**
      * Updates the text of the zoom button based on the current zoom state.
      * @param {boolean} isZoomedOut - True if the view is zoomed out.
      */
     updateZoomButton(isZoomedOut) {
-        const button = document.getElementById('btn-zoom-toggle');
+        const button = this.elements.zoomToggle;
         if (button) {
             button.textContent = isZoomedOut ? 'Zoom In' : 'Zoom Out';
         }
@@ -101,10 +160,11 @@ export class HeaderbarView {
      * @private
      */
     handleGlobalKeyDown(e) {
-        const input = document.getElementById('tick-input');
         // Ignore most shortcuts if a text input is focused, except for our navigation keys
-        if (document.activeElement === input && !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Enter', 'Escape'].includes(e.key)) {
-            return;
+        if (document.activeElement.matches('input[type="text"], input[type="number"]')) {
+             if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Enter', 'Escape'].includes(e.key)) {
+                return;
+             }
         }
 
         switch (e.key) {
@@ -118,23 +178,22 @@ export class HeaderbarView {
                 break;
             case 'ArrowUp':
                 e.preventDefault();
-                this.controller.navigateToTick(this.controller.state.currentTick + 1000);
+                this.navigateLargeStep('forward');
                 break;
             case 'ArrowDown':
                 e.preventDefault();
-                this.controller.navigateToTick(this.controller.state.currentTick - 1000);
+                this.navigateLargeStep('backward');
                 break;
         }
     }
 
     /**
      * Updates the displayed tick number in the input field and the total tick suffix.
-     * 
      * @param {number} currentTick - The current tick number to display.
      * @param {number|null} maxTick - The maximum available tick, or null if not yet known.
      */
     updateTickDisplay(currentTick, maxTick) {
-        const input = document.getElementById('tick-input');
+        const input = this.elements.tickInput;
         const suffix = document.getElementById('tick-total-suffix');
         
         if (input) {
@@ -142,78 +201,70 @@ export class HeaderbarView {
             if (typeof maxTick === 'number' && maxTick > 0) {
                 input.max = String(Math.max(0, maxTick));
             }
-            
-            // Select text if panel is visible (so user can immediately type new tick)
-            const tickPanel = document.getElementById('tick-panel');
-            if (tickPanel && tickPanel.style.display !== 'none') {
-                setTimeout(() => {
-                    input.focus();
-                    input.select();
-                }, 0);
-            }
         }
         
         if (suffix) {
-            suffix.textContent = '/' + (maxTick != null ? maxTick : 'N/A');
+            suffix.textContent = '/' + this.formatNumber(maxTick);
         }
     }
     
     /**
-     * Handles the initial press of a navigation key (space or backspace).
-     * It triggers an immediate navigation action and sets up timeouts/intervals for
-     * continuous navigation if the key is held down.
-     *
+     * Handles the initial press of a navigation key.
      * @param {('forward'|'backward')} direction - The direction to navigate.
      * @private
      */
     handleKeyPress(direction) {
-        // If key is already being held, don't start a new sequence
         if (this.isKeyHeld) return;
-        
         this.isKeyHeld = true;
-        
-        // Immediate first action
         this.navigateInDirection(direction);
         
-        // Set up repeat after initial delay
         this.keyRepeatTimeout = setTimeout(() => {
-            // Start repeating at regular intervals
             this.keyRepeatInterval = setInterval(() => {
                 this.navigateInDirection(direction);
-            }, 100); // 100ms between repeats (10 ticks per second)
-        }, 300); // 300ms initial delay
+            }, 100);
+        }, 300);
     }
     
     /**
      * Handles the release of a navigation key.
-     * Clears all active timeouts and intervals to stop continuous navigation.
      * @private
      */
     handleKeyRelease() {
         this.isKeyHeld = false;
-        
-        // Clear any pending timeouts/intervals
-        if (this.keyRepeatTimeout) {
-            clearTimeout(this.keyRepeatTimeout);
-            this.keyRepeatTimeout = null;
-        }
-        if (this.keyRepeatInterval) {
-            clearInterval(this.keyRepeatInterval);
-            this.keyRepeatInterval = null;
-        }
+        clearTimeout(this.keyRepeatTimeout);
+        clearInterval(this.keyRepeatInterval);
+        this.keyRepeatTimeout = null;
+        this.keyRepeatInterval = null;
     }
     
     /**
-     * Navigates to the next or previous tick via the controller.
+     * Navigates one small step.
      * @param {('forward'|'backward')} direction - The direction to navigate.
      * @private
      */
     navigateInDirection(direction) {
-        if (direction === 'forward') {
-            this.controller.navigateToTick(this.controller.state.currentTick + 1);
-        } else if (direction === 'backward') {
-            this.controller.navigateToTick(this.controller.state.currentTick - 1);
+        const step = this.controller.state.metadata?.samplingInterval || 1;
+        const currentTick = this.controller.state.currentTick;
+        const targetTick = direction === 'forward' ? currentTick + step : currentTick - step;
+        this.controller.navigateToTick(targetTick);
+    }
+
+    /**
+     * Navigates a large step.
+     * @param {('forward'|'backward')} direction - The direction to navigate.
+     * @private
+     */
+    navigateLargeStep(direction) {
+        const samplingInterval = this.controller.state.metadata?.samplingInterval || 1;
+        let multiplier = 100;
+        const parsed = parseInt(this.elements.largeStepInput.value, 10);
+        if (!isNaN(parsed) && parsed > 0) {
+            multiplier = parsed;
         }
+        
+        const largeStep = multiplier * samplingInterval;
+        const currentTick = this.controller.state.currentTick;
+        const targetTick = direction === 'forward' ? currentTick + largeStep : currentTick - largeStep;
+        this.controller.navigateToTick(targetTick);
     }
 }
-

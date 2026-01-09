@@ -43,14 +43,20 @@
         ▼<span class="panel-info" id="tick-info"></span>
     </div>
     <div id="tick-panel" class="header-panel">
-        <button class="panel-toggle" id="tick-panel-hide" title="Hide tick controls">▲</button>
+        <button class="panel-toggle" id="tick-panel-hide" data-tooltip="Hide tick controls">▲</button>
+        <button id="btn-prev-large" data-tooltip="">&lt;&lt;</button>
+        <button id="btn-prev-small" data-tooltip="">&lt;</button>
         <div class="tick-input-wrapper">
-            <input type="number" id="tick-input" min="0" value="0" aria-label="Tick">
+            <input type="number" id="tick-input" class="tick-input" min="0" value="0" aria-label="Tick">
             <span class="tick-total-suffix" id="tick-total-suffix">/N/A</span>
         </div>
-        <button id="btn-prev" data-tooltip="Tick -1 (←) / -1000 (↓)">&lt;</button>
-        <button id="btn-next" data-tooltip="Tick +1 (→) / +1000 (↑)">&gt;</button>
-        <button id="btn-zoom-toggle" title="Toggle Zoom Level">Zoom Out</button>
+        <button id="btn-next-small" data-tooltip="">&gt;</button>
+        <button id="btn-next-large" data-tooltip="">&gt;&gt;</button>
+        <div id="multiplier-wrapper" class="tick-input-wrapper multiplier-wrapper" style="display: none;">
+            <input type="number" id="large-step-multiplier" class="tick-input" value="100" min="1">
+            <span id="multiplier-suffix" class="tick-total-suffix">x1</span>
+        </div>
+        <button id="btn-zoom-toggle" data-tooltip="Toggle Zoom Level">Zoom Out</button>
     </div>
     
     <!-- Organism Panel (right) -->
