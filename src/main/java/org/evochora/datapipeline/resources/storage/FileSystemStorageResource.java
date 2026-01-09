@@ -44,14 +44,7 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
             throw new IllegalArgumentException("rootDirectory must be an absolute path: " + rootPath);
         }
         
-        // Validate parent directory exists (helps detect unmounted filesystems)
-        // Skip validation for temp directories (used in tests)
-        File parentDir = this.rootDirectory.getParentFile();
-        boolean isTempDir = rootPath.startsWith("/tmp/") || rootPath.startsWith(System.getProperty("java.io.tmpdir"));
-        if (parentDir != null && !parentDir.exists() && !isTempDir) {
-            throw new IllegalArgumentException("Parent directory does not exist: " + parentDir.getAbsolutePath());
-        }
-        
+        // Ensure root directory exists (create full path if necessary)
         if (!this.rootDirectory.exists() && !this.rootDirectory.mkdirs()) {
             throw new IllegalArgumentException("Cannot create rootDirectory: " + rootPath);
         }

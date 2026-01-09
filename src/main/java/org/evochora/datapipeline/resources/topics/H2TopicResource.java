@@ -472,17 +472,10 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
         java.io.File parentDir = dbFile.getParentFile();
         
         if (parentDir != null && !parentDir.exists()) {
-            // Try to create the directory if grandparent exists
-            java.io.File grandparentDir = parentDir.getParentFile();
-            if (grandparentDir != null && grandparentDir.exists()) {
-                if (!parentDir.mkdirs()) {
-                    throw new RuntimeException(String.format(
-                        "Cannot create H2 topic '%s': failed to create directory: %s",
-                        name, parentDir.getAbsolutePath()));
-                }
-            } else {
+            // Create entire directory structure if necessary
+            if (!parentDir.mkdirs()) {
                 throw new RuntimeException(String.format(
-                    "Cannot create H2 topic '%s': parent directory does not exist: %s",
+                    "Cannot create H2 topic '%s': failed to create directory structure: %s",
                     name, parentDir.getAbsolutePath()));
             }
         }
