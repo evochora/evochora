@@ -65,8 +65,8 @@ Further CLI documentation and fully worked examples:
 
 
 ## Where to start?
- * [Good First Issue](https://www.google.com/search?q=https://github.com/evochora/evochora/labels/good%2520first%2520issue): Start here! Small tasks, minimal context needed.
- * [Help Wanted](https://www.google.com/search?q=https://github.com/evochora/evochora/labels/help%2520wanted): Slightly more complex, but we need hands on deck.
+ * [Good First Issue](https://github.com/evochora/evochora/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22action%3A%20good%20first%20issue%22): Start here! Small tasks, minimal context needed.
+ * [Help Wanted](https://github.com/evochora/evochora/issues?q=state%3Aopen%20label%3A%22action%3A%20help%20wanted%22): Slightly more complex, but we need hands on deck.
 
 ## Questions?
  * Join the Evochora Discord (Community Chat): [![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat-square&logo=discord)](https://discord.gg/t9yEJc4MKX)
