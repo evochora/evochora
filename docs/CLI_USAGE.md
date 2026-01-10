@@ -153,43 +153,49 @@ Strategy States: 5
 
 ### Render Simulation Videos
 
+The `video` command renders simulation data into video files using ffmpeg. It defaults to the MKV container format, which is resilient to interruptions during rendering. If the process is stopped, the video file remains playable.
+
 ```bash
-# Basic video rendering from a simulation run
-bin/evochora video --run-id <run-id> --out simulation.mp4
+# Basic video rendering (defaults to simulation.mkv)
+bin/evochora video --run-id <run-id>
+
+# Specify output file and format
+bin/evochora video --run-id <run-id> --out simulation.mp4 --format mp4
 
 # Render with custom frame rate and sampling
-bin/evochora video --run-id <run-id> --out simulation.mp4 --fps 30 --sampling-interval 100
+bin/evochora video --run-id <run-id> --out simulation.mkv --fps 30 --sampling-interval 100
 
 # Render specific tick range
-bin/evochora video --run-id <run-id> --out simulation.mp4 --start-tick 1000 --end-tick 5000
+bin/evochora video --run-id <run-id> --out simulation.mkv --start-tick 1000 --end-tick 5000
 
 # Render with overlay (tick number, timestamp, run ID)
-bin/evochora video --run-id <run-id> --out simulation.mp4 --overlay-tick --overlay-time --overlay-run-id
+bin/evochora video --run-id <run-id> --out simulation.mkv --overlay-tick --overlay-time --overlay-run-id
 
 # Render with custom quality and format
 bin/evochora video --run-id <run-id> --out simulation.webm --format webm --preset fast
 
 # Use parallel rendering for better performance
-bin/evochora video --run-id <run-id> --out simulation.mp4 --threads 4
+bin/evochora video --run-id <run-id> --out simulation.mkv --threads 4
 
 # See all available options
 bin/evochora help video
 ```
 
-The `video` command renders simulation data into video files using ffmpeg. It supports various output formats (MP4, AVI, MOV, WebM), quality presets, frame rate control, and optional text overlays.
+The `video` command renders simulation data into video files using ffmpeg. It supports various output formats (MKV, MP4, AVI, MOV, WebM), quality presets, frame rate control, and optional text overlays.
 
 **Key Features:**
+- **Resilient by default**: Uses MKV format to prevent corrupted files if rendering is interrupted.
 - **Performance optimized**: Uses efficient rendering with parallel frame processing support
 - **Flexible sampling**: Render every Nth tick to reduce video size
 - **Tick range filtering**: Render only specific tick ranges
 - **Text overlays**: Add tick number, timestamp, or run ID to video
-- **Multiple formats**: Support for MP4, AVI, MOV, WebM
+- **Multiple formats**: Support for MKV, MP4, AVI, MOV, WebM
 - **Quality presets**: Control encoding speed/quality tradeoff
 - **Progress tracking**: Real-time progress bar with ETA, throughput, and remaining time
 
 **Basic Parameters:**
 - `--run-id, -r`: Simulation run ID (required, or auto-discover latest run)
-- `--out, -o`: Output filename (required, default: simulation.mp4)
+- `--out, -o`: Output filename (required, default: simulation.mkv)
 - `--fps`: Frames per second for output video (default: 60)
 - `--sampling-interval`: Render every Nth tick (default: 1)
 - `--cell-size`: Size of each cell in pixels (default: 4)
@@ -199,7 +205,7 @@ The `video` command renders simulation data into video files using ffmpeg. It su
 - `--start-tick`: Start rendering from this tick (inclusive)
 - `--end-tick`: Stop rendering at this tick (inclusive)
 - `--preset`: ffmpeg encoding preset: ultrafast/fast/medium/slow (default: fast)
-- `--format`: Output video format: mp4/avi/mov/webm (default: mp4)
+- `--format`: Output video format: mkv/mp4/avi/mov/webm (default: mkv)
 - `--threads`: Number of threads for parallel rendering (default: 1)
 
 **Overlay Options:**

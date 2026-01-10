@@ -34,7 +34,8 @@ import com.typesafe.config.ConfigFactory;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
-@Command(name = "video", description = "Renders a simulation run to an MP4 video file using ffmpeg.")
+@Command(name = "video", description = "Renders a simulation run to a video file using ffmpeg. "
+    + "Defaults to MKV for resilience against interruptions.")
 public class RenderVideoCommand implements Callable<Integer> {
 
     private static final Logger log = LoggerFactory.getLogger(RenderVideoCommand.class);
@@ -46,7 +47,7 @@ public class RenderVideoCommand implements Callable<Integer> {
     @Option(names = "--run-id", description = "Simulation run ID to render. Defaults to the latest run.")
     private String runId;
 
-    @Option(names = "--out", description = "Output filename.", defaultValue = "simulation.mp4")
+    @Option(names = "--out", description = "Output filename.", defaultValue = "simulation.mkv")
     private File outputFile;
 
     @Option(names = "--fps", description = "Frames per second for the output video.", defaultValue = "60")
@@ -73,7 +74,7 @@ public class RenderVideoCommand implements Callable<Integer> {
     @Option(names = "--preset", description = "ffmpeg encoding preset (ultrafast/fast/medium/slow). Default: fast", defaultValue = "fast")
     private String preset;
 
-    @Option(names = "--format", description = "Output video format (mp4/avi/mov/webm). Default: mp4", defaultValue = "mp4")
+    @Option(names = "--format", description = "Output video format: mkv/mp4/avi/mov/webm. Default: mkv", defaultValue = "mkv")
     private String format;
 
     @Option(names = "--overlay-tick", description = "Show tick number overlay in video.")
@@ -302,15 +303,29 @@ public class RenderVideoCommand implements Callable<Integer> {
         ffmpegArgs.add("-r"); ffmpegArgs.add(String.valueOf(fps));
         ffmpegArgs.add("-i"); ffmpegArgs.add("-"); // Input from stdin
         
-        // Video codec based on format
-        if ("webm".equalsIgnoreCase(format)) {
-            ffmpegArgs.add("-c:v"); ffmpegArgs.add("libvpx-vp9");
-        } else {
-            ffmpegArgs.add("-c:v"); ffmpegArgs.add("libx264");
+        // Codec and quality settings based on format
+        // https://trac.ffmpeg.org/wiki/Encode/H.264
+        // https://trac.ffmpeg.org/wiki/Encode/VP9
+        switch (format.toLowerCase()) {
+            case "mp4":
+                ffmpegArgs.add("-c:v"); ffmpegArgs.add("libx264");
+                ffmpegArgs.add("-preset"); ffmpegArgs.add(preset);
+                ffmpegArgs.add("-crf"); ffmpegArgs.add("18"); // Visually lossless
+                ffmpegArgs.add("-movflags"); ffmpegArgs.add("+frag_keyframe+empty_moov");
+                break;
+            case "webm":
+                ffmpegArgs.add("-c:v"); ffmpegArgs.add("libvpx-vp9");
+                ffmpegArgs.add("-crf"); ffmpegArgs.add("10"); // Visually lossless
+                ffmpegArgs.add("-b:v"); ffmpegArgs.add("0"); // Constant quality mode
+                break;
+            default: // mkv, avi, mov etc.
+                ffmpegArgs.add("-c:v"); ffmpegArgs.add("libx264");
+                ffmpegArgs.add("-preset"); ffmpegArgs.add(preset);
+                break;
         }
-        
-        // Preset for encoding speed/quality tradeoff
-        ffmpegArgs.add("-preset"); ffmpegArgs.add(preset);
+
+        // Preset for encoding speed/quality tradeoff - now handled in switch
+        //ffmpegArgs.add("-preset"); ffmpegArgs.add(preset);
         ffmpegArgs.add("-pix_fmt"); ffmpegArgs.add("yuv420p");
         
         // Build overlay filter if any overlay is requested
