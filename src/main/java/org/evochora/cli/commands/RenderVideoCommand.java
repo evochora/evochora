@@ -279,17 +279,35 @@ public class RenderVideoCommand implements Callable<Integer> {
         long effectiveStartTick = startTick != null ? startTick : 0;
         long effectiveEndTick = endTick != null ? endTick : Long.MAX_VALUE;
 
-        // Determine output file extension based on format
+        // Determine output format and filename extension
         outputPath = outputFile.getAbsolutePath();
-        if (!outputPath.toLowerCase().endsWith("." + format.toLowerCase())) {
-            // Replace or append extension based on format
-            int lastDot = outputPath.lastIndexOf('.');
+        String outPathLower = outputPath.toLowerCase();
+        String formatLower = format.toLowerCase();
+        
+        // 1. Get extension from output path, if it exists
+        String currentExtension = "";
+        int lastDot = outPathLower.lastIndexOf('.');
+        if (lastDot > 0 && lastDot < outPathLower.length() - 1) {
+            currentExtension = outPathLower.substring(lastDot + 1);
+        }
+        
+        // 2. Decide the final format. `--format` parameter takes precedence.
+        // If the current extension is valid, but doesn't match the format param,
+        // we override the format.
+        if (!currentExtension.equals(formatLower)) {
+            format = formatLower; // Use the format from the --format option
             if (lastDot > 0) {
-                outputPath = outputPath.substring(0, lastDot) + "." + format.toLowerCase();
+                // Replace existing extension
+                outputPath = outputPath.substring(0, lastDot) + "." + format;
             } else {
-                outputPath = outputPath + "." + format.toLowerCase();
+                // Append extension
+                outputPath = outputPath + "." + format;
             }
             outputFile = new File(outputPath);
+        } else {
+            // Extension from --out matches the format, or --format was not specified
+            // and we infer it from the --out extension.
+            format = currentExtension;
         }
 
         // Build ffmpeg command with quality and format options
