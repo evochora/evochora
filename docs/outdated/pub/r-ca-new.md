@@ -1,5 +1,7 @@
 Evochora: Proposal for a new platform to research evolutionary emergent complexity. Looking for feedback and contributors.
 
+Evochora: A new Open Source platform to research evolutionary emergent complexity. Looking for feedback and contributors.
+
 Hi everyone,
 
 For the last 6 months, I've been working on Evochora, an Artificial Life platform to explore why digital evolution tends to stagnate. It's designed as an evolving research platform to identify and overcome complexity hurdles one by one. I am looking for constructive feedback and potentially even contributors.
