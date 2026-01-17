@@ -42,7 +42,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class SimulationEngineIntegrationTest {
 
     private Map<String, List<IResource>> resources;
-    private InMemoryBlockingQueue<TickData> tickDataQueue;
+    private InMemoryBlockingQueue<TickDataChunk> tickDataQueue;
     private InMemoryBlockingQueue<SimulationMetadata> metadataQueue;
     private Config baseConfig;
     private Path programFile;
@@ -62,7 +62,7 @@ class SimulationEngineIntegrationTest {
     void setUp() throws IOException {
         startedEngines = new ArrayList<>();
         
-        tickDataQueue = new InMemoryBlockingQueue<>("tick-test", 
+        tickDataQueue = new InMemoryBlockingQueue<TickDataChunk>("tick-test", 
                 ConfigFactory.parseMap(Map.of("capacity", 10000)));
         metadataQueue = new InMemoryBlockingQueue<>("meta-test", 
                 ConfigFactory.parseMap(Map.of("capacity", 100)));
@@ -105,6 +105,10 @@ class SimulationEngineIntegrationTest {
 
         baseConfig = ConfigFactory.parseMap(Map.of(
                 "samplingInterval", 1,
+                // Delta compression: 1 sample = 1 chunk for testing
+                "accumulatedDeltaInterval", 1,
+                "snapshotInterval", 1,
+                "chunkInterval", 1,
                 "environment", Map.of(
                         "shape", List.of(10, 10),
                         "topology", "TORUS"
@@ -203,11 +207,11 @@ class SimulationEngineIntegrationTest {
         await().atMost(5, TimeUnit.SECONDS)
                 .untilAsserted(() -> assertTrue(tickDataQueue.getMetrics().get("current_size").longValue() > 0));
 
-        Optional<TickData> tickDataOpt = tickDataQueue.poll(100, TimeUnit.MILLISECONDS);
+        Optional<TickDataChunk> chunkOpt = tickDataQueue.poll(100, TimeUnit.MILLISECONDS);
         engine.stop();
 
-        assertTrue(tickDataOpt.isPresent(), "TickData should be present");
-        TickData tickData = tickDataOpt.get();
+        assertTrue(chunkOpt.isPresent(), "TickData should be present");
+        TickData tickData = chunkOpt.get().getSnapshot();
         
         assertEquals(1, tickData.getOrganismsCount());
         OrganismState organism = tickData.getOrganisms(0);
@@ -227,11 +231,11 @@ class SimulationEngineIntegrationTest {
         await().atMost(5, TimeUnit.SECONDS)
                 .untilAsserted(() -> assertTrue(tickDataQueue.getMetrics().get("current_size").longValue() > 0));
 
-        Optional<TickData> tickDataOpt = tickDataQueue.poll(100, TimeUnit.MILLISECONDS);
+        Optional<TickDataChunk> chunkOpt = tickDataQueue.poll(100, TimeUnit.MILLISECONDS);
         engine.stop();
 
-        assertTrue(tickDataOpt.isPresent());
-        TickData tickData = tickDataOpt.get();
+        assertTrue(chunkOpt.isPresent());
+        TickData tickData = chunkOpt.get().getSnapshot();
         assertFalse(tickData.getRngState().isEmpty(), "RNG state should be captured");
     }
 
@@ -427,11 +431,11 @@ class SimulationEngineIntegrationTest {
         await().atMost(5, TimeUnit.SECONDS)
                 .untilAsserted(() -> assertTrue(tickDataQueue.getMetrics().get("current_size").longValue() > 0));
 
-        Optional<TickData> tickDataOpt = tickDataQueue.poll(100, TimeUnit.MILLISECONDS);
+        Optional<TickDataChunk> chunkOpt = tickDataQueue.poll(100, TimeUnit.MILLISECONDS);
         engine.stop();
 
-        assertTrue(tickDataOpt.isPresent());
-        TickData tickData = tickDataOpt.get();
+        assertTrue(chunkOpt.isPresent());
+        TickData tickData = chunkOpt.get().getSnapshot();
         
         // Should capture all three organisms
         assertTrue(tickData.getOrganismsCount() >= 1 && tickData.getOrganismsCount() <= 3,
@@ -489,9 +493,9 @@ class SimulationEngineIntegrationTest {
                 metadata.getEnergyStrategies(0).getStrategyType());
 
         // Verify tick data includes strategy state
-        Optional<TickData> tickDataOpt = tickDataQueue.poll(0, TimeUnit.MILLISECONDS);
-        assertTrue(tickDataOpt.isPresent());
-        TickData tickData = tickDataOpt.get();
+        Optional<TickDataChunk> chunkOpt = tickDataQueue.poll(0, TimeUnit.MILLISECONDS);
+        assertTrue(chunkOpt.isPresent());
+        TickData tickData = chunkOpt.get().getSnapshot();
         assertEquals(1, tickData.getStrategyStatesCount());
 
         engine.stop();
@@ -530,9 +534,9 @@ class SimulationEngineIntegrationTest {
                 metadata.getEnergyStrategies(0).getStrategyType());
 
         // Verify tick data includes geyser state
-        Optional<TickData> tickDataOpt = tickDataQueue.poll(0, TimeUnit.MILLISECONDS);
-        assertTrue(tickDataOpt.isPresent());
-        TickData tickData = tickDataOpt.get();
+        Optional<TickDataChunk> chunkOpt = tickDataQueue.poll(0, TimeUnit.MILLISECONDS);
+        assertTrue(chunkOpt.isPresent());
+        TickData tickData = chunkOpt.get().getSnapshot();
         assertEquals(1, tickData.getStrategyStatesCount());
         // Geyser state should be non-empty after initialization
         assertFalse(tickData.getStrategyStates(0).getStateBlob().isEmpty());
@@ -580,9 +584,9 @@ class SimulationEngineIntegrationTest {
         assertEquals(2, metadata.getEnergyStrategiesCount());
 
         // Verify tick data includes both strategy states
-        Optional<TickData> tickDataOpt = tickDataQueue.poll(0, TimeUnit.MILLISECONDS);
-        assertTrue(tickDataOpt.isPresent());
-        TickData tickData = tickDataOpt.get();
+        Optional<TickDataChunk> chunkOpt = tickDataQueue.poll(0, TimeUnit.MILLISECONDS);
+        assertTrue(chunkOpt.isPresent());
+        TickData tickData = chunkOpt.get().getSnapshot();
         assertEquals(2, tickData.getStrategyStatesCount());
 
         engine.stop();
@@ -713,7 +717,7 @@ class SimulationEngineIntegrationTest {
         await().atMost(10, TimeUnit.SECONDS)
                 .untilAsserted(() -> assertEquals(AbstractService.State.PAUSED, engine1.getCurrentState()));
         
-        Optional<TickData> tickData1Opt = tickDataQueue.poll(0, TimeUnit.MILLISECONDS);
+        Optional<TickDataChunk> chunk1Opt = tickDataQueue.poll(0, TimeUnit.MILLISECONDS);
         engine1.stop();
 
         // Clear queues
@@ -726,13 +730,13 @@ class SimulationEngineIntegrationTest {
         await().atMost(10, TimeUnit.SECONDS)
                 .untilAsserted(() -> assertEquals(AbstractService.State.PAUSED, engine2.getCurrentState()));
         
-        Optional<TickData> tickData2Opt = tickDataQueue.poll(0, TimeUnit.MILLISECONDS);
+        Optional<TickDataChunk> chunk2Opt = tickDataQueue.poll(0, TimeUnit.MILLISECONDS);
         engine2.stop();
 
         // Compare results
-        assertTrue(tickData1Opt.isPresent() && tickData2Opt.isPresent());
-        TickData tickData1 = tickData1Opt.get();
-        TickData tickData2 = tickData2Opt.get();
+        assertTrue(chunk1Opt.isPresent() && chunk2Opt.isPresent());
+        TickData tickData1 = chunk1Opt.get().getSnapshot();
+        TickData tickData2 = chunk2Opt.get().getSnapshot();
 
         // RNG states should be identical with same seed
         assertEquals(tickData1.getRngState(), tickData2.getRngState(), 

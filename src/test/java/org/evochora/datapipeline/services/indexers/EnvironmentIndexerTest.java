@@ -2,7 +2,6 @@ package org.evochora.datapipeline.services.indexers;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -17,6 +16,7 @@ import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareEnvironmentDataWriter;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataReader;
@@ -36,7 +36,7 @@ import com.typesafe.config.ConfigFactory;
 /**
  * Unit tests for EnvironmentIndexer using mocked dependencies.
  * <p>
- * Tests individual methods (prepareTables, flushTicks, extractEnvironmentProperties) in isolation.
+ * Tests individual methods (prepareTables, flushChunks, extractEnvironmentProperties) in isolation.
  */
 @Tag("unit")
 @ExtendWith(LogWatchExtension.class)
@@ -97,20 +97,20 @@ class EnvironmentIndexerTest {
     }
     
     @Test
-    void testFlushTicks_EmptyList() throws Exception {
-        // Given: Indexer with empty tick list
+    void testFlushChunks_EmptyList() throws Exception {
+        // Given: Indexer with empty chunk list
         EnvironmentIndexer<?> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
         
         // When: Flush empty list
-        indexer.flushTicks(List.of());
+        indexer.flushChunks(List.of());
         
         // Then: Should not call database
         verifyNoInteractions(mockDatabase);
     }
     
     @Test
-    void testFlushTicks_CallsDatabase() throws Exception {
-        // Given: Indexer with ticks
+    void testFlushChunks_CallsDatabase() throws Exception {
+        // Given: Indexer with chunks
         EnvironmentIndexer<?> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
         
         // Set envProps manually (normally set by prepareTables)
@@ -118,25 +118,30 @@ class EnvironmentIndexerTest {
         envPropsField.setAccessible(true);
         envPropsField.set(indexer, new EnvironmentProperties(new int[]{10, 10}, false));
         
-        TickData tick = TickData.newBuilder()
+        TickData snapshot = TickData.newBuilder()
             .setTickNumber(1L)
             .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
                 CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
             )))
             .build();
         
-        // When: Flush ticks
-        indexer.flushTicks(List.of(tick));
+        TickDataChunk chunk = TickDataChunk.newBuilder()
+            .setSimulationRunId("test-run")
+            .setFirstTick(1L)
+            .setLastTick(1L)
+            .setSnapshot(snapshot)
+            .build();
         
-        // Then: Should call database.writeEnvironmentCells
+        // When: Flush chunks
+        indexer.flushChunks(List.of(chunk));
+        
+        // Then: Should call database.writeEnvironmentChunks with chunks
         @SuppressWarnings("unchecked")
-        ArgumentCaptor<List<TickData>> ticksCaptor = (ArgumentCaptor<List<TickData>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(List.class);
-        ArgumentCaptor<EnvironmentProperties> envPropsCaptor = ArgumentCaptor.forClass(EnvironmentProperties.class);
-        verify(mockDatabase).writeEnvironmentCells(ticksCaptor.capture(), envPropsCaptor.capture());
+        ArgumentCaptor<List<TickDataChunk>> chunksCaptor = (ArgumentCaptor<List<TickDataChunk>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(List.class);
+        verify(mockDatabase).writeEnvironmentChunks(chunksCaptor.capture());
         
-        assertThat(ticksCaptor.getValue()).hasSize(1);
-        assertThat(ticksCaptor.getValue().get(0).getTickNumber()).isEqualTo(1L);
-        assertThat(envPropsCaptor.getValue().getWorldShape()).containsExactly(10, 10);
+        assertThat(chunksCaptor.getValue()).hasSize(1);
+        assertThat(chunksCaptor.getValue().get(0).getSnapshot().getTickNumber()).isEqualTo(1L);
     }
     
     @Test
@@ -218,7 +223,7 @@ class EnvironmentIndexerTest {
     }
     
     @Test
-    void testFlushTicks_MultipleTicks() throws Exception {
+    void testFlushChunks_MultipleChunks() throws Exception {
         // Given: Indexer with multiple ticks
         EnvironmentIndexer<?> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
         
@@ -252,24 +257,24 @@ class EnvironmentIndexerTest {
             )))
             .build();
         
-        // When: Flush all ticks in one call
-        indexer.flushTicks(List.of(tick1, tick2, tick3));
+        // When: Flush all ticks in one call (wrapped as chunks)
+        indexer.flushChunks(wrapAsChunks(tick1, tick2, tick3));
         
-        // Then: Should call database.writeEnvironmentCells ONCE with all 3 ticks
+        // Then: Should call database.writeEnvironmentChunks ONCE with all 3 chunks
         @SuppressWarnings("unchecked")
-        ArgumentCaptor<List<TickData>> ticksCaptor = (ArgumentCaptor<List<TickData>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(List.class);
-        verify(mockDatabase, times(1)).writeEnvironmentCells(ticksCaptor.capture(), any(EnvironmentProperties.class));
+        ArgumentCaptor<List<TickDataChunk>> chunksCaptor = (ArgumentCaptor<List<TickDataChunk>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(List.class);
+        verify(mockDatabase, times(1)).writeEnvironmentChunks(chunksCaptor.capture());
         
-        // Verify all ticks passed in one call
-        assertThat(ticksCaptor.getValue()).hasSize(3);
-        assertThat(ticksCaptor.getValue().get(0).getTickNumber()).isEqualTo(1L);
-        assertThat(ticksCaptor.getValue().get(1).getTickNumber()).isEqualTo(2L);
-        assertThat(ticksCaptor.getValue().get(2).getTickNumber()).isEqualTo(3L);
+        // Verify all chunks passed in one call
+        assertThat(chunksCaptor.getValue()).hasSize(3);
+        assertThat(chunksCaptor.getValue().get(0).getSnapshot().getTickNumber()).isEqualTo(1L);
+        assertThat(chunksCaptor.getValue().get(1).getSnapshot().getTickNumber()).isEqualTo(2L);
+        assertThat(chunksCaptor.getValue().get(2).getSnapshot().getTickNumber()).isEqualTo(3L);
     }
     
     @Test
-    void testFlushTicks_EmptyTicks() throws Exception {
-        // Given: Indexer with tick containing NO cells
+    void testFlushChunks_EmptySnapshot() throws Exception {
+        // Given: Indexer with chunk containing snapshot with NO cells
         EnvironmentIndexer<?> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
         
         // Set envProps manually
@@ -282,15 +287,15 @@ class EnvironmentIndexerTest {
             .setTickNumber(1L)
             .build();  // No cells added
         
-        // When: Flush empty tick
-        indexer.flushTicks(List.of(emptyTick));
+        // When: Flush chunk with empty snapshot
+        indexer.flushChunks(wrapAsChunks(emptyTick));
         
         // Then: Should still call database (database handles empty efficiently via filtering)
-        verify(mockDatabase, times(1)).writeEnvironmentCells(anyList(), any(EnvironmentProperties.class));
+        verify(mockDatabase, times(1)).writeEnvironmentChunks(anyList());
     }
     
     @Test
-    void testFlushTicks_MixedEmptyAndNonEmpty() throws Exception {
+    void testFlushChunks_MixedEmptyAndNonEmpty() throws Exception {
         // Given: Indexer with mix of empty and non-empty ticks
         EnvironmentIndexer<?> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
         
@@ -316,15 +321,38 @@ class EnvironmentIndexerTest {
             .build();
         
         // When: Flush all ticks
-        indexer.flushTicks(List.of(tick1, tick2, tick3, tick4));
+        indexer.flushChunks(wrapAsChunks(tick1, tick2, tick3, tick4));
         
-        // Then: Should call database ONCE with all 4 ticks (including empty ones)
+        // Then: Should call database ONCE with all 4 chunks
         @SuppressWarnings("unchecked")
-        ArgumentCaptor<List<TickData>> ticksCaptor = (ArgumentCaptor<List<TickData>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(List.class);
-        verify(mockDatabase, times(1)).writeEnvironmentCells(ticksCaptor.capture(), any(EnvironmentProperties.class));
+        ArgumentCaptor<List<TickDataChunk>> chunksCaptor = (ArgumentCaptor<List<TickDataChunk>>) (ArgumentCaptor<?>) ArgumentCaptor.forClass(List.class);
+        verify(mockDatabase, times(1)).writeEnvironmentChunks(chunksCaptor.capture());
         
-        // Verify all ticks passed (database layer will filter empty ones)
-        assertThat(ticksCaptor.getValue()).hasSize(4);
+        // Verify all chunks passed
+        assertThat(chunksCaptor.getValue()).hasSize(4);
+    }
+    
+    // ========== Helper Methods ==========
+    
+    /**
+     * Wraps a TickData as a TickDataChunk with the tick as the snapshot.
+     */
+    private TickDataChunk wrapAsChunk(TickData tick) {
+        return TickDataChunk.newBuilder()
+            .setSimulationRunId("test-run")
+            .setFirstTick(tick.getTickNumber())
+            .setLastTick(tick.getTickNumber())
+            .setSnapshot(tick)
+            .build();
+    }
+    
+    /**
+     * Wraps multiple TickData objects as individual TickDataChunks.
+     */
+    private List<TickDataChunk> wrapAsChunks(TickData... ticks) {
+        return java.util.stream.Stream.of(ticks)
+            .map(this::wrapAsChunk)
+            .toList();
     }
 }
 

@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.contracts.SystemContracts;
-import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
@@ -27,7 +27,7 @@ import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
 
 /**
- * Service that drains TickData batches from queues and persists them to storage.
+ * Service that drains TickDataChunk batches from queues and persists them to storage.
  * <p>
  * PersistenceService provides reliable batch persistence with:
  * <ul>
@@ -47,7 +47,7 @@ import com.typesafe.config.Config;
 public class PersistenceService extends AbstractService implements IMemoryEstimatable {
 
     // Required resources
-    private final IInputQueueResource<TickData> inputQueue;
+    private final IInputQueueResource<TickDataChunk> inputQueue;
     private final IBatchStorageWrite storage;
     private final ITopicWriter<BatchInfo> batchTopic;
 
@@ -75,14 +75,14 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
     private volatile boolean topicInitialized = false;
     
     // Track current batch for shutdown cleanup in finally-block
-    private List<TickData> currentBatch = null;
+    private List<TickDataChunk> currentBatch = null;
 
     public PersistenceService(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
 
         // Required resources
         @SuppressWarnings("unchecked")
-        IInputQueueResource<TickData> queue = (IInputQueueResource<TickData>) getRequiredResource("input", IInputQueueResource.class);
+        IInputQueueResource<TickDataChunk> queue = (IInputQueueResource<TickDataChunk>) getRequiredResource("input", IInputQueueResource.class);
         this.inputQueue = queue;
 
         this.storage = getRequiredResource("storage", IBatchStorageWrite.class);
@@ -155,7 +155,7 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
                         continue; // No data available, loop again
                     }
 
-                    log.debug("Drained {} ticks from queue", count);
+                    log.debug("Drained {} chunks from queue", count);
 
                     // Process and persist batch
                     processBatch(currentBatch);
@@ -170,14 +170,14 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
         } finally {
             // Final batch completion (if interrupted during processing)
             if (currentBatch != null && !currentBatch.isEmpty()) {
-                log.info("Shutdown: Completing batch of {} ticks", currentBatch.size());
+                log.info("Shutdown: Completing batch of {} chunks", currentBatch.size());
                 
                 // Clear interrupt flag to allow DB operations
                 boolean wasInterrupted = Thread.interrupted();
                 try {
                     processBatch(currentBatch);
                 } catch (Exception e) {
-                    log.warn("Failed to complete shutdown batch of {} ticks", currentBatch.size());
+                    log.warn("Failed to complete shutdown batch of {} chunks", currentBatch.size());
                 } finally {
                     if (wasInterrupted) {
                         Thread.currentThread().interrupt();
@@ -187,21 +187,21 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
         }
     }
 
-    private void processBatch(List<TickData> batch) {
+    private void processBatch(List<TickDataChunk> batch) {
         if (batch.isEmpty()) {
             return;
         }
 
-        // Validate batch consistency (first and last tick must have same simulationRunId)
+        // Validate batch consistency (first and last chunk must have same simulationRunId)
         String firstSimRunId = batch.get(0).getSimulationRunId();
 
         // Check for empty or null simulationRunId
         if (firstSimRunId == null || firstSimRunId.isEmpty()) {
-            log.warn("Batch contains tick with empty or null simulationRunId, sending to DLQ");
+            log.warn("Batch contains chunk with empty or null simulationRunId, sending to DLQ");
             recordError(
                 "INVALID_SIMULATION_RUN_ID",
-                "Batch contains tick with empty or null simulationRunId",
-                String.format("Batch size: %d", batch.size())
+                "Batch contains chunk with empty or null simulationRunId",
+                String.format("Batch size: %d chunks", batch.size())
             );
             sendToDLQ(batch, "Empty or null simulationRunId", 0,
                 new IllegalStateException("Empty or null simulationRunId"));
@@ -217,7 +217,7 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
             recordError(
                 "BATCH_CONSISTENCY_VIOLATION",
                 "Batch contains mixed simulationRunIds",
-                String.format("First: %s, Last: %s, Batch size: %d", firstSimRunId, lastSimRunId, batch.size())
+                String.format("First: %s, Last: %s, Batch size: %d chunks", firstSimRunId, lastSimRunId, batch.size())
             );
             sendToDLQ(batch, "Batch contains mixed simulationRunIds", 0,
                 new IllegalStateException("Mixed simulationRunIds"));
@@ -225,13 +225,13 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
             return;
         }
 
-        // Extract tick range from original batch (before deduplication)
+        // Extract tick range from batch (before deduplication)
         // This determines the folder and filename, so must reflect the original range
-        long startTick = batch.get(0).getTickNumber();
-        long endTick = batch.get(batch.size() - 1).getTickNumber();
+        long startTick = batch.get(0).getFirstTick();
+        long endTick = batch.get(batch.size() - 1).getLastTick();
 
-        // Optional: Check for duplicate ticks (bug detection)
-        List<TickData> dedupedBatch = batch;
+        // Optional: Check for duplicate chunks (bug detection)
+        List<TickDataChunk> dedupedBatch = batch;
         if (idempotencyTracker != null) {
             int originalSize = batch.size();
             dedupedBatch = deduplicateBatch(batch);
@@ -239,14 +239,14 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
             int duplicatesRemoved = originalSize - dedupedSize;
 
             if (dedupedBatch.isEmpty()) {
-                log.warn("[{}] Entire batch was duplicates ({} ticks), skipping", serviceName, originalSize);
+                log.warn("[{}] Entire batch was duplicates ({} chunks), skipping", serviceName, originalSize);
                 return;
             }
 
             if (duplicatesRemoved > 0) {
-                long firstTick = dedupedBatch.get(0).getTickNumber();
-                long lastTick = dedupedBatch.get(dedupedBatch.size() - 1).getTickNumber();
-                log.warn("[{}] Removed {} duplicate ticks, {} unique ticks remain: range [{}-{}]",
+                long firstTick = dedupedBatch.get(0).getFirstTick();
+                long lastTick = dedupedBatch.get(dedupedBatch.size() - 1).getLastTick();
+                log.warn("[{}] Removed {} duplicate chunks, {} unique chunks remain: range [{}-{}]",
                     serviceName, duplicatesRemoved, dedupedSize, firstTick, lastTick);
             }
         }
@@ -255,42 +255,42 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
         writeBatchWithRetry(dedupedBatch, startTick, endTick);
     }
 
-    private List<TickData> deduplicateBatch(List<TickData> batch) {
-        List<TickData> deduped = new ArrayList<>(batch.size());
+    private List<TickDataChunk> deduplicateBatch(List<TickDataChunk> batch) {
+        List<TickDataChunk> deduped = new ArrayList<>(batch.size());
 
-        for (TickData tick : batch) {
-            // Use only tickNumber as key - simulationRunId is constant within a run
+        for (TickDataChunk chunk : batch) {
+            // Use firstTick as key - each chunk has a unique firstTick
             // and the tracker is per-service-instance (never shared across runs)
-            long idempotencyKey = tick.getTickNumber();
+            long idempotencyKey = chunk.getFirstTick();
 
             // Atomic check-and-mark operation to prevent race conditions
             if (!idempotencyTracker.checkAndMarkProcessed(idempotencyKey)) {
                 // Returns false = already processed
-                log.warn("Duplicate tick detected: tick={}", idempotencyKey);
+                log.warn("Duplicate chunk detected: firstTick={}", idempotencyKey);
                 duplicateTicksDetected.incrementAndGet();
                 continue; // Skip duplicate
             }
 
             // Returns true = newly marked, safe to add
-            deduped.add(tick);
+            deduped.add(chunk);
         }
 
         return deduped;
     }
 
     /**
-     * Writes a batch to storage with retry logic and sends a notification to the batch topic.
+     * Writes a batch of chunks to storage with retry logic and sends a notification to the batch topic.
      * <p>
      * Both storage write and topic notification must succeed for the operation to complete.
      * If either fails, the entire operation is retried (including both storage write and notification).
      * <p>
      * <strong>Thread Safety:</strong> This method is called from the service's run loop thread.
      *
-     * @param batch The batch of ticks to write (must not be empty).
-     * @param firstTick The first tick number in the original batch.
-     * @param lastTick The last tick number in the original batch.
+     * @param batch The batch of chunks to write (must not be empty).
+     * @param firstTick The first tick number in the batch.
+     * @param lastTick The last tick number in the batch.
      */
-    private void writeBatchWithRetry(List<TickData> batch, long firstTick, long lastTick) {
+    private void writeBatchWithRetry(List<TickDataChunk> batch, long firstTick, long lastTick) {
         int attempt = 0;
         int backoff = retryBackoffMs;
         Exception lastException = null;
@@ -298,7 +298,7 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
         while (attempt <= maxRetries) {
             try {
                 // Storage handles everything: folders, compression, manifests
-                StoragePath storagePath = storage.writeBatch(batch, firstTick, lastTick);
+                StoragePath storagePath = storage.writeChunkBatch(batch, firstTick, lastTick);
 
                 // Send notification to topic (if configured)
                 if (batchTopic != null) {
@@ -324,15 +324,18 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
 
                 // Success - update metrics
                 batchesWritten.incrementAndGet();
-                ticksWritten.addAndGet(batch.size());
+                // Count total ticks in all chunks
+                int totalTicks = batch.stream().mapToInt(TickDataChunk::getTickCount).sum();
+                ticksWritten.addAndGet(totalTicks);
 
                 // Calculate uncompressed bytes for metrics
                 long bytesInBatch = batch.stream()
-                    .mapToLong(TickData::getSerializedSize)
+                    .mapToLong(TickDataChunk::getSerializedSize)
                     .sum();
                 bytesWritten.addAndGet(bytesInBatch);
 
-                log.debug("Successfully wrote batch {} with {} ticks and sent notification", storagePath, batch.size());
+                log.debug("Successfully wrote batch {} with {} chunks ({} ticks) and sent notification", 
+                    storagePath, batch.size(), totalTicks);
                 return;
 
             } catch (IOException | InterruptedException e) {
@@ -382,13 +385,13 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
         batchesFailed.incrementAndGet();
     }
 
-    private void sendToDLQ(List<TickData> batch, String errorMessage, int retryAttempts, Exception exception) {
+    private void sendToDLQ(List<TickDataChunk> batch, String errorMessage, int retryAttempts, Exception exception) {
         if (dlq == null) {
-            log.warn("Failed batch has no DLQ configured, data will be lost: {} ticks", batch.size());
+            log.warn("Failed batch has no DLQ configured, data will be lost: {} chunks", batch.size());
             recordError(
                 "DLQ_NOT_CONFIGURED",
                 "Failed batch lost - no DLQ configured",
-                String.format("Batch size: %d ticks", batch.size())
+                String.format("Batch size: %d chunks", batch.size())
             );
             return;
         }
@@ -396,14 +399,15 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
         try {
             // Serialize batch to bytes
             ByteArrayOutputStream bos = new ByteArrayOutputStream();
-            for (TickData tick : batch) {
-                tick.writeDelimitedTo(bos);
+            for (TickDataChunk chunk : batch) {
+                chunk.writeDelimitedTo(bos);
             }
 
             // Extract batch metadata
             String simulationRunId = batch.get(0).getSimulationRunId();
-            long startTick = batch.get(0).getTickNumber();
-            long endTick = batch.get(batch.size() - 1).getTickNumber();
+            long startTick = batch.get(0).getFirstTick();
+            long endTick = batch.get(batch.size() - 1).getLastTick();
+            int totalTicks = batch.stream().mapToInt(TickDataChunk::getTickCount).sum();
             String storageKey = String.format("%s/raw/batch_%019d_%019d.pb", simulationRunId, startTick, endTick);
 
             // Build stack trace
@@ -420,7 +424,7 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
 
             SystemContracts.DeadLetterMessage dlqMessage = SystemContracts.DeadLetterMessage.newBuilder()
                 .setOriginalMessage(ByteString.copyFrom(bos.toByteArray()))
-                .setMessageType("List<TickData>")
+                .setMessageType("List<TickDataChunk>")
                 .setFirstFailureTimeMs(System.currentTimeMillis())
                 .setLastFailureTimeMs(System.currentTimeMillis())
                 .setRetryCount(retryAttempts)
@@ -431,19 +435,21 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
                 .putMetadata("simulationRunId", simulationRunId)
                 .putMetadata("startTick", String.valueOf(startTick))
                 .putMetadata("endTick", String.valueOf(endTick))
-                .putMetadata("tickCount", String.valueOf(batch.size()))
+                .putMetadata("chunkCount", String.valueOf(batch.size()))
+                .putMetadata("tickCount", String.valueOf(totalTicks))
                 .putMetadata("storageKey", storageKey)
                 .putMetadata("exceptionType", exception != null ? exception.getClass().getName() : "Unknown")
                 .build();
 
             if (dlq.offer(dlqMessage)) {
-                log.info("Sent failed batch to DLQ: {} ticks ({}:{})", batch.size(), simulationRunId, startTick);
+                log.info("Sent failed batch to DLQ: {} chunks ({} ticks) ({}:{})", 
+                    batch.size(), totalTicks, simulationRunId, startTick);
             } else {
-                log.warn("DLQ is full, failed batch lost: {} ticks", batch.size());
+                log.warn("DLQ is full, failed batch lost: {} chunks", batch.size());
                 recordError(
                     "DLQ_FULL",
                     "Dead letter queue is full, failed batch lost",
-                    String.format("Batch size: %d ticks, SimulationRunId: %s, StartTick: %d", batch.size(), simulationRunId, startTick)
+                    String.format("Batch size: %d chunks, SimulationRunId: %s, StartTick: %d", batch.size(), simulationRunId, startTick)
                 );
             }
 
@@ -452,7 +458,7 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
             recordError(
                 "DLQ_SEND_FAILED",
                 "Failed to send batch to dead letter queue",
-                String.format("Batch size: %d ticks, Exception: %s", batch.size(), e.getMessage())
+                String.format("Batch size: %d chunks, Exception: %s", batch.size(), e.getMessage())
             );
         }
     }
@@ -482,24 +488,37 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
      * <strong>Calculation:</strong> maxBatchSize × bytesPerTick (100% occupancy)
      * <p>
      * The batch is held in memory during draining from queue until written to storage.
-     * With streaming serialization, only the List<TickData> is held - no additional
+     * With streaming serialization, only the List&lt;TickDataChunk&gt; is held - no additional
      * byte array copies are created during write.
+     */
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Estimates memory for the PersistenceService batch buffer.
+     * <p>
+     * <strong>Important:</strong> After delta compression, maxBatchSize is in CHUNKS (not ticks).
+     * Each chunk contains a full snapshot plus deltas, so memory is calculated as:
+     * <ul>
+     *   <li>Chunks in batch: maxBatchSize × bytesPerChunk</li>
+     *   <li>Each chunk: 1 snapshot + (samplesPerChunk - 1) deltas</li>
+     * </ul>
      */
     @Override
     public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
-        // Each tick in the batch contains full environment + all organisms
-        long bytesPerTick = params.estimateBytesPerTick();
-        long totalBytes = (long) maxBatchSize * bytesPerTick;
-        
+        // Each chunk in the batch contains a snapshot + deltas
+        long bytesPerChunk = params.estimateBytesPerChunk();
+        long totalBytes = (long) maxBatchSize * bytesPerChunk;
+
         // Add ArrayList overhead (~24 bytes per reference + array backing)
         long arrayListOverhead = (long) maxBatchSize * 8 + 64;
         totalBytes += arrayListOverhead;
-        
-        String explanation = String.format("%d maxBatchSize × %s/tick (100%% environment + %d organisms)",
+
+        String explanation = String.format("%d maxBatchSize (chunks) × %s/chunk (%d ticks/chunk, 100%% environment + %d organisms)",
             maxBatchSize,
-            SimulationParameters.formatBytes(bytesPerTick),
+            SimulationParameters.formatBytes(bytesPerChunk),
+            params.ticksPerChunk(),
             params.maxOrganisms());
-        
+
         return List.of(new MemoryEstimate(
             serviceName,
             totalBytes,

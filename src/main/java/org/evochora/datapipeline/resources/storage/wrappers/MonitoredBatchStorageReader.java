@@ -1,8 +1,14 @@
 package org.evochora.datapipeline.resources.storage.wrappers;
 
-import com.google.protobuf.MessageLite;
-import com.google.protobuf.Parser;
-import org.evochora.datapipeline.api.contracts.TickData;
+import java.io.IOException;
+import java.time.Instant;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicLong;
+
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.IWrappedResource;
@@ -14,13 +20,8 @@ import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowPercentiles;
 
-import java.io.IOException;
-import java.time.Instant;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.concurrent.atomic.AtomicLong;
+import com.google.protobuf.MessageLite;
+import com.google.protobuf.Parser;
 
 /**
  * Monitored wrapper for batch storage read operations.
@@ -85,14 +86,14 @@ public class MonitoredBatchStorageReader implements IResourceBatchStorageRead, I
     }
 
     @Override
-    public List<TickData> readBatch(StoragePath path) throws IOException {
+    public List<TickDataChunk> readChunkBatch(StoragePath path) throws IOException {
         long startNanos = System.nanoTime();
         try {
-            List<TickData> result = delegate.readBatch(path);
+            List<TickDataChunk> result = delegate.readChunkBatch(path);
 
             // Update cumulative metrics
             batchesRead.incrementAndGet();
-            long bytes = result.stream().mapToLong(TickData::getSerializedSize).sum();
+            long bytes = result.stream().mapToLong(TickDataChunk::getSerializedSize).sum();
             bytesRead.addAndGet(bytes);
 
             // Record performance metrics

@@ -18,7 +18,6 @@ import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.datapipeline.api.contracts.CallSiteBinding;
-import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.ColumnTokenLookup;
 import org.evochora.datapipeline.api.contracts.EnergyStrategyConfig;
 import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
@@ -36,7 +35,7 @@ import org.evochora.datapipeline.api.contracts.SourceInfo;
 import org.evochora.datapipeline.api.contracts.SourceLines;
 import org.evochora.datapipeline.api.contracts.SourceMapEntry;
 import org.evochora.datapipeline.api.contracts.StrategyState;
-import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TokenInfo;
 import org.evochora.datapipeline.api.contracts.TokenMapEntry;
 import org.evochora.datapipeline.api.contracts.Vector;
@@ -45,6 +44,7 @@ import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
+import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.isa.IEnergyDistributionCreator;
@@ -61,12 +61,16 @@ import com.typesafe.config.ConfigRenderOptions;
 
 public class SimulationEngine extends AbstractService implements IMemoryEstimatable {
 
-    private final IOutputQueueResource<TickData> tickDataOutput;
+    private final IOutputQueueResource<TickDataChunk> tickDataOutput;
     private final IOutputQueueResource<SimulationMetadata> metadataOutput;
     private final int samplingInterval;
+    private final int accumulatedDeltaInterval;
+    private final int snapshotInterval;
+    private final int chunkInterval;
     private final int metricsWindowSeconds;
     private final List<Long> pauseTicks;
     private final String runId;
+    private final DeltaCodec.Encoder chunkEncoder;
     private final Simulation simulation;
     private final IRandomProvider randomProvider;
     private final List<StrategyWithConfig> energyStrategies;
@@ -91,7 +95,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         this.startTimeMs = System.currentTimeMillis();
 
         @SuppressWarnings("unchecked")
-        IOutputQueueResource<TickData> tickQueue = (IOutputQueueResource<TickData>) getRequiredResource("tickData", IOutputQueueResource.class);
+        IOutputQueueResource<TickDataChunk> tickQueue = (IOutputQueueResource<TickDataChunk>) getRequiredResource("tickData", IOutputQueueResource.class);
         this.tickDataOutput = tickQueue;
 
         @SuppressWarnings("unchecked")
@@ -100,6 +104,17 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
         this.samplingInterval = options.hasPath("samplingInterval") ? options.getInt("samplingInterval") : 1;
         if (this.samplingInterval < 1) throw new IllegalArgumentException("samplingInterval must be >= 1");
+
+        // Delta compression configuration
+        this.accumulatedDeltaInterval = options.hasPath("accumulatedDeltaInterval") 
+                ? options.getInt("accumulatedDeltaInterval") 
+                : SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL;
+        this.snapshotInterval = options.hasPath("snapshotInterval") 
+                ? options.getInt("snapshotInterval") 
+                : SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL;
+        this.chunkInterval = options.hasPath("chunkInterval") 
+                ? options.getInt("chunkInterval") 
+                : SimulationParameters.DEFAULT_CHUNK_INTERVAL;
 
         this.metricsWindowSeconds = options.hasPath("metricsWindowSeconds") ? options.getInt("metricsWindowSeconds") : 1;
         this.pauseTicks = options.hasPath("pauseTicks") ? options.getLongList("pauseTicks") : Collections.emptyList();
@@ -187,6 +202,12 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmssSS");
         String timestamp = now.format(formatter);
         this.runId = timestamp + "-" + UUID.randomUUID().toString();
+        
+        // Initialize chunk encoder for delta compression
+        int totalCells = this.simulation.getEnvironment().getTotalCells();
+        this.chunkEncoder = new DeltaCodec.Encoder(
+                this.runId, totalCells,
+                this.accumulatedDeltaInterval, this.snapshotInterval, this.chunkInterval);
     }
 
     @Override
@@ -198,8 +219,9 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 .map(s -> s.strategy().getClass().getSimpleName())
                 .collect(java.util.stream.Collectors.joining(", "));
 
-        log.info("SimulationEngine started: world=[{}, {}], organisms={}, energyStrategies={} ({}), seed={}, samplingInterval={}, runId={}",
-                worldDims, topology, simulation.getOrganisms().size(), energyStrategies.size(), strategyNames, seed, samplingInterval, runId);
+        int ticksPerChunk = chunkEncoder.getSamplesPerChunk();
+        log.info("SimulationEngine started: world=[{}, {}], organisms={}, energyStrategies={} ({}), seed={}, sampling={}, ticksPerChunk={}, runId={}",
+                worldDims, topology, simulation.getOrganisms().size(), energyStrategies.size(), strategyNames, seed, samplingInterval, ticksPerChunk, runId);
     }
 
     @Override
@@ -240,8 +262,23 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
             if (tick % samplingInterval == 0) {
                 try {
-                    tickDataOutput.put(captureTickData(tick));
-                    messagesSent.incrementAndGet();
+                    // Use DeltaCodec.Encoder for delta compression
+                    List<OrganismState> organismStates = extractOrganismStates();
+                    List<StrategyState> strategyStates = extractStrategyStates();
+                    ByteString rngState = ByteString.copyFrom(randomProvider.saveState());
+                    
+                    java.util.Optional<TickDataChunk> chunk = chunkEncoder.captureTick(
+                            tick,
+                            simulation.getEnvironment(),
+                            organismStates,
+                            simulation.getTotalOrganismsCreatedCount(),
+                            rngState,
+                            strategyStates);
+                    
+                    if (chunk.isPresent()) {
+                        tickDataOutput.put(chunk.get());
+                        messagesSent.incrementAndGet();
+                    }
                 } catch (InterruptedException e) {
                     // Shutdown signal received while sending tick data - this is expected
                     log.debug("Interrupted while sending tick data for tick {} during shutdown", tick);
@@ -258,6 +295,20 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 continue;
             }
         }
+        
+        // Flush any partial chunk on shutdown
+        try {
+            java.util.Optional<TickDataChunk> partialChunk = chunkEncoder.flushPartialChunk();
+            if (partialChunk.isPresent()) {
+                tickDataOutput.put(partialChunk.get());
+                messagesSent.incrementAndGet();
+                log.info("Flushed partial chunk with {} ticks on shutdown", partialChunk.get().getTickCount());
+            }
+        } catch (InterruptedException e) {
+            log.debug("Interrupted while flushing partial chunk during shutdown");
+            Thread.currentThread().interrupt();
+        }
+        
         log.info("Simulation loop finished.");
     }
 
@@ -363,22 +414,6 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         return builder.build();
     }
 
-    private TickData captureTickData(long tick) {
-        TickData.Builder builder = TickData.newBuilder();
-        builder.setSimulationRunId(runId);
-        builder.setTickNumber(tick);
-        builder.setCaptureTimeMs(System.currentTimeMillis());
-        builder.setTotalOrganismsCreated(simulation.getTotalOrganismsCreatedCount());
-        simulation.getOrganisms().stream().filter(o -> !o.isDead()).forEach(o -> builder.addOrganisms(extractOrganismState(o)));
-        extractCellStates(simulation.getEnvironment(), builder);
-        builder.setRngState(ByteString.copyFrom(randomProvider.saveState()));
-        energyStrategies.forEach(s -> builder.addStrategyStates(StrategyState.newBuilder()
-                .setStrategyType(s.strategy().getClass().getName())
-                .setStateBlob(ByteString.copyFrom(s.strategy().saveState()))
-                .build()));
-        return builder.build();
-    }
-
     private OrganismState extractOrganismState(Organism o) {
         OrganismState.Builder builder = OrganismState.newBuilder();
         Vector.Builder vectorBuilder = Vector.newBuilder();
@@ -463,22 +498,29 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
         return builder.build();
     }
-
-    private void extractCellStates(Environment env, TickData.Builder tickBuilder) {
-        // Use parallel builders for SoA (Structure of Arrays) layout
-        // packed=true in protobuf ensures efficient storage without tag overhead per integer
-        CellDataColumns.Builder columnsBuilder = CellDataColumns.newBuilder();
-
-        env.forEachOccupiedIndex(flatIndex -> {
-            int moleculeInt = env.getMoleculeInt(flatIndex);
-            int ownerId = env.getOwnerIdByIndex(flatIndex);
-
-            columnsBuilder.addFlatIndices(flatIndex);
-            columnsBuilder.addMoleculeData(moleculeInt);
-            columnsBuilder.addOwnerIds(ownerId);
-        });
-        
-        tickBuilder.setCellColumns(columnsBuilder.build());
+    
+    /**
+     * Extracts organism states for all living organisms.
+     * Used by DeltaCodec.Encoder for delta compression.
+     */
+    private List<OrganismState> extractOrganismStates() {
+        return simulation.getOrganisms().stream()
+                .filter(o -> !o.isDead())
+                .map(this::extractOrganismState)
+                .toList();
+    }
+    
+    /**
+     * Extracts strategy states for all energy strategies.
+     * Used by DeltaCodec.Encoder for delta compression.
+     */
+    private List<StrategyState> extractStrategyStates() {
+        return energyStrategies.stream()
+                .map(s -> StrategyState.newBuilder()
+                        .setStrategyType(s.strategy().getClass().getName())
+                        .setStateBlob(ByteString.copyFrom(s.strategy().saveState()))
+                        .build())
+                .toList();
     }
 
     private static org.evochora.datapipeline.api.contracts.ProgramArtifact convertProgramArtifact(ProgramArtifact artifact) {
@@ -685,13 +727,14 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      * {@inheritDoc}
      * <p>
      * Estimates memory for the SimulationEngine which holds the entire
-     * environment and all organisms in RAM.
+     * environment and all organisms in RAM, plus the Encoder state.
      * <p>
      * <strong>Major components:</strong>
      * <ul>
      *   <li>Environment cells array: totalCells × 8 bytes (int molecule + int ownerId)</li>
      *   <li>Organisms: maxOrganisms × ~2KB (registers, stacks, code reference)</li>
      *   <li>Compiled programs: cached ProgramArtifacts</li>
+     *   <li>Encoder: current snapshot + accumulated deltas + change tracking BitSet</li>
      * </ul>
      * <p>
      * This is typically the largest memory consumer in the pipeline.
@@ -730,6 +773,31 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 MemoryEstimate.Category.SERVICE_BATCH
             ));
         }
+        
+        // 4. Encoder state for delta compression
+        // - currentSnapshot: 1 full TickData (bytesPerTick)
+        // - currentDeltas: up to (samplesPerChunk - 1) deltas
+        // - accumulatedSinceSnapshot: BitSet for change tracking (totalCells / 8 bytes)
+        long chunkBuilderBytes = 0;
+        
+        // Current snapshot in memory
+        chunkBuilderBytes += params.estimateBytesPerTick();
+        
+        // Accumulated deltas (worst case: all samples before chunk completion)
+        int maxDeltas = params.ticksPerChunk() - 1;
+        chunkBuilderBytes += (long) maxDeltas * params.estimateBytesPerDelta();
+        
+        // BitSet for change tracking: totalCells bits = totalCells / 8 bytes
+        long bitSetBytes = (params.totalCells() + 7) / 8;
+        chunkBuilderBytes += bitSetBytes;
+        
+        estimates.add(new MemoryEstimate(
+            serviceName + " (Encoder)",
+            chunkBuilderBytes,
+            String.format("1 snapshot + %d deltas + BitSet (%d cells), %d ticks/chunk",
+                maxDeltas, params.totalCells(), params.ticksPerChunk()),
+            MemoryEstimate.Category.SERVICE_BATCH
+        ));
         
         return estimates;
     }

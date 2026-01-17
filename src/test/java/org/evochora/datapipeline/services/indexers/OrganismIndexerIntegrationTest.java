@@ -21,6 +21,7 @@ import org.evochora.datapipeline.api.contracts.ProcFrame;
 import org.evochora.datapipeline.api.contracts.RegisterValue;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
@@ -231,14 +232,28 @@ class OrganismIndexerIntegrationTest {
     }
 
     private void writeBatchAndNotify(String runId, List<TickData> ticks) throws Exception {
+        // Convert each tick to its own chunk (each chunk has tickCount=1)
+        long firstTick = ticks.get(0).getTickNumber();
+        long lastTick = ticks.get(ticks.size() - 1).getTickNumber();
+        
+        List<TickDataChunk> chunks = new java.util.ArrayList<>();
+        for (TickData tick : ticks) {
+            TickDataChunk chunk = TickDataChunk.newBuilder()
+                    .setSimulationRunId(runId)
+                    .setFirstTick(tick.getTickNumber())
+                    .setLastTick(tick.getTickNumber())
+                    .setTickCount(1)  // Each chunk contains exactly 1 tick
+                    .setSnapshot(tick)
+                    .build();
+            chunks.add(chunk);
+        }
+        
         ResourceContext storageWriteContext = new ResourceContext(
                 "test", "storage-port", "storage-write", "test-storage", Map.of("simulationRunId", runId));
         IResource storageWriter = testStorage.getWrappedResource(storageWriteContext);
         IBatchStorageWrite batchWriter = (IBatchStorageWrite) storageWriter;
 
-        long firstTick = ticks.get(0).getTickNumber();
-        long lastTick = ticks.get(ticks.size() - 1).getTickNumber();
-        StoragePath batchPath = batchWriter.writeBatch(ticks, firstTick, lastTick);
+        StoragePath batchPath = batchWriter.writeChunkBatch(chunks, firstTick, lastTick);
 
         ResourceContext topicWriteContext = new ResourceContext("test", "topic-port", "topic-write", "batch-topic", Map.of());
         IResource topicWriterResource = testBatchTopic.getWrappedResource(topicWriteContext);

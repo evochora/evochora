@@ -22,6 +22,7 @@ import java.util.concurrent.TimeUnit;
 import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataWriter;
@@ -293,14 +294,14 @@ class DummyIndexerIntegrationTest {
         // Index metadata first
         indexMetadata(runId, metadata);
         
-        // Write 3 batches to storage (10 ticks each)
-        List<TickData> batch1 = createTestTicks(runId, 0, 10);
-        List<TickData> batch2 = createTestTicks(runId, 10, 10);
-        List<TickData> batch3 = createTestTicks(runId, 20, 10);
+        // Write 3 chunks to storage (10 ticks each)
+        List<TickDataChunk> chunks1 = createTestChunks(runId, 0, 10);
+        List<TickDataChunk> chunks2 = createTestChunks(runId, 10, 10);
+        List<TickDataChunk> chunks3 = createTestChunks(runId, 20, 10);
         
-        StoragePath key1 = testStorage.writeBatch(batch1, 0, 9);
-        StoragePath key2 = testStorage.writeBatch(batch2, 10, 19);
-        StoragePath key3 = testStorage.writeBatch(batch3, 20, 29);
+        StoragePath key1 = testStorage.writeChunkBatch(chunks1, 0, 9);
+        StoragePath key2 = testStorage.writeChunkBatch(chunks2, 10, 19);
+        StoragePath key3 = testStorage.writeChunkBatch(chunks3, 20, 29);
         
         // Create indexer with real topic (not mock!)
         Config config = ConfigFactory.parseString("""
@@ -346,27 +347,27 @@ class DummyIndexerIntegrationTest {
         SimulationMetadata metadata = createTestMetadata(runId, 10);
         indexMetadata(runId, metadata);
         
-        // Write 3 batches to storage (100 ticks each), insertBatchSize=250
-        List<TickData> batch1 = createTestTicks(runId, 0, 100);
-        List<TickData> batch2 = createTestTicks(runId, 100, 100);
-        List<TickData> batch3 = createTestTicks(runId, 200, 100);
+        // Write 3 chunks to storage (100 ticks each), insertBatchSize=3 (chunks)
+        List<TickDataChunk> chunks1 = createTestChunks(runId, 0, 100);
+        List<TickDataChunk> chunks2 = createTestChunks(runId, 100, 100);
+        List<TickDataChunk> chunks3 = createTestChunks(runId, 200, 100);
         
-        StoragePath key1 = testStorage.writeBatch(batch1, 0, 99);
-        StoragePath key2 = testStorage.writeBatch(batch2, 100, 199);
-        StoragePath key3 = testStorage.writeBatch(batch3, 200, 299);
+        StoragePath key1 = testStorage.writeChunkBatch(chunks1, 0, 99);
+        StoragePath key2 = testStorage.writeChunkBatch(chunks2, 100, 199);
+        StoragePath key3 = testStorage.writeChunkBatch(chunks3, 200, 299);
         
-        // Create indexer WITH buffering (insertBatchSize=250)
+        // Create indexer WITH buffering (insertBatchSize=3 chunks)
         Config config = ConfigFactory.parseString("""
             runId = "%s"
             metadataPollIntervalMs = 100
             metadataMaxPollDurationMs = 5000
-            insertBatchSize = 250
+            insertBatchSize = 3
             flushTimeoutMs = 10000
             """.formatted(runId));
         
         indexer = createDummyIndexerWithBuffering("test-indexer", config);
         
-        // When: Start indexer and send 3 batches
+        // When: Start indexer and send 3 batches (each containing 1 chunk)
         indexer.start();
         await().atMost(5, TimeUnit.SECONDS)
             .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
@@ -375,14 +376,14 @@ class DummyIndexerIntegrationTest {
         sendBatchInfoToTopic(runId, key2.asString(), 100, 199);
         sendBatchInfoToTopic(runId, key3.asString(), 200, 299);
         
-        // Then: Verify flush triggered by size (buffer: 300 >= insertBatchSize: 250)
+        // Then: Verify flush triggered by size (buffer: 3 chunks >= insertBatchSize: 3)
         await().atMost(10, TimeUnit.SECONDS)
-            .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 250);
+            .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 300);
         
-        // Verify at least one flush happened
+        // Verify all ticks flushed
         Map<String, Number> metrics = indexer.getMetrics();
-        assertTrue(metrics.get("ticks_processed").intValue() >= 250,
-            "At least 250 ticks should be flushed");
+        assertTrue(metrics.get("ticks_processed").intValue() >= 300,
+            "All 300 ticks should be flushed");
     }
     
     @Test
@@ -392,16 +393,16 @@ class DummyIndexerIntegrationTest {
         SimulationMetadata metadata = createTestMetadata(runId, 10);
         indexMetadata(runId, metadata);
         
-        // Write one small batch (< insertBatchSize)
-        List<TickData> batch1 = createTestTicks(runId, 0, 50);
-        StoragePath key1 = testStorage.writeBatch(batch1, 0, 49);
+        // Write one chunk (< insertBatchSize of 10 chunks)
+        List<TickDataChunk> chunks1 = createTestChunks(runId, 0, 50);
+        StoragePath key1 = testStorage.writeChunkBatch(chunks1, 0, 49);
         
-        // Create indexer with short flush timeout
+        // Create indexer with short flush timeout (insertBatchSize=10 chunks, but only 1 chunk sent)
         Config config = ConfigFactory.parseString("""
             runId = "%s"
             metadataPollIntervalMs = 100
             metadataMaxPollDurationMs = 5000
-            insertBatchSize = 1000
+            insertBatchSize = 10
             flushTimeoutMs = 1000
             """.formatted(runId));
         
@@ -424,54 +425,53 @@ class DummyIndexerIntegrationTest {
     
     @Test
     void testBuffering_CrossBatchAck() throws Exception {
-        // Given: insertBatchSize=250, batches are 100 ticks each
+        // Given: insertBatchSize=3 chunks, each batch message contains 1 chunk with 100 ticks
         String runId = "20251018-142000-" + UUID.randomUUID();
         SimulationMetadata metadata = createTestMetadata(runId, 10);
         indexMetadata(runId, metadata);
         
-        // Write 5 batches to storage
-        List<TickData> batch1 = createTestTicks(runId, 0, 100);
-        List<TickData> batch2 = createTestTicks(runId, 100, 100);
-        List<TickData> batch3 = createTestTicks(runId, 200, 100);
-        List<TickData> batch4 = createTestTicks(runId, 300, 100);
-        List<TickData> batch5 = createTestTicks(runId, 400, 100);
+        // Write 5 chunks to storage (each chunk = 100 ticks)
+        List<TickDataChunk> chunks1 = createTestChunks(runId, 0, 100);
+        List<TickDataChunk> chunks2 = createTestChunks(runId, 100, 100);
+        List<TickDataChunk> chunks3 = createTestChunks(runId, 200, 100);
+        List<TickDataChunk> chunks4 = createTestChunks(runId, 300, 100);
+        List<TickDataChunk> chunks5 = createTestChunks(runId, 400, 100);
         
-        StoragePath key1 = testStorage.writeBatch(batch1, 0, 99);
-        StoragePath key2 = testStorage.writeBatch(batch2, 100, 199);
-        StoragePath key3 = testStorage.writeBatch(batch3, 200, 299);
-        StoragePath key4 = testStorage.writeBatch(batch4, 300, 399);
-        StoragePath key5 = testStorage.writeBatch(batch5, 400, 499);
+        StoragePath key1 = testStorage.writeChunkBatch(chunks1, 0, 99);
+        StoragePath key2 = testStorage.writeChunkBatch(chunks2, 100, 199);
+        StoragePath key3 = testStorage.writeChunkBatch(chunks3, 200, 299);
+        StoragePath key4 = testStorage.writeChunkBatch(chunks4, 300, 399);
+        StoragePath key5 = testStorage.writeChunkBatch(chunks5, 400, 499);
         
         Config config = ConfigFactory.parseString("""
             runId = "%s"
             metadataPollIntervalMs = 100
             metadataMaxPollDurationMs = 5000
-            insertBatchSize = 250
+            insertBatchSize = 3
             flushTimeoutMs = 10000
             """.formatted(runId));
         
         indexer = createDummyIndexerWithBuffering("test-indexer", config);
         
-        // When: Start and send batches
+        // When: Start and send batches (each batch = 1 chunk)
         indexer.start();
         await().atMost(5, TimeUnit.SECONDS)
             .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
         
-        sendBatchInfoToTopic(runId, key1.asString(), 0, 99);      // buffer: 100
-        sendBatchInfoToTopic(runId, key2.asString(), 100, 199);   // buffer: 200
-        sendBatchInfoToTopic(runId, key3.asString(), 200, 299);   // buffer: 300 → FLUSH 250!
+        sendBatchInfoToTopic(runId, key1.asString(), 0, 99);      // buffer: 1 chunk
+        sendBatchInfoToTopic(runId, key2.asString(), 100, 199);   // buffer: 2 chunks
+        sendBatchInfoToTopic(runId, key3.asString(), 200, 299);   // buffer: 3 chunks → FLUSH!
         
-        // Then: Verify first flush (250 ticks)
+        // Then: Verify first flush (3 chunks = 300 ticks)
         await().atMost(10, TimeUnit.SECONDS)
-            .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 250);
+            .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 300);
         
-        // At this point: batch1 & batch2 fully flushed, batch3 only 50/100 flushed
         // Continue with more batches
-        sendBatchInfoToTopic(runId, key4.asString(), 300, 399);   // buffer: 150 (50 + 100)
-        sendBatchInfoToTopic(runId, key5.asString(), 400, 499);   // buffer: 250 → FLUSH 250!
+        sendBatchInfoToTopic(runId, key4.asString(), 300, 399);   // buffer: 1 chunk
+        sendBatchInfoToTopic(runId, key5.asString(), 400, 499);   // buffer: 2 chunks (need timeout or more)
         
-        // Verify second flush (total 500 ticks)
-        await().atMost(10, TimeUnit.SECONDS)
+        // Wait for final flush via timeout (only 2 chunks in buffer < 3)
+        await().atMost(15, TimeUnit.SECONDS)
             .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 500);
         
         // All 5 batches should now be fully flushed
@@ -483,25 +483,25 @@ class DummyIndexerIntegrationTest {
     
     @Test
     void testBuffering_FinalFlush() throws Exception {
-        // Given: Write batches that will trigger normal flush first
+        // Given: Write chunks that will trigger normal flush first
         String runId = "20251018-143000-" + UUID.randomUUID();
         SimulationMetadata metadata = createTestMetadata(runId, 10);
         indexMetadata(runId, metadata);
         
-        // Write batches: first 2 will trigger flush, 3rd will remain in buffer
-        List<TickData> batch1 = createTestTicks(runId, 0, 100);
-        List<TickData> batch2 = createTestTicks(runId, 100, 150);  // Total: 250 → triggers flush!
-        List<TickData> batch3 = createTestTicks(runId, 250, 50);   // Remaining in buffer
+        // Write 3 chunks: first 2 will trigger flush (insertBatchSize=2), 3rd will remain in buffer
+        List<TickDataChunk> chunks1 = createTestChunks(runId, 0, 100);
+        List<TickDataChunk> chunks2 = createTestChunks(runId, 100, 100);
+        List<TickDataChunk> chunks3 = createTestChunks(runId, 200, 100);
         
-        StoragePath key1 = testStorage.writeBatch(batch1, 0, 99);
-        StoragePath key2 = testStorage.writeBatch(batch2, 100, 249);
-        StoragePath key3 = testStorage.writeBatch(batch3, 250, 299);
+        StoragePath key1 = testStorage.writeChunkBatch(chunks1, 0, 99);
+        StoragePath key2 = testStorage.writeChunkBatch(chunks2, 100, 199);
+        StoragePath key3 = testStorage.writeChunkBatch(chunks3, 200, 299);
         
         Config config = ConfigFactory.parseString("""
             runId = "%s"
             metadataPollIntervalMs = 100
             metadataMaxPollDurationMs = 5000
-            insertBatchSize = 250
+            insertBatchSize = 2
             flushTimeoutMs = 60000
             """.formatted(runId));
         
@@ -513,22 +513,22 @@ class DummyIndexerIntegrationTest {
             .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
         
         sendBatchInfoToTopic(runId, key1.asString(), 0, 99);
-        sendBatchInfoToTopic(runId, key2.asString(), 100, 249);
-        sendBatchInfoToTopic(runId, key3.asString(), 250, 299);
+        sendBatchInfoToTopic(runId, key2.asString(), 100, 199);
+        sendBatchInfoToTopic(runId, key3.asString(), 200, 299);
         
-        // Wait for first flush (250 ticks)
+        // Wait for first flush (2 chunks = 200 ticks)
         await().atMost(10, TimeUnit.SECONDS)
-            .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 250);
+            .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 200);
         
-        // At this point: 50 ticks remain in buffer (from batch3)
-        // Stop service (triggers final flush of remaining 50 ticks)
+        // At this point: 1 chunk (100 ticks) remains in buffer
+        // Stop service (triggers final flush of remaining chunk)
         indexer.stop();
         await().atMost(5, TimeUnit.SECONDS)
             .until(() -> indexer.getCurrentState() == IService.State.STOPPED);
         
-        // Then: Verify final flush executed remaining buffered ticks
+        // Then: Verify final flush executed remaining buffered chunks
         assertEquals(300, indexer.getMetrics().get("ticks_processed").intValue(),
-            "All 300 ticks should be flushed (250 normal + 50 final flush)");
+            "All 300 ticks should be flushed (200 normal + 100 final flush)");
         assertEquals(3, indexer.getMetrics().get("batches_processed").intValue(),
             "All 3 batches should be ACKed (batch3 ACKed after final flush)");
     }
@@ -566,16 +566,23 @@ class DummyIndexerIntegrationTest {
         return new DummyIndexer<>(name, config, resources);
     }
     
-    private List<TickData> createTestTicks(String runId, long startTick, int count) {
-        List<TickData> ticks = new java.util.ArrayList<>();
-        for (int i = 0; i < count; i++) {
-            ticks.add(TickData.newBuilder()
-                .setSimulationRunId(runId)
-                .setTickNumber(startTick + i)
-                .setCaptureTimeMs(System.currentTimeMillis())
-                .build());
-        }
-        return ticks;
+    private List<TickDataChunk> createTestChunks(String runId, long startTick, int tickCount) {
+        // Create a single chunk containing tickCount ticks
+        TickData snapshot = TickData.newBuilder()
+            .setSimulationRunId(runId)
+            .setTickNumber(startTick)
+            .setCaptureTimeMs(System.currentTimeMillis())
+            .build();
+        
+        TickDataChunk chunk = TickDataChunk.newBuilder()
+            .setSimulationRunId(runId)
+            .setFirstTick(startTick)
+            .setLastTick(startTick + tickCount - 1)
+            .setTickCount(tickCount)
+            .setSnapshot(snapshot)
+            .build();
+        
+        return List.of(chunk);
     }
     
     private void sendBatchInfoToTopic(String runId, String storageKey, long tickStart, long tickEnd) throws Exception {

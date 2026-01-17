@@ -215,6 +215,10 @@ class SimulationToPersistenceIntegrationTest {
                             ),
                             "maxTicks", 100,
                             "samplingInterval", 10,
+                            // Delta compression: 1 sample = 1 chunk for testing
+                            "accumulatedDeltaInterval", 1,
+                            "snapshotInterval", 1,
+                            "chunkInterval", 1,
                             "environment", Map.of(
                                 "shape", List.of(10, 10),
                                 "topology", "TORUS"
@@ -323,6 +327,10 @@ class SimulationToPersistenceIntegrationTest {
                             ),
                             "maxTicks", 50,
                             "samplingInterval", 5,
+                            // Delta compression: 1 sample = 1 chunk for testing
+                            "accumulatedDeltaInterval", 1,
+                            "snapshotInterval", 1,
+                            "chunkInterval", 1,
                             "environment", Map.of(
                                 "shape", List.of(10, 10),
                                 "topology", "TORUS"

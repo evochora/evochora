@@ -1,7 +1,12 @@
 package org.evochora.datapipeline.resources.storage.wrappers;
 
-import com.google.protobuf.MessageLite;
-import org.evochora.datapipeline.api.contracts.TickData;
+import java.io.IOException;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
+
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.IWrappedResource;
@@ -12,11 +17,7 @@ import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowPercentiles;
 
-import java.io.IOException;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicLong;
+import com.google.protobuf.MessageLite;
 
 /**
  * Monitored wrapper for batch storage write operations.
@@ -63,14 +64,14 @@ public class MonitoredBatchStorageWriter implements IBatchStorageWrite, IWrapped
     }
 
     @Override
-    public StoragePath writeBatch(List<TickData> batch, long firstTick, long lastTick) throws IOException {
+    public StoragePath writeChunkBatch(List<TickDataChunk> batch, long firstTick, long lastTick) throws IOException {
         long startNanos = System.nanoTime();
         try {
-            StoragePath path = delegate.writeBatch(batch, firstTick, lastTick);
+            StoragePath path = delegate.writeChunkBatch(batch, firstTick, lastTick);
 
             // Update cumulative metrics
             batchesWritten.incrementAndGet();
-            long bytes = batch.stream().mapToLong(TickData::getSerializedSize).sum();
+            long bytes = batch.stream().mapToLong(TickDataChunk::getSerializedSize).sum();
             bytesWritten.addAndGet(bytes);
 
             // Record performance metrics

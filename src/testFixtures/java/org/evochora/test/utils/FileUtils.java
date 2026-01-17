@@ -1,6 +1,7 @@
 package org.evochora.test.utils;
 
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -62,31 +63,51 @@ public final class FileUtils {
 
     /**
      * Safely reads all TickData messages from all batch files in a directory.
+     * This method reads TickDataChunk messages and extracts the snapshot from each.
+     * For tests that need full decompression, use {@link #readAllChunksFromBatches}.
+     * <p>
      * This method is resilient to race conditions by retrying the read operation
      * if files disappear during processing.
      *
      * @param storageDir The directory to search for batch files.
-     * @return A list of all TickData messages found.
+     * @return A list of all TickData snapshots found (one per chunk).
      */
     public static List<TickData> readAllTicksFromBatches(Path storageDir) {
+        List<TickDataChunk> chunks = readAllChunksFromBatches(storageDir);
+        List<TickData> allTicks = new ArrayList<>();
+        for (TickDataChunk chunk : chunks) {
+            allTicks.add(chunk.getSnapshot());
+        }
+        return allTicks;
+    }
+
+    /**
+     * Safely reads all TickDataChunk messages from all batch files in a directory.
+     * This method is resilient to race conditions by retrying the read operation
+     * if files disappear during processing.
+     *
+     * @param storageDir The directory to search for batch files.
+     * @return A list of all TickDataChunk messages found.
+     */
+    public static List<TickDataChunk> readAllChunksFromBatches(Path storageDir) {
         int maxRetries = 5;
         long delay = 100; // ms
 
         for (int attempt = 0; attempt < maxRetries; attempt++) {
             try {
-                List<TickData> allTicks = new ArrayList<>();
+                List<TickDataChunk> allChunks = new ArrayList<>();
                 List<Path> batchFiles = findBatchFiles(storageDir);
 
                 for (Path batchFile : batchFiles) {
                     try (java.io.InputStream is = new java.io.BufferedInputStream(Files.newInputStream(batchFile))) {
                         while (is.available() > 0) {
-                            TickData tick = TickData.parseDelimitedFrom(is);
-                            if (tick == null) break;
-                            allTicks.add(tick);
+                            TickDataChunk chunk = TickDataChunk.parseDelimitedFrom(is);
+                            if (chunk == null) break;
+                            allChunks.add(chunk);
                         }
                     }
                 }
-                return allTicks;
+                return allChunks;
 
             } catch (java.nio.file.NoSuchFileException e) {
                 if (attempt < maxRetries - 1) {
@@ -97,10 +118,10 @@ public final class FileUtils {
                         throw new RuntimeException("Interrupted while retrying file read", ie);
                     }
                 } else {
-                    throw new RuntimeException("Failed to read persisted ticks consistently after " + maxRetries + " attempts", e);
+                    throw new RuntimeException("Failed to read persisted chunks consistently after " + maxRetries + " attempts", e);
                 }
             } catch (IOException e) {
-                throw new RuntimeException("Failed to read persisted ticks", e);
+                throw new RuntimeException("Failed to read persisted chunks", e);
             }
         }
         return Collections.emptyList(); // Should be unreachable

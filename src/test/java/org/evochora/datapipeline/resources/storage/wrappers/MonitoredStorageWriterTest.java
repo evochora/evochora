@@ -4,6 +4,7 @@ import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -35,37 +36,45 @@ class MonitoredStorageWriterTest {
         monitoredWriter = new MonitoredBatchStorageWriter(mockDelegate, context);
     }
 
+    private TickDataChunk createChunk(long firstTick, long lastTick) {
+        return TickDataChunk.newBuilder()
+                .setSimulationRunId("test-sim")
+                .setFirstTick(firstTick)
+                .setLastTick(lastTick)
+                .setTickCount(1)
+                .setSnapshot(TickData.newBuilder().setTickNumber(firstTick).build())
+                .build();
+    }
+
     @Test
-    void testMetricsTrackedOnBatchWrite() throws IOException {
-        List<TickData> batch = Arrays.asList(
-            TickData.newBuilder().setTickNumber(100).build(),
-            TickData.newBuilder().setTickNumber(101).build(),
-            TickData.newBuilder().setTickNumber(102).build()
+    void testMetricsTrackedOnChunkBatchWrite() throws IOException {
+        List<TickDataChunk> batch = Arrays.asList(
+            createChunk(100, 109),
+            createChunk(110, 119),
+            createChunk(120, 129)
         );
 
-        when(mockDelegate.writeBatch(anyList(), anyLong(), anyLong()))
+        when(mockDelegate.writeChunkBatch(anyList(), anyLong(), anyLong()))
             .thenReturn(StoragePath.of("001/batch.pb"));
 
-        monitoredWriter.writeBatch(batch, 100, 102);
+        monitoredWriter.writeChunkBatch(batch, 100, 129);
 
-        verify(mockDelegate).writeBatch(batch, 100, 102);
+        verify(mockDelegate).writeChunkBatch(batch, 100, 129);
 
         Map<String, Number> metrics = monitoredWriter.getMetrics();
         assertEquals(1L, metrics.get("batches_written").longValue());
-        long expectedBytes = batch.stream().mapToLong(TickData::getSerializedSize).sum();
+        long expectedBytes = batch.stream().mapToLong(TickDataChunk::getSerializedSize).sum();
         assertEquals(expectedBytes, metrics.get("bytes_written").longValue());
     }
 
     @Test
     void testErrorMetricTrackedOnFailure() throws IOException {
-        List<TickData> batch = Collections.singletonList(
-            TickData.newBuilder().setTickNumber(1).build()
-        );
+        List<TickDataChunk> batch = Collections.singletonList(createChunk(1, 10));
 
-        when(mockDelegate.writeBatch(anyList(), anyLong(), anyLong()))
+        when(mockDelegate.writeChunkBatch(anyList(), anyLong(), anyLong()))
             .thenThrow(new IOException("Storage failure"));
 
-        assertThrows(IOException.class, () -> monitoredWriter.writeBatch(batch, 1, 1));
+        assertThrows(IOException.class, () -> monitoredWriter.writeChunkBatch(batch, 1, 10));
 
         Map<String, Number> metrics = monitoredWriter.getMetrics();
         assertEquals(1L, metrics.get("write_errors").longValue());
@@ -74,20 +83,18 @@ class MonitoredStorageWriterTest {
 
     @Test
     void testMultipleBatchesTracked() throws IOException {
-        when(mockDelegate.writeBatch(anyList(), anyLong(), anyLong()))
+        when(mockDelegate.writeChunkBatch(anyList(), anyLong(), anyLong()))
             .thenReturn(StoragePath.of("batch1.pb"))
             .thenReturn(StoragePath.of("batch2.pb"));
 
-        List<TickData> batch1 = Arrays.asList(
-            TickData.newBuilder().setTickNumber(1).build(),
-            TickData.newBuilder().setTickNumber(2).build()
+        List<TickDataChunk> batch1 = Arrays.asList(
+            createChunk(1, 10),
+            createChunk(11, 20)
         );
-        List<TickData> batch2 = Collections.singletonList(
-            TickData.newBuilder().setTickNumber(3).build()
-        );
+        List<TickDataChunk> batch2 = Collections.singletonList(createChunk(21, 30));
 
-        monitoredWriter.writeBatch(batch1, 1, 2);
-        monitoredWriter.writeBatch(batch2, 3, 3);
+        monitoredWriter.writeChunkBatch(batch1, 1, 20);
+        monitoredWriter.writeChunkBatch(batch2, 21, 30);
 
         Map<String, Number> metrics = monitoredWriter.getMetrics();
         assertEquals(2L, metrics.get("batches_written").longValue());

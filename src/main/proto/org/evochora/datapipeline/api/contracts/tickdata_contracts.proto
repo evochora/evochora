@@ -425,3 +425,94 @@ message CellState {
 message OrganismStateList {
   repeated OrganismState organisms = 1;
 }
+
+// ============================================================================
+// Delta Compression (DELTA_COMPRESSION.md proposal)
+// ============================================================================
+
+// Type of delta in a TickDataChunk.
+// DELTA_TYPE_UNSPECIFIED (0) is a sentinel for corrupt/uninitialized data.
+enum DeltaType {
+  DELTA_TYPE_UNSPECIFIED = 0;  // Invalid - should never occur in valid data
+  INCREMENTAL = 1;             // Changes since last sampled tick
+  ACCUMULATED = 2;             // Changes since last snapshot (checkpoint-capable)
+}
+
+// Compact representation of changes between ticks.
+// Used within TickDataChunk to store deltas efficiently.
+//
+// KEY INSIGHT: Environment cells are sparse (only changed cells stored),
+// but organisms are always complete (they change almost entirely every tick).
+//
+// FIELDS BY DELTA TYPE:
+// - INCREMENTAL: changed_cells, organisms, total_organisms_created
+// - ACCUMULATED: All fields (includes rng_state, strategy_states for checkpointing)
+message TickDelta {
+  // The tick number this delta represents
+  int64 tick_number = 1;
+
+  // System timestamp when this tick was captured (milliseconds since epoch)
+  int64 capture_time_ms = 2;
+
+  // Type of delta (INCREMENTAL or ACCUMULATED)
+  DeltaType delta_type = 3;
+
+  // Environment: ONLY changed cells since last sample (the big storage win!)
+  // For INCREMENTAL: changes since previous sampled tick
+  // For ACCUMULATED: changes since last snapshot
+  CellDataColumns changed_cells = 4;
+
+  // Organisms: Always complete (small, ~500 bytes per organism)
+  // Organisms change almost entirely every tick (IP, energy, registers),
+  // so delta tracking overhead would exceed savings.
+  repeated OrganismState organisms = 5;
+
+  // Total organisms ever created (monotonic counter for analytics)
+  int64 total_organisms_created = 6;
+
+  // RNG state for checkpoint/resume (ACCUMULATED deltas only)
+  // Empty for INCREMENTAL deltas.
+  bytes rng_state = 7;
+
+  // Strategy states for checkpoint/resume (ACCUMULATED deltas only)
+  // Empty for INCREMENTAL deltas.
+  repeated StrategyState strategy_states = 8;
+}
+
+// Self-contained chunk of tick data for pipeline transmission.
+// Contains one full snapshot followed by multiple deltas.
+//
+// DESIGN RATIONALE:
+// - Self-contained: Can be processed by competing consumers without prior state
+// - Metadata at top level: PersistenceService can route without parsing content
+// - Snapshot first: Enables seeking to any tick within the chunk
+//
+// TYPICAL CONFIGURATION (100 ticks/chunk):
+// - 1 snapshot (~10MB)
+// - 19 accumulated deltas (~200KB each, with RNG state)
+// - 80 incremental deltas (~50KB each, no RNG state)
+// - Total uncompressed: ~25MB, compressed with zstd: ~2.5MB
+message TickDataChunk {
+  // === Metadata (for PersistenceService routing, no content parsing needed) ===
+
+  // Unique identifier matching SimulationMetadata.simulation_run_id
+  string simulation_run_id = 1;
+
+  // First tick number in this chunk (= snapshot tick)
+  int64 first_tick = 2;
+
+  // Last tick number in this chunk
+  int64 last_tick = 3;
+
+  // Total number of ticks in this chunk (1 snapshot + N deltas)
+  int32 tick_count = 4;
+
+  // === Content ===
+
+  // Complete state at first_tick (self-contained, enables any tick reconstruction)
+  TickData snapshot = 5;
+
+  // Deltas for subsequent ticks (tick_count - 1 entries)
+  // Ordered by tick_number ascending.
+  repeated TickDelta deltas = 6;
+}

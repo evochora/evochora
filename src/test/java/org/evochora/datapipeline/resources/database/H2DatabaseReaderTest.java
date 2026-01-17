@@ -17,7 +17,8 @@ import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
 import org.evochora.datapipeline.api.resources.database.dto.TickRange;
-import org.evochora.datapipeline.resources.database.h2.SingleBlobStrategy;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
+import org.evochora.datapipeline.resources.database.h2.RowPerChunkStrategy;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
@@ -63,7 +64,7 @@ class H2DatabaseReaderTest {
             "password = \"\"\n" +
             "maxPoolSize = 5\n" +
             "h2EnvironmentStrategy {\n" +
-            "  className = \"org.evochora.datapipeline.resources.database.h2.SingleBlobStrategy\"\n" +
+            "  className = \"org.evochora.datapipeline.resources.database.h2.RowPerChunkStrategy\"\n" +
             "  options { compression { enabled = false } }\n" +
             "}\n"
         );
@@ -81,7 +82,7 @@ class H2DatabaseReaderTest {
 
     @Test
     void getTickRange_returnsCorrectRange() throws Exception {
-        // Given: Create schema and write ticks
+        // Given: Create schema and write chunks
         Object connObj = database.acquireDedicatedConnection();
         try (Connection conn = (Connection) connObj) {
             // Set schema
@@ -89,38 +90,25 @@ class H2DatabaseReaderTest {
             conn.createStatement().execute("SET SCHEMA \"SIM_" + runId.toUpperCase().replaceAll("[^A-Z0-9_]", "_") + "\"");
 
             // Create tables using strategy
-            SingleBlobStrategy strategy = new SingleBlobStrategy(ConfigFactory.empty());
+            RowPerChunkStrategy strategy = new RowPerChunkStrategy(ConfigFactory.empty());
             strategy.createTables(conn, 2);
 
-            // Write ticks 10, 20, 30
-            List<TickData> ticks = List.of(
-                TickData.newBuilder()
-                    .setTickNumber(10L)
-                    .setSimulationRunId(runId)
-                    .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
-                        CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
-                    )))
-                    .build(),
-                TickData.newBuilder()
-                    .setTickNumber(20L)
-                    .setSimulationRunId(runId)
-                    .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
-                        CellStateTestHelper.createCellStateBuilder(0, 101, 1, 60, 0).build()
-                    )))
-                    .build(),
-                TickData.newBuilder()
-                    .setTickNumber(30L)
-                    .setSimulationRunId(runId)
-                    .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
-                        CellStateTestHelper.createCellStateBuilder(0, 102, 1, 70, 0).build()
-                    )))
-                    .build()
-            );
+            // Write chunk spanning ticks 10-30
+            TickData snapshot = TickData.newBuilder()
+                .setTickNumber(10L)
+                .setSimulationRunId(runId)
+                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                    CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
+                )))
+                .build();
+            
+            TickDataChunk chunk = TickDataChunk.newBuilder()
+                .setSnapshot(snapshot)
+                .addDeltas(org.evochora.datapipeline.api.contracts.TickDelta.newBuilder().setTickNumber(20L).build())
+                .addDeltas(org.evochora.datapipeline.api.contracts.TickDelta.newBuilder().setTickNumber(30L).build())
+                .build();
 
-            var envProps = new org.evochora.runtime.model.EnvironmentProperties(new int[]{10, 10}, false);
-            var stmt = conn.prepareStatement(strategy.getMergeSql());
-            strategy.writeTicks(conn, stmt, ticks, envProps);
-            stmt.close();
+            strategy.writeChunks(conn, List.of(chunk));
             conn.commit();
         }
 
@@ -137,13 +125,13 @@ class H2DatabaseReaderTest {
 
     @Test
     void getTickRange_returnsNullWhenNoTicks() throws Exception {
-        // Given: Create schema but no ticks
+        // Given: Create schema but no chunks
         Object connObj = database.acquireDedicatedConnection();
         try (Connection conn = (Connection) connObj) {
             conn.createStatement().execute("CREATE SCHEMA IF NOT EXISTS \"SIM_" + runId.toUpperCase().replaceAll("[^A-Z0-9_]", "_") + "\"");
             conn.createStatement().execute("SET SCHEMA \"SIM_" + runId.toUpperCase().replaceAll("[^A-Z0-9_]", "_") + "\"");
 
-            SingleBlobStrategy strategy = new SingleBlobStrategy(ConfigFactory.empty());
+            RowPerChunkStrategy strategy = new RowPerChunkStrategy(ConfigFactory.empty());
             strategy.createTables(conn, 2);
         }
 
@@ -158,7 +146,7 @@ class H2DatabaseReaderTest {
 
     @Test
     void getTickRange_returnsNullWhenTableNotExists() throws Exception {
-        // Given: Create schema but no environment_ticks table
+        // Given: Create schema but no environment_chunks table
         Object connObj = database.acquireDedicatedConnection();
         try (Connection conn = (Connection) connObj) {
             conn.createStatement().execute("CREATE SCHEMA IF NOT EXISTS \"SIM_" + runId.toUpperCase().replaceAll("[^A-Z0-9_]", "_") + "\"");
@@ -175,30 +163,29 @@ class H2DatabaseReaderTest {
 
     @Test
     void getTickRange_handlesSingleTick() throws Exception {
-        // Given: Create schema and write single tick
+        // Given: Create schema and write single chunk with single tick
         Object connObj = database.acquireDedicatedConnection();
         try (Connection conn = (Connection) connObj) {
             conn.createStatement().execute("CREATE SCHEMA IF NOT EXISTS \"SIM_" + runId.toUpperCase().replaceAll("[^A-Z0-9_]", "_") + "\"");
             conn.createStatement().execute("SET SCHEMA \"SIM_" + runId.toUpperCase().replaceAll("[^A-Z0-9_]", "_") + "\"");
 
-            SingleBlobStrategy strategy = new SingleBlobStrategy(ConfigFactory.empty());
+            RowPerChunkStrategy strategy = new RowPerChunkStrategy(ConfigFactory.empty());
             strategy.createTables(conn, 2);
 
-            // Write single tick
-            List<TickData> ticks = List.of(
-                TickData.newBuilder()
-                    .setTickNumber(42L)
-                    .setSimulationRunId(runId)
-                    .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
-                        CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
-                    )))
-                    .build()
-            );
+            // Write single chunk with single tick (no deltas)
+            TickData snapshot = TickData.newBuilder()
+                .setTickNumber(42L)
+                .setSimulationRunId(runId)
+                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                    CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
+                )))
+                .build();
+            
+            TickDataChunk chunk = TickDataChunk.newBuilder()
+                .setSnapshot(snapshot)
+                .build();
 
-            var envProps = new org.evochora.runtime.model.EnvironmentProperties(new int[]{10, 10}, false);
-            var stmt = conn.prepareStatement(strategy.getMergeSql());
-            strategy.writeTicks(conn, stmt, ticks, envProps);
-            stmt.close();
+            strategy.writeChunks(conn, List.of(chunk));
             conn.commit();
         }
 

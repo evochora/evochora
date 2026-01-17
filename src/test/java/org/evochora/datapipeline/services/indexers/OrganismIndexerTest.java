@@ -5,7 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareOrganismDataWriter;
@@ -22,7 +22,7 @@ import com.typesafe.config.ConfigFactory;
 /**
  * Unit test for OrganismIndexer wiring against a real H2Database + wrapper.
  * <p>
- * Verifies that prepareTables() and flushTicks() delegate to the underlying
+ * Verifies that prepareTables() and flushChunks() delegate to the underlying
  * {@link IResourceSchemaAwareOrganismDataWriter} without throwing and that
  * the indexer remains healthy.
  */
@@ -77,7 +77,7 @@ class OrganismIndexerTest {
     // resource wiring via OrganismIndexer constructor.
 
     /**
-     * Test subclass exposing prepareTables/flushTicks for direct invocation.
+     * Test subclass exposing prepareTables/flushChunks for direct invocation.
      */
     private static class TestOrganismIndexer<ACK> extends OrganismIndexer<ACK> {
 
@@ -88,9 +88,9 @@ class OrganismIndexerTest {
         }
 
         @Override
-        protected void flushTicks(List<TickData> ticks) throws Exception {
+        protected void flushChunks(List<TickDataChunk> chunks) throws Exception {
             flushCalled.set(true);
-            super.flushTicks(ticks);
+            super.flushChunks(chunks);
         }
     }
 }

@@ -5,6 +5,7 @@ import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -13,17 +14,18 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Test service that writes dummy TickData batches to storage using the batch API.
+ * Test service that writes dummy TickDataChunk batches to storage using the chunk batch API.
  * Used for integration testing of storage resources.
  */
 public class DummyWriterService extends AbstractService {
     private final IBatchStorageWrite storage;
     private final int intervalMs;
-    private final int messagesPerWrite;
+    private final int chunksPerWrite;
+    private final int ticksPerChunk;
     private final int maxWrites;
     private final String keyPrefix;
 
-    private final AtomicLong totalMessagesWritten = new AtomicLong(0);
+    private final AtomicLong totalChunksWritten = new AtomicLong(0);
     private final AtomicLong totalBytesWritten = new AtomicLong(0);
     private final AtomicLong writeOperations = new AtomicLong(0);
     private final AtomicLong writeErrors = new AtomicLong(0);
@@ -33,7 +35,8 @@ public class DummyWriterService extends AbstractService {
         super(name, options, resources);
         this.storage = getRequiredResource("storage", IBatchStorageWrite.class);
         this.intervalMs = options.hasPath("intervalMs") ? options.getInt("intervalMs") : 1000;
-        this.messagesPerWrite = options.hasPath("messagesPerWrite") ? options.getInt("messagesPerWrite") : 10;
+        this.chunksPerWrite = options.hasPath("messagesPerWrite") ? options.getInt("messagesPerWrite") : 10;
+        this.ticksPerChunk = options.hasPath("ticksPerChunk") ? options.getInt("ticksPerChunk") : 10;
         this.maxWrites = options.hasPath("maxWrites") ? options.getInt("maxWrites") : -1;
         this.keyPrefix = options.hasPath("keyPrefix") ? options.getString("keyPrefix") : "test";
     }
@@ -51,30 +54,33 @@ public class DummyWriterService extends AbstractService {
                 break;
             }
 
-            // Collect a batch of messages
-            List<TickData> batch = new ArrayList<>();
+            // Collect a batch of chunks
+            List<TickDataChunk> batch = new ArrayList<>();
             long firstTick = currentTick;
-            for (int i = 0; i < messagesPerWrite; i++) {
-                TickData tick = generateDummyTickData(currentTick++);
-                batch.add(tick);
-                totalBytesWritten.addAndGet(tick.getSerializedSize());
+            
+            for (int c = 0; c < chunksPerWrite; c++) {
+                TickDataChunk chunk = generateDummyChunk(currentTick, ticksPerChunk);
+                batch.add(chunk);
+                totalBytesWritten.addAndGet(chunk.getSerializedSize());
+                currentTick += ticksPerChunk;
             }
+            
             long lastTick = currentTick - 1;
 
             try {
-                // Write batch using batch API
-                StoragePath path = storage.writeBatch(batch, firstTick, lastTick);
-                totalMessagesWritten.addAndGet(batch.size());
+                // Write chunk batch using chunk batch API
+                StoragePath path = storage.writeChunkBatch(batch, firstTick, lastTick);
+                totalChunksWritten.addAndGet(batch.size());
                 writeOperations.incrementAndGet();
-                log.debug("Wrote batch {} with {} messages (ticks {}-{})",
+                log.debug("Wrote chunk batch {} with {} chunks (ticks {}-{})",
                     path, batch.size(), firstTick, lastTick);
 
             } catch (IOException e) {
-                log.warn("Failed to write batch (ticks {}-{})", firstTick, lastTick);
+                log.warn("Failed to write chunk batch (ticks {}-{})", firstTick, lastTick);
                 writeErrors.incrementAndGet();
                 recordError(
                     "WRITE_BATCH_ERROR",
-                    "Failed to write batch",
+                    "Failed to write chunk batch",
                     String.format("Ticks: %d-%d", firstTick, lastTick)
                 );
             }
@@ -84,11 +90,19 @@ public class DummyWriterService extends AbstractService {
         }
     }
 
-    private TickData generateDummyTickData(long tickNumber) {
-        return TickData.newBuilder()
+    private TickDataChunk generateDummyChunk(long startTick, int tickCount) {
+        TickData snapshot = TickData.newBuilder()
             .setSimulationRunId(keyPrefix + "_run")
-            .setTickNumber(tickNumber)
+            .setTickNumber(startTick)
             .setCaptureTimeMs(System.currentTimeMillis())
+            .build();
+        
+        return TickDataChunk.newBuilder()
+            .setSimulationRunId(keyPrefix + "_run")
+            .setFirstTick(startTick)
+            .setLastTick(startTick + tickCount - 1)
+            .setTickCount(tickCount)
+            .setSnapshot(snapshot)
             .build();
     }
 
@@ -96,7 +110,7 @@ public class DummyWriterService extends AbstractService {
     protected void addCustomMetrics(Map<String, Number> metrics) {
         super.addCustomMetrics(metrics);
         
-        metrics.put("messages_written", totalMessagesWritten.get());
+        metrics.put("chunks_written", totalChunksWritten.get());
         metrics.put("bytes_written", totalBytesWritten.get());
         metrics.put("write_operations", writeOperations.get());
         metrics.put("write_errors", writeErrors.get());

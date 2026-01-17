@@ -1,29 +1,35 @@
 package org.evochora.datapipeline.resources.database.h2;
 
 import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.List;
 
-import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
-import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
-import org.evochora.runtime.model.EnvironmentProperties;
 
 /**
- * H2-specific strategy interface for storing and reading environment data.
+ * H2-specific strategy interface for storing and reading environment data as chunks.
  * <p>
- * Different strategies trade off between storage size, query performance,
- * and write performance. This interface is H2-specific and cannot be used
- * with other database backends.
+ * This interface supports delta compression by storing entire TickDataChunks as BLOBs.
+ * Each chunk contains a snapshot and deltas for a range of ticks. The caller (typically
+ * EnvironmentController) is responsible for decompression using DeltaCodec.
  * <p>
- * <strong>Rationale:</strong> Storage requirements for environment data can vary
- * dramatically based on environment size and tick count:
+ * <strong>Rationale:</strong> Storing chunks instead of individual ticks provides:
  * <ul>
- *   <li>Small runs (1000×1000, 10^6 ticks): ~15 GB with row-per-cell</li>
- *   <li>Large runs (10000×10000, 10^8 ticks): ~500 TB with row-per-cell ❌</li>
+ *   <li>Massive storage reduction (~30-50% compared to storing every tick as snapshot)</li>
+ *   <li>Fewer database rows (100 ticks/chunk = 100× fewer rows)</li>
+ *   <li>Faster MERGE operations (smaller B-tree index)</li>
  * </ul>
- * Different storage strategies enable different trade-offs without code changes.
+ * <p>
+ * <strong>Decompression Strategy:</strong> Decompression happens in the EnvironmentController,
+ * not in this strategy. This allows the controller to implement caching of decompressed chunks
+ * for efficient sequential tick access (e.g., scrubbing through ticks).
+ * <p>
+ * <strong>Future Binary Response Format:</strong> The interface is designed to allow easy
+ * migration to binary response formats (MessagePack, Protobuf) by keeping the strategy
+ * focused on raw chunk storage without response serialization concerns.
+ *
+ * @see org.evochora.datapipeline.utils.delta.DeltaCodec
  */
 public interface IH2EnvStorageStrategy {
     
@@ -55,46 +61,42 @@ public interface IH2EnvStorageStrategy {
     String getMergeSql();
     
     /**
-     * Writes environment data for multiple ticks using this storage strategy.
+     * Writes a batch of chunks to the database.
      * <p>
      * <strong>Transaction Management:</strong> This method is executed within a transaction
      * managed by the caller (H2Database). Implementations should <strong>NOT</strong> call
      * {@code commit()} or {@code rollback()} themselves. If an exception is thrown, the
      * caller is responsible for rolling back the transaction.
      * <p>
-     * <strong>PreparedStatement Caching:</strong> The {@code stmt} parameter is a cached
-     * PreparedStatement created from {@link #getMergeSql()}. This eliminates repeated SQL
-     * parsing overhead and improves write performance by ~30-50%.
-     * <p>
-     * <strong>Rationale:</strong> Keeps strategy focused on SQL operations only, while
-     * H2Database manages transaction lifecycle and statement caching consistently.
+     * Each chunk is stored as a single row with the serialized TickDataChunk as BLOB.
+     * The chunk contains snapshot + deltas and is NOT decompressed before storage.
      *
      * @param conn Database connection (with autoCommit=false, transaction managed by caller)
-     * @param stmt Cached PreparedStatement for MERGE operation (from getMergeSql())
-     * @param ticks List of ticks with cell data to write
-     * @param envProps Environment properties for coordinate conversion
+     * @param chunks List of chunks to write
      * @throws SQLException if write fails (caller will rollback)
      */
-    void writeTicks(Connection conn, PreparedStatement stmt, List<TickData> ticks, 
-                    EnvironmentProperties envProps) throws SQLException;
+    void writeChunks(Connection conn, List<TickDataChunk> chunks) throws SQLException;
 
     /**
-     * Reads environment cells for a specific tick with optional region filtering.
+     * Reads the chunk containing the specified tick number.
      * <p>
-     * This method enables HTTP API controllers to query environment data with
-     * spatial filtering. The strategy handles database-specific optimizations
-     * (e.g., BLOB decompression, spatial indexes) transparently.
+     * This method returns the raw TickDataChunk without decompression. The caller
+     * (typically EnvironmentController) is responsible for:
+     * <ol>
+     *   <li>Caching the chunk (optional, for sequential access optimization)</li>
+     *   <li>Decompressing using {@code DeltaCodec.Decoder.decompressTick(chunk, tickNumber)}</li>
+     *   <li>Filtering by region</li>
+     *   <li>Converting to response format (JSON/MessagePack)</li>
+     * </ol>
+     * <p>
+     * <strong>Query Strategy:</strong> Uses {@code first_tick <= ? AND last_tick >= ?} to find
+     * the chunk containing the requested tick.
      * 
      * @param conn Database connection (schema already set)
-     * @param tickNumber Tick to read
-     * @param region Spatial bounds (null = all cells)
-     * @param envProps Environment properties for coordinate conversion
-     * @return List of cells with flatIndex (coordinates converted by caller)
+     * @param tickNumber Tick number to find (chunk containing this tick will be returned)
+     * @return The TickDataChunk containing the requested tick
      * @throws SQLException if database read fails
-     * @throws TickNotFoundException if the tick itself does not exist in the database
+     * @throws TickNotFoundException if no chunk contains the requested tick
      */
-    List<org.evochora.datapipeline.api.contracts.CellState> readTick(Connection conn, long tickNumber, 
-                                                                      SpatialRegion region, 
-                                                                      EnvironmentProperties envProps) throws SQLException, TickNotFoundException;
+    TickDataChunk readChunkContaining(Connection conn, long tickNumber) throws SQLException, TickNotFoundException;
 }
-

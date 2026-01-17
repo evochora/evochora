@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
-import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
@@ -17,28 +17,32 @@ import org.slf4j.LoggerFactory;
 import com.typesafe.config.Config;
 
 /**
- * Indexes environment cell states from TickData for efficient spatial queries.
+ * Indexes environment cell states from TickDataChunks for efficient spatial queries.
  * <p>
  * This indexer:
  * <ul>
- *   <li>Reads TickData batches from storage (via topic notifications)</li>
- *   <li>Extracts CellState list (sparse - only non-empty cells)</li>
+ *   <li>Reads TickDataChunk batches from storage (via topic notifications)</li>
+ *   <li>Stores chunks as BLOBs in the database (no decompression)</li>
  *   <li>Writes to database with MERGE for 100% idempotency</li>
  *   <li>Supports dimension-agnostic schema (1D to N-D)</li>
  * </ul>
  * <p>
+ * <strong>Delta Compression:</strong> This indexer stores chunks directly without
+ * decompression to maximize storage savings. Decompression is deferred to query time
+ * in the EnvironmentController, which uses DeltaCodec to reconstruct individual ticks.
+ * <p>
  * <strong>Resources Required:</strong>
  * <ul>
- *   <li>{@code storage} - IBatchStorageRead for reading TickData batches</li>
+ *   <li>{@code storage} - IBatchStorageRead for reading TickDataChunk batches</li>
  *   <li>{@code topic} - ITopicReader for batch notifications</li>
  *   <li>{@code metadata} - IMetadataReader for simulation metadata</li>
- *   <li>{@code database} - IEnvironmentDataWriter for writing cells</li>
+ *   <li>{@code database} - IEnvironmentDataWriter for writing chunks</li>
  * </ul>
  * <p>
  * <strong>Components Used:</strong>
  * <ul>
  *   <li>MetadataReadingComponent - waits for metadata before processing</li>
- *   <li>TickBufferingComponent - buffers cells for efficient batch writes</li>
+ *   <li>ChunkBufferingComponent - buffers chunks for efficient batch writes</li>
  * </ul>
  * <p>
  * <strong>Competing Consumers:</strong> Multiple instances can run in parallel
@@ -67,7 +71,7 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> implement
     public EnvironmentIndexer(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
         this.database = getRequiredResource("database", IResourceSchemaAwareEnvironmentDataWriter.class);
-        this.insertBatchSize = options.hasPath("insertBatchSize") ? options.getInt("insertBatchSize") : 20;
+        this.insertBatchSize = options.hasPath("insertBatchSize") ? options.getInt("insertBatchSize") : 5;
     }
     
     // Use default components: METADATA + BUFFERING
@@ -76,7 +80,7 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> implement
     /**
      * Prepares database tables for environment data storage.
      * <p>
-     * Extracts environment properties from metadata and creates the environment_ticks table.
+     * Extracts environment properties from metadata and creates the environment_chunks table.
      * <strong>Idempotent:</strong> Safe to call multiple times (uses CREATE TABLE IF NOT EXISTS).
      *
      * @param runId The simulation run ID (schema already set by AbstractIndexer)
@@ -98,29 +102,31 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> implement
     }
     
     /**
-     * Flushes buffered ticks to the database.
+     * Flushes buffered chunks to the database.
      * <p>
-     * Writes all ticks in ONE database batch with ONE commit for maximum performance.
+     * Writes chunks directly as BLOBs without decompression for maximum storage savings.
+     * <p>
      * <strong>Idempotency:</strong> MERGE ensures duplicate writes are safe.
      *
-     * @param ticks Ticks to flush (1 for tick-by-tick mode, multiple for buffered mode)
+     * @param chunks Chunks to flush (typically 1-10 chunks per flush)
      * @throws Exception if flush fails
      */
     @Override
-    protected void flushTicks(List<TickData> ticks) throws Exception {
-        if (ticks.isEmpty()) {
-            log.debug("No ticks to flush");
+    protected void flushChunks(List<TickDataChunk> chunks) throws Exception {
+        if (chunks.isEmpty()) {
+            log.debug("No chunks to flush");
             return;
         }
 
-        // Write ALL ticks in one JDBC batch with one commit
-        database.writeEnvironmentCells(ticks, envProps);
+        // Write ALL chunks directly to database (no decompression)
+        database.writeEnvironmentChunks(chunks);
         
-        int totalCells = ticks.stream()
-            .mapToInt(t -> t.getCellColumns().getFlatIndicesCount())
+        // Calculate total ticks for logging
+        int totalTicks = chunks.stream()
+            .mapToInt(chunk -> 1 + chunk.getDeltasCount())  // 1 snapshot + N deltas
             .sum();
         
-        log.debug("Flushed {} cells from {} ticks", totalCells, ticks.size());
+        log.debug("Flushed {} chunks ({} ticks total)", chunks.size(), totalTicks);
     }
     
     /**
@@ -150,30 +156,23 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> implement
     /**
      * {@inheritDoc}
      * <p>
-     * Estimates memory for the EnvironmentIndexer tick buffer at worst-case.
+     * Estimates memory for the EnvironmentIndexer chunk buffer at worst-case.
      * <p>
-     * <strong>Calculation:</strong> insertBatchSize × bytesPerEnvironmentTick (100% occupancy)
+     * <strong>Calculation:</strong> insertBatchSize (chunks) × bytesPerChunk
      * <p>
-     * The buffer holds List&lt;TickData&gt; where each tick contains CellState for all cells.
-     * At 100% occupancy, every cell in the environment is filled with organisms or energy.
-     * Each CellState consumes ~{@value SimulationParameters#BYTES_PER_CELL} bytes in Java heap.
+     * The buffer holds List&lt;TickDataChunk&gt; where each chunk contains a snapshot
+     * and deltas. Each chunk is estimated at ~25MB for a 1600×1200 environment.
      */
     @Override
     public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
-        // Each tick contains environment cells at 100% occupancy
-        // BYTES_PER_CELL bytes per CellState in Java heap (Protobuf + object overhead)
-        long bytesPerTick = params.estimateEnvironmentBytesPerTick();
-        long totalBytes = (long) insertBatchSize * bytesPerTick;
+        // Each chunk contains snapshot + deltas
+        long bytesPerChunk = params.estimateBytesPerChunk();
+        long totalBytes = (long) insertBatchSize * bytesPerChunk;
         
-        // Add TickData wrapper overhead per tick
-        long wrapperOverhead = (long) insertBatchSize * SimulationParameters.TICKDATA_WRAPPER_OVERHEAD;
-        totalBytes += wrapperOverhead;
-        
-        String explanation = String.format("%d insertBatchSize × %s/tick (100%% cells = %d × %dB)",
+        String explanation = String.format("%d insertBatchSize (chunks) × %s/chunk (%d ticks/chunk)",
             insertBatchSize,
-            SimulationParameters.formatBytes(bytesPerTick),
-            params.totalCells(),
-            SimulationParameters.BYTES_PER_CELL);
+            SimulationParameters.formatBytes(bytesPerChunk),
+            params.ticksPerChunk());
         
         return List.of(new MemoryEstimate(
             serviceName,

@@ -8,8 +8,8 @@ import java.util.List;
 
 import org.evochora.datapipeline.CellStateTestHelper;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
-import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -52,22 +52,25 @@ class H2DatabaseEnvIntegrationTest {
         // When: Create database
         database = new H2Database("test-db", config);
         
-        // Then: Should use default SingleBlobStrategy
+        // Then: Should use default RowPerChunkStrategy
         assertThat(database).isNotNull();
         
         // Verify it can create environment table and write data
-        EnvironmentProperties envProps = new EnvironmentProperties(new int[]{10, 10}, false);
-        TickData tick = TickData.newBuilder()
+        TickData snapshot = TickData.newBuilder()
             .setTickNumber(1L)
             .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
                 CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
             )))
             .build();
         
+        TickDataChunk chunk = TickDataChunk.newBuilder()
+            .setSnapshot(snapshot)
+            .build();
+        
         Object conn = database.acquireDedicatedConnection();
         try {
             database.doCreateEnvironmentDataTable(conn, 2);
-            database.doWriteEnvironmentCells(conn, List.of(tick), envProps);
+            database.doWriteEnvironmentChunks(conn, List.of(chunk));
         } finally {
             if (conn instanceof java.sql.Connection) {
                 ((java.sql.Connection) conn).close();
@@ -77,13 +80,13 @@ class H2DatabaseEnvIntegrationTest {
     
     @Test
     void testStrategyLoading_WithCustomStrategy() throws Exception {
-        // Given: H2Database with explicit SingleBlobStrategy and compression
+        // Given: H2Database with explicit RowPerChunkStrategy and compression
         // Use forward slashes in path (works on all platforms, avoids Config parsing issues with backslashes)
         String dbPath = tempDir.toString().replace("\\", "/");
         Config config = ConfigFactory.parseString("""
             jdbcUrl = "jdbc:h2:file:%s/test-custom-strategy"
             h2EnvironmentStrategy {
-                className = "org.evochora.datapipeline.resources.database.h2.SingleBlobStrategy"
+                className = "org.evochora.datapipeline.resources.database.h2.RowPerChunkStrategy"
                 options {
                     compression {
                         codec = "zstd"
@@ -96,22 +99,25 @@ class H2DatabaseEnvIntegrationTest {
         // When: Create database
         database = new H2Database("test-db", config);
         
-        // Then: Should use SingleBlobStrategy with compression
+        // Then: Should use RowPerChunkStrategy with compression
         assertThat(database).isNotNull();
         
         // Verify it works with compression
-        EnvironmentProperties envProps = new EnvironmentProperties(new int[]{10, 10}, false);
-        TickData tick = TickData.newBuilder()
+        TickData snapshot = TickData.newBuilder()
             .setTickNumber(1L)
             .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
                 CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
             )))
             .build();
         
+        TickDataChunk chunk = TickDataChunk.newBuilder()
+            .setSnapshot(snapshot)
+            .build();
+        
         Object conn = database.acquireDedicatedConnection();
         try {
             database.doCreateEnvironmentDataTable(conn, 2);
-            database.doWriteEnvironmentCells(conn, List.of(tick), envProps);
+            database.doWriteEnvironmentChunks(conn, List.of(chunk));
         } finally {
             if (conn instanceof java.sql.Connection) {
                 ((java.sql.Connection) conn).close();
@@ -170,4 +176,3 @@ class H2DatabaseEnvIntegrationTest {
             .hasMessageContaining("constructor");
     }
 }
-

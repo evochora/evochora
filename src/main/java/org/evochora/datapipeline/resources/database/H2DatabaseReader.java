@@ -7,6 +7,9 @@ import java.sql.SQLException;
 import java.util.List;
 
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
+import org.evochora.datapipeline.api.delta.ChunkCorruptedException;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.OrganismNotFoundException;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
@@ -21,6 +24,7 @@ import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
 import org.evochora.datapipeline.resources.database.h2.IH2EnvStorageStrategy;
 import org.evochora.datapipeline.resources.database.h2.IH2OrgStorageStrategy;
 import org.evochora.datapipeline.utils.MoleculeDataUtils;
+import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -84,6 +88,12 @@ public class H2DatabaseReader implements IDatabaseReader {
     }
     
     @Override
+    public TickDataChunk readChunkContaining(long tickNumber) throws SQLException, TickNotFoundException {
+        ensureNotClosed();
+        return envStrategy.readChunkContaining(connection, tickNumber);
+    }
+    
+    @Override
     public List<CellWithCoordinates> readEnvironmentRegion(long tickNumber, SpatialRegion region) 
             throws SQLException, TickNotFoundException {
         ensureNotClosed();
@@ -97,40 +107,84 @@ public class H2DatabaseReader implements IDatabaseReader {
         }
         EnvironmentProperties envProps = extractEnvironmentProperties(metadata);
         
-        // Read cells via strategy
-        List<org.evochora.datapipeline.api.contracts.CellState> cells = 
-            envStrategy.readTick(connection, tickNumber, region, envProps);
+        // Read chunk containing the tick
+        TickDataChunk chunk = readChunkContaining(tickNumber);
+        
+        // Decompress to get the specific tick using Decoder
+        TickData tickData;
+        try {
+            DeltaCodec.Decoder decoder = new DeltaCodec.Decoder(envProps);
+            tickData = decoder.decompressTick(chunk, tickNumber);
+        } catch (ChunkCorruptedException e) {
+            throw new SQLException("Corrupted chunk for tick " + tickNumber + ": " + e.getMessage(), e);
+        }
         
         // Ensure instruction set is initialized before resolving opcode names
         ensureInstructionSetInitialized();
         
-        // Convert flatIndex to coordinates and molecule type int to string
-        return cells.stream()
-            .map(cell -> {
-                int[] coords = envProps.flatIndexToCoordinates(cell.getFlatIndex());
+        // Get cells from tick data
+        var cellColumns = tickData.getCellColumns();
+        int cellCount = cellColumns.getFlatIndicesCount();
+        
+        // Convert to CellWithCoordinates, filtering by region if provided
+        List<CellWithCoordinates> result = new java.util.ArrayList<>();
+        for (int i = 0; i < cellCount; i++) {
+            int flatIndex = cellColumns.getFlatIndices(i);
+            int[] coords = envProps.flatIndexToCoordinates(flatIndex);
+            
+            // Filter by region if provided
+            if (region != null && !isInRegion(coords, region, envProps.getDimensions())) {
+                continue;
+            }
 
-                int moleculeInt = cell.getMoleculeData();
-                int moleculeType = moleculeInt & Config.TYPE_MASK;
-                int moleculeValue = MoleculeDataUtils.extractSignedValue(moleculeInt);
-                int marker = (moleculeInt & Config.MARKER_MASK) >> Config.MARKER_SHIFT;
+            int moleculeInt = cellColumns.getMoleculeData(i);
+            int moleculeType = moleculeInt & Config.TYPE_MASK;
+            int moleculeValue = MoleculeDataUtils.extractSignedValue(moleculeInt);
+            int marker = (moleculeInt & Config.MARKER_MASK) >> Config.MARKER_SHIFT;
+            int ownerId = cellColumns.getOwnerIds(i);
 
-                String moleculeTypeName = MoleculeTypeRegistry.typeToName(moleculeType);
-                
-                // For CODE molecules, resolve opcode name from value
-                String opcodeName = null;
-                if (moleculeType == Config.TYPE_CODE) {
-                    opcodeName = Instruction.getInstructionNameById(moleculeValue);
+            String moleculeTypeName = MoleculeTypeRegistry.typeToName(moleculeType);
+            
+            // For CODE molecules, resolve opcode name from value
+            String opcodeName = null;
+            if (moleculeType == Config.TYPE_CODE) {
+                opcodeName = Instruction.getInstructionNameById(moleculeValue);
+            }
+            
+            result.add(new CellWithCoordinates(
+                coords,
+                moleculeTypeName,
+                moleculeValue,
+                ownerId,
+                opcodeName,
+                marker
+            ));
+        }
+        
+        return result;
+    }
+    
+    /**
+     * Checks if coordinates are within the specified region.
+     */
+    private boolean isInRegion(int[] coords, SpatialRegion region, int dimensions) {
+        int[] bounds = region.bounds;
+        
+        if (dimensions == 2) {
+            int xMin = bounds[0], xMax = bounds[1];
+            int yMin = bounds[2], yMax = bounds[3];
+            return coords[0] >= xMin && coords[0] <= xMax && 
+                   coords[1] >= yMin && coords[1] <= yMax;
+        } else {
+            for (int d = 0; d < dimensions; d++) {
+                int min = bounds[d * 2];
+                int max = bounds[d * 2 + 1];
+                if (coords[d] < min || coords[d] > max) {
+                    return false;
                 }
-                return new CellWithCoordinates(
-                    coords,
-                    moleculeTypeName,
-                    moleculeValue,
-                    cell.getOwnerId(),
-                    opcodeName,
-                    marker
-                );
-            })
-            .collect(java.util.stream.Collectors.toList());
+            }
+            return true;
+        }
     }
 
 

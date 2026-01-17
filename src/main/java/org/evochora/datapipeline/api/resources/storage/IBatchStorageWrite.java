@@ -1,7 +1,7 @@
 package org.evochora.datapipeline.api.resources.storage;
 
 import com.google.protobuf.MessageLite;
-import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.IResource;
 
 import java.io.IOException;
@@ -22,7 +22,7 @@ import java.util.List;
  * Storage configuration (folder structure, compression) is transparent to callers.
  * Services only need to know about batch write operations, not the underlying organization.
  * <p>
- * <strong>Thread Safety:</strong> writeBatch() is thread-safe. Multiple services can write
+ * <strong>Thread Safety:</strong> writeChunkBatch() is thread-safe. Multiple services can write
  * concurrently as competing consumers without coordination.
  * <p>
  * <strong>Usage Pattern:</strong> This interface is injected into services via usage type
@@ -31,7 +31,9 @@ import java.util.List;
 public interface IBatchStorageWrite extends IResource {
 
     /**
-     * Writes a batch of tick data to storage with automatic folder organization.
+     * Writes a batch of tick data chunks to storage with automatic folder organization.
+     * <p>
+     * Each chunk is a self-contained unit containing a snapshot and deltas.
      * <p>
      * The batch is:
      * <ul>
@@ -42,25 +44,25 @@ public interface IBatchStorageWrite extends IResource {
      * <p>
      * The returned {@link StoragePath} represents the physical path including compression
      * extension (e.g., ".zst" for Zstandard). This path can be passed directly to
-     * {@link IBatchStorageRead#readBatch(StoragePath)} for reading.
+     * {@link IBatchStorageRead#readChunkBatch(StoragePath)} for reading.
      * <p>
-     * <strong>Example usage (PersistenceService):</strong>
+     * <strong>Example usage (PersistenceService with delta compression):</strong>
      * <pre>
-     * List&lt;TickData&gt; batch = queue.drainTo(maxBatchSize);
-     * long firstTick = batch.get(0).getTickNumber();
-     * long lastTick = batch.get(batch.size() - 1).getTickNumber();
-     * StoragePath path = storage.writeBatch(batch, firstTick, lastTick);
-     * log.info("Wrote {} ticks to {}", batch.size(), path);
+     * List&lt;TickDataChunk&gt; chunks = queue.drainTo(maxBatchSize);
+     * long firstTick = chunks.get(0).getFirstTick();
+     * long lastTick = chunks.get(chunks.size() - 1).getLastTick();
+     * StoragePath path = storage.writeChunkBatch(chunks, firstTick, lastTick);
+     * log.info("Wrote {} chunks ({} ticks) to {}", chunks.size(), totalTicks, path);
      * </pre>
      *
-     * @param batch The tick data to persist (must be non-empty)
-     * @param firstTick The first tick number in the batch
-     * @param lastTick The last tick number in the batch
+     * @param batch The tick data chunks to persist (must be non-empty)
+     * @param firstTick The first tick number in the batch (from first chunk)
+     * @param lastTick The last tick number in the batch (from last chunk)
      * @return The physical storage path where batch was written (includes compression extension)
      * @throws IOException If write fails
      * @throws IllegalArgumentException If batch is empty or tick order is invalid (firstTick > lastTick)
      */
-    StoragePath writeBatch(List<TickData> batch, long firstTick, long lastTick) throws IOException;
+    StoragePath writeChunkBatch(List<TickDataChunk> batch, long firstTick, long lastTick) throws IOException;
 
     /**
      * Writes a single protobuf message to storage at the specified key.

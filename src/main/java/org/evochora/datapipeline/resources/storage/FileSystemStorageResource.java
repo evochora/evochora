@@ -18,7 +18,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.storage.IAnalyticsStorageRead;
 import org.evochora.datapipeline.api.resources.storage.IAnalyticsStorageWrite;
 import org.evochora.datapipeline.utils.compression.ICompressionCodec;
@@ -88,8 +88,8 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
     }
 
     @Override
-    protected long writeAtomicStreaming(String physicalPath, List<TickData> batch, 
-                                         ICompressionCodec codec) throws IOException {
+    protected long writeChunkAtomicStreaming(String physicalPath, List<TickDataChunk> batch,
+                                              ICompressionCodec codec) throws IOException {
         validateKey(physicalPath);
         File finalFile = new File(rootDirectory, physicalPath);
         
@@ -114,9 +114,9 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
                  CountingOutputStream countingOut = new CountingOutputStream(fileOut);
                  OutputStream compressedOut = codec.wrapOutputStream(countingOut)) {
                 
-                // Stream each tick directly through compression to disk
-                for (TickData tick : batch) {
-                    tick.writeDelimitedTo(compressedOut);
+                // Stream each chunk directly through compression to disk
+                for (TickDataChunk chunk : batch) {
+                    chunk.writeDelimitedTo(compressedOut);
                 }
                 
                 // Flush compression (required for ZSTD to finalize)

@@ -24,6 +24,7 @@ import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataWriter;
@@ -131,9 +132,9 @@ class AnalyticsIndexerEndToEndTest {
         SimulationMetadata metadata = createTestMetadata(runId, 10);
         indexMetadata(runId, metadata);
 
-        // Write one batch with 10 ticks (with organisms for population metrics)
+        // Write one chunk with 10 ticks (with organisms for population metrics)
         List<TickData> batch = createTestTicksWithOrganisms(runId, 0, 10);
-        StoragePath key = testStorage.writeBatch(batch, 0, 9);
+        StoragePath key = writeChunkBatch(runId, batch, 0, 9);
 
         // Create AnalyticsIndexer
         indexer = createAnalyticsIndexer("test-indexer", runId);
@@ -174,14 +175,14 @@ class AnalyticsIndexerEndToEndTest {
         SimulationMetadata metadata = createTestMetadata(runId, 10);
         indexMetadata(runId, metadata);
 
-        // Write 3 batches with non-overlapping tick ranges
+        // Write 3 chunks with non-overlapping tick ranges
         List<TickData> batch1 = createTestTicksWithOrganisms(runId, 0, 25);
         List<TickData> batch2 = createTestTicksWithOrganisms(runId, 25, 25);
         List<TickData> batch3 = createTestTicksWithOrganisms(runId, 50, 25);
 
-        StoragePath key1 = testStorage.writeBatch(batch1, 0, 24);
-        StoragePath key2 = testStorage.writeBatch(batch2, 25, 49);
-        StoragePath key3 = testStorage.writeBatch(batch3, 50, 74);
+        StoragePath key1 = writeChunkBatch(runId, batch1, 0, 24);
+        StoragePath key2 = writeChunkBatch(runId, batch2, 25, 49);
+        StoragePath key3 = writeChunkBatch(runId, batch3, 50, 74);
 
         // Create AnalyticsIndexer
         indexer = createAnalyticsIndexer("test-indexer", runId);
@@ -231,9 +232,9 @@ class AnalyticsIndexerEndToEndTest {
         SimulationMetadata metadata = createTestMetadata(runId, 10);
         indexMetadata(runId, metadata);
 
-        // Write one batch
+        // Write one chunk
         List<TickData> batch = createTestTicksWithOrganisms(runId, 0, 5);
-        StoragePath key = testStorage.writeBatch(batch, 0, 4);
+        StoragePath key = writeChunkBatch(runId, batch, 0, 4);
 
         // Create and start AnalyticsIndexer
         indexer = createAnalyticsIndexer("test-indexer", runId);
@@ -271,9 +272,9 @@ class AnalyticsIndexerEndToEndTest {
         SimulationMetadata metadata = createTestMetadata(runId, 10);
         indexMetadata(runId, metadata);
 
-        // Write batch starting at tick 0 (should be in 000/000/ folder)
+        // Write chunk starting at tick 0 (should be in 000/000/ folder)
         List<TickData> batch = createTestTicksWithOrganisms(runId, 0, 10);
-        StoragePath key = testStorage.writeBatch(batch, 0, 9);
+        StoragePath key = writeChunkBatch(runId, batch, 0, 9);
 
         // Create AnalyticsIndexer with folder structure
         indexer = createAnalyticsIndexer("test-indexer", runId);
@@ -305,9 +306,9 @@ class AnalyticsIndexerEndToEndTest {
         SimulationMetadata metadata = createTestMetadata(runId, 10);
         indexMetadata(runId, metadata);
 
-        // Write one batch with 100 ticks (to have data in lod1 which samples every 10th tick)
+        // Write one chunk with 100 ticks (to have data in lod1 which samples every 10th tick)
         List<TickData> batch = createTestTicksWithOrganisms(runId, 0, 100);
-        StoragePath key = testStorage.writeBatch(batch, 0, 99);
+        StoragePath key = writeChunkBatch(runId, batch, 0, 99);
 
         // Create AnalyticsIndexer with 2 LOD levels
         indexer = createAnalyticsIndexerWithLodLevels("test-indexer", runId, 2);
@@ -351,12 +352,12 @@ class AnalyticsIndexerEndToEndTest {
         SimulationMetadata metadata = createTestMetadata(runId, 10);
         indexMetadata(runId, metadata);
 
-        // Write 2 batches
+        // Write 2 chunks
         List<TickData> batch1 = createTestTicksWithOrganisms(runId, 0, 10);
         List<TickData> batch2 = createTestTicksWithOrganisms(runId, 10, 10);
 
-        StoragePath key1 = testStorage.writeBatch(batch1, 0, 9);
-        StoragePath key2 = testStorage.writeBatch(batch2, 10, 19);
+        StoragePath key1 = writeChunkBatch(runId, batch1, 0, 9);
+        StoragePath key2 = writeChunkBatch(runId, batch2, 10, 19);
 
         // Create and start AnalyticsIndexer
         indexer = createAnalyticsIndexer("test-indexer", runId);
@@ -514,6 +515,13 @@ class AnalyticsIndexerEndToEndTest {
             .setSamplingInterval(samplingInterval)
             .setInitialSeed(12345L)
             .setStartTimeMs(System.currentTimeMillis())
+            .setEnvironment(org.evochora.datapipeline.api.contracts.EnvironmentConfig.newBuilder()
+                .setDimensions(2)
+                .addShape(100)
+                .addShape(100)
+                .addToroidal(false)
+                .addToroidal(false)
+                .build())
             .build();
     }
 
@@ -564,6 +572,24 @@ class AnalyticsIndexerEndToEndTest {
                 .build());
         }
         return ticks;
+    }
+
+    private StoragePath writeChunkBatch(String runId, List<TickData> ticks, long firstTick, long lastTick) throws Exception {
+        // Convert each tick to its own chunk (each chunk has tickCount=1)
+        // This matches production behavior where each tick gets its own snapshot in test scenarios
+        List<TickDataChunk> chunks = new ArrayList<>();
+        for (TickData tick : ticks) {
+            TickDataChunk chunk = TickDataChunk.newBuilder()
+                .setSimulationRunId(runId)
+                .setFirstTick(tick.getTickNumber())
+                .setLastTick(tick.getTickNumber())
+                .setTickCount(1)  // Each chunk contains exactly 1 tick
+                .setSnapshot(tick)
+                .build();
+            chunks.add(chunk);
+        }
+        
+        return testStorage.writeChunkBatch(chunks, firstTick, lastTick);
     }
 
     private void sendBatchInfoToTopic(String runId, String storageKey, long tickStart, long tickEnd) throws Exception {

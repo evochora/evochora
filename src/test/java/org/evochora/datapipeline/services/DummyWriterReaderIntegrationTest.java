@@ -40,9 +40,10 @@ class DummyWriterReaderIntegrationTest {
     @Test
     @AllowLog(level = LogLevel.INFO, loggerPattern = ".*")
     void testWriterAndReaderWorkTogether() {
-        final int messagesPerWrite = 50;
-        final int maxWrites = 10;
-        final long totalMessages = (long) messagesPerWrite * maxWrites;
+        // Each write produces chunksPerWrite chunks, each chunk containing ticksPerChunk ticks
+        final int chunksPerWrite = 10;
+        final int maxWrites = 5;
+        final long totalChunks = (long) chunksPerWrite * maxWrites;
 
         String rootDirectory = tempDir.toAbsolutePath().toString().replace("\\", "\\\\");
 
@@ -62,6 +63,7 @@ class DummyWriterReaderIntegrationTest {
                   options {
                     intervalMs = 1
                     messagesPerWrite = %d
+                    ticksPerChunk = 10
                     maxWrites = %d
                     keyPrefix = "integration_test"
                   }
@@ -79,7 +81,7 @@ class DummyWriterReaderIntegrationTest {
               // Define explicit startup sequence for clarity
               startupSequence = ["dummy-writer", "dummy-reader"]
             }
-            """, rootDirectory, messagesPerWrite, maxWrites);
+            """, rootDirectory, chunksPerWrite, maxWrites);
 
         Config config = ConfigFactory.parseString(configString);
         serviceManager = new ServiceManager(config);
@@ -94,14 +96,14 @@ class DummyWriterReaderIntegrationTest {
         );
 
         // 2. NOW, wait for the reader to catch up and process all the stable files.
-        // We wait until the 'messages_read' metric matches the total number of messages written.
+        // We wait until the 'chunks_read' metric matches the total number of chunks written.
         // Note: We don't fail on transient ERROR states during polling - the reader may encounter
         // temporary I/O issues (especially in CI environments) but recover and continue processing.
         // The final assertions will verify that all data was correctly processed.
         await().atMost(30, TimeUnit.SECONDS).pollInterval(100, TimeUnit.MILLISECONDS).until(() -> {
             var readerStatus = serviceManager.getServiceStatus("dummy-reader");
-            Number messagesRead = (readerStatus != null) ? readerStatus.metrics().get("messages_read") : 0;
-            return totalMessages == (messagesRead != null ? messagesRead.longValue() : 0L);
+            Number chunksRead = (readerStatus != null) ? readerStatus.metrics().get("chunks_read") : 0;
+            return totalChunks == (chunksRead != null ? chunksRead.longValue() : 0L);
         });
         
         // Final assertions - verify all data was correctly processed
@@ -111,11 +113,11 @@ class DummyWriterReaderIntegrationTest {
         assertNotNull(writerStatus);
         assertNotNull(readerStatus);
 
-        // Verify all messages were written and read
-        assertEquals(totalMessages, writerStatus.metrics().get("messages_written").longValue(),
-            "Writer should have written all messages");
-        assertEquals(totalMessages, readerStatus.metrics().get("messages_read").longValue(),
-            "Reader should have read all messages");
+        // Verify all chunks were written and read
+        assertEquals(totalChunks, writerStatus.metrics().get("chunks_written").longValue(),
+            "Writer should have written all chunks");
+        assertEquals(totalChunks, readerStatus.metrics().get("chunks_read").longValue(),
+            "Reader should have read all chunks");
         
         // Verify data integrity - no validation errors allowed
         assertEquals(0L, readerStatus.metrics().get("validation_errors").longValue(),

@@ -913,9 +913,31 @@ public class ServiceManager implements IMonitorable {
                         ? serviceConfig.getInt("options.maxOrganisms")
                         : 5000; // Default: 5000 organisms (memory-optimized)
                     
-                    log.debug("Found SimulationEngine '{}' with environment shape {}, maxOrganisms={}", 
-                        serviceName, Arrays.toString(shape), maxOrganisms);
-                    return new SimulationParameters(shape, totalCells, maxOrganisms);
+                    // Read delta compression parameters
+                    int samplingInterval = serviceConfig.hasPath("options.samplingInterval")
+                        ? serviceConfig.getInt("options.samplingInterval")
+                        : SimulationParameters.DEFAULT_SAMPLING_INTERVAL;
+                    int accumulatedDeltaInterval = serviceConfig.hasPath("options.accumulatedDeltaInterval")
+                        ? serviceConfig.getInt("options.accumulatedDeltaInterval")
+                        : SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL;
+                    int snapshotInterval = serviceConfig.hasPath("options.snapshotInterval")
+                        ? serviceConfig.getInt("options.snapshotInterval")
+                        : SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL;
+                    int chunkInterval = serviceConfig.hasPath("options.chunkInterval")
+                        ? serviceConfig.getInt("options.chunkInterval")
+                        : SimulationParameters.DEFAULT_CHUNK_INTERVAL;
+                    double estimatedDeltaRatio = serviceConfig.hasPath("options.estimatedDeltaRatio")
+                        ? serviceConfig.getDouble("options.estimatedDeltaRatio")
+                        : SimulationParameters.DEFAULT_ESTIMATED_DELTA_RATIO;
+                    
+                    log.debug("Found SimulationEngine '{}' with environment shape {}, maxOrganisms={}, ticksPerChunk={}", 
+                        serviceName, Arrays.toString(shape), maxOrganisms,
+                        samplingInterval * accumulatedDeltaInterval * snapshotInterval * chunkInterval);
+                    return new SimulationParameters(
+                        shape, totalCells, maxOrganisms,
+                        samplingInterval, accumulatedDeltaInterval,
+                        snapshotInterval, chunkInterval, estimatedDeltaRatio
+                    );
                 }
             }
             

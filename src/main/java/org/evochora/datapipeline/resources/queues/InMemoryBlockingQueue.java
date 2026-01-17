@@ -67,8 +67,8 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
      *                  <li>{@code coalescingDelayMs} - Delay for batch coalescing (default: 0)</li>
      *                  <li>{@code disableTimestamps} - Disable timestamp tracking (default: false)</li>
      *                  <li>{@code estimatedBytesPerItem} - Override memory estimation per item in bytes.
-     *                      If not set, uses {@link SimulationParameters#estimateBytesPerTick()} which
-     *                      assumes TickData. Set this for queues holding other types (e.g., metadata-queue
+     *                      If not set, uses {@link SimulationParameters#estimateBytesPerChunk()} which
+     *                      assumes TickDataChunk. Set this for queues holding other types (e.g., metadata-queue
      *                      holds SimulationMetadata with ProgramArtifacts, ~5 MB per item).</li>
      *                </ul>
      * @throws IllegalArgumentException if the configuration is invalid (e.g., non-positive capacity).
@@ -428,7 +428,7 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
      * <strong>Calculation:</strong> capacity × bytesPerItem (100% occupancy)
      * <p>
      * If {@code estimatedBytesPerItem} is configured, uses that value for item size estimation.
-     * Otherwise, assumes each item is a TickData and uses {@link SimulationParameters#estimateBytesPerTick()}.
+     * Otherwise, assumes each item is a TickDataChunk and uses {@link SimulationParameters#estimateBytesPerChunk()}.
      * <p>
      * This is a worst-case estimate assuming:
      * <ul>
@@ -438,17 +438,18 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
      */
     @Override
     public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
-        // Use custom estimation if configured, otherwise assume TickData
-        long bytesPerItem = estimatedBytesPerItem > 0 
-                ? estimatedBytesPerItem 
-                : params.estimateBytesPerTick();
+        // Use custom estimation if configured, otherwise assume TickDataChunk
+        // (After delta compression, main queue holds chunks, not individual ticks)
+        long bytesPerItem = estimatedBytesPerItem > 0
+                ? estimatedBytesPerItem
+                : params.estimateBytesPerChunk();
         long totalBytes = (long) capacity * bytesPerItem;
-        
+
         // Add overhead for TimestampedObject wrapper (~32 bytes per entry)
         long wrapperOverhead = (long) capacity * 32;
         totalBytes += wrapperOverhead;
-        
-        String itemType = estimatedBytesPerItem > 0 ? "item (custom)" : "tick";
+
+        String itemType = estimatedBytesPerItem > 0 ? "item (custom)" : "chunk";
         String explanation = String.format("%d capacity × %s/%s + %s wrapper overhead",
             capacity,
             SimulationParameters.formatBytes(bytesPerItem),
