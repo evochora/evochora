@@ -49,6 +49,8 @@ export class EnvironmentGrid {
         this.currentRunId = null;
         this.currentOrganisms = [];
         this.cellData = new Map(); // key: "x,y" -> {type,value,ownerId,opcodeName}
+        this._rawCells = null;      // Raw cells from API (for lazy cellData building)
+        this._cellDataDirty = false; // Flag for lazy cellData building
 
         // --- UI & Interaction State ---
         this.tooltip = document.getElementById('cell-tooltip');
@@ -273,23 +275,30 @@ export class EnvironmentGrid {
             signal: this.currentAbortController.signal
         });
 
-        // Store cell data for tooltips etc.
-        this.cellData.clear();
-        for (const cell of data.cells) {
-             const coords = cell.coordinates;
-             if (!Array.isArray(coords) || coords.length < 2) continue;
-             const key = `${coords[0]},${coords[1]}`;
-             this.cellData.set(key, {
-                 type: this.detailedRenderer.typeMapping[cell.moleculeType] ?? 0,
-                 value: cell.moleculeValue,
-                 ownerId: cell.ownerId,
-                 opcodeName: cell.opcodeName || null,
-                 marker: cell.marker || 0
-             });
-        }
+        // --- Timing: Build cell lookup map ---
+        const mapStart = performance.now();
+        
+        // Store raw cells for lazy tooltip lookup (avoid upfront Map building for large datasets)
+        this._rawCells = data.cells;
+        this._cellDataDirty = true;
+        
+        const mapTime = performance.now() - mapStart;
 
+        // --- Timing: Render cells ---
+        const renderStart = performance.now();
+        
         // Delegate rendering to the active strategy
         this.renderCellsWithCleanup(data.cells, viewport);
+        
+        const renderTime = performance.now() - renderStart;
+        
+        // Log post-fetch timing (complements EnvironmentApi profiling)
+        console.debug(`[EnvironmentGrid] Tick ${tick}`, {
+            cellMapMs: mapTime.toFixed(1),
+            renderMs: renderTime.toFixed(1),
+            totalPostFetchMs: (mapTime + renderTime).toFixed(1),
+            cells: data.cells.length
+        });
 
         // Reset abort controller
         if (this.currentAbortController && !this.currentAbortController.signal.aborted) {
@@ -688,6 +697,30 @@ export class EnvironmentGrid {
     }
 
     /**
+     * Lazily builds the cellData map from raw cells (only when needed for tooltips).
+     * This avoids the upfront cost of building a Map for 1M+ cells.
+     * @private
+     */
+    _ensureCellDataBuilt() {
+        if (!this._cellDataDirty || !this._rawCells) return;
+        
+        this.cellData.clear();
+        for (const cell of this._rawCells) {
+            const coords = cell.coordinates;
+            if (!Array.isArray(coords) || coords.length < 2) continue;
+            const key = `${coords[0]},${coords[1]}`;
+            this.cellData.set(key, {
+                type: this.detailedRenderer.typeMapping[cell.moleculeType] ?? 0,
+                value: cell.moleculeValue,
+                ownerId: cell.ownerId,
+                opcodeName: cell.opcodeName || null,
+                marker: cell.marker || 0
+            });
+        }
+        this._cellDataDirty = false;
+    }
+    
+    /**
      * Finds the cell data at a specific grid coordinate.
      *
      * @param {number} gridX - The grid X coordinate.
@@ -696,6 +729,9 @@ export class EnvironmentGrid {
      * @private
      */
     findCellAt(gridX, gridY) {
+        // Lazily build cellData map on first tooltip access
+        this._ensureCellDataBuilt();
+        
         const key = `${gridX},${gridY}`;
         return this.cellData.get(key) || {
             type: 0,
@@ -880,12 +916,15 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
             const key = `${coords[0]},${coords[1]}`;
             updatedKeys.add(key);
             
-            // The main grid stores the canonical data
-            const cellData = this.grid.cellData.get(key);
-            if(cellData) {
-                // Draw / update cell
-                this.drawCell(cellData, coords);
-            }
+            // Convert raw cell to internal format and draw directly
+            const cellData = {
+                type: this.typeMapping[cell.moleculeType] ?? 0,
+                value: cell.moleculeValue,
+                ownerId: cell.ownerId,
+                opcodeName: cell.opcodeName || null,
+                marker: cell.marker || 0
+            };
+            this.drawCell(cellData, coords);
         }
 
         // Second pass: remove cells in this region that weren't updated

@@ -1,5 +1,7 @@
 package org.evochora.node.processes.http.api.visualizer;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.typesafe.config.Config;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
@@ -13,6 +15,8 @@ import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.utils.protobuf.ProtobufConverter;
 import org.evochora.node.processes.http.api.pipeline.dto.ErrorResponseDto;
+import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.MoleculeTypeRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -159,8 +163,9 @@ public class SimulationController extends VisualizerBaseController {
         try (final IDatabaseReader reader = databaseProvider.createReader(runId)) {
             final SimulationMetadata metadata = reader.getMetadata();
             
-            // Convert Protobuf to JSON string directly (no unnecessary conversion)
-            final String jsonString = ProtobufConverter.toJson(metadata);
+            // Convert Protobuf to JSON and add type mappings for client-side ID resolution
+            final String metadataJson = ProtobufConverter.toJson(metadata);
+            final String jsonString = addTypeMappings(metadataJson);
             
             ctx.contentType("application/json");
             ctx.status(HttpStatus.OK).result(jsonString);
@@ -202,6 +207,51 @@ public class SimulationController extends VisualizerBaseController {
             }
             // Other database errors
             throw e;
+        }
+    }
+    
+    /**
+     * Adds type mappings (moleculeTypes, opcodes) to the metadata JSON.
+     * <p>
+     * These mappings allow the client to resolve numeric IDs from the binary
+     * environment API to human-readable names without hardcoding the mappings.
+     * <p>
+     * Added fields:
+     * <ul>
+     *   <li>moleculeTypes: {0: "CODE", 1: "DATA", 2: "ENERGY", 3: "STRUCTURE"}</li>
+     *   <li>opcodes: {0x00: "NOP", 0x10: "ADD", ...}</li>
+     * </ul>
+     *
+     * @param metadataJson The original metadata JSON string.
+     * @return JSON string with added type mappings.
+     */
+    private String addTypeMappings(final String metadataJson) {
+        try {
+            final ObjectMapper mapper = new ObjectMapper();
+            final ObjectNode root = (ObjectNode) mapper.readTree(metadataJson);
+            
+            // Ensure instruction set is initialized before getting opcodes
+            Instruction.init();
+            
+            // Add molecule type mappings (id -> name)
+            final ObjectNode moleculeTypes = mapper.createObjectNode();
+            for (Map.Entry<Integer, String> entry : MoleculeTypeRegistry.getAllTypes().entrySet()) {
+                moleculeTypes.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+            root.set("moleculeTypes", moleculeTypes);
+            
+            // Add opcode mappings (id -> name)
+            final ObjectNode opcodes = mapper.createObjectNode();
+            for (Map.Entry<Integer, String> entry : Instruction.getAllInstructions().entrySet()) {
+                opcodes.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+            root.set("opcodes", opcodes);
+            
+            return mapper.writeValueAsString(root);
+        } catch (Exception e) {
+            // If JSON manipulation fails, return original (shouldn't happen)
+            LOGGER.warn("Failed to add type mappings to metadata JSON", e);
+            return metadataJson;
         }
     }
 

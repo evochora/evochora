@@ -6,6 +6,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.evochora.datapipeline.api.contracts.CellHttpResponse;
+import org.evochora.datapipeline.api.contracts.EnvironmentHttpResponse;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
@@ -243,25 +245,21 @@ public class EnvironmentController extends VisualizerBaseController {
         }
         
         try {
-            // --- Timing: Data Loading (split into sub-phases for profiling) ---
+            // --- Timing: Data Loading ---
             final long loadStartNs = System.nanoTime();
             
             // Get or load environment properties (cached)
             final EnvironmentProperties envProps = getOrLoadEnvProps(runId);
-            final long envPropsTimeNs = System.nanoTime() - loadStartNs;
             
             // Get or load chunk (cached) - this is typically the bottleneck
             final long chunkStartNs = System.nanoTime();
             final TickDataChunk chunk = getOrLoadChunk(runId, tickNumber);
-            final long chunkTimeNs = System.nanoTime() - chunkStartNs;
+            final long chunkLoadTimeMs = (System.nanoTime() - chunkStartNs) / 1_000_000;
             
             // Get or create decoder for this runId (cached, reuses MutableCellState)
-            final long decoderStartNs = System.nanoTime();
             final DeltaCodec.Decoder decoder = getOrCreateDecoder(runId, envProps);
-            final long decoderTimeNs = System.nanoTime() - decoderStartNs;
             
             final long loadTimeMs = (System.nanoTime() - loadStartNs) / 1_000_000;
-            final long chunkLoadTimeMs = chunkTimeNs / 1_000_000;
             
             // --- Timing: Decompression ---
             final long decompressStartNs = System.nanoTime();
@@ -282,24 +280,21 @@ public class EnvironmentController extends VisualizerBaseController {
             // Ensure instruction set is initialized before resolving opcode names
             ensureInstructionSetInitialized();
             
-            // Convert to response format
-            final List<CellWithCoordinates> cells = convertTickDataToCells(tickData, region, envProps);
+            // Convert to Protobuf response format (using IDs instead of strings)
+            final EnvironmentHttpResponse response = convertTickDataToProtobuf(
+                    tickData, tickNumber, region, envProps);
+            final int cellCount = response.getCellsCount();
             
             final long transformTimeMs = (System.nanoTime() - transformStartNs) / 1_000_000;
             
             // --- Timing: Serialization ---
             final long serializeStartNs = System.nanoTime();
             
-            final EnvironmentResponseDto response = new EnvironmentResponseDto(cells);
-            
-            // Serialize to JSON string (so we can measure serialization time separately)
-            final String jsonResponse = ctx.jsonMapper().toJsonString(response, EnvironmentResponseDto.class);
+            // Serialize to Protobuf binary
+            final byte[] responseBytes = response.toByteArray();
             
             final long serializeTimeMs = (System.nanoTime() - serializeStartNs) / 1_000_000;
             final long totalTimeMs = (System.nanoTime() - totalStartNs) / 1_000_000;
-            
-            // Get response bytes for Content-Length header
-            final byte[] responseBytes = jsonResponse.getBytes(java.nio.charset.StandardCharsets.UTF_8);
             
             // Add timing headers (X-Timing-Db-Ms is the DB query portion of Load)
             ctx.header("X-Timing-Load-Ms", String.valueOf(loadTimeMs));
@@ -308,11 +303,11 @@ public class EnvironmentController extends VisualizerBaseController {
             ctx.header("X-Timing-Transform-Ms", String.valueOf(transformTimeMs));
             ctx.header("X-Timing-Serialize-Ms", String.valueOf(serializeTimeMs));
             ctx.header("X-Timing-Total-Ms", String.valueOf(totalTimeMs));
-            ctx.header("X-Cell-Count", String.valueOf(cells.size()));
+            ctx.header("X-Cell-Count", String.valueOf(cellCount));
             ctx.header("Content-Length", String.valueOf(responseBytes.length));
             
-            // Return pre-serialized JSON
-            ctx.contentType("application/json");
+            // Return Protobuf binary
+            ctx.contentType("application/x-protobuf");
             ctx.status(HttpStatus.OK).result(responseBytes);
             
         } catch (RuntimeException e) {
@@ -409,8 +404,75 @@ public class EnvironmentController extends VisualizerBaseController {
     }
     
     /**
-     * Converts TickData to a list of CellWithCoordinates, with optional region filtering.
+     * Converts TickData to Protobuf EnvironmentHttpResponse, with optional region filtering.
+     * <p>
+     * Uses numeric IDs instead of string names for molecule types and opcodes.
+     * Clients resolve IDs to names using mappings from the metadata endpoint.
+     *
+     * @param tickData The tick data containing cell information.
+     * @param tickNumber The tick number for this response.
+     * @param region Optional region filter (null for all cells).
+     * @param envProps Environment properties for coordinate conversion.
+     * @return Protobuf response ready for serialization.
      */
+    private EnvironmentHttpResponse convertTickDataToProtobuf(final TickData tickData,
+                                                               final long tickNumber,
+                                                               final SpatialRegion region,
+                                                               final EnvironmentProperties envProps) {
+        final var cellColumns = tickData.getCellColumns();
+        final int cellCount = cellColumns.getFlatIndicesCount();
+        final int dimensions = envProps.getDimensions();
+        
+        final EnvironmentHttpResponse.Builder responseBuilder = EnvironmentHttpResponse.newBuilder()
+                .setTickNumber(tickNumber)
+                .setTotalCells(envProps.getTotalCells());
+        
+        for (int i = 0; i < cellCount; i++) {
+            final int flatIndex = cellColumns.getFlatIndices(i);
+            final int[] coords = envProps.flatIndexToCoordinates(flatIndex);
+            
+            // Filter by region if provided
+            if (region != null && !isInRegion(coords, region, dimensions)) {
+                continue;
+            }
+            
+            final int moleculeInt = cellColumns.getMoleculeData(i);
+            final int moleculeType = moleculeInt & org.evochora.runtime.Config.TYPE_MASK;
+            final int moleculeValue = MoleculeDataUtils.extractSignedValue(moleculeInt);
+            final int marker = (moleculeInt & org.evochora.runtime.Config.MARKER_MASK) 
+                    >> org.evochora.runtime.Config.MARKER_SHIFT;
+            final int ownerId = cellColumns.getOwnerIds(i);
+            
+            // Build cell with IDs (not string names)
+            final CellHttpResponse.Builder cellBuilder = CellHttpResponse.newBuilder()
+                    .setMoleculeType(moleculeType)
+                    .setMoleculeValue(moleculeValue)
+                    .setOwnerId(ownerId)
+                    .setMarker(marker);
+            
+            // Add coordinates
+            for (int coord : coords) {
+                cellBuilder.addCoordinates(coord);
+            }
+            
+            // For CODE molecules, include opcode ID (which equals moleculeValue)
+            if (moleculeType == org.evochora.runtime.Config.TYPE_CODE) {
+                cellBuilder.setOpcodeId(moleculeValue);
+            } else {
+                cellBuilder.setOpcodeId(-1);  // Not a CODE molecule
+            }
+            
+            responseBuilder.addCells(cellBuilder.build());
+        }
+        
+        return responseBuilder.build();
+    }
+    
+    /**
+     * Converts TickData to a list of CellWithCoordinates, with optional region filtering.
+     * @deprecated Use {@link #convertTickDataToProtobuf} for binary API responses.
+     */
+    @Deprecated
     private List<CellWithCoordinates> convertTickDataToCells(final TickData tickData, 
                                                              final SpatialRegion region,
                                                              final EnvironmentProperties envProps) {

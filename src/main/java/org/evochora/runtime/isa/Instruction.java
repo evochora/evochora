@@ -547,6 +547,21 @@ public abstract class Instruction {
      * @return The name of the instruction.
      */
     public static String getInstructionNameById(int id) { return ID_TO_NAME.getOrDefault(id, "UNKNOWN"); }
+    
+    /**
+     * Returns an unmodifiable view of all registered instruction IDs and names.
+     * <p>
+     * This is useful for serializing the complete opcode mapping to clients
+     * (e.g., in metadata responses for the visualizer API).
+     * <p>
+     * <strong>Note:</strong> {@link #init()} must be called before this method
+     * returns meaningful data.
+     *
+     * @return Unmodifiable map of opcode ID to instruction name (e.g., {0x00: "NOP", 0x10: "ADD", ...})
+     */
+    public static java.util.Map<Integer, String> getAllInstructions() {
+        return java.util.Collections.unmodifiableMap(ID_TO_NAME);
+    }
 
     /**
      * Gets the length of an instruction by its ID.

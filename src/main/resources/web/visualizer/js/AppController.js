@@ -1,4 +1,4 @@
-import { EnvironmentApi } from './api/EnvironmentApi.js';
+import { EnvironmentApi, setTypeMappings } from './api/EnvironmentApi.js';
 import { OrganismApi } from './api/OrganismApi.js';
 import { SimulationApi } from './api/SimulationApi.js';
 import { EnvironmentGrid } from './EnvironmentGrid.js';
@@ -146,6 +146,9 @@ export class AppController {
             const metadata = await this.simulationApi.fetchMetadata(this.state.runId);
             this.state.metadata = metadata; // Store metadata for use by components
             
+            // Set type mappings for Protobuf ID resolution in EnvironmentApi
+            setTypeMappings(metadata);
+
             // Update UI components that depend on metadata
             this.tickPanelManager?.updateSamplingInfo(metadata?.samplingInterval || 1);
             this.headerbar?.loadMultiplierForRun(this.state.runId); // Load after metadata is ready
@@ -468,6 +471,9 @@ export class AppController {
             const metadata = await this.simulationApi.fetchMetadata(this.state.runId, { signal });
             if (metadata) {
                 this.state.metadata = metadata; // Store metadata for use by components
+                
+                // Set type mappings for Protobuf ID resolution in EnvironmentApi
+                setTypeMappings(metadata);
 
                 // Update sampling info in the UI
                 this.tickPanelManager?.updateSamplingInfo(metadata?.samplingInterval || 1);
