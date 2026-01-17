@@ -1,15 +1,23 @@
 package org.evochora.node.processes.http.api.visualizer;
 
-import com.typesafe.config.Config;
-import com.typesafe.config.ConfigFactory;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+import java.util.Collections;
+import java.util.List;
+
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
+import org.evochora.datapipeline.api.resources.database.dto.InstructionArgumentView;
+import org.evochora.datapipeline.api.resources.database.dto.InstructionView;
+import org.evochora.datapipeline.api.resources.database.dto.InstructionsView;
+import org.evochora.datapipeline.api.resources.database.dto.OrganismRuntimeView;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismStaticInfo;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
-import org.evochora.datapipeline.api.resources.database.dto.OrganismRuntimeView;
-import org.evochora.datapipeline.api.resources.database.dto.InstructionsView;
-import org.evochora.datapipeline.api.resources.database.dto.InstructionView;
-import org.evochora.datapipeline.api.resources.database.dto.InstructionArgumentView;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.node.spi.ServiceRegistry;
 import org.junit.jupiter.api.DisplayName;
@@ -18,14 +26,8 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
-import java.util.Collections;
-import java.util.List;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 /**
  * Unit tests for {@link OrganismController}.
