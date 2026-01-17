@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.equalTo;
-import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.notNullValue;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -14,7 +13,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -25,7 +23,9 @@ import java.util.stream.IntStream;
 
 import org.evochora.datapipeline.CellStateTestHelper;
 import org.evochora.datapipeline.api.contracts.BatchInfo;
+import org.evochora.datapipeline.api.contracts.CellHttpResponse;
 import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
+import org.evochora.datapipeline.api.contracts.EnvironmentHttpResponse;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
@@ -212,26 +212,40 @@ class EnvironmentControllerIntegrationTest {
         EnvironmentController controller = new EnvironmentController(registry, controllerConfig);
         controller.registerRoutes(app, "/visualizer/api/environment");
 
-        // Query data via HTTP API using RestAssured
+        // Query data via HTTP API using RestAssured (now returns Protobuf binary)
         Response resp = given()
             .port(port)
             .basePath("/visualizer/api/environment")
             .queryParam("region", "0,10,0,10")
             .queryParam("runId", runId)
+            .accept("application/x-protobuf")
             .get("/1");
         
-        // Verify HTTP response structure and headers
+        // Verify HTTP response status and headers
         resp.then()
             .statusCode(200)
-            .body("cells", hasSize(3))  // Should have 3 cells
+            .contentType("application/x-protobuf")
             .header("Cache-Control", containsString("must-revalidate"));  // HTTP cache header check
         
+        // Parse Protobuf response
+        byte[] responseBytes = resp.asByteArray();
+        EnvironmentHttpResponse envResponse = EnvironmentHttpResponse.parseFrom(responseBytes);
+        
+        // Verify cell count
+        assertThat(envResponse.getCellsCount()).isEqualTo(3);
+        
         // Verify detailed cell data
-        resp.then()
-            .body("cells[0].coordinates", equalTo(Arrays.asList(0, 0)))  // Cell at flatIndex=0 → (0,0)
-            .body("cells[0].ownerId", equalTo(100))
-            .body("cells[1].coordinates", equalTo(Arrays.asList(0, 5)))  // Cell at flatIndex=5 → (0,5)
-            .body("cells[2].coordinates", equalTo(Arrays.asList(1, 5))); // Cell at flatIndex=15 → (1,5) in row-major
+        List<CellHttpResponse> cells = envResponse.getCellsList();
+        
+        // Cell at flatIndex=0 → (0,0)
+        assertThat(cells.get(0).getCoordinatesList()).containsExactly(0, 0);
+        assertThat(cells.get(0).getOwnerId()).isEqualTo(100);
+        
+        // Cell at flatIndex=5 → (0,5)
+        assertThat(cells.get(1).getCoordinatesList()).containsExactly(0, 5);
+        
+        // Cell at flatIndex=15 → (1,5) in row-major
+        assertThat(cells.get(2).getCoordinatesList()).containsExactly(1, 5);
     }
 
     @Test
@@ -410,14 +424,20 @@ class EnvironmentControllerIntegrationTest {
             .port(port)
             .basePath("/visualizer/api/environment")
             .queryParam("region", "0,10,0,10")
+            .accept("application/x-protobuf")
             // Note: NO runId parameter!
             .get("/1");
         
         // Then: Should return data from the NEWER run (latest)
         resp.then()
             .statusCode(200)
-            .body("cells", hasSize(1))
-            .body("cells[0].ownerId", equalTo(200)); // Newer run has ownerId=200
+            .contentType("application/x-protobuf");
+        
+        // Parse Protobuf and verify
+        byte[] responseBytes = resp.asByteArray();
+        EnvironmentHttpResponse envResponse = EnvironmentHttpResponse.parseFrom(responseBytes);
+        assertThat(envResponse.getCellsCount()).isEqualTo(1);
+        assertThat(envResponse.getCells(0).getOwnerId()).isEqualTo(200); // Newer run has ownerId=200
     }
 
     @Test

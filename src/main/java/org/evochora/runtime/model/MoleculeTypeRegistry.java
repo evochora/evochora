@@ -134,6 +134,18 @@ public final class MoleculeTypeRegistry {
     }
     
     /**
+     * Returns an unmodifiable view of all registered molecule types.
+     * <p>
+     * This is useful for serializing the complete type mapping to clients
+     * (e.g., in metadata responses for the visualizer API).
+     *
+     * @return Unmodifiable map of type ID to type name (e.g., {0: "CODE", 1: "DATA", ...})
+     */
+    public static Map<Integer, String> getAllTypes() {
+        return java.util.Collections.unmodifiableMap(TYPE_TO_NAME);
+    }
+    
+    /**
      * Validates that all molecule type constants from Config are registered.
      * <p>
      * This ensures that if a new type is added to Config but not registered here,

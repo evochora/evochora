@@ -62,8 +62,15 @@ public class Environment implements IEnvironmentReader {
         this.properties = properties;
         this.shape = properties.getWorldShape();
         this.isToroidal = properties.isToroidal();
-        int size = 1;
-        for (int dim : shape) { size *= dim; }
+        // Calculate size with overflow check (arrays are limited to Integer.MAX_VALUE)
+        long sizeLong = 1L;
+        for (int dim : shape) { sizeLong *= dim; }
+        if (sizeLong > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException(
+                "World too large: " + sizeLong + " cells exceeds Integer.MAX_VALUE (2.1 billion). " +
+                "Reduce environment dimensions. Shape: " + java.util.Arrays.toString(shape));
+        }
+        int size = (int) sizeLong;
         this.totalCells = size;
         this.grid = new int[size];
         Arrays.fill(this.grid, 0);

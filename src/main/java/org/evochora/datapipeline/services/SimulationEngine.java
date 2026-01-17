@@ -204,7 +204,14 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         this.runId = timestamp + "-" + UUID.randomUUID().toString();
         
         // Initialize chunk encoder for delta compression
-        int totalCells = this.simulation.getEnvironment().getTotalCells();
+        // DeltaCodec uses int arrays, so worlds > 2.1B cells are not supported
+        long totalCellsLong = this.simulation.getEnvironment().getTotalCells();
+        if (totalCellsLong > Integer.MAX_VALUE) {
+            throw new IllegalStateException(
+                "World too large for simulation: " + totalCellsLong + " cells exceeds Integer.MAX_VALUE. " +
+                "Reduce environment dimensions.");
+        }
+        int totalCells = (int) totalCellsLong;
         this.chunkEncoder = new DeltaCodec.Encoder(
                 this.runId, totalCells,
                 this.accumulatedDeltaInterval, this.snapshotInterval, this.chunkInterval);

@@ -2,10 +2,10 @@ package org.evochora.node.processes.http.api.visualizer;
 
 import java.sql.SQLException;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.evochora.datapipeline.api.contracts.CellHttpResponse;
+import org.evochora.datapipeline.api.contracts.EnvironmentHttpResponse;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
@@ -13,16 +13,13 @@ import org.evochora.datapipeline.api.delta.ChunkCorruptedException;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.MetadataNotFoundException;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
-import org.evochora.datapipeline.api.resources.database.dto.CellWithCoordinates;
 import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
 import org.evochora.datapipeline.api.resources.database.dto.TickRange;
 import org.evochora.datapipeline.utils.MoleculeDataUtils;
 import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.node.processes.http.api.pipeline.dto.ErrorResponseDto;
-import org.evochora.node.processes.http.api.visualizer.dto.EnvironmentResponseDto;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.EnvironmentProperties;
-import org.evochora.runtime.model.MoleculeTypeRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -207,7 +204,7 @@ public class EnvironmentController extends VisualizerBaseController {
             @OpenApiParam(name = "runId", description = "Optional simulation run ID (defaults to latest run)", required = false)
         },
         responses = {
-            @OpenApiResponse(status = "200", description = "OK", content = @OpenApiContent(from = EnvironmentResponseDto.class)),
+            @OpenApiResponse(status = "200", description = "OK (application/x-protobuf binary)", content = @OpenApiContent(from = byte[].class)),
             @OpenApiResponse(status = "304", description = "Not Modified (cached response, ETag matches)"),
             @OpenApiResponse(status = "400", description = "Bad request (invalid tick or region format)", content = @OpenApiContent(from = ErrorResponseDto.class)),
             @OpenApiResponse(status = "404", description = "Not found (tick or run ID not found)", content = @OpenApiContent(from = ErrorResponseDto.class)),
@@ -216,6 +213,8 @@ public class EnvironmentController extends VisualizerBaseController {
         }
     )
     void getEnvironment(final Context ctx) throws SQLException, TickNotFoundException {
+        final long totalStartNs = System.nanoTime();
+        
         // Parse and validate tick parameter
         final long tickNumber = parseTickNumber(ctx.pathParam("tick"));
         
@@ -241,14 +240,24 @@ public class EnvironmentController extends VisualizerBaseController {
         }
         
         try {
+            // --- Timing: Data Loading ---
+            final long loadStartNs = System.nanoTime();
+            
             // Get or load environment properties (cached)
             final EnvironmentProperties envProps = getOrLoadEnvProps(runId);
             
-            // Get or load chunk (cached)
+            // Get or load chunk (cached) - this is typically the bottleneck
+            final long chunkStartNs = System.nanoTime();
             final TickDataChunk chunk = getOrLoadChunk(runId, tickNumber);
+            final long chunkLoadTimeMs = (System.nanoTime() - chunkStartNs) / 1_000_000;
             
             // Get or create decoder for this runId (cached, reuses MutableCellState)
             final DeltaCodec.Decoder decoder = getOrCreateDecoder(runId, envProps);
+            
+            final long loadTimeMs = (System.nanoTime() - loadStartNs) / 1_000_000;
+            
+            // --- Timing: Decompression ---
+            final long decompressStartNs = System.nanoTime();
             
             // Decompress to get the specific tick
             final TickData tickData;
@@ -258,14 +267,43 @@ public class EnvironmentController extends VisualizerBaseController {
                 throw new SQLException("Corrupted chunk for tick " + tickNumber + ": " + e.getMessage(), e);
             }
             
+            final long decompressTimeMs = (System.nanoTime() - decompressStartNs) / 1_000_000;
+            
+            // --- Timing: Transform ---
+            final long transformStartNs = System.nanoTime();
+            
             // Ensure instruction set is initialized before resolving opcode names
             ensureInstructionSetInitialized();
             
-            // Convert to response format
-            final List<CellWithCoordinates> cells = convertTickDataToCells(tickData, region, envProps);
+            // Convert to Protobuf response format (using IDs instead of strings)
+            final EnvironmentHttpResponse response = convertTickDataToProtobuf(
+                    tickData, tickNumber, region, envProps);
+            final int cellCount = response.getCellsCount();
             
-            // Return DTO directly (client only uses cells array)
-            ctx.status(HttpStatus.OK).json(new EnvironmentResponseDto(cells));
+            final long transformTimeMs = (System.nanoTime() - transformStartNs) / 1_000_000;
+            
+            // --- Timing: Serialization ---
+            final long serializeStartNs = System.nanoTime();
+            
+            // Serialize to Protobuf binary
+            final byte[] responseBytes = response.toByteArray();
+            
+            final long serializeTimeMs = (System.nanoTime() - serializeStartNs) / 1_000_000;
+            final long totalTimeMs = (System.nanoTime() - totalStartNs) / 1_000_000;
+            
+            // Add timing headers (X-Timing-Db-Ms is the DB query portion of Load)
+            ctx.header("X-Timing-Load-Ms", String.valueOf(loadTimeMs));
+            ctx.header("X-Timing-Db-Ms", String.valueOf(chunkLoadTimeMs));
+            ctx.header("X-Timing-Decompress-Ms", String.valueOf(decompressTimeMs));
+            ctx.header("X-Timing-Transform-Ms", String.valueOf(transformTimeMs));
+            ctx.header("X-Timing-Serialize-Ms", String.valueOf(serializeTimeMs));
+            ctx.header("X-Timing-Total-Ms", String.valueOf(totalTimeMs));
+            ctx.header("X-Cell-Count", String.valueOf(cellCount));
+            ctx.header("Content-Length", String.valueOf(responseBytes.length));
+            
+            // Return Protobuf binary
+            ctx.contentType("application/x-protobuf");
+            ctx.status(HttpStatus.OK).result(responseBytes);
             
         } catch (RuntimeException e) {
             handleDatabaseException(e, runId);
@@ -361,16 +399,28 @@ public class EnvironmentController extends VisualizerBaseController {
     }
     
     /**
-     * Converts TickData to a list of CellWithCoordinates, with optional region filtering.
+     * Converts TickData to Protobuf EnvironmentHttpResponse, with optional region filtering.
+     * <p>
+     * Uses numeric IDs instead of string names for molecule types and opcodes.
+     * Clients resolve IDs to names using mappings from the metadata endpoint.
+     *
+     * @param tickData The tick data containing cell information.
+     * @param tickNumber The tick number for this response.
+     * @param region Optional region filter (null for all cells).
+     * @param envProps Environment properties for coordinate conversion.
+     * @return Protobuf response ready for serialization.
      */
-    private List<CellWithCoordinates> convertTickDataToCells(final TickData tickData, 
-                                                             final SpatialRegion region,
-                                                             final EnvironmentProperties envProps) {
+    private EnvironmentHttpResponse convertTickDataToProtobuf(final TickData tickData,
+                                                               final long tickNumber,
+                                                               final SpatialRegion region,
+                                                               final EnvironmentProperties envProps) {
         final var cellColumns = tickData.getCellColumns();
         final int cellCount = cellColumns.getFlatIndicesCount();
         final int dimensions = envProps.getDimensions();
         
-        final List<CellWithCoordinates> result = new ArrayList<>();
+        final EnvironmentHttpResponse.Builder responseBuilder = EnvironmentHttpResponse.newBuilder()
+                .setTickNumber(tickNumber)
+                .setTotalCells(envProps.getTotalCells());
         
         for (int i = 0; i < cellCount; i++) {
             final int flatIndex = cellColumns.getFlatIndices(i);
@@ -380,32 +430,37 @@ public class EnvironmentController extends VisualizerBaseController {
             if (region != null && !isInRegion(coords, region, dimensions)) {
                 continue;
             }
-
+            
             final int moleculeInt = cellColumns.getMoleculeData(i);
             final int moleculeType = moleculeInt & org.evochora.runtime.Config.TYPE_MASK;
             final int moleculeValue = MoleculeDataUtils.extractSignedValue(moleculeInt);
-            final int marker = (moleculeInt & org.evochora.runtime.Config.MARKER_MASK) >> org.evochora.runtime.Config.MARKER_SHIFT;
+            final int marker = (moleculeInt & org.evochora.runtime.Config.MARKER_MASK) 
+                    >> org.evochora.runtime.Config.MARKER_SHIFT;
             final int ownerId = cellColumns.getOwnerIds(i);
-
-            final String moleculeTypeName = MoleculeTypeRegistry.typeToName(moleculeType);
             
-            // For CODE molecules, resolve opcode name from value
-            String opcodeName = null;
-            if (moleculeType == org.evochora.runtime.Config.TYPE_CODE) {
-                opcodeName = Instruction.getInstructionNameById(moleculeValue);
+            // Build cell with IDs (not string names)
+            final CellHttpResponse.Builder cellBuilder = CellHttpResponse.newBuilder()
+                    .setMoleculeType(moleculeType)
+                    .setMoleculeValue(moleculeValue)
+                    .setOwnerId(ownerId)
+                    .setMarker(marker);
+            
+            // Add coordinates
+            for (int coord : coords) {
+                cellBuilder.addCoordinates(coord);
             }
             
-            result.add(new CellWithCoordinates(
-                coords,
-                moleculeTypeName,
-                moleculeValue,
-                ownerId,
-                opcodeName,
-                marker
-            ));
+            // For CODE molecules, include opcode ID (which equals moleculeValue)
+            if (moleculeType == org.evochora.runtime.Config.TYPE_CODE) {
+                cellBuilder.setOpcodeId(moleculeValue);
+            } else {
+                cellBuilder.setOpcodeId(-1);  // Not a CODE molecule
+            }
+            
+            responseBuilder.addCells(cellBuilder.build());
         }
         
-        return result;
+        return responseBuilder.build();
     }
     
     /**

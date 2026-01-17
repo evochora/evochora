@@ -9,7 +9,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
 import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
-import org.evochora.datapipeline.api.resources.database.dto.CellWithCoordinates;
 import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
 import org.evochora.node.spi.ServiceRegistry;
 import org.junit.jupiter.api.DisplayName;
@@ -22,15 +21,17 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 
 /**
- * Phase 3 unit tests: HTTP request parsing and response formatting (no database I/O)
+ * Phase 3 unit tests: HTTP request parsing and controller construction (no database I/O)
  * <p>
- * Tests focus on data classes and JSON serialization without database dependencies:
+ * Tests focus on data classes and controller construction without database dependencies:
  * <ul>
  *   <li>SpatialRegion parsing and validation</li>
- *   <li>CellWithCoordinates serialization</li>
  *   <li>Controller construction and configuration</li>
- *   <li>JSON response formatting</li>
  * </ul>
+ * <p>
+ * <strong>Note:</strong> CellWithCoordinates tests were removed as the API now returns
+ * Protobuf binary instead of JSON. See EnvironmentControllerIntegrationTest for 
+ * Protobuf response validation.
  * <p>
  * <strong>AGENTS.md Compliance:</strong>
  * <ul>
@@ -145,51 +146,8 @@ class EnvironmentControllerUnitTest {
     }
 
     @Nested
-    @DisplayName("JSON Serialization")
-    class JsonSerialization {
-
-        @Test
-        @DisplayName("Should serialize environment response correctly")
-        void serializeEnvironmentResponse_correctly() throws Exception {
-            // Create test data
-            CellWithCoordinates cell1 = createCellWithCoordinates(new int[]{5, 10}, "DATA", 255, 7);
-            CellWithCoordinates cell2 = createCellWithCoordinates(new int[]{6, 11}, "ENERGY", 128, 8);
-            
-            // Create mock response structure
-            var response = new Object() {
-                // Using generic Object, fields must be used or suppress warning
-                @SuppressWarnings("unused") public final int tick = 100;
-                @SuppressWarnings("unused") public final String runId = "test_run";
-                @SuppressWarnings("unused") public final CellWithCoordinates[] cells = {cell1, cell2};
-            };
-            
-            String json = objectMapper.writeValueAsString(response);
-            
-            assertThat(json).contains("\"tick\":100");
-            assertThat(json).contains("\"runId\":\"test_run\"");
-            assertThat(json).contains("\"cells\":[");
-            assertThat(json).contains("\"coordinates\":[5,10]");
-            assertThat(json).contains("\"coordinates\":[6,11]");
-            assertThat(json).contains("\"moleculeType\":\"DATA\"");
-            assertThat(json).contains("\"moleculeType\":\"ENERGY\"");
-            assertThat(json).contains("\"moleculeValue\":255");
-            assertThat(json).contains("\"moleculeValue\":128");
-            assertThat(json).contains("\"ownerId\":7");
-            assertThat(json).contains("\"ownerId\":8");
-        }
-
-        @Test
-        @DisplayName("Should serialize single cell correctly")
-        void serializeSingleCell_correctly() throws Exception {
-            CellWithCoordinates cell = createCellWithCoordinates(new int[]{42, 73}, "DATA", 255, 7);
-            
-            String json = objectMapper.writeValueAsString(cell);
-            
-            assertThat(json).contains("\"coordinates\":[42,73]");
-            assertThat(json).contains("\"moleculeType\":\"DATA\"");
-            assertThat(json).contains("\"moleculeValue\":255");
-            assertThat(json).contains("\"ownerId\":7");
-        }
+    @DisplayName("SpatialRegion Serialization")
+    class SpatialRegionSerialization {
 
         @Test
         @DisplayName("Should serialize SpatialRegion correctly")
@@ -225,37 +183,10 @@ class EnvironmentControllerUnitTest {
             assertThat(region.getDimensions()).isEqualTo(2);
             assertThat(region.bounds).isEqualTo(new int[]{0, 1000000, 0, 1000000});
         }
-
-        @Test
-        @DisplayName("Should validate CellWithCoordinates with different dimensions")
-        void validateCellWithCoordinatesWithDifferentDimensions() {
-            CellWithCoordinates cell2D = createCellWithCoordinates(new int[]{5, 10}, "DATA", 255, 7);
-            CellWithCoordinates cell3D = createCellWithCoordinates(new int[]{5, 10, 15}, "ENERGY", 128, 8);
-            CellWithCoordinates cell4D = createCellWithCoordinates(new int[]{1, 2, 3, 4}, "STRUCTURE", 64, 9);
-            
-            assertThat(cell2D.coordinates()).isEqualTo(new int[]{5, 10});
-            assertThat(cell3D.coordinates()).isEqualTo(new int[]{5, 10, 15});
-            assertThat(cell4D.coordinates()).isEqualTo(new int[]{1, 2, 3, 4});
-        }
-
-        @Test
-        @DisplayName("Should validate CellWithCoordinates with zero values")
-        void validateCellWithCoordinatesWithZeroValues() {
-            CellWithCoordinates cell = createCellWithCoordinates(new int[]{0, 0}, "CODE", 0, 0);
-            
-            assertThat(cell.coordinates()).isEqualTo(new int[]{0, 0});
-            assertThat(cell.moleculeType()).isEqualTo("CODE");
-            assertThat(cell.moleculeValue()).isEqualTo(0);
-            assertThat(cell.ownerId()).isEqualTo(0);
-        }
     }
 
-    // Helper methods for creating test data
+    // Helper method for creating test data
     private SpatialRegion createSpatialRegion(int[] bounds) {
         return new SpatialRegion(bounds);
-    }
-
-    private CellWithCoordinates createCellWithCoordinates(int[] coordinates, String moleculeType, int moleculeValue, int ownerId) {
-        return new CellWithCoordinates(coordinates, moleculeType, moleculeValue, ownerId, null, 0);
     }
 }

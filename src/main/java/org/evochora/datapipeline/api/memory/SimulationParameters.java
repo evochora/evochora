@@ -48,7 +48,7 @@ package org.evochora.datapipeline.api.memory;
  */
 public record SimulationParameters(
     int[] environmentShape,
-    int totalCells,
+    long totalCells,
     int maxOrganisms,
     int samplingInterval,
     int accumulatedDeltaInterval,
@@ -130,7 +130,7 @@ public record SimulationParameters(
      * @return SimulationParameters with calculated totalCells and default delta settings.
      */
     public static SimulationParameters of(int[] environmentShape, int maxOrganisms) {
-        int totalCells = 1;
+        long totalCells = 1L;
         for (int dim : environmentShape) {
             totalCells *= dim;
         }
@@ -157,7 +157,7 @@ public record SimulationParameters(
             int[] environmentShape, int maxOrganisms,
             int samplingInterval, int accumulatedDeltaInterval,
             int snapshotInterval, int chunkInterval, double estimatedDeltaRatio) {
-        int totalCells = 1;
+        long totalCells = 1L;
         for (int dim : environmentShape) {
             totalCells *= dim;
         }
@@ -177,7 +177,7 @@ public record SimulationParameters(
      *
      * @return Total cells (100% occupancy, no reduction).
      */
-    public int worstCaseCellsPerTick() {
+    public long worstCaseCellsPerTick() {
         return totalCells;
     }
     
@@ -298,8 +298,8 @@ public record SimulationParameters(
      * @return Estimated bytes per delta.
      */
     public long estimateBytesPerDelta() {
-        int changedCells = (int) Math.ceil(totalCells * estimatedDeltaRatio);
-        return (long) changedCells * BYTES_PER_CELL 
+        long changedCells = (long) Math.ceil(totalCells * estimatedDeltaRatio);
+        return changedCells * BYTES_PER_CELL 
              + (long) maxOrganisms * BYTES_PER_ORGANISM 
              + TICKDATA_WRAPPER_OVERHEAD;
     }

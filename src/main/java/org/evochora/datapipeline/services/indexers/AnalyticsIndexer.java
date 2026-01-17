@@ -506,11 +506,17 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
             log.debug("No environment metadata available, using minimal Decoder");
             return new DeltaCodec.Decoder(1);
         }
-        int totalCells = 1;
+        long totalCellsLong = 1L;
         for (int dim : metadata.getEnvironment().getShapeList()) {
-            totalCells *= dim;
+            totalCellsLong *= dim;
         }
-        return new DeltaCodec.Decoder(totalCells);
+        // DeltaCodec.Decoder uses int arrays, so worlds > 2.1B cells are not supported
+        if (totalCellsLong > Integer.MAX_VALUE) {
+            throw new IllegalStateException(
+                "World too large for delta decoding: " + totalCellsLong + " cells exceeds Integer.MAX_VALUE. " +
+                "Reduce environment dimensions.");
+        }
+        return new DeltaCodec.Decoder((int) totalCellsLong);
     }
 
     /**
