@@ -63,8 +63,10 @@ import io.javalin.openapi.OpenApiResponse;
  *   <li>Comprehensive error handling (400/404/500)</li>
  * </ul>
  * <p>
- * Thread Safety: This controller is thread-safe and can handle concurrent requests.
- * The Caffeine cache is inherently thread-safe.
+ * <strong>Thread Safety:</strong> This controller is thread-safe. The Caffeine caches
+ * (chunks, environment properties) are thread-safe. {@code DeltaCodec.Decoder} instances
+ * are created per-request (not cached) because they maintain mutable internal state that
+ * is not thread-safe for concurrent access.
  */
 public class EnvironmentController extends VisualizerBaseController {
 
@@ -89,14 +91,6 @@ public class EnvironmentController extends VisualizerBaseController {
      * Used to avoid repeated metadata lookups and for Decoder construction.
      */
     private final Cache<String, EnvironmentProperties> envPropsCache;
-    
-    /**
-     * Cache for Decoder instances per runId.
-     * <p>
-     * Decoders are reusable and maintain internal state (MutableCellState) that
-     * is reset between decompression calls. Caching avoids repeated allocation.
-     */
-    private final Cache<String, DeltaCodec.Decoder> decoderCache;
 
     /**
      * Constructs a new EnvironmentController with chunk caching.
@@ -134,11 +128,9 @@ public class EnvironmentController extends VisualizerBaseController {
             .expireAfterAccess(Duration.ofMinutes(30))
             .build();
         
-        // Build decoder cache (one per runId, reuses MutableCellState)
-        this.decoderCache = Caffeine.newBuilder()
-            .maximumSize(50)
-            .expireAfterAccess(Duration.ofMinutes(30))
-            .build();
+        // Note: Decoders are NOT cached because they are not thread-safe.
+        // Each request creates its own Decoder instance to avoid concurrent
+        // modification of internal state (MutableCellState, currentChunk, currentTick).
         
         LOGGER.info("EnvironmentController chunk cache initialized: maxSize={}, expireAfterAccess={}s",
             maxSize, expireAfterAccessSeconds);
@@ -251,8 +243,8 @@ public class EnvironmentController extends VisualizerBaseController {
             final TickDataChunk chunk = getOrLoadChunk(runId, tickNumber);
             final long chunkLoadTimeMs = (System.nanoTime() - chunkStartNs) / 1_000_000;
             
-            // Get or create decoder for this runId (cached, reuses MutableCellState)
-            final DeltaCodec.Decoder decoder = getOrCreateDecoder(runId, envProps);
+            // Create decoder for this request (NOT cached - Decoder is not thread-safe)
+            final DeltaCodec.Decoder decoder = new DeltaCodec.Decoder(envProps);
             
             final long loadTimeMs = (System.nanoTime() - loadStartNs) / 1_000_000;
             
@@ -299,7 +291,9 @@ public class EnvironmentController extends VisualizerBaseController {
             ctx.header("X-Timing-Serialize-Ms", String.valueOf(serializeTimeMs));
             ctx.header("X-Timing-Total-Ms", String.valueOf(totalTimeMs));
             ctx.header("X-Cell-Count", String.valueOf(cellCount));
-            ctx.header("Content-Length", String.valueOf(responseBytes.length));
+            // Note: Content-Length is intentionally NOT set here.
+            // Jetty's GzipHandler compresses the response, so setting Content-Length
+            // to the uncompressed size would cause HTTP/2 stream errors.
             
             // Return Protobuf binary
             ctx.contentType("application/x-protobuf");
@@ -322,16 +316,6 @@ public class EnvironmentController extends VisualizerBaseController {
                 throw new RuntimeException("Failed to load environment properties for " + runId, e);
             }
         });
-    }
-    
-    /**
-     * Gets or creates a Decoder for the specified runId (cached).
-     * <p>
-     * The Decoder maintains a reusable MutableCellState, avoiding allocation
-     * overhead on repeated decompression calls for the same runId.
-     */
-    private DeltaCodec.Decoder getOrCreateDecoder(final String runId, final EnvironmentProperties envProps) {
-        return decoderCache.get(runId, key -> new DeltaCodec.Decoder(envProps));
     }
     
     /**
