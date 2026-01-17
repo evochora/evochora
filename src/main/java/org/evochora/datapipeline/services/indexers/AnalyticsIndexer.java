@@ -669,13 +669,13 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
             MemoryEstimate.Category.SERVICE_BATCH
         ));
         
-        // MutableCellState for delta decompression (int[] of environment size)
+        // MutableCellState for delta decompression (2 int[] arrays: moleculeData + ownerIds)
         long envTotalCells = params.totalCells();
-        long mutableCellStateBytes = envTotalCells * 4L;  // int = 4 bytes
+        long mutableCellStateBytes = envTotalCells * 8L;  // 2 int arrays × 4 bytes = 8 bytes/cell
         estimates.add(new MemoryEstimate(
             serviceName + " (decompression)",
             mutableCellStateBytes,
-            String.format("MutableCellState: %d cells × 4 bytes", envTotalCells),
+            String.format("MutableCellState: %d cells × 8 bytes (2 int[] arrays)", envTotalCells),
             MemoryEstimate.Category.SERVICE_BATCH
         ));
 

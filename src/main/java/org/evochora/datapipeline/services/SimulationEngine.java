@@ -750,23 +750,44 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
         List<MemoryEstimate> estimates = new ArrayList<>();
         
-        // 1. Environment cells array - each cell is 2 ints (molecule + ownerId) = 8 bytes
-        long environmentBytes = (long) params.totalCells() * 8;
+        // 1. Environment core arrays - grid[] + ownerGrid[] = 8 bytes/cell
+        long coreArrayBytes = (long) params.totalCells() * 8;
         estimates.add(new MemoryEstimate(
-            serviceName + " (Environment)",
-            environmentBytes,
-            String.format("%d cells × 8 bytes (molecule + ownerId)", params.totalCells()),
+            serviceName + " (Environment arrays)",
+            coreArrayBytes,
+            String.format("%d cells × 8 bytes (grid + ownerGrid)", params.totalCells()),
             MemoryEstimate.Category.SERVICE_BATCH
         ));
         
-        // 2. Organisms in memory - each organism has registers, stacks, code reference
-        // Estimate ~2KB per organism (conservative, includes call stack frames)
-        long bytesPerOrganism = 2 * 1024; // ~2KB per organism
+        // 2. Environment sparse tracking structures (occupiedIndices, cellsByOwner)
+        // occupiedIndices: IntOpenHashSet - worst case ~24 bytes per occupied cell
+        // cellsByOwner: Int2ObjectOpenHashMap<IntOpenHashSet> - variable per organism
+        // changedSinceLastReset: BitSet - totalCells / 8 bytes
+        // Estimate: 50% cell occupancy × 24 bytes + BitSet + overhead
+        long sparseTrackingBytes = (params.totalCells() / 2) * 24  // occupiedIndices at 50% occupancy
+                                 + (params.totalCells() + 7) / 8   // changedSinceLastReset BitSet
+                                 + (long) params.maxOrganisms() * 200;  // cellsByOwner (avg cells per organism)
+        estimates.add(new MemoryEstimate(
+            serviceName + " (Environment tracking)",
+            sparseTrackingBytes,
+            String.format("occupiedIndices + cellsByOwner (%d orgs) + BitSet", params.maxOrganisms()),
+            MemoryEstimate.Category.SERVICE_BATCH
+        ));
+        
+        // 3. Organisms in memory - realistic worst-case estimate
+        // Per organism breakdown:
+        //   - Base object + fields + int[] arrays: ~1 KB
+        //   - dataStack (128 max × 16 bytes boxed): ~2 KB
+        //   - locationStack (64 max × 28 bytes int[]): ~2 KB
+        //   - callStack (realistic ~20 ProcFrames × 600 bytes): ~12 KB
+        // Total: ~17 KB per organism (conservative for typical deep recursion)
+        // Note: Worst-case with full 128-frame call stack would be ~82 KB
+        long bytesPerOrganism = 17 * 1024; // ~17KB per organism
         long organismsBytes = (long) params.maxOrganisms() * bytesPerOrganism;
         estimates.add(new MemoryEstimate(
             serviceName + " (Organisms)",
             organismsBytes,
-            String.format("%d max organisms × ~2 KB (registers, stacks, code ref)", params.maxOrganisms()),
+            String.format("%d max organisms × ~17 KB (registers, stacks incl. ~20 call frames)", params.maxOrganisms()),
             MemoryEstimate.Category.SERVICE_BATCH
         ));
         
