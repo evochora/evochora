@@ -2,9 +2,83 @@ import { loadingManager } from '../ui/LoadingManager.js';
 
 /* global protobuf */
 
+/*
+ * =============================================================================
+ * SCHEMA DUPLICATION NOTICE
+ * =============================================================================
+ * 
+ * The Protobuf schema below is DUPLICATED from the server-side definition at:
+ *   src/main/proto/org/evochora/datapipeline/api/contracts/http_api_contracts.proto
+ * 
+ * This duplication exists to avoid adding Node.js as a build dependency.
+ * The trade-off is that schema changes must be manually synchronized.
+ * 
+ * WHEN TO REFACTOR:
+ *   - If 3+ Protobuf messages are used in the frontend
+ *   - If schema drift bugs occur frequently
+ *   - If the project adds Node.js for other reasons anyway
+ * 
+ * HOW TO REFACTOR (using protoc --js_out + google-protobuf):
+ * 
+ * 1. Add to build.gradle.kts:
+ *    
+ *    protobuf {
+ *        generateProtoTasks {
+ *            all().forEach { task ->
+ *                task.builtins {
+ *                    create("js") {
+ *                        option("import_style=commonjs,binary")
+ *                    }
+ *                }
+ *            }
+ *        }
+ *    }
+ *    
+ *    tasks.register<Copy>("copyProtoJsToWeb") {
+ *        dependsOn("generateProto")
+ *        from("build/generated/source/proto/main/js")
+ *        into("src/main/resources/web/visualizer/proto")
+ *    }
+ * 
+ * 2. Update index.html (load as CommonJS before ES6 modules):
+ *    
+ *    <script src="https://cdn.jsdelivr.net/npm/google-protobuf/google-protobuf.min.js"></script>
+ *    <script src="./proto/org/evochora/datapipeline/api/contracts/http_api_contracts_pb.js"></script>
+ *    <script type="module" src="./js/main.js"></script>
+ * 
+ * 3. Update this file:
+ *    
+ *    // Remove PROTO_SCHEMA constant and ensureProtoInitialized()
+ *    // Access global namespace instead:
+ *    const { EnvironmentHttpResponse, CellHttpResponse } = 
+ *        proto.org.evochora.datapipeline.api.contracts;
+ *    
+ *    // Change decode call:
+ *    // FROM: EnvironmentHttpResponse.decode(new Uint8Array(arrayBuffer))
+ *    // TO:   EnvironmentHttpResponse.deserializeBinary(new Uint8Array(arrayBuffer))
+ *    
+ *    // Change field access:
+ *    // FROM: message.cells, message.tickNumber
+ *    // TO:   message.getCellsList(), message.getTickNumber()
+ * 
+ * Benefits of refactoring:
+ *   - Single source of truth (no schema duplication)
+ *   - Smaller bundle (google-protobuf ~30KB vs protobufjs ~170KB)
+ *   - No runtime schema parsing overhead
+ * 
+ * Trade-offs:
+ *   - Generated JS is CommonJS (loaded via <script>, not ES6 import)
+ *   - google-protobuf is ~10-20% slower at decoding than protobufjs
+ * =============================================================================
+ */
+
 /**
  * Protobuf schema for environment API responses.
- * Defined inline to avoid complex build steps.
+ * 
+ * WARNING: This is duplicated from http_api_contracts.proto on the server.
+ * If you modify the server schema, you MUST update this definition as well.
+ * 
+ * @see src/main/proto/org/evochora/datapipeline/api/contracts/http_api_contracts.proto
  */
 const PROTO_SCHEMA = `
 syntax = "proto3";
@@ -32,6 +106,7 @@ let opcodeMap = null;
 
 /**
  * Initializes the Protobuf parser lazily.
+ * Uses runtime schema parsing (protobufjs) - see header comment for codegen alternative.
  * @returns {Promise<void>}
  */
 async function ensureProtoInitialized() {
@@ -44,10 +119,12 @@ async function ensureProtoInitialized() {
 /**
  * Sets the type mappings from metadata.
  * Call this after fetching metadata to enable ID-to-name resolution.
+ * Safe to call with null/undefined metadata (no-op).
  * 
- * @param {object} metadata - The simulation metadata containing moleculeTypes and opcodes maps.
+ * @param {object|null|undefined} metadata - The simulation metadata containing moleculeTypes and opcodes maps.
  */
 export function setTypeMappings(metadata) {
+    if (!metadata) return;  // Guard: fetchMetadata may return null/undefined
     if (metadata.moleculeTypes) {
         moleculeTypeMap = metadata.moleculeTypes;
     }
@@ -248,6 +325,7 @@ function transformCells(protoCells) {
             moleculeValue: cell.moleculeValue,
             ownerId: cell.ownerId,
             opcodeName: opcodeId >= 0 ? resolveOpcode(opcodeId) : null,
+            opcodeId: opcodeId,  // Raw ID for tooltip (shows full ID for unknown opcodes)
             marker: cell.marker
         };
     }
@@ -257,26 +335,33 @@ function transformCells(protoCells) {
 
 /**
  * Resolves molecule type ID to name using cached mapping.
+ * Fails fast if mappings not initialized (developer error).
+ * Returns 'UNKNOWN' for unknown IDs (valid simulation state from mutations).
+ * 
  * @param {number} typeId - The molecule type ID.
  * @returns {string} The molecule type name or "UNKNOWN".
+ * @throws {Error} If moleculeTypeMap not initialized.
  */
 function resolveMoleculeType(typeId) {
-    if (moleculeTypeMap && moleculeTypeMap[typeId]) {
-        return moleculeTypeMap[typeId];
+    if (!moleculeTypeMap) {
+        throw new Error('moleculeTypeMap not initialized. Call setTypeMappings() first.');
     }
-    // Fallback for when mappings aren't loaded yet
-    const fallback = { 0: 'CODE', 1: 'DATA', 2: 'ENERGY', 3: 'STRUCTURE' };
-    return fallback[typeId] || 'UNKNOWN';
+    return moleculeTypeMap[typeId] || 'UNKNOWN';
 }
 
 /**
  * Resolves opcode ID to name using cached mapping.
+ * Fails fast if mappings not initialized (developer error).
+ * Returns '??' for unknown IDs (valid simulation state from mutations).
+ * The raw opcodeId is passed separately for tooltip display.
+ * 
  * @param {number} opcodeId - The opcode ID.
- * @returns {string} The opcode name or "UNKNOWN".
+ * @returns {string} The opcode name or "??" for unknown.
+ * @throws {Error} If opcodeMap not initialized.
  */
 function resolveOpcode(opcodeId) {
-    if (opcodeMap && opcodeMap[opcodeId]) {
-        return opcodeMap[opcodeId];
+    if (!opcodeMap) {
+        throw new Error('opcodeMap not initialized. Call setTypeMappings() first.');
     }
-    return `OP_${opcodeId}`;
+    return opcodeMap[opcodeId] || '??';
 }

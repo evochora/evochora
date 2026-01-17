@@ -14,6 +14,15 @@ option java_package = "org.evochora.datapipeline.api.contracts";
 // These messages are simpler than internal pipeline messages and include
 // pre-computed values (coordinates instead of flat indices, type names, etc.)
 // to minimize client-side processing.
+//
+// IMPORTANT: Schema Duplication Notice
+// ------------------------------------
+// EnvironmentHttpResponse and CellHttpResponse are DUPLICATED in the frontend:
+//   src/main/resources/web/visualizer/js/api/EnvironmentApi.js
+//
+// If you modify these messages, you MUST update the JavaScript schema as well.
+// See EnvironmentApi.js header comments for refactoring instructions to
+// eliminate this duplication using protoc --js_out.
 
 // Response for GET /api/visualizer/environment/{runId}/{tick}
 // Contains all cells for rendering the environment grid at a specific tick.

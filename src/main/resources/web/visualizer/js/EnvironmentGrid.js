@@ -714,6 +714,7 @@ export class EnvironmentGrid {
                 value: cell.moleculeValue,
                 ownerId: cell.ownerId,
                 opcodeName: cell.opcodeName || null,
+                opcodeId: cell.opcodeId,  // Raw ID for tooltip (unknown opcodes show full ID)
                 marker: cell.marker || 0
             });
         }
@@ -754,7 +755,15 @@ export class EnvironmentGrid {
         if (!this.tooltip) return;
 
         const typeName = this.getTypeName(cell.type);
-        const opcodeInfo = (cell.opcodeName && (cell.ownerId !== 0 || cell.value !== 0)) ? `(${cell.opcodeName})` : '';
+        // For unknown opcodes (??), show full ID in tooltip
+        let opcodeInfo = '';
+        if (cell.opcodeName && (cell.ownerId !== 0 || cell.value !== 0)) {
+            if (cell.opcodeName === '??' && cell.opcodeId >= 0) {
+                opcodeInfo = `(Unknown: ${cell.opcodeId})`;
+            } else {
+                opcodeInfo = `(${cell.opcodeName})`;
+            }
+        }
         const markerInfo = cell.marker ? ` M:${cell.marker}` : '';
 
         this.tooltip.innerHTML = `
