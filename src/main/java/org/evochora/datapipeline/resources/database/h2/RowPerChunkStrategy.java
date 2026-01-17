@@ -61,6 +61,14 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
     private String mergeSql;
     
     /**
+     * Cache for chunk sizes per schema (runId).
+     * Different runs may have different chunk sizes based on their configuration.
+     * Key: schema name (from connection), Value: chunk size (ticks per chunk).
+     */
+    private final java.util.concurrent.ConcurrentHashMap<String, Long> chunkSizeCache = 
+            new java.util.concurrent.ConcurrentHashMap<>();
+    
+    /**
      * Creates RowPerChunkStrategy with optional compression for the BLOB storage.
      * <p>
      * Note: This compression is for the outer BLOB storage layer. The TickDataChunk
@@ -179,18 +187,21 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
     public TickDataChunk readChunkContaining(Connection conn, long tickNumber) 
             throws SQLException, TickNotFoundException {
         
-        // Query: find chunk where first_tick <= tickNumber AND last_tick >= tickNumber
-        String sql = "SELECT chunk_blob FROM environment_chunks " +
-                    "WHERE first_tick <= ? AND last_tick >= ? " +
-                    "LIMIT 1";
+        // Get chunk size (cached per schema, ~0ms after first call per run)
+        long chunkSize = getChunkSize(conn);
+        
+        // Calculate exact first_tick using chunk size (O(1) lookup instead of O(n) scan)
+        long firstTick = (tickNumber / chunkSize) * chunkSize;
+        
+        String sql = "SELECT chunk_blob FROM environment_chunks WHERE first_tick = ?";
         
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
-            stmt.setLong(1, tickNumber);
-            stmt.setLong(2, tickNumber);
+            stmt.setLong(1, firstTick);
             
             try (ResultSet rs = stmt.executeQuery()) {
                 if (!rs.next()) {
-                    throw new TickNotFoundException("No chunk found containing tick " + tickNumber);
+                    throw new TickNotFoundException("No chunk found containing tick " + tickNumber + 
+                                                   " (expected first_tick=" + firstTick + ")");
                 }
                 
                 byte[] blobData = rs.getBytes("chunk_blob");
@@ -200,6 +211,59 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
                 
                 return deserializeChunk(blobData, tickNumber);
             }
+        }
+    }
+    
+    /**
+     * Gets the chunk size for the current schema, using cache when available.
+     * <p>
+     * Different runs (schemas) may have different chunk sizes based on their
+     * configuration. This method caches the chunk size per schema to avoid
+     * repeated queries (~13ms savings per request after first call).
+     *
+     * @param conn Database connection (schema already set for the target run).
+     * @return Chunk size (number of ticks per chunk).
+     * @throws SQLException if query fails.
+     * @throws TickNotFoundException if no chunks exist in the table.
+     */
+    private long getChunkSize(Connection conn) throws SQLException, TickNotFoundException {
+        String schema = conn.getSchema();
+        
+        Long cached = chunkSizeCache.get(schema);
+        if (cached != null) {
+            return cached;
+        }
+        
+        long chunkSize = queryChunkSize(conn);
+        chunkSizeCache.put(schema, chunkSize);
+        log.debug("Cached chunk size for schema '{}': {} ticks per chunk", schema, chunkSize);
+        return chunkSize;
+    }
+    
+    /**
+     * Queries the chunk size from the first chunk in the table.
+     * <p>
+     * This assumes all chunks within a schema have the same size, which is 
+     * guaranteed by the simulation engine.
+     * <p>
+     * Performance: O(1) with LIMIT 1, typically ~13ms.
+     *
+     * @param conn Database connection (schema already set for the target run).
+     * @return Chunk size (number of ticks per chunk).
+     * @throws SQLException if query fails.
+     * @throws TickNotFoundException if no chunks exist in the table.
+     */
+    private long queryChunkSize(Connection conn) throws SQLException, TickNotFoundException {
+        String sql = "SELECT (last_tick - first_tick + 1) AS chunk_size FROM environment_chunks LIMIT 1";
+        
+        try (PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+            
+            if (!rs.next()) {
+                throw new TickNotFoundException("No chunks in environment_chunks table");
+            }
+            
+            return rs.getLong("chunk_size");
         }
     }
     

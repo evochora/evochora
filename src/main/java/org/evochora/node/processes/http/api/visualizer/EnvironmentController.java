@@ -216,6 +216,8 @@ public class EnvironmentController extends VisualizerBaseController {
         }
     )
     void getEnvironment(final Context ctx) throws SQLException, TickNotFoundException {
+        final long totalStartNs = System.nanoTime();
+        
         // Parse and validate tick parameter
         final long tickNumber = parseTickNumber(ctx.pathParam("tick"));
         
@@ -241,14 +243,28 @@ public class EnvironmentController extends VisualizerBaseController {
         }
         
         try {
+            // --- Timing: Data Loading (split into sub-phases for profiling) ---
+            final long loadStartNs = System.nanoTime();
+            
             // Get or load environment properties (cached)
             final EnvironmentProperties envProps = getOrLoadEnvProps(runId);
+            final long envPropsTimeNs = System.nanoTime() - loadStartNs;
             
-            // Get or load chunk (cached)
+            // Get or load chunk (cached) - this is typically the bottleneck
+            final long chunkStartNs = System.nanoTime();
             final TickDataChunk chunk = getOrLoadChunk(runId, tickNumber);
+            final long chunkTimeNs = System.nanoTime() - chunkStartNs;
             
             // Get or create decoder for this runId (cached, reuses MutableCellState)
+            final long decoderStartNs = System.nanoTime();
             final DeltaCodec.Decoder decoder = getOrCreateDecoder(runId, envProps);
+            final long decoderTimeNs = System.nanoTime() - decoderStartNs;
+            
+            final long loadTimeMs = (System.nanoTime() - loadStartNs) / 1_000_000;
+            final long chunkLoadTimeMs = chunkTimeNs / 1_000_000;
+            
+            // --- Timing: Decompression ---
+            final long decompressStartNs = System.nanoTime();
             
             // Decompress to get the specific tick
             final TickData tickData;
@@ -258,14 +274,46 @@ public class EnvironmentController extends VisualizerBaseController {
                 throw new SQLException("Corrupted chunk for tick " + tickNumber + ": " + e.getMessage(), e);
             }
             
+            final long decompressTimeMs = (System.nanoTime() - decompressStartNs) / 1_000_000;
+            
+            // --- Timing: Transform ---
+            final long transformStartNs = System.nanoTime();
+            
             // Ensure instruction set is initialized before resolving opcode names
             ensureInstructionSetInitialized();
             
             // Convert to response format
             final List<CellWithCoordinates> cells = convertTickDataToCells(tickData, region, envProps);
             
-            // Return DTO directly (client only uses cells array)
-            ctx.status(HttpStatus.OK).json(new EnvironmentResponseDto(cells));
+            final long transformTimeMs = (System.nanoTime() - transformStartNs) / 1_000_000;
+            
+            // --- Timing: Serialization ---
+            final long serializeStartNs = System.nanoTime();
+            
+            final EnvironmentResponseDto response = new EnvironmentResponseDto(cells);
+            
+            // Serialize to JSON string (so we can measure serialization time separately)
+            final String jsonResponse = ctx.jsonMapper().toJsonString(response, EnvironmentResponseDto.class);
+            
+            final long serializeTimeMs = (System.nanoTime() - serializeStartNs) / 1_000_000;
+            final long totalTimeMs = (System.nanoTime() - totalStartNs) / 1_000_000;
+            
+            // Get response bytes for Content-Length header
+            final byte[] responseBytes = jsonResponse.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            
+            // Add timing headers (X-Timing-Db-Ms is the DB query portion of Load)
+            ctx.header("X-Timing-Load-Ms", String.valueOf(loadTimeMs));
+            ctx.header("X-Timing-Db-Ms", String.valueOf(chunkLoadTimeMs));
+            ctx.header("X-Timing-Decompress-Ms", String.valueOf(decompressTimeMs));
+            ctx.header("X-Timing-Transform-Ms", String.valueOf(transformTimeMs));
+            ctx.header("X-Timing-Serialize-Ms", String.valueOf(serializeTimeMs));
+            ctx.header("X-Timing-Total-Ms", String.valueOf(totalTimeMs));
+            ctx.header("X-Cell-Count", String.valueOf(cells.size()));
+            ctx.header("Content-Length", String.valueOf(responseBytes.length));
+            
+            // Return pre-serialized JSON
+            ctx.contentType("application/json");
+            ctx.status(HttpStatus.OK).result(responseBytes);
             
         } catch (RuntimeException e) {
             handleDatabaseException(e, runId);

@@ -12,6 +12,7 @@ public class EnvironmentProperties {
     private final int[] worldShape;
     private final boolean isToroidal;
     private final int[] strides;
+    private final int totalCells;
     
     /**
      * Creates new environment properties.
@@ -24,6 +25,13 @@ public class EnvironmentProperties {
         this.worldShape = worldShape.clone();
         this.isToroidal = isToroidal;
         this.strides = calculateStrides();
+        
+        // Calculate total cells (product of all dimensions)
+        int cells = 1;
+        for (int dim : worldShape) {
+            cells *= dim;
+        }
+        this.totalCells = cells;
     }
     
     /**
@@ -195,5 +203,20 @@ public class EnvironmentProperties {
      */
     public int getDimensions() {
         return worldShape.length;
+    }
+    
+    /**
+     * Gets the total number of cells in the environment.
+     * <p>
+     * This is the product of all dimensions in the world shape.
+     * For example, a 100x100 environment has 10,000 total cells.
+     * <p>
+     * <strong>Use Case:</strong> Pre-allocating buffers for serialization
+     * (e.g., FlatBuffers builder initial size estimation).
+     *
+     * @return Total number of cells
+     */
+    public int getTotalCells() {
+        return totalCells;
     }
 }

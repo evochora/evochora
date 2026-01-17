@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package org.evochora.datapipeline.api.contracts;
+
+import "org/evochora/datapipeline/api/contracts/metadata_contracts.proto";
+
+option java_multiple_files = true;
+option java_package = "org.evochora.datapipeline.api.contracts";
+
+// ============================================================================
+// HTTP API Response Messages
+// ============================================================================
+// Optimized for client-side rendering in the web visualizer.
+// These messages are simpler than internal pipeline messages and include
+// pre-computed values (coordinates instead of flat indices, type names, etc.)
+// to minimize client-side processing.
+
+// Response for GET /api/visualizer/environment/{runId}/{tick}
+// Contains all cells for rendering the environment grid at a specific tick.
+message EnvironmentHttpResponse {
+  // Tick number this response represents
+  int64 tick_number = 1;
+  
+  // Total cells in the environment (for progress display)
+  int32 total_cells = 2;
+  
+  // All non-empty cells (sparse representation)
+  repeated CellHttpResponse cells = 3;
+}
+
+// A single cell optimized for HTTP response.
+// Uses coordinates (not flat index) and includes pre-resolved names.
+message CellHttpResponse {
+  // N-dimensional coordinates (e.g., [x, y] for 2D, [x, y, z] for 3D)
+  repeated int32 coordinates = 1 [packed=true];
+  
+  // Molecule type ID (0=EMPTY, 1=CODE, 2=DATA, 3=ENERGY, 4=STRUCTURE)
+  int32 molecule_type = 2;
+  
+  // Molecule value (signed, interpretation depends on type)
+  int32 molecule_value = 3;
+  
+  // Owner organism ID (0 = unowned)
+  int32 owner_id = 4;
+  
+  // Opcode ID for CODE molecules (-1 if not CODE)
+  // Client maps to instruction name via static lookup table
+  int32 opcode_id = 5;
+  
+  // Molecule marker (0-15), used for ownership transfer during FORK
+  int32 marker = 6;
+}
+
+// Response for GET /api/visualizer/environment/{runId}/ticks
+// Returns the range of indexed ticks available in the database.
+message TickRangeHttpResponse {
+  // Minimum indexed tick number
+  int64 min_tick = 1;
+  
+  // Maximum indexed tick number
+  int64 max_tick = 2;
+}
+
+// Response for GET /api/visualizer/simulations/{runId}/metadata
+// Contains simulation configuration and program information.
+// Note: This wraps the existing SimulationMetadata message for HTTP transport.
+message MetadataHttpResponse {
+  // The full simulation metadata (reuses existing message)
+  // Clients can access environment.shape, program artifacts, etc.
+  // Import not needed - same package
+  SimulationMetadata metadata = 1;
+}

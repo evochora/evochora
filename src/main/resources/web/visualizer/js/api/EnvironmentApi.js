@@ -1,4 +1,4 @@
-import { apiClient } from './ApiClient.js';
+import { loadingManager } from '../ui/LoadingManager.js';
 
 /**
  * API client for environment-related data endpoints.
@@ -10,6 +10,7 @@ export class EnvironmentApi {
     /**
      * Fetches environment data (cell states) for a specific tick and a given rectangular region.
      * Supports cancellation via an AbortSignal.
+     * Includes performance timing (visible in browser console at Debug level).
      * 
      * @param {number} tick - The tick number to fetch data for.
      * @param {{x1: number, x2: number, y1: number, y2: number}} region - The viewport region to fetch.
@@ -31,12 +32,80 @@ export class EnvironmentApi {
             url += `&runId=${encodeURIComponent(runId)}`;
         }
         
-            const fetchOptions = {};
-            if (signal) {
-                fetchOptions.signal = signal;
+        const fetchOptions = {};
+        if (signal) {
+            fetchOptions.signal = signal;
+        }
+        
+        // --- Timing: Start ---
+        const totalStart = performance.now();
+        
+        if (loadingManager) {
+            loadingManager.incrementRequests();
+        }
+        
+        try {
+            // --- Timing: Network fetch ---
+            const fetchStart = performance.now();
+            const response = await fetch(url, fetchOptions);
+            const fetchTime = performance.now() - fetchStart;
+            
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                const errorMessage = errorData.message || `HTTP ${response.status}: ${response.statusText}`;
+                throw new Error(errorMessage);
             }
             
-        return apiClient.fetch(url, fetchOptions);
+            // Read server timing headers
+            const serverTiming = {
+                load: response.headers.get('X-Timing-Load-Ms'),
+                db: response.headers.get('X-Timing-Db-Ms'),
+                decompress: response.headers.get('X-Timing-Decompress-Ms'),
+                transform: response.headers.get('X-Timing-Transform-Ms'),
+                serialize: response.headers.get('X-Timing-Serialize-Ms'),
+                total: response.headers.get('X-Timing-Total-Ms'),
+                cellCount: response.headers.get('X-Cell-Count')
+            };
+            
+            // --- Timing: Parse JSON ---
+            const parseStart = performance.now();
+            const data = await response.json();
+            const parseTime = performance.now() - parseStart;
+            
+            const totalTime = performance.now() - totalStart;
+            
+            // Log timing at debug level (only visible when "Verbose" is enabled in DevTools)
+            console.debug(`[Environment API] Tick ${tick}`, {
+                server: {
+                    loadMs: serverTiming.load,
+                    dbMs: serverTiming.db,
+                    decompressMs: serverTiming.decompress,
+                    transformMs: serverTiming.transform,
+                    serializeMs: serverTiming.serialize,
+                    totalMs: serverTiming.total
+                },
+                client: {
+                    fetchMs: fetchTime.toFixed(1),
+                    parseMs: parseTime.toFixed(1),
+                    totalMs: totalTime.toFixed(1)
+                },
+                cells: serverTiming.cellCount,
+                sizeKb: response.headers.get('Content-Length') 
+                    ? (parseInt(response.headers.get('Content-Length')) / 1024).toFixed(1) 
+                    : 'unknown'
+            });
+            
+            return data;
+        } catch (error) {
+            if (error instanceof TypeError && error.message.includes('fetch')) {
+                throw new Error('Server not reachable. Is it running?');
+            }
+            throw error;
+        } finally {
+            if (loadingManager) {
+                loadingManager.decrementRequests();
+            }
+        }
     }
 
     /**
