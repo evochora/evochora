@@ -3,6 +3,7 @@ package org.evochora.datapipeline.resources.storage;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -45,13 +46,23 @@ class FileSystemStorageResourceTickFilterTest {
                 .build();
     }
 
+    private TickDataChunk createChunk(long firstTick, long lastTick) {
+        return TickDataChunk.newBuilder()
+                .setSimulationRunId("test-sim")
+                .setFirstTick(firstTick)
+                .setLastTick(lastTick)
+                .setTickCount(1)
+                .setSnapshot(createTick(firstTick))
+                .build();
+    }
+
     @Test
     void testListBatchFiles_WithStartTick() throws IOException {
         // Write batches at different tick ranges
-        storage.writeBatch(List.of(createTick(0), createTick(10)), 0, 10);
-        storage.writeBatch(List.of(createTick(100), createTick(200)), 100, 200);
-        storage.writeBatch(List.of(createTick(1000), createTick(2000)), 1000, 2000);
-        storage.writeBatch(List.of(createTick(5000), createTick(6000)), 5000, 6000);
+        storage.writeChunkBatch(List.of(createChunk(0, 10)), 0, 10);
+        storage.writeChunkBatch(List.of(createChunk(100, 200)), 100, 200);
+        storage.writeChunkBatch(List.of(createChunk(1000, 2000)), 1000, 2000);
+        storage.writeChunkBatch(List.of(createChunk(5000, 6000)), 5000, 6000);
 
         // List all batches starting from tick 100
         BatchFileListResult result = storage.listBatchFiles("test-sim/", null, 100, 100L);
@@ -66,10 +77,10 @@ class FileSystemStorageResourceTickFilterTest {
     @Test
     void testListBatchFiles_WithTickRange() throws IOException {
         // Write batches at different tick ranges
-        storage.writeBatch(List.of(createTick(0), createTick(10)), 0, 10);
-        storage.writeBatch(List.of(createTick(100), createTick(200)), 100, 200);
-        storage.writeBatch(List.of(createTick(1000), createTick(2000)), 1000, 2000);
-        storage.writeBatch(List.of(createTick(5000), createTick(6000)), 5000, 6000);
+        storage.writeChunkBatch(List.of(createChunk(0, 10)), 0, 10);
+        storage.writeChunkBatch(List.of(createChunk(100, 200)), 100, 200);
+        storage.writeChunkBatch(List.of(createChunk(1000, 2000)), 1000, 2000);
+        storage.writeChunkBatch(List.of(createChunk(5000, 6000)), 5000, 6000);
 
         // List batches in range [100, 1000]
         BatchFileListResult result = storage.listBatchFiles("test-sim/", null, 100, 100L, 1000L);
@@ -84,8 +95,8 @@ class FileSystemStorageResourceTickFilterTest {
     @Test
     void testListBatchFiles_StartTickZero() throws IOException {
         // Write batches starting from 0
-        storage.writeBatch(List.of(createTick(0), createTick(10)), 0, 10);
-        storage.writeBatch(List.of(createTick(100), createTick(200)), 100, 200);
+        storage.writeChunkBatch(List.of(createChunk(0, 10)), 0, 10);
+        storage.writeChunkBatch(List.of(createChunk(100, 200)), 100, 200);
 
         // List batches from tick 0
         BatchFileListResult result = storage.listBatchFiles("test-sim/", null, 100, 0L);
@@ -96,8 +107,8 @@ class FileSystemStorageResourceTickFilterTest {
     @Test
     void testListBatchFiles_NoMatchingBatches() throws IOException {
         // Write batches in low range
-        storage.writeBatch(List.of(createTick(0), createTick(10)), 0, 10);
-        storage.writeBatch(List.of(createTick(100), createTick(200)), 100, 200);
+        storage.writeChunkBatch(List.of(createChunk(0, 10)), 0, 10);
+        storage.writeChunkBatch(List.of(createChunk(100, 200)), 100, 200);
 
         // Request batches starting from much higher tick
         BatchFileListResult result = storage.listBatchFiles("test-sim/", null, 100, 100000L);
@@ -112,7 +123,7 @@ class FileSystemStorageResourceTickFilterTest {
         for (int i = 0; i < 10; i++) {
             long start = i * 1000L;
             long end = start + 999;
-            storage.writeBatch(List.of(createTick(start)), start, end);
+            storage.writeChunkBatch(List.of(createChunk(start, end)), start, end);
         }
 
         // Request only 3 batches starting from tick 0
@@ -126,10 +137,10 @@ class FileSystemStorageResourceTickFilterTest {
     @Test
     void testListBatchFiles_RangeExcludesOutOfBounds() throws IOException {
         // Write batches at specific ticks
-        storage.writeBatch(List.of(createTick(500)), 500, 599);
-        storage.writeBatch(List.of(createTick(1000)), 1000, 1099);
-        storage.writeBatch(List.of(createTick(1500)), 1500, 1599);
-        storage.writeBatch(List.of(createTick(2000)), 2000, 2099);
+        storage.writeChunkBatch(List.of(createChunk(500, 599)), 500, 599);
+        storage.writeChunkBatch(List.of(createChunk(1000, 1099)), 1000, 1099);
+        storage.writeChunkBatch(List.of(createChunk(1500, 1599)), 1500, 1599);
+        storage.writeChunkBatch(List.of(createChunk(2000, 2099)), 2000, 2099);
 
         // Request range [1000, 1500]
         BatchFileListResult result = storage.listBatchFiles("test-sim/", null, 100, 1000L, 1500L);
@@ -142,8 +153,8 @@ class FileSystemStorageResourceTickFilterTest {
     @Test
     void testListBatchFiles_BackwardCompatibility() throws IOException {
         // Write batches
-        storage.writeBatch(List.of(createTick(0), createTick(10)), 0, 10);
-        storage.writeBatch(List.of(createTick(100), createTick(200)), 100, 200);
+        storage.writeChunkBatch(List.of(createChunk(0, 10)), 0, 10);
+        storage.writeChunkBatch(List.of(createChunk(100, 200)), 100, 200);
 
         // Use old method without tick filtering
         BatchFileListResult result = storage.listBatchFiles("test-sim/", null, 100);

@@ -5,6 +5,7 @@ import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.IResourceBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -54,21 +55,32 @@ class MonitoredStorageReaderTest {
 
     @Test
     void testReadMetricsTracked() throws IOException {
-        List<TickData> ticks = Arrays.asList(
-            TickData.newBuilder().setTickNumber(100).build(),
-            TickData.newBuilder().setTickNumber(101).build()
-        );
+        TickDataChunk chunk1 = TickDataChunk.newBuilder()
+            .setSimulationRunId("test-sim")
+            .setFirstTick(100)
+            .setLastTick(100)
+            .setTickCount(1)
+            .setSnapshot(TickData.newBuilder().setTickNumber(100).build())
+            .build();
+        TickDataChunk chunk2 = TickDataChunk.newBuilder()
+            .setSimulationRunId("test-sim")
+            .setFirstTick(101)
+            .setLastTick(101)
+            .setTickCount(1)
+            .setSnapshot(TickData.newBuilder().setTickNumber(101).build())
+            .build();
+        List<TickDataChunk> chunks = Arrays.asList(chunk1, chunk2);
 
         StoragePath testPath = StoragePath.of("batch.pb.zst");
-        when(mockDelegate.readBatch(any(StoragePath.class))).thenReturn(ticks);
+        when(mockDelegate.readChunkBatch(any(StoragePath.class))).thenReturn(chunks);
 
-        monitoredReader.readBatch(testPath);
+        monitoredReader.readChunkBatch(testPath);
 
-        verify(mockDelegate).readBatch(testPath);
+        verify(mockDelegate).readChunkBatch(testPath);
 
         Map<String, Number> metrics = monitoredReader.getMetrics();
         assertEquals(1L, metrics.get("batches_read").longValue());
-        assertEquals(ticks.stream().mapToLong(TickData::getSerializedSize).sum(),
+        assertEquals(chunks.stream().mapToLong(TickDataChunk::getSerializedSize).sum(),
             metrics.get("bytes_read").longValue());
     }
 
@@ -88,10 +100,10 @@ class MonitoredStorageReaderTest {
     @Test
     void testReadErrorTracked() throws IOException {
         StoragePath testPath = StoragePath.of("batch.pb.zst");
-        when(mockDelegate.readBatch(any(StoragePath.class)))
+        when(mockDelegate.readChunkBatch(any(StoragePath.class)))
             .thenThrow(new IOException("Read failed"));
 
-        assertThrows(IOException.class, () -> monitoredReader.readBatch(testPath));
+        assertThrows(IOException.class, () -> monitoredReader.readChunkBatch(testPath));
 
         Map<String, Number> metrics = monitoredReader.getMetrics();
         assertEquals(1L, metrics.get("read_errors").longValue());

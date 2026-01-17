@@ -1,7 +1,6 @@
 package org.evochora.datapipeline.resources.storage.wrappers;
 
 import com.google.protobuf.MessageLite;
-import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
@@ -61,29 +60,6 @@ public class MonitoredBatchStorageWriter implements IBatchStorageWrite, IWrapped
         batchesCounter.recordCount();
         bytesCounter.recordSum(bytes);
         latencyTracker.record(latencyNanos);
-    }
-
-    @Override
-    @Deprecated(forRemoval = true)
-    public StoragePath writeBatch(List<TickData> batch, long firstTick, long lastTick) throws IOException {
-        long startNanos = System.nanoTime();
-        try {
-            StoragePath path = delegate.writeBatch(batch, firstTick, lastTick);
-
-            // Update cumulative metrics
-            batchesWritten.incrementAndGet();
-            long bytes = batch.stream().mapToLong(TickData::getSerializedSize).sum();
-            bytesWritten.addAndGet(bytes);
-
-            // Record performance metrics
-            long latencyNanos = System.nanoTime() - startNanos;
-            recordWrite(batch.size(), bytes, latencyNanos);
-
-            return path;
-        } catch (IOException e) {
-            writeErrors.incrementAndGet();
-            throw e;
-        }
     }
 
     @Override

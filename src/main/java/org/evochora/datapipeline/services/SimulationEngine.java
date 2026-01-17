@@ -18,7 +18,6 @@ import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.datapipeline.api.contracts.CallSiteBinding;
-import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.ColumnTokenLookup;
 import org.evochora.datapipeline.api.contracts.EnergyStrategyConfig;
 import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
@@ -36,7 +35,6 @@ import org.evochora.datapipeline.api.contracts.SourceInfo;
 import org.evochora.datapipeline.api.contracts.SourceLines;
 import org.evochora.datapipeline.api.contracts.SourceMapEntry;
 import org.evochora.datapipeline.api.contracts.StrategyState;
-import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TokenInfo;
 import org.evochora.datapipeline.api.contracts.TokenMapEntry;
@@ -416,22 +414,6 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         return builder.build();
     }
 
-    private TickData captureTickData(long tick) {
-        TickData.Builder builder = TickData.newBuilder();
-        builder.setSimulationRunId(runId);
-        builder.setTickNumber(tick);
-        builder.setCaptureTimeMs(System.currentTimeMillis());
-        builder.setTotalOrganismsCreated(simulation.getTotalOrganismsCreatedCount());
-        simulation.getOrganisms().stream().filter(o -> !o.isDead()).forEach(o -> builder.addOrganisms(extractOrganismState(o)));
-        extractCellStates(simulation.getEnvironment(), builder);
-        builder.setRngState(ByteString.copyFrom(randomProvider.saveState()));
-        energyStrategies.forEach(s -> builder.addStrategyStates(StrategyState.newBuilder()
-                .setStrategyType(s.strategy().getClass().getName())
-                .setStateBlob(ByteString.copyFrom(s.strategy().saveState()))
-                .build()));
-        return builder.build();
-    }
-
     private OrganismState extractOrganismState(Organism o) {
         OrganismState.Builder builder = OrganismState.newBuilder();
         Vector.Builder vectorBuilder = Vector.newBuilder();
@@ -539,23 +521,6 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                         .setStateBlob(ByteString.copyFrom(s.strategy().saveState()))
                         .build())
                 .toList();
-    }
-
-    private void extractCellStates(Environment env, TickData.Builder tickBuilder) {
-        // Use parallel builders for SoA (Structure of Arrays) layout
-        // packed=true in protobuf ensures efficient storage without tag overhead per integer
-        CellDataColumns.Builder columnsBuilder = CellDataColumns.newBuilder();
-
-        env.forEachOccupiedIndex(flatIndex -> {
-            int moleculeInt = env.getMoleculeInt(flatIndex);
-            int ownerId = env.getOwnerIdByIndex(flatIndex);
-
-            columnsBuilder.addFlatIndices(flatIndex);
-            columnsBuilder.addMoleculeData(moleculeInt);
-            columnsBuilder.addOwnerIds(ownerId);
-        });
-        
-        tickBuilder.setCellColumns(columnsBuilder.build());
     }
 
     private static org.evochora.datapipeline.api.contracts.ProgramArtifact convertProgramArtifact(ProgramArtifact artifact) {

@@ -1,7 +1,6 @@
 package org.evochora.datapipeline.api.resources.storage;
 
 import com.google.protobuf.MessageLite;
-import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.IResource;
 
@@ -23,7 +22,7 @@ import java.util.List;
  * Storage configuration (folder structure, compression) is transparent to callers.
  * Services only need to know about batch write operations, not the underlying organization.
  * <p>
- * <strong>Thread Safety:</strong> writeBatch() is thread-safe. Multiple services can write
+ * <strong>Thread Safety:</strong> writeChunkBatch() is thread-safe. Multiple services can write
  * concurrently as competing consumers without coordination.
  * <p>
  * <strong>Usage Pattern:</strong> This interface is injected into services via usage type
@@ -32,43 +31,8 @@ import java.util.List;
 public interface IBatchStorageWrite extends IResource {
 
     /**
-     * Writes a batch of tick data to storage with automatic folder organization.
-     * <p>
-     * The batch is:
-     * <ul>
-     *   <li>Compressed according to storage configuration</li>
-     *   <li>Written to appropriate folder based on firstTick</li>
-     *   <li>Atomically committed (temp file → final file)</li>
-     * </ul>
-     * <p>
-     * The returned {@link StoragePath} represents the physical path including compression
-     * extension (e.g., ".zst" for Zstandard). This path can be passed directly to
-     * {@link IBatchStorageRead#readBatch(StoragePath)} for reading.
-     * <p>
-     * <strong>Example usage (PersistenceService):</strong>
-     * <pre>
-     * List&lt;TickData&gt; batch = queue.drainTo(maxBatchSize);
-     * long firstTick = batch.get(0).getTickNumber();
-     * long lastTick = batch.get(batch.size() - 1).getTickNumber();
-     * StoragePath path = storage.writeBatch(batch, firstTick, lastTick);
-     * log.info("Wrote {} ticks to {}", batch.size(), path);
-     * </pre>
-     *
-     * @param batch The tick data to persist (must be non-empty)
-     * @param firstTick The first tick number in the batch
-     * @param lastTick The last tick number in the batch
-     * @return The physical storage path where batch was written (includes compression extension)
-     * @throws IOException If write fails
-     * @throws IllegalArgumentException If batch is empty or tick order is invalid (firstTick > lastTick)
-     * @deprecated Use {@link #writeChunkBatch(List, long, long)} instead. Will be removed after delta compression migration.
-     */
-    @Deprecated(forRemoval = true)
-    StoragePath writeBatch(List<TickData> batch, long firstTick, long lastTick) throws IOException;
-
-    /**
      * Writes a batch of tick data chunks to storage with automatic folder organization.
      * <p>
-     * This is the delta compression variant of {@link #writeBatch(List, long, long)}.
      * Each chunk is a self-contained unit containing a snapshot and deltas.
      * <p>
      * The batch is:

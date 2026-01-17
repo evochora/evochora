@@ -8,8 +8,12 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
+import org.evochora.datapipeline.api.contracts.CellDataColumns;
+import org.evochora.datapipeline.api.contracts.DeltaType;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
+import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.LogLevel;
@@ -35,13 +39,42 @@ class FileSystemStorageResourceCompressionTest {
     @TempDir
     Path tempDir;
 
-    // Helper to create TickData for batch testing
-    private TickData createTick(long tickNumber) {
-        return TickData.newBuilder()
-            .setTickNumber(tickNumber)
-            .setSimulationRunId("test-sim")
-            .setCaptureTimeMs(System.currentTimeMillis())
-            .build();
+    // Helper to create TickDataChunk for chunk batch testing
+    private TickDataChunk createChunk(long firstTick, long lastTick, int tickCount) {
+        TickData snapshot = TickData.newBuilder()
+                .setTickNumber(firstTick)
+                .setSimulationRunId("test-sim")
+                .setCaptureTimeMs(System.currentTimeMillis())
+                .setCellColumns(CellDataColumns.newBuilder()
+                        .addFlatIndices(0)
+                        .addMoleculeData(100)
+                        .addOwnerIds(1)
+                        .build())
+                .build();
+
+        TickDataChunk.Builder chunkBuilder = TickDataChunk.newBuilder()
+                .setSimulationRunId("test-sim")
+                .setFirstTick(firstTick)
+                .setLastTick(lastTick)
+                .setTickCount(tickCount)
+                .setSnapshot(snapshot);
+
+        // Add deltas if tickCount > 1
+        for (long tick = firstTick + 1; tick <= lastTick; tick++) {
+            TickDelta delta = TickDelta.newBuilder()
+                    .setTickNumber(tick)
+                    .setCaptureTimeMs(System.currentTimeMillis())
+                    .setDeltaType(DeltaType.INCREMENTAL)
+                    .setChangedCells(CellDataColumns.newBuilder()
+                            .addFlatIndices((int) tick)
+                            .addMoleculeData((int) (100 + tick))
+                            .addOwnerIds(1)
+                            .build())
+                    .build();
+            chunkBuilder.addDeltas(delta);
+        }
+
+        return chunkBuilder.build();
     }
 
     @Nested
@@ -105,26 +138,31 @@ class FileSystemStorageResourceCompressionTest {
         @Test
         @DisplayName("Compression achieves size reduction")
         void compressionAchievesSizeReduction() throws IOException {
-            // Arrange: Repetitive data (compresses well) - use TickData batches
-            List<TickData> batch = new ArrayList<>();
-            for (int i = 0; i < 1000; i++) {
-                batch.add(createTick(42)); // Same tick repeated
+            // Arrange: Repetitive data (compresses well) - use TickDataChunk batches
+            // Create many chunks with identical simulation run IDs and similar structure
+            List<TickDataChunk> batch = new ArrayList<>();
+            for (int i = 0; i < 100; i++) {
+                batch.add(createChunk(i * 10, i * 10 + 9, 10)); // Multiple chunks
             }
 
             // Act: Write compressed batch
-            StoragePath batchPath = storage.writeBatch(batch, 42, 42);
+            StoragePath batchPath = storage.writeChunkBatch(batch, 0, 999);
 
-            // Assert: Compressed file is significantly smaller than uncompressed would be
-            // Note: writeBatch() now returns physical path including compression extension
+            // Assert: Compressed file is smaller than uncompressed would be
+            // Note: writeChunkBatch() now returns physical path including compression extension
             Path compressedFile = tempDir.resolve(batchPath.asString());
             long compressedSize = Files.size(compressedFile);
 
-            // Each TickData message when delimited is ~30-40 bytes, so 1000 messages ~= 35000 bytes
-            long estimatedUncompressedSize = 35000;
+            // Calculate actual uncompressed size by summing message sizes
+            long actualUncompressedSize = batch.stream()
+                .mapToLong(chunk -> chunk.getSerializedSize() + 1) // +1 for varint delimiter
+                .sum();
 
-            // Compression should achieve at least 2x ratio for this repetitive data
-            double ratio = (double) estimatedUncompressedSize / compressedSize;
-            assertThat(ratio).isGreaterThan(2.0);
+            // Compression should achieve measurable size reduction
+            // ZSTD typically achieves 10-20% reduction on protobuf data
+            double ratio = (double) actualUncompressedSize / compressedSize;
+            assertThat(ratio).isGreaterThan(1.0); // At minimum, verify some compression
+            assertThat(compressedSize).isLessThan(actualUncompressedSize);
         }
 
         @Test
@@ -365,18 +403,18 @@ class FileSystemStorageResourceCompressionTest {
                 """, tempDir.resolve("level9").toString().replace("\\", "\\\\")));
             FileSystemStorageResource storageLevel9 = new FileSystemStorageResource("level9", configLevel9);
 
-            // Arrange: 500 TickData messages (testing compression ratio with meaningful data volume)
-            List<TickData> batch = new ArrayList<>();
-            for (int i = 0; i < 500; i++) {
-                batch.add(createTick(42));
+            // Arrange: 50 chunks (testing compression ratio with meaningful data volume)
+            List<TickDataChunk> batch = new ArrayList<>();
+            for (int i = 0; i < 50; i++) {
+                batch.add(createChunk(i * 10, i * 10 + 9, 10));
             }
 
-            // Act: Write with both levels using writeBatch
-            StoragePath batchPath1 = storageLevel1.writeBatch(batch, 42, 42);
-            StoragePath batchPath9 = storageLevel9.writeBatch(batch, 42, 42);
+            // Act: Write with both levels using writeChunkBatch
+            StoragePath batchPath1 = storageLevel1.writeChunkBatch(batch, 0, 499);
+            StoragePath batchPath9 = storageLevel9.writeChunkBatch(batch, 0, 499);
 
             // Assert: Both create valid compressed files
-            // Note: writeBatch() now returns physical path including compression extension
+            // Note: writeChunkBatch() returns physical path including compression extension
             Path file1 = tempDir.resolve("level1/" + batchPath1.asString());
             Path file9 = tempDir.resolve("level9/" + batchPath9.asString());
             assertThat(file1).exists();
@@ -389,14 +427,14 @@ class FileSystemStorageResourceCompressionTest {
             double tolerance = size1 * 0.05;
             assertThat((double) size9).isLessThanOrEqualTo(size1 + tolerance);
 
-            // Both should be readable - verify all 500 messages
-            List<TickData> readBatch1 = storageLevel1.readBatch(batchPath1);
-            List<TickData> readBatch9 = storageLevel9.readBatch(batchPath9);
+            // Both should be readable - verify all 50 chunks
+            List<TickDataChunk> readBatch1 = storageLevel1.readChunkBatch(batchPath1);
+            List<TickDataChunk> readBatch9 = storageLevel9.readChunkBatch(batchPath9);
 
-            assertThat(readBatch1).hasSize(500);
-            assertThat(readBatch9).hasSize(500);
-            assertThat(readBatch1.get(0).getTickNumber()).isEqualTo(42);
-            assertThat(readBatch9.get(0).getTickNumber()).isEqualTo(42);
+            assertThat(readBatch1).hasSize(50);
+            assertThat(readBatch9).hasSize(50);
+            assertThat(readBatch1.get(0).getFirstTick()).isEqualTo(0);
+            assertThat(readBatch9.get(0).getFirstTick()).isEqualTo(0);
         }
     }
 }

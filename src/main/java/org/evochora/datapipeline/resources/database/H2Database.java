@@ -25,7 +25,6 @@ import org.evochora.datapipeline.resources.database.h2.IH2OrgStorageStrategy;
 import org.evochora.datapipeline.utils.H2SchemaUtil;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.evochora.datapipeline.utils.protobuf.ProtobufConverter;
-import org.evochora.runtime.model.EnvironmentProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

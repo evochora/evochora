@@ -2,7 +2,6 @@ package org.evochora.datapipeline.utils.delta;
 
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.DeltaType;
-import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TickDelta;
@@ -219,10 +218,6 @@ class DeltaCodecDecompressionTest {
     // ========================================================================
     // Helper Methods
     // ========================================================================
-    
-    private TickDataChunk createSingleTickChunk(long tickNumber) {
-        return createChunkWithSnapshot(createSnapshot(tickNumber));
-    }
     
     private TickDataChunk createChunkWithSnapshot(TickData snapshot) {
         return TickDataChunk.newBuilder()

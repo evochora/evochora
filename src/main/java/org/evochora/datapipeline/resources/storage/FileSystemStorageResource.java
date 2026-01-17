@@ -18,7 +18,6 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.storage.IAnalyticsStorageRead;
 import org.evochora.datapipeline.api.resources.storage.IAnalyticsStorageWrite;
@@ -83,63 +82,6 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
                 }
             } catch (IOException cleanupEx) {
                 log.warn("Failed to clean up temp file after move failure: {}", tempFile, cleanupEx);
-            }
-            throw e;
-        }
-    }
-
-    @Override
-    @Deprecated(forRemoval = true)
-    protected long writeAtomicStreaming(String physicalPath, List<TickData> batch, 
-                                         ICompressionCodec codec) throws IOException {
-        validateKey(physicalPath);
-        File finalFile = new File(rootDirectory, physicalPath);
-        
-        // Create parent directories if needed
-        File parentDir = finalFile.getParentFile();
-        if (parentDir != null) {
-            parentDir.mkdirs();
-            if (!parentDir.isDirectory()) {
-                throw new IOException("Failed to create parent directories for: " + finalFile.getAbsolutePath());
-            }
-        }
-        
-        // Generate unique temp file path
-        File tempFile = new File(parentDir, finalFile.getName() + "." + UUID.randomUUID() + ".tmp");
-        
-        try {
-            // Stream directly: Protobuf → Compression → BufferedOutputStream → File
-            // No intermediate byte[] buffers - eliminates ~2-3 GB peak memory for large batches
-            long bytesWritten;
-            try (OutputStream fileOut = new BufferedOutputStream(
-                     Files.newOutputStream(tempFile.toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE));
-                 CountingOutputStream countingOut = new CountingOutputStream(fileOut);
-                 OutputStream compressedOut = codec.wrapOutputStream(countingOut)) {
-                
-                // Stream each tick directly through compression to disk
-                for (TickData tick : batch) {
-                    tick.writeDelimitedTo(compressedOut);
-                }
-                
-                // Flush compression (required for ZSTD to finalize)
-                compressedOut.flush();
-                bytesWritten = countingOut.getBytesWritten();
-            }
-            
-            // Atomic rename: temp → final
-            Files.move(tempFile.toPath(), finalFile.toPath(), 
-                StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            
-            return bytesWritten;
-            
-        } catch (IOException e) {
-            // Clean up temp file on failure
-            try {
-                if (tempFile.exists()) {
-                    Files.delete(tempFile.toPath());
-                }
-            } catch (IOException cleanupEx) {
-                log.warn("Failed to clean up temp file after write failure: {}", tempFile, cleanupEx);
             }
             throw e;
         }

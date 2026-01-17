@@ -11,7 +11,6 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.contracts.SystemContracts;
-import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
@@ -28,7 +27,7 @@ import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
 
 /**
- * Service that drains TickData batches from queues and persists them to storage.
+ * Service that drains TickDataChunk batches from queues and persists them to storage.
  * <p>
  * PersistenceService provides reliable batch persistence with:
  * <ul>
@@ -489,7 +488,7 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
      * <strong>Calculation:</strong> maxBatchSize × bytesPerTick (100% occupancy)
      * <p>
      * The batch is held in memory during draining from queue until written to storage.
-     * With streaming serialization, only the List<TickData> is held - no additional
+     * With streaming serialization, only the List&lt;TickDataChunk&gt; is held - no additional
      * byte array copies are created during write.
      */
     /**

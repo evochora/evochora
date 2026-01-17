@@ -8,13 +8,9 @@ import java.nio.channels.Channels;
 import java.nio.channels.WritableByteChannel;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -31,9 +27,6 @@ import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.runtime.model.EnvironmentProperties;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 
@@ -54,7 +47,6 @@ import picocli.CommandLine.Option;
     + "Defaults to MKV for resilience against interruptions.")
 public class RenderVideoCommand implements Callable<Integer> {
 
-    private static final Logger log = LoggerFactory.getLogger(RenderVideoCommand.class);
     private static final String CONFIG_FILE_NAME = "evochora.conf";
 
     @Option(names = {"-c", "--config"}, description = "Path to custom configuration file.")
@@ -121,11 +113,9 @@ public class RenderVideoCommand implements Callable<Integer> {
      * Represents a rendered chunk with all its frames ready to be written.
      */
     private static class RenderedChunk {
-        final long chunkIndex;  // For ordering
         final List<RenderedFrame> frames;
         
-        RenderedChunk(long chunkIndex, List<RenderedFrame> frames) {
-            this.chunkIndex = chunkIndex;
+        RenderedChunk(List<RenderedFrame> frames) {
             this.frames = frames;
         }
     }
@@ -134,18 +124,14 @@ public class RenderVideoCommand implements Callable<Integer> {
      * Represents a single rendered frame.
      */
     private static class RenderedFrame {
-        final long tickNumber;
         final byte[] frameData;
         final int aliveCount;
         final int deadCount;
-        final int maxOrganismId;
         
-        RenderedFrame(long tickNumber, byte[] frameData, int aliveCount, int deadCount, int maxOrganismId) {
-            this.tickNumber = tickNumber;
+        RenderedFrame(byte[] frameData, int aliveCount, int deadCount) {
             this.frameData = frameData;
             this.aliveCount = aliveCount;
             this.deadCount = deadCount;
-            this.maxOrganismId = maxOrganismId;
         }
     }
 
@@ -233,7 +219,6 @@ public class RenderVideoCommand implements Callable<Integer> {
         
         // Submit all chunks for parallel rendering
         for (int i = 0; i < batchSize; i++) {
-            final int index = i;
             final TickDataChunk chunk = chunks.get(i);
             final SimulationRenderer renderer = renderers.get(i % renderers.size());
             final long chunkIndex = startIndex + i;
@@ -393,7 +378,7 @@ public class RenderVideoCommand implements Callable<Integer> {
             
             int[] stats = collectOrganismStats(snapshot.getOrganismsList());
             byte[] frameData = convertToBgra(pixelData);
-            frames.add(new RenderedFrame(snapshotTick, frameData, stats[0], stats[1], stats[2]));
+            frames.add(new RenderedFrame(frameData, stats[0], stats[1]));
         }
         
         // Process deltas
@@ -410,11 +395,11 @@ public class RenderVideoCommand implements Callable<Integer> {
                 
                 int[] stats = collectOrganismStats(delta.getOrganismsList());
                 byte[] frameData = convertToBgra(pixelData);
-                frames.add(new RenderedFrame(deltaTick, frameData, stats[0], stats[1], stats[2]));
+                frames.add(new RenderedFrame(frameData, stats[0], stats[1]));
             }
         }
         
-        return new RenderedChunk(chunkIndex, frames);
+        return new RenderedChunk(frames);
     }
 
     @Override

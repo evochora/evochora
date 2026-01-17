@@ -432,17 +432,6 @@ public class EnvironmentController extends VisualizerBaseController {
     }
     
     /**
-     * Calculates total cells from environment properties.
-     */
-    private int calculateTotalCells(final EnvironmentProperties envProps) {
-        int totalCells = 1;
-        for (int dim : envProps.getWorldShape()) {
-            totalCells *= dim;
-        }
-        return totalCells;
-    }
-    
-    /**
      * Extracts environment properties from metadata.
      */
     private EnvironmentProperties extractEnvironmentProperties(final SimulationMetadata metadata) {

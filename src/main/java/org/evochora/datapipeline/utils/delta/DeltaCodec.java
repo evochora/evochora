@@ -92,7 +92,6 @@ public final class DeltaCodec {
         
         private final String runId;
         private final int accumulatedDeltaInterval;
-        private final int snapshotInterval;
         private final int chunkInterval;
         
         // Derived values
@@ -130,7 +129,6 @@ public final class DeltaCodec {
             
             this.runId = runId;
             this.accumulatedDeltaInterval = accumulatedDeltaInterval;
-            this.snapshotInterval = snapshotInterval;
             this.chunkInterval = chunkInterval;
             
             this.samplesPerSnapshot = accumulatedDeltaInterval * snapshotInterval;

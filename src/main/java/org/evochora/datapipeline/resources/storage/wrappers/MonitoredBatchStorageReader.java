@@ -2,7 +2,6 @@ package org.evochora.datapipeline.resources.storage.wrappers;
 
 import com.google.protobuf.MessageLite;
 import com.google.protobuf.Parser;
-import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
@@ -83,29 +82,6 @@ public class MonitoredBatchStorageReader implements IResourceBatchStorageRead, I
     public BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults, long startTick, long endTick) throws IOException {
         // Simple delegation - no metrics for now (can be added later if needed)
         return delegate.listBatchFiles(prefix, continuationToken, maxResults, startTick, endTick);
-    }
-
-    @Override
-    @Deprecated(forRemoval = true)
-    public List<TickData> readBatch(StoragePath path) throws IOException {
-        long startNanos = System.nanoTime();
-        try {
-            List<TickData> result = delegate.readBatch(path);
-
-            // Update cumulative metrics
-            batchesRead.incrementAndGet();
-            long bytes = result.stream().mapToLong(TickData::getSerializedSize).sum();
-            bytesRead.addAndGet(bytes);
-
-            // Record performance metrics
-            long latencyNanos = System.nanoTime() - startNanos;
-            recordRead(bytes, latencyNanos);
-
-            return result;
-        } catch (IOException e) {
-            readErrors.incrementAndGet();
-            throw e;
-        }
     }
 
     @Override

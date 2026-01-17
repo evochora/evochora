@@ -50,7 +50,7 @@ public class BatchFileListResult {
      * Returns the list of physical storage paths in this page.
      * <p>
      * Paths include compression extensions and can be passed directly to
-     * {@link IBatchStorageRead#readBatch(StoragePath)}.
+     * {@link IBatchStorageRead#readChunkBatch(StoragePath)}.
      * <p>
      * Example: "sim123/raw/000/000/batch_0000000000_0000000999.pb.zst"
      *

@@ -262,7 +262,7 @@ public class SimulationRenderer {
             int ipX = org.getIp().getComponents(0);
             int ipY = org.getIp().getComponents(1);
             int ipFlatIndex = coordinatesToFlatIndex(new int[]{ipX, ipY});
-            previousOrganismPositions.add(new OrganismPosition(ipFlatIndex, ipX, ipY, true, org.getIsDead()));
+            previousOrganismPositions.add(new OrganismPosition(ipFlatIndex, ipX, ipY));
             
             if (org.getIsDead()) {
                 // Dead organisms: draw IP as 4x larger marker
@@ -275,7 +275,7 @@ public class SimulationRenderer {
                     int dpX = dp.getComponents(0);
                     int dpY = dp.getComponents(1);
                     int dpFlatIndex = coordinatesToFlatIndex(new int[]{dpX, dpY});
-                    previousOrganismPositions.add(new OrganismPosition(dpFlatIndex, dpX, dpY, false, false));
+                    previousOrganismPositions.add(new OrganismPosition(dpFlatIndex, dpX, dpY));
                     drawLargeMarker(dpX, dpY, orgColor.getRGB(), 4);
                 }
 
@@ -542,15 +542,11 @@ public class SimulationRenderer {
         final int flatIndex;
         final int x;
         final int y;
-        final boolean isIp;      // true = IP (triangle), false = DP (square)
-        final boolean isDead;
         
-        OrganismPosition(int flatIndex, int x, int y, boolean isIp, boolean isDead) {
+        OrganismPosition(int flatIndex, int x, int y) {
             this.flatIndex = flatIndex;
             this.x = x;
             this.y = y;
-            this.isIp = isIp;
-            this.isDead = isDead;
         }
     }
 }

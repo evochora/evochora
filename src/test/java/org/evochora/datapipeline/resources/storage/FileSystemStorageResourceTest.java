@@ -100,10 +100,10 @@ class FileSystemStorageResourceTest {
 
     @Test
     void testListBatchFiles_Success() throws IOException {
-        // Write 3 batch files for test-sim
-        storage.writeBatch(List.of(createTick(1), createTick(2)), 1, 2);
-        storage.writeBatch(List.of(createTick(10), createTick(20)), 10, 20);
-        storage.writeBatch(List.of(createTick(100), createTick(200)), 100, 200);
+        // Write 3 batch files for test-sim using chunks
+        storage.writeChunkBatch(List.of(createChunk(1, 2, 2)), 1, 2);
+        storage.writeChunkBatch(List.of(createChunk(10, 20, 11)), 10, 20);
+        storage.writeChunkBatch(List.of(createChunk(100, 200, 101)), 100, 200);
 
         // List all batches for test-sim
         BatchFileListResult result = storage.listBatchFiles("test-sim/", null, 10);
@@ -116,12 +116,12 @@ class FileSystemStorageResourceTest {
 
     @Test
     void testConcurrentRead() throws Exception {
-        // Write a batch of 100 ticks
-        List<TickData> batch = new ArrayList<>();
-        for(int i=0; i<100; i++) {
-            batch.add(createTick(i));
+        // Write a batch of chunks
+        List<TickDataChunk> batch = new ArrayList<>();
+        for(int i=0; i<10; i++) {
+            batch.add(createChunk(i * 10, i * 10 + 9, 10));
         }
-        StoragePath batchPath = storage.writeBatch(batch, 0, 99);
+        StoragePath batchPath = storage.writeChunkBatch(batch, 0, 99);
 
         // Read the batch concurrently from 10 threads
         int numThreads = 10;
@@ -132,7 +132,7 @@ class FileSystemStorageResourceTest {
         for (int i = 0; i < numThreads; i++) {
             executor.submit(() -> {
                 try {
-                    List<TickData> readBatch = storage.readBatch(batchPath);
+                    List<TickDataChunk> readBatch = storage.readChunkBatch(batchPath);
                     assertEquals(batch.size(), readBatch.size());
                     assertEquals(batch, readBatch);
                 } catch (Exception e) {

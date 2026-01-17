@@ -5,7 +5,7 @@ import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
-import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 
 import java.io.IOException;
 import java.util.List;
@@ -15,7 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Test service that reads and validates TickData batches from storage using the batch API.
+ * Test service that reads and validates TickDataChunk batches from storage using the chunk batch API.
  * Used for integration testing of storage resources.
  * 
  * <h3>Configuration Options:</h3>
@@ -33,7 +33,7 @@ public class DummyReaderService extends AbstractService {
     private final boolean validateData;
     private final int maxFiles;
 
-    private final AtomicLong totalMessagesRead = new AtomicLong(0);
+    private final AtomicLong totalChunksRead = new AtomicLong(0);
     private final AtomicLong totalBytesRead = new AtomicLong(0);
     private final AtomicLong readOperations = new AtomicLong(0);
     private final AtomicLong validationErrors = new AtomicLong(0);
@@ -86,36 +86,36 @@ public class DummyReaderService extends AbstractService {
                         }
 
                         try {
-                            List<TickData> ticks = storage.readBatch(path);
+                            List<TickDataChunk> chunks = storage.readChunkBatch(path);
 
-                            long expectedTick = -1;
-                            for (TickData tick : ticks) {
+                            long expectedFirstTick = -1;
+                            for (TickDataChunk chunk : chunks) {
                                 // Filter by simulation run ID
-                                if (!tick.getSimulationRunId().equals(keyPrefix + "_run")) {
+                                if (!chunk.getSimulationRunId().equals(keyPrefix + "_run")) {
                                     continue;
                                 }
 
-                                totalMessagesRead.incrementAndGet();
-                                totalBytesRead.addAndGet(tick.getSerializedSize());
+                                totalChunksRead.incrementAndGet();
+                                totalBytesRead.addAndGet(chunk.getSerializedSize());
 
-                                // Validate sequential order within batch
-                                if (validateData && expectedTick >= 0) {
-                                    if (tick.getTickNumber() != expectedTick) {
-                                        log.warn("Tick sequence error in {}: expected {}, got {}",
-                                            path, expectedTick, tick.getTickNumber());
+                                // Validate sequential order within batch (chunk first_tick should increase)
+                                if (validateData && expectedFirstTick >= 0) {
+                                    if (chunk.getFirstTick() < expectedFirstTick) {
+                                        log.warn("Chunk sequence error in {}: expected first_tick >= {}, got {}",
+                                            path, expectedFirstTick, chunk.getFirstTick());
                                         validationErrors.incrementAndGet();
                                     }
                                 }
 
                                 // Track tick range
-                                if (tick.getTickNumber() < minTickSeen) {
-                                    minTickSeen = tick.getTickNumber();
+                                if (chunk.getFirstTick() < minTickSeen) {
+                                    minTickSeen = chunk.getFirstTick();
                                 }
-                                if (tick.getTickNumber() > maxTickSeen) {
-                                    maxTickSeen = tick.getTickNumber();
+                                if (chunk.getLastTick() > maxTickSeen) {
+                                    maxTickSeen = chunk.getLastTick();
                                 }
 
-                                expectedTick = tick.getTickNumber() + 1;
+                                expectedFirstTick = chunk.getLastTick() + 1;
                             }
 
                             readOperations.incrementAndGet();
@@ -123,14 +123,14 @@ public class DummyReaderService extends AbstractService {
                             filesFoundThisIteration++;
                             filesProcessed++;
 
-                            log.debug("Read batch {} with {} ticks", path, ticks.size());
+                            log.debug("Read chunk batch {} with {} chunks", path, chunks.size());
 
                         } catch (IOException e) {
-                            log.warn("Failed to read batch {}", path);
+                            log.warn("Failed to read chunk batch {}", path);
                             readErrors.incrementAndGet();
                             recordError(
                                 "READ_BATCH_ERROR",
-                                "Failed to read batch",
+                                "Failed to read chunk batch",
                                 String.format("Path: %s", path)
                             );
                         }
@@ -171,7 +171,7 @@ public class DummyReaderService extends AbstractService {
     protected void addCustomMetrics(Map<String, Number> metrics) {
         super.addCustomMetrics(metrics);
         
-        metrics.put("messages_read", totalMessagesRead.get());
+        metrics.put("chunks_read", totalChunksRead.get());
         metrics.put("bytes_read", totalBytesRead.get());
         metrics.put("read_operations", readOperations.get());
         metrics.put("validation_errors", validationErrors.get());
