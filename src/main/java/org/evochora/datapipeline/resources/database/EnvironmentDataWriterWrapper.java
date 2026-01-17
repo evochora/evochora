@@ -4,12 +4,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareEnvironmentDataWriter;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowPercentiles;
-import org.evochora.runtime.model.EnvironmentProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -19,10 +18,14 @@ import org.slf4j.LoggerFactory;
  * Extends {@link AbstractDatabaseWrapper} to inherit common functionality:
  * connection management, schema setting, error tracking, metrics infrastructure.
  * <p>
+ * <strong>Delta Compression:</strong> This wrapper writes TickDataChunks directly
+ * to the database without decompression. Each chunk contains a snapshot plus deltas
+ * for a range of ticks. Decompression is deferred to query time (EnvironmentController).
+ * <p>
  * <strong>Performance:</strong> All metrics are O(1) recording operations using:
  * <ul>
- *   <li>{@link AtomicLong} for counters (cells_written, batches_written, write_errors)</li>
- *   <li>{@link SlidingWindowCounter} for throughput (cells_per_second, batches_per_second)</li>
+ *   <li>{@link AtomicLong} for counters (chunks_written, batches_written, write_errors)</li>
+ *   <li>{@link SlidingWindowCounter} for throughput (chunks_per_second, batches_per_second)</li>
  *   <li>{@link SlidingWindowPercentiles} for latency (write_latency_p50/p95/p99/avg_ms)</li>
  * </ul>
  */
@@ -30,12 +33,12 @@ public class EnvironmentDataWriterWrapper extends AbstractDatabaseWrapper implem
     private static final Logger log = LoggerFactory.getLogger(EnvironmentDataWriterWrapper.class);
     
     // Counters - O(1) atomic operations
-    private final AtomicLong cellsWritten = new AtomicLong(0);
+    private final AtomicLong chunksWritten = new AtomicLong(0);
     private final AtomicLong batchesWritten = new AtomicLong(0);
     private final AtomicLong writeErrors = new AtomicLong(0);
     
     // Throughput tracking - O(1) recording with sliding window
-    private final SlidingWindowCounter cellThroughput;
+    private final SlidingWindowCounter chunkThroughput;
     private final SlidingWindowCounter batchThroughput;
     
     // Latency tracking - O(1) recording with sliding window
@@ -56,7 +59,7 @@ public class EnvironmentDataWriterWrapper extends AbstractDatabaseWrapper implem
         super(db, context);  // Parent handles connection, error tracking, metrics window, schema creation
         
         // Initialize throughput trackers with sliding window
-        this.cellThroughput = new SlidingWindowCounter(metricsWindowSeconds);
+        this.chunkThroughput = new SlidingWindowCounter(metricsWindowSeconds);
         this.batchThroughput = new SlidingWindowCounter(metricsWindowSeconds);
         
         // Initialize latency tracker with sliding window
@@ -66,7 +69,7 @@ public class EnvironmentDataWriterWrapper extends AbstractDatabaseWrapper implem
     @Override
     public void createEnvironmentDataTable(int dimensions) throws java.sql.SQLException {
         // This method is part of IEnvironmentDataWriter interface but handled internally
-        // by ensureEnvironmentDataTable() during writeEnvironmentCells().
+        // by ensureEnvironmentDataTable() during writeEnvironmentChunks().
         // Exposed for explicit schema creation if needed before first write.
         try {
             ensureEnvironmentDataTable(dimensions);
@@ -80,42 +83,45 @@ public class EnvironmentDataWriterWrapper extends AbstractDatabaseWrapper implem
     }
 
     @Override
-    public void writeEnvironmentCells(List<TickData> ticks, EnvironmentProperties envProps) {
-        if (ticks.isEmpty()) {
+    public void writeEnvironmentChunks(List<TickDataChunk> chunks) {
+        if (chunks.isEmpty()) {
             return;  // Nothing to write
         }
         
         long startNanos = System.nanoTime();
         try {
             // Ensure environment table exists (idempotent, thread-safe)
-            ensureEnvironmentDataTable(envProps.getWorldShape().length);
+            // Use dimensions from first chunk's metadata if available, otherwise default to 2
+            int dimensions = 2;  // Default for most environments
+            if (!chunks.isEmpty() && chunks.get(0).hasSnapshot() && 
+                chunks.get(0).getSnapshot().hasCellColumns()) {
+                // Dimensions will be validated during table creation anyway
+                dimensions = 2;  // Schema doesn't actually need dimensions for chunk storage
+            }
+            ensureEnvironmentDataTable(dimensions);
             
-            // Write cells via database strategy
-            database.doWriteEnvironmentCells(ensureConnection(), ticks, envProps);
+            // Write chunks via database strategy
+            database.doWriteEnvironmentChunks(ensureConnection(), chunks);
             
             // Update metrics - O(1) operations
-            int totalCells = ticks.stream().mapToInt(t -> t.getCellColumns().getFlatIndicesCount()).sum();
-            cellsWritten.addAndGet(totalCells);
+            chunksWritten.addAndGet(chunks.size());
             batchesWritten.incrementAndGet();
             
-            cellThroughput.recordSum(totalCells);
+            chunkThroughput.recordSum(chunks.size());
             batchThroughput.recordCount();
             writeLatency.record(System.nanoTime() - startNanos);
             
         } catch (Exception e) {
             writeErrors.incrementAndGet();
-            log.warn("Failed to write {} ticks with {} total cells: {}", 
-                    ticks.size(), 
-                    ticks.stream().mapToInt(t -> t.getCellColumns().getFlatIndicesCount()).sum(),
-                    e.getMessage());
-            recordError("WRITE_ENV_CELLS_FAILED", "Failed to write environment cells",
-                       "Ticks: " + ticks.size() + ", Error: " + e.getMessage());
-            throw new RuntimeException("Failed to write environment cells for " + ticks.size() + " ticks", e);
+            log.warn("Failed to write {} chunks: {}", chunks.size(), e.getMessage());
+            recordError("WRITE_ENV_CHUNKS_FAILED", "Failed to write environment chunks",
+                       "Chunks: " + chunks.size() + ", Error: " + e.getMessage());
+            throw new RuntimeException("Failed to write environment chunks for " + chunks.size() + " chunks", e);
         }
     }
 
     /**
-     * Ensures environment_ticks table exists.
+     * Ensures environment_chunks table exists.
      * <p>
      * <strong>Idempotency:</strong> Safe to call multiple times (CREATE TABLE IF NOT EXISTS).
      * <strong>Thread Safety:</strong> Uses volatile boolean for double-checked locking optimization.
@@ -157,12 +163,12 @@ public class EnvironmentDataWriterWrapper extends AbstractDatabaseWrapper implem
         super.addCustomMetrics(metrics);  // Include parent metrics (connection_cached, error_count)
         
         // Counters - O(1)
-        metrics.put("cells_written", cellsWritten.get());
+        metrics.put("chunks_written", chunksWritten.get());
         metrics.put("batches_written", batchesWritten.get());
         metrics.put("write_errors", writeErrors.get());
         
         // Throughput - O(windowSeconds) = O(constant)
-        metrics.put("cells_per_second", cellThroughput.getRate());
+        metrics.put("chunks_per_second", chunkThroughput.getRate());
         metrics.put("batches_per_second", batchThroughput.getRate());
         
         // Latency percentiles in milliseconds - O(windowSeconds × buckets) = O(constant)

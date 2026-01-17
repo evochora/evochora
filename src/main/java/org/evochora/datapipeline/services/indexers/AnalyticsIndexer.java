@@ -28,7 +28,10 @@ import org.evochora.datapipeline.api.analytics.ManifestEntry;
 import org.evochora.datapipeline.api.analytics.ParquetSchema;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
+import org.evochora.datapipeline.api.delta.ChunkCorruptedException;
 import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
+import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IResource;
@@ -93,7 +96,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
     public AnalyticsIndexer(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
         this.analyticsOutput = getRequiredResource("analyticsOutput", IAnalyticsStorageWrite.class);
-        this.insertBatchSize = options.hasPath("insertBatchSize") ? options.getInt("insertBatchSize") : 20;
+        this.insertBatchSize = options.hasPath("insertBatchSize") ? options.getInt("insertBatchSize") : 5;
         
         // Configure hierarchical folder structure (same as PersistenceService)
         if (options.hasPath("folderStructure.levels")) {
@@ -225,8 +228,28 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
     }
 
     @Override
-    protected void flushTicks(List<TickData> ticks) throws Exception {
-        if (ticks.isEmpty() || plugins.isEmpty()) {
+    protected void flushChunks(List<TickDataChunk> chunks) throws Exception {
+        if (chunks.isEmpty() || plugins.isEmpty()) {
+            return;
+        }
+
+        // Decompress all chunks to get fully reconstructed TickData
+        // This ensures plugins receive complete environment state for every tick,
+        // not just the changed cells from deltas.
+        int totalCells = calculateTotalCells();
+        List<TickData> ticks = new ArrayList<>();
+        for (TickDataChunk chunk : chunks) {
+            try {
+                ticks.addAll(DeltaCodec.decompressChunk(chunk, totalCells));
+            } catch (ChunkCorruptedException e) {
+                log.warn("Skipping corrupt chunk: {}", e.getMessage());
+                recordError("CORRUPT_CHUNK", e.getMessage(),
+                    String.format("firstTick=%d, lastTick=%d", chunk.getFirstTick(), chunk.getLastTick()));
+                // Continue with remaining chunks - don't abort the entire batch
+            }
+        }
+        
+        if (ticks.isEmpty()) {
             return;
         }
 
@@ -469,6 +492,27 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
     }
 
     /**
+     * Calculates the total number of cells in the environment.
+     * <p>
+     * This is needed for {@link DeltaCodec#decompressChunk} to allocate
+     * the correct size for the {@code MutableCellState} array.
+     *
+     * @return total cells, or 0 if metadata is unavailable
+     */
+    private int calculateTotalCells() {
+        SimulationMetadata metadata = getMetadata();
+        if (metadata == null || !metadata.hasEnvironment()) {
+            log.debug("No environment metadata available, using totalCells=0");
+            return 0;
+        }
+        int total = 1;
+        for (int dim : metadata.getEnvironment().getShapeList()) {
+            total *= dim;
+        }
+        return total;
+    }
+
+    /**
      * Context implementation passed to plugins.
      */
     private class AnalyticsContextImpl implements IAnalyticsContext {
@@ -503,24 +547,35 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
     
     @Override
     public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
-        long bytesPerTick = params.estimateBytesPerTick();
+        long bytesPerChunk = params.estimateBytesPerChunk();
         
         List<MemoryEstimate> estimates = new ArrayList<>();
         
-        // Base estimate for DuckDB processing and TickData buffering
-        long baseBytes = (long) insertBatchSize * bytesPerTick;
-        long wrapperOverhead = (long) insertBatchSize * 200; // TickData wrapper overhead
+        // Base estimate for DuckDB processing and chunk buffering
+        // Note: AnalyticsIndexer does NOT use buffering component (passthrough mode)
+        // but still processes chunks in batches from storage
+        long baseBytes = (long) insertBatchSize * bytesPerChunk;
         long duckDbOverhead = 10 * 1024 * 1024; // DuckDB in-memory overhead
-        long totalBaseBytes = baseBytes + wrapperOverhead + duckDbOverhead;
+        long totalBaseBytes = baseBytes + duckDbOverhead;
         
-        String baseExplanation = String.format("%d insertBatchSize × %s/tick + DuckDB overhead",
+        String baseExplanation = String.format("%d insertBatchSize (chunks) × %s/chunk + DuckDB overhead",
             insertBatchSize,
-            SimulationParameters.formatBytes(bytesPerTick));
+            SimulationParameters.formatBytes(bytesPerChunk));
         
         estimates.add(new MemoryEstimate(
             serviceName,
             totalBaseBytes,
             baseExplanation,
+            MemoryEstimate.Category.SERVICE_BATCH
+        ));
+        
+        // MutableCellState for delta decompression (int[] of environment size)
+        long envTotalCells = params.totalCells();
+        long mutableCellStateBytes = envTotalCells * 4L;  // int = 4 bytes
+        estimates.add(new MemoryEstimate(
+            serviceName + " (decompression)",
+            mutableCellStateBytes,
+            String.format("MutableCellState: %d cells × 4 bytes", envTotalCells),
             MemoryEstimate.Category.SERVICE_BATCH
         ));
 

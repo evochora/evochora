@@ -73,6 +73,9 @@ dependencies {
     // Zstd compression library with bundled native binaries for cross-platform support
     implementation("com.github.luben:zstd-jni:1.5.5-11")
 
+    // Caffeine high-performance cache for chunk caching in EnvironmentController
+    implementation("com.github.ben-manes.caffeine:caffeine:3.1.8")
+
     // DuckDB JDBC driver for analytics
     implementation("org.duckdb:duckdb_jdbc:1.1.3")
 

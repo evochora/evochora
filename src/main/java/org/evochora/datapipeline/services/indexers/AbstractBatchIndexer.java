@@ -9,7 +9,7 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
-import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.IRetryTracker;
@@ -20,20 +20,25 @@ import org.evochora.datapipeline.api.resources.topics.TopicMessage;
 import org.evochora.datapipeline.services.indexers.components.DlqComponent;
 import org.evochora.datapipeline.services.indexers.components.IdempotencyComponent;
 import org.evochora.datapipeline.services.indexers.components.MetadataReadingComponent;
-import org.evochora.datapipeline.services.indexers.components.TickBufferingComponent;
+import org.evochora.datapipeline.services.indexers.components.ChunkBufferingComponent;
 
 import com.typesafe.config.Config;
 
 /**
- * Abstract base class for batch indexers that process TickData from batch notifications.
+ * Abstract base class for batch indexers that process TickDataChunks from batch notifications.
  * <p>
  * Extends {@link AbstractIndexer} with batch-specific functionality:
  * <ul>
  *   <li>Subscribes to batch-topic for BatchInfo notifications</li>
- *   <li>Reads TickDataBatch from storage (length-delimited format)</li>
+ *   <li>Reads TickDataChunks from storage (length-delimited format)</li>
  *   <li>Optional components: metadata reading, buffering, DLQ, idempotency</li>
- *   <li>Template method {@link #flushTicks(List)} for database writes</li>
+ *   <li>Template method {@link #flushChunks(List)} for database writes</li>
  * </ul>
+ * <p>
+ * <strong>Chunk-based Processing:</strong> After delta compression, data arrives as
+ * {@link TickDataChunk} objects. Each chunk is self-contained (starts with a snapshot)
+ * and typically contains ~100 ticks. The {@code insertBatchSize} parameter specifies
+ * the number of chunks to buffer before triggering a flush.
  * <p>
  * <strong>Component System:</strong> Subclasses declare which components to use via
  * {@link #getRequiredComponents()}. Components are created automatically by the
@@ -51,8 +56,8 @@ import com.typesafe.config.Config;
  *         return EnumSet.of(ComponentType.METADATA);
  *     }
  *     
- *     // Required: Database write logic
- *     protected void flushTicks(List&lt;TickData&gt; ticks) throws Exception {
+ *     // Required: Chunk processing logic
+ *     protected void flushChunks(List&lt;TickDataChunk&gt; chunks) throws Exception {
  *         // Write to database using MERGE (not INSERT!)
  *     }
  * }
@@ -107,7 +112,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         /** Metadata reading component (polls DB for simulation metadata). */
         METADATA,
         
-        /** Tick buffering component (buffers ticks for batch inserts). */
+        /** Chunk buffering component (buffers chunks for batch inserts). */
         BUFFERING,
         
         /** Idempotency component (skip duplicate storage reads). */
@@ -230,23 +235,23 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
             });
         }
         
-        // Component 2: Tick Buffering
+        // Component 2: Chunk Buffering
         // REQUIRED component - uses sensible defaults if config missing
         if (required.contains(ComponentType.BUFFERING)) {
             int insertBatchSize = indexerOptions.hasPath("insertBatchSize")
                 ? indexerOptions.getInt("insertBatchSize")
-                : 25; // Default: 25 ticks per buffer (memory-optimized)
+                : 5; // Default: 5 chunks per buffer (~500 ticks at 100 ticks/chunk)
             long flushTimeoutMs = indexerOptions.hasPath("flushTimeoutMs")
                 ? indexerOptions.getLong("flushTimeoutMs")
                 : 5000L; // Default: 5000ms flush timeout (aligned with docs)
-            builder.withBuffering(new TickBufferingComponent(insertBatchSize, flushTimeoutMs));
+            builder.withBuffering(new ChunkBufferingComponent(insertBatchSize, flushTimeoutMs));
         }
         // OPTIONAL buffering component - graceful skip if config missing
         else if (optional.contains(ComponentType.BUFFERING)) {
             if (indexerOptions.hasPath("insertBatchSize") && indexerOptions.hasPath("flushTimeoutMs")) {
                 int insertBatchSize = indexerOptions.getInt("insertBatchSize");
                 long flushTimeoutMs = indexerOptions.getLong("flushTimeoutMs");
-                builder.withBuffering(new TickBufferingComponent(insertBatchSize, flushTimeoutMs));
+                builder.withBuffering(new ChunkBufferingComponent(insertBatchSize, flushTimeoutMs));
             }
         }
         
@@ -389,7 +394,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
     /**
      * Processes a single batch notification message.
      * <p>
-     * Reads TickDataBatch from storage, processes ticks (buffered or tick-by-tick),
+     * Reads TickDataChunks from storage, processes chunks (buffered or passthrough),
      * and acknowledges message after successful processing.
      * <p>
      * <strong>Error Handling:</strong> Transient errors (storage read failures, database
@@ -397,9 +402,9 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      * causing topic redelivery after claimTimeout. The indexer continues processing
      * other batches, allowing recovery from transient failures without service restart.
      * <p>
-     * <strong>Buffer Recovery:</strong> If buffering is enabled and {@code flushTicks()}
-     * fails, the buffer is already empty (ticks removed by {@code buffering.flush()}).
-     * Batch redelivery will re-read ticks from storage. MERGE ensures no duplicates.
+     * <strong>Buffer Recovery:</strong> If buffering is enabled and {@code flushChunks()}
+     * fails, the buffer is already empty (chunks removed by {@code buffering.flush()}).
+     * Batch redelivery will re-read chunks from storage. MERGE ensures no duplicates.
      *
      * @param msg Topic message containing BatchInfo
      * @throws InterruptedException if service is shutting down
@@ -422,17 +427,20 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         }
         
         try {
-            // Read from storage (GENERIC for all batch indexers!)
+            // Read chunks from storage (GENERIC for all batch indexers!)
             // Storage handles length-delimited format automatically
             StoragePath storagePath = StoragePath.of(batch.getStoragePath());
-            List<TickData> ticks = storage.readBatch(storagePath);
+            List<TickDataChunk> chunks = storage.readChunkBatch(storagePath);
+            
+            // Count total ticks across all chunks for metrics
+            int totalTicks = chunks.stream().mapToInt(TickDataChunk::getTickCount).sum();
             
             if (components != null && components.buffering != null) {
                 // WITH buffering: Add to buffer, ACK after flush
-                components.buffering.addTicksFromBatch(ticks, batchId, msg);
+                components.buffering.addChunksFromBatch(chunks, batchId, msg);
                 
-                log.debug("Buffered {} ticks from {}, buffer size: {}", 
-                    ticks.size(), batch.getStoragePath(), 
+                log.debug("Buffered {} chunks ({} ticks) from {}, buffer size: {}", 
+                    chunks.size(), totalTicks, batch.getStoragePath(), 
                     components.buffering.getBufferSize());
                 
                 // Flush if needed
@@ -443,7 +451,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
                 // WITHOUT buffering: Batch-passthrough (one flush per topic message)
                 // Each topic message = one PersistenceService batch = one flush
                 // Guarantees consistent file boundaries for file-based indexers (e.g., Parquet)
-                flushTicks(ticks);
+                flushChunks(chunks);
                 
                 // ACK after batch is processed
                 topic.ack(msg);
@@ -455,10 +463,10 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
                 
                 // Track metrics
                 batchesProcessed.incrementAndGet();
-                ticksProcessed.addAndGet(ticks.size());
+                ticksProcessed.addAndGet(totalTicks);
                 
-                log.debug("Processed {} ticks from {} (batch-passthrough, no buffering)", 
-                         ticks.size(), batch.getStoragePath());
+                log.debug("Processed {} chunks ({} ticks) from {} (batch-passthrough, no buffering)", 
+                         chunks.size(), totalTicks, batch.getStoragePath());
             }
             
             // Success - reset retry count if DLQ component exists
@@ -503,14 +511,14 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
     }
     
     /**
-     * Flushes buffered ticks and acknowledges completed batches.
+     * Flushes buffered chunks and acknowledges completed batches.
      * <p>
-     * Called when buffer is full or timeout occurs. Flushes ticks to database,
+     * Called when buffer is full or timeout occurs. Flushes chunks to database,
      * acknowledges only fully completed batches, and updates metrics.
      * <p>
-     * <strong>Buffer State:</strong> The {@code buffering.flush()} call removes ticks
-     * from the buffer BEFORE calling {@code flushTicks()}. If {@code flushTicks()}
-     * throws an exception, the buffer is already empty and ticks must be re-read
+     * <strong>Buffer State:</strong> The {@code buffering.flush()} call removes chunks
+     * from the buffer BEFORE calling {@code flushChunks()}. If {@code flushChunks()}
+     * throws an exception, the buffer is already empty and chunks must be re-read
      * from storage on batch redelivery.
      * <p>
      * Marks batches as processed AFTER ACK (critical for correctness!).
@@ -518,13 +526,13 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      * @throws Exception if flush or ACK fails
      */
     private void flushAndAcknowledge() throws Exception {
-        TickBufferingComponent.FlushResult<ACK> result = components.buffering.flush();
-        if (result.ticks().isEmpty()) {
+        ChunkBufferingComponent.FlushResult<ACK> result = components.buffering.flush();
+        if (result.chunks().isEmpty()) {
             return;
         }
         
-        // 1. Flush ticks to DB (MERGE ensures idempotency)
-        flushTicks(result.ticks());
+        // 1. Flush chunks to DB (MERGE ensures idempotency)
+        flushChunks(result.chunks());
         
         // 2. ACK completed batches
         for (TopicMessage<?, ACK> completedMsg : result.completedMessages()) {
@@ -541,9 +549,10 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
             }
         }
         
-        // 4. Update metrics
+        // 4. Update metrics (count ticks across all chunks)
         batchesProcessed.addAndGet(result.completedMessages().size());
-        ticksProcessed.addAndGet(result.ticks().size());
+        int totalTicks = result.chunks().stream().mapToInt(TickDataChunk::getTickCount).sum();
+        ticksProcessed.addAndGet(totalTicks);
     }
     
     /**
@@ -588,16 +597,23 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
     }
     
     /**
-     * Flush ticks to database/log.
+     * Flush chunks to database/log.
+     * <p>
+     * Each chunk is self-contained with a snapshot and deltas. Subclasses decide how to process:
+     * <ul>
+     *   <li>EnvironmentIndexer: Store chunks as BLOBs directly</li>
+     *   <li>OrganismIndexer: Extract organisms from snapshot + deltas</li>
+     *   <li>AnalyticsIndexer: Decompress chunks to TickData for plugin processing</li>
+     * </ul>
      * <p>
      * <strong>CRITICAL:</strong> Must use MERGE (not INSERT) for idempotency when writing to database!
      * <p>
      * <strong>Thread Safety:</strong> Called from single service thread only.
      *
-     * @param ticks Ticks to flush (1 for tick-by-tick mode, multiple for buffered mode)
+     * @param chunks Chunks to flush (typically 1-10 chunks per flush with default settings)
      * @throws Exception if flush fails
      */
-    protected abstract void flushTicks(List<TickData> ticks) throws Exception;
+    protected abstract void flushChunks(List<TickDataChunk> chunks) throws Exception;
     
     /**
      * Adds batch indexer metrics to the metrics map.
@@ -636,8 +652,8 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         /** Metadata reading component (optional). */
         public final MetadataReadingComponent metadata;
         
-        /** Tick buffering component (optional). */
-        public final TickBufferingComponent buffering;
+        /** Chunk buffering component (optional). */
+        public final ChunkBufferingComponent buffering;
         
         /** Idempotency component (optional). */
         public final IdempotencyComponent idempotency;
@@ -646,7 +662,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         public final DlqComponent<BatchInfo, Object> dlq;
         
         private BatchIndexerComponents(MetadataReadingComponent metadata,
-                                       TickBufferingComponent buffering,
+                                       ChunkBufferingComponent buffering,
                                        IdempotencyComponent idempotency,
                                        DlqComponent<BatchInfo, Object> dlq) {
             this.metadata = metadata;
@@ -672,7 +688,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
          */
         public static class Builder {
             private MetadataReadingComponent metadata;
-            private TickBufferingComponent buffering;
+            private ChunkBufferingComponent buffering;
             private IdempotencyComponent idempotency;
             private DlqComponent<BatchInfo, Object> dlq;
             
@@ -688,12 +704,12 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
             }
             
             /**
-             * Configures tick buffering component.
+             * Configures chunk buffering component.
              *
-             * @param c Tick buffering component (may be null)
+             * @param c Chunk buffering component (may be null)
              * @return this builder for chaining
              */
-            public Builder withBuffering(TickBufferingComponent c) {
+            public Builder withBuffering(ChunkBufferingComponent c) {
                 this.buffering = c;
                 return this;
             }

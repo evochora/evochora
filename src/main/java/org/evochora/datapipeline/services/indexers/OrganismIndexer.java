@@ -1,9 +1,12 @@
 package org.evochora.datapipeline.services.indexers;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
+import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
@@ -15,14 +18,19 @@ import org.slf4j.LoggerFactory;
 import com.typesafe.config.Config;
 
 /**
- * Indexer for organism data (static and per-tick state) based on TickData.
+ * Indexer for organism data (static and per-tick state) based on TickDataChunks.
  * <p>
  * Responsibilities:
  * <ul>
  *   <li>Consumes BatchInfo messages from batch-topic via AbstractBatchIndexer.</li>
- *   <li>Reads TickData batches from storage.</li>
+ *   <li>Reads TickDataChunk batches from storage.</li>
+ *   <li>Extracts organism states from both snapshots and deltas.</li>
  *   <li>Writes organism tables via {@link IResourceSchemaAwareOrganismDataWriter}.</li>
  * </ul>
+ * <p>
+ * <strong>Chunk Processing:</strong> Organisms are always complete in both snapshots
+ * and deltas (they change almost entirely every tick), so this indexer extracts
+ * organism data from all ticks within each chunk.
  * <p>
  * Read-path (HTTP API, visualizer) is implemented in later phases; this indexer
  * focuses exclusively on the write path.
@@ -46,7 +54,7 @@ public class OrganismIndexer<ACK> extends AbstractBatchIndexer<ACK> implements I
     public OrganismIndexer(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
         this.database = getRequiredResource("database", IResourceSchemaAwareOrganismDataWriter.class);
-        this.insertBatchSize = options.hasPath("insertBatchSize") ? options.getInt("insertBatchSize") : 100;
+        this.insertBatchSize = options.hasPath("insertBatchSize") ? options.getInt("insertBatchSize") : 5;
     }
 
     /**
@@ -62,28 +70,50 @@ public class OrganismIndexer<ACK> extends AbstractBatchIndexer<ACK> implements I
     }
 
     /**
-     * Flushes buffered ticks to the organism tables.
+     * Flushes buffered chunks to the organism tables.
      * <p>
+     * Extracts organism states from both snapshots and deltas in each chunk.
      * All ticks are written in a single JDBC batch by the underlying database
      * implementation. MERGE ensures idempotent upserts.
      *
-     * @param ticks Ticks to flush
+     * @param chunks Chunks to flush (typically 1-10 chunks per flush)
      * @throws Exception if write fails
      */
     @Override
-    protected void flushTicks(List<TickData> ticks) throws Exception {
-        if (ticks.isEmpty()) {
-            log.debug("No ticks to flush for OrganismIndexer");
+    protected void flushChunks(List<TickDataChunk> chunks) throws Exception {
+        if (chunks.isEmpty()) {
+            log.debug("No chunks to flush for OrganismIndexer");
             return;
         }
 
-        database.writeOrganismStates(ticks);
+        // Extract all ticks (snapshots + deltas) from chunks
+        List<TickData> allTicks = new ArrayList<>();
+        for (TickDataChunk chunk : chunks) {
+            // Add snapshot
+            allTicks.add(chunk.getSnapshot());
+            
+            // Add deltas (converted to TickData-like structure for database writer)
+            // Note: OrganismStates are identical in structure for both snapshot and delta
+            for (TickDelta delta : chunk.getDeltasList()) {
+                // Create a minimal TickData for organism extraction
+                // The database writer only needs tickNumber and organisms
+                TickData deltaAsTick = TickData.newBuilder()
+                    .setTickNumber(delta.getTickNumber())
+                    .addAllOrganisms(delta.getOrganismsList())
+                    .build();
+                allTicks.add(deltaAsTick);
+            }
+        }
 
-        int totalOrganisms = ticks.stream()
+        database.writeOrganismStates(allTicks);
+
+        int totalOrganisms = allTicks.stream()
                 .mapToInt(TickData::getOrganismsCount)
                 .sum();
+        int totalTicks = allTicks.size();
 
-        log.debug("Flushed {} organisms from {} ticks", totalOrganisms, ticks.size());
+        log.debug("Flushed {} organisms from {} chunks ({} ticks)", 
+                  totalOrganisms, chunks.size(), totalTicks);
     }
 
     @Override
@@ -99,30 +129,24 @@ public class OrganismIndexer<ACK> extends AbstractBatchIndexer<ACK> implements I
     /**
      * {@inheritDoc}
      * <p>
-     * Estimates memory for the OrganismIndexer tick buffer at worst-case.
+     * Estimates memory for the OrganismIndexer chunk buffer at worst-case.
      * <p>
-     * <strong>Calculation:</strong> insertBatchSize × bytesPerOrganismTick (100% organisms)
+     * <strong>Calculation:</strong> insertBatchSize (chunks) × bytesPerChunk
      * <p>
-     * The buffer holds List&lt;TickData&gt; where each tick contains OrganismState for all organisms.
-     * At worst-case, maxOrganisms are alive simultaneously.
-     * Each OrganismState consumes ~{@value SimulationParameters#BYTES_PER_ORGANISM} bytes in Java heap.
+     * The buffer holds List&lt;TickDataChunk&gt; where each chunk contains organism states
+     * for all ticks within the chunk.
      */
     @Override
     public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
-        // Each tick contains organism states at 100% capacity
-        // BYTES_PER_ORGANISM bytes per OrganismState in Java heap (nested Protobuf messages)
-        long bytesPerTick = params.estimateOrganismBytesPerTick();
-        long totalBytes = (long) insertBatchSize * bytesPerTick;
+        // Each chunk contains organism states for all ticks
+        long bytesPerChunk = params.estimateBytesPerChunk();
+        long totalBytes = (long) insertBatchSize * bytesPerChunk;
         
-        // Add TickData wrapper overhead per tick
-        long wrapperOverhead = (long) insertBatchSize * SimulationParameters.TICKDATA_WRAPPER_OVERHEAD;
-        totalBytes += wrapperOverhead;
-        
-        String explanation = String.format("%d insertBatchSize × %s/tick (100%% organisms = %d × %dB)",
+        String explanation = String.format("%d insertBatchSize (chunks) × %s/chunk (%d ticks/chunk, %d organisms)",
             insertBatchSize,
-            SimulationParameters.formatBytes(bytesPerTick),
-            params.maxOrganisms(),
-            SimulationParameters.BYTES_PER_ORGANISM);
+            SimulationParameters.formatBytes(bytesPerChunk),
+            params.ticksPerChunk(),
+            params.maxOrganisms());
         
         return List.of(new MemoryEstimate(
             serviceName,

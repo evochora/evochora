@@ -2,6 +2,7 @@ package org.evochora.datapipeline.resources.storage.wrappers;
 
 import com.google.protobuf.MessageLite;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.IWrappedResource;
@@ -63,6 +64,7 @@ public class MonitoredBatchStorageWriter implements IBatchStorageWrite, IWrapped
     }
 
     @Override
+    @Deprecated(forRemoval = true)
     public StoragePath writeBatch(List<TickData> batch, long firstTick, long lastTick) throws IOException {
         long startNanos = System.nanoTime();
         try {
@@ -71,6 +73,28 @@ public class MonitoredBatchStorageWriter implements IBatchStorageWrite, IWrapped
             // Update cumulative metrics
             batchesWritten.incrementAndGet();
             long bytes = batch.stream().mapToLong(TickData::getSerializedSize).sum();
+            bytesWritten.addAndGet(bytes);
+
+            // Record performance metrics
+            long latencyNanos = System.nanoTime() - startNanos;
+            recordWrite(batch.size(), bytes, latencyNanos);
+
+            return path;
+        } catch (IOException e) {
+            writeErrors.incrementAndGet();
+            throw e;
+        }
+    }
+
+    @Override
+    public StoragePath writeChunkBatch(List<TickDataChunk> batch, long firstTick, long lastTick) throws IOException {
+        long startNanos = System.nanoTime();
+        try {
+            StoragePath path = delegate.writeChunkBatch(batch, firstTick, lastTick);
+
+            // Update cumulative metrics
+            batchesWritten.incrementAndGet();
+            long bytes = batch.stream().mapToLong(TickDataChunk::getSerializedSize).sum();
             bytesWritten.addAndGet(bytes);
 
             // Record performance metrics

@@ -25,6 +25,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataReader;
 import org.evochora.datapipeline.api.resources.storage.IResourceBatchStorageRead;
@@ -57,7 +58,7 @@ class AbstractBatchIndexerTest {
     private IResourceSchemaAwareMetadataReader mockMetadataReader;
 
     private TestBatchIndexer indexer;
-    private List<List<TickData>> flushedBatches;
+    private List<List<TickDataChunk>> flushedBatches;
     private CountDownLatch flushLatch;
     private AtomicInteger flushCount;
 
@@ -93,7 +94,7 @@ class AbstractBatchIndexerTest {
         // Given: Mock setup for successful processing
         String runId = "test-run-001";
         SimulationMetadata metadata = createTestMetadata(runId);
-        List<TickData> ticks = createTestTicks(runId, 0, 5);
+        List<TickDataChunk> chunks = createTestChunks(runId, 0, 5);
         BatchInfo batchInfo = createBatchInfo(runId, "batch_001.pb", 0, 4);
         TopicMessage<BatchInfo, String> message = new TopicMessage<>(
             batchInfo, System.currentTimeMillis(), "msg-001", "test-consumer", "ack-token-001");
@@ -103,7 +104,7 @@ class AbstractBatchIndexerTest {
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(message)  // First call: return batch
             .thenReturn(null);    // Subsequent calls: return null (keep running)
-        when(mockStorage.readBatch(StoragePath.of(batchInfo.getStoragePath()))).thenReturn(ticks);
+        when(mockStorage.readChunkBatch(StoragePath.of(batchInfo.getStoragePath()))).thenReturn(chunks);
         
         // Expect 1 flush call (batch-passthrough: all ticks in one flush)
         flushLatch = new CountDownLatch(1);
@@ -118,14 +119,14 @@ class AbstractBatchIndexerTest {
         // Then: Verify batch-passthrough processing (one flush with all ticks)
         assertEquals(5, flushCount.get(), "Should have flushed 5 ticks total");
         assertEquals(1, flushedBatches.size(), "Should have 1 flushed batch (batch-passthrough)");
-        assertEquals(5, flushedBatches.get(0).size(), "Batch should contain all 5 ticks");
+        assertEquals(5, flushedBatches.get(0).size(), "Batch should contain all 5 chunks");
         
         // CRITICAL: Verify ACK was sent AFTER batch processed
         await().atMost(2, TimeUnit.SECONDS)
             .untilAsserted(() -> verify(mockTopic, times(1)).ack(message));
         
         // Verify storage was read exactly once
-        verify(mockStorage, times(1)).readBatch(StoragePath.of(batchInfo.getStoragePath()));
+        verify(mockStorage, times(1)).readChunkBatch(StoragePath.of(batchInfo.getStoragePath()));
     }
     
     @Test
@@ -145,7 +146,7 @@ class AbstractBatchIndexerTest {
             .thenReturn(null);    // Subsequent calls: null (indexer continues polling)
         
         // Storage read fails
-        when(mockStorage.readBatch(StoragePath.of(batchInfo.getStoragePath())))
+        when(mockStorage.readChunkBatch(StoragePath.of(batchInfo.getStoragePath())))
             .thenThrow(new IOException("Storage read failed"));
         
         // When: Start indexer
@@ -178,7 +179,7 @@ class AbstractBatchIndexerTest {
         // Given: Mock setup with flush error
         String runId = "test-run-003";
         SimulationMetadata metadata = createTestMetadata(runId);
-        List<TickData> ticks = createTestTicks(runId, 0, 3);
+        List<TickDataChunk> chunks = createTestChunks(runId, 0, 3);
         BatchInfo batchInfo = createBatchInfo(runId, "batch_003.pb", 0, 2);
         TopicMessage<BatchInfo, String> message = new TopicMessage<>(
             batchInfo, System.currentTimeMillis(), "msg-003", "test-consumer", "ack-token-003");
@@ -188,7 +189,7 @@ class AbstractBatchIndexerTest {
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(message)  // First call: return batch with error
             .thenReturn(null);    // Subsequent calls: null (indexer continues polling)
-        when(mockStorage.readBatch(StoragePath.of(batchInfo.getStoragePath()))).thenReturn(ticks);
+        when(mockStorage.readChunkBatch(StoragePath.of(batchInfo.getStoragePath()))).thenReturn(chunks);
         
         // Configure test indexer to throw error on flush
         flushLatch = new CountDownLatch(1);
@@ -222,7 +223,7 @@ class AbstractBatchIndexerTest {
         // Given: Multiple ticks in one batch (batch-passthrough: all ticks flushed together)
         String runId = "test-run-004";
         SimulationMetadata metadata = createTestMetadata(runId);
-        List<TickData> ticks = createTestTicks(runId, 0, 10);  // 10 ticks
+        List<TickDataChunk> chunks = createTestChunks(runId, 0, 10);  // 10 ticks
         BatchInfo batchInfo = createBatchInfo(runId, "batch_004.pb", 0, 9);
         TopicMessage<BatchInfo, String> message = new TopicMessage<>(
             batchInfo, System.currentTimeMillis(), "msg-004", "test-consumer", "ack-token-004");
@@ -232,7 +233,7 @@ class AbstractBatchIndexerTest {
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(message)
             .thenReturn(null);
-        when(mockStorage.readBatch(StoragePath.of(batchInfo.getStoragePath()))).thenReturn(ticks);
+        when(mockStorage.readChunkBatch(StoragePath.of(batchInfo.getStoragePath()))).thenReturn(chunks);
         
         // Batch-passthrough: 1 flush for entire batch
         flushLatch = new CountDownLatch(1);
@@ -243,14 +244,14 @@ class AbstractBatchIndexerTest {
         
         assertTrue(flushLatch.await(5, TimeUnit.SECONDS), "Batch should be flushed");
         
-        // Then: Verify batch-passthrough (all ticks in one flush)
+        // Then: Verify batch-passthrough (all chunks in one flush)
         assertEquals(10, flushCount.get(), "Should have flushed 10 ticks total");
         assertEquals(1, flushedBatches.size(), "Should have 1 batch flush (batch-passthrough)");
-        assertEquals(10, flushedBatches.get(0).size(), "Batch should contain all 10 ticks");
+        assertEquals(10, flushedBatches.get(0).size(), "Batch should contain all 10 chunks");
         
-        // Verify ticks are in order within the batch
+        // Verify chunks are in order within the batch
         for (int i = 0; i < flushedBatches.get(0).size(); i++) {
-            assertEquals(i, flushedBatches.get(0).get(i).getTickNumber(), "Tick should be in order");
+            assertEquals(i, flushedBatches.get(0).get(i).getFirstTick(), "Chunk should be in order");
         }
         
         // Verify ACK sent after batch flushed
@@ -263,7 +264,7 @@ class AbstractBatchIndexerTest {
         // Given: Metadata and batch
         String runId = "test-run-005";
         SimulationMetadata metadata = createTestMetadata(runId);
-        List<TickData> ticks = createTestTicks(runId, 0, 2);
+        List<TickDataChunk> chunks = createTestChunks(runId, 0, 2);
         BatchInfo batchInfo = createBatchInfo(runId, "batch_005.pb", 0, 1);
         TopicMessage<BatchInfo, String> message = new TopicMessage<>(
             batchInfo, System.currentTimeMillis(), "msg-005", "test-consumer", "ack-token-005");
@@ -273,7 +274,7 @@ class AbstractBatchIndexerTest {
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(message)
             .thenReturn(null);
-        when(mockStorage.readBatch(StoragePath.of(batchInfo.getStoragePath()))).thenReturn(ticks);
+        when(mockStorage.readChunkBatch(StoragePath.of(batchInfo.getStoragePath()))).thenReturn(chunks);
         
         // Batch-passthrough: 1 flush for entire batch
         flushLatch = new CountDownLatch(1);
@@ -297,8 +298,8 @@ class AbstractBatchIndexerTest {
         String runId = "test-run-006";
         SimulationMetadata metadata = createTestMetadata(runId);
         
-        List<TickData> ticks1 = createTestTicks(runId, 0, 5);
-        List<TickData> ticks2 = createTestTicks(runId, 5, 3);
+        List<TickDataChunk> chunks1 = createTestChunks(runId, 0, 5);
+        List<TickDataChunk> chunks2 = createTestChunks(runId, 5, 3);
         
         BatchInfo batch1 = createBatchInfo(runId, "batch_001.pb", 0, 4);
         BatchInfo batch2 = createBatchInfo(runId, "batch_002.pb", 5, 7);
@@ -314,8 +315,8 @@ class AbstractBatchIndexerTest {
             .thenReturn(msg1)
             .thenReturn(msg2)
             .thenAnswer(invocation -> null);  // Keep returning null indefinitely
-        when(mockStorage.readBatch(StoragePath.of(batch1.getStoragePath()))).thenReturn(ticks1);
-        when(mockStorage.readBatch(StoragePath.of(batch2.getStoragePath()))).thenReturn(ticks2);
+        when(mockStorage.readChunkBatch(StoragePath.of(batch1.getStoragePath()))).thenReturn(chunks1);
+        when(mockStorage.readChunkBatch(StoragePath.of(batch2.getStoragePath()))).thenReturn(chunks2);
         
         // Batch-passthrough: 2 flushes (one per batch)
         flushLatch = new CountDownLatch(2);
@@ -387,16 +388,24 @@ class AbstractBatchIndexerTest {
             .build();
     }
     
-    private List<TickData> createTestTicks(String runId, long startTick, int count) {
-        List<TickData> ticks = new ArrayList<>();
+    private List<TickDataChunk> createTestChunks(String runId, long startTick, int count) {
+        List<TickDataChunk> chunks = new ArrayList<>();
         for (int i = 0; i < count; i++) {
-            ticks.add(TickData.newBuilder()
+            long chunkStartTick = startTick + i;
+            TickData snapshot = TickData.newBuilder()
                 .setSimulationRunId(runId)
-                .setTickNumber(startTick + i)
+                .setTickNumber(chunkStartTick)
                 .setCaptureTimeMs(System.currentTimeMillis())
+                .build();
+            chunks.add(TickDataChunk.newBuilder()
+                .setSimulationRunId(runId)
+                .setFirstTick(chunkStartTick)
+                .setLastTick(chunkStartTick)
+                .setTickCount(1)  // Each chunk contains 1 tick (snapshot only)
+                .setSnapshot(snapshot)
                 .build());
         }
-        return ticks;
+        return chunks;
     }
     
     private BatchInfo createBatchInfo(String runId, String storageKey, long tickStart, long tickEnd) {
@@ -431,14 +440,15 @@ class AbstractBatchIndexerTest {
         }
         
         @Override
-        protected void flushTicks(List<TickData> ticks) throws Exception {
+        protected void flushChunks(List<TickDataChunk> chunks) throws Exception {
             if (throwOnFlush) {
                 flushLatch.countDown();
                 throw new RuntimeException("Simulated flush error");
             }
             
-            flushedBatches.add(new ArrayList<>(ticks));
-            flushCount.addAndGet(ticks.size());
+            flushedBatches.add(new ArrayList<>(chunks));
+            int totalTicks = chunks.stream().mapToInt(TickDataChunk::getTickCount).sum();
+            flushCount.addAndGet(totalTicks);
             flushLatch.countDown();
         }
     }

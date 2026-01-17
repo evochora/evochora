@@ -56,7 +56,7 @@ class H2DatabaseReaderInstructionResolutionTest {
             "password = \"\"\n" +
             "maxPoolSize = 5\n" +
             "h2EnvironmentStrategy {\n" +
-            "  className = \"org.evochora.datapipeline.resources.database.h2.SingleBlobStrategy\"\n" +
+            "  className = \"org.evochora.datapipeline.resources.database.h2.RowPerChunkStrategy\"\n" +
             "  options { compression { enabled = false } }\n" +
             "}\n"
         );

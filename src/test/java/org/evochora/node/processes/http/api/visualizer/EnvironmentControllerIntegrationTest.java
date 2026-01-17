@@ -28,6 +28,7 @@ import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
@@ -95,7 +96,7 @@ class EnvironmentControllerIntegrationTest {
             "password = \"\"\n" +
             "maxPoolSize = 10\n" +
             "h2EnvironmentStrategy {\n" +
-            "  className = \"org.evochora.datapipeline.resources.database.h2.SingleBlobStrategy\"\n" +
+            "  className = \"org.evochora.datapipeline.resources.database.h2.RowPerChunkStrategy\"\n" +
             "  options { compression { enabled = true, codec = \"zstd\", level = 3 } }\n" +
             "}\n"
         );
@@ -652,14 +653,28 @@ class EnvironmentControllerIntegrationTest {
     }
 
     private void writeBatchAndNotifyWithTopic(String runId, List<TickData> ticks, H2TopicResource<BatchInfo> topic) throws Exception {
-        // Write batch to storage
+        // Convert each tick to its own chunk (each chunk has tickCount=1)
+        long firstTick = ticks.get(0).getTickNumber();
+        long lastTick = ticks.get(ticks.size() - 1).getTickNumber();
+        
+        List<TickDataChunk> chunks = new ArrayList<>();
+        for (TickData tick : ticks) {
+            TickDataChunk chunk = TickDataChunk.newBuilder()
+                .setSimulationRunId(runId)
+                .setFirstTick(tick.getTickNumber())
+                .setLastTick(tick.getTickNumber())
+                .setTickCount(1)  // Each chunk contains exactly 1 tick
+                .setSnapshot(tick)
+                .build();
+            chunks.add(chunk);
+        }
+        
+        // Write chunk batch to storage
         ResourceContext storageWriteContext = new ResourceContext("test", "storage-port", "storage-write", "test-storage", Map.of("simulationRunId", runId));
         var storageWriter = testStorage.getWrappedResource(storageWriteContext);
         var batchWriter = (org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite) storageWriter;
 
-        long firstTick = ticks.get(0).getTickNumber();
-        long lastTick = ticks.get(ticks.size() - 1).getTickNumber();
-        StoragePath batchPath = batchWriter.writeBatch(ticks, firstTick, lastTick);
+        StoragePath batchPath = batchWriter.writeChunkBatch(chunks, firstTick, lastTick);
 
         // Send batch notification to topic (CRITICAL: Set simulation run BEFORE sending!)
         ResourceContext topicWriteContext = new ResourceContext("test", "topic-port", "topic-write", "batch-topic", Map.of());

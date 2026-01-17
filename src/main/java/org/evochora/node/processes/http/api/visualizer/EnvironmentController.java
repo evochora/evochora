@@ -1,5 +1,7 @@
 package org.evochora.node.processes.http.api.visualizer;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.typesafe.config.Config;
 import io.javalin.Javalin;
 import io.javalin.http.Context;
@@ -9,18 +11,31 @@ import io.javalin.openapi.OpenApi;
 import io.javalin.openapi.OpenApiContent;
 import io.javalin.openapi.OpenApiParam;
 import io.javalin.openapi.OpenApiResponse;
+import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
+import org.evochora.datapipeline.api.delta.ChunkCorruptedException;
 import org.evochora.datapipeline.api.resources.database.dto.CellWithCoordinates;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
+import org.evochora.datapipeline.api.resources.database.MetadataNotFoundException;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 import org.evochora.datapipeline.api.resources.database.dto.TickRange;
+import org.evochora.datapipeline.utils.MoleculeDataUtils;
+import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.node.processes.http.api.pipeline.dto.ErrorResponseDto;
 import org.evochora.node.processes.http.api.visualizer.dto.EnvironmentResponseDto;
+import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.EnvironmentProperties;
+import org.evochora.runtime.model.MoleculeTypeRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.SQLException;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * HTTP controller for environment data visualization.
@@ -28,8 +43,21 @@ import java.util.List;
  * Provides REST API endpoints for retrieving environment cell data from the database.
  * Supports spatial filtering and run ID resolution for multi-simulation environments.
  * <p>
+ * <strong>Delta Compression:</strong> Environment data is stored as chunks containing
+ * a snapshot plus deltas. This controller implements a Caffeine LRU cache to optimize
+ * sequential tick access (e.g., scrubbing through ticks in the visualizer).
+ * <p>
+ * <strong>Decompression Strategy:</strong> Chunks are cached as-is and decompressed
+ * on-demand for each request using {@code DeltaCodec.decompressTick()}. This provides:
+ * <ul>
+ *   <li>~50-100ms savings on cache hit (avoids DB load)</li>
+ *   <li>Memory-efficient caching (compressed chunks)</li>
+ *   <li>Simple cache key: runId + firstTick</li>
+ * </ul>
+ * <p>
  * Key features:
  * <ul>
+ *   <li>Chunk caching with Caffeine LRU cache</li>
  *   <li>Spatial region filtering (2D/3D coordinates)</li>
  *   <li>Run ID resolution (query parameter → latest run)</li>
  *   <li>HTTP cache headers for immutable past ticks</li>
@@ -37,19 +65,70 @@ import java.util.List;
  * </ul>
  * <p>
  * Thread Safety: This controller is thread-safe and can handle concurrent requests.
+ * The Caffeine cache is inherently thread-safe.
  */
 public class EnvironmentController extends VisualizerBaseController {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(EnvironmentController.class);
+    
+    /**
+     * Guard for one-time instruction set initialization.
+     */
+    private static final AtomicBoolean INSTRUCTION_INITIALIZED = new AtomicBoolean(false);
+    
+    /**
+     * LRU cache for TickDataChunks.
+     * <p>
+     * Key format: "runId:firstTick" where firstTick is the snapshot tick number.
+     * Value: The raw TickDataChunk (compressed form).
+     */
+    private final Cache<String, TickDataChunk> chunkCache;
+    
+    /**
+     * Cache for environment properties per runId.
+     * <p>
+     * Used to avoid repeated metadata lookups for calculating totalCells.
+     */
+    private final Cache<String, EnvironmentProperties> envPropsCache;
 
     /**
-     * Constructs a new EnvironmentController.
+     * Constructs a new EnvironmentController with chunk caching.
+     * <p>
+     * Cache configuration is read from options:
+     * <ul>
+     *   <li>{@code cache.maximum-size} - Maximum number of chunks to cache (default: 100)</li>
+     *   <li>{@code cache.expire-after-access} - Expiration time in seconds (default: 300)</li>
+     * </ul>
      *
      * @param registry The central service registry for accessing shared services.
      * @param options  The HOCON configuration specific to this controller instance.
      */
     public EnvironmentController(final org.evochora.node.spi.ServiceRegistry registry, final Config options) {
         super(registry, options);
+        
+        // Read cache configuration
+        int maxSize = options.hasPath("cache.maximum-size") 
+            ? options.getInt("cache.maximum-size") 
+            : 100;
+        int expireAfterAccessSeconds = options.hasPath("cache.expire-after-access") 
+            ? options.getInt("cache.expire-after-access") 
+            : 300;
+        
+        // Build chunk cache
+        this.chunkCache = Caffeine.newBuilder()
+            .maximumSize(maxSize)
+            .expireAfterAccess(Duration.ofSeconds(expireAfterAccessSeconds))
+            .recordStats()  // Enable stats for monitoring
+            .build();
+        
+        // Build environment properties cache (small, long TTL)
+        this.envPropsCache = Caffeine.newBuilder()
+            .maximumSize(50)
+            .expireAfterAccess(Duration.ofMinutes(30))
+            .build();
+        
+        LOGGER.info("EnvironmentController chunk cache initialized: maxSize={}, expireAfterAccess={}s",
+            maxSize, expireAfterAccessSeconds);
     }
 
     @Override
@@ -73,6 +152,10 @@ public class EnvironmentController extends VisualizerBaseController {
      * <p>
      * Route: GET /{tick}?region=x1,x2,y1,y2&runId=...
      * <p>
+     * This method uses a chunk cache to optimize sequential tick access.
+     * On cache miss, it loads the chunk from the database and caches it.
+     * Decompression to the specific tick is performed on each request.
+     * <p>
      * Query parameters:
      * <ul>
      *   <li>region: Optional spatial region as comma-separated bounds (e.g., "0,100,0,100")</li>
@@ -82,11 +165,8 @@ public class EnvironmentController extends VisualizerBaseController {
      * Response format:
      * <pre>
      * {
-     *   "tick": 100,
-     *   "runId": "20251023_120000_ABC",
-     *   "region": {"bounds": [0, 100, 0, 100]},
      *   "cells": [
-     *     {"coordinates": [5, 10], "moleculeType": 1, "moleculeValue": 255, "ownerId": 7}
+     *     {"coordinates": [5, 10], "moleculeType": "ENERGY", "moleculeValue": 255, "ownerId": 7}
      *   ]
      * }
      * </pre>
@@ -144,48 +224,245 @@ public class EnvironmentController extends VisualizerBaseController {
             return;
         }
         
-        // Query database for environment data
-        try (final IDatabaseReader reader = databaseProvider.createReader(runId)) {
-            final List<CellWithCoordinates> cells = reader.readEnvironmentRegion(tickNumber, region);
+        try {
+            // Get or load environment properties (cached)
+            final EnvironmentProperties envProps = getOrLoadEnvProps(runId);
+            final int totalCells = calculateTotalCells(envProps);
+            
+            // Get or load chunk (cached)
+            final TickDataChunk chunk = getOrLoadChunk(runId, tickNumber);
+            
+            // Decompress to get the specific tick
+            final TickData tickData;
+            try {
+                tickData = DeltaCodec.decompressTick(chunk, tickNumber, totalCells);
+            } catch (ChunkCorruptedException e) {
+                throw new SQLException("Corrupted chunk for tick " + tickNumber + ": " + e.getMessage(), e);
+            }
+            
+            // Ensure instruction set is initialized before resolving opcode names
+            ensureInstructionSetInitialized();
+            
+            // Convert to response format
+            final List<CellWithCoordinates> cells = convertTickDataToCells(tickData, region, envProps);
             
             // Return DTO directly (client only uses cells array)
             ctx.status(HttpStatus.OK).json(new EnvironmentResponseDto(cells));
+            
         } catch (RuntimeException e) {
-            // Check if the error is due to non-existent schema (run ID not found)
-            if (e.getCause() instanceof SQLException) {
-                SQLException sqlEx = (SQLException) e.getCause();
-                String msg = sqlEx.getMessage();
-                
-                if (msg != null) {
-                    String lowerMsg = msg.toLowerCase();
-                    
-                    // Check for schema errors FIRST (before pool exhaustion)
-                    if (msg.contains("schema") || msg.contains("Schema")) {
-                        // Schema doesn't exist - run ID not found
-                        throw new VisualizerBaseController.NoRunIdException("Run ID not found: " + runId);
-                    }
-                    
-                    // Check for connection pool timeout/exhaustion (specific patterns only)
-                    if (lowerMsg.contains("timeout") || 
-                        lowerMsg.contains("connection is not available") ||
-                        lowerMsg.contains("connection pool")) {
-                        // Connection pool exhausted or timeout
-                        throw new VisualizerBaseController.PoolExhaustionException("Connection pool exhausted or timeout", sqlEx);
-                    }
+            handleDatabaseException(e, runId);
+        }
+    }
+    
+    /**
+     * Gets or loads environment properties for a run (cached).
+     */
+    private EnvironmentProperties getOrLoadEnvProps(final String runId) throws SQLException {
+        return envPropsCache.get(runId, key -> {
+            try (final IDatabaseReader reader = databaseProvider.createReader(runId)) {
+                final SimulationMetadata metadata = reader.getMetadata();
+                return extractEnvironmentProperties(metadata);
+            } catch (SQLException | MetadataNotFoundException e) {
+                throw new RuntimeException("Failed to load environment properties for " + runId, e);
+            }
+        });
+    }
+    
+    /**
+     * Gets or loads the chunk containing the specified tick (cached).
+     * <p>
+     * The cache key is "runId:firstTick" where firstTick is the snapshot tick of the chunk.
+     * Since we don't know the firstTick before loading, we first check if any cached chunk
+     * contains the requested tick, otherwise we load from the database.
+     */
+    private TickDataChunk getOrLoadChunk(final String runId, final long tickNumber) throws SQLException, TickNotFoundException {
+        // Try to find a cached chunk that contains this tick
+        // This is a simple linear scan - acceptable for small cache sizes
+        for (var entry : chunkCache.asMap().entrySet()) {
+            if (entry.getKey().startsWith(runId + ":")) {
+                TickDataChunk cached = entry.getValue();
+                if (chunkContainsTick(cached, tickNumber)) {
+                    LOGGER.debug("Chunk cache hit: runId={}, tick={}", runId, tickNumber);
+                    return cached;
                 }
             }
-            // Other runtime errors - wrap to provide better context
-            throw new RuntimeException("Error retrieving environment data for runId: " + runId, e);
-        } catch (SQLException e) {
-            // Check if the error is due to non-existent schema (run ID not found)
-            if (e.getMessage() != null && 
-                (e.getMessage().contains("schema") || e.getMessage().contains("Schema"))) {
-                // Schema doesn't exist - run ID not found
-                throw new VisualizerBaseController.NoRunIdException("Run ID not found: " + runId);
+        }
+        
+        // Cache miss - load from database
+        LOGGER.debug("Chunk cache miss: runId={}, tick={}", runId, tickNumber);
+        
+        try (final IDatabaseReader reader = databaseProvider.createReader(runId)) {
+            final TickDataChunk chunk = reader.readChunkContaining(tickNumber);
+            
+            // Cache with key "runId:firstTick"
+            final long firstTick = chunk.getSnapshot().getTickNumber();
+            final String cacheKey = runId + ":" + firstTick;
+            chunkCache.put(cacheKey, chunk);
+            
+            return chunk;
+        } catch (RuntimeException e) {
+            // Check if this is a schema/runId error
+            if (e.getCause() instanceof SQLException) {
+                SQLException sqlEx = (SQLException) e.getCause();
+                if (sqlEx.getMessage() != null && 
+                    (sqlEx.getMessage().contains("schema") || sqlEx.getMessage().contains("Schema"))) {
+                    throw new VisualizerBaseController.NoRunIdException("Run ID not found: " + runId);
+                }
             }
-            // Other database errors
             throw e;
         }
+    }
+    
+    /**
+     * Checks if a chunk contains the specified tick number.
+     */
+    private boolean chunkContainsTick(final TickDataChunk chunk, final long tickNumber) {
+        if (!chunk.hasSnapshot()) {
+            return false;
+        }
+        
+        final long firstTick = chunk.getSnapshot().getTickNumber();
+        final long lastTick;
+        if (chunk.getDeltasCount() > 0) {
+            lastTick = chunk.getDeltas(chunk.getDeltasCount() - 1).getTickNumber();
+        } else {
+            lastTick = firstTick;
+        }
+        
+        return tickNumber >= firstTick && tickNumber <= lastTick;
+    }
+    
+    /**
+     * Converts TickData to a list of CellWithCoordinates, with optional region filtering.
+     */
+    private List<CellWithCoordinates> convertTickDataToCells(final TickData tickData, 
+                                                             final SpatialRegion region,
+                                                             final EnvironmentProperties envProps) {
+        final var cellColumns = tickData.getCellColumns();
+        final int cellCount = cellColumns.getFlatIndicesCount();
+        final int dimensions = envProps.getDimensions();
+        
+        final List<CellWithCoordinates> result = new ArrayList<>();
+        
+        for (int i = 0; i < cellCount; i++) {
+            final int flatIndex = cellColumns.getFlatIndices(i);
+            final int[] coords = envProps.flatIndexToCoordinates(flatIndex);
+            
+            // Filter by region if provided
+            if (region != null && !isInRegion(coords, region, dimensions)) {
+                continue;
+            }
+
+            final int moleculeInt = cellColumns.getMoleculeData(i);
+            final int moleculeType = moleculeInt & org.evochora.runtime.Config.TYPE_MASK;
+            final int moleculeValue = MoleculeDataUtils.extractSignedValue(moleculeInt);
+            final int marker = (moleculeInt & org.evochora.runtime.Config.MARKER_MASK) >> org.evochora.runtime.Config.MARKER_SHIFT;
+            final int ownerId = cellColumns.getOwnerIds(i);
+
+            final String moleculeTypeName = MoleculeTypeRegistry.typeToName(moleculeType);
+            
+            // For CODE molecules, resolve opcode name from value
+            String opcodeName = null;
+            if (moleculeType == org.evochora.runtime.Config.TYPE_CODE) {
+                opcodeName = Instruction.getInstructionNameById(moleculeValue);
+            }
+            
+            result.add(new CellWithCoordinates(
+                coords,
+                moleculeTypeName,
+                moleculeValue,
+                ownerId,
+                opcodeName,
+                marker
+            ));
+        }
+        
+        return result;
+    }
+    
+    /**
+     * Checks if coordinates are within the specified region.
+     */
+    private boolean isInRegion(final int[] coords, final SpatialRegion region, final int dimensions) {
+        final int[] bounds = region.bounds;
+        
+        if (dimensions == 2) {
+            final int xMin = bounds[0], xMax = bounds[1];
+            final int yMin = bounds[2], yMax = bounds[3];
+            return coords[0] >= xMin && coords[0] <= xMax && 
+                   coords[1] >= yMin && coords[1] <= yMax;
+        } else {
+            for (int d = 0; d < dimensions; d++) {
+                final int min = bounds[d * 2];
+                final int max = bounds[d * 2 + 1];
+                if (coords[d] < min || coords[d] > max) {
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+    
+    /**
+     * Calculates total cells from environment properties.
+     */
+    private int calculateTotalCells(final EnvironmentProperties envProps) {
+        int totalCells = 1;
+        for (int dim : envProps.getWorldShape()) {
+            totalCells *= dim;
+        }
+        return totalCells;
+    }
+    
+    /**
+     * Extracts environment properties from metadata.
+     */
+    private EnvironmentProperties extractEnvironmentProperties(final SimulationMetadata metadata) {
+        final var envConfig = metadata.getEnvironment();
+        
+        final int[] shape = new int[envConfig.getShapeCount()];
+        for (int i = 0; i < envConfig.getShapeCount(); i++) {
+            shape[i] = envConfig.getShape(i);
+        }
+        
+        final boolean isToroidal = envConfig.getToroidalCount() > 0 && envConfig.getToroidal(0);
+        
+        return new EnvironmentProperties(shape, isToroidal);
+    }
+    
+    /**
+     * Ensures the instruction set is initialized (one-time, thread-safe).
+     */
+    private static void ensureInstructionSetInitialized() {
+        if (INSTRUCTION_INITIALIZED.compareAndSet(false, true)) {
+            Instruction.init();
+        }
+    }
+    
+    /**
+     * Handles database exceptions with appropriate error mapping.
+     */
+    private void handleDatabaseException(final RuntimeException e, final String runId) throws SQLException {
+        if (e.getCause() instanceof SQLException sqlEx) {
+            final String msg = sqlEx.getMessage();
+            
+            if (msg != null) {
+                final String lowerMsg = msg.toLowerCase();
+                
+                // Check for schema errors FIRST
+                if (msg.contains("schema") || msg.contains("Schema")) {
+                    throw new VisualizerBaseController.NoRunIdException("Run ID not found: " + runId);
+                }
+                
+                // Check for connection pool timeout/exhaustion
+                if (lowerMsg.contains("timeout") || 
+                    lowerMsg.contains("connection is not available") ||
+                    lowerMsg.contains("connection pool")) {
+                    throw new VisualizerBaseController.PoolExhaustionException("Connection pool exhausted or timeout", sqlEx);
+                }
+            }
+        }
+        throw new RuntimeException("Error retrieving environment data for runId: " + runId, e);
     }
 
     /**

@@ -3,6 +3,7 @@ package org.evochora.datapipeline.resources.storage.wrappers;
 import com.google.protobuf.MessageLite;
 import com.google.protobuf.Parser;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.IWrappedResource;
@@ -85,6 +86,7 @@ public class MonitoredBatchStorageReader implements IResourceBatchStorageRead, I
     }
 
     @Override
+    @Deprecated(forRemoval = true)
     public List<TickData> readBatch(StoragePath path) throws IOException {
         long startNanos = System.nanoTime();
         try {
@@ -93,6 +95,28 @@ public class MonitoredBatchStorageReader implements IResourceBatchStorageRead, I
             // Update cumulative metrics
             batchesRead.incrementAndGet();
             long bytes = result.stream().mapToLong(TickData::getSerializedSize).sum();
+            bytesRead.addAndGet(bytes);
+
+            // Record performance metrics
+            long latencyNanos = System.nanoTime() - startNanos;
+            recordRead(bytes, latencyNanos);
+
+            return result;
+        } catch (IOException e) {
+            readErrors.incrementAndGet();
+            throw e;
+        }
+    }
+
+    @Override
+    public List<TickDataChunk> readChunkBatch(StoragePath path) throws IOException {
+        long startNanos = System.nanoTime();
+        try {
+            List<TickDataChunk> result = delegate.readChunkBatch(path);
+
+            // Update cumulative metrics
+            batchesRead.incrementAndGet();
+            long bytes = result.stream().mapToLong(TickDataChunk::getSerializedSize).sum();
             bytesRead.addAndGet(bytes);
 
             // Record performance metrics

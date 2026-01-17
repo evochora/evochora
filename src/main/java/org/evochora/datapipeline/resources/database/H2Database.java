@@ -56,9 +56,6 @@ public class H2Database extends AbstractDatabaseResource
     // Organism storage strategy (loaded via reflection)
     private final IH2OrgStorageStrategy orgStorageStrategy;
     
-    // PreparedStatement cache for environment writes (per connection)
-    private final Map<Connection, PreparedStatement> envWriteStmtCache = new ConcurrentHashMap<>();
-    
     // PreparedStatement caches for organism writes (per connection)
     private final Map<Connection, PreparedStatement> orgStaticStmtCache = new ConcurrentHashMap<>();
     private final Map<Connection, PreparedStatement> orgStatesStmtCache = new ConcurrentHashMap<>();
@@ -161,7 +158,7 @@ public class H2Database extends AbstractDatabaseResource
      * Configuration:
      * <pre>
      * h2EnvironmentStrategy {
-     *   className = "org.evochora.datapipeline.resources.database.h2.SingleBlobStrategy"
+     *   className = "org.evochora.datapipeline.resources.database.h2.RowPerChunkStrategy"
      *   options {
      *     compression {
      *       codec = "zstd"
@@ -191,13 +188,13 @@ public class H2Database extends AbstractDatabaseResource
                          : "none");
             return strategy;
         } else {
-            // Default: SingleBlobStrategy without compression
+            // Default: RowPerChunkStrategy without compression
             Config emptyConfig = ConfigFactory.empty();
             IH2EnvStorageStrategy strategy = createStorageStrategy(
-                "org.evochora.datapipeline.resources.database.h2.SingleBlobStrategy",
+                "org.evochora.datapipeline.resources.database.h2.RowPerChunkStrategy",
                 emptyConfig
             );
-            log.debug("Using default SingleBlobStrategy (no compression)");
+            log.debug("Using default RowPerChunkStrategy (no compression)");
             return strategy;
         }
     }
@@ -438,14 +435,16 @@ public class H2Database extends AbstractDatabaseResource
     }
 
     /**
-     * Implements environment cells write via storage strategy.
+     * Implements environment chunks write via storage strategy.
      * <p>
-     * Delegates to {@link IH2EnvStorageStrategy#writeTicks(Connection, PreparedStatement, List, EnvironmentProperties)}.
-     * Strategy performs SQL operations, this method handles transaction lifecycle and PreparedStatement caching.
+     * Delegates to {@link IH2EnvStorageStrategy#writeChunks(Connection, List)}.
+     * Strategy performs SQL operations, this method handles transaction lifecycle.
+     * <p>
+     * Chunks are stored as-is without decompression for maximum storage efficiency.
      */
     @Override
-    protected void doWriteEnvironmentCells(Object connection, List<TickData> ticks,
-                                           EnvironmentProperties envProps) throws Exception {
+    protected void doWriteEnvironmentChunks(Object connection, 
+                                            List<org.evochora.datapipeline.api.contracts.TickDataChunk> chunks) throws Exception {
         Connection conn = (Connection) connection;
         
         // Clear interrupt flag temporarily to allow H2 operations
@@ -453,21 +452,9 @@ public class H2Database extends AbstractDatabaseResource
         // which throws InterruptedException if thread is interrupted
         boolean wasInterrupted = Thread.interrupted();
         
-        // Note: Cached statement is intentionally NOT closed in finally block.
-        // Its lifecycle is tied to the connection - HikariCP closes all open
-        // statements when the connection is returned to the pool.
         try {
-            // Get or create PreparedStatement for this connection
-            PreparedStatement stmt = envWriteStmtCache.computeIfAbsent(conn, c -> {
-                try {
-                    return c.prepareStatement(envStorageStrategy.getMergeSql());
-                } catch (SQLException e) {
-                    throw new RuntimeException("Failed to prepare statement", e);
-                }
-            });
-            
-            // Delegate to storage strategy for SQL operations with prepared statement
-            envStorageStrategy.writeTicks(conn, stmt, ticks, envProps);
+            // Delegate to storage strategy for SQL operations
+            envStorageStrategy.writeChunks(conn, chunks);
             
             // Commit transaction on success
             conn.commit();
@@ -856,22 +843,23 @@ public class H2Database extends AbstractDatabaseResource
     /**
      * Gets the range of available ticks for a specific run.
      * <p>
-     * Queries the environment_ticks table to find the minimum and maximum tick numbers.
-     * Returns null if no ticks are available.
+     * Queries the environment_chunks table to find the minimum and maximum tick numbers.
+     * Returns null if no chunks are available.
      *
      * @param conn The database connection (schema already set)
      * @param runId The simulation run ID (for logging/debugging, schema already contains this run)
-     * @return TickRange with minTick and maxTick, or null if no ticks exist
+     * @return TickRange with minTick and maxTick, or null if no chunks exist
      * @throws SQLException if database query fails
      */
     org.evochora.datapipeline.api.resources.database.dto.TickRange getTickRangeInternal(
             Connection conn, String runId) throws SQLException {
         try {
-            // Query min and max tick numbers from environment_ticks table
+            // Query min and max tick numbers from environment_chunks table
+            // first_tick is the minimum tick in each chunk, last_tick is the maximum
             // Schema is already set by the connection (via H2DatabaseReader)
             PreparedStatement stmt = conn.prepareStatement(
-                "SELECT MIN(tick_number) as min_tick, MAX(tick_number) as max_tick " +
-                "FROM environment_ticks"
+                "SELECT MIN(first_tick) as min_tick, MAX(last_tick) as max_tick " +
+                "FROM environment_chunks"
             );
             ResultSet rs = stmt.executeQuery();
             
@@ -882,7 +870,7 @@ public class H2Database extends AbstractDatabaseResource
                 return null;
             }
             
-            // Check if result is null (table exists but empty, or all ticks deleted)
+            // Check if result is null (table exists but empty, or all chunks deleted)
             long minTick = rs.getLong("min_tick");
             long maxTick = rs.getLong("max_tick");
             
@@ -894,7 +882,7 @@ public class H2Database extends AbstractDatabaseResource
             return new org.evochora.datapipeline.api.resources.database.dto.TickRange(minTick, maxTick);
             
         } catch (SQLException e) {
-            // Table doesn't exist yet (no ticks written)
+            // Table doesn't exist yet (no chunks written)
             if (e.getErrorCode() == 42104 || e.getErrorCode() == 42102 || 
                 (e.getMessage().contains("Table") && e.getMessage().contains("not found"))) {
                 return null; // No ticks available

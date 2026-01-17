@@ -8,9 +8,9 @@ import java.util.Map;
 
 import org.evochora.datapipeline.CellStateTestHelper;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
-import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -65,10 +65,9 @@ class EnvironmentDataWriterWrapperTest {
     }
     
     @Test
-    void testWriteEnvironmentCells_Success() {
-        // Given: Environment properties and tick data
-        EnvironmentProperties envProps = new EnvironmentProperties(new int[]{10, 10}, false);
-        TickData tick = TickData.newBuilder()
+    void testWriteEnvironmentChunks_Success() {
+        // Given: A chunk with snapshot data
+        TickData snapshot = TickData.newBuilder()
             .setTickNumber(1L)
             .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
                 CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build(),
@@ -76,43 +75,49 @@ class EnvironmentDataWriterWrapperTest {
             )))
             .build();
         
-        // When: Write cells
-        wrapper.writeEnvironmentCells(List.of(tick), envProps);
+        TickDataChunk chunk = TickDataChunk.newBuilder()
+            .setSnapshot(snapshot)
+            .build();
+        
+        // When: Write chunk
+        wrapper.writeEnvironmentChunks(List.of(chunk));
         
         // Then: Should succeed (no exception)
         assertThat(wrapper.isHealthy()).isTrue();
     }
     
     @Test
-    void testWriteEnvironmentCells_Metrics() {
-        // Given: Environment properties and multiple ticks
-        EnvironmentProperties envProps = new EnvironmentProperties(new int[]{10, 10}, false);
-        TickData tick1 = TickData.newBuilder()
+    void testWriteEnvironmentChunks_Metrics() {
+        // Given: Multiple chunks
+        TickData snapshot1 = TickData.newBuilder()
             .setTickNumber(1L)
             .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
                 CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build(),
                 CellStateTestHelper.createCellStateBuilder(1, 101, 1, 60, 0).build()
             )))
             .build();
-        TickData tick2 = TickData.newBuilder()
-            .setTickNumber(2L)
+        TickData snapshot2 = TickData.newBuilder()
+            .setTickNumber(100L)
             .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
                 CellStateTestHelper.createCellStateBuilder(2, 102, 1, 70, 0).build()
             )))
             .build();
         
-        // When: Write cells
-        wrapper.writeEnvironmentCells(List.of(tick1, tick2), envProps);
+        TickDataChunk chunk1 = TickDataChunk.newBuilder().setSnapshot(snapshot1).build();
+        TickDataChunk chunk2 = TickDataChunk.newBuilder().setSnapshot(snapshot2).build();
         
-        // Then: Metrics should reflect 3 cells and 1 batch
+        // When: Write chunks
+        wrapper.writeEnvironmentChunks(List.of(chunk1, chunk2));
+        
+        // Then: Metrics should reflect 2 chunks and 1 batch
         Map<String, Number> metrics = wrapper.getMetrics();
         assertThat(metrics).containsKeys(
-            "cells_written", "batches_written", "write_errors",
-            "cells_per_second", "batches_per_second",
+            "chunks_written", "batches_written", "write_errors",
+            "chunks_per_second", "batches_per_second",
             "write_latency_p50_ms", "write_latency_p95_ms", "write_latency_p99_ms", "write_latency_avg_ms"
         );
         
-        assertThat(metrics.get("cells_written").longValue()).isEqualTo(3);
+        assertThat(metrics.get("chunks_written").longValue()).isEqualTo(2);
         assertThat(metrics.get("batches_written").longValue()).isEqualTo(1);
         assertThat(metrics.get("write_errors").longValue()).isEqualTo(0);
         
@@ -122,32 +127,32 @@ class EnvironmentDataWriterWrapperTest {
     }
     
     @Test
-    void testWriteEnvironmentCells_EmptyList() {
-        // Given: Empty tick list
-        EnvironmentProperties envProps = new EnvironmentProperties(new int[]{10, 10}, false);
+    void testWriteEnvironmentChunks_EmptyList() {
+        // Given: Empty chunk list
         
         // When: Write empty list
-        wrapper.writeEnvironmentCells(List.of(), envProps);
+        wrapper.writeEnvironmentChunks(List.of());
         
         // Then: Should succeed without errors
         assertThat(wrapper.isHealthy()).isTrue();
         
         Map<String, Number> metrics = wrapper.getMetrics();
-        assertThat(metrics.get("cells_written").longValue()).isEqualTo(0);
+        assertThat(metrics.get("chunks_written").longValue()).isEqualTo(0);
         assertThat(metrics.get("batches_written").longValue()).isEqualTo(0);
     }
     
     @Test
     void testCollectMetrics_AllFields() {
         // Given: Wrapper with some writes
-        EnvironmentProperties envProps = new EnvironmentProperties(new int[]{10, 10}, false);
-        TickData tick = TickData.newBuilder()
+        TickData snapshot = TickData.newBuilder()
             .setTickNumber(1L)
             .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
                 CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
             )))
             .build();
-        wrapper.writeEnvironmentCells(List.of(tick), envProps);
+        
+        TickDataChunk chunk = TickDataChunk.newBuilder().setSnapshot(snapshot).build();
+        wrapper.writeEnvironmentChunks(List.of(chunk));
         
         // When: Get metrics
         Map<String, Number> metrics = wrapper.getMetrics();
@@ -157,10 +162,10 @@ class EnvironmentDataWriterWrapperTest {
             // From parent (AbstractDatabaseWrapper)
             "connection_cached",
             // From EnvironmentDataWriterWrapper
-            "cells_written",
+            "chunks_written",
             "batches_written",
             "write_errors",
-            "cells_per_second",
+            "chunks_per_second",
             "batches_per_second",
             "write_latency_p50_ms",
             "write_latency_p95_ms",
@@ -180,14 +185,14 @@ class EnvironmentDataWriterWrapperTest {
         assertThat(wrapper.isHealthy()).isTrue();
         
         // And: Subsequent writes should work
-        EnvironmentProperties envProps = new EnvironmentProperties(new int[]{10, 10}, false);
-        TickData tick = TickData.newBuilder()
+        TickData snapshot = TickData.newBuilder()
             .setTickNumber(1L)
             .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
                 CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
             )))
             .build();
-        wrapper.writeEnvironmentCells(List.of(tick), envProps);
+        
+        TickDataChunk chunk = TickDataChunk.newBuilder().setSnapshot(snapshot).build();
+        wrapper.writeEnvironmentChunks(List.of(chunk));
     }
 }
-

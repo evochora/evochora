@@ -3,6 +3,7 @@ package org.evochora.datapipeline.api.resources.storage;
 import com.google.protobuf.MessageLite;
 import com.google.protobuf.Parser;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.IResource;
 
 import java.io.IOException;
@@ -75,8 +76,37 @@ public interface IBatchStorageRead extends IResource {
      * @return List of all tick data in the batch
      * @throws IOException If file doesn't exist or read fails
      * @throws IllegalArgumentException If path is null
+     * @deprecated Use {@link #readChunkBatch(StoragePath)} instead. Will be removed after delta compression migration.
      */
+    @Deprecated(forRemoval = true)
     List<TickData> readBatch(StoragePath path) throws IOException;
+
+    /**
+     * Reads a chunk batch file by its physical storage path.
+     * <p>
+     * This is the delta compression variant of {@link #readBatch(StoragePath)}.
+     * Each chunk is a self-contained unit containing a snapshot and deltas.
+     * <p>
+     * This method:
+     * <ul>
+     *   <li>Decompresses the file automatically based on path extension</li>
+     *   <li>Parses length-delimited protobuf messages</li>
+     *   <li>Returns all chunks in the batch in original order</li>
+     * </ul>
+     * <p>
+     * <strong>Example usage (IndexerService with delta compression):</strong>
+     * <pre>
+     * StoragePath path = StoragePath.of(batchInfo.getStoragePath());
+     * List&lt;TickDataChunk&gt; chunks = storage.readChunkBatch(path);
+     * log.info("Read {} chunks from {}", chunks.size(), path);
+     * </pre>
+     *
+     * @param path The physical storage path (includes compression extension)
+     * @return List of all tick data chunks in the batch
+     * @throws IOException If file doesn't exist or read fails
+     * @throws IllegalArgumentException If path is null
+     */
+    List<TickDataChunk> readChunkBatch(StoragePath path) throws IOException;
 
     /**
      * Reads a single protobuf message from storage at the specified physical path.

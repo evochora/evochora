@@ -20,8 +20,12 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import org.evochora.datapipeline.api.contracts.CellDataColumns;
+import org.evochora.datapipeline.api.contracts.DeltaType;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
+import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
@@ -325,5 +329,85 @@ class FileSystemStorageResourceTest {
     void testFindMetadataPath_NullRunId() {
         assertThrows(IllegalArgumentException.class, () -> storage.findMetadataPath(null),
                 "findMetadataPath should throw IllegalArgumentException for null runId");
+    }
+
+    // ========================================================================
+    // Chunk Batch Tests (Delta Compression)
+    // ========================================================================
+
+    private TickDataChunk createChunk(long firstTick, long lastTick, int tickCount) {
+        TickData snapshot = TickData.newBuilder()
+                .setTickNumber(firstTick)
+                .setSimulationRunId("test-sim")
+                .setCaptureTimeMs(System.currentTimeMillis())
+                .setCellColumns(CellDataColumns.newBuilder()
+                        .addFlatIndices(0)
+                        .addMoleculeData(100)
+                        .addOwnerIds(1)
+                        .build())
+                .build();
+
+        TickDataChunk.Builder chunkBuilder = TickDataChunk.newBuilder()
+                .setSimulationRunId("test-sim")
+                .setFirstTick(firstTick)
+                .setLastTick(lastTick)
+                .setTickCount(tickCount)
+                .setSnapshot(snapshot);
+
+        // Add deltas if tickCount > 1
+        for (long tick = firstTick + 1; tick <= lastTick; tick++) {
+            TickDelta delta = TickDelta.newBuilder()
+                    .setTickNumber(tick)
+                    .setCaptureTimeMs(System.currentTimeMillis())
+                    .setDeltaType(DeltaType.INCREMENTAL)
+                    .setChangedCells(CellDataColumns.newBuilder()
+                            .addFlatIndices((int) tick)
+                            .addMoleculeData((int) (100 + tick))
+                            .addOwnerIds(1)
+                            .build())
+                    .build();
+            chunkBuilder.addDeltas(delta);
+        }
+
+        return chunkBuilder.build();
+    }
+
+    @Test
+    void testWriteChunkBatch_ReadChunkBatch_RoundTrip() throws IOException {
+        // Create chunks
+        TickDataChunk chunk1 = createChunk(0, 9, 10);
+        TickDataChunk chunk2 = createChunk(10, 19, 10);
+        List<TickDataChunk> batch = List.of(chunk1, chunk2);
+
+        // Write
+        StoragePath path = storage.writeChunkBatch(batch, 0, 19);
+        assertNotNull(path);
+        assertTrue(path.asString().contains("test-sim"));
+        assertTrue(path.asString().contains("batch_"));
+
+        // Read
+        List<TickDataChunk> readBatch = storage.readChunkBatch(path);
+        assertEquals(2, readBatch.size());
+        assertEquals(chunk1, readBatch.get(0));
+        assertEquals(chunk2, readBatch.get(1));
+    }
+
+    @Test
+    void testWriteChunkBatch_EmptyBatch_Throws() {
+        assertThrows(IllegalArgumentException.class, 
+                () -> storage.writeChunkBatch(List.of(), 0, 0));
+    }
+
+    @Test
+    void testWriteChunkBatch_InvalidTickOrder_Throws() {
+        TickDataChunk chunk = createChunk(100, 109, 10);
+        assertThrows(IllegalArgumentException.class, 
+                () -> storage.writeChunkBatch(List.of(chunk), 109, 100));
+    }
+
+    @Test
+    void testReadChunkBatch_NotFound() {
+        StoragePath nonExistentPath = StoragePath.of("test-sim/raw/000/000/batch_not_found.pb");
+        assertThrows(IOException.class, () -> storage.readChunkBatch(nonExistentPath));
     }
 }

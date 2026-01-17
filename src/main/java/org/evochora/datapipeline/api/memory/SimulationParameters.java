@@ -20,6 +20,15 @@ package org.evochora.datapipeline.api.memory;
  *   <li>{@link #TICKDATA_WRAPPER_OVERHEAD}: 500 bytes - TickData wrapper (simulation_run_id, rng_state, etc.)</li>
  * </ul>
  * <p>
+ * <strong>Delta Compression Parameters:</strong>
+ * <ul>
+ *   <li>{@code samplingInterval}: Ticks between samples (default: 1)</li>
+ *   <li>{@code accumulatedDeltaInterval}: Samples between accumulated deltas (default: 5)</li>
+ *   <li>{@code snapshotInterval}: Accumulated deltas between snapshots (default: 20)</li>
+ *   <li>{@code chunkInterval}: Snapshots per chunk (default: 1)</li>
+ *   <li>{@code estimatedDeltaRatio}: Expected change rate per tick (default: 0.01 = 1%)</li>
+ * </ul>
+ * <p>
  * <strong>Usage:</strong> Created by ServiceManager from pipeline configuration
  * and passed to all {@link IMemoryEstimatable} components for estimation.
  *
@@ -31,11 +40,21 @@ package org.evochora.datapipeline.api.memory;
  * @param maxOrganisms Maximum expected organisms in the simulation.
  *                     This should be a configured upper bound or a reasonable estimate.
  *                     For worst-case: assume all organisms alive simultaneously.
+ * @param samplingInterval Ticks between samples.
+ * @param accumulatedDeltaInterval Samples between accumulated deltas.
+ * @param snapshotInterval Accumulated deltas between snapshots.
+ * @param chunkInterval Snapshots per chunk.
+ * @param estimatedDeltaRatio Expected change rate per tick (0.0-1.0).
  */
 public record SimulationParameters(
     int[] environmentShape,
     int totalCells,
-    int maxOrganisms
+    int maxOrganisms,
+    int samplingInterval,
+    int accumulatedDeltaInterval,
+    int snapshotInterval,
+    int chunkInterval,
+    double estimatedDeltaRatio
 ) {
     
     /**
@@ -77,21 +96,76 @@ public record SimulationParameters(
      */
     public static final int TICKDATA_WRAPPER_OVERHEAD = 500;
     
+    // ========================================================================
+    // Default Values for Delta Compression
+    // ========================================================================
+    
+    /** Default sampling interval (every tick). */
+    public static final int DEFAULT_SAMPLING_INTERVAL = 1;
+    
+    /** Default accumulated delta interval (every 5 samples). */
+    public static final int DEFAULT_ACCUMULATED_DELTA_INTERVAL = 5;
+    
+    /** Default snapshot interval (every 20 accumulated deltas). */
+    public static final int DEFAULT_SNAPSHOT_INTERVAL = 20;
+    
+    /** Default chunk interval (1 snapshot per chunk = 100 ticks/chunk). */
+    public static final int DEFAULT_CHUNK_INTERVAL = 1;
+    
+    /** Default estimated delta ratio (1% of cells change per tick). */
+    public static final double DEFAULT_ESTIMATED_DELTA_RATIO = 0.01;
+    
+    // ========================================================================
+    // Factory Methods
+    // ========================================================================
+    
     /**
-     * Creates SimulationParameters from environment shape and max organisms.
+     * Creates SimulationParameters from environment shape and max organisms with default delta settings.
      * <p>
      * Automatically calculates totalCells from shape dimensions.
+     * Uses default delta compression parameters.
      *
      * @param environmentShape The environment dimensions (e.g., [800, 600]).
      * @param maxOrganisms Maximum expected organisms.
-     * @return SimulationParameters with calculated totalCells.
+     * @return SimulationParameters with calculated totalCells and default delta settings.
      */
     public static SimulationParameters of(int[] environmentShape, int maxOrganisms) {
         int totalCells = 1;
         for (int dim : environmentShape) {
             totalCells *= dim;
         }
-        return new SimulationParameters(environmentShape, totalCells, maxOrganisms);
+        return new SimulationParameters(
+            environmentShape, totalCells, maxOrganisms,
+            DEFAULT_SAMPLING_INTERVAL, DEFAULT_ACCUMULATED_DELTA_INTERVAL,
+            DEFAULT_SNAPSHOT_INTERVAL, DEFAULT_CHUNK_INTERVAL, DEFAULT_ESTIMATED_DELTA_RATIO
+        );
+    }
+    
+    /**
+     * Creates SimulationParameters with all parameters specified.
+     *
+     * @param environmentShape The environment dimensions.
+     * @param maxOrganisms Maximum expected organisms.
+     * @param samplingInterval Ticks between samples.
+     * @param accumulatedDeltaInterval Samples between accumulated deltas.
+     * @param snapshotInterval Accumulated deltas between snapshots.
+     * @param chunkInterval Snapshots per chunk.
+     * @param estimatedDeltaRatio Expected change rate per tick.
+     * @return SimulationParameters with all values.
+     */
+    public static SimulationParameters of(
+            int[] environmentShape, int maxOrganisms,
+            int samplingInterval, int accumulatedDeltaInterval,
+            int snapshotInterval, int chunkInterval, double estimatedDeltaRatio) {
+        int totalCells = 1;
+        for (int dim : environmentShape) {
+            totalCells *= dim;
+        }
+        return new SimulationParameters(
+            environmentShape, totalCells, maxOrganisms,
+            samplingInterval, accumulatedDeltaInterval,
+            snapshotInterval, chunkInterval, estimatedDeltaRatio
+        );
     }
     
     /**
@@ -163,6 +237,112 @@ public record SimulationParameters(
     public long estimateOrganismBytesPerTick() {
         return (long) maxOrganisms * BYTES_PER_ORGANISM;
     }
+    
+    // ========================================================================
+    // Delta Compression Calculations
+    // ========================================================================
+    
+    /**
+     * Calculates the number of sampled ticks per chunk.
+     * <p>
+     * Formula: samplingInterval × accumulatedDeltaInterval × snapshotInterval × chunkInterval
+     * <p>
+     * With defaults (1 × 5 × 20 × 1 = 100), each chunk contains 100 sampled ticks.
+     *
+     * @return Number of sampled ticks per chunk.
+     */
+    public int ticksPerChunk() {
+        return samplingInterval * accumulatedDeltaInterval * snapshotInterval * chunkInterval;
+    }
+    
+    /**
+     * Calculates the number of snapshots per chunk.
+     *
+     * @return Number of full snapshots in each chunk.
+     */
+    public int snapshotsPerChunk() {
+        return chunkInterval;
+    }
+    
+    /**
+     * Calculates the number of accumulated deltas per chunk.
+     * <p>
+     * Each chunk has (snapshotInterval - 1) accumulated deltas per snapshot.
+     *
+     * @return Number of accumulated deltas per chunk.
+     */
+    public int accumulatedDeltasPerChunk() {
+        return chunkInterval * (snapshotInterval - 1);
+    }
+    
+    /**
+     * Calculates the number of incremental deltas per chunk.
+     * <p>
+     * Total deltas = ticksPerChunk - snapshots
+     * Accumulated deltas = accumulatedDeltasPerChunk
+     * Incremental = Total - Accumulated
+     *
+     * @return Number of incremental deltas per chunk.
+     */
+    public int incrementalDeltasPerChunk() {
+        int totalDeltas = ticksPerChunk() - snapshotsPerChunk();
+        return totalDeltas - accumulatedDeltasPerChunk();
+    }
+    
+    /**
+     * Estimates bytes per delta (incremental or accumulated).
+     * <p>
+     * Uses estimatedDeltaRatio to calculate expected changed cells.
+     * At 1% change rate with 1M cells, delta contains ~10,000 cells.
+     *
+     * @return Estimated bytes per delta.
+     */
+    public long estimateBytesPerDelta() {
+        int changedCells = (int) Math.ceil(totalCells * estimatedDeltaRatio);
+        return (long) changedCells * BYTES_PER_CELL 
+             + (long) maxOrganisms * BYTES_PER_ORGANISM 
+             + TICKDATA_WRAPPER_OVERHEAD;
+    }
+    
+    /**
+     * Estimates total bytes per chunk in Java heap.
+     * <p>
+     * Chunk contains:
+     * <ul>
+     *   <li>1 snapshot (full tick)</li>
+     *   <li>N-1 deltas (accumulated + incremental)</li>
+     * </ul>
+     * <p>
+     * Note: This is worst-case for heap, not compressed storage size.
+     *
+     * @return Estimated bytes per chunk.
+     */
+    public long estimateBytesPerChunk() {
+        int numSnapshots = snapshotsPerChunk();
+        int numDeltas = ticksPerChunk() - numSnapshots;
+        
+        return (long) numSnapshots * estimateBytesPerTick()
+             + (long) numDeltas * estimateBytesPerDelta();
+    }
+    
+    /**
+     * Estimates the compression ratio achieved by delta compression.
+     * <p>
+     * Compares chunk size to equivalent number of full snapshots.
+     * Higher ratio = better compression.
+     *
+     * @return Compression ratio (e.g., 10.0 = 10:1 compression).
+     */
+    public double estimateCompressionRatio() {
+        long uncompressedSize = (long) ticksPerChunk() * estimateBytesPerTick();
+        long compressedSize = estimateBytesPerChunk();
+        if (compressedSize == 0) return 1.0;
+        return (double) uncompressedSize / compressedSize;
+    }
+    
+    // ========================================================================
+    // String Representation
+    // ========================================================================
     
     @Override
     public String toString() {

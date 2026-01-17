@@ -18,6 +18,7 @@ import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.database.IMetadataWriter;
@@ -454,13 +455,27 @@ class EnvironmentIndexerIntegrationTest {
     }
     
     private void writeBatchAndNotify(String runId, List<TickData> ticks) throws Exception {
-        // Write batch to storage
+        // Convert each tick to its own chunk (each chunk has tickCount=1)
+        long firstTick = ticks.get(0).getTickNumber();
+        long lastTick = ticks.get(ticks.size() - 1).getTickNumber();
+        
+        List<TickDataChunk> chunks = new java.util.ArrayList<>();
+        for (TickData tick : ticks) {
+            TickDataChunk chunk = TickDataChunk.newBuilder()
+                .setSimulationRunId(runId)
+                .setFirstTick(tick.getTickNumber())
+                .setLastTick(tick.getTickNumber())
+                .setTickCount(1)  // Each chunk contains exactly 1 tick
+                .setSnapshot(tick)
+                .build();
+            chunks.add(chunk);
+        }
+        
+        // Write chunk batch to storage
         ResourceContext storageWriteContext = new ResourceContext("test", "storage-port", "storage-write", "test-storage", Map.of("simulationRunId", runId));
         IBatchStorageWrite storageWriter = (IBatchStorageWrite) testStorage.getWrappedResource(storageWriteContext);
         
-        long firstTick = ticks.get(0).getTickNumber();
-        long lastTick = ticks.get(ticks.size() - 1).getTickNumber();
-        StoragePath batchPath = storageWriter.writeBatch(ticks, firstTick, lastTick);
+        StoragePath batchPath = storageWriter.writeChunkBatch(chunks, firstTick, lastTick);
         // Note: IBatchStorageWrite does not implement AutoCloseable - no close() needed
         
         // Send batch notification to topic

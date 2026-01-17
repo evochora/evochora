@@ -150,9 +150,9 @@ public abstract class AbstractDatabaseResource extends AbstractResource
     // ========================================================================
 
     /**
-     * Creates environment_ticks table with storage strategy-specific schema.
+     * Creates environment_chunks table with storage strategy-specific schema.
      * <p>
-     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IEnvironmentDataWriter#writeEnvironmentCells(java.util.List, org.evochora.runtime.model.EnvironmentProperties)}
+     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IEnvironmentDataWriter#createEnvironmentDataTable(int)}
      * <p>
      * <strong>Transaction Handling:</strong> Must commit on success, rollback on failure.
      * <strong>Storage Strategy:</strong> Delegates to IH2EnvStorageStrategy for actual schema creation.
@@ -167,21 +167,21 @@ public abstract class AbstractDatabaseResource extends AbstractResource
             throws Exception;
 
     /**
-     * Writes environment cells for multiple ticks to database using MERGE for idempotency.
+     * Writes environment chunks to database using MERGE for idempotency.
      * <p>
-     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IEnvironmentDataWriter#writeEnvironmentCells(java.util.List, org.evochora.runtime.model.EnvironmentProperties)}
+     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IEnvironmentDataWriter#writeEnvironmentChunks(java.util.List)}
      * <p>
      * <strong>Transaction Handling:</strong> Must commit on success, rollback on failure.
-     * <strong>Performance:</strong> All ticks written in one JDBC batch with one commit.
+     * <strong>Performance:</strong> All chunks written in one JDBC batch with one commit.
+     * <p>
+     * Chunks are stored as-is without decompression for maximum storage efficiency.
      * 
      * @param connection Database connection (from acquireDedicatedConnection)
-     * @param ticks List of ticks with their cell data to write
-     * @param envProps Environment properties for coordinate conversion
+     * @param chunks List of chunks to write
      * @throws Exception if write fails
      */
-    protected abstract void doWriteEnvironmentCells(Object connection, 
-            java.util.List<org.evochora.datapipeline.api.contracts.TickData> ticks,
-            org.evochora.runtime.model.EnvironmentProperties envProps) throws Exception;
+    protected abstract void doWriteEnvironmentChunks(Object connection, 
+            java.util.List<org.evochora.datapipeline.api.contracts.TickDataChunk> chunks) throws Exception;
 
     // ========================================================================
     // IOrganismDataWriter Capability

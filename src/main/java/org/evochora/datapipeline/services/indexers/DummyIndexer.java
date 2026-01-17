@@ -1,7 +1,7 @@
 package org.evochora.datapipeline.services.indexers;
 
 import com.typesafe.config.Config;
-import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.IResource;
 
 import java.util.List;
@@ -14,9 +14,9 @@ import java.util.Map;
  * <ul>
  *   <li>Extends {@link AbstractBatchIndexer} for batch processing</li>
  *   <li>Uses MetadataReadingComponent (waits for metadata before processing)</li>
- *   <li>Processes batches from batch-topic</li>
- *   <li>Reads TickData from storage (length-delimited format)</li>
- *   <li>Logs tick counts (no database writes)</li>
+ *   <li>Processes chunks from batch-topic</li>
+ *   <li>Reads TickDataChunks from storage (length-delimited format)</li>
+ *   <li>Logs chunk and tick counts (no database writes)</li>
  * </ul>
  * <p>
  * <strong>Purpose:</strong> Validate AbstractBatchIndexer infrastructure and component
@@ -40,14 +40,15 @@ public class DummyIndexer<ACK> extends AbstractBatchIndexer<ACK> {
         super(name, options, resources);
     }
     
-    // No need to override getRequiredComponents() - default is METADATA which is correct! ✅
+    // No need to override getRequiredComponents() - default is METADATA + BUFFERING
     
     @Override
-    protected void flushTicks(List<TickData> ticks) {
+    protected void flushChunks(List<TickDataChunk> chunks) {
         // Log-only test implementation
         // Metrics are tracked by AbstractBatchIndexer
         
-        log.debug("Flushed {} ticks (DummyIndexer: no DB writes)", ticks.size());
+        int totalTicks = chunks.stream().mapToInt(TickDataChunk::getTickCount).sum();
+        log.debug("Flushed {} chunks ({} ticks) (DummyIndexer: no DB writes)", chunks.size(), totalTicks);
     }
     
     @Override

@@ -2,6 +2,7 @@
 package org.evochora.runtime.model;
 
 import java.util.Arrays;
+import java.util.BitSet;
 import java.util.function.IntConsumer;
 
 import org.evochora.runtime.Config;
@@ -27,6 +28,14 @@ public class Environment implements IEnvironmentReader {
     // Ownership index: maps ownerId -> set of flat indices owned by that organism
     // Enables O(1) lookup of all cells owned by a specific organism (for FORK transfer, death cleanup)
     private final Int2ObjectOpenHashMap<IntOpenHashSet> cellsByOwner;
+    
+    // Delta compression: tracks which cells have changed since last reset
+    // Used by SimulationEngine to create incremental/accumulated deltas
+    // Memory: 1 bit per cell (e.g., 125KB for 1M cells)
+    private final BitSet changedSinceLastReset;
+    
+    // Total number of cells (cached for performance)
+    private final int totalCells;
     
     /**
      * Environment properties that can be shared with other components.
@@ -55,6 +64,7 @@ public class Environment implements IEnvironmentReader {
         this.isToroidal = properties.isToroidal();
         int size = 1;
         for (int dim : shape) { size *= dim; }
+        this.totalCells = size;
         this.grid = new int[size];
         Arrays.fill(this.grid, 0);
         this.ownerGrid = new int[size];
@@ -71,6 +81,9 @@ public class Environment implements IEnvironmentReader {
         
         // Initialize ownership index
         this.cellsByOwner = new Int2ObjectOpenHashMap<>();
+        
+        // Initialize change tracking for delta compression
+        this.changedSinceLastReset = new BitSet(size);
     }
 
     /**
@@ -132,6 +145,9 @@ public class Environment implements IEnvironmentReader {
         if (index != -1) {
             this.grid[index] = molecule.toInt();
             
+            // Track change for delta compression
+            changedSinceLastReset.set(index);
+            
             // Update sparse cell tracking if enabled
             if (Config.ENABLE_SPARSE_CELL_TRACKING && occupiedIndices != null) {
                 updateOccupiedIndices(index);
@@ -150,6 +166,9 @@ public class Environment implements IEnvironmentReader {
         if (index != -1) {
             int packed = molecule.toInt();
             this.grid[index] = packed;
+            
+            // Track change for delta compression
+            changedSinceLastReset.set(index);
             
             // Update ownership index
             int oldOwner = this.ownerGrid[index];
@@ -186,6 +205,9 @@ public class Environment implements IEnvironmentReader {
     public void setOwnerId(int ownerId, int... coord) {
         int index = getFlatIndex(coord);
         if (index != -1) {
+            // Track change for delta compression (owner change is also a change)
+            changedSinceLastReset.set(index);
+            
             // Update ownership index
             int oldOwner = this.ownerGrid[index];
             if (oldOwner != ownerId) {
@@ -402,6 +424,8 @@ public class Environment implements IEnvironmentReader {
             ownerGrid[flatIndex] = toOwnerId;
             // Reset marker to 0: clear marker bits and keep value/type
             grid[flatIndex] = grid[flatIndex] & ~Config.MARKER_MASK;
+            // Track change for delta compression
+            changedSinceLastReset.set(flatIndex);
             // Update ownership index
             fromSet.remove(flatIndex);
             toSet.add(flatIndex);
@@ -434,8 +458,50 @@ public class Environment implements IEnvironmentReader {
             ownerGrid[flatIndex] = 0;
             // Reset marker to 0
             grid[flatIndex] = grid[flatIndex] & ~Config.MARKER_MASK;
+            // Track change for delta compression
+            changedSinceLastReset.set(flatIndex);
         });
         
         return count;
+    }
+    
+    // ========================================================================
+    // Delta Compression Support
+    // ========================================================================
+    
+    /**
+     * Gets the set of cell indices that have changed since the last reset.
+     * <p>
+     * Used by SimulationEngine to create incremental deltas (changes since last sample)
+     * and accumulated deltas (all changes since last snapshot).
+     * <p>
+     * <strong>Thread Safety:</strong> Not thread-safe. In future multithreading, each
+     * thread will have a thread-local BitSet merged in a 4th phase via {@code or()}.
+     *
+     * @return BitSet where set bits indicate changed cell indices
+     */
+    public BitSet getChangedIndices() {
+        return changedSinceLastReset;
+    }
+    
+    /**
+     * Resets the change tracking, clearing all recorded changes.
+     * <p>
+     * Called by SimulationEngine after capturing a sample to start tracking
+     * changes for the next interval.
+     */
+    public void resetChangeTracking() {
+        changedSinceLastReset.clear();
+    }
+    
+    /**
+     * Gets the total number of cells in the environment.
+     * <p>
+     * This is the product of all dimension sizes.
+     *
+     * @return total cell count
+     */
+    public int getTotalCells() {
+        return totalCells;
     }
 }

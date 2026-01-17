@@ -1,10 +1,10 @@
 package org.evochora.datapipeline.resources.database.h2;
 
-import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
 import org.evochora.datapipeline.CellStateTestHelper;
-import org.evochora.datapipeline.api.contracts.CellState;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataWriter;
@@ -20,7 +20,6 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
-import java.util.ArrayList;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
@@ -28,9 +27,11 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Phase 2 error handling tests: Strategy failures and edge cases
+ * Phase 2 error handling tests: Strategy failures and edge cases.
+ * <p>
+ * Tests error handling for chunk-based environment storage (RowPerChunkStrategy).
  */
-@Tag("integration")  // Uses database for error simulation
+@Tag("integration")
 class StrategyErrorHandlingTest {
     
     private H2Database database;
@@ -42,7 +43,7 @@ class StrategyErrorHandlingTest {
             "jdbcUrl = \"jdbc:h2:mem:test-strategy-errors-" + System.nanoTime() + ";MODE=PostgreSQL\"\n" +
             "maxPoolSize = 2\n" +
             "h2EnvironmentStrategy {\n" +
-            "  className = \"org.evochora.datapipeline.resources.database.h2.SingleBlobStrategy\"\n" +
+            "  className = \"org.evochora.datapipeline.resources.database.h2.RowPerChunkStrategy\"\n" +
             "}\n"
         );
         database = new H2Database("test-db", config);
@@ -60,10 +61,10 @@ class StrategyErrorHandlingTest {
     @Test
     void readEnvironmentRegion_throwsOnInvalidTick() throws SQLException {
         try (IDatabaseReader reader = database.createReader(testRunId)) {
-            // Ensure table exists, otherwise we get a SQLSyntaxErrorException instead
-            insertEmptyBlob(testRunId, 1); 
+            // Ensure table exists with a chunk, otherwise we get a SQLSyntaxErrorException
+            insertChunk(testRunId, 1L, 1L);
 
-            org.evochora.datapipeline.api.resources.database.dto.SpatialRegion region = new org.evochora.datapipeline.api.resources.database.dto.SpatialRegion(new int[]{0, 10, 0, 10});
+            SpatialRegion region = new SpatialRegion(new int[]{0, 10, 0, 10});
             
             // When/Then: Query non-existent tick should throw specific exception
             assertThrows(TickNotFoundException.class, () -> 
@@ -75,21 +76,22 @@ class StrategyErrorHandlingTest {
     @Test
     void readEnvironmentRegion_handlesCorruptedBlob() throws SQLException {
         // Given: Corrupted BLOB data in database
-        insertCorruptedBlob(testRunId, 100);
+        insertCorruptedChunk(testRunId, 100L);
         
         try (IDatabaseReader reader = database.createReader(testRunId)) {
-            org.evochora.datapipeline.api.resources.database.dto.SpatialRegion region = new org.evochora.datapipeline.api.resources.database.dto.SpatialRegion(new int[]{0, 10, 0, 10});
+            SpatialRegion region = new SpatialRegion(new int[]{0, 10, 0, 10});
             
             // When/Then: Should handle corruption gracefully
             // This test verifies that corrupted data doesn't crash the application
             // The exact behavior (exception vs empty list) depends on implementation
             assertDoesNotThrow(() -> {
                 try {
-                    List<org.evochora.datapipeline.api.resources.database.dto.CellWithCoordinates> cells = reader.readEnvironmentRegion(100, region);
-                    assertNotNull(cells);
+                    reader.readEnvironmentRegion(100, region);
                 } catch (SQLException e) {
                     // SQLException is acceptable for corrupted data
-                    // Just verify it's a reasonable error message
+                    assertNotNull(e.getMessage());
+                } catch (TickNotFoundException e) {
+                    // Also acceptable - corrupted chunk may fail to parse
                     assertNotNull(e.getMessage());
                 }
             });
@@ -98,14 +100,14 @@ class StrategyErrorHandlingTest {
     
     @Test
     void readEnvironmentRegion_handlesEmptyBlob() throws SQLException, TickNotFoundException {
-        // Given: Empty BLOB (no cells)
-        insertEmptyBlob(testRunId, 100);
+        // Given: Empty BLOB (no cells in snapshot)
+        insertEmptyChunk(testRunId, 100L);
         
         try (IDatabaseReader reader = database.createReader(testRunId)) {
-            org.evochora.datapipeline.api.resources.database.dto.SpatialRegion region = new org.evochora.datapipeline.api.resources.database.dto.SpatialRegion(new int[]{0, 10, 0, 10});
+            SpatialRegion region = new SpatialRegion(new int[]{0, 10, 0, 10});
             
-            // When: Query empty tick
-            List<org.evochora.datapipeline.api.resources.database.dto.CellWithCoordinates> cells = reader.readEnvironmentRegion(100, region);
+            // When: Query tick with empty snapshot
+            var cells = reader.readEnvironmentRegion(100, region);
             
             // Then: Should return empty list (not error)
             assertNotNull(cells);
@@ -115,15 +117,15 @@ class StrategyErrorHandlingTest {
     
     @Test
     void readEnvironmentRegion_handlesInvalidRegion() throws SQLException, TickNotFoundException {
-        // Given: Valid tick with data
-        insertTestData(testRunId, 100);
+        // Given: Valid chunk with data
+        insertChunkWithCells(testRunId, 100L);
         
         try (IDatabaseReader reader = database.createReader(testRunId)) {
             // Given: Out-of-bounds region
-            org.evochora.datapipeline.api.resources.database.dto.SpatialRegion outOfBoundsRegion = new SpatialRegion(new int[]{200, 300, 200, 300});
+            SpatialRegion outOfBoundsRegion = new SpatialRegion(new int[]{200, 300, 200, 300});
             
             // When: Query with out-of-bounds region
-            List<org.evochora.datapipeline.api.resources.database.dto.CellWithCoordinates> cells = reader.readEnvironmentRegion(100, outOfBoundsRegion);
+            var cells = reader.readEnvironmentRegion(100, outOfBoundsRegion);
             
             // Then: Should return empty list (no cells in that region)
             assertNotNull(cells);
@@ -133,16 +135,16 @@ class StrategyErrorHandlingTest {
     
     @Test
     void readEnvironmentRegion_handlesNullRegion() throws SQLException, TickNotFoundException {
-        // Given: Valid tick with data
-        insertTestData(testRunId, 100);
+        // Given: Valid chunk with data
+        insertChunkWithCells(testRunId, 100L);
         
         try (IDatabaseReader reader = database.createReader(testRunId)) {
             // When: Query with null region (all cells)
-            List<org.evochora.datapipeline.api.resources.database.dto.CellWithCoordinates> cells = reader.readEnvironmentRegion(100, null);
+            var cells = reader.readEnvironmentRegion(100, null);
             
             // Then: Should return all cells
             assertNotNull(cells);
-            assertTrue(cells.size() > 0);  // Should have some cells
+            assertTrue(cells.size() > 0);
         }
     }
     
@@ -170,108 +172,164 @@ class StrategyErrorHandlingTest {
         }
     }
     
-    private void insertCorruptedBlob(String runId, long tick) throws SQLException {
-        // Insert corrupted BLOB data for testing
-        // Use reflection to access private dataSource field
+    private void insertCorruptedChunk(String runId, long tick) throws SQLException {
         try {
             java.lang.reflect.Field dataSourceField = H2Database.class.getDeclaredField("dataSource");
             dataSourceField.setAccessible(true);
             com.zaxxer.hikari.HikariDataSource dataSource = (com.zaxxer.hikari.HikariDataSource) dataSourceField.get(database);
             
             try (Connection conn = dataSource.getConnection()) {
-                // Use H2SchemaUtil.setSchema() - same as H2DatabaseReader
                 org.evochora.datapipeline.utils.H2SchemaUtil.setSchema(conn, runId);
                 
-                // Create table if it doesn't exist
+                // Create chunk table
                 conn.createStatement().execute(
-                    "CREATE TABLE IF NOT EXISTS environment_ticks (" +
-                    "tick_number BIGINT PRIMARY KEY, " +
-                    "cells_blob BYTEA" +
+                    "CREATE TABLE IF NOT EXISTS environment_chunks (" +
+                    "first_tick BIGINT PRIMARY KEY, " +
+                    "last_tick BIGINT NOT NULL, " +
+                    "chunk_blob BYTEA NOT NULL" +
                     ")"
                 );
                 
                 PreparedStatement stmt = conn.prepareStatement(
-                    "INSERT INTO environment_ticks (tick_number, cells_blob) VALUES (?, ?)"
+                    "INSERT INTO environment_chunks (first_tick, last_tick, chunk_blob) VALUES (?, ?, ?)"
                 );
                 stmt.setLong(1, tick);
-                stmt.setBytes(2, new byte[]{1, 2, 3, 4});  // Corrupted data
+                stmt.setLong(2, tick);
+                stmt.setBytes(3, new byte[]{1, 2, 3, 4});  // Corrupted data
                 stmt.executeUpdate();
             }
         } catch (Exception e) {
-            throw new SQLException("Failed to insert corrupted blob", e);
+            throw new SQLException("Failed to insert corrupted chunk", e);
         }
     }
     
-    private void insertEmptyBlob(String runId, long tick) throws SQLException {
-        // Insert empty BLOB for testing
+    private void insertEmptyChunk(String runId, long tick) throws SQLException {
         try {
             java.lang.reflect.Field dataSourceField = H2Database.class.getDeclaredField("dataSource");
             dataSourceField.setAccessible(true);
             com.zaxxer.hikari.HikariDataSource dataSource = (com.zaxxer.hikari.HikariDataSource) dataSourceField.get(database);
             
             try (Connection conn = dataSource.getConnection()) {
-                // Use H2SchemaUtil.setSchema() - same as H2DatabaseReader
                 org.evochora.datapipeline.utils.H2SchemaUtil.setSchema(conn, runId);
                 
-                // Create table if it doesn't exist
+                // Create chunk table
                 conn.createStatement().execute(
-                    "CREATE TABLE IF NOT EXISTS environment_ticks (" +
-                    "tick_number BIGINT PRIMARY KEY, " +
-                    "cells_blob BYTEA" +
+                    "CREATE TABLE IF NOT EXISTS environment_chunks (" +
+                    "first_tick BIGINT PRIMARY KEY, " +
+                    "last_tick BIGINT NOT NULL, " +
+                    "chunk_blob BYTEA NOT NULL" +
                     ")"
                 );
                 
+                // Create valid chunk with empty snapshot (no cells)
+                TickData emptySnapshot = TickData.newBuilder()
+                    .setTickNumber(tick)
+                    .build();
+                
+                TickDataChunk chunk = TickDataChunk.newBuilder()
+                    .setSnapshot(emptySnapshot)
+                    .setFirstTick(tick)
+                    .setTickCount(1)  // Must be deltas.size() + 1
+                    .build();
+                
                 PreparedStatement stmt = conn.prepareStatement(
-                    "INSERT INTO environment_ticks (tick_number, cells_blob) VALUES (?, ?)"
+                    "INSERT INTO environment_chunks (first_tick, last_tick, chunk_blob) VALUES (?, ?, ?)"
                 );
                 stmt.setLong(1, tick);
-                stmt.setBytes(2, new byte[0]);  // Empty BLOB
+                stmt.setLong(2, tick);
+                stmt.setBytes(3, chunk.toByteArray());
                 stmt.executeUpdate();
             }
         } catch (Exception e) {
-            throw new SQLException("Failed to insert empty blob", e);
+            throw new SQLException("Failed to insert empty chunk", e);
         }
     }
     
-    private void insertTestData(String runId, long tick) throws SQLException {
-        // Insert valid test data with a few cells
+    private void insertChunk(String runId, long firstTick, long lastTick) throws SQLException {
         try {
             java.lang.reflect.Field dataSourceField = H2Database.class.getDeclaredField("dataSource");
             dataSourceField.setAccessible(true);
             com.zaxxer.hikari.HikariDataSource dataSource = (com.zaxxer.hikari.HikariDataSource) dataSourceField.get(database);
             
             try (Connection conn = dataSource.getConnection()) {
-                // Use H2SchemaUtil.setSchema() - same as H2DatabaseReader
                 org.evochora.datapipeline.utils.H2SchemaUtil.setSchema(conn, runId);
                 
-                // Create table if it doesn't exist
+                // Create chunk table
                 conn.createStatement().execute(
-                    "CREATE TABLE IF NOT EXISTS environment_ticks (" +
-                    "tick_number BIGINT PRIMARY KEY, " +
-                    "cells_blob BYTEA" +
+                    "CREATE TABLE IF NOT EXISTS environment_chunks (" +
+                    "first_tick BIGINT PRIMARY KEY, " +
+                    "last_tick BIGINT NOT NULL, " +
+                    "chunk_blob BYTEA NOT NULL" +
                     ")"
                 );
                 
-                // Build CellDataColumns protobuf
-                List<CellState> cells = new ArrayList<>();
+                // Create minimal valid chunk
+                TickData snapshot = TickData.newBuilder()
+                    .setTickNumber(firstTick)
+                    .build();
                 
-                // Add a few test cells
-                cells.add(CellStateTestHelper.createCellState(0, 0, 1, 255, 0));
-                
-                cells.add(CellStateTestHelper.createCellState(1, 0, 1, 128, 0));
-                
-                CellDataColumns columns = CellStateTestHelper.createColumnsFromCells(cells);
-                byte[] data = columns.toByteArray();
+                TickDataChunk chunk = TickDataChunk.newBuilder()
+                    .setSnapshot(snapshot)
+                    .setFirstTick(firstTick)
+                    .setTickCount(1)  // Must be deltas.size() + 1
+                    .build();
                 
                 PreparedStatement stmt = conn.prepareStatement(
-                    "INSERT INTO environment_ticks (tick_number, cells_blob) VALUES (?, ?)"
+                    "INSERT INTO environment_chunks (first_tick, last_tick, chunk_blob) VALUES (?, ?, ?)"
                 );
-                stmt.setLong(1, tick);
-                stmt.setBytes(2, data);
+                stmt.setLong(1, firstTick);
+                stmt.setLong(2, lastTick);
+                stmt.setBytes(3, chunk.toByteArray());
                 stmt.executeUpdate();
             }
         } catch (Exception e) {
-            throw new SQLException("Failed to insert test data", e);
+            throw new SQLException("Failed to insert chunk", e);
+        }
+    }
+    
+    private void insertChunkWithCells(String runId, long tick) throws SQLException {
+        try {
+            java.lang.reflect.Field dataSourceField = H2Database.class.getDeclaredField("dataSource");
+            dataSourceField.setAccessible(true);
+            com.zaxxer.hikari.HikariDataSource dataSource = (com.zaxxer.hikari.HikariDataSource) dataSourceField.get(database);
+            
+            try (Connection conn = dataSource.getConnection()) {
+                org.evochora.datapipeline.utils.H2SchemaUtil.setSchema(conn, runId);
+                
+                // Create chunk table
+                conn.createStatement().execute(
+                    "CREATE TABLE IF NOT EXISTS environment_chunks (" +
+                    "first_tick BIGINT PRIMARY KEY, " +
+                    "last_tick BIGINT NOT NULL, " +
+                    "chunk_blob BYTEA NOT NULL" +
+                    ")"
+                );
+                
+                // Create valid chunk with cells
+                TickData snapshot = TickData.newBuilder()
+                    .setTickNumber(tick)
+                    .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                        CellStateTestHelper.createCellState(0, 0, 1, 255, 0),
+                        CellStateTestHelper.createCellState(1, 0, 1, 128, 0)
+                    )))
+                    .build();
+                
+                TickDataChunk chunk = TickDataChunk.newBuilder()
+                    .setSnapshot(snapshot)
+                    .setFirstTick(tick)
+                    .setTickCount(1)  // Must be deltas.size() + 1
+                    .build();
+                
+                PreparedStatement stmt = conn.prepareStatement(
+                    "INSERT INTO environment_chunks (first_tick, last_tick, chunk_blob) VALUES (?, ?, ?)"
+                );
+                stmt.setLong(1, tick);
+                stmt.setLong(2, tick);
+                stmt.setBytes(3, chunk.toByteArray());
+                stmt.executeUpdate();
+            }
+        } catch (Exception e) {
+            throw new SQLException("Failed to insert chunk with cells", e);
         }
     }
 }
