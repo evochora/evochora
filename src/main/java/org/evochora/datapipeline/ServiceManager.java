@@ -902,8 +902,8 @@ public class ServiceManager implements IMonitorable {
                     List<Integer> shapeList = serviceConfig.getIntList("options.environment.shape");
                     int[] shape = shapeList.stream().mapToInt(Integer::intValue).toArray();
                     
-                    // Calculate total cells
-                    int totalCells = 1;
+                    // Calculate total cells (use long to avoid overflow for large worlds)
+                    long totalCells = 1L;
                     for (int dim : shape) {
                         totalCells *= dim;
                     }

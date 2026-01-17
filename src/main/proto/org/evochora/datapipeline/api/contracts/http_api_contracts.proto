@@ -31,7 +31,8 @@ message EnvironmentHttpResponse {
   int64 tick_number = 1;
   
   // Total cells in the environment (for progress display)
-  int32 total_cells = 2;
+  // Uses int64 to support worlds larger than 46k x 46k (> 2.1 billion cells)
+  int64 total_cells = 2;
   
   // All non-empty cells (sparse representation)
   repeated CellHttpResponse cells = 3;

@@ -12,7 +12,7 @@ public class EnvironmentProperties {
     private final int[] worldShape;
     private final boolean isToroidal;
     private final int[] strides;
-    private final int totalCells;
+    private final long totalCells;
     
     /**
      * Creates new environment properties.
@@ -27,7 +27,8 @@ public class EnvironmentProperties {
         this.strides = calculateStrides();
         
         // Calculate total cells (product of all dimensions)
-        int cells = 1;
+        // Uses long to support worlds larger than 46k x 46k (> 2.1 billion cells)
+        long cells = 1L;
         for (int dim : worldShape) {
             cells *= dim;
         }
@@ -214,9 +215,9 @@ public class EnvironmentProperties {
      * <strong>Use Case:</strong> Pre-allocating buffers for serialization
      * (e.g., FlatBuffers builder initial size estimation).
      *
-     * @return Total number of cells
+     * @return Total number of cells (long to support large worlds > 2.1 billion cells)
      */
-    public int getTotalCells() {
+    public long getTotalCells() {
         return totalCells;
     }
 }

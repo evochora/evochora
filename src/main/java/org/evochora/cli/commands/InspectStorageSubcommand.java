@@ -162,11 +162,17 @@ public class InspectStorageSubcommand implements Callable<Integer> {
              throw new IllegalStateException("Simulation metadata has empty environment shape. Cannot calculate total cells for decoder.");
         }
 
-        int total = 1;
+        // Use long to detect overflow, then validate fits in int (DeltaCodec uses int arrays)
+        long total = 1L;
         for (int dim : metadata.getEnvironment().getShapeList()) {
             total *= dim;
         }
-        return total;
+        if (total > Integer.MAX_VALUE) {
+            throw new IllegalStateException(
+                "World too large: " + total + " cells exceeds Integer.MAX_VALUE. " +
+                "Reduce environment dimensions.");
+        }
+        return (int) total;
     }
 
     private IBatchStorageRead createStorageResource(com.typesafe.config.Config config) throws Exception {

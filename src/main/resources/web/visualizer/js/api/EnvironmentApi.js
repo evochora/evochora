@@ -84,7 +84,7 @@ const PROTO_SCHEMA = `
 syntax = "proto3";
 message EnvironmentHttpResponse {
   int64 tick_number = 1;
-  int32 total_cells = 2;
+  int64 total_cells = 2;
   repeated CellHttpResponse cells = 3;
 }
 message CellHttpResponse {
