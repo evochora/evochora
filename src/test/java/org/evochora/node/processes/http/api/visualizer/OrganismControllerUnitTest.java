@@ -42,13 +42,13 @@ class OrganismControllerUnitTest {
     class ControllerConstruction {
 
         @Test
-        @DisplayName("Should create controller with valid dependencies")
-        void createControllerWithValidDependencies() {
+        @DisplayName("Should create controller with HTTP cache configuration")
+        void createControllerWithHttpCacheConfig() {
             ServiceRegistry serviceRegistry = new ServiceRegistry();
             IDatabaseReaderProvider mockDatabase = mock(IDatabaseReaderProvider.class);
             serviceRegistry.register(IDatabaseReaderProvider.class, mockDatabase);
 
-            Config config = ConfigFactory.parseString("cache{}");
+            Config config = ConfigFactory.parseString("http-cache {}");
 
             OrganismController controller = new OrganismController(serviceRegistry, config);
 
@@ -105,7 +105,7 @@ class OrganismControllerUnitTest {
             when(mockDatabase.createReader(any())).thenReturn(mockReader);
             when(mockReader.readOrganismDetails(anyLong(), anyInt())).thenReturn(details);
 
-            Config config = ConfigFactory.parseString("cache{}");
+            Config config = ConfigFactory.empty();
             OrganismController controller = new OrganismController(serviceRegistry, config);
 
             // Use reflection to access private method or test via HTTP mock

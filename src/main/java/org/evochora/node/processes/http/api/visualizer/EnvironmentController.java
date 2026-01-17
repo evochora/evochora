@@ -106,8 +106,8 @@ public class EnvironmentController extends VisualizerBaseController {
      * <p>
      * Cache configuration is read from options:
      * <ul>
-     *   <li>{@code cache.maximum-size} - Maximum number of chunks to cache (default: 100)</li>
-     *   <li>{@code cache.expire-after-access} - Expiration time in seconds (default: 300)</li>
+     *   <li>{@code chunk-cache.maximum-size} - Maximum number of chunks to cache (default: 100)</li>
+     *   <li>{@code chunk-cache.expire-after-access} - Expiration time in seconds (default: 300)</li>
      * </ul>
      *
      * @param registry The central service registry for accessing shared services.
@@ -116,12 +116,12 @@ public class EnvironmentController extends VisualizerBaseController {
     public EnvironmentController(final org.evochora.node.spi.ServiceRegistry registry, final Config options) {
         super(registry, options);
         
-        // Read cache configuration
-        int maxSize = options.hasPath("cache.maximum-size") 
-            ? options.getInt("cache.maximum-size") 
+        // Read chunk cache configuration (server-side Caffeine cache)
+        int maxSize = options.hasPath("chunk-cache.maximum-size") 
+            ? options.getInt("chunk-cache.maximum-size") 
             : 100;
-        int expireAfterAccessSeconds = options.hasPath("cache.expire-after-access") 
-            ? options.getInt("cache.expire-after-access") 
+        int expireAfterAccessSeconds = options.hasPath("chunk-cache.expire-after-access") 
+            ? options.getInt("chunk-cache.expire-after-access") 
             : 300;
         
         // Build chunk cache

@@ -199,12 +199,14 @@ class EnvironmentControllerIntegrationTest {
         ServiceRegistry registry = new ServiceRegistry();
         registry.register(IDatabaseReaderProvider.class, testDatabase);
 
-        // Create and register EnvironmentController with cache enabled for testing
+        // Create and register EnvironmentController with HTTP cache enabled for testing
         Config controllerConfig = ConfigFactory.parseString("""
-            cache {
-              enabled = true
-              maxAge = 31536000
-              useETag = true
+            http-cache {
+              environment {
+                enabled = true
+                maxAge = 31536000
+                useETag = true
+              }
             }
             """);
         EnvironmentController controller = new EnvironmentController(registry, controllerConfig);
@@ -274,12 +276,14 @@ class EnvironmentControllerIntegrationTest {
         ServiceRegistry registry = new ServiceRegistry();
         registry.register(IDatabaseReaderProvider.class, testDatabase);
         
-        // Configure cache for testing (enabled with ETag)
+        // Configure HTTP cache for testing (enabled with ETag)
         Config controllerConfig = ConfigFactory.parseString("""
-            cache {
-              enabled = true
-              maxAge = 31536000
-              useETag = true
+            http-cache {
+              environment {
+                enabled = true
+                maxAge = 31536000
+                useETag = true
+              }
             }
             """);
         EnvironmentController controller = new EnvironmentController(registry, controllerConfig);

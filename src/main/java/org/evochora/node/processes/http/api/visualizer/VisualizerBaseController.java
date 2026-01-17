@@ -239,12 +239,12 @@ public abstract class VisualizerBaseController extends AbstractController {
         }
 
         /**
-         * Parses cache configuration from HOCON Config.
+         * Parses HTTP cache configuration from HOCON Config.
          * <p>
          * Configuration structure:
          * <ul>
-         *   <li>For single endpoint: {@code cache { enabled = false, maxAge = 0, useETag = false }}</li>
-         *   <li>For multiple endpoints: {@code cache { metadata { enabled = false, ... }, ticks { enabled = false, ... } }}</li>
+         *   <li>For single endpoint: {@code http-cache { enabled = false, maxAge = 0, useETag = false }}</li>
+         *   <li>For multiple endpoints: {@code http-cache { metadata { enabled = false, ... }, ticks { enabled = false, ... } }}</li>
          * </ul>
          * <p>
          * Defaults (if config is missing or incomplete):
@@ -264,11 +264,11 @@ public abstract class VisualizerBaseController extends AbstractController {
             int maxAge = 0;
             boolean useETag = false;
 
-            // Try to parse cache configuration
-            if (options.hasPath("cache")) {
-                final com.typesafe.config.Config cacheConfig = options.getConfig("cache");
+            // Try to parse HTTP cache configuration
+            if (options.hasPath("http-cache")) {
+                final com.typesafe.config.Config cacheConfig = options.getConfig("http-cache");
 
-                // Check if this is a nested endpoint config (e.g., cache.metadata or cache.ticks)
+                // Check if this is a nested endpoint config (e.g., http-cache.metadata or http-cache.ticks)
                 if (cacheConfig.hasPath(endpointName)) {
                     final com.typesafe.config.Config endpointConfig = cacheConfig.getConfig(endpointName);
                     enabled = endpointConfig.hasPath("enabled") ? endpointConfig.getBoolean("enabled") : false;

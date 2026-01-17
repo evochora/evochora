@@ -182,9 +182,9 @@ class SimulationControllerIntegrationTest {
         ServiceRegistry registry = new ServiceRegistry();
         registry.register(IDatabaseReaderProvider.class, testDatabase);
 
-        // Configure cache for testing (enabled with ETag)
+        // Configure HTTP cache for testing (enabled with ETag)
         Config controllerConfig = ConfigFactory.parseString("""
-            cache {
+            http-cache {
               metadata {
                 enabled = true
                 maxAge = 31536000
