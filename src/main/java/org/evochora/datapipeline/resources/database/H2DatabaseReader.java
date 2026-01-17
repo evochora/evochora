@@ -107,19 +107,14 @@ public class H2DatabaseReader implements IDatabaseReader {
         }
         EnvironmentProperties envProps = extractEnvironmentProperties(metadata);
         
-        // Calculate total cells for DeltaCodec
-        int totalCells = 1;
-        for (int dim : envProps.getWorldShape()) {
-            totalCells *= dim;
-        }
-        
         // Read chunk containing the tick
         TickDataChunk chunk = readChunkContaining(tickNumber);
         
-        // Decompress to get the specific tick
+        // Decompress to get the specific tick using Decoder
         TickData tickData;
         try {
-            tickData = DeltaCodec.decompressTick(chunk, tickNumber, totalCells);
+            DeltaCodec.Decoder decoder = new DeltaCodec.Decoder(envProps);
+            tickData = decoder.decompressTick(chunk, tickNumber);
         } catch (ChunkCorruptedException e) {
             throw new SQLException("Corrupted chunk for tick " + tickNumber + ": " + e.getMessage(), e);
         }

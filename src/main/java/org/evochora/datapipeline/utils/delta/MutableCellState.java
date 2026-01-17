@@ -158,6 +158,19 @@ public class MutableCellState {
     }
     
     /**
+     * Resets all cells to empty state.
+     * <p>
+     * This allows reusing the same MutableCellState instance for multiple
+     * decompression operations, avoiding GC pressure from repeated allocations.
+     * <p>
+     * After calling reset(), the state is equivalent to a freshly constructed instance.
+     */
+    public void reset() {
+        java.util.Arrays.fill(moleculeData, 0);
+        java.util.Arrays.fill(ownerIds, 0);
+    }
+    
+    /**
      * Counts the number of occupied cells.
      * <p>
      * Note: This is O(totalCells) - use sparingly.

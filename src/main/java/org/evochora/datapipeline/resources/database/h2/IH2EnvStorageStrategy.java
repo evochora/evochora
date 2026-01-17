@@ -84,7 +84,7 @@ public interface IH2EnvStorageStrategy {
      * (typically EnvironmentController) is responsible for:
      * <ol>
      *   <li>Caching the chunk (optional, for sequential access optimization)</li>
-     *   <li>Decompressing using {@code DeltaCodec.decompressTick(chunk, tickNumber, totalCells)}</li>
+     *   <li>Decompressing using {@code DeltaCodec.Decoder.decompressTick(chunk, tickNumber)}</li>
      *   <li>Filtering by region</li>
      *   <li>Converting to response format (JSON/MessagePack)</li>
      * </ol>

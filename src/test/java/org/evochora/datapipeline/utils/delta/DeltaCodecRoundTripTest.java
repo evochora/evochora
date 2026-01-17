@@ -4,191 +4,240 @@ import com.google.protobuf.ByteString;
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.DeltaType;
 import org.evochora.datapipeline.api.contracts.OrganismState;
+import org.evochora.datapipeline.api.contracts.StrategyState;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
+import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.delta.ChunkCorruptedException;
+import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.Molecule;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Round-trip tests for {@link DeltaCodec} compression and decompression.
+ * Round-trip tests for {@link DeltaCodec} compression (Encoder) and decompression (Decoder).
  * <p>
- * These are CRITICAL tests that verify compress → decompress produces identical results.
+ * These are CRITICAL tests that verify encode → decode produces identical results.
  */
 @Tag("unit")
 class DeltaCodecRoundTripTest {
     
     private static final String RUN_ID = "round-trip-test";
-    private static final int TOTAL_CELLS = 1000;  // 10x10x10 environment
+    private static final int TOTAL_CELLS = 100;  // 10x10 environment
     
-    // ========================================================================
-    // Round-Trip: Snapshot Only
-    // ========================================================================
+    private Environment env;
+    private DeltaCodec.Decoder decoder;
     
-    @Test
-    void roundTrip_snapshotOnly_preservesAllData() throws ChunkCorruptedException {
-        // Create snapshot with known state
-        CellDataColumns originalCells = createCells(
-                new int[]{0, 50, 100, 500, 999},
-                new int[]{10, 20, 30, 40, 50},
-                new int[]{1, 2, 3, 4, 5});
-        
-        List<OrganismState> organisms = List.of(
-                OrganismState.newBuilder().setOrganismId(1).setEnergy(100).build(),
-                OrganismState.newBuilder().setOrganismId(2).setEnergy(200).build()
-        );
-        
-        TickData snapshot = TickData.newBuilder()
-                .setSimulationRunId(RUN_ID)
-                .setTickNumber(0)
-                .setCaptureTimeMs(1000)
-                .setCellColumns(originalCells)
-                .addAllOrganisms(organisms)
-                .setTotalOrganismsCreated(2)
-                .setRngState(ByteString.copyFromUtf8("rng-state"))
-                .build();
-        
-        // Compress
-        TickDataChunk chunk = DeltaCodec.createChunk(RUN_ID, snapshot, List.of());
-        
-        // Decompress
-        List<TickData> decompressed = DeltaCodec.decompressChunk(chunk, TOTAL_CELLS);
-        
-        // Verify
-        assertEquals(1, decompressed.size());
-        TickData result = decompressed.get(0);
-        
-        assertEquals(0, result.getTickNumber());
-        assertEquals(1000, result.getCaptureTimeMs());
-        assertEquals(2, result.getOrganismsCount());
-        assertEquals(2, result.getTotalOrganismsCreated());
-        
-        assertCellColumnsEqual(originalCells, result.getCellColumns());
+    @BeforeEach
+    void setUp() {
+        env = new Environment(new int[]{10, 10}, false);
+        decoder = new DeltaCodec.Decoder(TOTAL_CELLS);
     }
     
     // ========================================================================
-    // Round-Trip: With Deltas
+    // Round-Trip: Encoder → Decoder
     // ========================================================================
     
     @Test
-    void roundTrip_withDeltas_preservesCellStates() throws ChunkCorruptedException {
-        // Initial state: cells 0, 1, 2 with values 10, 20, 30
-        CellDataColumns snapshotCells = createCells(
-                new int[]{0, 1, 2},
-                new int[]{10, 20, 30},
-                new int[]{0, 0, 0});
+    void roundTrip_singleTickChunk_preservesCellState() throws ChunkCorruptedException {
+        // Setup environment
+        env.setMolecule(Molecule.fromInt(100), new int[]{0, 0});
+        env.setMolecule(Molecule.fromInt(200), new int[]{5, 5});
+        env.setMolecule(Molecule.fromInt(300), new int[]{9, 9});
         
-        TickData snapshot = createSnapshotWithCells(0, snapshotCells);
+        // Encode
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, TOTAL_CELLS, 1, 1, 1);
+        Optional<TickDataChunk> chunk = captureTick(encoder, 0);
+        assertTrue(chunk.isPresent());
         
-        // Delta 1: Change cell 1 to 25, add cell 3 with 40
-        CellDataColumns delta1Cells = createCells(
-                new int[]{1, 3},
-                new int[]{25, 40},
-                new int[]{0, 0});
-        DeltaCapture delta1 = DeltaCodec.captureDelta(
-                100, 1000, DeltaType.INCREMENTAL,
-                delta1Cells, List.of(), 0,
-                ByteString.EMPTY, List.of());
+        // Decode
+        List<TickData> decoded = decoder.decompressChunk(chunk.get());
+        assertEquals(1, decoded.size());
         
-        // Delta 2: Remove cell 2 (moleculeData = 0), change cell 0 to 15
-        CellDataColumns delta2Cells = createCells(
-                new int[]{0, 2},
-                new int[]{15, 0},  // 0 means cell cleared
-                new int[]{0, 0});
-        DeltaCapture delta2 = DeltaCodec.captureDelta(
-                200, 2000, DeltaType.INCREMENTAL,
-                delta2Cells, List.of(), 0,
-                ByteString.EMPTY, List.of());
-        
-        // Compress
-        TickDataChunk chunk = DeltaCodec.createChunk(
-                RUN_ID, snapshot, List.of(delta1, delta2));
-        
-        // Decompress
-        List<TickData> decompressed = DeltaCodec.decompressChunk(chunk, TOTAL_CELLS);
-        
-        // Verify tick 0 (snapshot)
-        assertEquals(3, decompressed.size());
-        CellDataColumns tick0Cells = decompressed.get(0).getCellColumns();
-        assertCellValue(tick0Cells, 0, 10);
-        assertCellValue(tick0Cells, 1, 20);
-        assertCellValue(tick0Cells, 2, 30);
-        
-        // Verify tick 100 (after delta 1)
-        // Expected: cell 0=10, cell 1=25 (changed), cell 2=30, cell 3=40 (added)
-        CellDataColumns tick100Cells = decompressed.get(1).getCellColumns();
-        assertEquals(4, tick100Cells.getFlatIndicesCount());
-        assertCellValue(tick100Cells, 0, 10);
-        assertCellValue(tick100Cells, 1, 25);
-        assertCellValue(tick100Cells, 2, 30);
-        assertCellValue(tick100Cells, 3, 40);
-        
-        // Verify tick 200 (after delta 2)
-        // Expected: cell 0=15, cell 1=25, cell 3=40 (cell 2 removed)
-        CellDataColumns tick200Cells = decompressed.get(2).getCellColumns();
-        assertEquals(3, tick200Cells.getFlatIndicesCount());
-        assertCellValue(tick200Cells, 0, 15);
-        assertCellValue(tick200Cells, 1, 25);
-        assertCellNotPresent(tick200Cells, 2);
-        assertCellValue(tick200Cells, 3, 40);
+        // Verify cells
+        CellDataColumns cells = decoded.get(0).getCellColumns();
+        assertEquals(3, cells.getFlatIndicesCount());
+        assertCellValue(cells, 0, 100);   // flatIndex 0 = (0,0)
+        assertCellValue(cells, 55, 200);  // flatIndex 55 = (5,5) in 10x10
+        assertCellValue(cells, 99, 300);  // flatIndex 99 = (9,9) in 10x10
     }
     
-    // ========================================================================
-    // Round-Trip: Single Tick Decompression
-    // ========================================================================
+    @Test
+    void roundTrip_multiTickChunk_preservesAllTicks() throws ChunkCorruptedException {
+        // Create encoder with small chunk size: 4 ticks per chunk
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, TOTAL_CELLS, 2, 2, 1);
+        
+        // Tick 0: snapshot with cell 0
+        env.setMolecule(Molecule.fromInt(10), new int[]{0, 0});
+        captureTick(encoder, 0);
+        
+        // Tick 1: incremental - add cell 1
+        env.setMolecule(Molecule.fromInt(11), new int[]{1, 0});
+        captureTick(encoder, 1);
+        
+        // Tick 2: accumulated - change cell 0, add cell 2
+        env.setMolecule(Molecule.fromInt(20), new int[]{0, 0});
+        env.setMolecule(Molecule.fromInt(12), new int[]{2, 0});
+        captureTick(encoder, 2);
+        
+        // Tick 3: incremental - add cell 3 (completes chunk)
+        env.setMolecule(Molecule.fromInt(13), new int[]{3, 0});
+        Optional<TickDataChunk> chunk = captureTick(encoder, 3);
+        assertTrue(chunk.isPresent());
+        
+        // Decode
+        List<TickData> decoded = decoder.decompressChunk(chunk.get());
+        assertEquals(4, decoded.size());
+        
+        // Verify tick 0: only cell 0 = 10
+        assertEquals(0, decoded.get(0).getTickNumber());
+        assertEquals(1, decoded.get(0).getCellColumns().getFlatIndicesCount());
+        assertCellValue(decoded.get(0).getCellColumns(), 0, 10);
+        
+        // Verify tick 1: cells 0=10, 1=11
+        assertEquals(1, decoded.get(1).getTickNumber());
+        assertEquals(2, decoded.get(1).getCellColumns().getFlatIndicesCount());
+        
+        // Verify tick 2: cells 0=20, 1=11, 2=12
+        assertEquals(2, decoded.get(2).getTickNumber());
+        assertEquals(3, decoded.get(2).getCellColumns().getFlatIndicesCount());
+        assertCellValue(decoded.get(2).getCellColumns(), 0, 20);
+        
+        // Verify tick 3: cells 0=20, 1=11, 2=12, 3=13
+        assertEquals(3, decoded.get(3).getTickNumber());
+        assertEquals(4, decoded.get(3).getCellColumns().getFlatIndicesCount());
+    }
     
     @Test
     void roundTrip_decompressSingleTick_matchesFullDecompression() throws ChunkCorruptedException {
-        // Create chunk with multiple ticks
-        // Snapshot: cells 0, 1 with values 100, 200
-        CellDataColumns snapshotCells = createCells(
-                new int[]{0, 1},
-                new int[]{100, 200},
-                new int[]{0, 0});
-        TickData snapshot = createSnapshotWithCells(0, snapshotCells);
+        // Create chunk with 4 ticks
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, TOTAL_CELLS, 2, 2, 1);
         
-        List<DeltaCapture> deltas = new ArrayList<>();
+        env.setMolecule(Molecule.fromInt(10), new int[]{0, 0});
+        captureTick(encoder, 0);
         
-        // INCREMENTAL deltas: each adds one new cell
-        // Delta 100: add cell 2
-        deltas.add(DeltaCodec.captureDelta(100, 1000, DeltaType.INCREMENTAL,
-                createCells(new int[]{2}, new int[]{102}, new int[]{0}),
-                List.of(), 0, ByteString.EMPTY, List.of()));
+        env.setMolecule(Molecule.fromInt(11), new int[]{1, 0});
+        captureTick(encoder, 1);
         
-        // Delta 200: add cell 3
-        deltas.add(DeltaCodec.captureDelta(200, 2000, DeltaType.INCREMENTAL,
-                createCells(new int[]{3}, new int[]{203}, new int[]{0}),
-                List.of(), 0, ByteString.EMPTY, List.of()));
+        env.setMolecule(Molecule.fromInt(12), new int[]{2, 0});
+        captureTick(encoder, 2);
         
-        // ACCUMULATED delta at 300: contains ALL changes since snapshot (cells 2, 3, 4)
-        // Note: Accumulated delta must include all cells changed since snapshot!
-        deltas.add(DeltaCodec.captureDelta(300, 3000, DeltaType.ACCUMULATED,
-                createCells(new int[]{2, 3, 4}, new int[]{102, 203, 304}, new int[]{0, 0, 0}),
-                List.of(), 0, ByteString.copyFromUtf8("rng"), List.of()));
-        
-        // Delta 400: add cell 5 (incremental since accumulated)
-        deltas.add(DeltaCodec.captureDelta(400, 4000, DeltaType.INCREMENTAL,
-                createCells(new int[]{5}, new int[]{405}, new int[]{0}),
-                List.of(), 0, ByteString.EMPTY, List.of()));
-        
-        TickDataChunk chunk = DeltaCodec.createChunk(RUN_ID, snapshot, deltas);
+        env.setMolecule(Molecule.fromInt(13), new int[]{3, 0});
+        Optional<TickDataChunk> chunk = captureTick(encoder, 3);
+        assertTrue(chunk.isPresent());
         
         // Full decompression
-        List<TickData> fullDecompressed = DeltaCodec.decompressChunk(chunk, TOTAL_CELLS);
+        List<TickData> fullDecompressed = decoder.decompressChunk(chunk.get());
         
         // Single tick decompression for each tick
-        for (int i = 0; i < fullDecompressed.size(); i++) {
-            TickData expected = fullDecompressed.get(i);
-            TickData single = DeltaCodec.decompressTick(chunk, expected.getTickNumber(), TOTAL_CELLS);
+        for (TickData expected : fullDecompressed) {
+            TickData single = decoder.decompressTick(chunk.get(), expected.getTickNumber());
             
             assertEquals(expected.getTickNumber(), single.getTickNumber());
             assertCellColumnsEqual(expected.getCellColumns(), single.getCellColumns());
         }
+    }
+    
+    @Test
+    void roundTrip_cellRemoval_handledCorrectly() throws ChunkCorruptedException {
+        // Create chunk with cell removal
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, TOTAL_CELLS, 1, 2, 1);
+        
+        // Tick 0: cells 0, 1, 2
+        env.setMolecule(Molecule.fromInt(10), new int[]{0, 0});
+        env.setMolecule(Molecule.fromInt(20), new int[]{1, 0});
+        env.setMolecule(Molecule.fromInt(30), new int[]{2, 0});
+        captureTick(encoder, 0);
+        
+        // Tick 1: remove cell 1 (moleculeData = 0 means cell cleared)
+        env.setMolecule(Molecule.fromInt(0), new int[]{1, 0});
+        Optional<TickDataChunk> chunk = captureTick(encoder, 1);
+        assertTrue(chunk.isPresent());
+        
+        // Decode
+        List<TickData> decoded = decoder.decompressChunk(chunk.get());
+        assertEquals(2, decoded.size());
+        
+        // Tick 0: 3 cells
+        assertEquals(3, decoded.get(0).getCellColumns().getFlatIndicesCount());
+        
+        // Tick 1: 2 cells (cell 1 removed)
+        assertEquals(2, decoded.get(1).getCellColumns().getFlatIndicesCount());
+        assertCellNotPresent(decoded.get(1).getCellColumns(), 1);
+    }
+    
+    @Test
+    void roundTrip_preservesOrganismStates() throws ChunkCorruptedException {
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, TOTAL_CELLS, 1, 2, 1);
+        
+        // Tick 0: 1 organism
+        env.setMolecule(Molecule.fromInt(10), new int[]{0, 0});
+        Optional<TickDataChunk> chunk0 = encoder.captureTick(
+                0, env,
+                List.of(OrganismState.newBuilder().setOrganismId(1).setEnergy(100).build()),
+                1,
+                ByteString.copyFromUtf8("rng-0"),
+                List.of());
+        env.resetChangeTracking();
+        assertFalse(chunk0.isPresent());
+        
+        // Tick 1: 2 organisms (completes chunk)
+        env.setMolecule(Molecule.fromInt(11), new int[]{1, 0});
+        Optional<TickDataChunk> chunk = encoder.captureTick(
+                1, env,
+                List.of(
+                        OrganismState.newBuilder().setOrganismId(1).setEnergy(90).build(),
+                        OrganismState.newBuilder().setOrganismId(2).setEnergy(50).build()
+                ),
+                2,
+                ByteString.copyFromUtf8("rng-1"),
+                List.of());
+        env.resetChangeTracking();
+        assertTrue(chunk.isPresent());
+        
+        // Decode
+        List<TickData> decoded = decoder.decompressChunk(chunk.get());
+        
+        // Tick 0: 1 organism
+        assertEquals(1, decoded.get(0).getOrganismsCount());
+        assertEquals(100, decoded.get(0).getOrganisms(0).getEnergy());
+        
+        // Tick 1: 2 organisms
+        assertEquals(2, decoded.get(1).getOrganismsCount());
+        assertEquals(90, decoded.get(1).getOrganisms(0).getEnergy());
+        assertEquals(50, decoded.get(1).getOrganisms(1).getEnergy());
+    }
+    
+    @Test
+    void roundTrip_partialChunk_preservesAllData() throws ChunkCorruptedException {
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, TOTAL_CELLS, 2, 10, 1);
+        
+        // Capture only 2 ticks (not a full chunk)
+        env.setMolecule(Molecule.fromInt(10), new int[]{0, 0});
+        captureTick(encoder, 0);
+        
+        env.setMolecule(Molecule.fromInt(20), new int[]{1, 0});
+        captureTick(encoder, 1);
+        
+        // Flush partial chunk
+        Optional<TickDataChunk> partial = encoder.flushPartialChunk();
+        assertTrue(partial.isPresent());
+        assertEquals(2, partial.get().getTickCount());
+        
+        // Decode partial chunk
+        List<TickData> decoded = decoder.decompressChunk(partial.get());
+        assertEquals(2, decoded.size());
+        
+        // Verify both ticks
+        assertEquals(0, decoded.get(0).getTickNumber());
+        assertEquals(1, decoded.get(1).getTickNumber());
     }
     
     // ========================================================================
@@ -196,120 +245,65 @@ class DeltaCodecRoundTripTest {
     // ========================================================================
     
     @Test
-    void roundTrip_accumulatedDelta_allowsCorrectReconstruction() throws ChunkCorruptedException {
-        // Snapshot: cell 0 = 10
-        CellDataColumns snapshotCells = createCells(new int[]{0}, new int[]{10}, new int[]{0});
-        TickData snapshot = createSnapshotWithCells(0, snapshotCells);
+    void roundTrip_accumulatedDeltaOptimization_worksCorrectly() throws ChunkCorruptedException {
+        // Create encoder with accumulated delta interval = 2
+        // Accumulated deltas at ticks 2, 4, 6, ...
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, TOTAL_CELLS, 2, 4, 1);
         
-        // Delta 1: Add cell 1
-        CellDataColumns delta1Cells = createCells(new int[]{1}, new int[]{20}, new int[]{0});
-        DeltaCapture delta1 = DeltaCodec.captureDelta(
-                100, 1000, DeltaType.INCREMENTAL,
-                delta1Cells, List.of(), 0,
-                ByteString.EMPTY, List.of());
+        // Build up several ticks
+        env.setMolecule(Molecule.fromInt(10), new int[]{0, 0});
+        captureTick(encoder, 0);  // snapshot
         
-        // Delta 2: Accumulated (cells 1, 2 - all changes since snapshot)
-        // Note: Accumulated delta contains ALL changes since snapshot
-        CellDataColumns delta2Cells = createCells(new int[]{1, 2}, new int[]{20, 30}, new int[]{0, 0});
-        DeltaCapture delta2 = DeltaCodec.captureDelta(
-                200, 2000, DeltaType.ACCUMULATED,
-                delta2Cells, List.of(), 0,
-                ByteString.copyFromUtf8("rng"), List.of());
+        env.setMolecule(Molecule.fromInt(11), new int[]{1, 0});
+        captureTick(encoder, 1);  // incremental
         
-        // Delta 3: Add cell 3
-        CellDataColumns delta3Cells = createCells(new int[]{3}, new int[]{40}, new int[]{0});
-        DeltaCapture delta3 = DeltaCodec.captureDelta(
-                300, 3000, DeltaType.INCREMENTAL,
-                delta3Cells, List.of(), 0,
-                ByteString.EMPTY, List.of());
+        env.setMolecule(Molecule.fromInt(12), new int[]{2, 0});
+        captureTick(encoder, 2);  // accumulated
         
-        TickDataChunk chunk = DeltaCodec.createChunk(
-                RUN_ID, snapshot, List.of(delta1, delta2, delta3));
+        env.setMolecule(Molecule.fromInt(13), new int[]{3, 0});
+        captureTick(encoder, 3);  // incremental
         
-        // Decompress tick 300 - should use accumulated delta at 200 as starting point
-        TickData tick300 = DeltaCodec.decompressTick(chunk, 300, TOTAL_CELLS);
+        env.setMolecule(Molecule.fromInt(14), new int[]{4, 0});
+        captureTick(encoder, 4);  // accumulated
         
-        // Expected state at tick 300:
-        // From snapshot: cell 0 = 10
-        // From accumulated delta 200: cells 1=20, 2=30
-        // From incremental delta 300: cell 3=40
-        CellDataColumns cells = tick300.getCellColumns();
-        assertEquals(4, cells.getFlatIndicesCount());
-        assertCellValue(cells, 0, 10);
-        assertCellValue(cells, 1, 20);
-        assertCellValue(cells, 2, 30);
-        assertCellValue(cells, 3, 40);
-    }
-    
-    // ========================================================================
-    // Round-Trip: Organism State
-    // ========================================================================
-    
-    @Test
-    void roundTrip_preservesOrganismStates() throws ChunkCorruptedException {
-        TickData snapshot = TickData.newBuilder()
-                .setSimulationRunId(RUN_ID)
-                .setTickNumber(0)
-                .setCaptureTimeMs(0)
-                .setCellColumns(CellDataColumns.getDefaultInstance())
-                .addOrganisms(OrganismState.newBuilder().setOrganismId(1).setEnergy(100).build())
-                .setTotalOrganismsCreated(1)
-                .build();
+        env.setMolecule(Molecule.fromInt(15), new int[]{5, 0});
+        captureTick(encoder, 5);  // incremental
         
-        // Delta with new organism
-        DeltaCapture delta = DeltaCodec.captureDelta(
-                100, 1000, DeltaType.INCREMENTAL,
-                CellDataColumns.getDefaultInstance(),
-                List.of(
-                        OrganismState.newBuilder().setOrganismId(1).setEnergy(90).build(),
-                        OrganismState.newBuilder().setOrganismId(2).setEnergy(50).build()
-                ),
-                2,
-                ByteString.EMPTY, List.of());
+        env.setMolecule(Molecule.fromInt(16), new int[]{6, 0});
+        captureTick(encoder, 6);  // accumulated
         
-        TickDataChunk chunk = DeltaCodec.createChunk(RUN_ID, snapshot, List.of(delta));
-        List<TickData> decompressed = DeltaCodec.decompressChunk(chunk, TOTAL_CELLS);
+        env.setMolecule(Molecule.fromInt(17), new int[]{7, 0});
+        Optional<TickDataChunk> chunk = captureTick(encoder, 7);  // incremental (completes chunk)
+        assertTrue(chunk.isPresent());
         
-        // Tick 0: 1 organism
-        assertEquals(1, decompressed.get(0).getOrganismsCount());
-        assertEquals(1, decompressed.get(0).getTotalOrganismsCreated());
-        
-        // Tick 100: 2 organisms
-        assertEquals(2, decompressed.get(1).getOrganismsCount());
-        assertEquals(2, decompressed.get(1).getTotalOrganismsCreated());
-        assertEquals(90, decompressed.get(1).getOrganisms(0).getEnergy());
-        assertEquals(50, decompressed.get(1).getOrganisms(1).getEnergy());
+        // Decompress single tick at position 7
+        // This should use accumulated delta at tick 6, then apply tick 7
+        TickData tick7 = decoder.decompressTick(chunk.get(), 7);
+        assertEquals(7, tick7.getTickNumber());
+        assertEquals(8, tick7.getCellColumns().getFlatIndicesCount()); // cells 0-7
     }
     
     // ========================================================================
     // Helper Methods
     // ========================================================================
     
-    private TickData createSnapshotWithCells(long tickNumber, CellDataColumns cells) {
-        return TickData.newBuilder()
-                .setSimulationRunId(RUN_ID)
-                .setTickNumber(tickNumber)
-                .setCaptureTimeMs(tickNumber * 10)
-                .setCellColumns(cells)
-                .setTotalOrganismsCreated(0)
-                .build();
-    }
-    
-    private CellDataColumns createCells(int[] flatIndices, int[] moleculeData, int[] ownerIds) {
-        CellDataColumns.Builder builder = CellDataColumns.newBuilder();
-        for (int i = 0; i < flatIndices.length; i++) {
-            builder.addFlatIndices(flatIndices[i]);
-            builder.addMoleculeData(moleculeData[i]);
-            builder.addOwnerIds(ownerIds[i]);
-        }
-        return builder.build();
+    private Optional<TickDataChunk> captureTick(DeltaCodec.Encoder encoder, long tick) {
+        Optional<TickDataChunk> result = encoder.captureTick(
+                tick,
+                env,
+                List.of(OrganismState.newBuilder().setOrganismId(1).setEnergy(100).build()),
+                1,
+                ByteString.copyFromUtf8("rng-" + tick),
+                List.of(StrategyState.newBuilder().setStrategyType("TestStrategy").build())
+        );
+        // Note: captureTick resets change tracking internally
+        return result;
     }
     
     private void assertCellColumnsEqual(CellDataColumns expected, CellDataColumns actual) {
         assertEquals(expected.getFlatIndicesCount(), actual.getFlatIndicesCount(),
                 "Cell count mismatch");
         
-        // Build maps for comparison (order may differ)
         for (int i = 0; i < expected.getFlatIndicesCount(); i++) {
             int flatIndex = expected.getFlatIndices(i);
             int expectedMolecule = expected.getMoleculeData(i);

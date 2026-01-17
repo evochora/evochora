@@ -236,11 +236,12 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
         // Decompress all chunks to get fully reconstructed TickData
         // This ensures plugins receive complete environment state for every tick,
         // not just the changed cells from deltas.
-        int totalCells = calculateTotalCells();
+        // Create a single Decoder for the batch to reuse MutableCellState
+        DeltaCodec.Decoder decoder = createDecoder();
         List<TickData> ticks = new ArrayList<>();
         for (TickDataChunk chunk : chunks) {
             try {
-                ticks.addAll(DeltaCodec.decompressChunk(chunk, totalCells));
+                ticks.addAll(decoder.decompressChunk(chunk));
             } catch (ChunkCorruptedException e) {
                 log.warn("Skipping corrupt chunk: {}", e.getMessage());
                 recordError("CORRUPT_CHUNK", e.getMessage(),
@@ -492,24 +493,24 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
     }
 
     /**
-     * Calculates the total number of cells in the environment.
+     * Creates a Decoder for decompressing chunks.
      * <p>
-     * This is needed for {@link DeltaCodec#decompressChunk} to allocate
-     * the correct size for the {@code MutableCellState} array.
+     * The Decoder's MutableCellState is reused across multiple decompressChunk calls
+     * within a single batch, avoiding allocation overhead.
      *
-     * @return total cells, or 0 if metadata is unavailable
+     * @return a new Decoder, or a Decoder with size 1 if metadata is unavailable
      */
-    private int calculateTotalCells() {
+    private DeltaCodec.Decoder createDecoder() {
         SimulationMetadata metadata = getMetadata();
         if (metadata == null || !metadata.hasEnvironment()) {
-            log.debug("No environment metadata available, using totalCells=0");
-            return 0;
+            log.debug("No environment metadata available, using minimal Decoder");
+            return new DeltaCodec.Decoder(1);
         }
-        int total = 1;
+        int totalCells = 1;
         for (int dim : metadata.getEnvironment().getShapeList()) {
-            total *= dim;
+            totalCells *= dim;
         }
-        return total;
+        return new DeltaCodec.Decoder(totalCells);
     }
 
     /**

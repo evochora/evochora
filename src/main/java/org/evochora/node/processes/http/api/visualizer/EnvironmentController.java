@@ -89,9 +89,17 @@ public class EnvironmentController extends VisualizerBaseController {
     /**
      * Cache for environment properties per runId.
      * <p>
-     * Used to avoid repeated metadata lookups for calculating totalCells.
+     * Used to avoid repeated metadata lookups and for Decoder construction.
      */
     private final Cache<String, EnvironmentProperties> envPropsCache;
+    
+    /**
+     * Cache for Decoder instances per runId.
+     * <p>
+     * Decoders are reusable and maintain internal state (MutableCellState) that
+     * is reset between decompression calls. Caching avoids repeated allocation.
+     */
+    private final Cache<String, DeltaCodec.Decoder> decoderCache;
 
     /**
      * Constructs a new EnvironmentController with chunk caching.
@@ -125,6 +133,12 @@ public class EnvironmentController extends VisualizerBaseController {
         
         // Build environment properties cache (small, long TTL)
         this.envPropsCache = Caffeine.newBuilder()
+            .maximumSize(50)
+            .expireAfterAccess(Duration.ofMinutes(30))
+            .build();
+        
+        // Build decoder cache (one per runId, reuses MutableCellState)
+        this.decoderCache = Caffeine.newBuilder()
             .maximumSize(50)
             .expireAfterAccess(Duration.ofMinutes(30))
             .build();
@@ -229,15 +243,17 @@ public class EnvironmentController extends VisualizerBaseController {
         try {
             // Get or load environment properties (cached)
             final EnvironmentProperties envProps = getOrLoadEnvProps(runId);
-            final int totalCells = calculateTotalCells(envProps);
             
             // Get or load chunk (cached)
             final TickDataChunk chunk = getOrLoadChunk(runId, tickNumber);
             
+            // Get or create decoder for this runId (cached, reuses MutableCellState)
+            final DeltaCodec.Decoder decoder = getOrCreateDecoder(runId, envProps);
+            
             // Decompress to get the specific tick
             final TickData tickData;
             try {
-                tickData = DeltaCodec.decompressTick(chunk, tickNumber, totalCells);
+                tickData = decoder.decompressTick(chunk, tickNumber);
             } catch (ChunkCorruptedException e) {
                 throw new SQLException("Corrupted chunk for tick " + tickNumber + ": " + e.getMessage(), e);
             }
@@ -268,6 +284,16 @@ public class EnvironmentController extends VisualizerBaseController {
                 throw new RuntimeException("Failed to load environment properties for " + runId, e);
             }
         });
+    }
+    
+    /**
+     * Gets or creates a Decoder for the specified runId (cached).
+     * <p>
+     * The Decoder maintains a reusable MutableCellState, avoiding allocation
+     * overhead on repeated decompression calls for the same runId.
+     */
+    private DeltaCodec.Decoder getOrCreateDecoder(final String runId, final EnvironmentProperties envProps) {
+        return decoderCache.get(runId, key -> new DeltaCodec.Decoder(envProps));
     }
     
     /**

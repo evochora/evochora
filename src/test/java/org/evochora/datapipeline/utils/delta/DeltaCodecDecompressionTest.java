@@ -7,6 +7,7 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.delta.ChunkCorruptedException;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -15,13 +16,20 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Unit tests for {@link DeltaCodec} decompression methods.
+ * Unit tests for {@link DeltaCodec.Decoder}.
  */
 @Tag("unit")
 class DeltaCodecDecompressionTest {
     
     private static final String RUN_ID = "test-run-id";
     private static final int TOTAL_CELLS = 100;  // 10x10 environment
+    
+    private DeltaCodec.Decoder decoder;
+    
+    @BeforeEach
+    void setUp() {
+        decoder = new DeltaCodec.Decoder(TOTAL_CELLS);
+    }
     
     // ========================================================================
     // decompressChunk Tests
@@ -33,7 +41,7 @@ class DeltaCodecDecompressionTest {
         TickData snapshot = createSnapshotWithCells(0, cells);
         TickDataChunk chunk = createChunkWithSnapshot(snapshot);
         
-        List<TickData> result = DeltaCodec.decompressChunk(chunk, TOTAL_CELLS);
+        List<TickData> result = decoder.decompressChunk(chunk);
         
         assertEquals(1, result.size());
         assertEquals(0, result.get(0).getTickNumber());
@@ -64,7 +72,7 @@ class DeltaCodecDecompressionTest {
                 .addDeltas(delta)
                 .build();
         
-        List<TickData> result = DeltaCodec.decompressChunk(chunk, TOTAL_CELLS);
+        List<TickData> result = decoder.decompressChunk(chunk);
         
         assertEquals(2, result.size());
         
@@ -92,7 +100,7 @@ class DeltaCodecDecompressionTest {
     void decompressTick_snapshotTick_returnsSnapshot() throws ChunkCorruptedException {
         TickDataChunk chunk = createMultiTickChunk();
         
-        TickData result = DeltaCodec.decompressTick(chunk, 0, TOTAL_CELLS);
+        TickData result = decoder.decompressTick(chunk, 0);
         
         assertEquals(0, result.getTickNumber());
     }
@@ -114,7 +122,7 @@ class DeltaCodecDecompressionTest {
                 .addDeltas(delta)
                 .build();
         
-        TickData result = DeltaCodec.decompressTick(chunk, 100, TOTAL_CELLS);
+        TickData result = decoder.decompressTick(chunk, 100);
         
         assertEquals(100, result.getTickNumber());
         assertEquals(2, result.getCellColumns().getFlatIndicesCount());
@@ -125,7 +133,7 @@ class DeltaCodecDecompressionTest {
         TickDataChunk chunk = createMultiTickChunk();
         
         ChunkCorruptedException ex = assertThrows(ChunkCorruptedException.class, () ->
-                DeltaCodec.decompressTick(chunk, 9999, TOTAL_CELLS));
+                decoder.decompressTick(chunk, 9999));
         assertTrue(ex.getMessage().contains("not in chunk range"));
     }
     
@@ -135,34 +143,48 @@ class DeltaCodecDecompressionTest {
         
         // Tick 50 is in range [0, 300] but not actually in the chunk
         ChunkCorruptedException ex = assertThrows(ChunkCorruptedException.class, () ->
-                DeltaCodec.decompressTick(chunk, 50, TOTAL_CELLS));
+                decoder.decompressTick(chunk, 50));
         assertTrue(ex.getMessage().contains("not found"));
     }
     
     // ========================================================================
-    // reconstructEnvironment Tests
+    // Decoder Reuse Tests
     // ========================================================================
     
     @Test
-    void reconstructEnvironment_emptyDeltas_returnsSnapshot() {
-        CellDataColumns snapshot = createCells(new int[]{0, 1}, new int[]{10, 20});
+    void decoder_canBeReusedForMultipleChunks() throws ChunkCorruptedException {
+        // First chunk
+        CellDataColumns cells1 = createCells(new int[]{0}, new int[]{10});
+        TickData snapshot1 = createSnapshotWithCells(0, cells1);
+        TickDataChunk chunk1 = createChunkWithSnapshot(snapshot1);
         
-        CellDataColumns result = DeltaCodec.reconstructEnvironment(
-                snapshot, List.of(), TOTAL_CELLS);
+        List<TickData> result1 = decoder.decompressChunk(chunk1);
+        assertEquals(1, result1.size());
+        assertEquals(10, result1.get(0).getCellColumns().getMoleculeData(0));
         
-        assertEquals(2, result.getFlatIndicesCount());
+        // Second chunk with different data
+        CellDataColumns cells2 = createCells(new int[]{5}, new int[]{50});
+        TickData snapshot2 = createSnapshotWithCells(100, cells2);
+        TickDataChunk chunk2 = createChunkWithSnapshot(snapshot2);
+        
+        List<TickData> result2 = decoder.decompressChunk(chunk2);
+        assertEquals(1, result2.size());
+        assertEquals(50, result2.get(0).getCellColumns().getMoleculeData(0));
+        
+        // Verify first result is still correct (decoder doesn't corrupt old results)
+        assertEquals(10, result1.get(0).getCellColumns().getMoleculeData(0));
     }
     
     @Test
-    void reconstructEnvironment_appliesMultipleDeltas() {
-        CellDataColumns snapshot = createCells(new int[]{0}, new int[]{10});
-        CellDataColumns delta1 = createCells(new int[]{1}, new int[]{20});
-        CellDataColumns delta2 = createCells(new int[]{2}, new int[]{30});
+    void decoder_canDecompressTickAfterChunk() throws ChunkCorruptedException {
+        TickDataChunk chunk = createMultiTickChunk();
         
-        CellDataColumns result = DeltaCodec.reconstructEnvironment(
-                snapshot, List.of(delta1, delta2), TOTAL_CELLS);
+        // First decompress whole chunk
+        decoder.decompressChunk(chunk);
         
-        assertEquals(3, result.getFlatIndicesCount());
+        // Then decompress single tick (should work, decoder resets internally)
+        TickData tick = decoder.decompressTick(chunk, 0);
+        assertEquals(0, tick.getTickNumber());
     }
     
     // ========================================================================
@@ -186,7 +208,7 @@ class DeltaCodecDecompressionTest {
                 .addDeltas(delta)
                 .build();
         
-        List<TickData> result = DeltaCodec.decompressChunk(chunk, TOTAL_CELLS);
+        List<TickData> result = decoder.decompressChunk(chunk);
         
         assertEquals(2, result.size());
         // Both ticks should have same cell state (delta was empty)

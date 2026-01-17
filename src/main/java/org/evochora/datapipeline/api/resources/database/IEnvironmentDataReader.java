@@ -52,7 +52,7 @@ public interface IEnvironmentDataReader {
      * The caller is responsible for:
      * <ol>
      *   <li>Caching the chunk (optional, for sequential tick access)</li>
-     *   <li>Decompressing using {@code DeltaCodec.decompressTick(chunk, tickNumber, totalCells)}</li>
+     *   <li>Decompressing using {@code DeltaCodec.Decoder.decompressTick(chunk, tickNumber)}</li>
      *   <li>Filtering by region</li>
      *   <li>Converting cell data as needed</li>
      * </ol>

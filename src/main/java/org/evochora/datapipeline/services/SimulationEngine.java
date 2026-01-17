@@ -46,7 +46,7 @@ import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
-import org.evochora.datapipeline.utils.delta.ChunkBuilder;
+import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.isa.IEnergyDistributionCreator;
@@ -72,7 +72,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     private final int metricsWindowSeconds;
     private final List<Long> pauseTicks;
     private final String runId;
-    private final ChunkBuilder chunkBuilder;
+    private final DeltaCodec.Encoder chunkEncoder;
     private final Simulation simulation;
     private final IRandomProvider randomProvider;
     private final List<StrategyWithConfig> energyStrategies;
@@ -205,9 +205,9 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         String timestamp = now.format(formatter);
         this.runId = timestamp + "-" + UUID.randomUUID().toString();
         
-        // Initialize chunk builder for delta compression
+        // Initialize chunk encoder for delta compression
         int totalCells = this.simulation.getEnvironment().getTotalCells();
-        this.chunkBuilder = new ChunkBuilder(
+        this.chunkEncoder = new DeltaCodec.Encoder(
                 this.runId, totalCells,
                 this.accumulatedDeltaInterval, this.snapshotInterval, this.chunkInterval);
     }
@@ -221,7 +221,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 .map(s -> s.strategy().getClass().getSimpleName())
                 .collect(java.util.stream.Collectors.joining(", "));
 
-        int ticksPerChunk = chunkBuilder.getSamplesPerChunk();
+        int ticksPerChunk = chunkEncoder.getSamplesPerChunk();
         log.info("SimulationEngine started: world=[{}, {}], organisms={}, energyStrategies={} ({}), seed={}, sampling={}, ticksPerChunk={}, runId={}",
                 worldDims, topology, simulation.getOrganisms().size(), energyStrategies.size(), strategyNames, seed, samplingInterval, ticksPerChunk, runId);
     }
@@ -264,12 +264,12 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
             if (tick % samplingInterval == 0) {
                 try {
-                    // Use ChunkBuilder for delta compression
+                    // Use DeltaCodec.Encoder for delta compression
                     List<OrganismState> organismStates = extractOrganismStates();
                     List<StrategyState> strategyStates = extractStrategyStates();
                     ByteString rngState = ByteString.copyFrom(randomProvider.saveState());
                     
-                    java.util.Optional<TickDataChunk> chunk = chunkBuilder.captureTick(
+                    java.util.Optional<TickDataChunk> chunk = chunkEncoder.captureTick(
                             tick,
                             simulation.getEnvironment(),
                             organismStates,
@@ -300,7 +300,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         
         // Flush any partial chunk on shutdown
         try {
-            java.util.Optional<TickDataChunk> partialChunk = chunkBuilder.flushPartialChunk();
+            java.util.Optional<TickDataChunk> partialChunk = chunkEncoder.flushPartialChunk();
             if (partialChunk.isPresent()) {
                 tickDataOutput.put(partialChunk.get());
                 messagesSent.incrementAndGet();
@@ -519,7 +519,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     
     /**
      * Extracts organism states for all living organisms.
-     * Used by ChunkBuilder for delta compression.
+     * Used by DeltaCodec.Encoder for delta compression.
      */
     private List<OrganismState> extractOrganismStates() {
         return simulation.getOrganisms().stream()
@@ -530,7 +530,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     
     /**
      * Extracts strategy states for all energy strategies.
-     * Used by ChunkBuilder for delta compression.
+     * Used by DeltaCodec.Encoder for delta compression.
      */
     private List<StrategyState> extractStrategyStates() {
         return energyStrategies.stream()
@@ -762,14 +762,14 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      * {@inheritDoc}
      * <p>
      * Estimates memory for the SimulationEngine which holds the entire
-     * environment and all organisms in RAM, plus the ChunkBuilder state.
+     * environment and all organisms in RAM, plus the Encoder state.
      * <p>
      * <strong>Major components:</strong>
      * <ul>
      *   <li>Environment cells array: totalCells × 8 bytes (int molecule + int ownerId)</li>
      *   <li>Organisms: maxOrganisms × ~2KB (registers, stacks, code reference)</li>
      *   <li>Compiled programs: cached ProgramArtifacts</li>
-     *   <li>ChunkBuilder: current snapshot + accumulated deltas + change tracking BitSet</li>
+     *   <li>Encoder: current snapshot + accumulated deltas + change tracking BitSet</li>
      * </ul>
      * <p>
      * This is typically the largest memory consumer in the pipeline.
@@ -809,7 +809,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             ));
         }
         
-        // 4. ChunkBuilder state for delta compression
+        // 4. Encoder state for delta compression
         // - currentSnapshot: 1 full TickData (bytesPerTick)
         // - currentDeltas: up to (samplesPerChunk - 1) deltas
         // - accumulatedSinceSnapshot: BitSet for change tracking (totalCells / 8 bytes)
@@ -827,7 +827,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         chunkBuilderBytes += bitSetBytes;
         
         estimates.add(new MemoryEstimate(
-            serviceName + " (ChunkBuilder)",
+            serviceName + " (Encoder)",
             chunkBuilderBytes,
             String.format("1 snapshot + %d deltas + BitSet (%d cells), %d ticks/chunk",
                 maxDeltas, params.totalCells(), params.ticksPerChunk()),

@@ -2,14 +2,21 @@ package org.evochora.cli.commands;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.Callable;
 
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
+import org.evochora.datapipeline.api.contracts.DeltaType;
+import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
+import org.evochora.datapipeline.api.contracts.TickDelta;
+import org.evochora.datapipeline.api.delta.ChunkCorruptedException;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
 import org.evochora.datapipeline.utils.MoleculeDataUtils;
+import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.runtime.Config;
 
 import com.google.gson.Gson;
@@ -22,6 +29,12 @@ import picocli.CommandLine.Option;
 import picocli.CommandLine.ParentCommand;
 import picocli.CommandLine.Spec;
 
+/**
+ * CLI subcommand for inspecting tick data from storage.
+ * <p>
+ * Reads tick data chunks from FileSystem storage, decompresses to the specified tick,
+ * and outputs the data in various formats.
+ */
 @Command(
     name = "storage",
     description = "Inspect tick data from storage for debugging purposes"
@@ -68,9 +81,21 @@ public class InspectStorageSubcommand implements Callable<Integer> {
             // Create storage resource
             IBatchStorageRead storage = createStorageResource(config);
             
+            // Load metadata to get totalCells for decoder
+            Optional<StoragePath> metadataPath = storage.findMetadataPath(runId);
+            if (metadataPath.isEmpty()) {
+                spec.commandLine().getErr().println("Metadata not found for run " + runId);
+                return 1;
+            }
+            
+            SimulationMetadata metadata = storage.readMessage(metadataPath.get(), SimulationMetadata.parser());
+            int totalCells = calculateTotalCells(metadata);
+            
+            // Create decoder
+            DeltaCodec.Decoder decoder = new DeltaCodec.Decoder(totalCells);
+            
             // Find batch file containing the tick
-            // Use 0 as startTick to ensure we find batches starting before the target tick
-            StoragePath batchPath = findBatchContainingTick(storage, runId, tickNumber, 0);
+            StoragePath batchPath = findBatchContainingTick(storage, runId, tickNumber);
             
             if (batchPath == null) {
                 spec.commandLine().getOut().println("No batch file found containing tick " + tickNumber + " for run " + runId);
@@ -79,26 +104,46 @@ public class InspectStorageSubcommand implements Callable<Integer> {
             
             spec.commandLine().getOut().println("Found batch file: " + batchPath.asString());
             
-            // Read batch data
-            List<TickData> ticks = storage.readBatch(batchPath);
+            // Read chunk batch
+            List<TickDataChunk> chunks = storage.readChunkBatch(batchPath);
             
-            // Find the specific tick
-            TickData targetTick = ticks.stream()
-                .filter(tick -> tick.getTickNumber() == tickNumber)
-                .findFirst()
-                .orElse(null);
+            // Find the chunk containing the target tick
+            TickDataChunk targetChunk = null;
+            for (TickDataChunk chunk : chunks) {
+                if (tickNumber >= chunk.getFirstTick() && tickNumber <= chunk.getLastTick()) {
+                    targetChunk = chunk;
+                    break;
+                }
+            }
             
-            if (targetTick == null) {
-                spec.commandLine().getOut().println("Tick " + tickNumber + " not found in batch " + batchPath);
-                spec.commandLine().getOut().println("Available ticks in batch: " + 
-                    ticks.stream().mapToLong(TickData::getTickNumber).min().orElse(-1) + 
-                    " to " + 
-                    ticks.stream().mapToLong(TickData::getTickNumber).max().orElse(-1));
+            if (targetChunk == null) {
+                spec.commandLine().getOut().println("Tick " + tickNumber + " not found in any chunk in batch " + batchPath);
+                printChunkRanges(chunks);
+                return 1;
+            }
+            
+            // Find the delta for this tick (null if it's the snapshot)
+            TickDelta targetDelta = null;
+            if (tickNumber != targetChunk.getSnapshot().getTickNumber()) {
+                for (TickDelta delta : targetChunk.getDeltasList()) {
+                    if (delta.getTickNumber() == tickNumber) {
+                        targetDelta = delta;
+                        break;
+                    }
+                }
+            }
+            
+            // Decompress the specific tick
+            TickData targetTick;
+            try {
+                targetTick = decoder.decompressTick(targetChunk, tickNumber);
+            } catch (ChunkCorruptedException e) {
+                spec.commandLine().getErr().println("Failed to decompress tick " + tickNumber + ": " + e.getMessage());
                 return 1;
             }
             
             // Output based on format
-            outputTickData(targetTick, format);
+            outputTickData(targetTick, targetChunk, targetDelta, format);
             
             return 0;
             
@@ -107,6 +152,17 @@ public class InspectStorageSubcommand implements Callable<Integer> {
             e.printStackTrace(spec.commandLine().getErr());
             return 1;
         }
+    }
+
+    private int calculateTotalCells(SimulationMetadata metadata) {
+        if (!metadata.hasEnvironment()) {
+            return 1; // Fallback
+        }
+        int total = 1;
+        for (int dim : metadata.getEnvironment().getShapeList()) {
+            total *= dim;
+        }
+        return total;
     }
 
     private IBatchStorageRead createStorageResource(com.typesafe.config.Config config) throws Exception {
@@ -128,7 +184,7 @@ public class InspectStorageSubcommand implements Callable<Integer> {
         return storage;
     }
 
-    private StoragePath findBatchContainingTick(IBatchStorageRead storage, String runId, long tickNumber, long searchStartTick) throws IOException {
+    private StoragePath findBatchContainingTick(IBatchStorageRead storage, String runId, long tickNumber) throws IOException {
         // Search in the raw directory specifically to narrow down the search
         String prefix = runId + "/raw/";
         String continuationToken = null;
@@ -171,7 +227,15 @@ public class InspectStorageSubcommand implements Callable<Integer> {
         return null;
     }
 
-    private void outputTickData(TickData tick, String format) {
+    private void printChunkRanges(List<TickDataChunk> chunks) {
+        spec.commandLine().getOut().println("Available chunks in batch:");
+        for (TickDataChunk chunk : chunks) {
+            spec.commandLine().getOut().printf("  Chunk: ticks %d to %d (%d ticks)%n",
+                chunk.getFirstTick(), chunk.getLastTick(), chunk.getTickCount());
+        }
+    }
+
+    private void outputTickData(TickData tick, TickDataChunk chunk, TickDelta delta, String format) {
         switch (format.toLowerCase()) {
             case "json":
                 Gson gson = new GsonBuilder().setPrettyPrinting().create();
@@ -179,7 +243,7 @@ public class InspectStorageSubcommand implements Callable<Integer> {
                 break;
                 
             case "summary":
-                outputSummary(tick);
+                outputSummary(tick, chunk, delta);
                 break;
                 
             case "raw":
@@ -191,7 +255,7 @@ public class InspectStorageSubcommand implements Callable<Integer> {
         }
     }
 
-    private void outputSummary(TickData tick) {
+    private void outputSummary(TickData tick, TickDataChunk chunk, TickDelta delta) {
         var out = spec.commandLine().getOut();
         
         // Calculate sizes
@@ -204,9 +268,40 @@ public class InspectStorageSubcommand implements Callable<Integer> {
         out.println("Tick Number: " + tick.getTickNumber());
         out.println("Capture Time: " + java.time.Instant.ofEpochMilli(tick.getCaptureTimeMs()));
         out.printf("Organisms: %d alive (%s)%n", tick.getOrganismsCount(), formatBytes(organismsSize));
-        out.printf("Cells: %d non-empty (%s)%n", cellsCount, formatBytes(cellsSize));
+        out.printf("Cells: %d non-empty (%s reconstructed)%n", cellsCount, formatBytes(cellsSize));
         out.println("RNG State: " + tick.getRngState().size() + " bytes");
         out.println("Strategy States: " + tick.getStrategyStatesCount());
+        
+        // Delta compression info
+        out.println("\n=== Delta Compression Info ===");
+        out.printf("Chunk: ticks %d to %d (%d ticks total)%n", 
+            chunk.getFirstTick(), chunk.getLastTick(), chunk.getTickCount());
+        
+        if (delta == null) {
+            // This tick is the snapshot
+            long snapshotSize = chunk.getSnapshot().getSerializedSize();
+            int snapshotCells = chunk.getSnapshot().getCellColumns().getFlatIndicesCount();
+            out.println("Storage Type: SNAPSHOT (full state)");
+            out.printf("Stored Size: %s (%d cells)%n", formatBytes(snapshotSize), snapshotCells);
+        } else {
+            // This tick is a delta
+            String deltaTypeName = switch (delta.getDeltaType()) {
+                case INCREMENTAL -> "INCREMENTAL (changes since last sample)";
+                case ACCUMULATED -> "ACCUMULATED (changes since snapshot, checkpoint-capable)";
+                default -> "UNKNOWN";
+            };
+            out.println("Storage Type: " + deltaTypeName);
+            
+            long deltaSize = delta.getSerializedSize();
+            int changedCells = delta.getChangedCells().getFlatIndicesCount();
+            out.printf("Stored Size: %s (%d changed cells)%n", formatBytes(deltaSize), changedCells);
+            
+            // Calculate compression ratio
+            if (cellsSize > 0) {
+                double ratio = (double) cellsSize / deltaSize;
+                out.printf("Compression Ratio: %.1fx (reconstructed/stored)%n", ratio);
+            }
+        }
         
         if (tick.getOrganismsCount() > 0) {
             out.println("\n=== Organism Summary ===");
@@ -255,4 +350,3 @@ public class InspectStorageSubcommand implements Callable<Integer> {
         return String.format("%.1f %sB", bytes / Math.pow(1024, exp), pre);
     }
 }
-
