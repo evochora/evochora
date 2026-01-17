@@ -2,11 +2,9 @@ package org.evochora.datapipeline.resources.database;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import org.evochora.datapipeline.api.resources.database.dto.CellWithCoordinates;
 import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -48,47 +46,12 @@ class DatabaseReaderUnitTest {
     }
     
     @Test
-    void cellWithCoordinates_serializesCorrectly() throws Exception {
-        CellWithCoordinates cell = new CellWithCoordinates(
-            new int[]{5, 10}, "DATA", 255, 7, null, 0
-        );
+    void spatialRegion_serializesCorrectly() throws Exception {
+        SpatialRegion region = new SpatialRegion(new int[]{0, 50, 0, 50});
         
         ObjectMapper mapper = new ObjectMapper();
-        String json = mapper.writeValueAsString(cell);
+        String json = mapper.writeValueAsString(region);
         
-        assertTrue(json.contains("\"coordinates\":[5,10]"));
-        assertTrue(json.contains("\"moleculeType\":\"DATA\""));
-        assertTrue(json.contains("\"moleculeValue\":255"));
-        assertTrue(json.contains("\"ownerId\":7"));
-    }
-    
-    @Test
-    void cellWithCoordinates_deserializesCorrectly() throws Exception {
-        String json = "{\"coordinates\":[5,10],\"moleculeType\":\"DATA\",\"moleculeValue\":255,\"ownerId\":7,\"opcodeName\":null}";
-        
-        ObjectMapper mapper = new ObjectMapper();
-        CellWithCoordinates cell = mapper.readValue(json, CellWithCoordinates.class);
-        
-        assertArrayEquals(new int[]{5, 10}, cell.coordinates());
-        assertEquals("DATA", cell.moleculeType());
-        assertEquals(255, cell.moleculeValue());
-        assertEquals(7, cell.ownerId());
-        assertNull(cell.opcodeName());
-    }
-    
-    @Test
-    void cellWithCoordinates_handles3DCoordinates() throws Exception {
-        CellWithCoordinates cell = new CellWithCoordinates(
-            new int[]{5, 10, 15}, "ENERGY", 128, 42, null, 0
-        );
-        
-        ObjectMapper mapper = new ObjectMapper();
-        String json = mapper.writeValueAsString(cell);
-        
-        assertTrue(json.contains("\"coordinates\":[5,10,15]"));
-        assertEquals("ENERGY", cell.moleculeType());
-        assertEquals(128, cell.moleculeValue());
-        assertEquals(42, cell.ownerId());
-        assertNull(cell.opcodeName());
+        assertTrue(json.contains("\"bounds\":[0,50,0,50]"));
     }
 }

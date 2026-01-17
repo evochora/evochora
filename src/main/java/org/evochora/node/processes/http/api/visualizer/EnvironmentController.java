@@ -2,8 +2,6 @@ package org.evochora.node.processes.http.api.visualizer;
 
 import java.sql.SQLException;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.evochora.datapipeline.api.contracts.CellHttpResponse;
@@ -15,16 +13,13 @@ import org.evochora.datapipeline.api.delta.ChunkCorruptedException;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.MetadataNotFoundException;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
-import org.evochora.datapipeline.api.resources.database.dto.CellWithCoordinates;
 import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
 import org.evochora.datapipeline.api.resources.database.dto.TickRange;
 import org.evochora.datapipeline.utils.MoleculeDataUtils;
 import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.node.processes.http.api.pipeline.dto.ErrorResponseDto;
-import org.evochora.node.processes.http.api.visualizer.dto.EnvironmentResponseDto;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.EnvironmentProperties;
-import org.evochora.runtime.model.MoleculeTypeRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -209,7 +204,7 @@ public class EnvironmentController extends VisualizerBaseController {
             @OpenApiParam(name = "runId", description = "Optional simulation run ID (defaults to latest run)", required = false)
         },
         responses = {
-            @OpenApiResponse(status = "200", description = "OK", content = @OpenApiContent(from = EnvironmentResponseDto.class)),
+            @OpenApiResponse(status = "200", description = "OK (application/x-protobuf binary)", content = @OpenApiContent(from = byte[].class)),
             @OpenApiResponse(status = "304", description = "Not Modified (cached response, ETag matches)"),
             @OpenApiResponse(status = "400", description = "Bad request (invalid tick or region format)", content = @OpenApiContent(from = ErrorResponseDto.class)),
             @OpenApiResponse(status = "404", description = "Not found (tick or run ID not found)", content = @OpenApiContent(from = ErrorResponseDto.class)),
@@ -466,56 +461,6 @@ public class EnvironmentController extends VisualizerBaseController {
         }
         
         return responseBuilder.build();
-    }
-    
-    /**
-     * Converts TickData to a list of CellWithCoordinates, with optional region filtering.
-     * @deprecated Use {@link #convertTickDataToProtobuf} for binary API responses.
-     */
-    @Deprecated
-    private List<CellWithCoordinates> convertTickDataToCells(final TickData tickData, 
-                                                             final SpatialRegion region,
-                                                             final EnvironmentProperties envProps) {
-        final var cellColumns = tickData.getCellColumns();
-        final int cellCount = cellColumns.getFlatIndicesCount();
-        final int dimensions = envProps.getDimensions();
-        
-        final List<CellWithCoordinates> result = new ArrayList<>();
-        
-        for (int i = 0; i < cellCount; i++) {
-            final int flatIndex = cellColumns.getFlatIndices(i);
-            final int[] coords = envProps.flatIndexToCoordinates(flatIndex);
-            
-            // Filter by region if provided
-            if (region != null && !isInRegion(coords, region, dimensions)) {
-                continue;
-            }
-
-            final int moleculeInt = cellColumns.getMoleculeData(i);
-            final int moleculeType = moleculeInt & org.evochora.runtime.Config.TYPE_MASK;
-            final int moleculeValue = MoleculeDataUtils.extractSignedValue(moleculeInt);
-            final int marker = (moleculeInt & org.evochora.runtime.Config.MARKER_MASK) >> org.evochora.runtime.Config.MARKER_SHIFT;
-            final int ownerId = cellColumns.getOwnerIds(i);
-
-            final String moleculeTypeName = MoleculeTypeRegistry.typeToName(moleculeType);
-            
-            // For CODE molecules, resolve opcode name from value
-            String opcodeName = null;
-            if (moleculeType == org.evochora.runtime.Config.TYPE_CODE) {
-                opcodeName = Instruction.getInstructionNameById(moleculeValue);
-            }
-            
-            result.add(new CellWithCoordinates(
-                coords,
-                moleculeTypeName,
-                moleculeValue,
-                ownerId,
-                opcodeName,
-                marker
-            ));
-        }
-        
-        return result;
     }
     
     /**

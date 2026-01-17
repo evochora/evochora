@@ -5,11 +5,11 @@ import org.evochora.datapipeline.CellStateTestHelper;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
+import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataWriter;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
-import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
 import org.evochora.datapipeline.resources.database.H2Database;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -59,34 +59,32 @@ class StrategyErrorHandlingTest {
     }
     
     @Test
-    void readEnvironmentRegion_throwsOnInvalidTick() throws SQLException {
+    void readChunkContaining_throwsOnInvalidTick() throws SQLException {
         try (IDatabaseReader reader = database.createReader(testRunId)) {
             // Ensure table exists with a chunk, otherwise we get a SQLSyntaxErrorException
-            insertChunk(testRunId, 1L, 1L);
+            insertChunk(testRunId, 0L, 99L);
 
-            SpatialRegion region = new SpatialRegion(new int[]{0, 10, 0, 10});
-            
             // When/Then: Query non-existent tick should throw specific exception
             assertThrows(TickNotFoundException.class, () -> 
-                reader.readEnvironmentRegion(999999, region)
+                reader.readChunkContaining(999999)
             );
         }
     }
     
     @Test
-    void readEnvironmentRegion_handlesCorruptedBlob() throws SQLException {
+    void readChunkContaining_handlesCorruptedBlob() throws SQLException {
         // Given: Corrupted BLOB data in database
         insertCorruptedChunk(testRunId, 100L);
         
         try (IDatabaseReader reader = database.createReader(testRunId)) {
-            SpatialRegion region = new SpatialRegion(new int[]{0, 10, 0, 10});
-            
-            // When/Then: Should handle corruption gracefully
-            // This test verifies that corrupted data doesn't crash the application
-            // The exact behavior (exception vs empty list) depends on implementation
+            // When/Then: Should throw exception for corrupted data
+            // The exact exception depends on how protobuf handles invalid data
             assertDoesNotThrow(() -> {
                 try {
-                    reader.readEnvironmentRegion(100, region);
+                    TickDataChunk chunk = reader.readChunkContaining(100);
+                    // If we get here, the chunk was somehow parseable
+                    // but may have invalid data - that's also acceptable
+                    assertNotNull(chunk);
                 } catch (SQLException e) {
                     // SQLException is acceptable for corrupted data
                     assertNotNull(e.getMessage());
@@ -99,52 +97,39 @@ class StrategyErrorHandlingTest {
     }
     
     @Test
-    void readEnvironmentRegion_handlesEmptyBlob() throws SQLException, TickNotFoundException {
+    void readChunkContaining_handlesEmptySnapshot() throws SQLException, TickNotFoundException {
         // Given: Empty BLOB (no cells in snapshot)
         insertEmptyChunk(testRunId, 100L);
         
         try (IDatabaseReader reader = database.createReader(testRunId)) {
-            SpatialRegion region = new SpatialRegion(new int[]{0, 10, 0, 10});
-            
             // When: Query tick with empty snapshot
-            var cells = reader.readEnvironmentRegion(100, region);
+            TickDataChunk chunk = reader.readChunkContaining(100);
             
-            // Then: Should return empty list (not error)
-            assertNotNull(cells);
-            assertTrue(cells.isEmpty());
+            // Then: Should return valid chunk with empty cell columns
+            assertNotNull(chunk);
+            assertTrue(chunk.hasSnapshot());
+            assertEquals(100, chunk.getSnapshot().getTickNumber());
+            // Empty snapshot has no cell columns or zero cells
+            if (chunk.getSnapshot().hasCellColumns()) {
+                assertEquals(0, chunk.getSnapshot().getCellColumns().getFlatIndicesCount());
+            }
         }
     }
     
     @Test
-    void readEnvironmentRegion_handlesInvalidRegion() throws SQLException, TickNotFoundException {
+    void readChunkContaining_returnsValidChunk() throws SQLException, TickNotFoundException {
         // Given: Valid chunk with data
         insertChunkWithCells(testRunId, 100L);
         
         try (IDatabaseReader reader = database.createReader(testRunId)) {
-            // Given: Out-of-bounds region
-            SpatialRegion outOfBoundsRegion = new SpatialRegion(new int[]{200, 300, 200, 300});
+            // When: Query valid tick
+            TickDataChunk chunk = reader.readChunkContaining(100);
             
-            // When: Query with out-of-bounds region
-            var cells = reader.readEnvironmentRegion(100, outOfBoundsRegion);
-            
-            // Then: Should return empty list (no cells in that region)
-            assertNotNull(cells);
-            assertTrue(cells.isEmpty());
-        }
-    }
-    
-    @Test
-    void readEnvironmentRegion_handlesNullRegion() throws SQLException, TickNotFoundException {
-        // Given: Valid chunk with data
-        insertChunkWithCells(testRunId, 100L);
-        
-        try (IDatabaseReader reader = database.createReader(testRunId)) {
-            // When: Query with null region (all cells)
-            var cells = reader.readEnvironmentRegion(100, null);
-            
-            // Then: Should return all cells
-            assertNotNull(cells);
-            assertTrue(cells.size() > 0);
+            // Then: Should return chunk with cells
+            assertNotNull(chunk);
+            assertTrue(chunk.hasSnapshot());
+            assertEquals(100, chunk.getSnapshot().getTickNumber());
+            assertTrue(chunk.getSnapshot().getCellColumns().getFlatIndicesCount() > 0);
         }
     }
     
@@ -268,18 +253,25 @@ class StrategyErrorHandlingTest {
                     .setTickNumber(firstTick)
                     .build();
                 
-                TickDataChunk chunk = TickDataChunk.newBuilder()
+                long tickCount = lastTick - firstTick + 1;
+                TickDataChunk.Builder chunkBuilder = TickDataChunk.newBuilder()
                     .setSnapshot(snapshot)
                     .setFirstTick(firstTick)
-                    .setTickCount(1)  // Must be deltas.size() + 1
-                    .build();
+                    .setTickCount((int) tickCount);
+                
+                // Add empty deltas for ticks after the snapshot
+                for (long t = firstTick + 1; t <= lastTick; t++) {
+                    chunkBuilder.addDeltas(TickDelta.newBuilder()
+                        .setTickNumber(t)
+                        .build());
+                }
                 
                 PreparedStatement stmt = conn.prepareStatement(
                     "INSERT INTO environment_chunks (first_tick, last_tick, chunk_blob) VALUES (?, ?, ?)"
                 );
                 stmt.setLong(1, firstTick);
                 stmt.setLong(2, lastTick);
-                stmt.setBytes(3, chunk.toByteArray());
+                stmt.setBytes(3, chunkBuilder.build().toByteArray());
                 stmt.executeUpdate();
             }
         } catch (Exception e) {
