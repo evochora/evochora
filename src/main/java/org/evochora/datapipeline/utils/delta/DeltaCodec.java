@@ -328,6 +328,10 @@ public final class DeltaCodec {
         
         private final MutableCellState state;
         
+        // State tracking for incremental decompression
+        private TickDataChunk currentChunk;
+        private long currentTick;
+        
         /**
          * Creates a new Decoder for environments with the specified cell count.
          *
@@ -336,6 +340,8 @@ public final class DeltaCodec {
          */
         public Decoder(int totalCells) {
             this.state = new MutableCellState(totalCells);
+            this.currentChunk = null;
+            this.currentTick = -1;
         }
         
         /**
@@ -356,10 +362,25 @@ public final class DeltaCodec {
         }
         
         /**
+         * Resets the decoder state.
+         * <p>
+         * Call this when switching between unrelated decompression sequences,
+         * or to force a fresh start from snapshot.
+         */
+        public void reset() {
+            state.reset();
+            currentChunk = null;
+            currentTick = -1;
+        }
+        
+        /**
          * Decompresses all ticks in a chunk to full TickData objects.
          * <p>
          * This reconstructs the complete environment state for each tick by applying
          * deltas sequentially to the snapshot.
+         * <p>
+         * <strong>Note:</strong> This method resets decoder state. For incremental
+         * processing of selected ticks, use {@link #decompressTick} instead.
          *
          * @param chunk the chunk to decompress
          * @return list of fully reconstructed TickData, one per tick in the chunk
@@ -368,18 +389,23 @@ public final class DeltaCodec {
         public List<TickData> decompressChunk(TickDataChunk chunk) throws ChunkCorruptedException {
             validateChunk(chunk);
             
-            state.reset();
+            // Reset state for full chunk decompression
+            reset();
+            
             List<TickData> result = new ArrayList<>(chunk.getTickCount());
             
             // First tick is the snapshot
             TickData snapshot = chunk.getSnapshot();
             state.applySnapshot(snapshot.getCellColumns());
             result.add(snapshot);
+            currentChunk = chunk;
+            currentTick = snapshot.getTickNumber();
             
             // Apply each delta and build TickData
             for (TickDelta delta : chunk.getDeltasList()) {
                 validateDelta(delta);
                 state.applyDelta(delta.getChangedCells());
+                currentTick = delta.getTickNumber();
                 
                 TickData reconstructed = TickData.newBuilder()
                         .setSimulationRunId(chunk.getSimulationRunId())
@@ -401,11 +427,14 @@ public final class DeltaCodec {
         /**
          * Decompresses a single tick from a chunk to a full TickData.
          * <p>
-         * This is more efficient than {@link #decompressChunk} when only one tick is needed,
-         * as it stops applying deltas once the target tick is reached.
+         * <strong>Stateful Optimization:</strong> The decoder tracks its current position.
+         * For sequential forward access (e.g., tick 100 → 101 → 102), only the new deltas
+         * are applied. For backward jumps or chunk changes, the state is rebuilt from
+         * the best starting point (snapshot or accumulated delta).
          * <p>
-         * <strong>Optimization:</strong> If the target tick is after an accumulated delta,
-         * we skip incremental deltas before that accumulated delta.
+         * <strong>Accumulated Delta Optimization:</strong> For larger forward jumps,
+         * the decoder finds the closest accumulated delta and uses it as a shortcut,
+         * skipping all incremental deltas before it.
          *
          * @param chunk the chunk containing the target tick
          * @param targetTick the tick number to decompress
@@ -419,6 +448,13 @@ public final class DeltaCodec {
             // Check if target is the snapshot
             TickData snapshot = chunk.getSnapshot();
             if (snapshot.getTickNumber() == targetTick) {
+                // Update state tracking even for snapshot returns
+                if (currentChunk != chunk) {
+                    state.reset();
+                    state.applySnapshot(snapshot.getCellColumns());
+                    currentChunk = chunk;
+                    currentTick = targetTick;
+                }
                 return snapshot;
             }
             
@@ -429,74 +465,28 @@ public final class DeltaCodec {
                         chunk.getFirstTick() + ", " + chunk.getLastTick() + "]");
             }
             
-            state.reset();
-            
-            // Find best starting point (closest accumulated delta before target)
-            TickDelta bestBase = null;
-            int bestBaseIndex = -1;
             List<TickDelta> deltas = chunk.getDeltasList();
             
-            for (int i = 0; i < deltas.size(); i++) {
-                TickDelta delta = deltas.get(i);
-                if (delta.getTickNumber() > targetTick) {
-                    break;
-                }
-                if (delta.getDeltaType() == DeltaType.ACCUMULATED) {
-                    bestBase = delta;
-                    bestBaseIndex = i;
-                }
+            // Determine if we can reuse current state
+            boolean canReuseState = (currentChunk == chunk) && (currentTick <= targetTick);
+            
+            if (!canReuseState) {
+                // Need to rebuild state: different chunk or backward jump
+                rebuildStateForTick(chunk, snapshot, deltas, targetTick);
+            } else if (currentTick < targetTick) {
+                // Same chunk, forward jump - check if accumulated delta shortcut is better
+                advanceStateToTick(chunk, snapshot, deltas, targetTick);
             }
+            // else: currentTick == targetTick, state is already correct
             
-            // Build state from best starting point
-            int startIndex;
-            TickDelta targetDelta = null;
-            
-            if (bestBase != null && bestBase.getTickNumber() == targetTick) {
-                // Target is exactly the accumulated delta - we're done after applying it
-                state.applySnapshot(snapshot.getCellColumns());
-                state.applyDelta(bestBase.getChangedCells());
-                targetDelta = bestBase;
-            } else if (bestBase != null) {
-                // Start from accumulated delta (it contains all changes since snapshot)
-                state.applySnapshot(snapshot.getCellColumns());
-                state.applyDelta(bestBase.getChangedCells());
-                startIndex = bestBaseIndex + 1;
-                
-                // Apply deltas until target tick
-                for (int i = startIndex; i < deltas.size(); i++) {
-                    TickDelta delta = deltas.get(i);
-                    if (delta.getTickNumber() > targetTick) {
-                        break;
-                    }
-                    state.applyDelta(delta.getChangedCells());
-                    if (delta.getTickNumber() == targetTick) {
-                        targetDelta = delta;
-                        break;
-                    }
-                }
-            } else {
-                // Start from snapshot
-                state.applySnapshot(snapshot.getCellColumns());
-                startIndex = 0;
-                
-                // Apply deltas until target tick
-                for (int i = startIndex; i < deltas.size(); i++) {
-                    TickDelta delta = deltas.get(i);
-                    if (delta.getTickNumber() > targetTick) {
-                        break;
-                    }
-                    state.applyDelta(delta.getChangedCells());
-                    if (delta.getTickNumber() == targetTick) {
-                        targetDelta = delta;
-                        break;
-                    }
-                }
-            }
-            
+            // Find the target delta to get metadata (organisms, etc.)
+            TickDelta targetDelta = findDelta(deltas, targetTick);
             if (targetDelta == null) {
                 throw new ChunkCorruptedException(
                         "Target tick " + targetTick + " not found in chunk deltas");
             }
+            
+            currentTick = targetTick;
             
             return TickData.newBuilder()
                     .setSimulationRunId(chunk.getSimulationRunId())
@@ -508,6 +498,128 @@ public final class DeltaCodec {
                     .setRngState(targetDelta.getRngState())
                     .addAllStrategyStates(targetDelta.getStrategyStatesList())
                     .build();
+        }
+        
+        /**
+         * Rebuilds state from scratch for a target tick.
+         * Uses accumulated deltas as shortcuts when available.
+         */
+        private void rebuildStateForTick(TickDataChunk chunk, TickData snapshot,
+                                          List<TickDelta> deltas, long targetTick) {
+            state.reset();
+            currentChunk = chunk;
+            
+            // Find best starting point (closest accumulated delta before target)
+            TickDelta bestAcc = null;
+            int bestAccIndex = -1;
+            
+            for (int i = 0; i < deltas.size(); i++) {
+                TickDelta delta = deltas.get(i);
+                if (delta.getTickNumber() > targetTick) {
+                    break;
+                }
+                if (delta.getDeltaType() == DeltaType.ACCUMULATED) {
+                    bestAcc = delta;
+                    bestAccIndex = i;
+                }
+            }
+            
+            // Apply snapshot
+            state.applySnapshot(snapshot.getCellColumns());
+            
+            if (bestAcc != null) {
+                // Use accumulated delta as shortcut
+                state.applyDelta(bestAcc.getChangedCells());
+                currentTick = bestAcc.getTickNumber();
+                
+                // Apply remaining incremental deltas
+                for (int i = bestAccIndex + 1; i < deltas.size(); i++) {
+                    TickDelta delta = deltas.get(i);
+                    if (delta.getTickNumber() > targetTick) {
+                        break;
+                    }
+                    state.applyDelta(delta.getChangedCells());
+                    currentTick = delta.getTickNumber();
+                }
+            } else {
+                // No accumulated delta, apply all deltas from snapshot
+                currentTick = snapshot.getTickNumber();
+                for (TickDelta delta : deltas) {
+                    if (delta.getTickNumber() > targetTick) {
+                        break;
+                    }
+                    state.applyDelta(delta.getChangedCells());
+                    currentTick = delta.getTickNumber();
+                }
+            }
+        }
+        
+        /**
+         * Advances state from current position to target tick.
+         * Checks if an accumulated delta shortcut is more efficient.
+         */
+        private void advanceStateToTick(TickDataChunk chunk, TickData snapshot,
+                                         List<TickDelta> deltas, long targetTick) {
+            // Find if there's an accumulated delta between currentTick and targetTick
+            TickDelta bestAcc = null;
+            int bestAccIndex = -1;
+            
+            for (int i = 0; i < deltas.size(); i++) {
+                TickDelta delta = deltas.get(i);
+                if (delta.getTickNumber() <= currentTick) {
+                    continue; // Already past this delta
+                }
+                if (delta.getTickNumber() > targetTick) {
+                    break;
+                }
+                if (delta.getDeltaType() == DeltaType.ACCUMULATED) {
+                    bestAcc = delta;
+                    bestAccIndex = i;
+                }
+            }
+            
+            if (bestAcc != null) {
+                // Accumulated delta found - reset and use it as shortcut
+                // (accumulated contains all changes since snapshot, more efficient than incremental chain)
+                state.reset();
+                state.applySnapshot(snapshot.getCellColumns());
+                state.applyDelta(bestAcc.getChangedCells());
+                currentTick = bestAcc.getTickNumber();
+                
+                // Apply remaining incremental deltas after the accumulated
+                for (int i = bestAccIndex + 1; i < deltas.size(); i++) {
+                    TickDelta delta = deltas.get(i);
+                    if (delta.getTickNumber() > targetTick) {
+                        break;
+                    }
+                    state.applyDelta(delta.getChangedCells());
+                    currentTick = delta.getTickNumber();
+                }
+            } else {
+                // No accumulated delta in range - apply incrementals from current position
+                for (TickDelta delta : deltas) {
+                    if (delta.getTickNumber() <= currentTick) {
+                        continue; // Already applied
+                    }
+                    if (delta.getTickNumber() > targetTick) {
+                        break;
+                    }
+                    state.applyDelta(delta.getChangedCells());
+                    currentTick = delta.getTickNumber();
+                }
+            }
+        }
+        
+        /**
+         * Finds a delta by tick number.
+         */
+        private TickDelta findDelta(List<TickDelta> deltas, long tickNumber) {
+            for (TickDelta delta : deltas) {
+                if (delta.getTickNumber() == tickNumber) {
+                    return delta;
+                }
+            }
+            return null;
         }
     }
     

@@ -29,6 +29,7 @@ import org.evochora.datapipeline.api.analytics.ParquetSchema;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
+import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.delta.ChunkCorruptedException;
 import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
 import org.evochora.datapipeline.utils.delta.DeltaCodec;
@@ -85,6 +86,20 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
     // Metrics
     private final AtomicLong ticksProcessed = new AtomicLong(0);
     private final AtomicLong rowsWritten = new AtomicLong(0);
+    
+    /**
+     * Internal record for tracking plugin processing tasks.
+     * Groups a plugin with its LOD configuration and database statement.
+     */
+    private record PluginLodTask(
+        IAnalyticsPlugin plugin,
+        String metricId,
+        String lodLevel,
+        int samplingInterval,
+        PreparedStatement statement,
+        ParquetSchema schema,
+        boolean needsEnvironment
+    ) {}
 
     /**
      * Creates a new AnalyticsIndexer.
@@ -233,41 +248,18 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
             return;
         }
 
-        // Decompress all chunks to get fully reconstructed TickData
-        // This ensures plugins receive complete environment state for every tick,
-        // not just the changed cells from deltas.
-        // Create a single Decoder for the batch to reuse MutableCellState
-        DeltaCodec.Decoder decoder = createDecoder();
-        List<TickData> ticks = new ArrayList<>();
-        for (TickDataChunk chunk : chunks) {
-            try {
-                ticks.addAll(decoder.decompressChunk(chunk));
-            } catch (ChunkCorruptedException e) {
-                log.warn("Skipping corrupt chunk: {}", e.getMessage());
-                recordError("CORRUPT_CHUNK", e.getMessage(),
-                    String.format("firstTick=%d, lastTick=%d", chunk.getFirstTick(), chunk.getLastTick()));
-                // Continue with remaining chunks - don't abort the entire batch
-            }
-        }
+        // Determine which plugins need environment data (expensive decompression)
+        boolean anyPluginNeedsEnvironment = plugins.stream().anyMatch(IAnalyticsPlugin::needsEnvironmentData);
         
-        if (ticks.isEmpty()) {
-            return;
-        }
-
-        long startTick = ticks.stream().mapToLong(TickData::getTickNumber).min().orElse(0);
-        long endTick = ticks.stream().mapToLong(TickData::getTickNumber).max().orElse(0);
+        // Create decoder for environment-aware plugins (reused across chunks for efficiency)
+        DeltaCodec.Decoder decoder = anyPluginNeedsEnvironment ? createDecoder() : null;
+        
+        // Calculate tick range for batch naming
+        long startTick = chunks.stream().mapToLong(TickDataChunk::getFirstTick).min().orElse(0);
+        long endTick = chunks.stream().mapToLong(TickDataChunk::getLastTick).max().orElse(0);
         String runId = getMetadata().getSimulationRunId();
         String subPath = calculateFolderPath(startTick);
         String filename = String.format("batch_%020d_%020d.parquet", startTick, endTick);
-
-        record PluginLodTask(
-            IAnalyticsPlugin plugin,
-            String metricId,
-            String lodLevel,
-            int samplingInterval,
-            PreparedStatement statement,
-            ParquetSchema schema
-        ) {}
 
         List<PluginLodTask> tasks = new ArrayList<>();
         Map<PluginLodTask, Integer> rowsWrittenPerTask = new HashMap<>();
@@ -278,10 +270,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
             for (IAnalyticsPlugin plugin : plugins) {
                 try {
                     int baseSamplingInterval = plugin.getSamplingInterval();
-                    
-                    // FIX: Process each LOD level with isolated plugin state
-                    // Group ticks by LOD first to avoid calling extractRows multiple times
-                    // for overlapping sampling intervals
+                    boolean needsEnv = plugin.needsEnvironmentData();
                     
                     for (int level = 0; level < plugin.getLodLevels(); level++) {
                         String lodLevel = "lod" + level;
@@ -295,7 +284,8 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
                         }
                         
                         PreparedStatement ps = conn.prepareStatement(schema.toInsertSql(tableName));
-                        PluginLodTask task = new PluginLodTask(plugin, plugin.getMetricId(), lodLevel, effectiveSamplingInterval, ps, schema);
+                        PluginLodTask task = new PluginLodTask(plugin, plugin.getMetricId(), lodLevel, 
+                            effectiveSamplingInterval, ps, schema, needsEnv);
                         tasks.add(task);
                         rowsWrittenPerTask.put(task, 0);
                     }
@@ -306,49 +296,18 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
             }
 
             // 2. Process: Group by plugin to ensure each plugin only processes each tick ONCE
-            // Then distribute to appropriate LOD levels
             Map<IAnalyticsPlugin, List<PluginLodTask>> tasksByPlugin = tasks.stream()
                 .collect(java.util.stream.Collectors.groupingBy(PluginLodTask::plugin));
             
-            for (TickData tick : ticks) {
-                for (Map.Entry<IAnalyticsPlugin, List<PluginLodTask>> entry : tasksByPlugin.entrySet()) {
-                    IAnalyticsPlugin plugin = entry.getKey();
-                    List<PluginLodTask> pluginTasks = entry.getValue();
-                    
-                    // Find the finest-grained LOD that matches this tick
-                    // (lowest sampling interval = lod0)
-                    PluginLodTask finestMatchingTask = null;
-                    for (PluginLodTask task : pluginTasks) {
-                    if (tick.getTickNumber() % task.samplingInterval() == 0) {
-                            if (finestMatchingTask == null || 
-                                task.samplingInterval() < finestMatchingTask.samplingInterval()) {
-                                finestMatchingTask = task;
-                            }
-                        }
-                    }
-                    
-                    if (finestMatchingTask == null) continue;
-                    
-                    // Extract rows ONCE from the plugin
-                        try {
-                        List<Object[]> rows = plugin.extractRows(tick);
-                        
-                        // Distribute the same rows to ALL matching LOD levels
-                        for (PluginLodTask task : pluginTasks) {
-                            if (tick.getTickNumber() % task.samplingInterval() == 0) {
-                            for (Object[] row : rows) {
-                                bindRow(task.statement(), task.schema(), row);
-                                task.statement().addBatch();
-                                rowsWrittenPerTask.compute(task, (k, v) -> v + 1);
-                            }
-                            }
-                        }
-                        } catch (Exception e) {
-                            log.warn("Plugin {} failed to extract rows for tick {}. Skipping row.", 
-                            plugin.getMetricId(), tick.getTickNumber());
-                            recordError("PLUGIN_EXTRACT_ERROR", "Plugin failed during row extraction", 
-                            String.format("Plugin: %s, Tick: %d", plugin.getMetricId(), tick.getTickNumber()));
-                    }
+            // Process chunks in order (important for stateful decoder efficiency)
+            for (TickDataChunk chunk : chunks) {
+                try {
+                    processChunkOptimized(chunk, decoder, tasksByPlugin, rowsWrittenPerTask);
+                } catch (ChunkCorruptedException e) {
+                    log.warn("Skipping corrupt chunk: {}", e.getMessage());
+                    recordError("CORRUPT_CHUNK", e.getMessage(),
+                        String.format("firstTick=%d, lastTick=%d", chunk.getFirstTick(), chunk.getLastTick()));
+                    // Continue with remaining chunks
                 }
             }
 
@@ -391,7 +350,141 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
             }
         }
         
-        ticksProcessed.addAndGet(ticks.size());
+        // Count processed ticks from chunks
+        long totalTicksInChunks = chunks.stream().mapToLong(TickDataChunk::getTickCount).sum();
+        ticksProcessed.addAndGet(totalTicksInChunks);
+    }
+    
+    /**
+     * Processes a single chunk with optimized decompression.
+     * <p>
+     * <strong>Optimization Strategy:</strong>
+     * <ul>
+     *   <li>For ticks where no plugin needs environment data: read organisms directly from delta</li>
+     *   <li>For ticks where at least one plugin needs environment: decompress using stateful decoder</li>
+     *   <li>Decoder reuses state for sequential forward access (no repeated snapshot application)</li>
+     * </ul>
+     *
+     * @param chunk The chunk to process
+     * @param decoder The stateful decoder (null if no plugins need environment)
+     * @param tasksByPlugin Plugin tasks grouped by plugin
+     * @param rowsWrittenPerTask Counter for rows written per task
+     */
+    private void processChunkOptimized(
+            TickDataChunk chunk,
+            DeltaCodec.Decoder decoder,
+            Map<IAnalyticsPlugin, List<PluginLodTask>> tasksByPlugin,
+            Map<PluginLodTask, Integer> rowsWrittenPerTask) throws ChunkCorruptedException {
+        
+        String runId = chunk.getSimulationRunId();
+        
+        // Process snapshot first (always has full environment data)
+        TickData snapshot = chunk.getSnapshot();
+        processTickForPlugins(snapshot, tasksByPlugin, rowsWrittenPerTask);
+        
+        // Process deltas
+        for (TickDelta delta : chunk.getDeltasList()) {
+            long tickNumber = delta.getTickNumber();
+            
+            // Determine if any plugin needs this tick AND needs environment data
+            boolean needsEnvironmentForThisTick = false;
+            boolean anyPluginNeedsThisTick = false;
+            
+            for (Map.Entry<IAnalyticsPlugin, List<PluginLodTask>> entry : tasksByPlugin.entrySet()) {
+                for (PluginLodTask task : entry.getValue()) {
+                    if (tickNumber % task.samplingInterval() == 0) {
+                        anyPluginNeedsThisTick = true;
+                        if (task.needsEnvironment()) {
+                            needsEnvironmentForThisTick = true;
+                            break;
+                        }
+                    }
+                }
+                if (needsEnvironmentForThisTick) break;
+            }
+            
+            if (!anyPluginNeedsThisTick) {
+                continue; // No plugin needs this tick
+            }
+            
+            if (needsEnvironmentForThisTick && decoder != null) {
+                // Decompress to get full environment data (uses stateful decoder)
+                TickData fullTick = decoder.decompressTick(chunk, tickNumber);
+                processTickForPlugins(fullTick, tasksByPlugin, rowsWrittenPerTask);
+            } else {
+                // Create lightweight TickData with only organism data (no environment reconstruction)
+                TickData lightTick = createLightweightTickData(runId, delta);
+                processTickForPlugins(lightTick, tasksByPlugin, rowsWrittenPerTask);
+            }
+        }
+    }
+    
+    /**
+     * Creates a lightweight TickData with only organism data (no environment).
+     * <p>
+     * Used for plugins that don't need environment data, avoiding expensive decompression.
+     */
+    private TickData createLightweightTickData(String runId, TickDelta delta) {
+        return TickData.newBuilder()
+                .setSimulationRunId(runId)
+                .setTickNumber(delta.getTickNumber())
+                .setCaptureTimeMs(delta.getCaptureTimeMs())
+                // Note: CellColumns is empty - plugins that need it should declare needsEnvironmentData()
+                .addAllOrganisms(delta.getOrganismsList())
+                .setTotalOrganismsCreated(delta.getTotalOrganismsCreated())
+                .setRngState(delta.getRngState())
+                .addAllStrategyStates(delta.getStrategyStatesList())
+                .build();
+    }
+    
+    /**
+     * Processes a tick for all plugins that need it.
+     */
+    private void processTickForPlugins(
+            TickData tick,
+            Map<IAnalyticsPlugin, List<PluginLodTask>> tasksByPlugin,
+            Map<PluginLodTask, Integer> rowsWrittenPerTask) {
+        
+        long tickNumber = tick.getTickNumber();
+        
+        for (Map.Entry<IAnalyticsPlugin, List<PluginLodTask>> entry : tasksByPlugin.entrySet()) {
+            IAnalyticsPlugin plugin = entry.getKey();
+            List<PluginLodTask> pluginTasks = entry.getValue();
+            
+            // Find the finest-grained LOD that matches this tick
+            PluginLodTask finestMatchingTask = null;
+            for (PluginLodTask task : pluginTasks) {
+                if (tickNumber % task.samplingInterval() == 0) {
+                    if (finestMatchingTask == null || 
+                        task.samplingInterval() < finestMatchingTask.samplingInterval()) {
+                        finestMatchingTask = task;
+                    }
+                }
+            }
+            
+            if (finestMatchingTask == null) continue;
+            
+            // Extract rows ONCE from the plugin
+            try {
+                List<Object[]> rows = plugin.extractRows(tick);
+                
+                // Distribute the same rows to ALL matching LOD levels
+                for (PluginLodTask task : pluginTasks) {
+                    if (tickNumber % task.samplingInterval() == 0) {
+                        for (Object[] row : rows) {
+                            bindRow(task.statement(), task.schema(), row);
+                            task.statement().addBatch();
+                            rowsWrittenPerTask.compute(task, (k, v) -> v + 1);
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Plugin {} failed to extract rows for tick {}. Skipping row.", 
+                    plugin.getMetricId(), tickNumber);
+                recordError("PLUGIN_EXTRACT_ERROR", "Plugin failed during row extraction", 
+                    String.format("Plugin: %s, Tick: %d", plugin.getMetricId(), tickNumber));
+            }
+        }
     }
     
     /**

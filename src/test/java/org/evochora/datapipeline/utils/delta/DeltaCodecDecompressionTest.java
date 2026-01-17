@@ -187,6 +187,143 @@ class DeltaCodecDecompressionTest {
     }
     
     // ========================================================================
+    // Stateful Decoder Tests
+    // ========================================================================
+    
+    @Test
+    void decompressTick_sequentialForwardAccess_reusesState() throws ChunkCorruptedException {
+        // Create a chunk with multiple ticks that have cumulative changes
+        CellDataColumns snapshotCells = createCells(new int[]{0}, new int[]{10});
+        CellDataColumns delta1Cells = createCells(new int[]{1}, new int[]{20});
+        CellDataColumns delta2Cells = createCells(new int[]{2}, new int[]{30});
+        CellDataColumns delta3Cells = createCells(new int[]{3}, new int[]{40});
+        
+        TickData snapshot = createSnapshotWithCells(0, snapshotCells);
+        TickDelta delta1 = createIncrementalDelta(100, delta1Cells);
+        TickDelta delta2 = createIncrementalDelta(200, delta2Cells);
+        TickDelta delta3 = createIncrementalDelta(300, delta3Cells);
+        
+        TickDataChunk chunk = TickDataChunk.newBuilder()
+                .setSimulationRunId(RUN_ID)
+                .setFirstTick(0)
+                .setLastTick(300)
+                .setTickCount(4)
+                .setSnapshot(snapshot)
+                .addDeltas(delta1)
+                .addDeltas(delta2)
+                .addDeltas(delta3)
+                .build();
+        
+        // Sequential forward access - decoder should reuse state
+        TickData tick100 = decoder.decompressTick(chunk, 100);
+        assertEquals(100, tick100.getTickNumber());
+        assertEquals(2, tick100.getCellColumns().getFlatIndicesCount()); // 0, 1
+        
+        TickData tick200 = decoder.decompressTick(chunk, 200);
+        assertEquals(200, tick200.getTickNumber());
+        assertEquals(3, tick200.getCellColumns().getFlatIndicesCount()); // 0, 1, 2
+        
+        TickData tick300 = decoder.decompressTick(chunk, 300);
+        assertEquals(300, tick300.getTickNumber());
+        assertEquals(4, tick300.getCellColumns().getFlatIndicesCount()); // 0, 1, 2, 3
+    }
+    
+    @Test
+    void decompressTick_backwardJump_rebuildsState() throws ChunkCorruptedException {
+        CellDataColumns snapshotCells = createCells(new int[]{0}, new int[]{10});
+        CellDataColumns delta1Cells = createCells(new int[]{1}, new int[]{20});
+        CellDataColumns delta2Cells = createCells(new int[]{2}, new int[]{30});
+        
+        TickData snapshot = createSnapshotWithCells(0, snapshotCells);
+        TickDelta delta1 = createIncrementalDelta(100, delta1Cells);
+        TickDelta delta2 = createIncrementalDelta(200, delta2Cells);
+        
+        TickDataChunk chunk = TickDataChunk.newBuilder()
+                .setSimulationRunId(RUN_ID)
+                .setFirstTick(0)
+                .setLastTick(200)
+                .setTickCount(3)
+                .setSnapshot(snapshot)
+                .addDeltas(delta1)
+                .addDeltas(delta2)
+                .build();
+        
+        // Go to tick 200 first
+        TickData tick200 = decoder.decompressTick(chunk, 200);
+        assertEquals(3, tick200.getCellColumns().getFlatIndicesCount()); // 0, 1, 2
+        
+        // Jump back to tick 100 (requires state rebuild)
+        TickData tick100 = decoder.decompressTick(chunk, 100);
+        assertEquals(100, tick100.getTickNumber());
+        assertEquals(2, tick100.getCellColumns().getFlatIndicesCount()); // 0, 1
+    }
+    
+    @Test
+    void decompressTick_chunkSwitch_rebuildsState() throws ChunkCorruptedException {
+        // First chunk
+        CellDataColumns cells1 = createCells(new int[]{0}, new int[]{10});
+        TickData snapshot1 = createSnapshotWithCells(0, cells1);
+        TickDataChunk chunk1 = createChunkWithSnapshot(snapshot1);
+        
+        // Second chunk
+        CellDataColumns cells2 = createCells(new int[]{5}, new int[]{50});
+        TickData snapshot2 = createSnapshotWithCells(100, cells2);
+        TickDataChunk chunk2 = createChunkWithSnapshot(snapshot2);
+        
+        // Decompress from first chunk
+        TickData tick0 = decoder.decompressTick(chunk1, 0);
+        assertEquals(0, tick0.getTickNumber());
+        assertEquals(10, tick0.getCellColumns().getMoleculeData(0));
+        
+        // Switch to second chunk (state should rebuild)
+        TickData tick100 = decoder.decompressTick(chunk2, 100);
+        assertEquals(100, tick100.getTickNumber());
+        assertEquals(50, tick100.getCellColumns().getMoleculeData(0));
+    }
+    
+    @Test
+    void decompressTick_sameTickTwice_returnsSameResult() throws ChunkCorruptedException {
+        CellDataColumns snapshotCells = createCells(new int[]{0}, new int[]{10});
+        CellDataColumns deltaCells = createCells(new int[]{1}, new int[]{20});
+        
+        TickData snapshot = createSnapshotWithCells(0, snapshotCells);
+        TickDelta delta = createIncrementalDelta(100, deltaCells);
+        
+        TickDataChunk chunk = TickDataChunk.newBuilder()
+                .setSimulationRunId(RUN_ID)
+                .setFirstTick(0)
+                .setLastTick(100)
+                .setTickCount(2)
+                .setSnapshot(snapshot)
+                .addDeltas(delta)
+                .build();
+        
+        // Request same tick twice
+        TickData tick100a = decoder.decompressTick(chunk, 100);
+        TickData tick100b = decoder.decompressTick(chunk, 100);
+        
+        assertEquals(tick100a.getTickNumber(), tick100b.getTickNumber());
+        assertEquals(tick100a.getCellColumns().getFlatIndicesCount(), 
+                     tick100b.getCellColumns().getFlatIndicesCount());
+    }
+    
+    @Test
+    void reset_clearsState() throws ChunkCorruptedException {
+        CellDataColumns snapshotCells = createCells(new int[]{0}, new int[]{10});
+        TickData snapshot = createSnapshotWithCells(0, snapshotCells);
+        TickDataChunk chunk = createChunkWithSnapshot(snapshot);
+        
+        // Decompress something
+        decoder.decompressTick(chunk, 0);
+        
+        // Reset and decompress again
+        decoder.reset();
+        TickData tick = decoder.decompressTick(chunk, 0);
+        
+        assertEquals(0, tick.getTickNumber());
+    }
+    
+    // ========================================================================
     // Edge Cases
     // ========================================================================
     

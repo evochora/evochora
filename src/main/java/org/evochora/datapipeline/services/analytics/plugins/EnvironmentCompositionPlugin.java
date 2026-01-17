@@ -62,6 +62,20 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
         return SCHEMA;
     }
 
+    /**
+     * This plugin requires environment data to count molecule types.
+     * <p>
+     * The indexer uses this to optimize decompression: environment data is only
+     * reconstructed for ticks where this plugin (or another environment-aware plugin)
+     * needs to run.
+     *
+     * @return {@code true} - this plugin analyzes cell composition
+     */
+    @Override
+    public boolean needsEnvironmentData() {
+        return true;
+    }
+
     @Override
     public List<Object[]> extractRows(TickData tick) {
         long codeCells = 0;

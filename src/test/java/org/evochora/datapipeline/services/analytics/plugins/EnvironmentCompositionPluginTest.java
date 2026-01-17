@@ -62,6 +62,11 @@ class EnvironmentCompositionPluginTest {
     }
 
     @Test
+    void testNeedsEnvironmentData_returnsTrue() {
+        assertThat(plugin.needsEnvironmentData()).isTrue();
+    }
+    
+    @Test
     void testExtractRows_SamplingMode_DoesNotCrash() {
         plugin.configure(ConfigFactory.parseMap(Map.of("metricId", "env", "monteCarloSamples", 2)));
         plugin.initialize(null);

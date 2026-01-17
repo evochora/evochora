@@ -212,6 +212,31 @@ public interface IAnalyticsPlugin extends IMemoryEstimatable {
     }
 
     /**
+     * Indicates whether this plugin requires access to environment (cell) data.
+     * <p>
+     * Plugins that return {@code false} (the default) only need organism data, which
+     * is available directly in deltas without expensive decompression. The indexer
+     * uses this to optimize processing: environment data is only reconstructed for
+     * ticks where at least one plugin needs it.
+     * <p>
+     * <strong>Performance Impact:</strong> Reconstructing environment data requires
+     * iterating over all cells in the world (potentially millions). Plugins that
+     * only analyze organisms should return {@code false} to avoid this overhead.
+     * <p>
+     * <strong>When to return true:</strong>
+     * <ul>
+     *   <li>Plugin calls {@code tick.getCellColumns()} or similar</li>
+     *   <li>Plugin analyzes spatial distribution of molecules</li>
+     *   <li>Plugin counts cell types (CODE, DATA, ENERGY, STRUCTURE)</li>
+     * </ul>
+     *
+     * @return {@code true} if this plugin needs environment data, {@code false} otherwise
+     */
+    default boolean needsEnvironmentData() {
+        return false;
+    }
+
+    /**
      * Estimates the worst-case heap memory usage for this plugin's internal state.
      * <p>
      * The default implementation returns an empty list, assuming no significant
