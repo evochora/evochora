@@ -155,8 +155,13 @@ public class InspectStorageSubcommand implements Callable<Integer> {
 
     private int calculateTotalCells(SimulationMetadata metadata) {
         if (!metadata.hasEnvironment()) {
-            return 1; // Fallback
+            throw new IllegalStateException("Simulation metadata is missing environment configuration. Cannot calculate total cells for decoder.");
         }
+        
+        if (metadata.getEnvironment().getShapeCount() == 0) {
+             throw new IllegalStateException("Simulation metadata has empty environment shape. Cannot calculate total cells for decoder.");
+        }
+
         int total = 1;
         for (int dim : metadata.getEnvironment().getShapeList()) {
             total *= dim;
