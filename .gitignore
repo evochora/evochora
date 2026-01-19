@@ -10,6 +10,7 @@ build/
 .idea/compiler.xml
 .idea/libraries/
 /.idea/dataSources*
+.idea/db-forest-config.xml
 *.iws
 *.iml
 *.ipr
