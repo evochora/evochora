@@ -154,7 +154,7 @@ public class Simulation {
         this.currentTick++;
     }
 }
-```
+``` 
 
 ### 2. StateInstruction.java - FORK Integration
 
