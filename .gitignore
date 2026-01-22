@@ -9,7 +9,7 @@ build/
 .idea/jarRepositories.xml
 .idea/compiler.xml
 .idea/libraries/
-/.idea/dataSources*
+.idea/dataSources*
 .idea/db-forest-config.xml
 .idea/inspectionProfiles/Project_Default.xml
 *.iws
