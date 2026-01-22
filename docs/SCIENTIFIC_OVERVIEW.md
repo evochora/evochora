@@ -235,6 +235,7 @@ By enforcing thermodynamic constraints—where every action generates waste heat
 ## 4. Scalability and Reproducibility
 
 The grand scientific ambitions of Evochora are predicated on the ability to run large-scale experiments that are both computationally feasible and scientifically rigorous. Unlike many prototype simulations, Evochora is built on a mature software engineering foundation designed for long-term stability and distributed execution.
+For a detailed technical breakdown of the engineering choices behind this performance (e.g., why we avoided standard GPU kernels), see the **[Architecture & Design Decisions](../docs/ARCHITECTURE_DECISIONS.md)** document.
 
 ### Engineering Maturity Status
 

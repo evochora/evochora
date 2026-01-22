@@ -517,6 +517,7 @@ Some key directions for the technical evolution of Evochora:
     - [Scientific Overview](docs/SCIENTIFIC_OVERVIEW.md)
     - [CLI Usage Guide](docs/CLI_USAGE.md)
     - [Assembly Specification](docs/ASSEMBLY_SPEC.md) (EvoASM – Evochora Assembly)
+    - [Architecture & Design Decisions](docs/ARCHITECTURE_DECISIONS.md) (Why Java? Why Custom Assembly? Why Microservices?)
 
 <br>
 

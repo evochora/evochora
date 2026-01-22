@@ -72,10 +72,11 @@ Further CLI documentation and fully worked examples:
  * Join the Evochora Discord (Community Chat): [![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat-square&logo=discord)](https://discord.gg/t9yEJc4MKX)
  * Use GitHub Discussions: [Discussions](https://github.com/evochora/evochora/discussions)
 
-
 ## Development Standards (Important!)
 
 We maintain strict architectural standards to keep the simulation deterministic and performant.
+
+If you are wondering why the project uses a custom Assembly language or a distributed microservice architecture instead of a simple Python script, please read **[Architecture & Design Decisions](docs/ARCHITECTURE_DECISIONS.md)** first.
 
 Before writing code, please read **[AGENTS.md](AGENTS.md)**. It contains:
 * The architecture rules (Hexagonal Architecture).
