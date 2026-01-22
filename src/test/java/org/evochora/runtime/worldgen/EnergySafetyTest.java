@@ -1,6 +1,7 @@
 package org.evochora.runtime.worldgen;
 
 import org.evochora.runtime.Config;
+import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
@@ -8,6 +9,8 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * Contains unit tests for the "safety radius" feature of world generation,
@@ -31,9 +34,14 @@ public class EnergySafetyTest {
         // High probability, radius 2
         SolarRadiationCreator solar = new SolarRadiationCreator(1.0, 11, 2);
 
+        // Create mock Simulation
+        Simulation sim = mock(Simulation.class);
+        when(sim.getEnvironment()).thenReturn(env);
+
         // Run several attempts
         for (int i = 0; i < 50; i++) {
-            solar.distributeEnergy(env, i + 1);
+            when(sim.getCurrentTick()).thenReturn((long) (i + 1));
+            solar.execute(sim);
         }
 
         // Assert any placed ENERGY cell satisfies the unowned-area predicate for the configured radius
@@ -67,9 +75,15 @@ public class EnergySafetyTest {
         // Deterministic RNG and safety radius 2
         GeyserCreator geyser = new GeyserCreator(new SeededRandomProvider(0L), 1, 1, 13, 2);
 
+        // Create mock Simulation
+        Simulation sim = mock(Simulation.class);
+        when(sim.getEnvironment()).thenReturn(env);
+
         // Initialize and then erupt
-        geyser.distributeEnergy(env, 0);
-        geyser.distributeEnergy(env, 1);
+        when(sim.getCurrentTick()).thenReturn(0L);
+        geyser.execute(sim);
+        when(sim.getCurrentTick()).thenReturn(1L);
+        geyser.execute(sim);
 
         // Check any STRUCTURE (geyser source) was not placed violating safety radius
         for (int x = 0; x < 7; x++) {

@@ -1,12 +1,15 @@
 package org.evochora.runtime.worldgen;
 
 import org.evochora.runtime.Config;
+import org.evochora.runtime.Simulation;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * Contains unit tests for the {@link GeyserCreator} world generation strategy.
@@ -29,9 +32,15 @@ public class GeyserStrategyTest {
         // count=1 for determinism, interval=1 to trigger on tick 1, amount=77
         GeyserCreator strat = new GeyserCreator(1, 1, 77);
 
+        // Create mock Simulation
+        Simulation sim = mock(Simulation.class);
+        when(sim.getEnvironment()).thenReturn(env);
+
         // First call initializes geysers but does not place energy until tick%interval==0 and >0
-        strat.distributeEnergy(env, 0);
-        strat.distributeEnergy(env, 1);
+        when(sim.getCurrentTick()).thenReturn(0L);
+        strat.execute(sim);
+        when(sim.getCurrentTick()).thenReturn(1L);
+        strat.execute(sim);
 
         // Verify at least one ENERGY cell exists with the correct amount
         boolean found = false;

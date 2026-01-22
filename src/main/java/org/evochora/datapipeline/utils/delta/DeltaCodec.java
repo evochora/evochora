@@ -4,7 +4,7 @@ import com.google.protobuf.ByteString;
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.DeltaType;
 import org.evochora.datapipeline.api.contracts.OrganismState;
-import org.evochora.datapipeline.api.contracts.StrategyState;
+import org.evochora.datapipeline.api.contracts.PluginState;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TickDelta;
@@ -149,7 +149,7 @@ public final class DeltaCodec {
          * @param organisms current organism states
          * @param totalOrganismsCreated total organisms created since simulation start
          * @param rngState RNG state bytes
-         * @param strategyStates energy strategy states
+         * @param pluginStates energy strategy states
          * @return Optional containing a complete chunk, or empty if chunk not yet complete
          */
         public Optional<TickDataChunk> captureTick(
@@ -158,7 +158,7 @@ public final class DeltaCodec {
                 List<OrganismState> organisms,
                 long totalOrganismsCreated,
                 ByteString rngState,
-                List<StrategyState> strategyStates) {
+                List<PluginState> pluginStates) {
             
             // Get changes since last sample
             BitSet changedSinceLastSample = env.getChangedIndices();
@@ -183,7 +183,7 @@ public final class DeltaCodec {
                         .addAllOrganisms(organisms)
                         .setTotalOrganismsCreated(totalOrganismsCreated)
                         .setRngState(rngState)
-                        .addAllStrategyStates(strategyStates)
+                        .addAllPluginStates(pluginStates)
                         .build();
                 
                 snapshotsInChunk++;
@@ -194,7 +194,7 @@ public final class DeltaCodec {
                 DeltaCapture delta = captureDelta(
                         tick, captureTimeMs, DeltaType.ACCUMULATED,
                         changedCells, organisms, totalOrganismsCreated,
-                        rngState, strategyStates);
+                        rngState, pluginStates);
                 currentDeltas.add(delta);
             } else {
                 // Incremental delta - only changes since last sample
@@ -415,7 +415,7 @@ public final class DeltaCodec {
                         .addAllOrganisms(delta.getOrganismsList())
                         .setTotalOrganismsCreated(delta.getTotalOrganismsCreated())
                         .setRngState(delta.getRngState())
-                        .addAllStrategyStates(delta.getStrategyStatesList())
+                        .addAllPluginStates(delta.getPluginStatesList())
                         .build();
                 
                 result.add(reconstructed);
@@ -496,7 +496,7 @@ public final class DeltaCodec {
                     .addAllOrganisms(targetDelta.getOrganismsList())
                     .setTotalOrganismsCreated(targetDelta.getTotalOrganismsCreated())
                     .setRngState(targetDelta.getRngState())
-                    .addAllStrategyStates(targetDelta.getStrategyStatesList())
+                    .addAllPluginStates(targetDelta.getPluginStatesList())
                     .build();
         }
         
@@ -643,7 +643,7 @@ public final class DeltaCodec {
      * @param organisms current organism states
      * @param totalOrganismsCreated total organisms created since simulation start
      * @param rngState RNG state bytes (empty for INCREMENTAL)
-     * @param strategyStates strategy states (empty for INCREMENTAL)
+     * @param pluginStates strategy states (empty for INCREMENTAL)
      * @return the constructed TickDelta protobuf message
      */
     static TickDelta createDelta(
@@ -654,7 +654,7 @@ public final class DeltaCodec {
             List<OrganismState> organisms,
             long totalOrganismsCreated,
             ByteString rngState,
-            List<StrategyState> strategyStates) {
+            List<PluginState> pluginStates) {
         
         if (deltaType == DeltaType.DELTA_TYPE_UNSPECIFIED) {
             throw new IllegalArgumentException("deltaType must be INCREMENTAL or ACCUMULATED");
@@ -668,7 +668,7 @@ public final class DeltaCodec {
                 .addAllOrganisms(organisms != null ? organisms : List.of())
                 .setTotalOrganismsCreated(totalOrganismsCreated)
                 .setRngState(rngState != null ? rngState : ByteString.EMPTY)
-                .addAllStrategyStates(strategyStates != null ? strategyStates : List.of())
+                .addAllPluginStates(pluginStates != null ? pluginStates : List.of())
                 .build();
     }
     
@@ -720,7 +720,7 @@ public final class DeltaCodec {
      * @param organisms current organism states
      * @param totalOrganismsCreated total organisms created since simulation start
      * @param rngState RNG state bytes
-     * @param strategyStates strategy states
+     * @param pluginStates strategy states
      * @return a DeltaCapture containing the constructed TickDelta
      */
     static DeltaCapture captureDelta(
@@ -731,12 +731,12 @@ public final class DeltaCodec {
             List<OrganismState> organisms,
             long totalOrganismsCreated,
             ByteString rngState,
-            List<StrategyState> strategyStates) {
+            List<PluginState> pluginStates) {
         
         TickDelta delta = createDelta(
                 tickNumber, captureTimeMs, deltaType,
                 changedCells, organisms, totalOrganismsCreated,
-                rngState, strategyStates);
+                rngState, pluginStates);
         
         return new DeltaCapture(tickNumber, captureTimeMs, delta);
     }

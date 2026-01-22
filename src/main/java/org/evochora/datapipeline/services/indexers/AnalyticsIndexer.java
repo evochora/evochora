@@ -433,7 +433,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
                 .addAllOrganisms(delta.getOrganismsList())
                 .setTotalOrganismsCreated(delta.getTotalOrganismsCreated())
                 .setRngState(delta.getRngState())
-                .addAllStrategyStates(delta.getStrategyStatesList())
+                .addAllPluginStates(delta.getPluginStatesList())
                 .build();
     }
     

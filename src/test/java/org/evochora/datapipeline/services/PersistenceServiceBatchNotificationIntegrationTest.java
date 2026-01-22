@@ -259,7 +259,7 @@ class PersistenceServiceBatchNotificationIntegrationTest {
                         }
                       }
                     ]
-                    energyStrategies = []
+                    tickPlugins = []
                   }
                 }
                 

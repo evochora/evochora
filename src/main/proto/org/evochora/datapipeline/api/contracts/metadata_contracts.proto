@@ -34,10 +34,10 @@ message SimulationMetadata {
   // Source: EnvironmentProperties from runtime initialization
   EnvironmentConfig environment = 4;
 
-  // Energy distribution strategy configurations
-  // Source: All IEnergyDistributionCreator instances from evochora.conf "simulation.energyStrategies"
-  // Multiple strategies can be active simultaneously (e.g., GeyserCreator + SolarRadiationCreator)
-  repeated EnergyStrategyConfig energy_strategies = 5;
+  // Tick plugin configurations
+  // Source: All ITickPlugin instances from evochora.conf "simulation.tickPlugins"
+  // Multiple plugins can be active simultaneously (e.g., GeyserCreator + SolarRadiationCreator)
+  repeated TickPluginConfig tick_plugins = 5;
 
   // All compiled programs used in this simulation
   // Source: Output from Compiler.compile() for each program
@@ -106,16 +106,16 @@ message EnvironmentConfig {
   repeated bool toroidal = 3;
 }
 
-// Configuration for energy distribution strategy.
-// Describes which strategy is used and its parameters.
-message EnergyStrategyConfig {
-  // Fully qualified class name of the strategy implementation
-  // Source: IEnergyDistributionCreator.getClass().getName()
+// Configuration for a tick plugin.
+// Describes which plugin is used and its parameters.
+message TickPluginConfig {
+  // Fully qualified class name of the plugin implementation
+  // Source: ITickPlugin.getClass().getName()
   // Example: "org.evochora.runtime.worldgen.GeyserCreator"
-  string strategy_type = 1;
+  string plugin_class = 1;
 
-  // Strategy-specific configuration as JSON
-  // Source: Strategy's configuration object serialized to JSON
+  // Plugin-specific configuration as JSON
+  // Source: Plugin's configuration object serialized to JSON
   // Example: {"geyserCount": 5, "energyPerTick": 10}
   string config_json = 2;
 }

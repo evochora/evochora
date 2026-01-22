@@ -199,8 +199,8 @@ class SimulationMetadataIntegrationTest {
         assertEquals(100, metadata.getEnvironment().getShape(0));
         assertEquals(100, metadata.getEnvironment().getShape(1));
 
-        // Verify energy strategies
-        assertTrue(metadata.getEnergyStrategiesCount() > 0);
+        // Verify tick plugins
+        assertTrue(metadata.getTickPluginsCount() > 0);
 
         // Verify programs
         assertTrue(metadata.getProgramsCount() > 0);
@@ -337,7 +337,7 @@ class SimulationMetadataIntegrationTest {
                       shape = [100, 100]
                       topology = "TORUS"
                     }
-                    energyStrategies = [
+                    tickPlugins = [
                       {
                         className = "org.evochora.runtime.worldgen.GeyserCreator"
                         options {

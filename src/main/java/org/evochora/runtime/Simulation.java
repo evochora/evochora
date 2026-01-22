@@ -14,6 +14,7 @@ import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.spi.IRandomProvider;
+import org.evochora.runtime.spi.ITickPlugin;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,6 +39,7 @@ public class Simulation {
      */
     public boolean paused = true;
     private final List<Organism> newOrganismsThisTick = new ArrayList<>();
+    private final List<ITickPlugin> tickPlugins = new ArrayList<>();
     private int nextOrganismId = 1;
     private IRandomProvider randomProvider;
 
@@ -106,6 +108,23 @@ public class Simulation {
     }
 
     /**
+     * Adds a tick plugin to the simulation.
+     * Plugins are executed in the order they are added, at the beginning of each tick.
+     * @param plugin The tick plugin to add.
+     */
+    public void addTickPlugin(ITickPlugin plugin) {
+        this.tickPlugins.add(plugin);
+    }
+
+    /**
+     * Returns the list of tick plugins.
+     * @return An unmodifiable view of the tick plugins list.
+     */
+    public List<ITickPlugin> getTickPlugins() {
+        return java.util.Collections.unmodifiableList(this.tickPlugins);
+    }
+
+    /**
      * Returns the next available unique ID for an organism.
      * @return A unique organism ID.
      */
@@ -131,11 +150,22 @@ public class Simulation {
     }
 
     /**
-     * Executes a single simulation tick. During a tick, each organism plans an instruction,
-     * conflicts are resolved, and the winning instructions are executed.
+     * Executes a single simulation tick. During a tick, tick plugins are executed first,
+     * then each organism plans an instruction, conflicts are resolved, and the winning
+     * instructions are executed.
      */
     public void tick() {
         newOrganismsThisTick.clear();
+
+        // Execute tick plugins before Plan-Resolve-Execute cycle
+        for (ITickPlugin plugin : tickPlugins) {
+            try {
+                plugin.execute(this);
+            } catch (Exception e) {
+                LOG.warn("Tick plugin '{}' failed at tick {}: {}",
+                        plugin.getClass().getSimpleName(), currentTick, e.getMessage());
+            }
+        }
 
         List<Instruction> plannedInstructions = new ArrayList<>();
         for (Organism organism : this.organisms) {
