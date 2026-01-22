@@ -6,6 +6,7 @@ import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -101,6 +102,7 @@ public abstract class Instruction {
      * @param opcodeId The full opcode ID of the instruction.
      * @return The {@code Class} object representing the instruction, or {@code null} if not found.
      */
+    @SuppressWarnings("unused")
     public static Class<? extends Instruction> getInstructionClassById(int opcodeId) {
         return REGISTERED_INSTRUCTIONS_BY_ID.get(opcodeId);
     }
@@ -145,33 +147,49 @@ public abstract class Instruction {
 
     /**
      * Resolves the operands for this instruction based on their sources.
+     * <p>
+     * This method is <b>idempotent</b>: the first call resolves and caches the operands,
+     * subsequent calls return the cached values. This allows safe calling from multiple
+     * phases (Plan, Resolve, Plugins, Execute) without side effects.
+     * <p>
+     * <b>Important:</b> For STACK operands, this method only <i>peeks</i> (reads without removing).
+     * The actual stack pops are deferred to {@link #commitStackReads()}, which must be called
+     * in the Execute phase for instructions that are actually executed.
+     *
      * @param environment The environment in which the instruction is executed.
-     * @return A list of resolved operands.
+     * @return A list of resolved operands (cached after first call).
      */
     public List<Operand> resolveOperands(Environment environment) {
-        if (this.preResolvedOperands != null) {
-            List<Operand> ops = this.preResolvedOperands;
-            this.preResolvedOperands = null; // Consume them to avoid reuse
-            return ops;
+        // Return cached operands if already resolved (idempotent)
+        if (this.cachedOperands != null) {
+            return this.cachedOperands;
         }
 
         List<Operand> resolved = new ArrayList<>();
         List<OperandSource> sources = OPERAND_SOURCES.get(fullOpcodeId);
-        if (sources == null) return resolved;
+        if (sources == null) {
+            this.cachedOperands = resolved;
+            return resolved;
+        }
 
         int[] currentIp = organism.getIpBeforeFetch();
+
+        // For STACK operands: use iterator to peek without popping
+        Iterator<Object> stackIterator = organism.getDataStack().iterator();
 
         for (OperandSource source : sources) {
             switch (source) {
                 case STACK:
-                    // For thermodynamic calculation, we peek instead of pop to avoid side effects
-                    // The instruction's execute() method will pop later and handle empty stack errors
-                    if (organism.getDataStack().isEmpty()) {
-                        // Stack is empty - return empty list, instruction will handle error later
-                        return new ArrayList<>();
+                    // PEEK via iterator - no side effects!
+                    // The actual pop() happens in commitStackReads() during Execute phase
+                    if (!stackIterator.hasNext()) {
+                        // Stack underflow - return empty list, instruction will handle error later
+                        this.cachedOperands = new ArrayList<>();
+                        return this.cachedOperands;
                     }
-                    Object val = organism.getDataStack().pop();
+                    Object val = stackIterator.next();
                     resolved.add(new Operand(val, -1));
+                    this.stackPeekCount++;
                     break;
                 case REGISTER: {
                     Organism.FetchResult arg = organism.fetchArgument(currentIp, environment);
@@ -218,7 +236,24 @@ public abstract class Instruction {
                 }
             }
         }
+        this.cachedOperands = resolved;
         return resolved;
+    }
+
+    /**
+     * Commits the stack reads that were peeked during {@link #resolveOperands(Environment)}.
+     * <p>
+     * This method performs the actual {@code pop()} operations on the data stack.
+     * It must be called <b>only once</b>, and <b>only in the Execute phase</b> for
+     * instructions that are actually executed (i.e., won conflict resolution).
+     * <p>
+     * For instructions that lost conflict resolution, this method should NOT be called,
+     * leaving the stack unchanged so the instruction can be retried in the next tick.
+     */
+    public void commitStackReads() {
+        for (int i = 0; i < this.stackPeekCount; i++) {
+            organism.getDataStack().pop();
+        }
     }
 
     /**
@@ -355,18 +390,18 @@ public abstract class Instruction {
         registerFamily(StateInstruction.class, Map.of(13, "SYNC", 92, "NRGS", 213, "NTRS"), List.of());
         // New: TRNI, TRNS, POSS, DIFS (allocate new IDs > current max 95?)
         registerFamily(StateInstruction.class, Map.of(96, "TRNI"), List.of(OperandSource.VECTOR));
-        registerFamily(StateInstruction.class, Map.of(97, "TRNS"), List.of());
+        registerFamily(StateInstruction.class, Map.of(97, "TRNS"), List.of(OperandSource.STACK));
         registerFamily(StateInstruction.class, Map.of(98, "POSS"), List.of());
         registerFamily(StateInstruction.class, Map.of(99, "DIFS"), List.of());
-        // New: RNDS (pops from stack in handler)
-        registerFamily(StateInstruction.class, Map.of(105, "RNDS"), List.of());
+        // RNDS: reads upper bound from stack
+        registerFamily(StateInstruction.class, Map.of(105, "RNDS"), List.of(OperandSource.STACK));
         // New: Active DP selection ADPR/ADPI/ADPS
         registerFamily(StateInstruction.class, Map.of(100, "ADPR"), List.of(OperandSource.REGISTER));
         registerFamily(StateInstruction.class, Map.of(101, "ADPI"), List.of(OperandSource.IMMEDIATE));
-        registerFamily(StateInstruction.class, Map.of(102, "ADPS"), List.of());
+        registerFamily(StateInstruction.class, Map.of(102, "ADPS"), List.of(OperandSource.STACK));
         // New: FRKI and FRKS
         registerFamily(StateInstruction.class, Map.of(106, "FRKI"), List.of(OperandSource.VECTOR, OperandSource.IMMEDIATE, OperandSource.VECTOR));
-        registerFamily(StateInstruction.class, Map.of(107, "FRKS"), List.of());
+        registerFamily(StateInstruction.class, Map.of(107, "FRKS"), List.of(OperandSource.STACK, OperandSource.STACK, OperandSource.STACK));
 
         // NOP
         registerFamily(NopInstruction.class, Map.of(0, "NOP"), List.of());
@@ -385,37 +420,37 @@ public abstract class Instruction {
         // Vector Manipulation Instruction Family
         registerFamily(VectorInstruction.class, Map.of(127, "VGTR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
         registerFamily(VectorInstruction.class, Map.of(128, "VGTI"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.IMMEDIATE));
-        registerFamily(VectorInstruction.class, Map.of(129, "VGTS"), List.of()); // Operands from stack
+        registerFamily(VectorInstruction.class, Map.of(129, "VGTS"), List.of(OperandSource.STACK, OperandSource.STACK)); // index, vector
         registerFamily(VectorInstruction.class, Map.of(130, "VSTR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
         registerFamily(VectorInstruction.class, Map.of(131, "VSTI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE, OperandSource.IMMEDIATE));
-        registerFamily(VectorInstruction.class, Map.of(132, "VSTS"), List.of()); // Operands from stack
+        registerFamily(VectorInstruction.class, Map.of(132, "VSTS"), List.of(OperandSource.STACK, OperandSource.STACK, OperandSource.STACK)); // value, index, vector
         registerFamily(VectorInstruction.class, Map.of(133, "VBLD"), List.of(OperandSource.REGISTER));
         registerFamily(VectorInstruction.class, Map.of(134, "VBLS"), List.of());
 
         // New: B2V family (bit to vector)
         registerFamily(VectorInstruction.class, Map.of(146, "B2VR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
         registerFamily(VectorInstruction.class, Map.of(147, "B2VI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
-        registerFamily(VectorInstruction.class, Map.of(148, "B2VS"), List.of());
+        registerFamily(VectorInstruction.class, Map.of(148, "B2VS"), List.of(OperandSource.STACK)); // mask
 
         // New: V2B family (vector to bit)
         registerFamily(VectorInstruction.class, Map.of(157, "V2BR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
         registerFamily(VectorInstruction.class, Map.of(158, "V2BI"), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
-        registerFamily(VectorInstruction.class, Map.of(159, "V2BS"), List.of());
+        registerFamily(VectorInstruction.class, Map.of(159, "V2BS"), List.of(OperandSource.STACK)); // vector
         // New: RTR* family (Rotate Right by 90° in plane of two axes)
         registerFamily(VectorInstruction.class, Map.of(160, "RTRR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
         registerFamily(VectorInstruction.class, Map.of(161, "RTRI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE, OperandSource.IMMEDIATE));
-        registerFamily(VectorInstruction.class, Map.of(162, "RTRS"), List.of());
+        registerFamily(VectorInstruction.class, Map.of(162, "RTRS"), List.of(OperandSource.STACK, OperandSource.STACK, OperandSource.STACK)); // axis2, axis1, vector
         // New: RBIT family (random bit from mask)
         registerFamily(StateInstruction.class, Map.of(149, "RBIR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
         registerFamily(StateInstruction.class, Map.of(150, "RBII"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
-        registerFamily(StateInstruction.class, Map.of(151, "RBIS"), List.of());
+        registerFamily(StateInstruction.class, Map.of(151, "RBIS"), List.of(OperandSource.STACK));
         // New: GDVR and GDVS (get DV value)
         registerFamily(StateInstruction.class, Map.of(188, "GDVR"), List.of(OperandSource.REGISTER));
         registerFamily(StateInstruction.class, Map.of(189, "GDVS"), List.of());
         // New: SMR family (set molecule marker register)
         registerFamily(StateInstruction.class, Map.of(192, "SMR"), List.of(OperandSource.REGISTER));
         registerFamily(StateInstruction.class, Map.of(193, "SMRI"), List.of(OperandSource.IMMEDIATE));
-        registerFamily(StateInstruction.class, Map.of(194, "SMRS"), List.of());
+        registerFamily(StateInstruction.class, Map.of(194, "SMRS"), List.of(OperandSource.STACK));
     }
 
     private static final int DEFAULT_VECTOR_DIMS = 2;
@@ -577,8 +612,7 @@ public abstract class Instruction {
      * @return The length of the instruction.
      */
     public static int getInstructionLengthById(int id, Environment env) {
-        int baseId = id;
-        List<OperandSource> sources = OPERAND_SOURCES.get(baseId);
+        List<OperandSource> sources = OPERAND_SOURCES.get(id);
         if (sources == null) return 1;
         int length = 1;
         int dims = env.getShape().length;
@@ -626,19 +660,12 @@ public abstract class Instruction {
     public enum ConflictResolutionStatus { NOT_APPLICABLE, WON_EXECUTION, LOST_TARGET_OCCUPIED, LOST_TARGET_EMPTY, LOST_LOWER_ID_WON, LOST_OTHER_REASON }
     protected ConflictResolutionStatus conflictStatus = ConflictResolutionStatus.NOT_APPLICABLE;
     
-    private List<Operand> preResolvedOperands = null;
+    /** Cached operands - resolved once, returned on subsequent calls (idempotent). */
+    private List<Operand> cachedOperands = null;
 
-    /**
-     * Sets pre-resolved operands for this instruction.
-     * This is used by the VirtualMachine to pass operands that were resolved
-     * for thermodynamic calculations to the execution phase, avoiding side effects
-     * from double resolution (like stack pops).
-     *
-     * @param operands The pre-resolved operands.
-     */
-    public void setPreResolvedOperands(List<Operand> operands) {
-        this.preResolvedOperands = operands;
-    }
+    /** Number of stack values that were peeked during resolveOperands() and need to be popped in commitStackReads(). */
+    private int stackPeekCount = 0;
+
 
     /**
      * Checks if the instruction was executed in the current tick.

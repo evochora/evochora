@@ -47,7 +47,7 @@ public class StateInstruction extends Instruction {
                     handleTrni(operands);
                     break;
                 case "TRNS":
-                    handleTrns();
+                    handleTrns(operands);
                     break;
                 case "SYNC":
                     handleSync();
@@ -79,7 +79,7 @@ public class StateInstruction extends Instruction {
                     handleRand(operands);
                     break;
                 case "RNDS":
-                    handleRnds();
+                    handleRnds(operands);
                     break;
                 case "ADPR":
                 case "ADPI":
@@ -221,9 +221,10 @@ public class StateInstruction extends Instruction {
         writeOperand(op.rawSourceId(), new Molecule(s.type(), randomValue).toInt());
     }
 
-    private void handleRnds() {
-        if (organism.getDataStack().isEmpty()) { organism.instructionFailed("RNDS requires N on stack."); return; }
-        Object nObj = organism.getDataStack().pop();
+    private void handleRnds(List<Operand> operands) {
+        // Operand comes from resolveOperands() - no direct stack access needed
+        if (operands.isEmpty()) { organism.instructionFailed("RNDS requires N on stack."); return; }
+        Object nObj = operands.get(0).value();
         if (!(nObj instanceof Integer ni)) { organism.instructionFailed("RNDS requires scalar on stack."); return; }
         int upperBound = org.evochora.runtime.model.Molecule.fromInt(ni).toScalarValue();
         if (upperBound <= 0) { organism.instructionFailed("RNDS upper bound must be > 0."); return; }
@@ -234,13 +235,14 @@ public class StateInstruction extends Instruction {
     private void handleRbit(String opName, List<Operand> operands) {
         // RBIR %DEST_REG, %SOURCE_REG
         // RBII %DEST_REG, <MASK_LITERAL>
-        // RBIS (stack): pop mask, push single-bit mask
+        // RBIS (stack): read mask from operands, push single-bit mask
         final int width = Config.VALUE_BITS;
         final int maskAll = (1 << width) - 1;
 
         if ("RBIS".equals(opName)) {
-            if (organism.getDataStack().isEmpty()) { organism.instructionFailed("RBIS requires a source mask on the stack."); return; }
-            Object srcObj = organism.getDataStack().pop();
+            // Operand comes from resolveOperands() - no direct stack access needed
+            if (operands.isEmpty()) { organism.instructionFailed("RBIS requires a source mask on the stack."); return; }
+            Object srcObj = operands.get(0).value();
             if (!(srcObj instanceof Integer)) { organism.instructionFailed("RBIS requires a scalar mask on the stack."); return; }
             Molecule srcMol = org.evochora.runtime.model.Molecule.fromInt((Integer) srcObj);
             int srcMask = srcMol.toScalarValue() & maskAll;
@@ -286,8 +288,7 @@ public class StateInstruction extends Instruction {
         if (count == 0) return 0;
         int pick = organism.getRandom().nextInt(count);
         int bitIndex = indices[pick];
-        int result = (1 << bitIndex) & ((1 << Config.VALUE_BITS) - 1);
-        return result;
+        return (1 << bitIndex) & ((1 << Config.VALUE_BITS) - 1);
     }
 
     private void handleSeek(List<Operand> operands, Environment environment) {
@@ -338,10 +339,11 @@ public class StateInstruction extends Instruction {
             }
         } else {
             // FRKS: stack variant expects [childDv, energy, delta] on stack (top-down)
-            if (organism.getDataStack().size() < 3) { organism.instructionFailed("FRKS requires 3 values on stack."); return; }
-            Object dvObj = organism.getDataStack().pop();
-            Object energyObj = organism.getDataStack().pop();
-            Object deltaObj = organism.getDataStack().pop();
+            // Operands come from resolveOperands() - no direct stack access needed
+            if (operands.size() < 3) { organism.instructionFailed("FRKS requires 3 values on stack."); return; }
+            Object dvObj = operands.get(0).value();      // top of stack = first operand
+            Object energyObj = operands.get(1).value();
+            Object deltaObj = operands.get(2).value();
             if (!(dvObj instanceof int[] childDv) || !(energyObj instanceof Integer ei) || !(deltaObj instanceof int[] delta)) {
                 organism.instructionFailed("FRKS stack contents invalid.");
                 return;
@@ -402,9 +404,10 @@ public class StateInstruction extends Instruction {
         }
     }
 
-    private void handleTrns() {
-        if (organism.getDataStack().isEmpty()) { organism.instructionFailed("TRNS requires vector on stack."); return; }
-        Object top = organism.getDataStack().pop();
+    private void handleTrns(List<Operand> operands) {
+        // Operand comes from resolveOperands() - no direct stack access needed
+        if (operands.isEmpty()) { organism.instructionFailed("TRNS requires vector on stack."); return; }
+        Object top = operands.get(0).value();
         if (!(top instanceof int[] vec)) { organism.instructionFailed("TRNS requires vector on stack."); return; }
         if (organism.isUnitVector(vec)) {
             organism.setDv(vec);
@@ -448,8 +451,9 @@ public class StateInstruction extends Instruction {
                 break;
             }
             case "ADPS": {
-                if (organism.getDataStack().isEmpty()) { organism.instructionFailed("ADPS requires index on stack."); return; }
-                Object raw = organism.getDataStack().pop();
+                // Operand comes from resolveOperands() - no direct stack access needed
+                if (operands.isEmpty()) { organism.instructionFailed("ADPS requires index on stack."); return; }
+                Object raw = operands.get(0).value();
                 if (!(raw instanceof Integer i)) { organism.instructionFailed("ADPS requires scalar on stack."); return; }
                 int idx = Molecule.fromInt(i).toScalarValue();
                 organism.setActiveDpIndex(idx);
@@ -576,7 +580,7 @@ public class StateInstruction extends Instruction {
         int[] currentDv = organism.getDv();
         
         if ("GDVS".equals(opName)) {
-            if (operands.size() != 0) { 
+            if (!operands.isEmpty()) {
                 organism.instructionFailed("GDVS expects no operands."); 
                 return; 
             }
@@ -606,12 +610,12 @@ public class StateInstruction extends Instruction {
         Molecule source;
 
         if ("SMRS".equals(opName)) {
-            // Stack variant: pop value from stack
-            if (organism.getDataStack().isEmpty()) {
+            // Stack variant: operand comes from resolveOperands() - no direct stack access needed
+            if (operands.isEmpty()) {
                 organism.instructionFailed("SMRS requires a value on the data stack.");
                 return;
             }
-            Object stackValue = organism.getDataStack().pop();
+            Object stackValue = operands.get(0).value();
             if (!(stackValue instanceof Integer intValue)) {
                 organism.instructionFailed("SMRS requires a scalar value on the stack.");
                 return;
