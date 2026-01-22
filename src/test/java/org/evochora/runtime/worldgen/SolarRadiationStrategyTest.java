@@ -1,12 +1,15 @@
 package org.evochora.runtime.worldgen;
 
 import org.evochora.runtime.Config;
+import org.evochora.runtime.Simulation;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 /**
  * Contains unit tests for the {@link SolarRadiationCreator} world generation strategy.
@@ -27,7 +30,12 @@ public class SolarRadiationStrategyTest {
         Environment env = new Environment(new int[]{1, 1, 1}, true);
         SolarRadiationCreator strat = new SolarRadiationCreator(1.0, 42, 0);
 
-        strat.distributeEnergy(env, 1);
+        // Create mock Simulation
+        Simulation sim = mock(Simulation.class);
+        when(sim.getEnvironment()).thenReturn(env);
+        when(sim.getCurrentTick()).thenReturn(1L);
+
+        strat.execute(sim);
 
         Molecule cell = env.getMolecule(0, 0, 0);
         assertThat(cell.type()).isEqualTo(Config.TYPE_ENERGY);
@@ -47,7 +55,12 @@ public class SolarRadiationStrategyTest {
         env.setOwnerId(7, 0, 0, 0);
         SolarRadiationCreator strat = new SolarRadiationCreator(1.0, 99, 1);
 
-        strat.distributeEnergy(env, 1);
+        // Create mock Simulation
+        Simulation sim = mock(Simulation.class);
+        when(sim.getEnvironment()).thenReturn(env);
+        when(sim.getCurrentTick()).thenReturn(1L);
+
+        strat.execute(sim);
 
         Molecule cell = env.getMolecule(0, 0, 0);
         // remains empty (CODE:0) because area is not unowned

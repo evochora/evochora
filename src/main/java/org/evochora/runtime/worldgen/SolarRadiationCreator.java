@@ -1,17 +1,19 @@
 package org.evochora.runtime.worldgen;
 
 import org.evochora.runtime.Config;
-import org.evochora.runtime.isa.IEnergyDistributionCreator;
+import org.evochora.runtime.Simulation;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
-import java.util.Random;
 import org.evochora.runtime.spi.IRandomProvider;
+import org.evochora.runtime.spi.ITickPlugin;
+
+import java.util.Random;
 
 /**
- * A solar radiation-based energy distribution strategy. It randomly spawns
+ * A solar radiation-based energy distribution tick plugin. It randomly spawns
  * energy in free cells based on a given probability.
  */
-public class SolarRadiationCreator implements IEnergyDistributionCreator {
+public class SolarRadiationCreator implements ITickPlugin {
 
     private final Random random;
     private final double spawnProbability;
@@ -88,7 +90,8 @@ public class SolarRadiationCreator implements IEnergyDistributionCreator {
     }
 
     @Override
-    public void distributeEnergy(Environment environment, long currentTick) {
+    public void execute(Simulation simulation) {
+        Environment environment = simulation.getEnvironment();
         for (int attempt = 0; attempt < this.executionsPerTick; attempt++) {
             if (random.nextDouble() < this.spawnProbability) {
                 int[] shape = environment.getShape();

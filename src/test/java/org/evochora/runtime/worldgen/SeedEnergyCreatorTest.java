@@ -1,11 +1,14 @@
 package org.evochora.runtime.worldgen;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Random;
 
+import org.evochora.runtime.Simulation;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.spi.IRandomProvider;
@@ -50,7 +53,13 @@ public class SeedEnergyCreatorTest {
         configMap.put("amountVariance", 0.0);
 
         SeedEnergyCreator creator = new SeedEnergyCreator(createDeterministicRandomProvider(42L), ConfigFactory.parseMap(configMap));
-        creator.distributeEnergy(env, 0);
+
+        // Create mock Simulation
+        Simulation sim = mock(Simulation.class);
+        when(sim.getEnvironment()).thenReturn(env);
+        when(sim.getCurrentTick()).thenReturn(0L);
+
+        creator.execute(sim);
 
         long energyCellCount = countEnergyCells(env);
         assertThat(energyCellCount).isEqualTo(50);
@@ -65,14 +74,21 @@ public class SeedEnergyCreatorTest {
         configMap.put("amount", 100);
 
         SeedEnergyCreator creator = new SeedEnergyCreator(createDeterministicRandomProvider(42L), ConfigFactory.parseMap(configMap));
-        creator.distributeEnergy(env, 1); // Try to run at tick 1
+
+        // Create mock Simulation
+        Simulation sim = mock(Simulation.class);
+        when(sim.getEnvironment()).thenReturn(env);
+
+        when(sim.getCurrentTick()).thenReturn(1L);
+        creator.execute(sim); // Try to run at tick 1
 
         assertThat(countEnergyCells(env)).isZero();
 
-        creator.distributeEnergy(env, 0); // Run at tick 0
+        when(sim.getCurrentTick()).thenReturn(0L);
+        creator.execute(sim); // Run at tick 0
         assertThat(countEnergyCells(env)).isEqualTo(50);
 
-        creator.distributeEnergy(env, 0); // Try to run again at tick 0
+        creator.execute(sim); // Try to run again at tick 0
         assertThat(countEnergyCells(env)).isEqualTo(50); // Count should not change
     }
 
@@ -88,7 +104,13 @@ public class SeedEnergyCreatorTest {
         // Use a predictable random provider
         IRandomProvider seededRandom = createDeterministicRandomProvider(42L);
         SeedEnergyCreator creator = new SeedEnergyCreator(seededRandom, ConfigFactory.parseMap(configMap));
-        creator.distributeEnergy(env, 0);
+
+        // Create mock Simulation
+        Simulation sim = mock(Simulation.class);
+        when(sim.getEnvironment()).thenReturn(env);
+        when(sim.getCurrentTick()).thenReturn(0L);
+
+        creator.execute(sim);
 
         Molecule molecule = env.getMolecule(0, 0);
         // With a constant seed, the "random" variance is deterministic.
@@ -109,7 +131,13 @@ public class SeedEnergyCreatorTest {
         configMap.put("amount", 100);
 
         SeedEnergyCreator creator = new SeedEnergyCreator(createDeterministicRandomProvider(42L), ConfigFactory.parseMap(configMap));
-        creator.distributeEnergy(env, 0);
+
+        // Create mock Simulation
+        Simulation sim = mock(Simulation.class);
+        when(sim.getEnvironment()).thenReturn(env);
+        when(sim.getCurrentTick()).thenReturn(0L);
+
+        creator.execute(sim);
 
         assertThat(env.getMolecule(0, 0).type()).isEqualTo(org.evochora.runtime.Config.TYPE_CODE);
         assertThat(env.getMolecule(1, 0).type()).isEqualTo(org.evochora.runtime.Config.TYPE_ENERGY);

@@ -4,7 +4,7 @@ import com.google.protobuf.ByteString;
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.DeltaType;
 import org.evochora.datapipeline.api.contracts.OrganismState;
-import org.evochora.datapipeline.api.contracts.StrategyState;
+import org.evochora.datapipeline.api.contracts.PluginState;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TickDelta;
@@ -46,27 +46,27 @@ class DeltaCodecCompressionTest {
         assertEquals(1, delta.getOrganismsCount());
         assertEquals(5L, delta.getTotalOrganismsCreated());
         assertTrue(delta.getRngState().isEmpty());
-        assertEquals(0, delta.getStrategyStatesCount());
+        assertEquals(0, delta.getPluginStatesCount());
     }
-    
+
     @Test
-    void createDelta_accumulated_includesRngAndStrategies() {
+    void createDelta_accumulated_includesRngAndPlugins() {
         CellDataColumns cells = createCells(new int[]{0}, new int[]{10});
         ByteString rngState = ByteString.copyFromUtf8("rng-state-data");
-        List<StrategyState> strategies = List.of(
-                StrategyState.newBuilder().setStrategyType("org.evochora.runtime.worldgen.SolarRadiationCreator").build()
+        List<PluginState> plugins = List.of(
+                PluginState.newBuilder().setPluginClass("org.evochora.runtime.worldgen.SolarRadiationCreator").build()
         );
-        
+
         TickDelta delta = DeltaCodec.createDelta(
                 500L, 5000L, DeltaType.ACCUMULATED,
                 cells, List.of(), 10L,
-                rngState, strategies);
-        
+                rngState, plugins);
+
         assertEquals(500L, delta.getTickNumber());
         assertEquals(DeltaType.ACCUMULATED, delta.getDeltaType());
         assertEquals(rngState, delta.getRngState());
-        assertEquals(1, delta.getStrategyStatesCount());
-        assertEquals("org.evochora.runtime.worldgen.SolarRadiationCreator", delta.getStrategyStates(0).getStrategyType());
+        assertEquals(1, delta.getPluginStatesCount());
+        assertEquals("org.evochora.runtime.worldgen.SolarRadiationCreator", delta.getPluginStates(0).getPluginClass());
     }
     
     @Test

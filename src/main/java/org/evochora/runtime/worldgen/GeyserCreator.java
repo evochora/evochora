@@ -1,22 +1,23 @@
 package org.evochora.runtime.worldgen;
 
 import org.evochora.runtime.Config;
-import org.evochora.runtime.isa.IEnergyDistributionCreator;
+import org.evochora.runtime.Simulation;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.spi.IRandomProvider;
+import org.evochora.runtime.spi.ITickPlugin;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
-import org.evochora.runtime.spi.IRandomProvider;
 
 /**
- * A geyser-based energy distribution strategy. It creates geysers that erupt
+ * A geyser-based energy distribution tick plugin. It creates geysers that erupt
  * at regular intervals, distributing energy to nearby cells.
  */
-public class GeyserCreator implements IEnergyDistributionCreator {
+public class GeyserCreator implements ITickPlugin {
 
     private final int geyserCount;
     private final int tickInterval;
@@ -80,7 +81,10 @@ public class GeyserCreator implements IEnergyDistributionCreator {
     }
 
     @Override
-    public void distributeEnergy(Environment environment, long currentTick) {
+    public void execute(Simulation simulation) {
+        Environment environment = simulation.getEnvironment();
+        long currentTick = simulation.getCurrentTick();
+
         if (geyserLocations == null) {
             initializeGeysers(environment);
         }

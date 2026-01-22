@@ -39,10 +39,10 @@ message TickData {
   // For Well19937c: serialized int[] v array (624 ints) + index (1 int)
   bytes rng_state = 6;
 
-  // State of all energy distribution strategies (for checkpoint/resume)
-  // Created by: calling ISerializable.saveState() on each active strategy
+  // State of all tick plugins (for checkpoint/resume)
+  // Created by: calling ISerializable.saveState() on each active plugin
   // Example: GeyserCreator serializes geyser locations
-  repeated StrategyState strategy_states = 7;
+  repeated PluginState plugin_states = 7;
 
   // Total number of organisms ever created in this simulation run.
   // This is a monotonic counter that includes both initial and child organisms.
@@ -51,16 +51,16 @@ message TickData {
   int64 total_organisms_created = 8;
 }
 
-// Represents the serialized state of an energy distribution strategy
-message StrategyState {
-  // Fully qualified class name of the strategy
+// Represents the serialized state of a tick plugin
+message PluginState {
+  // Fully qualified class name of the plugin
   // Example: "org.evochora.runtime.worldgen.GeyserCreator"
-  string strategy_type = 1;
+  string plugin_class = 1;
 
-  // Strategy-specific serialized state
+  // Plugin-specific serialized state
   // Created via: ISerializable.saveState() implementation
-  // Stateless strategies (e.g., SolarRadiationCreator) return empty bytes
-  // Stateful strategies (e.g., GeyserCreator) serialize their configuration
+  // Stateless plugins (e.g., SolarRadiationCreator) return empty bytes
+  // Stateful plugins (e.g., GeyserCreator) serialize their configuration
   bytes state_blob = 2;
 }
 
@@ -474,9 +474,9 @@ message TickDelta {
   // Empty for INCREMENTAL deltas.
   bytes rng_state = 7;
 
-  // Strategy states for checkpoint/resume (ACCUMULATED deltas only)
+  // Plugin states for checkpoint/resume (ACCUMULATED deltas only)
   // Empty for INCREMENTAL deltas.
-  repeated StrategyState strategy_states = 8;
+  repeated PluginState plugin_states = 8;
 }
 
 // Self-contained chunk of tick data for pipeline transmission.

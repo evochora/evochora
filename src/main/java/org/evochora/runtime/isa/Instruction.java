@@ -102,7 +102,6 @@ public abstract class Instruction {
      * @param opcodeId The full opcode ID of the instruction.
      * @return The {@code Class} object representing the instruction, or {@code null} if not found.
      */
-    @SuppressWarnings("unused")
     public static Class<? extends Instruction> getInstructionClassById(int opcodeId) {
         return REGISTERED_INSTRUCTIONS_BY_ID.get(opcodeId);
     }

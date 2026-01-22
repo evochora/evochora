@@ -3,7 +3,7 @@ package org.evochora.datapipeline.utils.delta;
 import com.google.protobuf.ByteString;
 import org.evochora.datapipeline.api.contracts.DeltaType;
 import org.evochora.datapipeline.api.contracts.OrganismState;
-import org.evochora.datapipeline.api.contracts.StrategyState;
+import org.evochora.datapipeline.api.contracts.PluginState;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
@@ -290,7 +290,7 @@ class DeltaCodecEncoderTest {
                 List.of(OrganismState.newBuilder().setOrganismId(1).setEnergy(100).build()),
                 1,
                 ByteString.copyFromUtf8("rng-" + tick),
-                List.of(StrategyState.newBuilder().setStrategyType("TestStrategy").build())
+                List.of(PluginState.newBuilder().setPluginClass("TestPlugin").build())
         );
     }
 }

@@ -5,18 +5,19 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 
-import org.evochora.runtime.isa.IEnergyDistributionCreator;
+import org.evochora.runtime.Simulation;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.spi.IRandomProvider;
+import org.evochora.runtime.spi.ITickPlugin;
 
 import com.typesafe.config.Config;
 
 /**
- * An energy distribution strategy that seeds a percentage of empty cells with a
- * specified amount of energy at the beginning of the simulation (tick 0).
+ * A tick plugin that seeds a percentage of empty cells with a specified amount
+ * of energy at the beginning of the simulation (tick 0).
  * <p>
- * This creator runs only once and is stateless.
+ * This plugin runs only once and is stateless.
  * <ul>
  *   <li><b>percentage:</b> The percentage of empty cells to fill with energy.</li>
  *   <li><b>amount:</b> The base amount of energy for each seeded molecule.</li>
@@ -25,7 +26,7 @@ import com.typesafe.config.Config;
  *   and 120.</li>
  * </ul>
  */
-public class SeedEnergyCreator implements IEnergyDistributionCreator {
+public class SeedEnergyCreator implements ITickPlugin {
 
     private final Random random;
     private final double percentage;
@@ -52,11 +53,13 @@ public class SeedEnergyCreator implements IEnergyDistributionCreator {
     }
 
     @Override
-    public void distributeEnergy(Environment environment, long currentTick) {
+    public void execute(Simulation simulation) {
+        long currentTick = simulation.getCurrentTick();
         if (currentTick != 0 || hasRun) {
             return;
         }
 
+        Environment environment = simulation.getEnvironment();
         final List<int[]> emptyCells = new ArrayList<>();
         final int[] shape = environment.getShape();
         final int dims = shape.length;

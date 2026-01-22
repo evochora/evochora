@@ -280,7 +280,7 @@ public class InspectStorageSubcommand implements Callable<Integer> {
         out.printf("Organisms: %d alive (%s)%n", tick.getOrganismsCount(), formatBytes(organismsSize));
         out.printf("Cells: %d non-empty (%s reconstructed)%n", cellsCount, formatBytes(cellsSize));
         out.println("RNG State: " + tick.getRngState().size() + " bytes");
-        out.println("Strategy States: " + tick.getStrategyStatesCount());
+        out.println("Plugin States: " + tick.getPluginStatesCount());
         
         // Delta compression info
         out.println("\n=== Delta Compression Info ===");

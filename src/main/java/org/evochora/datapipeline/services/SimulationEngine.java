@@ -19,7 +19,7 @@ import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.datapipeline.api.contracts.CallSiteBinding;
 import org.evochora.datapipeline.api.contracts.ColumnTokenLookup;
-import org.evochora.datapipeline.api.contracts.EnergyStrategyConfig;
+import org.evochora.datapipeline.api.contracts.TickPluginConfig;
 import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
 import org.evochora.datapipeline.api.contracts.FileTokenLookup;
 import org.evochora.datapipeline.api.contracts.InitialOrganismSetup;
@@ -34,7 +34,7 @@ import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.SourceInfo;
 import org.evochora.datapipeline.api.contracts.SourceLines;
 import org.evochora.datapipeline.api.contracts.SourceMapEntry;
-import org.evochora.datapipeline.api.contracts.StrategyState;
+import org.evochora.datapipeline.api.contracts.PluginState;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TokenInfo;
 import org.evochora.datapipeline.api.contracts.TokenMapEntry;
@@ -47,7 +47,7 @@ import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
-import org.evochora.runtime.isa.IEnergyDistributionCreator;
+import org.evochora.runtime.spi.ITickPlugin;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Organism;
@@ -73,7 +73,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     private final DeltaCodec.Encoder chunkEncoder;
     private final Simulation simulation;
     private final IRandomProvider randomProvider;
-    private final List<StrategyWithConfig> energyStrategies;
+    private final List<PluginWithConfig> tickPlugins;
     private final long seed;
     private final long startTimeMs;
     private final AtomicLong currentTick = new AtomicLong(-1);
@@ -88,7 +88,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     // Mapping from programPath (config key) to ProgramInfo for initialization and metadata building
     private final Map<String, ProgramInfo> programInfoByPath = new HashMap<>();
 
-    private record StrategyWithConfig(IEnergyDistributionCreator strategy, Config config) {}
+    private record PluginWithConfig(ITickPlugin plugin, Config config) {}
 
     public SimulationEngine(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
@@ -155,7 +155,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         }
 
         this.randomProvider = new SeededRandomProvider(seed);
-        this.energyStrategies = initializeEnergyStrategies(options.getConfigList("energyStrategies"), this.randomProvider, envProps);
+        this.tickPlugins = initializeTickPlugins(options.getConfigList("tickPlugins"), this.randomProvider);
 
         Environment environment = new Environment(envProps);
         
@@ -167,6 +167,11 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         this.simulation = new Simulation(environment, policyManager, organismConfig);
         this.simulation.setRandomProvider(this.randomProvider);
         this.simulation.setProgramArtifacts(compiledPrograms);
+
+        // Register tick plugins with simulation (they execute at start of each tick)
+        for (PluginWithConfig pwc : this.tickPlugins) {
+            this.simulation.addTickPlugin(pwc.plugin());
+        }
 
         // Validate organism placement coordinates match world dimensions
         int worldDimensions = envProps.getWorldShape().length;
@@ -222,13 +227,13 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         EnvironmentProperties envProps = simulation.getEnvironment().getProperties();
         String worldDims = String.join("×", Arrays.stream(envProps.getWorldShape()).mapToObj(String::valueOf).toArray(String[]::new));
         String topology = envProps.isToroidal() ? "TORUS" : "BOUNDED";
-        String strategyNames = energyStrategies.stream()
-                .map(s -> s.strategy().getClass().getSimpleName())
+        String pluginNames = tickPlugins.stream()
+                .map(p -> p.plugin().getClass().getSimpleName())
                 .collect(java.util.stream.Collectors.joining(", "));
 
         int ticksPerChunk = chunkEncoder.getSamplesPerChunk();
-        log.info("SimulationEngine started: world=[{}, {}], organisms={}, energyStrategies={} ({}), seed={}, sampling={}, ticksPerChunk={}, runId={}",
-                worldDims, topology, simulation.getOrganisms().size(), energyStrategies.size(), strategyNames, seed, samplingInterval, ticksPerChunk, runId);
+        log.info("SimulationEngine started: world=[{}, {}], organisms={}, tickPlugins={} ({}), seed={}, sampling={}, ticksPerChunk={}, runId={}",
+                worldDims, topology, simulation.getOrganisms().size(), tickPlugins.size(), pluginNames, seed, samplingInterval, ticksPerChunk, runId);
     }
 
     @Override
@@ -249,29 +254,11 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             simulation.tick();
             long tick = currentTick.incrementAndGet();
 
-            // Apply energy distribution strategies after the tick
-            if (!energyStrategies.isEmpty()) {
-                for (StrategyWithConfig strategyWithConfig : energyStrategies) {
-                    try {
-                        strategyWithConfig.strategy().distributeEnergy(simulation.getEnvironment(), tick);
-                    } catch (Exception ex) {
-                        log.warn("Energy strategy '{}' failed at tick {}", 
-                                strategyWithConfig.strategy().getClass().getSimpleName(), tick);
-                        recordError(
-                            "ENERGY_STRATEGY_FAILED",
-                            "Energy distribution strategy failed",
-                            String.format("Strategy: %s, Tick: %d", 
-                                strategyWithConfig.strategy().getClass().getSimpleName(), tick)
-                        );
-                    }
-                }
-            }
-
             if (tick % samplingInterval == 0) {
                 try {
                     // Use DeltaCodec.Encoder for delta compression
                     List<OrganismState> organismStates = extractOrganismStates();
-                    List<StrategyState> strategyStates = extractStrategyStates();
+                    List<PluginState> pluginStates = extractPluginStates();
                     ByteString rngState = ByteString.copyFrom(randomProvider.saveState());
                     
                     java.util.Optional<TickDataChunk> chunk = chunkEncoder.captureTick(
@@ -280,7 +267,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                             organismStates,
                             simulation.getTotalOrganismsCreatedCount(),
                             rngState,
-                            strategyStates);
+                            pluginStates);
                     
                     if (chunk.isPresent()) {
                         tickDataOutput.put(chunk.get());
@@ -345,15 +332,15 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
     private boolean shouldAutoPause(long tick) { return pauseTicks.contains(tick); }
 
-    private List<StrategyWithConfig> initializeEnergyStrategies(List<? extends Config> configs, IRandomProvider random, EnvironmentProperties envProps) {
+    private List<PluginWithConfig> initializeTickPlugins(List<? extends Config> configs, IRandomProvider random) {
         return configs.stream().map(config -> {
             try {
-                IEnergyDistributionCreator strategy = (IEnergyDistributionCreator) Class.forName(config.getString("className"))
+                ITickPlugin plugin = (ITickPlugin) Class.forName(config.getString("className"))
                         .getConstructor(IRandomProvider.class, com.typesafe.config.Config.class)
                         .newInstance(random, config.getConfig("options"));
-                return new StrategyWithConfig(strategy, config.getConfig("options"));
+                return new PluginWithConfig(plugin, config.getConfig("options"));
             } catch (ReflectiveOperationException e) {
-                throw new IllegalArgumentException("Failed to instantiate energy strategy: " + config.getString("className"), e);
+                throw new IllegalArgumentException("Failed to instantiate tick plugin: " + config.getString("className"), e);
             }
         }).toList();
     }
@@ -376,11 +363,11 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         }
         builder.setEnvironment(envConfigBuilder.build());
 
-        energyStrategies.forEach(strategyWithConfig -> {
-            EnergyStrategyConfig.Builder strategyBuilder = EnergyStrategyConfig.newBuilder();
-            strategyBuilder.setStrategyType(strategyWithConfig.strategy().getClass().getName());
-            strategyBuilder.setConfigJson(strategyWithConfig.config().root().render(ConfigRenderOptions.concise()));
-            builder.addEnergyStrategies(strategyBuilder.build());
+        tickPlugins.forEach(pluginWithConfig -> {
+            TickPluginConfig.Builder pluginBuilder = TickPluginConfig.newBuilder();
+            pluginBuilder.setPluginClass(pluginWithConfig.plugin().getClass().getName());
+            pluginBuilder.setConfigJson(pluginWithConfig.config().root().render(ConfigRenderOptions.concise()));
+            builder.addTickPlugins(pluginBuilder.build());
         });
 
         simulation.getProgramArtifacts().values().forEach(artifact -> builder.addPrograms(convertProgramArtifact(artifact)));
@@ -518,14 +505,14 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     }
     
     /**
-     * Extracts strategy states for all energy strategies.
+     * Extracts plugin states for all tick plugins.
      * Used by DeltaCodec.Encoder for delta compression.
      */
-    private List<StrategyState> extractStrategyStates() {
-        return energyStrategies.stream()
-                .map(s -> StrategyState.newBuilder()
-                        .setStrategyType(s.strategy().getClass().getName())
-                        .setStateBlob(ByteString.copyFrom(s.strategy().saveState()))
+    private List<PluginState> extractPluginStates() {
+        return tickPlugins.stream()
+                .map(p -> PluginState.newBuilder()
+                        .setPluginClass(p.plugin().getClass().getName())
+                        .setStateBlob(ByteString.copyFrom(p.plugin().saveState()))
                         .build())
                 .toList();
     }

@@ -118,7 +118,7 @@ class SimulationEngineIntegrationTest {
                         "initialEnergy", 10000, // Higher energy to avoid early death
                         "placement", Map.of("positions", List.of(5, 5))
                 )),
-                "energyStrategies", Collections.emptyList(),
+                "tickPlugins", Collections.emptyList(),
                 "seed", 12345L,
                 "runtime", runtimeConfig
         ));
@@ -463,7 +463,7 @@ class SimulationEngineIntegrationTest {
     @Test
     void engine_shouldRunWithSolarRadiationStrategy() throws InterruptedException {
         Config strategyConfig = baseConfig.withValue(
-                "energyStrategies",
+                "tickPlugins",
                 ConfigValueFactory.fromAnyRef(List.of(
                         Map.of(
                                 "className", "org.evochora.runtime.worldgen.SolarRadiationCreator",
@@ -484,19 +484,19 @@ class SimulationEngineIntegrationTest {
         await().atMost(10, TimeUnit.SECONDS)
                 .untilAsserted(() -> assertEquals(AbstractService.State.PAUSED, engine.getCurrentState()));
 
-        // Verify metadata includes energy strategy
+        // Verify metadata includes tick plugin
         Optional<SimulationMetadata> metadataOpt = metadataQueue.poll(0, TimeUnit.MILLISECONDS);
         assertTrue(metadataOpt.isPresent());
         SimulationMetadata metadata = metadataOpt.get();
-        assertEquals(1, metadata.getEnergyStrategiesCount());
+        assertEquals(1, metadata.getTickPluginsCount());
         assertEquals("org.evochora.runtime.worldgen.SolarRadiationCreator", 
-                metadata.getEnergyStrategies(0).getStrategyType());
+                metadata.getTickPlugins(0).getPluginClass());
 
-        // Verify tick data includes strategy state
+        // Verify tick data includes plugin state
         Optional<TickDataChunk> chunkOpt = tickDataQueue.poll(0, TimeUnit.MILLISECONDS);
         assertTrue(chunkOpt.isPresent());
         TickData tickData = chunkOpt.get().getSnapshot();
-        assertEquals(1, tickData.getStrategyStatesCount());
+        assertEquals(1, tickData.getPluginStatesCount());
 
         engine.stop();
     }
@@ -504,7 +504,7 @@ class SimulationEngineIntegrationTest {
     @Test
     void engine_shouldRunWithGeyserStrategy() throws InterruptedException {
         Config strategyConfig = baseConfig.withValue(
-                "energyStrategies",
+                "tickPlugins",
                 ConfigValueFactory.fromAnyRef(List.of(
                         Map.of(
                                 "className", "org.evochora.runtime.worldgen.GeyserCreator",
@@ -529,25 +529,25 @@ class SimulationEngineIntegrationTest {
         Optional<SimulationMetadata> metadataOpt = metadataQueue.poll(0, TimeUnit.MILLISECONDS);
         assertTrue(metadataOpt.isPresent());
         SimulationMetadata metadata = metadataOpt.get();
-        assertEquals(1, metadata.getEnergyStrategiesCount());
+        assertEquals(1, metadata.getTickPluginsCount());
         assertEquals("org.evochora.runtime.worldgen.GeyserCreator",
-                metadata.getEnergyStrategies(0).getStrategyType());
+                metadata.getTickPlugins(0).getPluginClass());
 
-        // Verify tick data includes geyser state
+        // Verify tick data includes plugin state
         Optional<TickDataChunk> chunkOpt = tickDataQueue.poll(0, TimeUnit.MILLISECONDS);
         assertTrue(chunkOpt.isPresent());
         TickData tickData = chunkOpt.get().getSnapshot();
-        assertEquals(1, tickData.getStrategyStatesCount());
-        // Geyser state should be non-empty after initialization
-        assertFalse(tickData.getStrategyStates(0).getStateBlob().isEmpty());
+        assertEquals(1, tickData.getPluginStatesCount());
+        // Plugin state should be non-empty after initialization
+        assertFalse(tickData.getPluginStates(0).getStateBlob().isEmpty());
 
         engine.stop();
     }
 
     @Test
-    void engine_shouldRunWithMultipleEnergyStrategies() throws InterruptedException {
+    void engine_shouldRunWithMultipleTickPlugins() throws InterruptedException {
         Config strategyConfig = baseConfig.withValue(
-                "energyStrategies",
+                "tickPlugins",
                 ConfigValueFactory.fromAnyRef(List.of(
                         Map.of(
                                 "className", "org.evochora.runtime.worldgen.SolarRadiationCreator",
@@ -577,17 +577,17 @@ class SimulationEngineIntegrationTest {
         await().atMost(10, TimeUnit.SECONDS)
                 .untilAsserted(() -> assertEquals(AbstractService.State.PAUSED, engine.getCurrentState()));
 
-        // Verify metadata includes both strategies
+        // Verify metadata includes both plugins
         Optional<SimulationMetadata> metadataOpt = metadataQueue.poll(0, TimeUnit.MILLISECONDS);
         assertTrue(metadataOpt.isPresent());
         SimulationMetadata metadata = metadataOpt.get();
-        assertEquals(2, metadata.getEnergyStrategiesCount());
+        assertEquals(2, metadata.getTickPluginsCount());
 
-        // Verify tick data includes both strategy states
+        // Verify tick data includes both plugin states
         Optional<TickDataChunk> chunkOpt = tickDataQueue.poll(0, TimeUnit.MILLISECONDS);
         assertTrue(chunkOpt.isPresent());
         TickData tickData = chunkOpt.get().getSnapshot();
-        assertEquals(2, tickData.getStrategyStatesCount());
+        assertEquals(2, tickData.getPluginStatesCount());
 
         engine.stop();
     }
