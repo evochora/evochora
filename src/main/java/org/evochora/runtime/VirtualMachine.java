@@ -128,9 +128,10 @@ public class VirtualMachine {
                         }
                     } else if (argType == InstructionArgumentType.VECTOR || 
                                argType == InstructionArgumentType.LABEL) {
-                        // VECTOR/LABEL have no register arguments encoded in rawArgs
-                        // Skip the vector/label slots (they are encoded separately in environment)
-                        // argIndex is not incremented for VECTOR/LABEL in rawArgs
+                        // VECTOR/LABEL are encoded as multiple arguments in rawArgs (one per dimension)
+                        // Skip over all dimension slots to maintain correct argIndex for subsequent arguments
+                        int dims = this.environment.getShape().length;
+                        argIndex += dims;
                     } else {
                         // IMMEDIATE, LITERAL - no register arguments
                         argIndex++;
@@ -143,16 +144,17 @@ public class VirtualMachine {
             int entropyBefore = organism.getSr();
             
             // --- Thermodynamic Logic Start ---
-            
-            // 1. Resolve operands once for thermodynamics AND execution
-            // Note: resolveOperands may modify organism state (stack pop), so it must be called exactly once per instruction
-            List<Instruction.Operand> resolvedOperands = instruction.resolveOperands(this.environment);
-            instruction.setPreResolvedOperands(resolvedOperands);
 
-            // 2. Determine target info (only for env-modifying instructions that need it)
+            // 1. Resolve operands (idempotent - can be called multiple times safely)
+            // Note: resolveOperands only PEEKs stack values, actual POPs happen in commitStackReads()
+            List<Instruction.Operand> resolvedOperands = instruction.resolveOperands(this.environment);
+
+            // 2. Commit the stack reads now that we know this instruction will execute
+            instruction.commitStackReads();
+
+            // 3. Determine target info (only for env-modifying instructions that need it)
             Optional<ThermodynamicContext.TargetInfo> targetInfo = Optional.empty();
-            if (instruction instanceof IEnvironmentModifyingInstruction) {
-                IEnvironmentModifyingInstruction envInstr = (IEnvironmentModifyingInstruction) instruction;
+            if (instruction instanceof IEnvironmentModifyingInstruction envInstr) {
                 List<int[]> targets = envInstr.getTargetCoordinates();
                 if (targets != null && !targets.isEmpty()) {
                     // For simplicity, we only consider the first target for thermodynamics of single-cell ops like PEEK/POKE
@@ -163,16 +165,16 @@ public class VirtualMachine {
                 }
             }
 
-            // 3. Create Context (minimal overhead - record allocation)
+            // 4. Create Context (minimal overhead - record allocation)
             ThermodynamicContext thermoContext = new ThermodynamicContext(
                 instruction, organism, this.environment, resolvedOperands, targetInfo
             );
 
-            // 4. Calculate Thermodynamics using Policy (optimized: single call, array lookup)
+            // 5. Calculate Thermodynamics using Policy (optimized: single call, array lookup)
             IThermodynamicPolicy policy = this.simulation.getPolicyManager().getPolicy(instruction);
             IThermodynamicPolicy.Thermodynamics thermo = policy.getThermodynamics(thermoContext);
 
-            // 5. Apply effects
+            // 6. Apply effects
             // Energy: positive = consumption (takeEr), negative = gain (addEr with clamping)
             int energyCost = thermo.energyCost();
             if (energyCost > 0) {
@@ -224,7 +226,7 @@ public class VirtualMachine {
             }
         } catch (Exception e) {
             // Global Catch-All to prevent simulation crash
-            organism.instructionFailed("VM Runtime Error: " + e.toString());
+            organism.instructionFailed("VM Runtime Error: " + e);
             
             // Apply penalty
             int penalty = this.simulation.getOrganismConfig().getInt("error-penalty-cost");

@@ -1,16 +1,16 @@
 package org.evochora.runtime.isa.instructions;
 
+import java.util.Arrays;
+import java.util.Deque;
+import java.util.List;
+import java.util.NoSuchElementException;
+
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-
-import java.util.Arrays;
-import java.util.Deque;
-import java.util.List;
-import java.util.NoSuchElementException;
 
 /**
  * Implements n-dimensional vector manipulation instructions, including VGET, VSET, VBLD,
@@ -39,25 +39,23 @@ public class VectorInstruction extends Instruction {
             int dims = context.getWorld().getShape().length;
             switch (opName) {
                 case "VGTR", "VGTI" -> handleVectorGet(operands);
-                case "VGTS" -> handleVectorGetStack();
+                case "VGTS" -> handleVectorGetStack(operands);
                 case "VSTR", "VSTI" -> handleVectorSet(operands);
-                case "VSTS" -> handleVectorSetStack();
+                case "VSTS" -> handleVectorSetStack(operands);
                 case "VBLD" -> handleVectorBuild(operands, dims);
-                case "VBLS" -> handleVectorBuildStack(dims);
+                case "VBLS" -> handleVectorBuildStack(dims);  // Cannot use operands - dynamic count based on dims
                 case "B2VR", "B2VI" -> handleBitToVector(operands, dims);
-                case "B2VS" -> handleBitToVectorStack(dims);
+                case "B2VS" -> handleBitToVectorStack(operands, dims);
                 case "V2BR", "V2BI" -> handleVectorToBit(operands);
-                case "V2BS" -> handleVectorToBitStack();
+                case "V2BS" -> handleVectorToBitStack(operands);
                 case "RTRR", "RTRI" -> handleVectorRotate(operands);
-                case "RTRS" -> handleVectorRotateStack();
+                case "RTRS" -> handleVectorRotateStack(operands);
                 default -> organism.instructionFailed("Unknown vector instruction: " + opName);
             }
         } catch (NoSuchElementException e) {
             organism.instructionFailed("Stack underflow during vector operation.");
-            return;
         } catch (ClassCastException | ArrayIndexOutOfBoundsException e) {
             organism.instructionFailed("Invalid operand types for vector operation: " + e.getMessage());
-            return;
         }
     }
 
@@ -67,7 +65,7 @@ public class VectorInstruction extends Instruction {
             organism.instructionFailed(getName() + " requires 3 operands.");
             return;
         }
-        int vecReg = operands.get(0).rawSourceId();
+        int vecReg = operands.getFirst().rawSourceId();
         Object vecObj = readOperand(vecReg);
         if (!(vecObj instanceof int[] vector)) {
             organism.instructionFailed(getName() + " target must be a vector register.");
@@ -90,20 +88,19 @@ public class VectorInstruction extends Instruction {
         int vj = vector[axis2];
         rotated[axis1] = vj;
         rotated[axis2] = -vi;
-        if (!writeOperand(vecReg, rotated)) {
-            return;
-        }
+        writeOperand(vecReg, rotated);
     }
 
-    private void handleVectorRotateStack() {
-        Deque<Object> ds = organism.getDataStack();
-        if (ds.size() < 3) {
+    private void handleVectorRotateStack(List<Operand> operands) {
+        // Operands order from stack (first popped = first in list): axis2, axis1, vector
+        if (operands.size() < 3) {
             organism.instructionFailed("RTRS requires axis2, axis1, and a vector on the stack.");
             return;
         }
-        Object axis2Obj = ds.pop();
-        Object axis1Obj = ds.pop();
-        Object vecObj = ds.pop();
+        Deque<Object> ds = organism.getDataStack();
+        Object axis2Obj = operands.get(0).value();
+        Object axis1Obj = operands.get(1).value();
+        Object vecObj = operands.get(2).value();
         if (!(vecObj instanceof int[] vector)) {
             organism.instructionFailed("RTRS requires a vector on the stack.");
             return;
@@ -165,18 +162,16 @@ public class VectorInstruction extends Instruction {
             organism.instructionFailed("B2V requires a single-bit direction mask.");
             return;
         }
-        if (!writeOperand(destReg, vec)) {
-            return;
-        }
+        writeOperand(destReg, vec);
     }
 
-    private void handleBitToVectorStack(int dims) {
-        Deque<Object> ds = organism.getDataStack();
-        if (ds.isEmpty()) {
+    private void handleBitToVectorStack(List<Operand> operands, int dims) {
+        // Operands: mask (single operand from stack)
+        if (operands.isEmpty()) {
             organism.instructionFailed("B2VS requires a mask on the stack.");
             return;
         }
-        Object top = ds.pop();
+        Object top = operands.get(0).value();
         if (!(top instanceof Integer iv)) {
             organism.instructionFailed("B2VS requires a scalar mask on the stack.");
             return;
@@ -187,6 +182,7 @@ public class VectorInstruction extends Instruction {
             organism.instructionFailed("B2VS requires a single-bit direction mask.");
             return;
         }
+        Deque<Object> ds = organism.getDataStack();
         ds.push(vec);
     }
 
@@ -205,18 +201,19 @@ public class VectorInstruction extends Instruction {
         writeOperand(destReg, new Molecule(Config.TYPE_DATA, mask).toInt());
     }
 
-    private void handleVectorToBitStack() {
-        Deque<Object> ds = organism.getDataStack();
-        if (ds.isEmpty()) {
+    private void handleVectorToBitStack(List<Operand> operands) {
+        // Operands: vector (single operand from stack)
+        if (operands.isEmpty()) {
             organism.instructionFailed("V2BS requires a vector on the stack.");
             return;
         }
-        Object top = ds.pop();
+        Object top = operands.get(0).value();
         int mask = vectorToMask(top);
         if (mask == -1) {
             organism.instructionFailed("V2BS requires a unit vector with single non-zero component of magnitude 1.");
             return;
         }
+        Deque<Object> ds = organism.getDataStack();
         ds.push(new Molecule(Config.TYPE_DATA, mask).toInt());
     }
 
@@ -276,19 +273,17 @@ public class VectorInstruction extends Instruction {
             return;
         }
 
-        if (!writeOperand(destReg, new Molecule(Config.TYPE_DATA, vector[index]).toInt())) {
-            return;
-        }
+        writeOperand(destReg, new Molecule(Config.TYPE_DATA, vector[index]).toInt());
     }
 
-    private void handleVectorGetStack() {
-        Deque<Object> ds = organism.getDataStack();
-        if (ds.size() < 2) {
+    private void handleVectorGetStack(List<Operand> operands) {
+        // Operands order from stack (first popped = first in list): index, vector
+        if (operands.size() < 2) {
             organism.instructionFailed("VGTS requires an index and a vector on the stack.");
             return;
         }
-        Object indexObj = ds.pop();
-        Object vecObj = ds.pop();
+        Object indexObj = operands.get(0).value();
+        Object vecObj = operands.get(1).value();
 
         if (!(vecObj instanceof int[] vector)) {
             organism.instructionFailed("VGTS requires a vector on the stack.");
@@ -305,6 +300,7 @@ public class VectorInstruction extends Instruction {
             return;
         }
 
+        Deque<Object> ds = organism.getDataStack();
         ds.push(new Molecule(Config.TYPE_DATA, vector[index]).toInt());
     }
 
@@ -336,20 +332,18 @@ public class VectorInstruction extends Instruction {
 
         int[] newVector = Arrays.copyOf(vector, vector.length);
         newVector[index] = value;
-        if (!writeOperand(vecReg, newVector)) {
-            return;
-        }
+        writeOperand(vecReg, newVector);
     }
 
-    private void handleVectorSetStack() {
-        Deque<Object> ds = organism.getDataStack();
-        if (ds.size() < 3) {
+    private void handleVectorSetStack(List<Operand> operands) {
+        // Operands order from stack (first popped = first in list): value, index, vector
+        if (operands.size() < 3) {
             organism.instructionFailed("VSTS requires a value, an index, and a vector on the stack.");
             return;
         }
-        Object valObj = ds.pop();
-        Object idxObj = ds.pop();
-        Object vecObj = ds.pop();
+        Object valObj = operands.get(0).value();
+        Object idxObj = operands.get(1).value();
+        Object vecObj = operands.get(2).value();
 
         if (!(vecObj instanceof int[] vector)) {
             organism.instructionFailed("VSTS requires a vector on the stack.");
@@ -373,6 +367,7 @@ public class VectorInstruction extends Instruction {
 
         int[] newVector = Arrays.copyOf(vector, vector.length);
         newVector[index] = value;
+        Deque<Object> ds = organism.getDataStack();
         ds.push(newVector);
     }
 
@@ -400,9 +395,7 @@ public class VectorInstruction extends Instruction {
             newVector[i] = Molecule.fromInt(val).toScalarValue();
         }
 
-        if (!writeOperand(destReg, newVector)) {
-            return;
-        }
+        writeOperand(destReg, newVector);
     }
 
     private void handleVectorBuildStack(int dims) {
