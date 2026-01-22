@@ -35,7 +35,7 @@ Organisms are programmed in **EvoASM**, Evochora's custom assembly language. The
 **Quick Start:**
 1. Edit or create a `.evo` file in `assembly/`
 2. Configure it in `evochora.conf` (see `simulation-engine.options.organisms`)
-3. Run `./gradlew run --args="node run"` - the engine compiles th eorganisms evoASM code automatically
+3. Run `./gradlew run --args="node run"` - the engine compiles the organisms evoASM code automatically
 
 **Resources:**
 - **Language Reference:** [docs/ASSEMBLY_SPEC.md](docs/ASSEMBLY_SPEC.md)
