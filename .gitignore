@@ -11,6 +11,7 @@ build/
 .idea/libraries/
 /.idea/dataSources*
 .idea/db-forest-config.xml
+.idea/inspectionProfiles/Project_Default.xml
 *.iws
 *.iml
 *.ipr
@@ -63,4 +64,3 @@ extensions/vscode/src/*.vsix
 
 # Local configuration file (user-specific overrides)
 local.conf
-
