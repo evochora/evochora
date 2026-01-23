@@ -503,6 +503,41 @@ Directives are special commands that instruct the compiler on how to assemble th
     INCREMENT %DR0  # This line expands to "ADDI %DR0 DATA:1"
     ```
 
+### Repetition
+
+The `.REPEAT` directive and its shorthand `^n` syntax allow repeating instructions without writing them multiple times. This is particularly useful for adding NOP buffers or redundant safety jumps.
+
+#### Directive Syntax
+
+* `.REPEAT <Count> <Body>`: Repeats the body (until the next newline or semicolon) the specified number of times.
+    ```
+    .REPEAT 5 NOP              # Expands to: NOP; NOP; NOP; NOP; NOP
+    .REPEAT 3 JMPI MAIN_LOOP   # Expands to: JMPI MAIN_LOOP; JMPI MAIN_LOOP; JMPI MAIN_LOOP
+    ```
+
+* `.REPEAT <Count>; <Body> .ENDR`: Block mode for repeating multiple statements. When a newline or semicolon immediately follows the count, the directive enters block mode and repeats everything until `.ENDR`.
+    ```
+    .REPEAT 2; JMPI LOOP; NOP; .ENDR
+    # Expands to: JMPI LOOP; NOP; JMPI LOOP; NOP
+
+    .REPEAT 3
+      NOP
+      JMPI START
+    .ENDR
+    # Expands to: NOP; JMPI START; NOP; JMPI START; NOP; JMPI START
+    ```
+
+#### Shorthand Syntax
+
+* `<Body>^<Count>`: A compact shorthand that repeats everything before the `^` (up to the previous semicolon or newline) the specified number of times.
+    ```
+    NOP^5                      # Expands to: NOP; NOP; NOP; NOP; NOP
+    JMPI LOOP^3                # Expands to: JMPI LOOP; JMPI LOOP; JMPI LOOP
+    JMPI START; NOP^10; JMPI END  # Mixed with other instructions
+    ```
+
+Both syntaxes produce identical results—the shorthand is transformed into `.REPEAT` internally before expansion.
+
 ### Modules and Procedures
 
 A **module** is a source file (e.g., `lib.evo`) containing one or more `.PROC` definitions that can be reused. To create and use modules effectively, you combine `.PROC`, `.REQUIRE`, and `.INCLUDE`.

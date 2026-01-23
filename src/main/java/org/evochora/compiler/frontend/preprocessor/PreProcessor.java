@@ -8,6 +8,7 @@ import org.evochora.compiler.frontend.directive.IDirectiveHandler;
 import org.evochora.compiler.frontend.parser.ParsingContext;
 import org.evochora.compiler.frontend.directive.DirectiveHandlerRegistry;
 import org.evochora.compiler.frontend.preprocessor.features.macro.MacroDefinition;
+import org.evochora.compiler.frontend.preprocessor.features.repeat.CaretSyntaxTransformer;
 
 import java.nio.file.Path;
 import java.util.*;
@@ -47,6 +48,9 @@ public class PreProcessor implements ParsingContext {
      * @return The final list of tokens after preprocessing.
      */
     public List<Token> expand() {
+        // Transform ^n shorthand to .REPEAT n before processing directives
+        CaretSyntaxTransformer.transform(tokens);
+
         while (current < tokens.size()) {
             Token token = peek();
             boolean streamWasModified = false;

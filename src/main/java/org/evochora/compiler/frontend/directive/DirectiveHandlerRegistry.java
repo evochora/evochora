@@ -6,6 +6,7 @@ import org.evochora.compiler.frontend.parser.features.def.DefineDirectiveHandler
 import org.evochora.compiler.frontend.parser.features.dir.DirDirectiveHandler;
 import org.evochora.compiler.frontend.preprocessor.features.include.IncludeDirectiveHandler;
 import org.evochora.compiler.frontend.preprocessor.features.macro.MacroDirectiveHandler;
+import org.evochora.compiler.frontend.preprocessor.features.repeat.RepeatDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.org.OrgDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.place.PlaceDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.proc.PregDirectiveHandler;
@@ -64,6 +65,7 @@ public class DirectiveHandlerRegistry {
         IncludeDirectiveHandler includeHandler = new IncludeDirectiveHandler();
         registry.register(".INCLUDE", includeHandler);
         registry.register(".MACRO", new MacroDirectiveHandler());
+        registry.register(".REPEAT", new RepeatDirectiveHandler());
 
         // Internal directives for context management
         registry.register(".PUSH_CTX", new PushCtxDirectiveHandler());

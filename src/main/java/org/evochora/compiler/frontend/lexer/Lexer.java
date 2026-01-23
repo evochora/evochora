@@ -62,6 +62,7 @@ public class Lexer {
             case '|': addToken(TokenType.PIPE); break;
             case ':': addToken(TokenType.COLON); break;
             case '*': addToken(TokenType.STAR); break;
+            case '^': addToken(TokenType.CARET); break;
             case ';':
                 // Semicolon acts as a statement terminator, allowing multiple instructions per line.
                 addToken(TokenType.NEWLINE);
