@@ -8,6 +8,7 @@ import org.evochora.compiler.frontend.CompilerPhase;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.ParsingContext;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
+import org.evochora.compiler.frontend.preprocessor.features.repeat.CaretSyntaxTransformer;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -111,6 +112,9 @@ public class IncludeDirectiveHandler implements IDirectiveHandler {
             if (!newTokens.isEmpty() && newTokens.get(newTokens.size() - 1).type() == TokenType.END_OF_FILE) {
                 newTokens.remove(newTokens.size() - 1);
             }
+
+            // Transform ^n shorthand to .REPEAT n in included files
+            CaretSyntaxTransformer.transform(newTokens);
 
             // Inject context management directives
             newTokens.add(0, new Token(TokenType.DIRECTIVE, ".PUSH_CTX", null, pathToken.line(), 0, pathToken.fileName()));
