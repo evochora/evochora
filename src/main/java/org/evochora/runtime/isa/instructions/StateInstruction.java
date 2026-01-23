@@ -8,15 +8,88 @@ import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.Variant;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+
+import static org.evochora.runtime.isa.Instruction.OperandSource.*;
 
 /**
  * Handles a wide variety of state-related instructions, such as TURN, SYNC, NRG, FORK,
  * DIFF, POS, RAND, SEEK, and various scanning instructions.
  */
 public class StateInstruction extends Instruction {
+
+    private static int family;
+
+    /**
+     * Registers all state instructions with the instruction registry.
+     *
+     * @param f the family ID for this instruction family
+     */
+    public static void register(int f) {
+        family = f;
+        // Operation 0: SCAN (scan environment in direction)
+        reg(0, Variant.RR, "SCAN", REGISTER, REGISTER);
+        reg(0, Variant.RV, "SCNI", REGISTER, VECTOR);
+        reg(0, Variant.S, "SCNS", STACK);
+        // Operation 1: SEEK (set active data pointer direction)
+        reg(1, Variant.R, "SEEK", REGISTER);
+        reg(1, Variant.V, "SEKI", VECTOR);
+        reg(1, Variant.S, "SEKS", STACK);
+        // Operation 2: TURN (turn/rotate direction)
+        reg(2, Variant.R, "TURN", REGISTER);
+        reg(2, Variant.V, "TRNI", VECTOR);
+        reg(2, Variant.S, "TRNS", STACK);
+        // Operation 3: SYNC (synchronize/wait)
+        reg(3, Variant.NONE, "SYNC");
+        // Operation 4: NRG (get energy)
+        reg(4, Variant.R, "NRG", REGISTER);
+        reg(4, Variant.NONE, "NRGS");
+        // Operation 5: NTR (get entropy)
+        reg(5, Variant.R, "NTR", REGISTER);
+        reg(5, Variant.NONE, "NTRS");
+        // Operation 6: DIFF (get difficulty/thermodynamic gradient)
+        reg(6, Variant.R, "DIFF", REGISTER);
+        reg(6, Variant.NONE, "DIFS");
+        // Operation 7: POS (get position)
+        reg(7, Variant.R, "POS", REGISTER);
+        reg(7, Variant.NONE, "POSS");
+        // Operation 8: RAND (random number)
+        reg(8, Variant.R, "RAND", REGISTER);
+        reg(8, Variant.S, "RNDS", STACK);
+        // Operation 9: FORK (replicate organism)
+        reg(9, Variant.RRR, "FORK", REGISTER, REGISTER, REGISTER);
+        reg(9, Variant.VIV, "FRKI", VECTOR, IMMEDIATE, VECTOR);
+        reg(9, Variant.SSS, "FRKS", STACK, STACK, STACK);
+        // Operation 10: ADP (active data pointer selection)
+        reg(10, Variant.R, "ADPR", REGISTER);
+        reg(10, Variant.I, "ADPI", IMMEDIATE);
+        reg(10, Variant.S, "ADPS", STACK);
+        // Operation 11: SPN (scan passable neighbors)
+        reg(11, Variant.R, "SPNR", REGISTER);
+        reg(11, Variant.NONE, "SPNS");
+        // Operation 12: SNT (scan neighbors by type)
+        reg(12, Variant.RR, "SNTR", REGISTER, REGISTER);
+        reg(12, Variant.RI, "SNTI", REGISTER, IMMEDIATE);
+        reg(12, Variant.S, "SNTS", STACK);
+        // Operation 13: RBI (random bit from mask)
+        reg(13, Variant.RR, "RBIR", REGISTER, REGISTER);
+        reg(13, Variant.RI, "RBII", REGISTER, IMMEDIATE);
+        reg(13, Variant.S, "RBIS", STACK);
+        // Operation 14: GDV (get DV value)
+        reg(14, Variant.R, "GDVR", REGISTER);
+        reg(14, Variant.NONE, "GDVS");
+        // Operation 15: SMR (set molecule marker register)
+        reg(15, Variant.R, "SMR", REGISTER);
+        reg(15, Variant.I, "SMRI", IMMEDIATE);
+        reg(15, Variant.S, "SMRS", STACK);
+    }
+
+    private static void reg(int op, int variant, String name, OperandSource... sources) {
+        Instruction.registerOp(StateInstruction.class, family, op, variant, name, sources);
+    }
 
     /**
      * Constructs a new StateInstruction.

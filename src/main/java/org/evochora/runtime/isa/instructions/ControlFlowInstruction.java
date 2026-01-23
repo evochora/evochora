@@ -4,17 +4,43 @@ import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.internal.services.ProcedureCallHandler;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.Variant;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
 
 import java.util.List;
 import java.util.NoSuchElementException;
 
+import static org.evochora.runtime.isa.Instruction.OperandSource.*;
+
 /**
  * Handles control flow instructions like CALL, RET, and JMP.
  * It uses a ProcedureCallHandler for CALL and RET instructions.
  */
 public class ControlFlowInstruction extends Instruction {
+
+    private static int family;
+
+    /**
+     * Registers all control flow instructions with the instruction registry.
+     *
+     * @param f the family ID for this instruction family
+     */
+    public static void register(int f) {
+        family = f;
+        // Operation 0: JMP (Jump)
+        reg(0, Variant.R, "JMPR", REGISTER);
+        reg(0, Variant.S, "JMPS", STACK);
+        reg(0, Variant.L, "JMPI", LABEL);
+        // Operation 1: CALL (Call subroutine)
+        reg(1, Variant.L, "CALL", LABEL);
+        // Operation 2: RET (Return from subroutine)
+        reg(2, Variant.NONE, "RET");
+    }
+
+    private static void reg(int op, int variant, String name, OperandSource... sources) {
+        Instruction.registerOp(ControlFlowInstruction.class, family, op, variant, name, sources);
+    }
 
     /**
      * Constructs a new ControlFlowInstruction.

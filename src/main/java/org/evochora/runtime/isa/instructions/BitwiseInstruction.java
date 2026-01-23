@@ -7,9 +7,12 @@ import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.Variant;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+
+import static org.evochora.runtime.isa.Instruction.OperandSource.*;
 
 /**
  * Handles all bitwise instructions, including standard operations like AND, OR, XOR, NOT,
@@ -17,6 +20,59 @@ import org.evochora.runtime.model.Organism;
  * It supports different operand sources.
  */
 public class BitwiseInstruction extends Instruction {
+
+    private static int family;
+
+    /**
+     * Registers all bitwise instructions with the instruction registry.
+     *
+     * @param f the family ID for this instruction family
+     */
+    public static void register(int f) {
+        family = f;
+        // Operation 0: AND
+        reg(0, Variant.RR, "ANDR", REGISTER, REGISTER);
+        reg(0, Variant.RI, "ANDI", REGISTER, IMMEDIATE);
+        reg(0, Variant.SS, "ANDS", STACK, STACK);
+        // Operation 1: OR
+        reg(1, Variant.RR, "ORR", REGISTER, REGISTER);
+        reg(1, Variant.RI, "ORI", REGISTER, IMMEDIATE);
+        reg(1, Variant.SS, "ORS", STACK, STACK);
+        // Operation 2: XOR
+        reg(2, Variant.RR, "XORR", REGISTER, REGISTER);
+        reg(2, Variant.RI, "XORI", REGISTER, IMMEDIATE);
+        reg(2, Variant.SS, "XORS", STACK, STACK);
+        // Operation 3: NAD (NAND)
+        reg(3, Variant.RR, "NADR", REGISTER, REGISTER);
+        reg(3, Variant.RI, "NADI", REGISTER, IMMEDIATE);
+        reg(3, Variant.SS, "NADS", STACK, STACK);
+        // Operation 8: NOT
+        reg(8, Variant.R, "NOT", REGISTER);
+        reg(8, Variant.S, "NOTS", STACK);
+        // Operation 9: SHL (Shift Left)
+        reg(9, Variant.RR, "SHLR", REGISTER, REGISTER);
+        reg(9, Variant.RI, "SHLI", REGISTER, IMMEDIATE);
+        reg(9, Variant.SS, "SHLS", STACK, STACK);
+        // Operation 10: SHR (Shift Right)
+        reg(10, Variant.RR, "SHRR", REGISTER, REGISTER);
+        reg(10, Variant.RI, "SHRI", REGISTER, IMMEDIATE);
+        reg(10, Variant.SS, "SHRS", STACK, STACK);
+        // Operation 11: ROT (Rotate)
+        reg(11, Variant.RR, "ROTR", REGISTER, REGISTER);
+        reg(11, Variant.RI, "ROTI", REGISTER, IMMEDIATE);
+        reg(11, Variant.SS, "ROTS", STACK, STACK);
+        // Operation 12: PCN (Population Count)
+        reg(12, Variant.RR, "PCNR", REGISTER, REGISTER);
+        reg(12, Variant.S, "PCNS", STACK);
+        // Operation 13: BSN (Bit Scan N-th)
+        reg(13, Variant.RRR, "BSNR", REGISTER, REGISTER, REGISTER);
+        reg(13, Variant.RRI, "BSNI", REGISTER, REGISTER, IMMEDIATE);
+        reg(13, Variant.SS, "BSNS", STACK, STACK);
+    }
+
+    private static void reg(int op, int variant, String name, OperandSource... sources) {
+        Instruction.registerOp(BitwiseInstruction.class, family, op, variant, name, sources);
+    }
 
     /**
      * Constructs a new BitwiseInstruction.

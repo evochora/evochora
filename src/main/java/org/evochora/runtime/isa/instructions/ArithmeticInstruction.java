@@ -4,6 +4,7 @@ import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.Variant;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
@@ -11,11 +12,54 @@ import org.evochora.runtime.model.Organism;
 import java.util.List;
 import java.util.NoSuchElementException;
 
+import static org.evochora.runtime.isa.Instruction.OperandSource.*;
+
 /**
  * Handles all arithmetic instructions, including scalar and vector operations.
  * It supports different operand sources like registers, immediate values, and the stack.
  */
 public class ArithmeticInstruction extends Instruction {
+
+    private static int family;
+
+    /**
+     * Registers all arithmetic instructions with the instruction registry.
+     *
+     * @param f the family ID for this instruction family
+     */
+    public static void register(int f) {
+        family = f;
+        // Operation 0: ADD
+        reg(0, Variant.RR, "ADDR", REGISTER, REGISTER);
+        reg(0, Variant.RI, "ADDI", REGISTER, IMMEDIATE);
+        reg(0, Variant.SS, "ADDS", STACK, STACK);
+        // Operation 1: SUB
+        reg(1, Variant.RR, "SUBR", REGISTER, REGISTER);
+        reg(1, Variant.RI, "SUBI", REGISTER, IMMEDIATE);
+        reg(1, Variant.SS, "SUBS", STACK, STACK);
+        // Operation 2: MUL
+        reg(2, Variant.RR, "MULR", REGISTER, REGISTER);
+        reg(2, Variant.RI, "MULI", REGISTER, IMMEDIATE);
+        reg(2, Variant.SS, "MULS", STACK, STACK);
+        // Operation 3: DIV
+        reg(3, Variant.RR, "DIVR", REGISTER, REGISTER);
+        reg(3, Variant.RI, "DIVI", REGISTER, IMMEDIATE);
+        reg(3, Variant.SS, "DIVS", STACK, STACK);
+        // Operation 4: MOD
+        reg(4, Variant.RR, "MODR", REGISTER, REGISTER);
+        reg(4, Variant.RI, "MODI", REGISTER, IMMEDIATE);
+        reg(4, Variant.SS, "MODS", STACK, STACK);
+        // Operation 12: DOT (dot product)
+        reg(12, Variant.RRR, "DOTR", REGISTER, REGISTER, REGISTER);
+        reg(12, Variant.SS, "DOTS", STACK, STACK);
+        // Operation 13: CRS (cross product)
+        reg(13, Variant.RRR, "CRSR", REGISTER, REGISTER, REGISTER);
+        reg(13, Variant.SS, "CRSS", STACK, STACK);
+    }
+
+    private static void reg(int op, int variant, String name, OperandSource... sources) {
+        Instruction.registerOp(ArithmeticInstruction.class, family, op, variant, name, sources);
+    }
 
     /**
      * Constructs a new ArithmeticInstruction.

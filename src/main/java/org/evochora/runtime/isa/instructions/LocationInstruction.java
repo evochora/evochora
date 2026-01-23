@@ -4,17 +4,66 @@ import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.Variant;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
 
 import java.util.Deque;
 import java.util.List;
 
+import static org.evochora.runtime.isa.Instruction.OperandSource.*;
+
 /**
  * Handles location-related instructions, which manipulate the location stack
  * and location registers.
  */
 public class LocationInstruction extends Instruction {
+
+    private static int family;
+
+    /**
+     * Registers all location instructions with the instruction registry.
+     * <p>
+     * Note: In the Location family, the "L" variant means LOCATION_REGISTER, not LABEL.
+     * The "S" variant here means "operates on location stack" (no encoded operand).
+     *
+     * @param f the family ID for this instruction family
+     */
+    public static void register(int f) {
+        family = f;
+        // Operation 0: DPL (Duplicate location)
+        reg(0, Variant.S, "DPLS");
+        reg(0, Variant.L, "DPLR", LOCATION_REGISTER);
+        // Operation 1: SKL (Skip location)
+        reg(1, Variant.S, "SKLS");
+        reg(1, Variant.L, "SKLR", LOCATION_REGISTER);
+        // Operation 2: LRD (Location register displacement)
+        reg(2, Variant.L, "LRDS", LOCATION_REGISTER);
+        reg(2, Variant.RL, "LRDR", REGISTER, LOCATION_REGISTER);
+        // Operation 3: LSD (Location stack displacement)
+        reg(3, Variant.NONE, "LSDS");
+        reg(3, Variant.R, "LSDR", REGISTER);
+        // Operation 4: PUSL (Push location)
+        reg(4, Variant.L, "PUSL", LOCATION_REGISTER);
+        // Operation 5: POPL (Pop location)
+        reg(5, Variant.L, "POPL", LOCATION_REGISTER);
+        // Operation 6: DUPL (Duplicate top of location stack)
+        reg(6, Variant.NONE, "DUPL");
+        // Operation 7: SWPL (Swap location stack)
+        reg(7, Variant.NONE, "SWPL");
+        // Operation 8: DRPL (Drop from location stack)
+        reg(8, Variant.NONE, "DRPL");
+        // Operation 9: ROTL (Rotate location stack)
+        reg(9, Variant.NONE, "ROTL");
+        // Operation 10: CRL (Clear location register)
+        reg(10, Variant.L, "CRLR", LOCATION_REGISTER);
+        // Operation 11: LRL (Load location register)
+        reg(11, Variant.LL, "LRLR", LOCATION_REGISTER, LOCATION_REGISTER);
+    }
+
+    private static void reg(int op, int variant, String name, OperandSource... sources) {
+        Instruction.registerOp(LocationInstruction.class, family, op, variant, name, sources);
+    }
 
     /**
      * Constructs a new LocationInstruction.

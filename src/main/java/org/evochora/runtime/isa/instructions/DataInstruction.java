@@ -4,17 +4,45 @@ import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.Variant;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
 
 import java.util.List;
 import java.util.NoSuchElementException;
 
+import static org.evochora.runtime.isa.Instruction.OperandSource.*;
+
 /**
  * Handles data movement instructions like SET, PUSH, and POP.
  * It supports different operand sources and destinations.
  */
 public class DataInstruction extends Instruction {
+
+    private static int family;
+
+    /**
+     * Registers all data movement instructions with the instruction registry.
+     *
+     * @param f the family ID for this instruction family
+     */
+    public static void register(int f) {
+        family = f;
+        // Operation 0: SET (copy value to register)
+        reg(0, Variant.RR, "SETR", REGISTER, REGISTER);
+        reg(0, Variant.RI, "SETI", REGISTER, IMMEDIATE);
+        reg(0, Variant.RV, "SETV", REGISTER, VECTOR);
+        // Operation 1: PUSH (push value onto stack)
+        reg(1, Variant.R, "PUSH", REGISTER);
+        reg(1, Variant.I, "PUSI", IMMEDIATE);
+        reg(1, Variant.V, "PUSV", VECTOR);
+        // Operation 2: POP (pop value from stack)
+        reg(2, Variant.R, "POP", REGISTER);
+    }
+
+    private static void reg(int op, int variant, String name, OperandSource... sources) {
+        Instruction.registerOp(DataInstruction.class, family, op, variant, name, sources);
+    }
 
     /**
      * Constructs a new DataInstruction.

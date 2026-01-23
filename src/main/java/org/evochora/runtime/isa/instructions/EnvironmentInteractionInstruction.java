@@ -9,9 +9,12 @@ import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.IEnvironmentModifyingInstruction;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.Variant;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+
+import static org.evochora.runtime.isa.Instruction.OperandSource.*;
 
 /**
  * Handles environment interaction instructions like POKE and PEEK.
@@ -19,6 +22,33 @@ import org.evochora.runtime.model.Organism;
  * involved in conflict resolution.
  */
 public class EnvironmentInteractionInstruction extends Instruction implements IEnvironmentModifyingInstruction {
+
+    private static int family;
+
+    /**
+     * Registers all environment interaction instructions with the instruction registry.
+     *
+     * @param f the family ID for this instruction family
+     */
+    public static void register(int f) {
+        family = f;
+        // Operation 0: PEEK (read value from environment cell)
+        reg(0, Variant.RR, "PEEK", REGISTER, REGISTER);
+        reg(0, Variant.RV, "PEKI", REGISTER, VECTOR);
+        reg(0, Variant.S, "PEKS", STACK);
+        // Operation 1: POKE (write value to environment cell)
+        reg(1, Variant.RR, "POKE", REGISTER, REGISTER);
+        reg(1, Variant.RV, "POKI", REGISTER, VECTOR);
+        reg(1, Variant.SS, "POKS", STACK, STACK);
+        // Operation 2: PPK (combined PEEK+POKE)
+        reg(2, Variant.RR, "PPKR", REGISTER, REGISTER);
+        reg(2, Variant.RV, "PPKI", REGISTER, VECTOR);
+        reg(2, Variant.SS, "PPKS", STACK, STACK);
+    }
+
+    private static void reg(int op, int variant, String name, OperandSource... sources) {
+        Instruction.registerOp(EnvironmentInteractionInstruction.class, family, op, variant, name, sources);
+    }
 
     private int[] targetCoordinate;
 
