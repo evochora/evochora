@@ -147,11 +147,21 @@ The syntax of Evochora assembly is designed to be simple and readable. It follow
 
 ### Statement Structure
 
-A typical line of code consists of an optional label, followed by an instruction or a directive, and then its arguments. Each component is separated by whitespace. Each statement must end with a newline character; you cannot place multiple instructions on the same line. Empty lines are ignored.
+A typical line of code consists of an optional label, followed by an instruction or a directive, and then its arguments. Each component is separated by whitespace. Statements are terminated by a newline character or a semicolon (`;`). Empty lines are ignored.
 
 ```
 OPCODE ARGUMENT1 ARGUMENT2  # Comment
 ```
+
+#### Multiple Instructions Per Line
+
+You can place multiple instructions on a single line by separating them with semicolons:
+
+```
+NOP; SETI %DR0 DATA:1; NOP
+```
+
+This is equivalent to writing each instruction on its own line. Semicolons and newlines can be mixed freely.
 
 ### Comments
 
