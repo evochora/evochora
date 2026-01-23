@@ -19,9 +19,9 @@
 # STRUCTURE Shell (50x31)
 # ----------------------------
 .PLACE STRUCTURE:1 -1..49|-1
-.PLACE STRUCTURE:1 -1..49|40
-.PLACE STRUCTURE:1 -1|0..39
-.PLACE STRUCTURE:1 49|0..39
+.PLACE STRUCTURE:1 -1..49|41
+.PLACE STRUCTURE:1 -1|0..40
+.PLACE STRUCTURE:1 49|0..40
 
 # ----------------------------
 # Init
@@ -37,7 +37,7 @@ LOCALSTATE_MOVE: NOP
 
   ADDI %INI DATA:1; NOP; NOP
   SEKI 0|1; NOP; NOP
-  JMPI LOCALSTATE_MOVE
+  JMPI LOCALSTATE_MOVE; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; JMPI LOCALSTATE_MOVE
 
 .ORG 0|1
 LOCALSTATE_WRITE:
@@ -48,7 +48,7 @@ LOCALSTATE_WRITE:
   SETI %INI DATA:-1; NOP; NOP
   PPKI %INI 0|1; NOP; NOP
   SKLS; NOP; NOP
-  JMPI MAIN_LOOP; NOP; JMPI MAIN_LOOP                              # Redundanter Sprung
+  JMPI MAIN_LOOP; NOP; JMPI MAIN_LOOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; JMPI MAIN_LOOP
 
 # ----------------------------
 # Main loop
@@ -62,7 +62,7 @@ MAIN_LOOP:
 
 MAIN_REPRODUCE: NOP                                       
   CALL REPRODUCE.CONTINUE REF %ER; NOP; NOP
-  JMPI MAIN_LOOP_ENERGY_CHECK
+  JMPI MAIN_LOOP_ENERGY_CHECK; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; JMPI MAIN_LOOP_ENERGY_CHECK
 
 .ORG 0|3
 MAIN_HARVEST: NOP                                       
@@ -77,7 +77,7 @@ MAIN_LOOP_ENERGY_CHECK:
   JMPI MAIN_HARVEST                         # Wenig Energie -> Energie suchen
 
 # Redundante Safety-Jumps (falls Code durch Mutation hierher fällt)
-NOP; JMPI MAIN_LOOP; NOP; JMPI MAIN_LOOP
+NOP; JMPI MAIN_LOOP; NOP; JMPI MAIN_LOOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; JMPI MAIN_LOOP
 
 # ----------------------------
 # Energy search
@@ -97,4 +97,5 @@ NOP; JMPI MAIN_LOOP; NOP; JMPI MAIN_LOOP
 # ----------------------------
 # Safety jump back (redundant für Mutations-Robustheit)
 # ----------------------------
-NOP; NOP; JMPI MAIN_LOOP; NOP; NOP; JMPI MAIN_LOOP; NOP; NOP; JMPI MAIN_LOOP
+.ORG 0|40
+JMPI MAIN_LOOP; NOP; NOP; JMPI MAIN_LOOP; NOP; NOP; JMPI MAIN_LOOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; NOP; JMPI MAIN_LOOP
