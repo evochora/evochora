@@ -15,7 +15,7 @@ plugins {
     application
     jacoco
     `java-test-fixtures`
-    id("com.google.protobuf") version "0.9.4"
+    id("com.google.protobuf") version "0.9.6"
 }
 
 group = "org.evochora"
@@ -31,8 +31,8 @@ repositories {
 }
 
 dependencies {
-    implementation("com.google.protobuf:protobuf-java:3.25.3")
-    implementation("com.google.protobuf:protobuf-java-util:3.25.3") // For JSON conversion
+    implementation("com.google.protobuf:protobuf-java:4.29.3")
+    implementation("com.google.protobuf:protobuf-java-util:4.29.3") // For JSON conversion
     implementation("com.zaxxer:HikariCP:5.1.0") // High-performance JDBC connection pool
     implementation("it.unimi.dsi:fastutil:8.5.12") // High-performance primitive collections
     testImplementation(platform("org.junit:junit-bom:5.10.0"))
@@ -92,7 +92,7 @@ dependencies {
     // Test fixtures: dependencies needed to compile the JUnit extension
     testFixturesImplementation("org.junit.jupiter:junit-jupiter-api:5.10.2")
     testFixturesImplementation("ch.qos.logback:logback-classic:1.5.6")
-    testFixturesImplementation("com.google.protobuf:protobuf-java:3.25.3")
+    testFixturesImplementation("com.google.protobuf:protobuf-java:4.29.3")
     testFixturesImplementation("com.typesafe:config:1.4.3")
 
 }
@@ -302,6 +302,6 @@ tasks.jacocoTestReport {
 
 protobuf {
     protoc {
-        artifact = "com.google.protobuf:protoc:3.25.3"
+        artifact = "com.google.protobuf:protoc:4.29.3"
     }
 }

@@ -104,13 +104,34 @@ class MutableCellStateTest {
     void applyDelta_removesCells_whenMoleculeDataIsZero() {
         MutableCellState state = new MutableCellState(TOTAL_CELLS);
         state.applySnapshot(createCells(new int[]{0, 1}, new int[]{10, 20}, new int[]{0, 0}));
-        
+
         // Delta removes cell 0 (moleculeData = 0)
         state.applyDelta(createCells(new int[]{0}, new int[]{0}, new int[]{0}));
-        
+
         assertEquals(1, state.countOccupied());
         assertFalse(state.isOccupied(0));
         assertTrue(state.isOccupied(1));
+    }
+
+    @Test
+    void applyDelta_preservesOwner_whenMoleculeDataIsZeroButOwnerIsNot() {
+        // This tests CODE:0 cells that have an owner (e.g., initial world objects).
+        // The moleculeData for CODE:0 is 0 (see Molecule.toInt()), but these cells
+        // can still have a valid owner and are considered "occupied".
+        MutableCellState state = new MutableCellState(TOTAL_CELLS);
+        state.applySnapshot(createCells(new int[]{0}, new int[]{10}, new int[]{1}));
+
+        // Delta sets CODE:0 (moleculeData=0) with owner=5
+        state.applyDelta(createCells(new int[]{0}, new int[]{0}, new int[]{5}));
+
+        // Cell IS "occupied" because it has an owner, even though moleculeData=0
+        assertTrue(state.isOccupied(0));  // Occupied because owner!=0
+        assertEquals(0, state.getMoleculeData(0));
+        assertEquals(5, state.getOwnerId(0));
+
+        // Verify it's included in toCellDataColumns export
+        CellDataColumns exported = state.toCellDataColumns();
+        assertTrue(containsCell(exported, 0, 0, 5));
     }
     
     @Test

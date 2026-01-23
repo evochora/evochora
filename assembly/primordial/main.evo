@@ -19,9 +19,9 @@
 # STRUCTURE Shell (50x31)
 # ----------------------------
 .PLACE STRUCTURE:1 -1..49|-1
-.PLACE STRUCTURE:1 -1..49|29
-.PLACE STRUCTURE:1 -1|0..28
-.PLACE STRUCTURE:1 49|0..28
+.PLACE STRUCTURE:1 -1..49|30
+.PLACE STRUCTURE:1 -1|0..29
+.PLACE STRUCTURE:1 49|0..29
 
 # ----------------------------
 # Init
@@ -30,23 +30,32 @@
 INIT:
   DPLS
   SETI %INI DATA:0
+  NOP
 
 LOCALSTATE_MOVE:
   GTI %INI DATA:9
     JMPI LOCALSTATE_WRITE
 
   ADDI %INI DATA:1
+  NOP
   SEKI 0|1
+  NOP
   JMPI LOCALSTATE_MOVE
 
 LOCALSTATE_WRITE:
   SETI %INI DATA:0
+  NOP
   PPKI %INI 0|1
+  NOP
   SEKI 1|0
+  NOP
 
   SETI %INI DATA:-1
+  NOP
   PPKI %INI 0|1
+  NOP
   SKLS
+  NOP
   JMPI MAIN_LOOP
 
 # ----------------------------
@@ -55,12 +64,15 @@ LOCALSTATE_WRITE:
 .ORG 0|1
 MAIN_LOOP:
   NRG %ER
+  NOP
   GTI %ER REPRODUCTION_CONTINUE_THRESHOLD
     CALL REPRODUCE.CONTINUE REF %ER
   NRG %ER
+  NOP
   GTI %ER REPRODUCTION_CONTINUE_THRESHOLD
     JMPI MAIN_LOOP
   CALL ENERGY.HARVEST
+  NOP
   JMPI MAIN_LOOP
 
 # ----------------------------
@@ -81,4 +93,5 @@ MAIN_LOOP:
 # ----------------------------
 # Safty jump back
 # ----------------------------
+NOP
 JMPI MAIN_LOOP
