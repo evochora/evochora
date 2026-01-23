@@ -5,56 +5,56 @@
 
 .MACRO STATIC2_LOAD D0 D1
   DPLS                 # alten DP sichern
-  SYNC; NOP            # DP := IP (an PROC_START binden)
-  SEKI -1|0; NOP
-  SCNI D0 0|-1; NOP    # Slot 0 (x=0, y=-1)
-  SEKI 1|0; NOP
-  SCNI D1 0|-1; NOP    # Slot 1 (x=1)
-  SEKI -1|0; NOP
+  SYNC; NOP^2          # DP := IP (an PROC_START binden)
+  SEKI -1|0; NOP^2
+  SCNI D0 0|-1; NOP^2  # Slot 0 (x=0, y=-1)
+  SEKI 1|0; NOP^2
+  SCNI D1 0|-1; NOP^2  # Slot 1 (x=1)
+  SEKI -1|0; NOP^2
 
-  DPLS; NOP            # DP auf LS sichern
-  SWPL; NOP            # Alte DP position nach unten auf den stack swappen
+  DPLS; NOP^2          # DP auf LS sichern
+  SWPL; NOP^2          # Alte DP position nach unten auf den stack swappen
   SKLS                 # alten DP wiederherstellen
 .ENDM
 
 .MACRO STATIC2_STORE S0 S1
-  DPLS; NOP            # Caller DP sichern
-  SWPL; NOP            # PROC_START position im LS nach unten swappen
-  SKLS; NOP            # Active DP nach PROC_START holen
-  PPKI S0 0|-1; NOP
-  SEKI 1|0; NOP
-  PPKI S1 0|-1; NOP
-  SEKI -1|0; NOP
-  SKLS                 # Caller DP wiederherstellen
+  DPLS; NOP^2          # Caller DP sichern
+  SWPL; NOP^2          # PROC_START position im LS nach unten swappen
+  SKLS; NOP^2          # Active DP nach PROC_START holen
+  PPKI S0 0|-1; NOP^2
+  SEKI 1|0; NOP^2
+  PPKI S1 0|-1; NOP^2
+  SEKI -1|0; NOP^2
+  SKLS; NOP^2          # Caller DP wiederherstellen
 .ENDM
 
 
 .MACRO STATIC3_LOAD D0 D1 D2
   DPLS                 # alten DP sichern
-  SYNC; NOP            # DP := IP (an PROC_START binden)
-  SEKI -1|0; NOP
-  SCNI D0 0|-1; NOP    # Slot 0 (x=0, y=-1)
-  SEKI 1|0; NOP
-  SCNI D1 0|-1; NOP    # Slot 1 (x=1)
-  SEKI 1|0; NOP
-  SCNI D2 0|-1; NOP    # Slot 2 (x=2)
-  SEKI -1|0; NOP
-  SEKI -1|0; NOP       # DP zurück nach x=0
-  DPLS; NOP            # DP auf LS sichern
-  SWPL; NOP            # Alte DP position nach unten auf den stack swappen
+  SYNC; NOP^2          # DP := IP (an PROC_START binden)
+  SEKI -1|0; NOP^2
+  SCNI D0 0|-1; NOP^2  # Slot 0 (x=0, y=-1)
+  SEKI 1|0; NOP^2
+  SCNI D1 0|-1; NOP^2  # Slot 1 (x=1)
+  SEKI 1|0; NOP^2
+  SCNI D2 0|-1; NOP^2  # Slot 2 (x=2)
+  SEKI -1|0; NOP^2
+  SEKI -1|0; NOP^2     # DP zurück nach x=0
+  DPLS; NOP^2          # DP auf LS sichern
+  SWPL; NOP^2          # Alte DP position nach unten auf den stack swappen
   SKLS                 # alten DP wiederherstellen
 .ENDM
 
 .MACRO STATIC3_STORE S0 S1 S2
-  DPLS; NOP            # Caller DP sichern
-  SWPL; NOP            # PROC_START position im LS nach unten swappen
-  SKLS; NOP            # Active DP nach PROC_START holen
-  PPKI S0 0|-1; NOP
-  SEKI 1|0; NOP
-  PPKI S1 0|-1; NOP
-  SEKI 1|0; NOP
-  PPKI S2 0|-1; NOP
-  SEKI -1|0; NOP
-  SEKI -1|0; NOP
+  DPLS; NOP^2          # Caller DP sichern
+  SWPL; NOP^2          # PROC_START position im LS nach unten swappen
+  SKLS; NOP^2          # Active DP nach PROC_START holen
+  PPKI S0 0|-1; NOP^2
+  SEKI 1|0; NOP^2
+  PPKI S1 0|-1; NOP^2
+  SEKI 1|0; NOP^2
+  PPKI S2 0|-1; NOP^2
+  SEKI -1|0; NOP^2
+  SEKI -1|0; NOP^2
   SKLS                 # Caller DP wiederherstellen
 .ENDM

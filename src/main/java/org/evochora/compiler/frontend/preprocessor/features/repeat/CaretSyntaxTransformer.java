@@ -51,8 +51,12 @@ public class CaretSyntaxTransformer {
      * Transforms a single caret occurrence at the given index.
      *
      * <p>Finds the statement body by scanning backwards to the previous NEWLINE
-     * (or start of tokens), then rewrites {@code [BODY] [^] [n]} to
-     * {@code [.REPEAT] [n] [BODY]}.</p>
+     * (or start of tokens), skipping any label definition, then rewrites
+     * {@code [BODY] [^] [n]} to {@code [.REPEAT] [n] [BODY]}.</p>
+     *
+     * <p>Labels (IDENTIFIER followed by COLON) are preserved and not included
+     * in the repeat body, so {@code LABEL: NOP^2} becomes
+     * {@code LABEL: .REPEAT 2 NOP} rather than {@code .REPEAT 2 LABEL: NOP}.</p>
      *
      * @param tokens The token list.
      * @param caretIndex The index of the CARET token.
@@ -68,6 +72,15 @@ public class CaretSyntaxTransformer {
                 bodyStart = j + 1;
                 break;
             }
+        }
+
+        // Skip label if present (IDENTIFIER followed by COLON)
+        // This ensures "LABEL: NOP^2" becomes "LABEL: .REPEAT 2 NOP"
+        // rather than ".REPEAT 2 LABEL: NOP" which would be invalid
+        if (bodyStart + 1 < caretIndex
+                && tokens.get(bodyStart).type() == TokenType.IDENTIFIER
+                && tokens.get(bodyStart + 1).type() == TokenType.COLON) {
+            bodyStart += 2; // Skip past LABEL:
         }
 
         // Extract body tokens (everything between bodyStart and caretIndex)

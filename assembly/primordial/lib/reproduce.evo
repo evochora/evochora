@@ -20,17 +20,17 @@
   .PREG %SIDEVEC %PR3     # In der ersten und letzten Zeile Vektor zu Hüllenseite, sonst DATA:0, im local state DATA:1 für rechts (letzte Zeile) und DATA:-1 für links (erste Zeile)
   .PREG %TMP     %PR4     # Tempräres register für schenlle Vergleiche
 
-  NOP^2; JMPI CONTINUE_INIT; NOP^39; JMPI CONTINUE_INIT
+  NOP^4; JMPI CONTINUE_INIT; NOP^48; JMPI CONTINUE_INIT
 
   # 3 DATA-Felder in der Zeile über CONTINUE_INIT (x=0..2, y=-1 relativ zu CONTINUE_INIT)
   .PLACE DATA:0  0|1    # %DIRMASK
   .PLACE DATA:-1  1|1    # %DIRVEC
 
   .ORG 0|2
-  CONTINUE_INIT:                                  # State laden
+  CONTINUE_INIT:                              # State laden
     STATIC2_LOAD %DIRMASK %SIDEVEC; NOP
-    SMRI DATA:1; NOP                              # Marker auf 1 setzen für Ownership-Transfer bei FORK
-    JMPI CONTINUE_INIT2; NOP^9; JMPI CONTINUE_INIT2
+    SMRI DATA:1; NOP^2                              # Marker auf 1 setzen für Ownership-Transfer bei FORK
+    JMPI CONTINUE_INIT2; NOP^11; JMPI CONTINUE_INIT2
 
   .ORG 0|3
   CONTINUE_INIT2:                                 # Wir brauchen ein Shell Molekül als Terminator Symbol

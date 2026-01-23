@@ -14,7 +14,7 @@
   .PREG %VEC      %PR5   # temporärer Richtungsvektor
 
   .ORG 0|0
-  NOP; JMPI HARVEST_START; NOP^42; JMPI HARVEST_START
+  NOP; JMPI HARVEST_START; NOP^53; JMPI HARVEST_START
 
   # 3 DATA-Felder in der Zeile über HARVEST_START (x=0..2, y=-1 relativ zu HARVEST_START)
   .PLACE DATA:1  0|1    # FWD_MASK: rechts (Bitmaske)
@@ -28,109 +28,109 @@
       JMPI HARVEST_RANDOM_DIR
 
     .ORG 0|3
-    HARVEST_RANDOM_DIR:
+    HARVEST_RANDOM_DIR: NOP^2
       # Zufällige Richtung wählen (NACH dem State-Load!)
-      SPNR %MASK; NOP^2             # %MASK := passierbare Richtungen (Bitmaske)
+      SPNR %MASK; NOP^4             # %MASK := passierbare Richtungen (Bitmaske)
       IFI %MASK DATA:0                 # Prüfe ob überhaupt eine Richtung passierbar ist
-        JMPI HARVEST_STUCK; NOP        # Wenn nicht, zurück zum IP
-      RBIR %DIR %MASK; NOP^2
-      B2VR %DIR %DIR; NOP
-      V2BR %FWD_MASK %DIR; NOP
-      JMPI HARVEST_LOOP; NOP^19; JMPI HARVEST_LOOP
+        JMPI HARVEST_STUCK; NOP^4        # Wenn nicht, zurück zum IP
+      RBIR %DIR %MASK; NOP^4
+      B2VR %DIR %DIR; NOP^4
+      V2BR %FWD_MASK %DIR; NOP^4
+      JMPI HARVEST_LOOP; NOP^15; JMPI HARVEST_LOOP
 
     .ORG 0|4
-    HARVEST_LOOP:
+    HARVEST_LOOP: NOP^4
       # 1) Umgebung scannen – wenn Energie da, sofort nehmen und zurück
-      SNTI %MASK ENERGY:0; NOP
+      SNTI %MASK ENERGY:0; NOP^2
       IFI %MASK DATA:0
-        JMPI HARVEST_MOVE; NOP
+        JMPI HARVEST_MOVE; NOP^2
 
-      RBIR %VEC %MASK; NOP
-      B2VR %VEC %VEC; NOP
+      RBIR %VEC %MASK; NOP^2
+      B2VR %VEC %VEC; NOP^2
 
-      SCAN %MASK %VEC; NOP
+      SCAN %MASK %VEC; NOP^2
       LETI %MASK ENERGY:0
-        JMPI HARVEST_MOVE; NOP
+        JMPI HARVEST_MOVE; NOP^2
 
       PEEK %MASK %VEC; NOP^2
-      JMPI HARVEST_SAVE_AND_RETURN; NOP^8; JMPI HARVEST_SAVE_AND_RETURN
+      JMPI HARVEST_SAVE_AND_RETURN; NOP^9; JMPI HARVEST_SAVE_AND_RETURN
 
     .ORG 0|5
     HARVEST_SAVE_AND_RETURN:
       # vor RET: "in einem Rutsch" speichern
       STATIC3_STORE %FWD_MASK %KIDX %KLEFT
-      JMPI HARVEST_SAVE_AND_RETURN2; NOP^5; JMPI HARVEST_SAVE_AND_RETURN2
+      JMPI HARVEST_SAVE_AND_RETURN2; NOP^6; JMPI HARVEST_SAVE_AND_RETURN2
 
     .ORG 0|6
-    HARVEST_SAVE_AND_RETURN2:
-      NOP; NOP; RET; NOP; RET; NOP
+    HARVEST_SAVE_AND_RETURN2: NOP^2
+      NOP^4; RET; NOP^4; RET; NOP^3
 
     HARVEST_STUCK:
       # Keine Richtung passierbar: zurück zum IP und neu starten
-      SYNC; NOP^2                    # Setzt DP = IP
+      SYNC; NOP^4                    # Setzt DP = IP
       JMPI HARVEST_START; NOP^34; JMPI HARVEST_START
 
     .ORG 0|7
-    HARVEST_MOVE:
+    HARVEST_MOVE: NOP^2
       # 2) Vorwärts passierbar?
-      SPNR %MASK; NOP^2              # Mutations-Puffer
+      SPNR %MASK; NOP^4
       IFI %MASK DATA:0                  # Prüfe ob überhaupt eine Richtung passierbar ist
-        JMPI HARVEST_STUCK; NOP         # Wenn nicht, zurück zum IP
-      ANDR %MASK %FWD_MASK; NOP^2
+        JMPI HARVEST_STUCK; NOP^4       # Wenn nicht, zurück zum IP
+      ANDR %MASK %FWD_MASK; NOP^4
       IFI %MASK DATA:0
-        JMPI HARVEST_TURN; NOP
+        JMPI HARVEST_TURN; NOP^2
 
       # 3) Schritt vorwärts
-      SEEK %DIR; NOP^2
+      SEEK %DIR; NOP^4
 
       # 4) Periodischer Turn-Countdown
-      SUBI %KLEFT DATA:1; NOP^2
+      SUBI %KLEFT DATA:1; NOP^4
       IFI  %KLEFT DATA:0
-        JMPI HARVEST_TURN; NOP^2
-      JMPI HARVEST_LOOP; NOP^3; JMPI HARVEST_LOOP
+        JMPI HARVEST_TURN; NOP^5
+      JMPI HARVEST_LOOP
 
     .ORG 0|8
-    HARVEST_TURN:
+    HARVEST_TURN: NOP^2
       # 90° CW drehen (Achsen 0,1) ohne externe Temp-Register
-      RTRI %DIR DATA:0 DATA:1; NOP^2
-      V2BR %FWD_MASK %DIR; NOP
+      RTRI %DIR DATA:0 DATA:1; NOP^4
+      V2BR %FWD_MASK %DIR; NOP^4
 
       # KIDX = (KIDX+1) mod 4
-      ADDI %KIDX DATA:1; NOP^2
+      ADDI %KIDX DATA:1; NOP^4
       GTI  %KIDX DATA:3
-        JMPI HARVEST_PT_WRAP; NOP
-      JMPI HARVEST_PT_LOAD
+        JMPI HARVEST_PT_WRAP; NOP^4
+      JMPI HARVEST_PT_LOAD; NOP^4
 
-    HARVEST_PT_WRAP:
-      SETI %KIDX DATA:0; NOP
-      JMPI HARVEST_PT_LOAD; NOP^14; JMPI HARVEST_PT_LOAD
+    HARVEST_PT_WRAP: NOP^4
+      SETI %KIDX DATA:0; NOP^4
+      JMPI HARVEST_PT_LOAD; NOP^2; JMPI HARVEST_PT_LOAD
 
     .ORG 0|9
-    HARVEST_PT_LOAD: NOP
+    HARVEST_PT_LOAD: NOP^4
       # Nächste Prim-Periode auswählen und KLEFT laden
       IFI %KIDX DATA:0
-        JMPI HARVEST_PT_K0; NOP
+        JMPI HARVEST_PT_K0; NOP^4
       IFI %KIDX DATA:1
-        JMPI HARVEST_PT_K1; NOP
+        JMPI HARVEST_PT_K1; NOP^4
       IFI %KIDX DATA:2
-        JMPI HARVEST_PT_K2; NOP
+        JMPI HARVEST_PT_K2; NOP^4
       # else K3
-      SETI %KLEFT DATA:103; NOP^2
-      JMPI HARVEST_LOOP; NOP^16; JMPI HARVEST_LOOP
+      SETI %KLEFT DATA:103; NOP^4
+      JMPI HARVEST_LOOP; NOP^13; JMPI HARVEST_LOOP
 
     .ORG 0|10
-    HARVEST_PT_K0:
-      SETI %KLEFT DATA:89; NOP^2
+    HARVEST_PT_K0: NOP^4
+      SETI %KLEFT DATA:89; NOP^4
       JMPI HARVEST_LOOP
 
-    HARVEST_PT_K1:
-      SETI %KLEFT DATA:97; NOP^2
-      JMPI HARVEST_LOOP
+    HARVEST_PT_K1: NOP^4
+      SETI %KLEFT DATA:97; NOP^4
+      JMPI HARVEST_LOOP; NOP^4
 
-    HARVEST_PT_K2:
-      SETI %KLEFT DATA:101; NOP^2
-      JMPI HARVEST_LOOP
+    HARVEST_PT_K2: NOP^4
+      SETI %KLEFT DATA:101; NOP^4
+      JMPI HARVEST_LOOP; NOP^4
 
     # Safety-Jumps am Ende der Prozedur (falls Code durch Mutation hierher fällt)
-    NOP; JMPI HARVEST_LOOP; NOP^18; JMPI HARVEST_LOOP
+    NOP; JMPI HARVEST_LOOP; NOP^3; JMPI HARVEST_LOOP
 .ENDP

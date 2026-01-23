@@ -37,17 +37,20 @@ class DisassemblerTest {
         // Arrange
         Disassembler disassembler = new Disassembler();
         MockEnvironmentReader mockReader = new MockEnvironmentReader();
-        
-        // Mock: SETI instruction (opcode 1) with 1 argument
-        mockReader.setMoleculeAt(new int[]{0, 0}, new Molecule(Config.TYPE_CODE, 1)); // SETI opcode
+
+        // Get the actual opcode ID for SETI (structured ID scheme)
+        int setiOpcodeId = Instruction.getInstructionIdByName("SETI") & ~Config.TYPE_CODE;
+
+        // Mock: SETI instruction with 1 argument
+        mockReader.setMoleculeAt(new int[]{0, 0}, new Molecule(Config.TYPE_CODE, setiOpcodeId)); // SETI opcode
         mockReader.setMoleculeAt(new int[]{1, 0}, new Molecule(Config.TYPE_DATA, 42)); // Argument
-        
+
         // Act
         DisassemblyData result = disassembler.disassemble(mockReader, new int[]{0, 0});
-        
+
         // Assert
         assertThat(result).isNotNull();
-        assertThat(result.opcodeId()).isEqualTo(1);
+        assertThat(result.opcodeId()).isEqualTo(setiOpcodeId);
         assertThat(result.opcodeName()).isEqualTo("SETI");
         assertThat(result.args()).hasSize(1);
         assertThat(result.args()[0].type()).isEqualTo(Config.TYPE_DATA);
@@ -117,17 +120,20 @@ class DisassemblerTest {
         // Arrange
         Disassembler disassembler = new Disassembler();
         MockEnvironmentReader mockReader = new MockEnvironmentReader();
-        
+
+        // Get the actual opcode ID for SETI (structured ID scheme)
+        int setiOpcodeId = Instruction.getInstructionIdByName("SETI") & ~Config.TYPE_CODE;
+
         // Mock: SETI instruction but missing argument
-        mockReader.setMoleculeAt(new int[]{0, 0}, new Molecule(Config.TYPE_CODE, 1)); // SETI opcode
+        mockReader.setMoleculeAt(new int[]{0, 0}, new Molecule(Config.TYPE_CODE, setiOpcodeId)); // SETI opcode
         // Argument missing - should handle gracefully
-        
+
         // Act
         DisassemblyData result = disassembler.disassemble(mockReader, new int[]{0, 0});
-        
+
         // Assert
         assertThat(result).isNotNull();
-        assertThat(result.opcodeId()).isEqualTo(1);
+        assertThat(result.opcodeId()).isEqualTo(setiOpcodeId);
         assertThat(result.opcodeName()).isEqualTo("SETI");
         assertThat(result.args()).isEmpty(); // No arguments
     }

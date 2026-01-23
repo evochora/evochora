@@ -18,66 +18,66 @@
 # ----------------------------
 # STRUCTURE Shell (50x31)
 # ----------------------------
-.PLACE STRUCTURE:1 -1..49|-1
-.PLACE STRUCTURE:1 -1..49|41
+.PLACE STRUCTURE:1 -1..60|-1
+.PLACE STRUCTURE:1 -1..60|41
 .PLACE STRUCTURE:1 -1|0..40
-.PLACE STRUCTURE:1 49|0..40
+.PLACE STRUCTURE:1 60|0..40
 
 # ----------------------------
 # Init
 # ----------------------------
 .ORG 0|0
-INIT:
+INIT: NOP^4
   DPLS
-  SETI %INI DATA:0; NOP
+  SETI %INI DATA:0; NOP^4
 
 LOCALSTATE_MOVE: NOP                          
   GTI %INI DATA:14
-    JMPI LOCALSTATE_WRITE; NOP                                         
+    JMPI LOCALSTATE_WRITE; NOP^4
 
-  ADDI %INI DATA:1; NOP^2
-  SEKI 0|1; NOP^2
-  JMPI LOCALSTATE_MOVE; NOP^20; JMPI LOCALSTATE_MOVE
+  ADDI %INI DATA:1; NOP^4
+  SEKI 0|1; NOP^4
+  JMPI LOCALSTATE_MOVE; NOP^17; JMPI LOCALSTATE_MOVE
 
 .ORG 0|1
-LOCALSTATE_WRITE:
-  SETI %INI DATA:0; NOP^2
-  PPKI %INI 0|1; NOP^2
-  SEKI 1|0; NOP;
+LOCALSTATE_WRITE: NOP^4
+  SETI %INI DATA:0; NOP^4
+  PPKI %INI 0|1; NOP^4
+  SEKI 1|0; NOP^4;
 
-  SETI %INI DATA:-1; NOP^2
-  PPKI %INI 0|1; NOP^2
-  SKLS; NOP^2
-  JMPI MAIN_LOOP; NOP^14; JMPI MAIN_LOOP
+  SETI %INI DATA:-1; NOP^4
+  PPKI %INI 0|1; NOP^4
+  SKLS; NOP^4
+  JMPI MAIN_LOOP; NOP^8; JMPI MAIN_LOOP
 
 # ----------------------------
 # Main loop
 # ----------------------------
 .ORG 0|2
-MAIN_LOOP:
-  NRG %ER; NOP^2
+MAIN_LOOP: NOP^4
+  NRG %ER; NOP^4
   GTI %ER REPRODUCTION_CONTINUE_THRESHOLD
-    JMPI MAIN_REPRODUCE; NOP
-  JMPI MAIN_HARVEST
+    JMPI MAIN_REPRODUCE; NOP^4
+  JMPI MAIN_HARVEST; NOP^4
 
-MAIN_REPRODUCE: NOP
-  CALL REPRODUCE.CONTINUE REF %ER; NOP^2
-  JMPI MAIN_LOOP_ENERGY_CHECK; NOP^19; JMPI MAIN_LOOP_ENERGY_CHECK
+MAIN_REPRODUCE: NOP^4
+  CALL REPRODUCE.CONTINUE REF %ER; NOP^4
+  JMPI MAIN_LOOP_ENERGY_CHECK; NOP^12; JMPI MAIN_LOOP_ENERGY_CHECK
 
 .ORG 0|3
-MAIN_HARVEST: NOP
-  CALL ENERGY.HARVEST; NOP^2
-  JMPI MAIN_LOOP
+MAIN_HARVEST: NOP^4
+  CALL ENERGY.HARVEST; NOP^4
+  JMPI MAIN_LOOP; NOP^4
 
 # Separater Energy-Check nach Reproduktion
-MAIN_LOOP_ENERGY_CHECK:
-  NRG %ER; NOP^2
+MAIN_LOOP_ENERGY_CHECK: NOP^4
+  NRG %ER; NOP^4
   GTI %ER REPRODUCTION_CONTINUE_THRESHOLD
-    JMPI MAIN_LOOP; NOP                          # Genug Energie -> weiter reproduzieren
+    JMPI MAIN_LOOP; NOP^4                   # Genug Energie -> weiter reproduzieren
   JMPI MAIN_HARVEST                         # Wenig Energie -> Energie suchen
 
 # Redundante Safety-Jumps (falls Code durch Mutation hierher fällt)
-NOP; JMPI MAIN_LOOP; NOP^19; JMPI MAIN_LOOP
+NOP; JMPI MAIN_LOOP; NOP^12; JMPI MAIN_LOOP
 
 # ----------------------------
 # Energy search
@@ -98,4 +98,4 @@ NOP; JMPI MAIN_LOOP; NOP^19; JMPI MAIN_LOOP
 # Safety jump back (redundant für Mutations-Robustheit)
 # ----------------------------
 .ORG 0|40
-JMPI MAIN_LOOP; NOP^43; JMPI MAIN_LOOP
+JMPI MAIN_LOOP; NOP^54; JMPI MAIN_LOOP

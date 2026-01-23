@@ -13,21 +13,21 @@ This document proposes a systematic rearrangement of the EvoASM instruction set 
 ### Structure
 
 ```
-Opcode = (Family × 1024) + (Operation × 32) + Variant
+Opcode = (Family × 4096) + (Operation × 64) + Variant
 
 ┌──────────────────────────────────────────────────────────────┐
-│  Bits:  [FFFF][OOOOO][VVVVV]                                 │
-│         │     │      │                                       │
-│         │     │      └── Variant (5 bits = 32 slots)         │
-│         │     │          Encodes operand source combination  │
-│         │     │                                              │
-│         │     └── Operation (5 bits = 32 per family)         │
-│         │         The base operation within a family         │
+│  Bits:  [FFFFFF][OOOOOO][VVVVVV]                             │
+│         │       │       │                                    │
+│         │       │       └── Variant (6 bits = 64 slots)      │
+│         │       │           Encodes operand source combination│
+│         │       │                                            │
+│         │       └── Operation (6 bits = 64 per family)       │
+│         │           The base operation within a family       │
 │         │                                                    │
-│         └── Family (4 bits = 16 families)                    │
+│         └── Family (6 bits = 64 families)                    │
 │             Groups of related operations                     │
 │                                                              │
-│  Total: 14 bits = 0-16383                                    │
+│  Total: 18 bits = 0-262143                                   │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -35,25 +35,25 @@ Opcode = (Family × 1024) + (Operation × 32) + Variant
 
 | Mutation | Effect |
 |----------|--------|
-| `+1` to `+31` | Change variant (operand sources) |
-| `+32` to `+1023` | Change operation within family |
-| `+1024` or more | Change family (major semantic change) |
+| `+1` to `+63` | Change variant (operand sources) |
+| `+64` to `+4095` | Change operation within family |
+| `+4096` or more | Change family (major semantic change) |
 
 ### Family Assignments
 
 | Family ID | Range | Name | Description |
 |-----------|-------|------|-------------|
-| 0 | 0-1023 | Special | NOP and reserved |
-| 1 | 1024-2047 | Arithmetic | Mathematical operations |
-| 2 | 2048-3071 | Bitwise | Bit manipulation |
-| 3 | 3072-4095 | Data | Data movement and stack |
-| 4 | 4096-5119 | Conditional | Branching conditions |
-| 5 | 5120-6143 | Control | Control flow |
-| 6 | 6144-7167 | Environment | World interaction |
-| 7 | 7168-8191 | State | Organism state |
-| 8 | 8192-9215 | Location | Location registers/stack |
-| 9 | 9216-10239 | Vector | Vector manipulation |
-| 10-15 | 10240-16383 | Reserved | Future expansion |
+| 0 | 0-4095 | Special | NOP and reserved |
+| 1 | 4096-8191 | Arithmetic | Mathematical operations |
+| 2 | 8192-12287 | Bitwise | Bit manipulation |
+| 3 | 12288-16383 | Data | Data movement and stack |
+| 4 | 16384-20479 | Conditional | Branching conditions |
+| 5 | 20480-24575 | Control | Control flow |
+| 6 | 24576-28671 | Environment | World interaction |
+| 7 | 28672-32767 | State | Organism state |
+| 8 | 32768-36863 | Location | Location registers/stack |
+| 9 | 36864-40959 | Vector | Vector manipulation |
+| 10-63 | 40960-262143 | Reserved | Future expansion |
 
 ### Variant Encoding
 
@@ -61,31 +61,33 @@ Variants are grouped by argument count for natural mutation transitions:
 
 | Variant ID | Pattern | Description |
 |------------|---------|-------------|
-| **0-Argument** | | |
+| **0-Argument (0-15)** | | |
 | 0 | `-` | No operands |
-| 1-7 | | Reserved |
-| **1-Argument** | | |
-| 8 | `R` | One register |
-| 9 | `I` | One immediate |
-| 10 | `S` | One stack value |
-| 11 | `V` | One vector |
-| 12 | `L` | One label/location register |
-| 13-15 | | Reserved |
-| **2-Argument** | | |
-| 16 | `R,R` | Two registers |
-| 17 | `R,I` | Register + immediate |
-| 18 | `R,S` | Register + stack |
-| 19 | `R,V` | Register + vector |
-| 20 | `R,L` | Register + location register |
-| 21 | `S,S` | Two stack values |
-| 22 | `S,V` | Stack + vector |
-| 23 | `L,L` | Two location registers |
-| 24-27 | | Reserved |
-| **3-Argument** | | |
-| 28 | `R,R,R` | Three registers |
-| 29 | `R,R,I` | Two registers + immediate |
-| 30 | `R,I,I` | Register + two immediates |
-| 31 | `S,S,S` | Three stack values |
+| 1-15 | | Reserved |
+| **1-Argument (16-31)** | | |
+| 16 | `R` | One register |
+| 17 | `I` | One immediate |
+| 18 | `S` | One stack value |
+| 19 | `V` | One vector |
+| 20 | `L` | One label/location register |
+| 21-31 | | Reserved |
+| **2-Argument (32-47)** | | |
+| 32 | `R,R` | Two registers |
+| 33 | `R,I` | Register + immediate |
+| 34 | `R,S` | Register + stack |
+| 35 | `R,V` | Register + vector |
+| 36 | `R,L` | Register + location register |
+| 37 | `S,S` | Two stack values |
+| 38 | `S,V` | Stack + vector |
+| 39 | `L,L` | Two location registers |
+| 40-47 | | Reserved |
+| **3-Argument (48-63)** | | |
+| 48 | `R,R,R` | Three registers |
+| 49 | `R,R,I` | Two registers + immediate |
+| 50 | `R,I,I` | Register + two immediates |
+| 51 | `S,S,S` | Three stack values |
+| 52 | `V,I,V` | Vector + immediate + vector |
+| 53-63 | | Reserved |
 
 ---
 

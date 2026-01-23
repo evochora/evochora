@@ -333,4 +333,69 @@ public class RepeatDirectiveTest {
         List<TokenType> types = expandedTokens.stream().map(Token::type).toList();
         assertThat(types).containsExactly(TokenType.END_OF_FILE);
     }
+
+    /**
+     * Tests that caret syntax preserves labels and doesn't repeat them.
+     * LABEL: NOP^2 should become LABEL: NOP; NOP (not LABEL: NOP; LABEL: NOP)
+     */
+    @Test
+    @Tag("unit")
+    void testCaretSyntaxWithLabel() {
+        // Arrange
+        String source = "LOOP: NOP^2";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics);
+        List<Token> initialTokens = lexer.scanTokens();
+        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""));
+
+        // Act
+        List<Token> expandedTokens = preProcessor.expand();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        List<TokenType> types = expandedTokens.stream().map(Token::type).toList();
+        // LOOP : NOP NEWLINE NOP EOF
+        // The label should NOT be repeated, only the NOP instruction
+        assertThat(types).containsExactly(
+                TokenType.IDENTIFIER,  // LOOP
+                TokenType.COLON,       // :
+                TokenType.OPCODE,      // NOP
+                TokenType.NEWLINE,
+                TokenType.OPCODE,      // NOP
+                TokenType.END_OF_FILE
+        );
+    }
+
+    /**
+     * Tests caret syntax with label and instruction with arguments.
+     * LOOP: JMPI START^2 should become LOOP: JMPI START; JMPI START
+     */
+    @Test
+    @Tag("unit")
+    void testCaretSyntaxWithLabelAndArguments() {
+        // Arrange
+        String source = "LOOP: JMPI START^2";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics);
+        List<Token> initialTokens = lexer.scanTokens();
+        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""));
+
+        // Act
+        List<Token> expandedTokens = preProcessor.expand();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        List<TokenType> types = expandedTokens.stream().map(Token::type).toList();
+        // LOOP : JMPI START NEWLINE JMPI START EOF
+        assertThat(types).containsExactly(
+                TokenType.IDENTIFIER,  // LOOP
+                TokenType.COLON,       // :
+                TokenType.OPCODE,      // JMPI
+                TokenType.IDENTIFIER,  // START
+                TokenType.NEWLINE,
+                TokenType.OPCODE,      // JMPI
+                TokenType.IDENTIFIER,  // START
+                TokenType.END_OF_FILE
+        );
+    }
 }

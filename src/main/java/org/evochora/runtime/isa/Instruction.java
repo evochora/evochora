@@ -30,6 +30,9 @@ import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 
+import static org.evochora.runtime.isa.Family.*;
+import static org.evochora.runtime.isa.Variant.*;
+
 /**
  * The abstract base class for all instructions in the Evochora VM.
  * This class is now free from legacy compiler dependencies and focuses
@@ -277,179 +280,756 @@ public abstract class Instruction {
      * Initializes the instruction set by registering all instruction families.
      */
     public static void init() {
-        // Arithmetic-Family
-        registerFamily(ArithmeticInstruction.class, Map.of(4, "ADDR", 6, "SUBR", 40, "MULR", 42, "DIVR", 44, "MODR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
-        registerFamily(ArithmeticInstruction.class, Map.of(30, "ADDI", 31, "SUBI", 41, "MULI", 43, "DIVI", 45, "MODI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
-        registerFamily(ArithmeticInstruction.class, Map.of(70, "ADDS", 71, "SUBS", 72, "MULS", 73, "DIVS", 74, "MODS"), List.of(OperandSource.STACK, OperandSource.STACK));
+        // Family 1: Arithmetic
+        // Operation 0: ADD
+        registerFamily(ArithmeticInstruction.class, Map.of(
+            OpcodeId.compute(ARITHMETIC, 0, RR), "ADDR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(ArithmeticInstruction.class, Map.of(
+            OpcodeId.compute(ARITHMETIC, 0, RI), "ADDI"
+        ), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(ArithmeticInstruction.class, Map.of(
+            OpcodeId.compute(ARITHMETIC, 0, SS), "ADDS"
+        ), List.of(OperandSource.STACK, OperandSource.STACK));
 
-        // Bitwise-Family
-        registerFamily(BitwiseInstruction.class, Map.of(5, "NADR", 46, "ANDR", 48, "ORR", 50, "XORR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
-        registerFamily(BitwiseInstruction.class, Map.of(32, "NADI", 47, "ANDI", 49, "ORI", 51, "XORI", 53, "SHLI", 54, "SHRI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
-        registerFamily(BitwiseInstruction.class, Map.of(78, "NADS", 75, "ANDS", 76, "ORS", 77, "XORS", 80, "SHLS", 81, "SHRS"), List.of(OperandSource.STACK, OperandSource.STACK));
-        // New register shift variants
-        registerFamily(BitwiseInstruction.class, Map.of(103, "SHLR", 104, "SHRR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
-        registerFamily(BitwiseInstruction.class, Map.of(52, "NOT"), List.of(OperandSource.REGISTER));
-        registerFamily(BitwiseInstruction.class, Map.of(79, "NOTS"), List.of(OperandSource.STACK));
+        // Operation 1: SUB
+        registerFamily(ArithmeticInstruction.class, Map.of(
+            OpcodeId.compute(ARITHMETIC, 1, RR), "SUBR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(ArithmeticInstruction.class, Map.of(
+            OpcodeId.compute(ARITHMETIC, 1, RI), "SUBI"
+        ), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(ArithmeticInstruction.class, Map.of(
+            OpcodeId.compute(ARITHMETIC, 1, SS), "SUBS"
+        ), List.of(OperandSource.STACK, OperandSource.STACK));
 
-        // New: Rotate (ROT), Population Count (PCN), Bit Scan N-th (BSN)
-        // Allocate new IDs beyond current max (>=134)
-        registerFamily(BitwiseInstruction.class, Map.of(135, "ROTR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
-        registerFamily(BitwiseInstruction.class, Map.of(136, "ROTI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
-        registerFamily(BitwiseInstruction.class, Map.of(137, "ROTS"), List.of(OperandSource.STACK, OperandSource.STACK));
+        // Operation 2: MUL
+        registerFamily(ArithmeticInstruction.class, Map.of(
+            OpcodeId.compute(ARITHMETIC, 2, RR), "MULR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(ArithmeticInstruction.class, Map.of(
+            OpcodeId.compute(ARITHMETIC, 2, RI), "MULI"
+        ), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(ArithmeticInstruction.class, Map.of(
+            OpcodeId.compute(ARITHMETIC, 2, SS), "MULS"
+        ), List.of(OperandSource.STACK, OperandSource.STACK));
 
-        registerFamily(BitwiseInstruction.class, Map.of(138, "PCNR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
-        registerFamily(BitwiseInstruction.class, Map.of(139, "PCNS"), List.of(OperandSource.STACK));
+        // Operation 3: DIV
+        registerFamily(ArithmeticInstruction.class, Map.of(
+            OpcodeId.compute(ARITHMETIC, 3, RR), "DIVR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(ArithmeticInstruction.class, Map.of(
+            OpcodeId.compute(ARITHMETIC, 3, RI), "DIVI"
+        ), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(ArithmeticInstruction.class, Map.of(
+            OpcodeId.compute(ARITHMETIC, 3, SS), "DIVS"
+        ), List.of(OperandSource.STACK, OperandSource.STACK));
 
-        registerFamily(BitwiseInstruction.class, Map.of(140, "BSNR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
-        registerFamily(BitwiseInstruction.class, Map.of(141, "BSNI"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.IMMEDIATE));
-        registerFamily(BitwiseInstruction.class, Map.of(142, "BSNS"), List.of(OperandSource.STACK, OperandSource.STACK));
+        // Operation 4: MOD
+        registerFamily(ArithmeticInstruction.class, Map.of(
+            OpcodeId.compute(ARITHMETIC, 4, RR), "MODR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(ArithmeticInstruction.class, Map.of(
+            OpcodeId.compute(ARITHMETIC, 4, RI), "MODI"
+        ), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(ArithmeticInstruction.class, Map.of(
+            OpcodeId.compute(ARITHMETIC, 4, SS), "MODS"
+        ), List.of(OperandSource.STACK, OperandSource.STACK));
 
-        // Data-Family
-        registerFamily(DataInstruction.class, Map.of(1, "SETI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
-        registerFamily(DataInstruction.class, Map.of(2, "SETR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
-        registerFamily(DataInstruction.class, Map.of(3, "SETV"), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
-        registerFamily(DataInstruction.class, Map.of(22, "PUSH"), List.of(OperandSource.REGISTER));
-        registerFamily(DataInstruction.class, Map.of(23, "POP"), List.of(OperandSource.REGISTER));
-        registerFamily(DataInstruction.class, Map.of(58, "PUSI"), List.of(OperandSource.IMMEDIATE));
-        registerFamily(DataInstruction.class, Map.of(178, "PUSV"), List.of(OperandSource.VECTOR));
+        // Operation 12: DOT (dot product)
+        registerFamily(ArithmeticInstruction.class, Map.of(
+            OpcodeId.compute(ARITHMETIC, 12, RRR), "DOTR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(ArithmeticInstruction.class, Map.of(
+            OpcodeId.compute(ARITHMETIC, 12, SS), "DOTS"
+        ), List.of(OperandSource.STACK, OperandSource.STACK));
 
-        // Stack-Family
-        registerFamily(StackInstruction.class, Map.of(60, "DUP", 61, "SWAP", 62, "DROP", 63, "ROT"), List.of());
+        // Operation 13: CRS (cross product)
+        registerFamily(ArithmeticInstruction.class, Map.of(
+            OpcodeId.compute(ARITHMETIC, 13, RRR), "CRSR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(ArithmeticInstruction.class, Map.of(
+            OpcodeId.compute(ARITHMETIC, 13, SS), "CRSS"
+        ), List.of(OperandSource.STACK, OperandSource.STACK));
 
-        // Conditional-Family
-        registerFamily(ConditionalInstruction.class, Map.of(7, "IFR", 8, "LTR", 9, "GTR", 33, "IFTR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
-        registerFamily(ConditionalInstruction.class, Map.of(24, "IFI", 25, "LTI", 26, "GTI", 29, "IFTI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
-        registerFamily(ConditionalInstruction.class, Map.of(85, "IFS", 86, "GTS", 87, "LTS", 88, "IFTS"), List.of(OperandSource.STACK, OperandSource.STACK));
-        registerFamily(ConditionalInstruction.class, Map.of(93, "IFMR"), List.of(OperandSource.REGISTER));
-        registerFamily(ConditionalInstruction.class, Map.of(94, "IFMI"), List.of(OperandSource.VECTOR));
-        registerFamily(ConditionalInstruction.class, Map.of(95, "IFMS"), List.of(OperandSource.STACK));
-        registerFamily(ConditionalInstruction.class, Map.of(182, "IFPR"), List.of(OperandSource.REGISTER));
-        registerFamily(ConditionalInstruction.class, Map.of(183, "IFPI"), List.of(OperandSource.VECTOR));
-        registerFamily(ConditionalInstruction.class, Map.of(184, "IFPS"), List.of(OperandSource.STACK));
+        // Family 2: Bitwise
+        // Operation 0: AND
+        registerFamily(BitwiseInstruction.class, Map.of(
+            OpcodeId.compute(BITWISE, 0, RR), "ANDR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(BitwiseInstruction.class, Map.of(
+            OpcodeId.compute(BITWISE, 0, RI), "ANDI"
+        ), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(BitwiseInstruction.class, Map.of(
+            OpcodeId.compute(BITWISE, 0, SS), "ANDS"
+        ), List.of(OperandSource.STACK, OperandSource.STACK));
 
-        // Negated Conditional-Family
-        registerFamily(ConditionalInstruction.class, Map.of(163, "INR", 164, "GETR", 165, "LETR", 166, "INTR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
-        registerFamily(ConditionalInstruction.class, Map.of(167, "GETI", 168, "LETI", 169, "INTI", 170, "INI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
-        registerFamily(ConditionalInstruction.class, Map.of(171, "INS", 172, "GETS", 173, "LETS", 174, "INTS"), List.of(OperandSource.STACK, OperandSource.STACK));
-        registerFamily(ConditionalInstruction.class, Map.of(175, "INMR"), List.of(OperandSource.REGISTER));
-        registerFamily(ConditionalInstruction.class, Map.of(176, "INMI"), List.of(OperandSource.VECTOR));
-        registerFamily(ConditionalInstruction.class, Map.of(177, "INMS"), List.of(OperandSource.STACK));
-        registerFamily(ConditionalInstruction.class, Map.of(185, "INPR"), List.of(OperandSource.REGISTER));
-        registerFamily(ConditionalInstruction.class, Map.of(186, "INPI"), List.of(OperandSource.VECTOR));
-        registerFamily(ConditionalInstruction.class, Map.of(187, "INPS"), List.of(OperandSource.STACK));
-        
-        // New: Foreign ownership conditionals (IFF*, INF*)
-        registerFamily(ConditionalInstruction.class, Map.of(200, "IFFR"), List.of(OperandSource.REGISTER));
-        registerFamily(ConditionalInstruction.class, Map.of(201, "IFFI"), List.of(OperandSource.VECTOR));
-        registerFamily(ConditionalInstruction.class, Map.of(202, "IFFS"), List.of(OperandSource.STACK));
-        registerFamily(ConditionalInstruction.class, Map.of(203, "INFR"), List.of(OperandSource.REGISTER));
-        registerFamily(ConditionalInstruction.class, Map.of(204, "INFI"), List.of(OperandSource.VECTOR));
-        registerFamily(ConditionalInstruction.class, Map.of(205, "INFS"), List.of(OperandSource.STACK));
-        
-        // New: Vacant ownership conditionals (IFV*, INV*)
-        registerFamily(ConditionalInstruction.class, Map.of(206, "IFVR"), List.of(OperandSource.REGISTER));
-        registerFamily(ConditionalInstruction.class, Map.of(207, "IFVI"), List.of(OperandSource.VECTOR));
-        registerFamily(ConditionalInstruction.class, Map.of(208, "IFVS"), List.of(OperandSource.STACK));
-        registerFamily(ConditionalInstruction.class, Map.of(209, "INVR"), List.of(OperandSource.REGISTER));
-        registerFamily(ConditionalInstruction.class, Map.of(210, "INVI"), List.of(OperandSource.VECTOR));
-        registerFamily(ConditionalInstruction.class, Map.of(211, "INVS"), List.of(OperandSource.STACK));
+        // Operation 1: OR
+        registerFamily(BitwiseInstruction.class, Map.of(
+            OpcodeId.compute(BITWISE, 1, RR), "ORR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(BitwiseInstruction.class, Map.of(
+            OpcodeId.compute(BITWISE, 1, RI), "ORI"
+        ), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(BitwiseInstruction.class, Map.of(
+            OpcodeId.compute(BITWISE, 1, SS), "ORS"
+        ), List.of(OperandSource.STACK, OperandSource.STACK));
 
-        // ControlFlow-Family
-        registerFamily(ControlFlowInstruction.class, Map.of(20, "JMPI", 34, "CALL"), List.of(OperandSource.LABEL));
-        registerFamily(ControlFlowInstruction.class, Map.of(10, "JMPR"), List.of(OperandSource.REGISTER));
-        registerFamily(ControlFlowInstruction.class, Map.of(89, "JMPS"), List.of(OperandSource.STACK));
-        registerFamily(ControlFlowInstruction.class, Map.of(35, "RET"), List.of());
+        // Operation 2: XOR
+        registerFamily(BitwiseInstruction.class, Map.of(
+            OpcodeId.compute(BITWISE, 2, RR), "XORR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(BitwiseInstruction.class, Map.of(
+            OpcodeId.compute(BITWISE, 2, RI), "XORI"
+        ), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(BitwiseInstruction.class, Map.of(
+            OpcodeId.compute(BITWISE, 2, SS), "XORS"
+        ), List.of(OperandSource.STACK, OperandSource.STACK));
 
-        // WorldInteraction (POKE & PEEK)
-        registerFamily(EnvironmentInteractionInstruction.class, Map.of(15, "POKE", 14, "PEEK"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
-        registerFamily(EnvironmentInteractionInstruction.class, Map.of(57, "POKI", 56, "PEKI"), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
-        registerFamily(EnvironmentInteractionInstruction.class, Map.of(91, "POKS"), List.of(OperandSource.STACK, OperandSource.STACK));
-        registerFamily(EnvironmentInteractionInstruction.class, Map.of(90, "PEKS"), List.of(OperandSource.STACK));
-        // Combined PEEK+POKE instructions
-        registerFamily(EnvironmentInteractionInstruction.class, Map.of(179, "PPKR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
-        registerFamily(EnvironmentInteractionInstruction.class, Map.of(180, "PPKI"), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
-        registerFamily(EnvironmentInteractionInstruction.class, Map.of(181, "PPKS"), List.of(OperandSource.STACK, OperandSource.STACK));
+        // Operation 3: NAD (NAND)
+        registerFamily(BitwiseInstruction.class, Map.of(
+            OpcodeId.compute(BITWISE, 3, RR), "NADR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(BitwiseInstruction.class, Map.of(
+            OpcodeId.compute(BITWISE, 3, RI), "NADI"
+        ), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(BitwiseInstruction.class, Map.of(
+            OpcodeId.compute(BITWISE, 3, SS), "NADS"
+        ), List.of(OperandSource.STACK, OperandSource.STACK));
 
-        // State (SCAN, SEEK & Rest)
-        registerFamily(StateInstruction.class, Map.of(16, "SCAN"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
-        registerFamily(StateInstruction.class, Map.of(82, "SCNI"), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
-        registerFamily(StateInstruction.class, Map.of(83, "SCNS"), List.of(OperandSource.STACK));
-        // New: SPNP (Scan Passable Neighbors): SPNR/SPNS
-        registerFamily(StateInstruction.class, Map.of(152, "SPNR"), List.of(OperandSource.REGISTER));
-        registerFamily(StateInstruction.class, Map.of(153, "SPNS"), List.of());
-        // New: SNT* (Scan Neighbors by Type): SNTR/SNTI/SNTS
-        registerFamily(StateInstruction.class, Map.of(154, "SNTR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
-        registerFamily(StateInstruction.class, Map.of(155, "SNTI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
-        registerFamily(StateInstruction.class, Map.of(156, "SNTS"), List.of(OperandSource.STACK));
-        registerFamily(StateInstruction.class, Map.of(12, "SEEK"), List.of(OperandSource.REGISTER));
-        registerFamily(StateInstruction.class, Map.of(59, "SEKI"), List.of(OperandSource.VECTOR));
-        registerFamily(StateInstruction.class, Map.of(84, "SEKS"), List.of(OperandSource.STACK));
-        registerFamily(StateInstruction.class, Map.of(11, "TURN", 17, "NRG", 19, "DIFF", 21, "POS", 55, "RAND", 212, "NTR"), List.of(OperandSource.REGISTER));
-        registerFamily(StateInstruction.class, Map.of(18, "FORK"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
-        registerFamily(StateInstruction.class, Map.of(13, "SYNC", 92, "NRGS", 213, "NTRS"), List.of());
-        // New: TRNI, TRNS, POSS, DIFS (allocate new IDs > current max 95?)
-        registerFamily(StateInstruction.class, Map.of(96, "TRNI"), List.of(OperandSource.VECTOR));
-        registerFamily(StateInstruction.class, Map.of(97, "TRNS"), List.of(OperandSource.STACK));
-        registerFamily(StateInstruction.class, Map.of(98, "POSS"), List.of());
-        registerFamily(StateInstruction.class, Map.of(99, "DIFS"), List.of());
-        // RNDS: reads upper bound from stack
-        registerFamily(StateInstruction.class, Map.of(105, "RNDS"), List.of(OperandSource.STACK));
-        // New: Active DP selection ADPR/ADPI/ADPS
-        registerFamily(StateInstruction.class, Map.of(100, "ADPR"), List.of(OperandSource.REGISTER));
-        registerFamily(StateInstruction.class, Map.of(101, "ADPI"), List.of(OperandSource.IMMEDIATE));
-        registerFamily(StateInstruction.class, Map.of(102, "ADPS"), List.of(OperandSource.STACK));
-        // New: FRKI and FRKS
-        registerFamily(StateInstruction.class, Map.of(106, "FRKI"), List.of(OperandSource.VECTOR, OperandSource.IMMEDIATE, OperandSource.VECTOR));
-        registerFamily(StateInstruction.class, Map.of(107, "FRKS"), List.of(OperandSource.STACK, OperandSource.STACK, OperandSource.STACK));
+        // Operation 8: NOT
+        registerFamily(BitwiseInstruction.class, Map.of(
+            OpcodeId.compute(BITWISE, 8, R), "NOT"
+        ), List.of(OperandSource.REGISTER));
+        registerFamily(BitwiseInstruction.class, Map.of(
+            OpcodeId.compute(BITWISE, 8, S), "NOTS"
+        ), List.of(OperandSource.STACK));
 
-        // NOP
-        registerFamily(NopInstruction.class, Map.of(0, "NOP"), List.of());
+        // Operation 9: SHL (Shift Left)
+        registerFamily(BitwiseInstruction.class, Map.of(
+            OpcodeId.compute(BITWISE, 9, RR), "SHLR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(BitwiseInstruction.class, Map.of(
+            OpcodeId.compute(BITWISE, 9, RI), "SHLI"
+        ), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(BitwiseInstruction.class, Map.of(
+            OpcodeId.compute(BITWISE, 9, SS), "SHLS"
+        ), List.of(OperandSource.STACK, OperandSource.STACK));
 
-        // Arithmetic extensions: DOT and CRS
-        registerFamily(ArithmeticInstruction.class, Map.of(108, "DOTR", 109, "CRSR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
-        registerFamily(ArithmeticInstruction.class, Map.of(110, "DOTS", 111, "CRSS"), List.of(OperandSource.STACK, OperandSource.STACK));
+        // Operation 10: SHR (Shift Right)
+        registerFamily(BitwiseInstruction.class, Map.of(
+            OpcodeId.compute(BITWISE, 10, RR), "SHRR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(BitwiseInstruction.class, Map.of(
+            OpcodeId.compute(BITWISE, 10, RI), "SHRI"
+        ), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(BitwiseInstruction.class, Map.of(
+            OpcodeId.compute(BITWISE, 10, SS), "SHRS"
+        ), List.of(OperandSource.STACK, OperandSource.STACK));
 
-        // Location instruction family registrations
-        registerFamily(LocationInstruction.class, Map.of(112, "DUPL", 113, "SWPL", 114, "DRPL", 115, "ROTL", 116, "DPLS", 117, "SKLS", 122, "LSDS"), List.of());
-        registerFamily(LocationInstruction.class, Map.of(118, "DPLR", 120, "SKLR", 121, "PUSL", 123, "LRDS", 125, "POPL", 191, "CRLR"), List.of(OperandSource.LOCATION_REGISTER));
-        registerFamily(LocationInstruction.class, Map.of(190, "LRLR"), List.of(OperandSource.LOCATION_REGISTER, OperandSource.LOCATION_REGISTER));
-        registerFamily(LocationInstruction.class, Map.of(124, "LRDR"), List.of(OperandSource.REGISTER, OperandSource.LOCATION_REGISTER));
-        registerFamily(LocationInstruction.class, Map.of(126, "LSDR"), List.of(OperandSource.REGISTER));
+        // Operation 11: ROT (Rotate)
+        registerFamily(BitwiseInstruction.class, Map.of(
+            OpcodeId.compute(BITWISE, 11, RR), "ROTR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(BitwiseInstruction.class, Map.of(
+            OpcodeId.compute(BITWISE, 11, RI), "ROTI"
+        ), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(BitwiseInstruction.class, Map.of(
+            OpcodeId.compute(BITWISE, 11, SS), "ROTS"
+        ), List.of(OperandSource.STACK, OperandSource.STACK));
 
-        // Vector Manipulation Instruction Family
-        registerFamily(VectorInstruction.class, Map.of(127, "VGTR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
-        registerFamily(VectorInstruction.class, Map.of(128, "VGTI"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.IMMEDIATE));
-        registerFamily(VectorInstruction.class, Map.of(129, "VGTS"), List.of(OperandSource.STACK, OperandSource.STACK)); // index, vector
-        registerFamily(VectorInstruction.class, Map.of(130, "VSTR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
-        registerFamily(VectorInstruction.class, Map.of(131, "VSTI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE, OperandSource.IMMEDIATE));
-        registerFamily(VectorInstruction.class, Map.of(132, "VSTS"), List.of(OperandSource.STACK, OperandSource.STACK, OperandSource.STACK)); // value, index, vector
-        registerFamily(VectorInstruction.class, Map.of(133, "VBLD"), List.of(OperandSource.REGISTER));
-        registerFamily(VectorInstruction.class, Map.of(134, "VBLS"), List.of());
+        // Operation 12: PCN (Population Count)
+        registerFamily(BitwiseInstruction.class, Map.of(
+            OpcodeId.compute(BITWISE, 12, RR), "PCNR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(BitwiseInstruction.class, Map.of(
+            OpcodeId.compute(BITWISE, 12, S), "PCNS"
+        ), List.of(OperandSource.STACK));
 
-        // New: B2V family (bit to vector)
-        registerFamily(VectorInstruction.class, Map.of(146, "B2VR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
-        registerFamily(VectorInstruction.class, Map.of(147, "B2VI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
-        registerFamily(VectorInstruction.class, Map.of(148, "B2VS"), List.of(OperandSource.STACK)); // mask
+        // Operation 13: BSN (Bit Scan N-th)
+        registerFamily(BitwiseInstruction.class, Map.of(
+            OpcodeId.compute(BITWISE, 13, RRR), "BSNR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(BitwiseInstruction.class, Map.of(
+            OpcodeId.compute(BITWISE, 13, RRI), "BSNI"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(BitwiseInstruction.class, Map.of(
+            OpcodeId.compute(BITWISE, 13, SS), "BSNS"
+        ), List.of(OperandSource.STACK, OperandSource.STACK));
 
-        // New: V2B family (vector to bit)
-        registerFamily(VectorInstruction.class, Map.of(157, "V2BR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
-        registerFamily(VectorInstruction.class, Map.of(158, "V2BI"), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
-        registerFamily(VectorInstruction.class, Map.of(159, "V2BS"), List.of(OperandSource.STACK)); // vector
-        // New: RTR* family (Rotate Right by 90° in plane of two axes)
-        registerFamily(VectorInstruction.class, Map.of(160, "RTRR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
-        registerFamily(VectorInstruction.class, Map.of(161, "RTRI"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE, OperandSource.IMMEDIATE));
-        registerFamily(VectorInstruction.class, Map.of(162, "RTRS"), List.of(OperandSource.STACK, OperandSource.STACK, OperandSource.STACK)); // axis2, axis1, vector
-        // New: RBIT family (random bit from mask)
-        registerFamily(StateInstruction.class, Map.of(149, "RBIR"), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
-        registerFamily(StateInstruction.class, Map.of(150, "RBII"), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
-        registerFamily(StateInstruction.class, Map.of(151, "RBIS"), List.of(OperandSource.STACK));
-        // New: GDVR and GDVS (get DV value)
-        registerFamily(StateInstruction.class, Map.of(188, "GDVR"), List.of(OperandSource.REGISTER));
-        registerFamily(StateInstruction.class, Map.of(189, "GDVS"), List.of());
-        // New: SMR family (set molecule marker register)
-        registerFamily(StateInstruction.class, Map.of(192, "SMR"), List.of(OperandSource.REGISTER));
-        registerFamily(StateInstruction.class, Map.of(193, "SMRI"), List.of(OperandSource.IMMEDIATE));
-        registerFamily(StateInstruction.class, Map.of(194, "SMRS"), List.of(OperandSource.STACK));
+        // Family 3: Data
+        // Operation 0: SET (copy value to register)
+        registerFamily(DataInstruction.class, Map.of(
+            OpcodeId.compute(DATA, 0, RR), "SETR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(DataInstruction.class, Map.of(
+            OpcodeId.compute(DATA, 0, RI), "SETI"
+        ), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(DataInstruction.class, Map.of(
+            OpcodeId.compute(DATA, 0, RV), "SETV"
+        ), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
+
+        // Operation 1: PUSH (push value onto stack)
+        registerFamily(DataInstruction.class, Map.of(
+            OpcodeId.compute(DATA, 1, R), "PUSH"
+        ), List.of(OperandSource.REGISTER));
+        registerFamily(DataInstruction.class, Map.of(
+            OpcodeId.compute(DATA, 1, I), "PUSI"
+        ), List.of(OperandSource.IMMEDIATE));
+        registerFamily(DataInstruction.class, Map.of(
+            OpcodeId.compute(DATA, 1, V), "PUSV"
+        ), List.of(OperandSource.VECTOR));
+
+        // Operation 2: POP (pop value from stack)
+        registerFamily(DataInstruction.class, Map.of(
+            OpcodeId.compute(DATA, 2, R), "POP"
+        ), List.of(OperandSource.REGISTER));
+
+        // Operation 3: DUP (duplicate top of stack)
+        registerFamily(StackInstruction.class, Map.of(
+            OpcodeId.compute(DATA, 3, NONE), "DUP"
+        ), List.of());
+
+        // Operation 4: SWAP (swap top two stack values)
+        registerFamily(StackInstruction.class, Map.of(
+            OpcodeId.compute(DATA, 4, NONE), "SWAP"
+        ), List.of());
+
+        // Operation 5: DROP (discard top of stack)
+        registerFamily(StackInstruction.class, Map.of(
+            OpcodeId.compute(DATA, 5, NONE), "DROP"
+        ), List.of());
+
+        // Operation 6: ROT (stack rotate)
+        registerFamily(StackInstruction.class, Map.of(
+            OpcodeId.compute(DATA, 6, NONE), "ROT"
+        ), List.of());
+
+        // Family 4: Conditional
+        // Operation 0: IF/EQ (If Equal)
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 0, RR), "IFR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 0, RI), "IFI"
+        ), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 0, SS), "IFS"
+        ), List.of(OperandSource.STACK, OperandSource.STACK));
+
+        // Operation 1: NE (Not Equal)
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 1, RR), "INR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 1, RI), "INI"
+        ), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 1, SS), "INS"
+        ), List.of(OperandSource.STACK, OperandSource.STACK));
+
+        // Operation 2: LT (Less Than)
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 2, RR), "LTR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 2, RI), "LTI"
+        ), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 2, SS), "LTS"
+        ), List.of(OperandSource.STACK, OperandSource.STACK));
+
+        // Operation 3: GT (Greater Than)
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 3, RR), "GTR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 3, RI), "GTI"
+        ), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 3, SS), "GTS"
+        ), List.of(OperandSource.STACK, OperandSource.STACK));
+
+        // Operation 4: LE (Less Than or Equal)
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 4, RR), "LETR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 4, RI), "LETI"
+        ), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 4, SS), "LETS"
+        ), List.of(OperandSource.STACK, OperandSource.STACK));
+
+        // Operation 5: GE (Greater Than or Equal)
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 5, RR), "GETR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 5, RI), "GETI"
+        ), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 5, SS), "GETS"
+        ), List.of(OperandSource.STACK, OperandSource.STACK));
+
+        // Operation 6: IFT (If True / non-zero)
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 6, RR), "IFTR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 6, RI), "IFTI"
+        ), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 6, SS), "IFTS"
+        ), List.of(OperandSource.STACK, OperandSource.STACK));
+
+        // Operation 7: INT (If Not True / zero)
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 7, RR), "INTR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 7, RI), "INTI"
+        ), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 7, SS), "INTS"
+        ), List.of(OperandSource.STACK, OperandSource.STACK));
+
+        // Operation 8: IFM (If Mine - ownership check)
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 8, R), "IFMR"
+        ), List.of(OperandSource.REGISTER));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 8, V), "IFMI"  // Note: uses VECTOR operand despite "I" suffix
+        ), List.of(OperandSource.VECTOR));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 8, S), "IFMS"
+        ), List.of(OperandSource.STACK));
+
+        // Operation 9: INM (If Not Mine - ownership check)
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 9, R), "INMR"
+        ), List.of(OperandSource.REGISTER));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 9, V), "INMI"  // Note: uses VECTOR operand despite "I" suffix
+        ), List.of(OperandSource.VECTOR));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 9, S), "INMS"
+        ), List.of(OperandSource.STACK));
+
+        // Operation 10: IFP (If Passable)
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 10, R), "IFPR"
+        ), List.of(OperandSource.REGISTER));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 10, V), "IFPI"  // Note: uses VECTOR operand despite "I" suffix
+        ), List.of(OperandSource.VECTOR));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 10, S), "IFPS"
+        ), List.of(OperandSource.STACK));
+
+        // Operation 11: INP (If Not Passable)
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 11, R), "INPR"
+        ), List.of(OperandSource.REGISTER));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 11, V), "INPI"  // Note: uses VECTOR operand despite "I" suffix
+        ), List.of(OperandSource.VECTOR));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 11, S), "INPS"
+        ), List.of(OperandSource.STACK));
+
+        // Operation 12: IFF (If Foreign ownership)
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 12, R), "IFFR"
+        ), List.of(OperandSource.REGISTER));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 12, V), "IFFI"  // Note: uses VECTOR operand despite "I" suffix
+        ), List.of(OperandSource.VECTOR));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 12, S), "IFFS"
+        ), List.of(OperandSource.STACK));
+
+        // Operation 13: INF (If Not Foreign ownership)
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 13, R), "INFR"
+        ), List.of(OperandSource.REGISTER));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 13, V), "INFI"  // Note: uses VECTOR operand despite "I" suffix
+        ), List.of(OperandSource.VECTOR));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 13, S), "INFS"
+        ), List.of(OperandSource.STACK));
+
+        // Operation 14: IFV (If Vacant ownership)
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 14, R), "IFVR"
+        ), List.of(OperandSource.REGISTER));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 14, V), "IFVI"  // Note: uses VECTOR operand despite "I" suffix
+        ), List.of(OperandSource.VECTOR));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 14, S), "IFVS"
+        ), List.of(OperandSource.STACK));
+
+        // Operation 15: INV (If Not Vacant ownership)
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 15, R), "INVR"
+        ), List.of(OperandSource.REGISTER));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 15, V), "INVI"  // Note: uses VECTOR operand despite "I" suffix
+        ), List.of(OperandSource.VECTOR));
+        registerFamily(ConditionalInstruction.class, Map.of(
+            OpcodeId.compute(CONDITIONAL, 15, S), "INVS"
+        ), List.of(OperandSource.STACK));
+
+        // Family 5: Control Flow
+        // Operation 0: JMP (Jump)
+        registerFamily(ControlFlowInstruction.class, Map.of(
+            OpcodeId.compute(CONTROL, 0, R), "JMPR"
+        ), List.of(OperandSource.REGISTER));
+        registerFamily(ControlFlowInstruction.class, Map.of(
+            OpcodeId.compute(CONTROL, 0, S), "JMPS"
+        ), List.of(OperandSource.STACK));
+        registerFamily(ControlFlowInstruction.class, Map.of(
+            OpcodeId.compute(CONTROL, 0, L), "JMPI"
+        ), List.of(OperandSource.LABEL));
+
+        // Operation 1: CALL (Call subroutine)
+        registerFamily(ControlFlowInstruction.class, Map.of(
+            OpcodeId.compute(CONTROL, 1, L), "CALL"
+        ), List.of(OperandSource.LABEL));
+
+        // Operation 2: RET (Return from subroutine)
+        registerFamily(ControlFlowInstruction.class, Map.of(
+            OpcodeId.compute(CONTROL, 2, NONE), "RET"
+        ), List.of());
+
+        // Family 6: Environment
+        // Operation 0: PEEK (read value from environment cell)
+        registerFamily(EnvironmentInteractionInstruction.class, Map.of(
+            OpcodeId.compute(ENVIRONMENT, 0, RR), "PEEK"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(EnvironmentInteractionInstruction.class, Map.of(
+            OpcodeId.compute(ENVIRONMENT, 0, RV), "PEKI"
+        ), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
+        registerFamily(EnvironmentInteractionInstruction.class, Map.of(
+            OpcodeId.compute(ENVIRONMENT, 0, S), "PEKS"
+        ), List.of(OperandSource.STACK));
+
+        // Operation 1: POKE (write value to environment cell)
+        registerFamily(EnvironmentInteractionInstruction.class, Map.of(
+            OpcodeId.compute(ENVIRONMENT, 1, RR), "POKE"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(EnvironmentInteractionInstruction.class, Map.of(
+            OpcodeId.compute(ENVIRONMENT, 1, RV), "POKI"
+        ), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
+        registerFamily(EnvironmentInteractionInstruction.class, Map.of(
+            OpcodeId.compute(ENVIRONMENT, 1, SS), "POKS"
+        ), List.of(OperandSource.STACK, OperandSource.STACK));
+
+        // Operation 2: PPK (combined PEEK+POKE)
+        registerFamily(EnvironmentInteractionInstruction.class, Map.of(
+            OpcodeId.compute(ENVIRONMENT, 2, RR), "PPKR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(EnvironmentInteractionInstruction.class, Map.of(
+            OpcodeId.compute(ENVIRONMENT, 2, RV), "PPKI"
+        ), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
+        registerFamily(EnvironmentInteractionInstruction.class, Map.of(
+            OpcodeId.compute(ENVIRONMENT, 2, SS), "PPKS"
+        ), List.of(OperandSource.STACK, OperandSource.STACK));
+
+        // Family 7: State
+        // Operation 0: SCAN (scan environment in direction)
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 0, RR), "SCAN"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 0, RV), "SCNI"
+        ), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 0, S), "SCNS"
+        ), List.of(OperandSource.STACK));
+
+        // Operation 1: SEEK (set active data pointer direction)
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 1, R), "SEEK"
+        ), List.of(OperandSource.REGISTER));
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 1, V), "SEKI"
+        ), List.of(OperandSource.VECTOR));
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 1, S), "SEKS"
+        ), List.of(OperandSource.STACK));
+
+        // Operation 2: TURN (turn/rotate direction)
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 2, R), "TURN"
+        ), List.of(OperandSource.REGISTER));
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 2, V), "TRNI"
+        ), List.of(OperandSource.VECTOR));
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 2, S), "TRNS"
+        ), List.of(OperandSource.STACK));
+
+        // Operation 3: SYNC (synchronize/wait)
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 3, NONE), "SYNC"
+        ), List.of());
+
+        // Operation 4: NRG (get energy)
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 4, R), "NRG"
+        ), List.of(OperandSource.REGISTER));
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 4, NONE), "NRGS"
+        ), List.of());
+
+        // Operation 5: NTR (get entropy)
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 5, R), "NTR"
+        ), List.of(OperandSource.REGISTER));
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 5, NONE), "NTRS"
+        ), List.of());
+
+        // Operation 6: DIFF (get difficulty/thermodynamic gradient)
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 6, R), "DIFF"
+        ), List.of(OperandSource.REGISTER));
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 6, NONE), "DIFS"
+        ), List.of());
+
+        // Operation 7: POS (get position)
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 7, R), "POS"
+        ), List.of(OperandSource.REGISTER));
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 7, NONE), "POSS"
+        ), List.of());
+
+        // Operation 8: RAND (random number)
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 8, R), "RAND"
+        ), List.of(OperandSource.REGISTER));
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 8, S), "RNDS"
+        ), List.of(OperandSource.STACK));
+
+        // Operation 9: FORK (replicate organism)
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 9, RRR), "FORK"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 9, VIV), "FRKI"
+        ), List.of(OperandSource.VECTOR, OperandSource.IMMEDIATE, OperandSource.VECTOR));
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 9, SSS), "FRKS"
+        ), List.of(OperandSource.STACK, OperandSource.STACK, OperandSource.STACK));
+
+        // Operation 10: ADP (active data pointer selection)
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 10, R), "ADPR"
+        ), List.of(OperandSource.REGISTER));
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 10, I), "ADPI"
+        ), List.of(OperandSource.IMMEDIATE));
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 10, S), "ADPS"
+        ), List.of(OperandSource.STACK));
+
+        // Operation 11: SPN (scan passable neighbors)
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 11, R), "SPNR"
+        ), List.of(OperandSource.REGISTER));
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 11, NONE), "SPNS"
+        ), List.of());
+
+        // Operation 12: SNT (scan neighbors by type)
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 12, RR), "SNTR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 12, RI), "SNTI"
+        ), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 12, S), "SNTS"
+        ), List.of(OperandSource.STACK));
+
+        // Operation 13: RBI (random bit from mask)
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 13, RR), "RBIR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 13, RI), "RBII"
+        ), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 13, S), "RBIS"
+        ), List.of(OperandSource.STACK));
+
+        // Operation 14: GDV (get DV value)
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 14, R), "GDVR"
+        ), List.of(OperandSource.REGISTER));
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 14, NONE), "GDVS"
+        ), List.of());
+
+        // Operation 15: SMR (set molecule marker register)
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 15, R), "SMR"
+        ), List.of(OperandSource.REGISTER));
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 15, I), "SMRI"
+        ), List.of(OperandSource.IMMEDIATE));
+        registerFamily(StateInstruction.class, Map.of(
+            OpcodeId.compute(STATE, 15, S), "SMRS"
+        ), List.of(OperandSource.STACK));
+
+        // Family 0: Special
+        registerFamily(NopInstruction.class, Map.of(
+            OpcodeId.compute(SPECIAL, 0, NONE), "NOP"
+        ), List.of());
+
+        // Family 8: Location
+        // Operation 0: DPL (Duplicate location)
+        registerFamily(LocationInstruction.class, Map.of(
+            OpcodeId.compute(LOCATION, 0, S), "DPLS"
+        ), List.of());
+        registerFamily(LocationInstruction.class, Map.of(
+            OpcodeId.compute(LOCATION, 0, L), "DPLR"
+        ), List.of(OperandSource.LOCATION_REGISTER));
+
+        // Operation 1: SKL (Skip location)
+        registerFamily(LocationInstruction.class, Map.of(
+            OpcodeId.compute(LOCATION, 1, S), "SKLS"
+        ), List.of());
+        registerFamily(LocationInstruction.class, Map.of(
+            OpcodeId.compute(LOCATION, 1, L), "SKLR"
+        ), List.of(OperandSource.LOCATION_REGISTER));
+
+        // Operation 2: LRD (Location register displacement)
+        registerFamily(LocationInstruction.class, Map.of(
+            OpcodeId.compute(LOCATION, 2, L), "LRDS"
+        ), List.of(OperandSource.LOCATION_REGISTER));
+        registerFamily(LocationInstruction.class, Map.of(
+            OpcodeId.compute(LOCATION, 2, RL), "LRDR"
+        ), List.of(OperandSource.REGISTER, OperandSource.LOCATION_REGISTER));
+
+        // Operation 3: LSD (Location stack displacement)
+        registerFamily(LocationInstruction.class, Map.of(
+            OpcodeId.compute(LOCATION, 3, NONE), "LSDS"
+        ), List.of());
+        registerFamily(LocationInstruction.class, Map.of(
+            OpcodeId.compute(LOCATION, 3, R), "LSDR"
+        ), List.of(OperandSource.REGISTER));
+
+        // Operation 4: PUSL (Push location)
+        registerFamily(LocationInstruction.class, Map.of(
+            OpcodeId.compute(LOCATION, 4, L), "PUSL"
+        ), List.of(OperandSource.LOCATION_REGISTER));
+
+        // Operation 5: POPL (Pop location)
+        registerFamily(LocationInstruction.class, Map.of(
+            OpcodeId.compute(LOCATION, 5, L), "POPL"
+        ), List.of(OperandSource.LOCATION_REGISTER));
+
+        // Operation 6: DUPL (Duplicate top of location stack)
+        registerFamily(LocationInstruction.class, Map.of(
+            OpcodeId.compute(LOCATION, 6, NONE), "DUPL"
+        ), List.of());
+
+        // Operation 7: SWPL (Swap location stack)
+        registerFamily(LocationInstruction.class, Map.of(
+            OpcodeId.compute(LOCATION, 7, NONE), "SWPL"
+        ), List.of());
+
+        // Operation 8: DRPL (Drop from location stack)
+        registerFamily(LocationInstruction.class, Map.of(
+            OpcodeId.compute(LOCATION, 8, NONE), "DRPL"
+        ), List.of());
+
+        // Operation 9: ROTL (Rotate location stack)
+        registerFamily(LocationInstruction.class, Map.of(
+            OpcodeId.compute(LOCATION, 9, NONE), "ROTL"
+        ), List.of());
+
+        // Operation 10: CRL (Clear location register)
+        registerFamily(LocationInstruction.class, Map.of(
+            OpcodeId.compute(LOCATION, 10, L), "CRLR"
+        ), List.of(OperandSource.LOCATION_REGISTER));
+
+        // Operation 11: LRL (Load location register)
+        registerFamily(LocationInstruction.class, Map.of(
+            OpcodeId.compute(LOCATION, 11, LL), "LRLR"
+        ), List.of(OperandSource.LOCATION_REGISTER, OperandSource.LOCATION_REGISTER));
+
+        // Vector Manipulation Instruction Family (Family 9)
+
+        // Operation 0: VGT (Vector get)
+        registerFamily(VectorInstruction.class, Map.of(
+            OpcodeId.compute(VECTOR, 0, RRR), "VGTR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(VectorInstruction.class, Map.of(
+            OpcodeId.compute(VECTOR, 0, RRI), "VGTI"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(VectorInstruction.class, Map.of(
+            OpcodeId.compute(VECTOR, 0, SS), "VGTS"
+        ), List.of(OperandSource.STACK, OperandSource.STACK)); // index, vector
+
+        // Operation 1: VST (Vector set)
+        registerFamily(VectorInstruction.class, Map.of(
+            OpcodeId.compute(VECTOR, 1, RRR), "VSTR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(VectorInstruction.class, Map.of(
+            OpcodeId.compute(VECTOR, 1, RII), "VSTI"
+        ), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE, OperandSource.IMMEDIATE));
+        registerFamily(VectorInstruction.class, Map.of(
+            OpcodeId.compute(VECTOR, 1, SSS), "VSTS"
+        ), List.of(OperandSource.STACK, OperandSource.STACK, OperandSource.STACK)); // value, index, vector
+
+        // Operation 2: VBL (Vector build)
+        registerFamily(VectorInstruction.class, Map.of(
+            OpcodeId.compute(VECTOR, 2, R), "VBLD"
+        ), List.of(OperandSource.REGISTER));
+        registerFamily(VectorInstruction.class, Map.of(
+            OpcodeId.compute(VECTOR, 2, NONE), "VBLS"
+        ), List.of());
+
+        // Operation 3: B2V (Bytes to vector)
+        registerFamily(VectorInstruction.class, Map.of(
+            OpcodeId.compute(VECTOR, 3, RR), "B2VR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(VectorInstruction.class, Map.of(
+            OpcodeId.compute(VECTOR, 3, RI), "B2VI"
+        ), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE));
+        registerFamily(VectorInstruction.class, Map.of(
+            OpcodeId.compute(VECTOR, 3, S), "B2VS"
+        ), List.of(OperandSource.STACK)); // mask
+
+        // Operation 4: V2B (Vector to bytes)
+        registerFamily(VectorInstruction.class, Map.of(
+            OpcodeId.compute(VECTOR, 4, RR), "V2BR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(VectorInstruction.class, Map.of(
+            OpcodeId.compute(VECTOR, 4, RV), "V2BI"
+        ), List.of(OperandSource.REGISTER, OperandSource.VECTOR));
+        registerFamily(VectorInstruction.class, Map.of(
+            OpcodeId.compute(VECTOR, 4, S), "V2BS"
+        ), List.of(OperandSource.STACK)); // vector
+
+        // Operation 5: RTR (Retarget / Rotate Right by 90 degrees in plane of two axes)
+        registerFamily(VectorInstruction.class, Map.of(
+            OpcodeId.compute(VECTOR, 5, RRR), "RTRR"
+        ), List.of(OperandSource.REGISTER, OperandSource.REGISTER, OperandSource.REGISTER));
+        registerFamily(VectorInstruction.class, Map.of(
+            OpcodeId.compute(VECTOR, 5, RII), "RTRI"
+        ), List.of(OperandSource.REGISTER, OperandSource.IMMEDIATE, OperandSource.IMMEDIATE));
+        registerFamily(VectorInstruction.class, Map.of(
+            OpcodeId.compute(VECTOR, 5, SSS), "RTRS"
+        ), List.of(OperandSource.STACK, OperandSource.STACK, OperandSource.STACK)); // axis2, axis1, vector
     }
 
     private static final int DEFAULT_VECTOR_DIMS = 2;
