@@ -3,7 +3,7 @@ package org.evochora.runtime.isa.instructions;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
-import org.evochora.runtime.isa.Variant;
+import static org.evochora.runtime.isa.Variant.NONE;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Environment;
 
@@ -21,7 +21,7 @@ public class NopInstruction extends Instruction {
      */
     public static void register(int f) {
         family = f;
-        reg(0, Variant.NONE, "NOP");
+        reg(0, NONE, "NOP");
     }
 
     private static void reg(int op, int variant, String name, OperandSource... sources) {

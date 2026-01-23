@@ -65,7 +65,6 @@ public abstract class Instruction {
     private static final Map<Integer, Class<? extends Instruction>> REGISTERED_INSTRUCTIONS_BY_ID = new HashMap<>();
     private static final Map<String, Integer> NAME_TO_ID = new HashMap<>();
     private static final Map<Integer, String> ID_TO_NAME = new HashMap<>();
-    private static final Map<Integer, Integer> ID_TO_LENGTH = new HashMap<>();
     private static final Map<Integer, BiFunction<Organism, Environment, Instruction>> REGISTERED_PLANNERS_BY_ID = new HashMap<>();
     protected static final Map<Integer, List<OperandSource>> OPERAND_SOURCES = new HashMap<>();
     private static final Map<Integer, InstructionSignature> SIGNATURES_BY_ID = new HashMap<>();
@@ -295,8 +294,6 @@ public abstract class Instruction {
 
     // ========== Registration API for Instruction Subclasses ==========
 
-    private static final int DEFAULT_VECTOR_DIMS = 2;
-
     /**
      * Registers an instruction opcode. Called by instruction subclasses in their register() method.
      *
@@ -321,23 +318,14 @@ public abstract class Instruction {
         try {
             Constructor<? extends Instruction> constructor = familyClass.getConstructor(Organism.class, int.class);
             List<InstructionArgumentType> argTypesForSignature = new ArrayList<>();
-            int length = 1;
             for (OperandSource s : sources) {
-                if (s == OperandSource.REGISTER) {
-                    length++;
-                    argTypesForSignature.add(InstructionArgumentType.REGISTER);
-                } else if (s == OperandSource.LOCATION_REGISTER) {
-                    length++;
-                    argTypesForSignature.add(InstructionArgumentType.LOCATION_REGISTER);
-                } else if (s == OperandSource.IMMEDIATE) {
-                    length++;
-                    argTypesForSignature.add(InstructionArgumentType.LITERAL);
-                } else if (s == OperandSource.VECTOR) {
-                    length += DEFAULT_VECTOR_DIMS;
-                    argTypesForSignature.add(InstructionArgumentType.VECTOR);
-                } else if (s == OperandSource.LABEL) {
-                    length += DEFAULT_VECTOR_DIMS;
-                    argTypesForSignature.add(InstructionArgumentType.LABEL);
+                switch (s) {
+                    case REGISTER -> argTypesForSignature.add(InstructionArgumentType.REGISTER);
+                    case LOCATION_REGISTER -> argTypesForSignature.add(InstructionArgumentType.LOCATION_REGISTER);
+                    case IMMEDIATE -> argTypesForSignature.add(InstructionArgumentType.LITERAL);
+                    case VECTOR -> argTypesForSignature.add(InstructionArgumentType.VECTOR);
+                    case LABEL -> argTypesForSignature.add(InstructionArgumentType.LABEL);
+                    case STACK -> { /* STACK operands don't appear in signature */ }
                 }
             }
             InstructionSignature signature = new InstructionSignature(argTypesForSignature);
@@ -352,7 +340,7 @@ public abstract class Instruction {
                     } catch (Exception e) { throw new RuntimeException("Failed to plan instruction " + name, e); }
                 };
 
-                registerInstruction(familyClass, id, name, length, planner, signature);
+                registerInstruction(familyClass, id, name, planner, signature);
                 OPERAND_SOURCES.put(id | Config.TYPE_CODE, sources);
             }
         } catch (Exception e) {
@@ -360,14 +348,13 @@ public abstract class Instruction {
         }
     }
 
-    private static void registerInstruction(Class<? extends Instruction> instructionClass, int id, String name, int length,
+    private static void registerInstruction(Class<? extends Instruction> instructionClass, int id, String name,
                                             BiFunction<Organism, Environment, Instruction> planner, InstructionSignature signature) {
         String upperCaseName = name.toUpperCase();
         int fullId = id | Config.TYPE_CODE;
         REGISTERED_INSTRUCTIONS_BY_ID.put(fullId, instructionClass);
         NAME_TO_ID.put(upperCaseName, fullId);
         ID_TO_NAME.put(fullId, name);
-        ID_TO_LENGTH.put(fullId, length);
         REGISTERED_PLANNERS_BY_ID.put(fullId, planner);
         SIGNATURES_BY_ID.put(fullId, signature);
     }
@@ -408,15 +395,13 @@ public abstract class Instruction {
     // --- Static Getters for Runtime Information ---
 
     /**
-     * Gets the length of the instruction in the environment.
-     * @return The length of the instruction.
-     */
-    public int getLength() { return getInstructionLengthById(this.fullOpcodeId); }
-
-    /**
      * Gets the length of the instruction in the given environment.
-     * @param env The environment.
-     * @return The length of the instruction.
+     * <p>
+     * Instruction length depends on the environment's dimensionality because
+     * VECTOR and LABEL operands have one component per dimension.
+     *
+     * @param env The environment (required for dimension-dependent length calculation).
+     * @return The length of the instruction in memory slots.
      */
     public int getLength(Environment env) { return getInstructionLengthById(this.fullOpcodeId, env); }
 
@@ -459,13 +444,6 @@ public abstract class Instruction {
     public static java.util.Map<Integer, String> getAllInstructions() {
         return java.util.Collections.unmodifiableMap(ID_TO_NAME);
     }
-
-    /**
-     * Gets the length of an instruction by its ID.
-     * @param id The instruction ID.
-     * @return The length of the instruction.
-     */
-    public static int getInstructionLengthById(int id) { return ID_TO_LENGTH.getOrDefault(id, 1); }
 
     /**
      * Gets the length of an instruction by its ID in a given environment.

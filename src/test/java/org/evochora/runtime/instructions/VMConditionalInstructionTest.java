@@ -97,7 +97,7 @@ public class VMConditionalInstructionTest {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
         org.setDr(1, new Molecule(Config.TYPE_DATA, 0).toInt());
         placeInstruction("IFR", 0, 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFR"), environment));
 
         sim.tick();
         sim.tick();
@@ -116,7 +116,7 @@ public class VMConditionalInstructionTest {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
         org.setDr(1, new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("IFR", 0, 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFR"), environment));
 
         sim.tick();
         sim.tick();
@@ -134,7 +134,7 @@ public class VMConditionalInstructionTest {
     void testIfi_TrueCondition_ExecutesNext() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
         placeInstruction("IFI", 0, 0);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFI")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFI"), environment));
 
         sim.tick();
         sim.tick();
@@ -152,7 +152,7 @@ public class VMConditionalInstructionTest {
     void testIfi_FalseCondition_SkipsNext() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("IFI", 0, 0);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFI")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFI"), environment));
 
         sim.tick();
         sim.tick();
@@ -171,7 +171,7 @@ public class VMConditionalInstructionTest {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 5).toInt());
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 5).toInt());
         placeInstruction("IFS");
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFS")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFS"), environment));
 
         sim.tick();
         sim.tick();
@@ -190,7 +190,7 @@ public class VMConditionalInstructionTest {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 10).toInt());
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 5).toInt());
         placeInstruction("IFS");
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFS")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFS"), environment));
 
         sim.tick();
         sim.tick();
@@ -209,7 +209,7 @@ public class VMConditionalInstructionTest {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
         org.setDr(1, new Molecule(Config.TYPE_DATA, 2).toInt());
         placeInstruction("LTR", 0, 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LTR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LTR"), environment));
 
         sim.tick();
         sim.tick();
@@ -228,7 +228,7 @@ public class VMConditionalInstructionTest {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 2).toInt());
         org.setDr(1, new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("LTR", 0, 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LTR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LTR"), environment));
 
         sim.tick();
         sim.tick();
@@ -246,7 +246,7 @@ public class VMConditionalInstructionTest {
     void testLti_TrueCondition_ExecutesNext() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("LTI", 0, 2);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LTI")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LTI"), environment));
 
         sim.tick();
         sim.tick();
@@ -264,7 +264,7 @@ public class VMConditionalInstructionTest {
     void testLti_FalseCondition_SkipsNext() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 2).toInt());
         placeInstruction("LTI", 0, 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LTI")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LTI"), environment));
 
         sim.tick();
         sim.tick();
@@ -284,7 +284,7 @@ public class VMConditionalInstructionTest {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 2).toInt());
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("LTS");
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LTS")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LTS"), environment));
 
         sim.tick();
         sim.tick();
@@ -304,7 +304,7 @@ public class VMConditionalInstructionTest {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 1).toInt());
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 2).toInt());
         placeInstruction("LTS");
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LTS")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LTS"), environment));
 
         sim.tick();
         sim.tick();
@@ -323,7 +323,7 @@ public class VMConditionalInstructionTest {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 3).toInt());
         org.setDr(1, new Molecule(Config.TYPE_DATA, 2).toInt());
         placeInstruction("GTR", 0, 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GTR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GTR"), environment));
 
         sim.tick();
         sim.tick();
@@ -342,7 +342,7 @@ public class VMConditionalInstructionTest {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
         org.setDr(1, new Molecule(Config.TYPE_DATA, 2).toInt());
         placeInstruction("GTR", 0, 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GTR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GTR"), environment));
 
         sim.tick();
         sim.tick();
@@ -360,7 +360,7 @@ public class VMConditionalInstructionTest {
     void testGti_TrueCondition_ExecutesNext() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 2).toInt());
         placeInstruction("GTI", 0, 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GTI")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GTI"), environment));
 
         sim.tick();
         sim.tick();
@@ -378,7 +378,7 @@ public class VMConditionalInstructionTest {
     void testGti_FalseCondition_SkipsNext() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("GTI", 0, 2);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GTI")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GTI"), environment));
 
         sim.tick();
         sim.tick();
@@ -398,7 +398,7 @@ public class VMConditionalInstructionTest {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 1).toInt());
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 2).toInt());
         placeInstruction("GTS");
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GTS")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GTS"), environment));
 
         sim.tick();
         sim.tick();
@@ -418,7 +418,7 @@ public class VMConditionalInstructionTest {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 2).toInt());
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("GTS");
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GTS")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GTS"), environment));
 
         sim.tick();
         sim.tick();
@@ -437,7 +437,7 @@ public class VMConditionalInstructionTest {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 7).toInt());
         org.setDr(1, new Molecule(Config.TYPE_DATA, 9).toInt());
         placeInstruction("IFTR", 0, 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFTR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFTR"), environment));
 
         sim.tick();
         sim.tick();
@@ -456,7 +456,7 @@ public class VMConditionalInstructionTest {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
         org.setDr(1, new Molecule(Config.TYPE_CODE, 2).toInt());
         placeInstruction("IFTR", 0, 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFTR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFTR"), environment));
 
         sim.tick();
         sim.tick();
@@ -475,7 +475,7 @@ public class VMConditionalInstructionTest {
         // Register TYPE_DATA, Immediate TYPE_DATA (von placeInstruction) -> true
         org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
         placeInstruction("IFTI", 0, 123);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFTI")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFTI"), environment));
 
         sim.tick();
         sim.tick();
@@ -494,7 +494,7 @@ public class VMConditionalInstructionTest {
         // Register TYPE_CODE, Immediate TYPE_DATA -> false
         org.setDr(0, new Molecule(Config.TYPE_CODE, 5).toInt());
         placeInstruction("IFTI", 0, 123);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFTI")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFTI"), environment));
 
         sim.tick();
         sim.tick();
@@ -513,7 +513,7 @@ public class VMConditionalInstructionTest {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 1).toInt());
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 2).toInt());
         placeInstruction("IFTS");
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFTS")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFTS"), environment));
 
         sim.tick();
         sim.tick();
@@ -531,7 +531,7 @@ public class VMConditionalInstructionTest {
     void testIfmr_NotOwned_SkipsNext() {
         org.setDr(1, new int[]{0, 1}); // unit vector
         placeInstruction("IFMR", 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFMR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFMR"), environment));
         sim.tick();
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
@@ -548,7 +548,7 @@ public class VMConditionalInstructionTest {
         org.setDr(1, new int[]{0, 1}); // unit vector
         int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);        environment.setOwnerId(org.getId(), target);
         placeInstruction("IFMR", 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFMR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFMR"), environment));
         sim.tick();
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
@@ -563,7 +563,7 @@ public class VMConditionalInstructionTest {
     @Tag("unit")
     void testIfmi_NotOwned_SkipsNext() {
         placeInstructionWithVector("IFMI", 0, 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFMI")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFMI"), environment));
         sim.tick();
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
@@ -579,7 +579,7 @@ public class VMConditionalInstructionTest {
     void testIfms_NotOwned_SkipsNext() {
         org.getDataStack().push(new int[]{0, 1});
         placeInstruction("IFMS");
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFMS")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFMS"), environment));
         sim.tick();
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
@@ -610,7 +610,7 @@ public class VMConditionalInstructionTest {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 1).toInt());
         org.getDataStack().push(new Molecule(Config.TYPE_CODE, 2).toInt());
         placeInstruction("IFTS");
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFTS")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFTS"), environment));
 
         sim.tick();
         sim.tick();
@@ -625,7 +625,7 @@ public class VMConditionalInstructionTest {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
         org.setDr(1, new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("INR", 0, 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INR"), environment));
 
         sim.tick();
         sim.tick();
@@ -640,7 +640,7 @@ public class VMConditionalInstructionTest {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
         org.setDr(1, new Molecule(Config.TYPE_DATA, 0).toInt());
         placeInstruction("INR", 0, 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INR"), environment));
 
         sim.tick();
         sim.tick();
@@ -654,7 +654,7 @@ public class VMConditionalInstructionTest {
     void testIni_TrueCondition_ExecutesNext() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("INI", 0, 0);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INI")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INI"), environment));
 
         sim.tick();
         sim.tick();
@@ -668,7 +668,7 @@ public class VMConditionalInstructionTest {
     void testIni_FalseCondition_SkipsNext() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
         placeInstruction("INI", 0, 0);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INI")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INI"), environment));
 
         sim.tick();
         sim.tick();
@@ -683,7 +683,7 @@ public class VMConditionalInstructionTest {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 10).toInt());
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 5).toInt());
         placeInstruction("INS");
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INS")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INS"), environment));
 
         sim.tick();
         sim.tick();
@@ -698,7 +698,7 @@ public class VMConditionalInstructionTest {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 5).toInt());
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 5).toInt());
         placeInstruction("INS");
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INS")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INS"), environment));
 
         sim.tick();
         sim.tick();
@@ -713,7 +713,7 @@ public class VMConditionalInstructionTest {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 2).toInt());
         org.setDr(1, new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("GETR", 0, 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GETR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GETR"), environment));
 
         sim.tick();
         sim.tick();
@@ -728,7 +728,7 @@ public class VMConditionalInstructionTest {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
         org.setDr(1, new Molecule(Config.TYPE_DATA, 2).toInt());
         placeInstruction("GETR", 0, 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GETR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GETR"), environment));
 
         sim.tick();
         sim.tick();
@@ -742,7 +742,7 @@ public class VMConditionalInstructionTest {
     void testGeti_TrueCondition_ExecutesNext() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 2).toInt());
         placeInstruction("GETI", 0, 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GETI")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GETI"), environment));
 
         sim.tick();
         sim.tick();
@@ -756,7 +756,7 @@ public class VMConditionalInstructionTest {
     void testGeti_FalseCondition_SkipsNext() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("GETI", 0, 2);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GETI")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GETI"), environment));
 
         sim.tick();
         sim.tick();
@@ -771,7 +771,7 @@ public class VMConditionalInstructionTest {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 1).toInt());
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 2).toInt());
         placeInstruction("GETS");
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GETS")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GETS"), environment));
 
         sim.tick();
         sim.tick();
@@ -786,7 +786,7 @@ public class VMConditionalInstructionTest {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 2).toInt());
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("GETS");
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GETS")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GETS"), environment));
 
         sim.tick();
         sim.tick();
@@ -801,7 +801,7 @@ public class VMConditionalInstructionTest {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
         org.setDr(1, new Molecule(Config.TYPE_DATA, 2).toInt());
         placeInstruction("LETR", 0, 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LETR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LETR"), environment));
 
         sim.tick();
         sim.tick();
@@ -816,7 +816,7 @@ public class VMConditionalInstructionTest {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 2).toInt());
         org.setDr(1, new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("LETR", 0, 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LETR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LETR"), environment));
 
         sim.tick();
         sim.tick();
@@ -830,7 +830,7 @@ public class VMConditionalInstructionTest {
     void testLeti_TrueCondition_ExecutesNext() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("LETI", 0, 2);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LETI")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LETI"), environment));
 
         sim.tick();
         sim.tick();
@@ -844,7 +844,7 @@ public class VMConditionalInstructionTest {
     void testLeti_FalseCondition_SkipsNext() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 2).toInt());
         placeInstruction("LETI", 0, 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LETI")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LETI"), environment));
 
         sim.tick();
         sim.tick();
@@ -859,7 +859,7 @@ public class VMConditionalInstructionTest {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 2).toInt());
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("LETS");
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LETS")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LETS"), environment));
 
         sim.tick();
         sim.tick();
@@ -874,7 +874,7 @@ public class VMConditionalInstructionTest {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 1).toInt());
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 2).toInt());
         placeInstruction("LETS");
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LETS")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LETS"), environment));
 
         sim.tick();
         sim.tick();
@@ -889,7 +889,7 @@ public class VMConditionalInstructionTest {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
         org.setDr(1, new Molecule(Config.TYPE_CODE, 2).toInt());
         placeInstruction("INTR", 0, 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INTR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INTR"), environment));
 
         sim.tick();
         sim.tick();
@@ -904,7 +904,7 @@ public class VMConditionalInstructionTest {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 7).toInt());
         org.setDr(1, new Molecule(Config.TYPE_DATA, 9).toInt());
         placeInstruction("INTR", 0, 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INTR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INTR"), environment));
 
         sim.tick();
         sim.tick();
@@ -918,7 +918,7 @@ public class VMConditionalInstructionTest {
     void testInti_TrueCondition_ExecutesNext() {
         org.setDr(0, new Molecule(Config.TYPE_CODE, 5).toInt());
         placeInstruction("INTI", 0, 123);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INTI")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INTI"), environment));
 
         sim.tick();
         sim.tick();
@@ -932,7 +932,7 @@ public class VMConditionalInstructionTest {
     void testInti_FalseCondition_SkipsNext() {
         org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
         placeInstruction("INTI", 0, 123);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INTI")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INTI"), environment));
 
         sim.tick();
         sim.tick();
@@ -947,7 +947,7 @@ public class VMConditionalInstructionTest {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 1).toInt());
         org.getDataStack().push(new Molecule(Config.TYPE_CODE, 2).toInt());
         placeInstruction("INTS");
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INTS")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INTS"), environment));
 
         sim.tick();
         sim.tick();
@@ -962,7 +962,7 @@ public class VMConditionalInstructionTest {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 1).toInt());
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 2).toInt());
         placeInstruction("INTS");
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INTS")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INTS"), environment));
 
         sim.tick();
         sim.tick();
@@ -976,7 +976,7 @@ public class VMConditionalInstructionTest {
     void testInmr_NotOwned_ExecutesNext() {
         org.setDr(1, new int[]{0, 1}); // unit vector
         placeInstruction("INMR", 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INMR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INMR"), environment));
         sim.tick();
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
@@ -990,7 +990,7 @@ public class VMConditionalInstructionTest {
         int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
         environment.setOwnerId(org.getId(), target);
         placeInstruction("INMR", 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INMR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INMR"), environment));
         sim.tick();
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
@@ -1001,7 +1001,7 @@ public class VMConditionalInstructionTest {
     @Tag("unit")
     void testInmi_NotOwned_ExecutesNext() {
         placeInstructionWithVector("INMI", 0, 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INMI")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INMI"), environment));
         sim.tick();
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
@@ -1014,7 +1014,7 @@ public class VMConditionalInstructionTest {
         int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
         environment.setOwnerId(org.getId(), target);
         placeInstructionWithVector("INMI", 0, 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INMI")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INMI"), environment));
         sim.tick();
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
@@ -1026,7 +1026,7 @@ public class VMConditionalInstructionTest {
     void testInms_NotOwned_ExecutesNext() {
         org.getDataStack().push(new int[]{0, 1});
         placeInstruction("INMS");
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INMS")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INMS"), environment));
         sim.tick();
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
@@ -1040,7 +1040,7 @@ public class VMConditionalInstructionTest {
         environment.setOwnerId(org.getId(), target);
         org.getDataStack().push(new int[]{0, 1});
         placeInstruction("INMS");
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INMS")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INMS"), environment));
         sim.tick();
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
@@ -1056,7 +1056,7 @@ public class VMConditionalInstructionTest {
         int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
         environment.setOwnerId(999, target); // Foreign owner
         placeInstruction("IFFR", 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFFR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFFR"), environment));
         sim.tick();
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
@@ -1070,7 +1070,7 @@ public class VMConditionalInstructionTest {
         org.setDr(1, new int[]{0, 1}); // unit vector
         // Vacant (no owner) - not foreign
         placeInstruction("IFFR", 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFFR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFFR"), environment));
         sim.tick();
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
@@ -1085,7 +1085,7 @@ public class VMConditionalInstructionTest {
         int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
         environment.setOwnerId(org.getId(), target); // Own
         placeInstruction("IFFR", 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFFR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFFR"), environment));
         sim.tick();
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
@@ -1100,7 +1100,7 @@ public class VMConditionalInstructionTest {
         int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
         environment.setOwnerId(999, target); // Foreign owner
         placeInstruction("INFR", 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INFR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INFR"), environment));
         sim.tick();
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
@@ -1113,7 +1113,7 @@ public class VMConditionalInstructionTest {
         org.setDr(1, new int[]{0, 1}); // unit vector
         // Vacant (no owner) - should execute next
         placeInstruction("INFR", 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INFR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INFR"), environment));
         sim.tick();
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
@@ -1126,7 +1126,7 @@ public class VMConditionalInstructionTest {
         int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
         environment.setOwnerId(999, target); // Foreign owner
         placeInstructionWithVector("IFFI", 0, 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFFI")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFFI"), environment));
         sim.tick();
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
@@ -1139,7 +1139,7 @@ public class VMConditionalInstructionTest {
         int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
         environment.setOwnerId(999, target); // Foreign owner - INFI should skip when foreign
         placeInstructionWithVector("INFI", 0, 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INFI")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INFI"), environment));
         sim.tick();
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
@@ -1153,7 +1153,7 @@ public class VMConditionalInstructionTest {
         int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
         environment.setOwnerId(999, target); // Foreign owner
         placeInstruction("IFFS");
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFFS")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFFS"), environment));
         sim.tick();
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
@@ -1167,7 +1167,7 @@ public class VMConditionalInstructionTest {
         int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
         environment.setOwnerId(999, target); // Foreign owner - INFS should skip when foreign
         placeInstruction("INFS");
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INFS")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INFS"), environment));
         sim.tick();
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
@@ -1182,7 +1182,7 @@ public class VMConditionalInstructionTest {
         org.setDr(1, new int[]{0, 1}); // unit vector
         // Vacant (no owner, ownerId == 0)
         placeInstruction("IFVR", 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFVR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFVR"), environment));
         sim.tick();
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
@@ -1197,7 +1197,7 @@ public class VMConditionalInstructionTest {
         int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
         environment.setOwnerId(999, target); // Foreign owner
         placeInstruction("IFVR", 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFVR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFVR"), environment));
         sim.tick();
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
@@ -1212,7 +1212,7 @@ public class VMConditionalInstructionTest {
         int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
         environment.setOwnerId(org.getId(), target); // Own
         placeInstruction("IFVR", 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFVR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFVR"), environment));
         sim.tick();
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
@@ -1225,7 +1225,7 @@ public class VMConditionalInstructionTest {
         org.setDr(1, new int[]{0, 1}); // unit vector
         // Vacant (no owner)
         placeInstruction("INVR", 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INVR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INVR"), environment));
         sim.tick();
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
@@ -1239,7 +1239,7 @@ public class VMConditionalInstructionTest {
         int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
         environment.setOwnerId(999, target); // Foreign owner
         placeInstruction("INVR", 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INVR")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INVR"), environment));
         sim.tick();
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
@@ -1251,7 +1251,7 @@ public class VMConditionalInstructionTest {
     void testIfvi_Vacant_ExecutesNext() {
         // Vacant (no owner) - IFVI should execute next when vacant
         placeInstructionWithVector("IFVI", 0, 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFVI")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFVI"), environment));
         sim.tick();
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
@@ -1263,7 +1263,7 @@ public class VMConditionalInstructionTest {
     void testInvi_Vacant_SkipsNext() {
         // Vacant (no owner) - INVI should skip when vacant
         placeInstructionWithVector("INVI", 0, 1);
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INVI")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INVI"), environment));
         sim.tick();
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
@@ -1276,7 +1276,7 @@ public class VMConditionalInstructionTest {
         org.getDataStack().push(new int[]{0, 1});
         // Vacant (no owner) - IFVS should execute next when vacant
         placeInstruction("IFVS");
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFVS")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFVS"), environment));
         sim.tick();
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
@@ -1289,7 +1289,7 @@ public class VMConditionalInstructionTest {
         org.getDataStack().push(new int[]{0, 1});
         // Vacant (no owner) - INVS should skip when vacant
         placeInstruction("INVS");
-        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INVS")));
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INVS"), environment));
         sim.tick();
         sim.tick();
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
