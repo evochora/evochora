@@ -249,6 +249,7 @@ The instruction set defines the fundamental operations an organism can perform. 
 * `SETI %REG <Literal>`: Sets `<%REG>` to the immediate `<Literal>`.
 * `SETR %DEST_REG %SRC_REG`: Copies the value from `<%SRC_REG>` to `<%DEST_REG>`.
 * `SETV %REG <Vector|Label>`: Sets `<%REG>` to the specified vector or the vector to the label.
+* `XCHG %REG1 %REG2`: Exchanges (swaps) the contents of two registers atomically.
 * `PUSH %REG`: Pushes the value of `<%REG>` onto the Data Stack.
 * `POP %REG`: Pops a value from the Data Stack into `<%REG>`.
 * `PUSI <Literal>`: Pushes the immediate `<Literal>` onto the Data Stack.
@@ -267,6 +268,13 @@ These instructions operate on scalar `DATA` values. `ADD` and `SUB` also support
 * `MULR %REG1 %REG2`, `MULI %REG1 <Literal>`, `MULS`: Performs multiplication (scalars only).
 * `DIVR %REG1 %REG2`, `DIVI %REG1 <Literal>`, `DIVS`: Performs division (scalars only).
 * `MODR %REG1 %REG2`, `MODI %REG1 <Literal>`, `MODS`: Performs modulo (scalars only).
+* `NEGR %REG`, `NEGS`: Negates the value (`-x`).
+* `ABSR %REG`, `ABSS`: Computes absolute value (`|x|`).
+* `INCR %REG`, `INCS`: Increments by one (`x + 1`).
+* `DECR %REG`, `DECS`: Decrements by one (`x - 1`).
+* `MINR %REG1 %REG2`, `MINI %REG1 <Literal>`, `MINS`: Returns the minimum of two values.
+* `MAXR %REG1 %REG2`, `MAXI %REG1 <Literal>`, `MAXS`: Returns the maximum of two values.
+* `SGNR %REG`, `SGNS`: Returns the sign of a value (-1, 0, or +1).
 * `DOTR %DEST_REG %VEC_REG1 %VEC_REG2`, `DOTS`: Calculates the dot product of two vectors.
 * `CRSR %DEST_REG %VEC_REG1 %VEC_REG2`, `CRSS`: Calculates the 2D cross product of two vectors.
 
@@ -277,7 +285,11 @@ These instructions operate on the integer value of scalars.
 * `ANDR %REG1 %REG2`, `ANDI %REG1 <Literal>`, `ANDS`: Bitwise AND.
 * `ORR %REG1 %REG2`, `ORI %REG1 <Literal>`, `ORS`: Bitwise OR.
 * `XORR %REG1 %REG2`, `XORI %REG1 <Literal>`, `XORS`: Bitwise XOR.
-* `NADR %REG1 %REG2`, `NADI %REG1 <Literal>`, `NADS`: Bitwise NAND.
+* `NADR %REG1 %REG2`, `NADI %REG1 <Literal>`, `NADS`: Bitwise NAND (`~(a & b)`).
+* `NORR %REG1 %REG2`, `NORI %REG1 <Literal>`, `NORS`: Bitwise NOR (`~(a | b)`).
+* `EQUR %REG1 %REG2`, `EQUI %REG1 <Literal>`, `EQUS`: Bitwise equivalence/XNOR (`~(a ^ b)`). Returns 1 bits where both inputs are equal.
+* `ADNR %REG1 %REG2`, `ADNI %REG1 <Literal>`, `ADNS`: Bitwise AND-NOT (`a & ~b`). Clears bits in first operand that are set in second.
+* `ORNR %REG1 %REG2`, `ORNI %REG1 <Literal>`, `ORNS`: Bitwise OR-NOT (`a | ~b`).
 * `NOT %REG`, `NOTS`: Bitwise NOT.
 * `SHLR %REG_VAL %REG_AMT`, `SHLI %REG_VAL <Literal>`, `SHLS`: Logical shift left.
 * `SHRR %REG_VAL %REG_AMT`, `SHRI %REG_VAL <Literal>`, `SHRS`: Logical shift right.

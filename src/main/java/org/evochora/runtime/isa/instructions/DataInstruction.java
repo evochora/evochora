@@ -38,6 +38,8 @@ public class DataInstruction extends Instruction {
         reg(1, Variant.V, "PUSV", VECTOR);
         // Operation 2: POP (pop value from stack)
         reg(2, Variant.R, "POP", REGISTER);
+        // Operation 7: XCHG (exchange registers)
+        reg(7, Variant.RR, "XCHG", REGISTER, REGISTER);
     }
 
     private static void reg(int op, int variant, String name, OperandSource... sources) {
@@ -110,6 +112,19 @@ public class DataInstruction extends Instruction {
                     Object value = operands.get(0).value();
                     if (value == null) { organism.instructionFailed("Null value for PUSV"); return; }
                     organism.getDataStack().push(value);
+                    break;
+                }
+                case "XCHG": {
+                    if (operands.size() != 2) { organism.instructionFailed("Invalid operands for XCHG"); return; }
+                    Operand op1 = operands.get(0);
+                    Operand op2 = operands.get(1);
+                    int reg1 = op1.rawSourceId();
+                    int reg2 = op2.rawSourceId();
+                    if (reg1 == -1 || reg2 == -1) { organism.instructionFailed("XCHG requires two register operands"); return; }
+                    Object val1 = op1.value();
+                    Object val2 = op2.value();
+                    if (!writeOperand(reg1, val2)) { return; }
+                    if (!writeOperand(reg2, val1)) { return; }
                     break;
                 }
                 default:

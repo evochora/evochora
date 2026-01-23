@@ -46,6 +46,22 @@ public class BitwiseInstruction extends Instruction {
         reg(3, Variant.RR, "NADR", REGISTER, REGISTER);
         reg(3, Variant.RI, "NADI", REGISTER, IMMEDIATE);
         reg(3, Variant.SS, "NADS", STACK, STACK);
+        // Operation 4: NOR
+        reg(4, Variant.RR, "NORR", REGISTER, REGISTER);
+        reg(4, Variant.RI, "NORI", REGISTER, IMMEDIATE);
+        reg(4, Variant.SS, "NORS", STACK, STACK);
+        // Operation 5: EQU (XNOR / Equivalence)
+        reg(5, Variant.RR, "EQUR", REGISTER, REGISTER);
+        reg(5, Variant.RI, "EQUI", REGISTER, IMMEDIATE);
+        reg(5, Variant.SS, "EQUS", STACK, STACK);
+        // Operation 6: ADN (AND-NOT: a & ~b)
+        reg(6, Variant.RR, "ADNR", REGISTER, REGISTER);
+        reg(6, Variant.RI, "ADNI", REGISTER, IMMEDIATE);
+        reg(6, Variant.SS, "ADNS", STACK, STACK);
+        // Operation 7: ORN (OR-NOT: a | ~b)
+        reg(7, Variant.RR, "ORNR", REGISTER, REGISTER);
+        reg(7, Variant.RI, "ORNI", REGISTER, IMMEDIATE);
+        reg(7, Variant.SS, "ORNS", STACK, STACK);
         // Operation 8: NOT
         reg(8, Variant.R, "NOT", REGISTER);
         reg(8, Variant.S, "NOTS", STACK);
@@ -172,6 +188,10 @@ public class BitwiseInstruction extends Instruction {
                     case "AND" -> scalarResult = s1.toScalarValue() & s2.toScalarValue();
                     case "OR" -> scalarResult = s1.toScalarValue() | s2.toScalarValue();
                     case "XOR" -> scalarResult = s1.toScalarValue() ^ s2.toScalarValue();
+                    case "NOR" -> scalarResult = ~(s1.toScalarValue() | s2.toScalarValue());
+                    case "EQU" -> scalarResult = ~(s1.toScalarValue() ^ s2.toScalarValue());
+                    case "ADN" -> scalarResult = s1.toScalarValue() & ~s2.toScalarValue();
+                    case "ORN" -> scalarResult = s1.toScalarValue() | ~s2.toScalarValue();
                     case "SHL" -> scalarResult = s1.toScalarValue() << s2.toScalarValue();
                     case "SHR" -> scalarResult = s1.toScalarValue() >> s2.toScalarValue();
                     default -> {

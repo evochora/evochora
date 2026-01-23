@@ -84,7 +84,7 @@
       SEEK %DIR; NOP^4
 
       # 4) Periodischer Turn-Countdown
-      SUBI %KLEFT DATA:1; NOP^4
+      DECR %KLEFT; NOP^5
       IFI  %KLEFT DATA:0
         JMPI HARVEST_TURN; NOP^5
       JMPI HARVEST_LOOP
@@ -96,7 +96,7 @@
       V2BR %FWD_MASK %DIR; NOP^4
 
       # KIDX = (KIDX+1) mod 4
-      ADDI %KIDX DATA:1; NOP^4
+      INCR %KIDX; NOP^5
       GTI  %KIDX DATA:3
         JMPI HARVEST_PT_WRAP; NOP^4
       JMPI HARVEST_PT_LOAD; NOP^4

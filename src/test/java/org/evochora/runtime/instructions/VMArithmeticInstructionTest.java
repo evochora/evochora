@@ -345,6 +345,233 @@ public class VMArithmeticInstructionTest {
         assertThat((int[]) r0).containsExactly(3, 4);
     }
 
+    // --- NEG ---
+    /**
+     * Tests the NEGR (Negate Register) instruction.
+     */
+    @Test
+    @Tag("unit")
+    void testNegr() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 42).toInt());
+        placeInstruction("NEGR", 0);
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, -42).toInt());
+    }
+
+    /**
+     * Tests the NEGS (Negate Stack) instruction.
+     */
+    @Test
+    @Tag("unit")
+    void testNegs() {
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 42).toInt());
+        placeInstruction("NEGS");
+        sim.tick();
+        assertThat(org.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, -42).toInt());
+    }
+
+    // --- ABS ---
+    /**
+     * Tests the ABSR (Absolute Value Register) instruction.
+     */
+    @Test
+    @Tag("unit")
+    void testAbsr() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, -42).toInt());
+        placeInstruction("ABSR", 0);
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 42).toInt());
+    }
+
+    /**
+     * Tests the ABSS (Absolute Value Stack) instruction.
+     */
+    @Test
+    @Tag("unit")
+    void testAbss() {
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, -42).toInt());
+        placeInstruction("ABSS");
+        sim.tick();
+        assertThat(org.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, 42).toInt());
+    }
+
+    // --- INC ---
+    /**
+     * Tests the INCR (Increment Register) instruction.
+     */
+    @Test
+    @Tag("unit")
+    void testIncr() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 41).toInt());
+        placeInstruction("INCR", 0);
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 42).toInt());
+    }
+
+    /**
+     * Tests the INCS (Increment Stack) instruction.
+     */
+    @Test
+    @Tag("unit")
+    void testIncs() {
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 41).toInt());
+        placeInstruction("INCS");
+        sim.tick();
+        assertThat(org.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, 42).toInt());
+    }
+
+    // --- DEC ---
+    /**
+     * Tests the DECR (Decrement Register) instruction.
+     */
+    @Test
+    @Tag("unit")
+    void testDecr() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 43).toInt());
+        placeInstruction("DECR", 0);
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 42).toInt());
+    }
+
+    /**
+     * Tests the DECS (Decrement Stack) instruction.
+     */
+    @Test
+    @Tag("unit")
+    void testDecs() {
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 43).toInt());
+        placeInstruction("DECS");
+        sim.tick();
+        assertThat(org.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, 42).toInt());
+    }
+
+    // --- MIN ---
+    /**
+     * Tests the MINR (Minimum Register) instruction.
+     */
+    @Test
+    @Tag("unit")
+    void testMinr() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 10).toInt());
+        org.setDr(1, new Molecule(Config.TYPE_DATA, 5).toInt());
+        placeInstruction("MINR", 0, 1);
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 5).toInt());
+    }
+
+    /**
+     * Tests the MINI (Minimum Immediate) instruction.
+     */
+    @Test
+    @Tag("unit")
+    void testMini() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 10).toInt());
+        placeInstruction("MINI", 0, 5);
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 5).toInt());
+    }
+
+    /**
+     * Tests the MINS (Minimum Stack) instruction.
+     */
+    @Test
+    @Tag("unit")
+    void testMins() {
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 5).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 10).toInt());
+        placeInstruction("MINS");
+        sim.tick();
+        assertThat(org.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, 5).toInt());
+    }
+
+    // --- MAX ---
+    /**
+     * Tests the MAXR (Maximum Register) instruction.
+     */
+    @Test
+    @Tag("unit")
+    void testMaxr() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 5).toInt());
+        org.setDr(1, new Molecule(Config.TYPE_DATA, 10).toInt());
+        placeInstruction("MAXR", 0, 1);
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 10).toInt());
+    }
+
+    /**
+     * Tests the MAXI (Maximum Immediate) instruction.
+     */
+    @Test
+    @Tag("unit")
+    void testMaxi() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 5).toInt());
+        placeInstruction("MAXI", 0, 10);
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 10).toInt());
+    }
+
+    /**
+     * Tests the MAXS (Maximum Stack) instruction.
+     */
+    @Test
+    @Tag("unit")
+    void testMaxs() {
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 10).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 5).toInt());
+        placeInstruction("MAXS");
+        sim.tick();
+        assertThat(org.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, 10).toInt());
+    }
+
+    // --- SGN ---
+    /**
+     * Tests the SGNR (Sign Register) instruction with positive value.
+     */
+    @Test
+    @Tag("unit")
+    void testSgnrPositive() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 42).toInt());
+        placeInstruction("SGNR", 0);
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+    }
+
+    /**
+     * Tests the SGNR (Sign Register) instruction with negative value.
+     */
+    @Test
+    @Tag("unit")
+    void testSgnrNegative() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, -42).toInt());
+        placeInstruction("SGNR", 0);
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, -1).toInt());
+    }
+
+    /**
+     * Tests the SGNR (Sign Register) instruction with zero.
+     */
+    @Test
+    @Tag("unit")
+    void testSgnrZero() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        placeInstruction("SGNR", 0);
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+    }
+
+    /**
+     * Tests the SGNS (Sign Stack) instruction.
+     */
+    @Test
+    @Tag("unit")
+    void testSgns() {
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, -42).toInt());
+        placeInstruction("SGNS");
+        sim.tick();
+        assertThat(org.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, -1).toInt());
+    }
+
     @org.junit.jupiter.api.AfterEach
     void assertNoInstructionFailure() {
         assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
