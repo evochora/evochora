@@ -691,11 +691,10 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 absolutePos[i] = startPosition[i] + relativePos[i];
             }
 
-            simulation.getEnvironment().setMolecule(
-                org.evochora.runtime.model.Molecule.fromInt(entry.getValue()),
-                organism.getId(),
-                absolutePos
-            );
+            org.evochora.runtime.model.Molecule molecule = org.evochora.runtime.model.Molecule.fromInt(entry.getValue());
+            // CODE:0 should always have owner=0 (represents empty cell)
+            int ownerId = (molecule.type() == org.evochora.runtime.Config.TYPE_CODE && molecule.toScalarValue() == 0) ? 0 : organism.getId();
+            simulation.getEnvironment().setMolecule(molecule, ownerId, absolutePos);
         }
 
         // Place initial world objects
@@ -707,9 +706,11 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             }
 
             org.evochora.compiler.api.PlacedMolecule pm = entry.getValue();
+            // CODE:0 should always have owner=0 (represents empty cell)
+            int ownerId = (pm.type() == org.evochora.runtime.Config.TYPE_CODE && pm.value() == 0) ? 0 : organism.getId();
             simulation.getEnvironment().setMolecule(
                 new org.evochora.runtime.model.Molecule(pm.type(), pm.value()),
-                organism.getId(),
+                ownerId,
                 absolutePos
             );
         }

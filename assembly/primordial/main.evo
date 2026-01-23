@@ -13,15 +13,15 @@
 # ----------------------------
 # Constants
 # ----------------------------
-.DEFINE REPRODUCTION_CONTINUE_THRESHOLD DATA:15000
+.DEFINE REPRODUCTION_CONTINUE_THRESHOLD DATA:50000
 
 # ----------------------------
 # STRUCTURE Shell (50x31)
 # ----------------------------
 .PLACE STRUCTURE:1 -1..49|-1
-.PLACE STRUCTURE:1 -1..49|30
-.PLACE STRUCTURE:1 -1|0..29
-.PLACE STRUCTURE:1 49|0..29
+.PLACE STRUCTURE:1 -1..49|40
+.PLACE STRUCTURE:1 -1|0..39
+.PLACE STRUCTURE:1 49|0..39
 
 # ----------------------------
 # Init
@@ -33,52 +33,91 @@ INIT:
   NOP
 
 LOCALSTATE_MOVE:
-  GTI %INI DATA:9
+  NOP                                         # Mutations-Puffer
+  GTI %INI DATA:14
     JMPI LOCALSTATE_WRITE
+  NOP                                         # Puffer nach Conditional
 
   ADDI %INI DATA:1
   NOP
+  NOP                                         # Mutations-Puffer
   SEKI 0|1
   NOP
+  NOP                                         # Doppelter Puffer vor Sprung
   JMPI LOCALSTATE_MOVE
 
+.ORG 0|1
 LOCALSTATE_WRITE:
   SETI %INI DATA:0
   NOP
+  NOP                                         # Mutations-Puffer
   PPKI %INI 0|1
   NOP
+  NOP                                         # Mutations-Puffer
   SEKI 1|0
   NOP
 
   SETI %INI DATA:-1
   NOP
+  NOP                                         # Mutations-Puffer
   PPKI %INI 0|1
   NOP
+  NOP                                         # Mutations-Puffer
   SKLS
   NOP
+  NOP                                         # Doppelter Puffer vor kritischem Sprung
   JMPI MAIN_LOOP
+  NOP                                         # Safety: falls JMPI mutiert
+  JMPI MAIN_LOOP                              # Redundanter Sprung
 
 # ----------------------------
 # Main loop
 # ----------------------------
-.ORG 0|1
+.ORG 0|2
 MAIN_LOOP:
   NRG %ER
   NOP
+  NOP                                       # Mutations-Puffer vor Conditional
   GTI %ER REPRODUCTION_CONTINUE_THRESHOLD
-    CALL REPRODUCE.CONTINUE REF %ER
-  NRG %ER
+    JMPI MAIN_REPRODUCE
   NOP
-  GTI %ER REPRODUCTION_CONTINUE_THRESHOLD
-    JMPI MAIN_LOOP
+  JMPI MAIN_HARVEST
+
+MAIN_REPRODUCE:
+  NOP                                       # Puffer vor kritischem CALL
+  CALL REPRODUCE.CONTINUE REF %ER
+  NOP
+  NOP                                       # Puffer nach CALL
+  JMPI MAIN_LOOP_ENERGY_CHECK
+
+.ORG 0|3
+MAIN_HARVEST:
+  NOP                                       # Puffer vor kritischem CALL
   CALL ENERGY.HARVEST
   NOP
+  NOP                                       # Puffer nach CALL
   JMPI MAIN_LOOP
+
+# Separater Energy-Check nach Reproduktion
+MAIN_LOOP_ENERGY_CHECK:
+  NRG %ER
+  NOP
+  NOP                                       # Mutations-Puffer vor Conditional
+  GTI %ER REPRODUCTION_CONTINUE_THRESHOLD
+    JMPI MAIN_LOOP                          # Genug Energie -> weiter reproduzieren
+  NOP
+  JMPI MAIN_HARVEST                         # Wenig Energie -> Energie suchen
+
+# Redundante Safety-Jumps (falls Code durch Mutation hierher fällt)
+NOP
+JMPI MAIN_LOOP
+NOP
+JMPI MAIN_LOOP
 
 # ----------------------------
 # Energy search
 # ----------------------------
-.ORG 0|2
+.ORG 0|4
 .INCLUDE "lib/energy.evo"
 .REQUIRE "lib/energy.evo" AS ENERGY
   
@@ -86,12 +125,19 @@ MAIN_LOOP:
 # ----------------------------
 # Reproduction (mock)
 # ----------------------------
-.ORG 0|10
+.ORG 0|15
 .INCLUDE "lib/reproduce.evo"
 .REQUIRE "lib/reproduce.evo" AS REPRODUCE
 
 # ----------------------------
-# Safty jump back
+# Safety jump back (redundant für Mutations-Robustheit)
 # ----------------------------
+NOP
+NOP
+JMPI MAIN_LOOP
+NOP
+NOP
+JMPI MAIN_LOOP
+NOP
 NOP
 JMPI MAIN_LOOP

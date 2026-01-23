@@ -115,9 +115,9 @@ class MutableCellStateTest {
 
     @Test
     void applyDelta_preservesOwner_whenMoleculeDataIsZeroButOwnerIsNot() {
-        // This tests CODE:0 cells that have an owner (e.g., initial world objects).
-        // The moleculeData for CODE:0 is 0 (see Molecule.toInt()), but these cells
-        // can still have a valid owner and are considered "occupied".
+        // This tests that delta decompression correctly handles CODE:0 cells with owner!=0.
+        // While current semantics ensure CODE:0 always has owner=0, this test verifies
+        // backward compatibility and robustness in handling edge case data.
         MutableCellState state = new MutableCellState(TOTAL_CELLS);
         state.applySnapshot(createCells(new int[]{0}, new int[]{10}, new int[]{1}));
 

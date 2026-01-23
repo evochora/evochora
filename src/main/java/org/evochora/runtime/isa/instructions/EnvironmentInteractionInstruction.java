@@ -93,14 +93,14 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
                 return;
             }
             Molecule toWriteRaw = org.evochora.runtime.model.Molecule.fromInt((Integer) valueToWrite);
-            // For CODE:0, marker must be 0 (empty cells have no properties)
+            // CODE:0 should always have marker=0 (represents empty cell)
             int marker = (toWriteRaw.type() == Config.TYPE_CODE && toWriteRaw.value() == 0) ? 0 : organism.getMr();
             Molecule toWrite = new Molecule(toWriteRaw.type(), toWriteRaw.value(), marker);
-            
+
             // Energy costs and entropy dissipation are now handled by the thermodynamic policy in VirtualMachine
 
             if (environment.getMolecule(targetCoordinate).isEmpty()) {
-                // For CODE:0, always set owner to 0
+                // CODE:0 should always have owner=0 (represents empty cell)
                 int ownerId = (toWrite.type() == Config.TYPE_CODE && toWrite.toScalarValue() == 0) ? 0 : organism.getId();
                 environment.setMolecule(toWrite, ownerId, targetCoordinate);
             } else {
@@ -227,14 +227,14 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
                 return;
             }
             Molecule toWriteRaw = org.evochora.runtime.model.Molecule.fromInt((Integer) valueToWrite);
-            // For CODE:0, marker must be 0 (empty cells have no properties)
+            // CODE:0 should always have marker=0 (represents empty cell)
             int marker = (toWriteRaw.type() == Config.TYPE_CODE && toWriteRaw.value() == 0) ? 0 : organism.getMr();
             Molecule toWrite = new Molecule(toWriteRaw.type(), toWriteRaw.value(), marker);
 
             // Energy costs and entropy dissipation are now handled by the thermodynamic policy in VirtualMachine
 
             // Write the new value (cell is now empty, so this should always succeed)
-            // For CODE:0, always set owner to 0
+            // CODE:0 should always have owner=0 (represents empty cell)
             int ownerId = (toWrite.type() == Config.TYPE_CODE && toWrite.toScalarValue() == 0) ? 0 : organism.getId();
             environment.setMolecule(toWrite, ownerId, targetCoordinate);
         }

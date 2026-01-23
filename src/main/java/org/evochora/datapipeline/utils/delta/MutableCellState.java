@@ -102,7 +102,7 @@ public class MutableCellState {
             int flatIndex = delta.getFlatIndices(i);
             if (flatIndex >= 0 && flatIndex < totalCells) {
                 // Always read both moleculeData and ownerId from the delta.
-                // CODE:0 (moleculeData=0) can have a valid owner (e.g., initial world objects).
+                // This ensures backward compatibility and correct handling of any data.
                 moleculeData[flatIndex] = delta.getMoleculeData(i);
                 ownerIds[flatIndex] = delta.getOwnerIds(i);
             }
@@ -140,7 +140,7 @@ public class MutableCellState {
      */
     public boolean isOccupied(int flatIndex) {
         // A cell is "occupied" if it has non-empty molecule data OR has an owner.
-        // CODE:0 (moleculeData=0) can have a valid owner (e.g., initial world objects).
+        // This handles backward compatibility with data where CODE:0 may have owner!=0.
         return moleculeData[flatIndex] != 0 || ownerIds[flatIndex] != 0;
     }
     

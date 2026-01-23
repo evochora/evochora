@@ -9,8 +9,8 @@
 # ----------------------------
 # Constants
 # ----------------------------
-.DEFINE REPRODUCTION_PAUSE_THRESHOLD DATA:10000
-.DEFINE REPRODUCTION_CHILD_INITAL_ENERGY DATA:5000
+.DEFINE REPRODUCTION_PAUSE_THRESHOLD DATA:30000
+.DEFINE REPRODUCTION_CHILD_INITAL_ENERGY DATA:15000
 
 .PROC CONTINUE EXPORT REF ER
 
@@ -21,6 +21,7 @@
   .PREG %TMP     %PR4     # Tempräres register für schenlle Vergleiche
 
   NOP
+  NOP                                             # Mutations-Puffer
   JMPI CONTINUE_INIT
 
   # 3 DATA-Felder in der Zeile über CONTINUE_INIT (x=0..2, y=-1 relativ zu CONTINUE_INIT)
@@ -30,7 +31,9 @@
   .ORG 0|2
   CONTINUE_INIT:                                  # State laden
     STATIC2_LOAD %DIRMASK %SIDEVEC
+    NOP                                           # Mutations-Puffer
     SMRI DATA:1                                   # Marker auf 1 setzen für Ownership-Transfer bei FORK
+    NOP                                           # Mutations-Puffer
     JMPI CONTINUE_INIT2
 
   .ORG 0|3
@@ -44,6 +47,7 @@
     NOP
     GTI %DIRMASK DATA:0                           # Wenn es schon eine Richtung gibt,...
       JMPI CONTINUE_DIRVEC                        # ... dann nicht neu zufällig auswählen
+    NOP                                           # Mutations-Puffer nach Conditional
 
     # Richtung der Reproduktion zufällig auswählen
     SETI %DIRMASK DATA:15                         # Alle 4 Richtungen
@@ -143,8 +147,10 @@
   CONTINUE_LOOP:
     NRG ER                                        # ER in %NRG lesen (Cost 1)
     NOP
+    NOP                                           # Mutations-Puffer
     LTI ER REPRODUCTION_PAUSE_THRESHOLD           # wenn ER < Threshold ...
       JMPI CONTINUE_SAVE_AND_RET                  # ... dann State speichern & zurück
+    NOP                                           # Mutations-Puffer nach Conditional
 
     # DP0 und DP1 sichern und an Continue-Position holen
     ADPI DATA:0
@@ -226,13 +232,22 @@
   CONTINUE_WRITELINE:              # Schreib Loop
     POP %TMP                       # Nächstes Symbol von DS holen
     NOP
+    NOP                            # Mutations-Puffer
     IFR %TMP %SHELL                # Kommt als nächstes das Terminator Symbol?
       JMPI CONTINUE_WRITEFINISH    # Dann Zeilenabschluss
-    
+    NOP                            # Mutations-Puffer nach Conditional
+
     # Defensive Prüfung vor PPKR: Nur bei FREMD abbrechen
     IFFR %DIRVEC                   # Ist die Zelle FREMD?
       JMPI CONTINUE_PREP_NEXT_REPRODUCTION # ... dann abbrechen
-    
+    NOP                            # Mutations-Puffer nach Conditional
+    NOP
+    JMPI CONTINUE_WRITELINE2
+    NOP
+    JMPI CONTINUE_WRITELINE2
+
+    .ORG 0|12
+  CONTINUE_WRITELINE2:
     PPKR %TMP %DIRVEC              # Atomisches Swap (lesen + schreiben)
     NOP
     SETV %TMP 0|0
@@ -252,7 +267,7 @@
     NOP
     JMPI CONTINUE_WRITELINE
 
-  .ORG 0|12
+  .ORG 0|13
   CONTINUE_WRITEFINISH:            # Hüllenabschluss schreiben, zurück zum Anfang und zur nächsten Zeile
     # Defensive Prüfung vor PEEK
     IFFR %DIRVEC                   # Ist die Zelle FREMD?
@@ -277,7 +292,7 @@
     NOP
     JMPI CONTINUE_WRITE_FINISH_END
 
-  .ORG 0|13
+  .ORG 0|14
   CONTINUE_WRITE_FINISH_END:
     # Defensive Prüfung vor PEEK und POKE
     IFFR %DIRVEC                   # Ist die Zelle FREMD?
@@ -295,7 +310,7 @@
     NOP
     JMPI CONTINUE_WRITEFINISH_CORNER
 
-  .ORG 0|14
+  .ORG 0|15
   CONTINUE_WRITEFINISH_CORNER:
     # Ecke schreiben
     SEEK %DIRVEC                   # Vorwärts
@@ -318,7 +333,7 @@
     NOP
     JMPI CONTINUE_WRITEFINISH_NOSIDE
 
-  .ORG 0|15
+  .ORG 0|16
   CONTINUE_WRITEFINISH_NOSIDE:
     SETV %SIDEVEC 0|0              # Es ist mindestens eine Zeile geschrieben, wir sind also nicht mehr in der ersten
     SKLR %CONTCORD                 # Zurück zum Anfang
@@ -333,7 +348,13 @@
     INPR %DIRVEC                   # Wenn das Molekül nicht passierbar,...
       PEEK %TMP %DIRVEC            # ... dann lösche ich es
     SEEK %DIRVEC                   # Vorwärts
+    NOP
+    JMPI CONTINUE_WRITEFINISH_NOSIDE2
+    NOP
+    JMPI CONTINUE_WRITEFINISH_NOSIDE2
 
+    .ORG 0|17
+    CONTINUE_WRITEFINISH_NOSIDE2:
     SCAN %TMP %DIRVEC              # Was ist vor uns (nach unten)?
     NOP
     IFR %TMP %SHELL                # Ist das die Hülle?...
@@ -348,9 +369,12 @@
     SKLS
     ADPI DATA:0
     SKLS
+    NOP                              # Mutations-Puffer vor kritischem Sprung
     JMPI CONTINUE_LOOP
+    NOP                              # Safety: falls JMPI mutiert
+    JMPI CONTINUE_LOOP               # Redundanter Sprung
 
-  .ORG 0|16
+  .ORG 0|18
   CONTINUE_FORK:
     
     RTRI %DIRVEC DATA:0 DATA:1     # Richtung nach innen drehen zum schreiben
@@ -368,6 +392,7 @@
     NOP
     JMPI CONTINUE_FORK_NORTH       # Weiter nach Norden
 
+  .ORG 0|19
   # So lange nach Westen laufen, bis ich an der Hülle bin 
   CONTINUE_FORK_WEST:
     SCNI %TMP -1|0                 # Was liegt westlich?
@@ -380,15 +405,22 @@
     JMPI CONTINUE_FORK_WEST       # Weiter nach Westen
     
   # FORK ausführen
-  .ORG 0|17  
+  .ORG 0|20  
   CONTINUE_FORK_FINISH:
     SEKI -1|0                      # Einen Schritt nach Westen
     NOP
+    NOP                            # Mutations-Puffer
     PUSV 1|0                       # Die obere linke Ecke des Kindes liegt im Osten
+    NOP                            # Mutations-Puffer
     PUSI REPRODUCTION_CHILD_INITAL_ENERGY   # Energie für das Kind auf den DS legen
     NOP
+    NOP                            # Mutations-Puffer vor kritischem GDVS
     GDVS                           # Kind bekommt selbe DV Richtung wie Elternorganismus
+    NOP                            # Mutations-Puffer vor kritischem FRKS
     FRKS                           # FORKen, Alle 3 Werte werden vom Stack entfernt
+    NOP
+    NOP                            # Doppelter Puffer nach FORK
+    JMPI CONTINUE_PREP_NEXT_REPRODUCTION
     NOP
     JMPI CONTINUE_PREP_NEXT_REPRODUCTION
 
@@ -400,7 +432,7 @@
     #PUSI REPRODUCTION_CHILD_INITAL_ENERGY   # Energie für das Kind auf den DS legen
     #GDVS                           # Kind bekommt selbe DV Richtung wie Elternorganismus
     #FRKS                           # FORKen, Alle 3 Werte werden vom Stack entfernt
-
+  .ORG 0|21
   CONTINUE_PREP_NEXT_REPRODUCTION:
     # Aufräumen und fertig - ROBUST gegen vorzeitigen Abbruch
     RTRI %DIRVEC DATA:0 DATA:1     # %DIRVEC wieder nach außen drehen
@@ -425,7 +457,7 @@
     NOP
     JMPI CONTINUE_SAVE_AND_RET
 
-  .ORG 0|18
+  .ORG 0|22
   CONTINUE_SAVE_AND_RET:
     SKLS                                          # alten DP wiederherstellen
     NOP
@@ -438,13 +470,27 @@
     NOP
     JMPI CONTINUE_STORE_STATE
 
-  .ORG 0|19
+  .ORG 0|23
   CONTINUE_SIDVEC_STORE_0:
     SETI %SIDEVEC DATA:0
+    NOP                                           # Mutations-Puffer
 
   CONTINUE_STORE_STATE:
     SMRI DATA:0                                   # Marker zurücksetzen vor Rückkehr
+    NOP                                           # Mutations-Puffer
     # vor RET: "in einem Rutsch" speichern
     STATIC2_STORE %DIRMASK %SIDEVEC
+    NOP                                           # Mutations-Puffer
+    JMPI CONTINUE_STORE_STATE2
+    NOP 
+    JMPI CONTINUE_STORE_STATE2
+
+  .ORG 0|24
+  CONTINUE_STORE_STATE2:
+    NOP                                           # Mutations-Puffer vor kritischem RET
     RET
+    NOP                                           # Falls RET mutiert
+    RET                                           # Redundantes RET für Robustheit
+    NOP
+    RET                                           # Zweites redundantes RET
 .ENDP
