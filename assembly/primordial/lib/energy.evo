@@ -25,7 +25,7 @@
   .ORG 0|2
     HARVEST_START:
       # am Anfang: "in einem Rutsch" laden
-      STATIC3_LOAD %FWD_MASK %KIDX %KLEFT; NOP^3
+      STATIC3_LOAD %FWD_MASK %KIDX %KLEFT; NOP^2
       JMPI HARVEST_RANDOM_DIR
 
     .ORG 0|3

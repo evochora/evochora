@@ -32,6 +32,7 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
 
     private final int tolerance;
     private final int foreignPenalty;
+    private final int hammingWeight;
 
     /**
      * Maps label value -> set of LabelEntry objects.
@@ -50,12 +51,36 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
      */
     private record LabelEntryWithValue(int labelValue, LabelEntry entry) {}
 
+    /** Default Hamming distance tolerance. */
+    public static final int DEFAULT_TOLERANCE = 2;
+
+    /** Default score penalty for foreign labels. */
+    public static final int DEFAULT_FOREIGN_PENALTY = 100;
+
+    /** Default score weight per Hamming distance. */
+    public static final int DEFAULT_HAMMING_WEIGHT = 50;
+
     /**
      * Creates a new pre-expanded Hamming strategy with default settings.
-     * Default tolerance is 2 (211 neighbors), default foreignPenalty is 20.
      */
     public PreExpandedHammingStrategy() {
-        this(2, 20);
+        this(DEFAULT_TOLERANCE, DEFAULT_FOREIGN_PENALTY, DEFAULT_HAMMING_WEIGHT);
+    }
+
+    /**
+     * Creates a new pre-expanded Hamming strategy from configuration.
+     * <p>
+     * Reads "tolerance", "foreignPenalty", and "hammingWeight" from the config,
+     * using defaults if not specified.
+     *
+     * @param options The configuration options
+     */
+    public PreExpandedHammingStrategy(com.typesafe.config.Config options) {
+        this(
+            options.hasPath("tolerance") ? options.getInt("tolerance") : DEFAULT_TOLERANCE,
+            options.hasPath("foreignPenalty") ? options.getInt("foreignPenalty") : DEFAULT_FOREIGN_PENALTY,
+            options.hasPath("hammingWeight") ? options.getInt("hammingWeight") : DEFAULT_HAMMING_WEIGHT
+        );
     }
 
     /**
@@ -63,10 +88,12 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
      *
      * @param tolerance The Hamming distance tolerance (2 = ~211 neighbors, 3 = ~1351 neighbors)
      * @param foreignPenalty The score penalty for foreign labels
+     * @param hammingWeight The score weight per Hamming distance
      */
-    public PreExpandedHammingStrategy(int tolerance, int foreignPenalty) {
+    public PreExpandedHammingStrategy(int tolerance, int foreignPenalty, int hammingWeight) {
         this.tolerance = tolerance;
         this.foreignPenalty = foreignPenalty;
+        this.hammingWeight = hammingWeight;
         this.valueToLabels = new Int2ObjectOpenHashMap<>();
         this.indexToEntry = new Int2ObjectOpenHashMap<>();
     }
@@ -78,66 +105,70 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
             return -1;
         }
 
-        // Early exit: single exact own match (skips distance calculation)
-        if (candidates.size() == 1) {
-            LabelEntry entry = candidates.get(0);
-            LabelEntryWithValue entryWithValue = indexToEntry.get(entry.flatIndex());
-            if (entryWithValue != null) {
-                int actualValue = entryWithValue.labelValue();
-                int hamming = hammingDistance(searchValue, actualValue);
-                if (hamming == 0 && !entry.isForeign(codeOwner)) {
-                    return entry.flatIndex();
-                }
-            }
-        }
-
         // Get environment shape for toroidal distance calculation
         int[] shape = environment.getShape();
 
-        // Group by Hamming distance, then score by physical distance + foreignPenalty
-        int bestScore = Integer.MAX_VALUE;
-        int bestFlatIndex = -1;
-        int bestOwner = Integer.MAX_VALUE;
-        int bestHamming = Integer.MAX_VALUE;
+        // === PHASE 1: Early exit - find best own label with Hamming=0 ===
+        // Own exact match always wins, so we can skip full scoring if one exists
+        int bestOwnExactDistance = Integer.MAX_VALUE;
+        int bestOwnExactIndex = -1;
+        int bestOwnExactOwner = Integer.MAX_VALUE;
 
         for (LabelEntry entry : candidates) {
             LabelEntryWithValue entryWithValue = indexToEntry.get(entry.flatIndex());
             if (entryWithValue == null) {
-                continue; // Entry was removed
+                continue;
+            }
+
+            int actualValue = entryWithValue.labelValue();
+            int hamming = hammingDistance(searchValue, actualValue);
+
+            // Only consider own labels with exact match
+            if (hamming == 0 && !entry.isForeign(codeOwner)) {
+                int[] labelCoords = environment.getCoordinateFromIndex(entry.flatIndex());
+                int distance = toroidalManhattanDistance(callerCoords, labelCoords, shape);
+
+                if (distance < bestOwnExactDistance ||
+                    (distance == bestOwnExactDistance && entry.owner() < bestOwnExactOwner)) {
+                    bestOwnExactDistance = distance;
+                    bestOwnExactIndex = entry.flatIndex();
+                    bestOwnExactOwner = entry.owner();
+                }
+            }
+        }
+
+        // If we found an own exact match, it always wins
+        if (bestOwnExactIndex != -1) {
+            return bestOwnExactIndex;
+        }
+
+        // === PHASE 2: Full scoring with combined formula ===
+        // score = (hamming × hammingWeight) + distance + (foreign ? foreignPenalty : 0)
+        int bestScore = Integer.MAX_VALUE;
+        int bestFlatIndex = -1;
+        int bestOwner = Integer.MAX_VALUE;
+
+        for (LabelEntry entry : candidates) {
+            LabelEntryWithValue entryWithValue = indexToEntry.get(entry.flatIndex());
+            if (entryWithValue == null) {
+                continue;
             }
 
             int actualValue = entryWithValue.labelValue();
             int hamming = hammingDistance(searchValue, actualValue);
 
             if (hamming > tolerance) {
-                continue; // Should not happen with pre-expansion, but safety check
-            }
-
-            // Strict Hamming grouping: lower Hamming always wins
-            if (hamming > bestHamming) {
                 continue;
             }
 
-            // Calculate physical distance (toroidal Manhattan)
             int[] labelCoords = environment.getCoordinateFromIndex(entry.flatIndex());
-            int physicalDistance = toroidalManhattanDistance(callerCoords, labelCoords, shape);
+            int distance = toroidalManhattanDistance(callerCoords, labelCoords, shape);
 
-            // Score = physicalDistance + foreignPenalty (if foreign)
-            int score = physicalDistance + (entry.isForeign(codeOwner) ? foreignPenalty : 0);
+            // Combined score formula
+            int score = (hamming * hammingWeight) + distance + (entry.isForeign(codeOwner) ? foreignPenalty : 0);
 
-            // If this is a new lowest Hamming group, reset
-            if (hamming < bestHamming) {
-                bestHamming = hamming;
+            if (score < bestScore || (score == bestScore && entry.owner() < bestOwner)) {
                 bestScore = score;
-                bestFlatIndex = entry.flatIndex();
-                bestOwner = entry.owner();
-            } else if (score < bestScore) {
-                // Same Hamming group, lower score wins
-                bestScore = score;
-                bestFlatIndex = entry.flatIndex();
-                bestOwner = entry.owner();
-            } else if (score == bestScore && entry.owner() < bestOwner) {
-                // Same score, lower owner ID wins (determinism)
                 bestFlatIndex = entry.flatIndex();
                 bestOwner = entry.owner();
             }
@@ -276,6 +307,11 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
     @Override
     public int getForeignPenalty() {
         return foreignPenalty;
+    }
+
+    @Override
+    public int getHammingWeight() {
+        return hammingWeight;
     }
 
     /**

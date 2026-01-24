@@ -197,6 +197,71 @@ class FuzzyJumpIntegrationTest {
     }
 
     /**
+     * Tests that skipNextInstruction correctly calculates JMPI length in 3D.
+     * <p>
+     * This is a regression test: JMPI was registered with LABEL operand (implying dims slots)
+     * but actually only uses a single IMMEDIATE slot for the hash. When a conditional skips
+     * over JMPI in 3D, it incorrectly skips 4 slots (1+3) instead of 2 (1+1).
+     */
+    @Test
+    void conditionalSkipsJmpiCorrectly() {
+        // Create a 3D environment to expose the bug
+        EnvironmentProperties props3D = new EnvironmentProperties(new int[]{20, 20, 20}, true);
+        Environment env3D = new Environment(props3D);
+        Simulation sim3D = SimulationTestUtils.createSimulation(env3D);
+        Organism org3D = Organism.create(sim3D, new int[]{0, 0, 0}, 1000, sim3D.getLogger());
+        sim3D.addOrganism(org3D);
+
+        int labelHash = 99999 & Config.VALUE_MASK;
+        int nopOpcode = Instruction.getInstructionIdByName("NOP");
+
+        // Layout in 3D environment along x-axis (y=0, z=0):
+        // [0,0,0] IFI r0, 999   <- condition FALSE, skip next instruction
+        // [1,0,0] (register 0)
+        // [2,0,0] (immediate 999)
+        // [3,0,0] JMPI hash     <- should be SKIPPED (length = 2: opcode + hash)
+        // [4,0,0] (hash value)
+        // [5,0,0] NOP           <- IP should land HERE
+        // [6,0,0] NOP           <- if we land here, length was wrong
+        // [7,0,0] NOP           <- bug lands here (skipped 4 slots instead of 2)
+
+        int[] pos0 = {0, 0, 0};
+        int[] pos1 = {1, 0, 0};
+        int[] pos2 = {2, 0, 0};
+        int[] pos3 = {3, 0, 0};
+        int[] pos4 = {4, 0, 0};
+        int[] pos5 = {5, 0, 0};
+        int[] pos6 = {6, 0, 0};
+        int[] pos7 = {7, 0, 0};
+
+        // Place IFI (If Equal with Immediate)
+        int ifiOpcode = Instruction.getInstructionIdByName("IFI");
+        env3D.setMolecule(new Molecule(Config.TYPE_CODE, ifiOpcode), pos0);
+        env3D.setMolecule(new Molecule(Config.TYPE_DATA, 0), pos1);   // register index 0
+        env3D.setMolecule(new Molecule(Config.TYPE_DATA, 999), pos2); // immediate value 999
+
+        // Place JMPI with label hash
+        int jmpiOpcode = Instruction.getInstructionIdByName("JMPI");
+        env3D.setMolecule(new Molecule(Config.TYPE_CODE, jmpiOpcode), pos3);
+        env3D.setMolecule(new Molecule(Config.TYPE_DATA, labelHash), pos4);
+
+        // Place NOPs to detect where IP lands
+        env3D.setMolecule(new Molecule(Config.TYPE_CODE, nopOpcode), pos5);
+        env3D.setMolecule(new Molecule(Config.TYPE_CODE, nopOpcode), pos6);
+        env3D.setMolecule(new Molecule(Config.TYPE_CODE, nopOpcode), pos7);
+
+        org3D.setIp(pos0);
+
+        sim3D.tick();
+
+        // Expected: pos5 (skipped IFI[3] + JMPI[2])
+        // Bug: pos7 (skipped IFI[3] + JMPI[4] due to LABEL=3 dims)
+        assertThat(org3D.getIp())
+                .as("After skipping JMPI in 3D (should be 2 slots, not 4)")
+                .isEqualTo(pos5);
+    }
+
+    /**
      * Tests that closer labels win when ownership is the same.
      */
     @Test

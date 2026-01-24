@@ -16,6 +16,16 @@ export class OrganismInstructionView {
      */
     constructor(root) {
         this.root = root;
+        this.artifact = null;
+    }
+
+    /**
+     * Sets the program artifact for label name resolution.
+     * This is static metadata that changes only when the program changes.
+     * @param {object} artifact - The ProgramArtifact containing labelValueToName map.
+     */
+    setProgram(artifact) {
+        this.artifact = artifact;
     }
     
     /**
@@ -168,7 +178,7 @@ export class OrganismInstructionView {
                 if (arg.registerValue) {
                     const valueStr = ValueFormatter.format(arg.registerValue);
                     const annotation = `=${valueStr.replace(/^\[|\]$/g, '')}`; // Remove brackets for inline view
-                    return `${regName}<span class="register-annotation">${annotation}</span>`;
+                    return `${regName}<span class="annotation">${annotation}</span>`;
                 }
                 return regName;
             }
@@ -181,11 +191,25 @@ export class OrganismInstructionView {
                 return `IMMEDIATE:${arg.rawValue || '?'}`;
             }
             case 'VECTOR':
-            case 'LABEL':
                 if (arg.components && arg.components.length > 0) {
                     return arg.components.join('|');
                 }
                 return '?';
+            case 'LABEL': {
+                // LABEL is a scalar hash value since fuzzy jumps refactoring
+                // Format like IMMEDIATE (e.g., "DATA:123456") with label name annotation
+                let formatted = `LABEL:${arg.value || '?'}`;
+                if (arg.moleculeType && arg.value !== undefined) {
+                    const molecule = { kind: 'MOLECULE', type: arg.moleculeType, value: arg.value };
+                    formatted = ValueFormatter.format(molecule);
+                }
+                // Annotate with label name if artifact is available
+                const labelName = AnnotationUtils.resolveLabelHashToName(arg.value, this.artifact);
+                if (labelName) {
+                    return `${formatted}<span class="annotation">=${labelName}</span>`;
+                }
+                return formatted;
+            }
             case 'STACK':
                 return 'STACK';
             default:

@@ -157,12 +157,19 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         this.randomProvider = new SeededRandomProvider(seed);
         this.tickPlugins = initializeTickPlugins(options.getConfigList("tickPlugins"), this.randomProvider);
 
-        Environment environment = new Environment(envProps);
-        
+        // Extract runtime configuration before creating components
         Config runtimeConfig = options.hasPath("runtime") ? options.getConfig("runtime") : com.typesafe.config.ConfigFactory.empty();
         Config thermoConfig = runtimeConfig.hasPath("thermodynamics") ? runtimeConfig.getConfig("thermodynamics") : com.typesafe.config.ConfigFactory.empty();
         ThermodynamicPolicyManager policyManager = new ThermodynamicPolicyManager(thermoConfig);
         Config organismConfig = runtimeConfig.hasPath("organism") ? runtimeConfig.getConfig("organism") : com.typesafe.config.ConfigFactory.empty();
+
+        // Create label matching strategy from config (or use default)
+        org.evochora.runtime.label.ILabelMatchingStrategy labelMatchingStrategy =
+            Environment.createLabelMatchingStrategy(
+                runtimeConfig.hasPath("label-matching") ? runtimeConfig.getConfig("label-matching") : null
+            );
+
+        Environment environment = new Environment(envProps, labelMatchingStrategy);
 
         this.simulation = new Simulation(environment, policyManager, organismConfig);
         this.simulation.setRandomProvider(this.randomProvider);

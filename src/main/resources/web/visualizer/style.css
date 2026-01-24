@@ -437,8 +437,8 @@ header {
     background-color: #ff4444;
 }
 
-/* Register annotations (e.g., =D:0) in green and italic */
-.register-annotation {
+/* Value annotations (e.g., =DATA:5 or =loop) in green and italic */
+.annotation {
     color: #a0e0a0; /* Match injected-value color from call stack */
     font-style: italic;
 }

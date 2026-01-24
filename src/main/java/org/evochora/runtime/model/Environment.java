@@ -11,7 +11,9 @@ import org.evochora.runtime.isa.IEnvironmentReader;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.ints.IntSet;
+import org.evochora.runtime.label.ILabelMatchingStrategy;
 import org.evochora.runtime.label.LabelIndex;
+import org.evochora.runtime.label.PreExpandedHammingStrategy;
 
 /**
  * Represents the simulation environment, managing the grid of molecules and their owners.
@@ -48,22 +50,68 @@ public class Environment implements IEnvironmentReader {
      */
     public final EnvironmentProperties properties;
 
+    // ==================== Static Factory Methods ====================
+
+    /**
+     * Creates a label matching strategy from configuration.
+     * <p>
+     * If config is null or has no className, returns the default {@link PreExpandedHammingStrategy}.
+     * Otherwise instantiates the configured strategy class via reflection, passing the options
+     * sub-config to the strategy's constructor.
+     *
+     * @param config The label-matching configuration block (may be null)
+     * @return The configured label matching strategy
+     * @throws IllegalArgumentException if the configured class cannot be instantiated
+     */
+    public static ILabelMatchingStrategy createLabelMatchingStrategy(com.typesafe.config.Config config) {
+        if (config == null || !config.hasPath("className")) {
+            return new PreExpandedHammingStrategy();
+        }
+        String className = config.getString("className");
+        com.typesafe.config.Config options = config.hasPath("options")
+            ? config.getConfig("options")
+            : com.typesafe.config.ConfigFactory.empty();
+        try {
+            return (ILabelMatchingStrategy) Class.forName(className)
+                .getConstructor(com.typesafe.config.Config.class)
+                .newInstance(options);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalArgumentException(
+                "Failed to instantiate label matching strategy: " + className, e);
+        }
+    }
+
+    // ==================== Constructors ====================
+
     /**
      * Creates a new environment with the specified shape and toroidal setting.
-     * 
+     * Uses default label matching strategy.
+     *
      * @param shape The dimensions of the world.
      * @param toroidal Whether the world wraps around at edges.
      */
     public Environment(int[] shape, boolean toroidal) {
         this(new EnvironmentProperties(shape, toroidal));
     }
-    
+
     /**
      * Creates a new environment with the specified properties.
-     * 
+     * Uses default label matching strategy.
+     *
      * @param properties The environment properties.
      */
     public Environment(EnvironmentProperties properties) {
+        this(properties, new org.evochora.runtime.label.PreExpandedHammingStrategy());
+    }
+
+    /**
+     * Creates a new environment with the specified properties and label matching strategy.
+     * This is the primary constructor used by SimulationEngine.
+     *
+     * @param properties The environment properties.
+     * @param labelMatchingStrategy The strategy for fuzzy label matching in jump instructions.
+     */
+    public Environment(EnvironmentProperties properties, org.evochora.runtime.label.ILabelMatchingStrategy labelMatchingStrategy) {
         this.properties = properties;
         this.shape = properties.getWorldShape();
         this.isToroidal = properties.isToroidal();
@@ -87,18 +135,18 @@ public class Environment implements IEnvironmentReader {
             this.strides[i] = stride;
             stride *= shape[i];
         }
-        
+
         // Initialize sparse cell tracking if enabled (using primitive int indices for performance)
         this.occupiedIndices = Config.ENABLE_SPARSE_CELL_TRACKING ? new IntOpenHashSet() : null;
-        
+
         // Initialize ownership index
         this.cellsByOwner = new Int2ObjectOpenHashMap<>();
-        
+
         // Initialize change tracking for delta compression
         this.changedSinceLastReset = new BitSet(size);
 
         // Initialize label index for fuzzy jump matching
-        this.labelIndex = new LabelIndex();
+        this.labelIndex = new LabelIndex(labelMatchingStrategy);
     }
 
     /**

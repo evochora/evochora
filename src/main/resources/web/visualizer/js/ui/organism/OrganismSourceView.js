@@ -387,7 +387,7 @@ export class OrganismSourceView {
                 resultHtml += this.escapeHtml(originalLine.substring(lastIndex, tokenEnd));
                 
                 // Append annotation
-                resultHtml += `<span class="register-annotation">${this.escapeHtml(ann.annotationText)}</span>`;
+                resultHtml += `<span class="annotation">${this.escapeHtml(ann.annotationText)}</span>`;
                 
                 lastIndex = tokenEnd;
             }

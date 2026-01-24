@@ -498,22 +498,17 @@ public final class OrganismStateConverter {
                     resolvedArgs.add(InstructionArgumentView.vector(components));
                 }
             } else if (argType == org.evochora.runtime.isa.InstructionArgumentType.LABEL) {
-                // LABEL: Group multiple arguments into int[] array
+                // LABEL: Single scalar hash value (20-bit) since fuzzy jumps refactoring
+                // Formatted like IMMEDIATE with molecule type (typically DATA)
                 argumentTypesList.add("LABEL");
-                int dims = envDimensions != null ? envDimensions.length : 2;
-                int[] components = new int[dims];
-                boolean hasComponents = false;
-                
-                for (int dim = 0; dim < dims && argIndex < rawArguments.size(); dim++) {
+                if (argIndex < rawArguments.size()) {
                     int rawArg = rawArguments.get(argIndex);
                     Molecule molecule = Molecule.fromInt(rawArg);
-                    components[dim] = molecule.toScalarValue();
-                    hasComponents = true;
+                    int typeId = molecule.type();
+                    String moleculeType = MoleculeTypeRegistry.typeToName(typeId);
+                    int hashValue = molecule.toScalarValue();
+                    resolvedArgs.add(InstructionArgumentView.label(rawArg, moleculeType, hashValue));
                     argIndex++;
-                }
-                
-                if (hasComponents) {
-                    resolvedArgs.add(InstructionArgumentView.label(components));
                 }
             }
         }

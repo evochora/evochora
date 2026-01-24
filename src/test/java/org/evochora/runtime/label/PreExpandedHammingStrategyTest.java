@@ -30,7 +30,8 @@ class PreExpandedHammingStrategyTest {
 
     @BeforeEach
     void setUp() {
-        strategy = new PreExpandedHammingStrategy(2, 20);
+        // Use explicit values for test predictability
+        strategy = new PreExpandedHammingStrategy(2, 100, 50);
         // Create a small test environment (64x64, toroidal)
         EnvironmentProperties props = new EnvironmentProperties(new int[]{64, 64}, true);
         environment = new Environment(props);
@@ -40,8 +41,9 @@ class PreExpandedHammingStrategyTest {
     @Test
     void testDefaults() {
         PreExpandedHammingStrategy defaultStrategy = new PreExpandedHammingStrategy();
-        assertThat(defaultStrategy.getTolerance()).isEqualTo(2);
-        assertThat(defaultStrategy.getForeignPenalty()).isEqualTo(20);
+        assertThat(defaultStrategy.getTolerance()).isEqualTo(PreExpandedHammingStrategy.DEFAULT_TOLERANCE);
+        assertThat(defaultStrategy.getForeignPenalty()).isEqualTo(PreExpandedHammingStrategy.DEFAULT_FOREIGN_PENALTY);
+        assertThat(defaultStrategy.getHammingWeight()).isEqualTo(PreExpandedHammingStrategy.DEFAULT_HAMMING_WEIGHT);
     }
 
     @Test
@@ -138,24 +140,28 @@ class PreExpandedHammingStrategyTest {
     }
 
     @Test
-    void testLowerHammingAlwaysWins() {
+    void testOwnLabelBeatsExactForeignWithMutation() {
+        // With combined score: own label with 1-bit mutation should beat foreign exact match
+        // score = (hamming × 50) + distance + (foreign ? 100 : 0)
         int exactValue = 12345;
         int nearValue = 12345 ^ 1; // 1 bit different
 
         int foreignOwner = 2;
         int ownOwner = 1;
 
-        // Add own label with 1-bit difference
+        // Add own label with 1-bit difference at position 64 (≈distance 1)
         LabelEntry ownFuzzy = new LabelEntry(64, ownOwner, 0);
         strategy.addLabel(nearValue, ownFuzzy);
 
-        // Add foreign label with exact match
+        // Add foreign label with exact match at position 65 (≈distance 1)
         LabelEntry foreignExact = new LabelEntry(65, foreignOwner, 0);
         strategy.addLabel(exactValue, foreignExact);
 
-        // Searching for exactValue: foreign exact (hamming=0) beats own fuzzy (hamming=1)
+        // Own fuzzy: score = 50 + ~1 + 0 = ~51
+        // Foreign exact: score = 0 + ~1 + 100 = ~101
+        // Own wins due to foreignPenalty outweighing hammingWeight
         int result = strategy.findTarget(exactValue, ownOwner, callerCoords, environment);
-        assertThat(result).isEqualTo(65); // Exact match wins even though it's foreign
+        assertThat(result).isEqualTo(64); // Own label wins despite 1-bit mutation
     }
 
     @Test

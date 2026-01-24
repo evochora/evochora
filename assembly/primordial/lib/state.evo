@@ -6,7 +6,8 @@
 .MACRO STATIC2_LOAD D0 D1
   DPLS                 # alten DP sichern
   SYNC; NOP^2          # DP := IP (an PROC_START binden)
-  SEKI -1|0; NOP^2
+  SEKI -1|0;
+  SEKI -1|0;
   SCNI D0 0|-1; NOP^2  # Slot 0 (x=0, y=-1)
   SEKI 1|0; NOP^2
   SCNI D1 0|-1; NOP^2  # Slot 1 (x=1)
@@ -32,7 +33,8 @@
 .MACRO STATIC3_LOAD D0 D1 D2
   DPLS                 # alten DP sichern
   SYNC; NOP^2          # DP := IP (an PROC_START binden)
-  SEKI -1|0; NOP^2
+  SEKI -1|0;
+  SEKI -1|0;
   SCNI D0 0|-1; NOP^2  # Slot 0 (x=0, y=-1)
   SEKI 1|0; NOP^2
   SCNI D1 0|-1; NOP^2  # Slot 1 (x=1)

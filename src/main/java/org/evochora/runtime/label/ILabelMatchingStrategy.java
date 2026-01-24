@@ -22,8 +22,10 @@ public interface ILabelMatchingStrategy {
      * The matching algorithm:
      * <ol>
      *   <li>Finds all candidates within the Hamming distance tolerance</li>
-     *   <li>Groups candidates by Hamming distance (lowest group wins)</li>
-     *   <li>Within same Hamming group, scores: {@code score = physicalDistance + (foreign ? foreignPenalty : 0)}</li>
+     *   <li><b>Early exit:</b> If an own label with Hamming=0 exists, return the closest one
+     *       (own exact match always wins)</li>
+     *   <li>Otherwise, compute combined score for each candidate:
+     *       {@code score = (hamming × hammingWeight) + distance + (foreign ? foreignPenalty : 0)}</li>
      *   <li>Returns the candidate with the lowest score</li>
      *   <li>Uses owner ID as tie-breaker for determinism</li>
      * </ol>
@@ -98,7 +100,18 @@ public interface ILabelMatchingStrategy {
     /**
      * Gets the foreign penalty for this strategy.
      *
-     * @return The score penalty added for foreign labels (typically 20)
+     * @return The score penalty added for foreign labels (typically 100)
      */
     int getForeignPenalty();
+
+    /**
+     * Gets the Hamming weight for this strategy.
+     * <p>
+     * The Hamming weight determines how much each bit of Hamming distance
+     * contributes to the score. Higher values make Hamming distance more
+     * important relative to physical distance and ownership.
+     *
+     * @return The score weight per Hamming distance (typically 50)
+     */
+    int getHammingWeight();
 }

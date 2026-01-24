@@ -36,7 +36,8 @@
   CONTINUE_INIT2:                                 # Wir brauchen ein Shell Molekül als Terminator Symbol
     DPLS                                          # alten DP sichern
     SYNC; NOP^4
-    SEKI -1|0; NOP^4
+    SEKI -1|0;
+    SEKI -1|0;
     SCNI %SHELL -1|0; NOP^4                       # Hüllen Molekül als Terminator Symbol merken
     GTI %DIRMASK DATA:0                           # Wenn es schon eine Richtung gibt,...
       JMPI CONTINUE_DIRVEC; NOP^4                 # ... dann nicht neu zufällig auswählen

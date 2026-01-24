@@ -3,6 +3,7 @@ package org.evochora.cli;
 import java.io.File;
 import java.util.concurrent.Callable;
 
+import org.evochora.cli.commands.CleanupCommand;
 import org.evochora.cli.commands.CompileCommand;
 import org.evochora.cli.commands.InspectCommand;
 import org.evochora.cli.commands.RenderVideoCommand;
@@ -28,6 +29,7 @@ import picocli.CommandLine.Option;
         CompileCommand.class,
         InspectCommand.class,
         RenderVideoCommand.class,
+        CleanupCommand.class,
         CommandLine.HelpCommand.class
     }
 )

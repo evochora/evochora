@@ -408,11 +408,13 @@ export class AppController {
                 if (programIdForState) {
                     // 1. Resolve Artifact (Controller responsibility)
                     let artifactForState = this.programArtifactCache.get(programIdForState) || null;
-                    
+
                     // 2. Set Context (View decides if update needed)
                     this.stateView.setProgram(artifactForState);
+                    this.instructionView.setProgram(artifactForState);
                 } else {
                     this.stateView.setProgram(null);
+                    this.instructionView.setProgram(null);
                 }
 
                 // Update Source View (Clean Architecture)
