@@ -27,6 +27,8 @@ import java.util.Map;
  * @param tokenLookup A map from fileName to lineNumber to columnNumber to List<TokenInfo> for efficient file-line-column-based lookup.
  * @param sourceLineToInstructions A map from source line identifier (fileName:lineNumber) to a list of machine instructions
  *                                 that were generated from that source line, sorted by linear address.
+ * @param labelValueToName A map from label hash value to label name (for reverse lookup in visualizer).
+ * @param labelNameToValue A map from label name to label hash value (for forward lookup).
  */
 public record ProgramArtifact(
         String programId,
@@ -42,7 +44,9 @@ public record ProgramArtifact(
         Map<String, List<ParamInfo>> procNameToParamNames,
         Map<SourceInfo, TokenInfo> tokenMap,
         Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup,
-        Map<String, List<MachineInstructionInfo>> sourceLineToInstructions
+        Map<String, List<MachineInstructionInfo>> sourceLineToInstructions,
+        Map<Integer, String> labelValueToName,
+        Map<String, Integer> labelNameToValue
 ) {
     public ProgramArtifact {
         sources = sources != null ? Collections.unmodifiableMap(sources) : Collections.emptyMap();
@@ -59,8 +63,14 @@ public record ProgramArtifact(
                 : Collections.emptyMap();
         tokenMap = tokenMap != null ? Collections.unmodifiableMap(tokenMap) : Collections.emptyMap();
         tokenLookup = tokenLookup != null ? Collections.unmodifiableMap(tokenLookup) : Collections.emptyMap();
-        sourceLineToInstructions = sourceLineToInstructions != null 
-                ? Collections.unmodifiableMap(sourceLineToInstructions) 
+        sourceLineToInstructions = sourceLineToInstructions != null
+                ? Collections.unmodifiableMap(sourceLineToInstructions)
+                : Collections.emptyMap();
+        labelValueToName = labelValueToName != null
+                ? Collections.unmodifiableMap(labelValueToName)
+                : Collections.emptyMap();
+        labelNameToValue = labelNameToValue != null
+                ? Collections.unmodifiableMap(labelNameToValue)
                 : Collections.emptyMap();
     }
     

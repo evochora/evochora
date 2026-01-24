@@ -84,6 +84,8 @@ public record LinearizedProgramArtifact(
         Map<SerializableSourceInfo, TokenInfo> tokenMap,
         Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup,
         Map<String, List<org.evochora.compiler.api.MachineInstructionInfo>> sourceLineToInstructions,
+        Map<Integer, String> labelValueToName,
+        Map<String, Integer> labelNameToValue,
         EnvironmentProperties envProps
 ) {
     
@@ -101,6 +103,8 @@ public record LinearizedProgramArtifact(
         tokenMap = tokenMap != null ? Collections.unmodifiableMap(tokenMap) : Collections.emptyMap();
         tokenLookup = tokenLookup != null ? Collections.unmodifiableMap(tokenLookup) : Collections.emptyMap();
         sourceLineToInstructions = sourceLineToInstructions != null ? Collections.unmodifiableMap(sourceLineToInstructions) : Collections.emptyMap();
+        labelValueToName = labelValueToName != null ? Collections.unmodifiableMap(labelValueToName) : Collections.emptyMap();
+        labelNameToValue = labelNameToValue != null ? Collections.unmodifiableMap(labelNameToValue) : Collections.emptyMap();
         envProps = envProps != null ? envProps : new EnvironmentProperties(new int[0], false);
     }
     
@@ -128,6 +132,8 @@ public record LinearizedProgramArtifact(
                 convertTokenMap(artifact.tokenMap()),
                 artifact.tokenLookup(),
                 artifact.sourceLineToInstructions(),
+                artifact.labelValueToName(),
+                artifact.labelNameToValue(),
                 envProps
         );
     }
@@ -153,7 +159,9 @@ public record LinearizedProgramArtifact(
                 procNameToParamNames,
                 convertTokenMapBack(tokenMap),
                 tokenLookup,
-                sourceLineToInstructions
+                sourceLineToInstructions,
+                labelValueToName,
+                labelNameToValue
         );
     }
     

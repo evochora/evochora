@@ -28,10 +28,10 @@ public class ProcedureCallHandler {
     /**
      * Executes a procedure call. This involves resolving parameter bindings,
      * saving the current processor state, and jumping to the target procedure's address.
-     * @param targetDelta The relative coordinates of the target procedure.
+     * @param targetIp The absolute coordinates of the target procedure (resolved via LabelIndex).
      * @param artifact The program artifact containing metadata about the procedure.
      */
-    public void executeCall(int[] targetDelta, ProgramArtifact artifact) {
+    public void executeCall(int[] targetIp, ProgramArtifact artifact) {
         Organism organism = context.getOrganism();
         Environment environment = context.getWorld();
 
@@ -53,10 +53,11 @@ public class ProcedureCallHandler {
             }
         }
 
-        int instructionLength = 1 + environment.getShape().length;
+        // CALL now only consumes 1 operand (label hash) instead of N (coordinate delta)
+        int instructionLength = 1 + 1; // opcode + label hash
         int[] returnIp = ipBeforeFetch;
         for (int i = 0; i < instructionLength; i++) {
-            returnIp = organism.getNextInstructionPosition(returnIp, organism.getDvBeforeFetch(), environment); // CORRECTED
+            returnIp = organism.getNextInstructionPosition(returnIp, organism.getDvBeforeFetch(), environment);
         }
 
         Object[] prsSnapshot = organism.getPrs().toArray();
@@ -64,12 +65,10 @@ public class ProcedureCallHandler {
 
         String procName = "";
 
-        int[] targetIp = organism.getTargetCoordinate(organism.getInitialPosition(), targetDelta, environment);
-
         if (artifact != null) {
             int[] origin = organism.getInitialPosition();
-            int[] relTarget = new int[targetDelta.length];
-            for (int i = 0; i < targetDelta.length; i++) {
+            int[] relTarget = new int[targetIp.length];
+            for (int i = 0; i < targetIp.length; i++) {
                 relTarget[i] = targetIp[i] - origin[i];
             }
 
@@ -105,7 +104,9 @@ public class ProcedureCallHandler {
         }
         */
 
-        organism.setIp(targetIp);
+        // Skip past the LABEL molecule to the actual procedure code
+        int[] codeIp = organism.getNextInstructionPosition(targetIp, organism.getDv(), environment);
+        organism.setIp(codeIp);
         organism.setSkipIpAdvance(true);
     }
 

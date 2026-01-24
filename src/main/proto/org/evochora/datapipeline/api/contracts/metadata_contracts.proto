@@ -228,6 +228,18 @@ message ProgramArtifact {
   // Key: "fileName:lineNumber" (e.g., "main.evo:4"), Value: list of machine instructions
   // Used by frontend to display compiler-generated instructions (e.g., PUSH/POP for CALL)
   map<string, MachineInstructionInfoList> source_line_to_instructions = 14;
+
+  // Reverse lookup from label hash value to label name
+  // Source: ProgramArtifact.labelValueToName()
+  // Key: 20-bit hash value (labelName.hashCode() & VALUE_MASK), Value: label name
+  // Used by frontend to display label names in instruction view (e.g., "JMPI DATA:12345 [my_label]")
+  map<int32, string> label_value_to_name = 15;
+
+  // Forward lookup from label name to hash value
+  // Source: ProgramArtifact.labelNameToValue()
+  // Key: label name, Value: 20-bit hash value
+  // Used by frontend to resolve label references in source view
+  map<string, int32> label_name_to_value = 16;
 }
 
 // Container for source code lines of a file.

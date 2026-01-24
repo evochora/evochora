@@ -7,12 +7,12 @@ import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.ir.*;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 /**
- * Resolves IrLabelRef operands to n-D delta vectors using the layout mapping.
- * In this version, the vector represents the program-relative coordinate of the label.
+ * Resolves IrLabelRef operands to hash values for fuzzy jump matching.
+ * The hash value is derived from the label name and used by the runtime's
+ * LabelIndex to find matching LABEL molecules using Hamming distance tolerance.
  */
 public class LabelRefLinkingRule implements ILinkingRule {
 
@@ -51,14 +51,13 @@ public class LabelRefLinkingRule implements ILinkingRule {
 
                 Integer targetAddr = layout.labelToAddress().get(labelNameToFind);
                 if (targetAddr != null) {
-                    int[] dstCoord = layout.linearAddressToCoord().get(targetAddr);
-                    if (dstCoord != null) {
-                        int[] absoluteVector = Arrays.copyOf(dstCoord, dstCoord.length);
-                        if (rewritten == null) {
-                            rewritten = new ArrayList<>(ops);
-                        }
-                        rewritten.set(i, new IrVec(absoluteVector));
+                    // Generate hash value from label name (19-bit, always positive)
+                    // Use 19 bits (0x7FFFF) to ensure value is never interpreted as negative
+                    int labelHash = labelNameToFind.hashCode() & 0x7FFFF;
+                    if (rewritten == null) {
+                        rewritten = new ArrayList<>(ops);
                     }
+                    rewritten.set(i, new IrImm(labelHash));
                 }
             }
         }

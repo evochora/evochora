@@ -57,8 +57,11 @@ public class LayoutEngineTest {
         assertThat(res.linearAddressToCoord().get(2)).containsExactly(4, 3);
         assertThat(res.labelToAddress().get("L")).isEqualTo(0);
 
+        // Note: Labels now occupy 1 cell in the grid (like Tierra/Avida templates).
+        // This shifts all subsequent positions by 1, so the ENERGY placement
+        // at relative offset [5,0] is now at [11,3] instead of [10,3].
         boolean foundPlace = res.initialWorldObjects().keySet().stream()
-                .anyMatch(c -> java.util.Arrays.equals(c, new int[]{10, 3}));
+                .anyMatch(c -> java.util.Arrays.equals(c, new int[]{11, 3}));
         assertThat(foundPlace).isTrue();
     }
 }

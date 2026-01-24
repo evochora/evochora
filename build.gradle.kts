@@ -248,6 +248,7 @@ tasks.register<Test>("integration") {
     useJUnitPlatform {
         includeTags("integration")
     }
+    maxHeapSize = "2g" // Match test task heap size to avoid OOM
     maxParallelForks = 1 // Integration tests often can't run in parallel
     jvmArgs("-Xshare:off")
     testLogging {

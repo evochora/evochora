@@ -60,14 +60,16 @@ public final class Linker {
                     Optional<IInstructionSet.Signature> sigOpt = isa.getSignatureById(opcodeId);
                     if (sigOpt.isPresent()) {
                         for (IInstructionSet.ArgKind kind : sigOpt.get().argumentTypes()) {
-                            if (kind == IInstructionSet.ArgKind.VECTOR || kind == IInstructionSet.ArgKind.LABEL) {
+                            if (kind == IInstructionSet.ArgKind.VECTOR) {
+                                // VECTOR operands occupy worldDimensions slots (one per dimension)
                                 if (envProps == null || envProps.getWorldShape() == null || envProps.getWorldShape().length == 0) {
-                                    throw new CompilationException("Instruction " + ins.opcode() + " requires vector/label arguments, which need a world context, but no environment properties were provided.", ins.source());
+                                    throw new CompilationException("Instruction " + ins.opcode() + " requires vector arguments, which need a world context, but no environment properties were provided.", ins.source());
                                 }
                                 int worldDimensions = envProps.getWorldShape().length;
                                 for (int k = 0; k < worldDimensions; k++) context.nextAddress();
                             } else {
-                                // REGISTER, LOCATION_REGISTER, LITERAL → one slot each
+                                // REGISTER, LOCATION_REGISTER, LITERAL, LABEL → one slot each
+                                // Note: LABEL used to be N-dimensional coordinates, now it's a single hash value
                                 context.nextAddress();
                             }
                         }

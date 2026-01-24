@@ -127,24 +127,15 @@ public class RuntimeIntegrationTest {
         org.setProgramId(artifact.programId());
         sim.addOrganism(org);
 
-        // Track instructions and register states
-        //ExecutionTracker tracker = new ExecutionTracker(sim, org);
-        
         for (int i = 0; i < 15; i++) {
-        //    tracker.beforeTick();
             sim.tick();
-        //    tracker.afterTick();
         }
-
-        // Print execution trace
-        //String trace = tracker.getTraceAsString();
-        //System.out.println(trace);
 
         Molecule result = Molecule.fromInt((Integer) org.getDr(0));
         assertThat(result.toScalarValue())
-                .as("Der Wert sollte nach dem Prozeduraufruf auf 42 inkrementiert sein, auch ohne Artefakt.\n" /*+ trace*/)
+                .as("Der Wert sollte nach dem Prozeduraufruf auf 42 inkrementiert sein, auch ohne Artefakt.")
                 .isEqualTo(42);
-        assertThat(org.isInstructionFailed()).isFalse();
+        assertThat(org.isInstructionFailed()).as("Failure: " + org.getFailureReason()).isFalse();
     }
 
     @Test
@@ -186,7 +177,9 @@ public class RuntimeIntegrationTest {
                 correctArtifact.procNameToParamNames(),
                 correctArtifact.tokenMap(),
                 correctArtifact.tokenLookup(),
-                correctArtifact.sourceLineToInstructions()
+                correctArtifact.sourceLineToInstructions(),
+                correctArtifact.labelValueToName(),
+                correctArtifact.labelNameToValue()
         );
 
         Environment env = new Environment(envProps);

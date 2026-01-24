@@ -11,6 +11,7 @@ import org.evochora.runtime.isa.IEnvironmentReader;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.ints.IntSet;
+import org.evochora.runtime.label.LabelIndex;
 
 /**
  * Represents the simulation environment, managing the grid of molecules and their owners.
@@ -33,7 +34,11 @@ public class Environment implements IEnvironmentReader {
     // Used by SimulationEngine to create incremental/accumulated deltas
     // Memory: 1 bit per cell (e.g., 125KB for 1M cells)
     private final BitSet changedSinceLastReset;
-    
+
+    // Label index for fuzzy jump matching
+    // Maintains index of all LABEL molecules for O(1) lookup
+    private final LabelIndex labelIndex;
+
     // Total number of cells (cached for performance)
     private final int totalCells;
     
@@ -91,6 +96,9 @@ public class Environment implements IEnvironmentReader {
         
         // Initialize change tracking for delta compression
         this.changedSinceLastReset = new BitSet(size);
+
+        // Initialize label index for fuzzy jump matching
+        this.labelIndex = new LabelIndex();
     }
 
     /**
@@ -150,11 +158,17 @@ public class Environment implements IEnvironmentReader {
     public void setMolecule(Molecule molecule, int... coord) {
         int index = getFlatIndex(coord);
         if (index != -1) {
-            this.grid[index] = molecule.toInt();
-            
+            int oldMoleculeInt = this.grid[index];
+            int newMoleculeInt = molecule.toInt();
+            this.grid[index] = newMoleculeInt;
+
             // Track change for delta compression
             changedSinceLastReset.set(index);
-            
+
+            // Update label index for fuzzy jump matching
+            int owner = this.ownerGrid[index];
+            labelIndex.onMoleculeSet(index, oldMoleculeInt, newMoleculeInt, owner);
+
             // Update sparse cell tracking if enabled
             if (Config.ENABLE_SPARSE_CELL_TRACKING && occupiedIndices != null) {
                 updateOccupiedIndices(index);
@@ -171,19 +185,23 @@ public class Environment implements IEnvironmentReader {
     public void setMolecule(Molecule molecule, int ownerId, int... coord) {
         int index = getFlatIndex(coord);
         if (index != -1) {
-            int packed = molecule.toInt();
-            this.grid[index] = packed;
-            
+            int oldMoleculeInt = this.grid[index];
+            int newMoleculeInt = molecule.toInt();
+            this.grid[index] = newMoleculeInt;
+
             // Track change for delta compression
             changedSinceLastReset.set(index);
-            
+
             // Update ownership index
             int oldOwner = this.ownerGrid[index];
             if (oldOwner != ownerId) {
                 updateOwnershipIndex(index, oldOwner, ownerId);
             }
             this.ownerGrid[index] = ownerId;
-            
+
+            // Update label index for fuzzy jump matching
+            labelIndex.onMoleculeSet(index, oldMoleculeInt, newMoleculeInt, ownerId);
+
             // Update sparse cell tracking if enabled
             if (Config.ENABLE_SPARSE_CELL_TRACKING && occupiedIndices != null) {
                 updateOccupiedIndices(index);
@@ -214,14 +232,18 @@ public class Environment implements IEnvironmentReader {
         if (index != -1) {
             // Track change for delta compression (owner change is also a change)
             changedSinceLastReset.set(index);
-            
+
             // Update ownership index
             int oldOwner = this.ownerGrid[index];
             if (oldOwner != ownerId) {
                 updateOwnershipIndex(index, oldOwner, ownerId);
+
+                // Update label index for fuzzy jump matching
+                int moleculeInt = this.grid[index];
+                labelIndex.onOwnerChange(index, moleculeInt, ownerId);
             }
             this.ownerGrid[index] = ownerId;
-            
+
             // Update sparse cell tracking if enabled
             if (Config.ENABLE_SPARSE_CELL_TRACKING && occupiedIndices != null) {
                 updateOccupiedIndices(index);
@@ -436,6 +458,10 @@ public class Environment implements IEnvironmentReader {
             // Update ownership index
             fromSet.remove(flatIndex);
             toSet.add(flatIndex);
+            // Update label index: owner changed and marker reset to 0
+            int moleculeInt = grid[flatIndex];
+            labelIndex.onOwnerChange(flatIndex, moleculeInt, toOwnerId);
+            labelIndex.onMarkerChange(flatIndex, moleculeInt);
         }
         
         // Clean up empty set
@@ -467,8 +493,12 @@ public class Environment implements IEnvironmentReader {
             grid[flatIndex] = grid[flatIndex] & ~Config.MARKER_MASK;
             // Track change for delta compression
             changedSinceLastReset.set(flatIndex);
+            // Update label index: owner cleared and marker reset to 0
+            int moleculeInt = grid[flatIndex];
+            labelIndex.onOwnerChange(flatIndex, moleculeInt, 0);
+            labelIndex.onMarkerChange(flatIndex, moleculeInt);
         });
-        
+
         return count;
     }
     
@@ -510,5 +540,21 @@ public class Environment implements IEnvironmentReader {
      */
     public int getTotalCells() {
         return totalCells;
+    }
+
+    // ========================================================================
+    // Label Index Support (Fuzzy Jump Matching)
+    // ========================================================================
+
+    /**
+     * Gets the label index for fuzzy jump matching.
+     * <p>
+     * The label index maintains an index of all LABEL molecules in the environment,
+     * enabling O(1) lookup for jump targets using Hamming distance tolerance.
+     *
+     * @return The label index
+     */
+    public LabelIndex getLabelIndex() {
+        return labelIndex;
     }
 }

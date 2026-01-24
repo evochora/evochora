@@ -611,6 +611,10 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             builder.putSourceLineToInstructions(sourceLineKey, listBuilder.build());
         });
 
+        // Label hash value mappings for fuzzy jump display
+        builder.putAllLabelValueToName(artifact.labelValueToName());
+        builder.putAllLabelNameToValue(artifact.labelNameToValue());
+
         return builder.build();
     }
 

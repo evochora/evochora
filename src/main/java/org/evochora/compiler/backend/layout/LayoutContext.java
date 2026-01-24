@@ -115,6 +115,18 @@ public final class LayoutContext {
         placeAtCurrent(src);
     }
 
+    /**
+     * Places a label at the current position.
+     * Labels now occupy space in the grid (like Tierra/Avida templates).
+     *
+     * @param src The source information for error reporting.
+     * @throws CompilationException if the position is already occupied.
+     */
+    public void placeLabel(SourceInfo src) throws CompilationException {
+        initialize();
+        placeAtCurrent(src);
+    }
+
     private void placeAtCurrent(SourceInfo src) throws CompilationException {
         String coordKey = coordToStringKey(currentPos);
         if (coordToLinear.containsKey(coordKey)) {

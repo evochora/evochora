@@ -4,6 +4,7 @@
 .INCLUDE "lib/state.evo"
 .REQUIRE "lib/state.evo" AS STATE
 
+.ORG 0|0
 .PROC HARVEST EXPORT
 
   .PREG %FWD_MASK %PR0   # cached forward direction as bitmask
@@ -13,7 +14,7 @@
   .PREG %MASK     %PR4   # Bitmaske von SNTI/SPNR
   .PREG %VEC      %PR5   # temporärer Richtungsvektor
 
-  .ORG 0|0
+  
   NOP; JMPI HARVEST_START; NOP^53; JMPI HARVEST_START
 
   # 3 DATA-Felder in der Zeile über HARVEST_START (x=0..2, y=-1 relativ zu HARVEST_START)

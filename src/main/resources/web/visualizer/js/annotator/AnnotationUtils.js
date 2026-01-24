@@ -146,6 +146,42 @@ export class AnnotationUtils {
     }
 
     /**
+     * Resolves a label hash value to its name using the program artifact.
+     * Used for displaying human-readable label names in the instruction view.
+     *
+     * @param {number} hashValue - The 20-bit hash value of the label.
+     * @param {object} artifact - The program artifact containing `labelValueToName` map.
+     * @returns {string|null} The label name, or null if not found.
+     */
+    static resolveLabelHashToName(hashValue, artifact) {
+        if (hashValue === null || hashValue === undefined) {
+            return null;
+        }
+        if (!artifact || !artifact.labelValueToName) {
+            return null;
+        }
+        // labelValueToName is a map from int32 hash to string name
+        return artifact.labelValueToName[hashValue] || null;
+    }
+
+    /**
+     * Resolves a label name to its hash value using the program artifact.
+     * Used for displaying the hash value in the source view annotations.
+     *
+     * @param {string} name - The label or procedure name.
+     * @param {object} artifact - The program artifact containing `labelNameToValue` map.
+     * @returns {number|null} The 20-bit hash value, or null if not found.
+     */
+    static resolveLabelNameToHash(name, artifact) {
+        if (!name || !artifact || !artifact.labelNameToValue) {
+            return null;
+        }
+        const upperName = name.toUpperCase();
+        // labelNameToValue is a map from string name to int32 hash
+        return artifact.labelNameToValue[upperName] ?? null;
+    }
+
+    /**
      * Resolves a label or procedure name to its world coordinates by searching the program artifact.
      *
      * @param {string} name - The name of the label or procedure to resolve.

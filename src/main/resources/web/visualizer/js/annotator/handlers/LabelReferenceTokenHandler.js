@@ -1,10 +1,9 @@
 import { AnnotationUtils } from '../AnnotationUtils.js';
-import { ValueFormatter } from '../../utils/ValueFormatter.js';
 
 /**
  * Handles the annotation of tokens that are references to labels or procedures.
  * It identifies tokens classified as 'LABEL' and annotates them with the
- * absolute world coordinates of their target location.
+ * hash value used for fuzzy jump matching at runtime.
  */
 export class LabelReferenceTokenHandler {
     /**
@@ -21,36 +20,31 @@ export class LabelReferenceTokenHandler {
 
     /**
      * Analyzes the label token to create a jump-target annotation.
-     * It resolves the label name to its relative coordinates using the artifact,
-     * then calculates the absolute world coordinates using the organism's initial position.
+     * It resolves the label name to its hash value using the artifact's
+     * labelNameToValue map. The hash is the 20-bit value used for fuzzy matching.
      *
      * @param {string} tokenText The text of the token (the label name).
      * @param {object} tokenInfo Metadata about the token.
-     * @param {object} organismState The current state of the organism, containing the `initialPosition`.
-     * @param {object} artifact The program artifact containing lookup maps.
+     * @param {object} organismState The current state of the organism (not used for hash lookup).
+     * @param {object} artifact The program artifact containing `labelNameToValue` map.
      * @returns {object} An annotation object `{ annotationText, kind }`.
-     * @throws {Error} If data required for calculation (e.g., `initialPosition`) is missing or invalid.
+     * @throws {Error} If the label hash cannot be resolved.
      */
     analyze(tokenText, tokenInfo, organismState, artifact) {
-        const relativeCoords = AnnotationUtils.resolveNameToCoords(tokenText, artifact);
+        // Resolve label name to hash value for display
+        const hashValue = AnnotationUtils.resolveLabelNameToHash(tokenText, artifact);
 
-        if (!organismState || !organismState.initialPosition || !Array.isArray(organismState.initialPosition.components)) {
-            throw new Error(`Cannot calculate absolute coordinates for "${tokenText}": organismState.initialPosition is missing or invalid.`);
+        if (hashValue === null || hashValue === undefined) {
+            // Fallback: show "?" if hash not found
+            return {
+                annotationText: `[#?]`,
+                kind: 'label-ref'
+            };
         }
 
-        const initialPos = organismState.initialPosition.components;
-
-        if (relativeCoords.length !== initialPos.length) {
-            throw new Error(`Coordinate dimension mismatch for "${tokenText}": relative [${relativeCoords}] vs initial [${initialPos}].`);
-        }
-        
-        const absoluteCoords = relativeCoords.map((val, index) => val + initialPos[index]);
-        
-        // Format coordinates using ValueFormatter (e.g., "15|3")
-        const formattedCoords = ValueFormatter.format(absoluteCoords);
-        
+        // Format hash value as decimal with # prefix (e.g., "[#12345]")
         return {
-            annotationText: `[${formattedCoords}]`,
+            annotationText: `[#${hashValue}]`,
             kind: 'label-ref'
         };
     }

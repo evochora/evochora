@@ -43,6 +43,7 @@ public final class LayoutEngine {
 
             if (item instanceof IrLabelDef lbl) {
                 labelToAddress.put(lbl.name(), ctx.linearAddress());
+                ctx.placeLabel(src);  // Labels now occupy 1 cell in the grid
                 continue;
             }
 
@@ -53,18 +54,19 @@ public final class LayoutEngine {
                 var sigOpt = isa.getSignatureById(opcodeId);
                 if (sigOpt.isPresent()) {
                     for (IInstructionSet.ArgKind kind : sigOpt.get().argumentTypes()) {
-                        if (kind == IInstructionSet.ArgKind.REGISTER || 
-                            kind == IInstructionSet.ArgKind.LOCATION_REGISTER ||
-                            kind == IInstructionSet.ArgKind.LITERAL) {
-                            ctx.placeOperand(src);
-                        } else if (kind == IInstructionSet.ArgKind.VECTOR || kind == IInstructionSet.ArgKind.LABEL) {
+                        if (kind == IInstructionSet.ArgKind.VECTOR) {
+                            // VECTOR operands occupy worldDimensions slots (one per dimension)
                             if (ctx.getEnvProps() == null || ctx.getEnvProps().getWorldShape() == null || ctx.getEnvProps().getWorldShape().length == 0) {
-                                throw new CompilationException("Instruction " + ins.opcode() + " requires vector/label arguments, which need a world context, but no environment properties were provided.", src);
+                                throw new CompilationException("Instruction " + ins.opcode() + " requires vector arguments, which need a world context, but no environment properties were provided.", src);
                             }
                             int dims = ctx.getEnvProps().getWorldShape().length;
                             for (int k = 0; k < dims; k++) {
                                 ctx.placeOperand(src);
                             }
+                        } else {
+                            // REGISTER, LOCATION_REGISTER, LITERAL, LABEL → one slot each
+                            // Note: LABEL used to be N-dimensional coordinates, now it's a single hash value
+                            ctx.placeOperand(src);
                         }
                     }
                 } else {

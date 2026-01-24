@@ -49,7 +49,8 @@ public final class MoleculeTypeRegistry {
         register(Config.TYPE_DATA, "DATA");
         register(Config.TYPE_ENERGY, "ENERGY");
         register(Config.TYPE_STRUCTURE, "STRUCTURE");
-        
+        register(Config.TYPE_LABEL, "LABEL");
+
         // Runtime validation: ensure all Config types are registered
         validateAllConfigTypesRegistered();
     }
@@ -165,6 +166,9 @@ public final class MoleculeTypeRegistry {
         }
         if (!TYPE_TO_NAME.containsKey(Config.TYPE_STRUCTURE)) {
             throw new IllegalStateException("Config.TYPE_STRUCTURE is not registered in MoleculeTypeRegistry");
+        }
+        if (!TYPE_TO_NAME.containsKey(Config.TYPE_LABEL)) {
+            throw new IllegalStateException("Config.TYPE_LABEL is not registered in MoleculeTypeRegistry");
         }
     }
 }
