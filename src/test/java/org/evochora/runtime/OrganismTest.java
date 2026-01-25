@@ -86,11 +86,13 @@ public class OrganismTest {
     @Test
     @Tag("unit")
     void testEnergyDecreasesAndDeath() {
-        // Start with small energy; execute NOP until dead
+        // Start with small energy; execute WAIT until dead
+        // Use WAIT (not NOP) because NOP is instant-skip
         Organism org = Organism.create(sim, new int[]{0, 0}, 2, sim.getLogger());
         sim.addOrganism(org);
-        int nopId = Instruction.getInstructionIdByName("NOP");
-        environment.setMolecule(new Molecule(Config.TYPE_CODE, nopId), org.getIp());
+        int waitId = Instruction.getInstructionIdByName("WAIT");
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, waitId), new int[]{0, 0});
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, waitId), new int[]{1, 0});
 
         // Two ticks should drain energy to <= 0 and mark dead
         sim.tick();
@@ -113,10 +115,11 @@ public class OrganismTest {
         sim.addOrganism(org);
         // Move along +X
         org.setDv(new int[]{1, 0});
-        int nopId = Instruction.getInstructionIdByName("NOP");
-        // Place NOP at [0,0] and [1,0]
-        environment.setMolecule(new Molecule(Config.TYPE_CODE, nopId), new int[]{0, 0});
-        environment.setMolecule(new Molecule(Config.TYPE_CODE, nopId), new int[]{1, 0});
+        // Use WAIT (not NOP) because NOP is instant-skip and would advance IP multiple times per tick
+        int waitId = Instruction.getInstructionIdByName("WAIT");
+        // Place WAIT at [0,0] and [1,0]
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, waitId), new int[]{0, 0});
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, waitId), new int[]{1, 0});
 
         assertThat(org.getIp()).isEqualTo(new int[]{0, 0});
         sim.tick();

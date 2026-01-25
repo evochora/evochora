@@ -167,10 +167,31 @@ public class Simulation {
             }
         }
 
+        int maxSkipsPerTick = organismConfig.hasPath("max-skips-per-tick")
+                ? organismConfig.getInt("max-skips-per-tick")
+                : 100;
+
         List<Instruction> plannedInstructions = new ArrayList<>();
         for (Organism organism : this.organisms) {
+            if (organism.isDead()) continue;
+
+            // Instant-skip loop: execute NOP/LABEL molecules without consuming ticks
+            int skips = 0;
+            Instruction instruction = vm.plan(organism);
+
+            while ("NOP".equals(instruction.getName()) && !organism.isDead()) {
+                vm.execute(instruction);
+                skips++;
+
+                if (skips >= maxSkipsPerTick) {
+                    organism.instructionFailed("Max instant-skips exceeded (" + maxSkipsPerTick + ")");
+                    break;
+                }
+
+                instruction = vm.plan(organism);
+            }
+
             if (!organism.isDead()) {
-                Instruction instruction = vm.plan(organism);
                 instruction.setExecutedInTick(false);
                 instruction.setConflictStatus(Instruction.ConflictResolutionStatus.NOT_APPLICABLE);
                 plannedInstructions.add(instruction);

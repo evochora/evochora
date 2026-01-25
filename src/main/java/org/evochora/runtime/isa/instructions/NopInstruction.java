@@ -22,6 +22,7 @@ public class NopInstruction extends Instruction {
     public static void register(int f) {
         family = f;
         reg(0, NONE, "NOP");
+        reg(1, NONE, "WAIT");
     }
 
     private static void reg(int op, int variant, String name, OperandSource... sources) {

@@ -65,8 +65,8 @@ public class VMConditionalInstructionTest {
 
     /**
      * Helper method to place a standard "marker" instruction (ADDI %DR0, 1)
-     * after the instruction being tested. This allows tests to easily check
-     * if the marker instruction was executed or skipped.
+     * after the instruction being tested, followed by a WAIT to stop instant-skip.
+     * This allows tests to easily check if the marker instruction was executed or skipped.
      * @param instructionLength The length of the preceding instruction, to calculate placement.
      */
     private void placeFollowingAddi(int instructionLength) {
@@ -81,6 +81,11 @@ public class VMConditionalInstructionTest {
         environment.setMolecule(new Molecule(Config.TYPE_DATA, 0), arg1Ip);
         int[] arg2Ip = org.getNextInstructionPosition(arg1Ip, org.getDv(), environment);
         environment.setMolecule(new Molecule(Config.TYPE_DATA, 1), arg2Ip);
+
+        // Place WAIT after ADDI to stop instant-skip loop (NOP/empty cells are instant-skip)
+        int[] waitIp = org.getNextInstructionPosition(arg2Ip, org.getDv(), environment);
+        int waitOpcode = Instruction.getInstructionIdByName("WAIT");
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, waitOpcode), waitIp);
     }
 
     private void assertNoInstructionFailure() {

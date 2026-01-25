@@ -101,13 +101,13 @@ public class RuntimeIntegrationTest {
         String source = String.join("\n",
                 "SETI %DR0 DATA:41",
                 "CALL INCREMENT REF %DR0",
-                "NOP",
+                "WAIT",  // Use WAIT instead of NOP - NOP is instant-skip
                 ".ORG 0|1",
                 ".PROC INCREMENT EXPORT REF VALUE",
                 "  ADDI VALUE DATA:1",
                 "  RET",
                 ".ENDP"
-                
+
         );
 
         Compiler compiler = new Compiler();
@@ -127,7 +127,9 @@ public class RuntimeIntegrationTest {
         org.setProgramId(artifact.programId());
         sim.addOrganism(org);
 
-        for (int i = 0; i < 15; i++) {
+        // Run exactly 9 ticks: SETI(1) + PUSH(2) + CALL(3) + POP(4) + ADDI(5) + PUSH(6) + RET(7) + POP(8) + WAIT(9)
+        // Note: More ticks would cause instant-skip loop to wrap around grid and re-execute SETI!
+        for (int i = 0; i < 9; i++) {
             sim.tick();
         }
 
@@ -144,13 +146,13 @@ public class RuntimeIntegrationTest {
         String sourceCode = String.join("\n",
                 "SETI %DR0 DATA:29",
                 "CALL INC REF %DR0",
-                "NOP",
+                "WAIT",  // Use WAIT instead of NOP - NOP is instant-skip
                 ".ORG 0|1",
                 ".PROC INC EXPORT REF A",
                 "  ADDI A DATA:1",
                 "  RET",
                 ".ENDP"
-                
+
         );
 
         Compiler compiler = new Compiler();
@@ -204,8 +206,10 @@ public class RuntimeIntegrationTest {
 
         // Track instructions and register states
         //ExecutionTracker tracker = new ExecutionTracker(sim, org);
-        
-        for (int i = 0; i < 20; i++) {
+
+        // Run exactly 9 ticks: SETI(1) + PUSH(2) + CALL(3) + POP(4) + ADDI(5) + PUSH(6) + RET(7) + POP(8) + WAIT(9)
+        // Note: More ticks would cause instant-skip loop to wrap around grid and re-execute SETI!
+        for (int i = 0; i < 9; i++) {
         //    tracker.beforeTick();
             sim.tick();
         //    tracker.afterTick();
