@@ -410,14 +410,10 @@ public final class OrganismStateConverter {
                         registerType = "DR";
                     }
                     
-                    // Resolve register value: use value BEFORE execution (required, no fallback)
-                    if (registerValuesBefore == null || !registerValuesBefore.containsKey(registerId)) {
-                        throw new IllegalStateException(
-                            String.format("Register value before execution not available for register ID %d in instruction %d (%s). " +
-                                "This indicates corrupted data or missing registerValuesBefore map.",
-                                registerId, opcodeId, opcodeName));
-                    }
-                    RegisterValueView registerValue = registerValuesBefore.get(registerId);
+                    // Resolve register value: use value BEFORE execution (null if unavailable)
+                    RegisterValueView registerValue = (registerValuesBefore != null)
+                        ? registerValuesBefore.get(registerId)
+                        : null;
                     
                     resolvedArgs.add(InstructionArgumentView.register(registerId, registerValue, registerType));
                     argIndex++;
@@ -455,14 +451,10 @@ public final class OrganismStateConverter {
                             registerId, opcodeId, opcodeName, locationRegisters.size() - 1, locationRegisters.size()));
                 }
                 
-                // Resolve register value: use value BEFORE execution (required, no fallback)
-                if (registerValuesBefore == null || !registerValuesBefore.containsKey(registerId)) {
-                    throw new IllegalStateException(
-                        String.format("Register value before execution not available for LR register ID %d in instruction %d (%s). " +
-                            "This indicates corrupted data or missing registerValuesBefore map.",
-                            registerId, opcodeId, opcodeName));
-                }
-                RegisterValueView registerValue = registerValuesBefore.get(registerId);
+                // Resolve register value: use value BEFORE execution (null if unavailable)
+                RegisterValueView registerValue = (registerValuesBefore != null)
+                    ? registerValuesBefore.get(registerId)
+                    : null;
                 
                 resolvedArgs.add(InstructionArgumentView.register(registerId, registerValue, registerType));
                 argIndex++;

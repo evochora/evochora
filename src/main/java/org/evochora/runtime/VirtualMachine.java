@@ -102,11 +102,14 @@ public class VirtualMachine {
                             int rawArg = rawArgs.get(argIndex);
                             Molecule molecule = Molecule.fromInt(rawArg);
                             int registerId = molecule.toScalarValue();
-                            
+
                             // Read register value BEFORE execution (DR/PR/FPR)
                             Object registerValue = organism.readOperand(registerId);
-                            registerValuesBefore.put(registerId, registerValue);
-                            
+                            if (registerValue != null) {
+                                registerValuesBefore.put(registerId, registerValue);
+                            }
+                            // null means invalid register - don't store, frontend shows register name only
+
                             argIndex++;
                         }
                     } else if (argType == InstructionArgumentType.LOCATION_REGISTER) {

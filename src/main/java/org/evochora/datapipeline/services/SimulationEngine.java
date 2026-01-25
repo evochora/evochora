@@ -658,6 +658,10 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             registerBuilder.setScalar((Integer) rv);
         } else if (rv instanceof int[]) {
             registerBuilder.setVector(convertVectorReuse((int[]) rv, vectorBuilder));
+        } else {
+            throw new IllegalStateException(
+                "RegisterValue must be Integer or int[], but got: " +
+                (rv == null ? "null" : rv.getClass().getName()));
         }
         return registerBuilder.build();
     }

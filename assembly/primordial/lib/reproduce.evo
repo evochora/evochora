@@ -135,16 +135,18 @@
 
   .ORG 0|9
   CONTINUE_WRITEINIT:
-    # Schreibvorgang vorbereiten
+    # Schreibvorgang vorbereiten - Defensive Prüfung ZUERST
+    IFFR %DIRVEC                   # Ist die erste Zelle FREMD?
+      JMPI CONTINUE_PREP_NEXT_REPRODUCTION; NOP^4 # ... dann abbrechen
     INPR %DIRVEC                   # Wenn das Molekül nicht passierbar,...
-      PEEK %TMP %DIRVEC; NOP^4     # ... dann lösche ich es
+      PEEK %TMP %DIRVEC            # ... dann lösche ich es (jetzt sicher!)
     SEEK %DIRVEC; NOP              # Vorwärts
-    IFFR %DIRVEC                   # Ist die Zelle FREMD (anderer Organismus)?
+    IFFR %DIRVEC                   # Ist die NÄCHSTE Zelle FREMD?
       JMPI CONTINUE_PREP_NEXT_REPRODUCTION; NOP^4 # ... dann abbrechen
     INPR %DIRVEC                   # Wenn nicht passierbar (aber nicht fremd),...
       PEEK %TMP %DIRVEC; NOP       # ... dann löschen (unowned oder eigen)
-    POKE %SHELL %DIRVEC; NOP^3       # Hülle schreiben
-    SEEK %DIRVEC                   # Vorwärts
+    POKE %SHELL %DIRVEC            # Hülle schreiben
+    SEEK %DIRVEC                    # Vorwärts
     #INPR %DIRVEC                   # Wenn das Molekül nicht passierbar,...
     #  PEEK %TMP %DIRVEC            # ... dann lösche ich es
 
