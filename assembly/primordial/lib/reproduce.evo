@@ -118,14 +118,20 @@
     LTI ER REPRODUCTION_PAUSE_THRESHOLD;       # wenn ER < Threshold ...
       JMPI CONTINUE_SAVE_AND_RET; NOP^4        # ... dann State speichern & zurück
 
+    # Defensive Prüfung: Ist %CONTCORD gültig (nicht 0|0)?
+    LRDS %CONTCORD
+    PUSV 0|0
+    IFS                                        # If Same (= 0|0)
+      JMPI CONTINUE_BORDERMOVE          # → Neu starten
+
     # DP0 und DP1 sichern und an Continue-Position holen
     ADPI DATA:0; NOP^4
     DPLS; NOP^4
     SKLR %CONTCORD; NOP^4
     ADPI DATA:1; NOP^4
     DPLS; NOP^4
-    SKLR %CONTCORD; NOP^4
-    JMPI CONTINUE_WRITEINIT; NOP^4; JMPI CONTINUE_WRITEINIT
+    SKLR %CONTCORD; NOP^3
+    JMPI CONTINUE_WRITEINIT
 
   .ORG 0|9
   CONTINUE_WRITEINIT:

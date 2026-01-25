@@ -18,10 +18,10 @@
 # ----------------------------
 # STRUCTURE Shell (50x31)
 # ----------------------------
-.PLACE STRUCTURE:1 -1..60|-1
-.PLACE STRUCTURE:1 -1..60|41
-.PLACE STRUCTURE:1 -1|0..40
-.PLACE STRUCTURE:1 60|0..40
+.PLACE STRUCTURE:100 -1..60|-1
+.PLACE STRUCTURE:100 -1..60|41
+.PLACE STRUCTURE:100 -1|0..40
+.PLACE STRUCTURE:100 60|0..40
 
 # ----------------------------
 # Init
