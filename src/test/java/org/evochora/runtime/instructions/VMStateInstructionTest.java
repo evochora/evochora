@@ -613,6 +613,159 @@ public class VMStateInstructionTest {
         assertThat(environment.getMolecule(moleculePos3).marker()).isEqualTo(5);
     }
 
+    // ==================== GMR Instruction Tests ====================
+
+    @Test
+    @Tag("unit")
+    void testGmr_GetsMarkerRegisterToRegister() {
+        org.setMr(7);
+
+        placeInstruction("GMR", 0); // GMR %DR0
+        sim.tick();
+
+        Molecule result = Molecule.fromInt((Integer) org.getDr(0));
+        assertThat(result.type()).isEqualTo(Config.TYPE_DATA);
+        assertThat(result.value()).isEqualTo(7);
+    }
+
+    @Test
+    @Tag("unit")
+    void testGmrs_GetsMarkerRegisterToStack() {
+        org.setMr(11);
+
+        placeInstruction("GMRS");
+        sim.tick();
+
+        assertThat(org.getDataStack().isEmpty()).isFalse();
+        Molecule result = Molecule.fromInt((Integer) org.getDataStack().pop());
+        assertThat(result.type()).isEqualTo(Config.TYPE_DATA);
+        assertThat(result.value()).isEqualTo(11);
+    }
+
+    @Test
+    @Tag("unit")
+    void testGmr_ReturnsZeroWhenMrNotSet() {
+        // MR defaults to 0
+        assertThat(org.getMr()).isEqualTo(0);
+
+        placeInstruction("GMR", 0);
+        sim.tick();
+
+        Molecule result = Molecule.fromInt((Integer) org.getDr(0));
+        assertThat(result.value()).isEqualTo(0);
+    }
+
+    // ==================== CMR Instruction Tests ====================
+
+    @Test
+    @Tag("unit")
+    void testCmri_OrphansMoleculesWithMatchingMarker() {
+        // Setup: Place molecules with different markers
+        int[] pos1 = new int[]{10, 10};
+        int[] pos2 = new int[]{11, 11};
+        int[] pos3 = new int[]{12, 12};
+
+        environment.setMolecule(new Molecule(Config.TYPE_DATA, 42, 3), pos1); // marker=3
+        environment.setMolecule(new Molecule(Config.TYPE_DATA, 43, 3), pos2); // marker=3
+        environment.setMolecule(new Molecule(Config.TYPE_DATA, 44, 5), pos3); // marker=5
+
+        // Set ownership
+        environment.setOwnerId(org.getId(), pos1);
+        environment.setOwnerId(org.getId(), pos2);
+        environment.setOwnerId(org.getId(), pos3);
+
+        // Execute CMRI DATA:3 to orphan all marker=3 molecules
+        placeInstruction("CMRI", new Molecule(Config.TYPE_DATA, 3).toInt());
+        sim.tick();
+
+        // Molecules with marker=3 should now have marker=0 AND owner=0 (orphaned)
+        assertThat(environment.getMolecule(pos1).marker()).isEqualTo(0);
+        assertThat(environment.getMolecule(pos2).marker()).isEqualTo(0);
+        assertThat(environment.getOwnerId(pos1)).isEqualTo(0); // orphaned
+        assertThat(environment.getOwnerId(pos2)).isEqualTo(0); // orphaned
+
+        // Molecule with marker=5 should be unchanged (both marker and ownership)
+        assertThat(environment.getMolecule(pos3).marker()).isEqualTo(5);
+        assertThat(environment.getOwnerId(pos3)).isEqualTo(org.getId());
+    }
+
+    @Test
+    @Tag("unit")
+    void testCmr_OrphansMoleculesFromRegisterValue() {
+        int[] pos1 = new int[]{15, 15};
+        environment.setMolecule(new Molecule(Config.TYPE_DATA, 99, 7), pos1); // marker=7
+        environment.setOwnerId(org.getId(), pos1);
+
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 7).toInt());
+
+        placeInstruction("CMR", 0); // CMR %DR0
+        sim.tick();
+
+        assertThat(environment.getMolecule(pos1).marker()).isEqualTo(0);
+        assertThat(environment.getOwnerId(pos1)).isEqualTo(0); // orphaned
+    }
+
+    @Test
+    @Tag("unit")
+    void testCmrs_OrphansMoleculesFromStackValue() {
+        int[] pos1 = new int[]{20, 20};
+        environment.setMolecule(new Molecule(Config.TYPE_DATA, 77, 9), pos1); // marker=9
+        environment.setOwnerId(org.getId(), pos1);
+
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 9).toInt());
+
+        placeInstruction("CMRS");
+        sim.tick();
+
+        assertThat(environment.getMolecule(pos1).marker()).isEqualTo(0);
+        assertThat(environment.getOwnerId(pos1)).isEqualTo(0); // orphaned
+        assertThat(org.getDataStack().isEmpty()).isTrue();
+    }
+
+    @Test
+    @Tag("unit")
+    void testCmri_OnlyOrphansOwnMolecules() {
+        // Create another organism
+        Organism other = Organism.create(sim, new int[]{50, 50}, 500, sim.getLogger());
+        sim.addOrganism(other);
+
+        int[] ownPos = new int[]{10, 10};
+        int[] otherPos = new int[]{11, 11};
+
+        environment.setMolecule(new Molecule(Config.TYPE_DATA, 42, 3), ownPos);
+        environment.setMolecule(new Molecule(Config.TYPE_DATA, 43, 3), otherPos);
+
+        environment.setOwnerId(org.getId(), ownPos);
+        environment.setOwnerId(other.getId(), otherPos);
+
+        // Execute CMRI DATA:3
+        placeInstruction("CMRI", new Molecule(Config.TYPE_DATA, 3).toInt());
+        sim.tick();
+
+        // Own molecule should be orphaned (marker=0, owner=0)
+        assertThat(environment.getMolecule(ownPos).marker()).isEqualTo(0);
+        assertThat(environment.getOwnerId(ownPos)).isEqualTo(0); // orphaned
+
+        // Other organism's molecule should be completely unchanged
+        assertThat(environment.getMolecule(otherPos).marker()).isEqualTo(3);
+        assertThat(environment.getOwnerId(otherPos)).isEqualTo(other.getId());
+    }
+
+    @Test
+    @Tag("unit")
+    void testCmr_FailsWithNonDataType() {
+        // Use register variant to test type check (similar to testSmr_FailsWithNonDataType)
+        org.setDr(0, new Molecule(Config.TYPE_ENERGY, 3).toInt());
+
+        placeInstruction("CMR", 0);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("DATA");
+
+        org.resetTickState();
+    }
+
     @org.junit.jupiter.api.AfterEach
     void assertNoInstructionFailure() {
         assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();

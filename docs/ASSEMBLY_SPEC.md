@@ -414,6 +414,8 @@ Note on conflicts: If a world interaction loses conflict resolution for its targ
 * `FRKI <DP_Vec> <NRG_Lit> <DV_Vec>`, `FRKS`: Creates a child organism (immediate/stack variants). Same ownership transfer behavior as `FORK`.
 * `ADPR %REG`, `ADPI <Literal>`, `ADPS`: Sets the active Data Pointer index.
 * `SMR %REG`, `SMRI <Literal>`, `SMRS`: Sets the Molecule Marker Register (`MR`) to the value from the register, literal, or stack. The operand must be of type `DATA`; otherwise, the instruction fails. The value is masked to 4 bits (0-15).
+* `GMR %REG`, `GMRS`: Gets the current value of the Molecule Marker Register (`MR`) and stores it in the specified register or pushes it onto the stack. The result is of type `DATA`.
+* `CMR %REG`, `CMRI <Literal>`, `CMRS`: Orphans all molecules owned by this organism that have a marker value matching the operand. Sets both marker and owner to 0. The operand must be of type `DATA`.
 
 ### Location Stack and Register Operations
 

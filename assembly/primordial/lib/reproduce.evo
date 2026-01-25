@@ -181,7 +181,7 @@
 
     # Defensive Prüfung vor PPKR: Nur bei FREMD abbrechen
     IFFR %DIRVEC                   # Ist die Zelle FREMD?
-      JMPI CONTINUE_PREP_NEXT_REPRODUCTION; NOP^4 # ... dann abbrechen
+      JMPI CONTINUE_CLEANUP_STACK; NOP^4 # ... dann abbrechen (Stack enthält noch SHELL + Moleküle)
     JMPI CONTINUE_WRITELINE2; NOP^28; JMPI CONTINUE_WRITELINE2
 
     .ORG 0|12
@@ -193,7 +193,7 @@
 
     # Hüllen Seite schreiben (auch defensiv)
     IFFR %SIDEVEC                  # Ist die Seitenzelle FREMD?
-      JMPI CONTINUE_PREP_NEXT_REPRODUCTION; NOP^4 # ... dann abbrechen
+      JMPI CONTINUE_CLEANUP_STACK; NOP^4 # ... dann abbrechen (Stack enthält noch SHELL + Moleküle)
 
     INPR %SIDEVEC                  # Wenn das Molekül nicht passierbar,...
       PEEK %TMP %SIDEVEC; NOP^4    # ... dann lösche ich es
@@ -325,8 +325,17 @@
     #GDVS                           # Kind bekommt selbe DV Richtung wie Elternorganismus
     #FRKS                           # FORKen, Alle 3 Werte werden vom Stack entfernt
   .ORG 0|21
+  # Stack-Cleanup für Abbrüche während WRITELINE (wo SHELL noch auf dem Stack liegt)
+  # Wird aufgerufen von Abbrüchen in CONTINUE_WRITELINE (Zeilen 183-184, 195-196)
+  CONTINUE_CLEANUP_STACK:
+    POP %TMP                         # Molekül vom DS holen
+    IFR %TMP %SHELL                  # Ist es das SHELL-Terminator-Symbol?
+      JMPI CONTINUE_PREP_NEXT_REPRODUCTION # Ja -> fertig mit Stack-Cleanup
+    JMPI CONTINUE_CLEANUP_STACK      # Nein -> weiter poppen
+
   CONTINUE_PREP_NEXT_REPRODUCTION:
     # Aufräumen und fertig - ROBUST gegen vorzeitigen Abbruch
+    CMRI DATA:1; NOP               # Alte Marker löschen, damit abgebrochene Moleküle nicht bei FORK übertragen werden
     RTRI %DIRVEC DATA:0 DATA:1     # %DIRVEC wieder nach außen drehen
     RTRI %DIRVEC DATA:0 DATA:1; NOP
 
@@ -343,7 +352,7 @@
     SKLS
     ADPI DATA:0
     SKLS; NOP
-    JMPI CONTINUE_SAVE_AND_RET; NOP^13; JMPI CONTINUE_SAVE_AND_RET
+    NOP^6; JMPI CONTINUE_SAVE_AND_RET
 
   .ORG 0|22
   CONTINUE_SAVE_AND_RET:

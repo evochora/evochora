@@ -488,7 +488,8 @@ public class Environment implements IEnvironmentReader {
 
         fromSet.forEach((int flatIndex) -> {
             int moleculeInt = grid[flatIndex];
-            int marker = (moleculeInt & Config.MARKER_MASK) >> Config.MARKER_SHIFT;
+            // Use unsigned shift (>>>) to avoid sign-extension when bit 31 is set (marker >= 8)
+            int marker = (moleculeInt & Config.MARKER_MASK) >>> Config.MARKER_SHIFT;
             if (marker == markerToMatch) {
                 toTransfer.add(flatIndex);
             }
@@ -549,7 +550,67 @@ public class Environment implements IEnvironmentReader {
 
         return count;
     }
-    
+
+    /**
+     * Clears the marker and ownership of all molecules owned by the specified organism
+     * that have a matching marker value. Sets both marker and owner to 0 for all affected cells.
+     * <p>
+     * This is used during reproduction when a replication attempt is aborted - the partially
+     * replicated molecules need to be "orphaned" (owner=0, marker=0) so they:
+     * <ul>
+     *   <li>Won't be transferred during a subsequent FORK operation</li>
+     *   <li>Won't be accidentally jumped to by the parent organism (fuzzy jump matching
+     *       treats owner=0 as "foreign", applying foreignPenalty)</li>
+     * </ul>
+     * <p>
+     * <strong>Performance:</strong> O(occupied cells by owner) - iterates using sparse cell tracking.
+     *
+     * @param ownerId       The ID of the organism whose molecules should be checked.
+     * @param markerToMatch The marker value that molecules must have to be orphaned.
+     * @return The number of molecules that were orphaned.
+     */
+    public int clearMarkersFor(int ownerId, int markerToMatch) {
+        IntOpenHashSet owned = cellsByOwner.get(ownerId);
+        if (owned == null || owned.isEmpty()) {
+            return 0;
+        }
+
+        // Collect indices to orphan (can't modify during iteration since we're changing ownership)
+        it.unimi.dsi.fastutil.ints.IntList toOrphan = new it.unimi.dsi.fastutil.ints.IntArrayList();
+        owned.forEach((int flatIndex) -> {
+            int moleculeInt = grid[flatIndex];
+            // Use unsigned shift (>>>) to avoid sign-extension when bit 31 is set (marker >= 8)
+            int marker = (moleculeInt & Config.MARKER_MASK) >>> Config.MARKER_SHIFT;
+            if (marker == markerToMatch) {
+                toOrphan.add(flatIndex);
+            }
+        });
+
+        // Orphan the collected cells: set marker=0 and owner=0
+        for (int i = 0; i < toOrphan.size(); i++) {
+            int flatIndex = toOrphan.getInt(i);
+            // Reset marker to 0: clear marker bits and keep value/type
+            grid[flatIndex] = grid[flatIndex] & ~Config.MARKER_MASK;
+            // Set owner to 0 (orphan)
+            ownerGrid[flatIndex] = 0;
+            // Track change for delta compression
+            changedSinceLastReset.set(flatIndex);
+            // Update ownership index: remove from owner's set
+            owned.remove(flatIndex);
+            // Update label index: owner changed to 0 and marker reset to 0
+            int moleculeInt = grid[flatIndex];
+            labelIndex.onOwnerChange(flatIndex, moleculeInt, 0);
+            labelIndex.onMarkerChange(flatIndex, moleculeInt);
+        }
+
+        // Clean up empty set
+        if (owned.isEmpty()) {
+            cellsByOwner.remove(ownerId);
+        }
+
+        return toOrphan.size();
+    }
+
     // ========================================================================
     // Delta Compression Support
     // ========================================================================

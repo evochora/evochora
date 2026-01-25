@@ -93,7 +93,8 @@ public class LabelIndex {
         // Add new LABEL if present
         if (newType == Config.TYPE_LABEL) {
             int newValue = newMoleculeInt & Config.VALUE_MASK;
-            int marker = (newMoleculeInt & Config.MARKER_MASK) >> Config.MARKER_SHIFT;
+            // Use unsigned shift (>>>) to avoid sign-extension when bit 31 is set (marker >= 8)
+            int marker = (newMoleculeInt & Config.MARKER_MASK) >>> Config.MARKER_SHIFT;
             LabelEntry entry = new LabelEntry(flatIndex, owner, marker);
             strategy.addLabel(newValue, entry);
         }
@@ -128,7 +129,8 @@ public class LabelIndex {
         int type = moleculeInt & Config.TYPE_MASK;
         if (type == Config.TYPE_LABEL) {
             int value = moleculeInt & Config.VALUE_MASK;
-            int marker = (moleculeInt & Config.MARKER_MASK) >> Config.MARKER_SHIFT;
+            // Use unsigned shift (>>>) to avoid sign-extension when bit 31 is set (marker >= 8)
+            int marker = (moleculeInt & Config.MARKER_MASK) >>> Config.MARKER_SHIFT;
             strategy.updateMarker(value, flatIndex, marker);
         }
     }

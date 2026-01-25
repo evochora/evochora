@@ -67,7 +67,8 @@ public record Molecule(int type, int value, int marker) {
             return new Molecule(Config.TYPE_CODE, 0, 0);
         }
         // Extract marker and shift it back to 0-15 range
-        int marker = (fullValue & Config.MARKER_MASK) >> Config.MARKER_SHIFT;
+        // Use unsigned shift (>>>) to avoid sign-extension when bit 31 is set (marker >= 8)
+        int marker = (fullValue & Config.MARKER_MASK) >>> Config.MARKER_SHIFT;
         int type = fullValue & Config.TYPE_MASK;
         int rawValue = fullValue & Config.VALUE_MASK;
         if ((rawValue & (1 << (Config.VALUE_BITS - 1))) != 0) {
@@ -140,6 +141,7 @@ public record Molecule(int type, int value, int marker) {
             case "DATA" -> java.util.Optional.of(Config.TYPE_DATA);
             case "ENERGY" -> java.util.Optional.of(Config.TYPE_ENERGY);
             case "STRUCTURE" -> java.util.Optional.of(Config.TYPE_STRUCTURE);
+            case "LABEL" -> java.util.Optional.of(Config.TYPE_LABEL);
             default -> java.util.Optional.empty();
         };
     }

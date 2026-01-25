@@ -29,17 +29,49 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0  # Full history for proper diff
 
       - name: Run Claude Code Review
         id: claude-review
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
-          plugins: 'code-review@claude-code-plugins'
-          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'
           show_full_output: true
-          # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
-          # or https://code.claude.com/docs/en/cli-reference for available options
+          prompt: |
+            You are an expert code reviewer for the Evochora project.
+
+            IMPORTANT: ALWAYS provide a comprehensive review and post a PR comment,
+            even if no critical issues are found. Never be silent.
+
+            ## Your Review Process
+
+            1. First, read the project guidelines:
+               - Read AGENTS.md for general agent guidelines
+               - Read .agents/architecture-guidelines.md for the detailed architectural review checklist
+
+            2. Then analyze the PR changes at: ${{ github.repository }}/pull/${{ github.event.pull_request.number }}
+
+            3. Apply both sets of guidelines to review the code changes.
+
+            ## Required Output Format
+
+            Structure your review with these sections (always include all sections):
+
+            ### Summary
+            Brief overview of what the PR does and overall assessment.
+
+            ### What Looks Good
+            List positive aspects, good patterns, and things done well.
+            Acknowledge when code follows project conventions correctly.
+
+            ### Suggestions & Improvements
+            Non-critical suggestions for improvement (if any, otherwise state "None").
+
+            ### Issues to Address
+            Critical issues that should be fixed before merging (if any, otherwise state "None").
+
+            ### Documentation & Testing
+            Comments on documentation coverage and test adequacy.
+
+            Post your complete review as a PR comment.
 

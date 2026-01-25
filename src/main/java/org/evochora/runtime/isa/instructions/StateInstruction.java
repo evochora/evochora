@@ -85,6 +85,13 @@ public class StateInstruction extends Instruction {
         reg(15, Variant.R, "SMR", REGISTER);
         reg(15, Variant.I, "SMRI", IMMEDIATE);
         reg(15, Variant.S, "SMRS", STACK);
+        // Operation 16: GMR (get molecule marker register)
+        reg(16, Variant.R, "GMR", REGISTER);
+        reg(16, Variant.NONE, "GMRS");
+        // Operation 17: CMR (clear markers - reset markers of own molecules to 0)
+        reg(17, Variant.R, "CMR", REGISTER);
+        reg(17, Variant.I, "CMRI", IMMEDIATE);
+        reg(17, Variant.S, "CMRS", STACK);
     }
 
     private static void reg(int op, int variant, String name, OperandSource... sources) {
@@ -190,6 +197,15 @@ public class StateInstruction extends Instruction {
                 case "SMRI":
                 case "SMRS":
                     handleSmr(opName, operands);
+                    break;
+                case "GMR":
+                case "GMRS":
+                    handleGmr(opName, operands);
+                    break;
+                case "CMR":
+                case "CMRI":
+                case "CMRS":
+                    handleCmr(opName, operands, context.getWorld());
                     break;
                 default:
                     organism.instructionFailed("Unknown state instruction: " + opName);
@@ -717,5 +733,87 @@ public class StateInstruction extends Instruction {
         // Extract value and mask to valid marker range
         int markerValue = source.value() & Config.MARKER_VALUE_MASK;
         organism.setMr(markerValue);
+    }
+
+    /**
+     * Handles the GMR and GMRS instructions (Get Molecule marker Register).
+     * Reads the organism's MR register value and places it in a register or on the stack.
+     *
+     * @param opName   The instruction name (GMR or GMRS)
+     * @param operands The operands (only used for GMR)
+     */
+    private void handleGmr(String opName, List<Operand> operands) {
+        int mrValue = organism.getMr();
+        Molecule result = new Molecule(Config.TYPE_DATA, mrValue);
+
+        if ("GMRS".equals(opName)) {
+            if (!operands.isEmpty()) {
+                organism.instructionFailed("GMRS expects no operands.");
+                return;
+            }
+            organism.getDataStack().push(result.toInt());
+        } else {
+            // GMR - register variant
+            if (operands.size() != 1) {
+                organism.instructionFailed("GMR requires one register operand.");
+                return;
+            }
+            int targetReg = operands.get(0).rawSourceId();
+            writeOperand(targetReg, result.toInt());
+        }
+    }
+
+    /**
+     * Handles the CMR, CMRI, and CMRS instructions (Clear Markers).
+     * Resets to 0 the marker of all molecules owned by this organism that have a matching marker value.
+     * <p>
+     * This is used during reproduction when a replication attempt is aborted - the partially
+     * replicated molecules need to have their markers cleared so they won't be transferred
+     * during a subsequent FORK operation.
+     *
+     * @param opName      The instruction name (CMR, CMRI, or CMRS)
+     * @param operands    The operands containing the marker value to match
+     * @param environment The environment to operate on
+     */
+    private void handleCmr(String opName, List<Operand> operands, Environment environment) {
+        Molecule source;
+
+        if ("CMRS".equals(opName)) {
+            // Stack variant
+            if (operands.isEmpty()) {
+                organism.instructionFailed("CMRS requires a value on the data stack.");
+                return;
+            }
+            Object stackValue = operands.get(0).value();
+            if (!(stackValue instanceof Integer intValue)) {
+                organism.instructionFailed("CMRS requires a scalar value on the stack.");
+                return;
+            }
+            source = Molecule.fromInt(intValue);
+        } else {
+            // Register or Immediate variant
+            if (operands.size() != 1) {
+                organism.instructionFailed("Invalid operands for " + opName + ".");
+                return;
+            }
+            Object value = operands.get(0).value();
+            if (!(value instanceof Integer intValue)) {
+                organism.instructionFailed(opName + " requires a scalar operand.");
+                return;
+            }
+            source = Molecule.fromInt(intValue);
+        }
+
+        // Type check: must be DATA
+        if (source.type() != Config.TYPE_DATA) {
+            organism.instructionFailed(opName + " requires DATA type operand.");
+            return;
+        }
+
+        // Extract value and mask to valid marker range
+        int markerToMatch = source.value() & Config.MARKER_VALUE_MASK;
+
+        // Clear markers of all own molecules with matching marker
+        environment.clearMarkersFor(organism.getId(), markerToMatch);
     }
 }
