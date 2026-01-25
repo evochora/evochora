@@ -63,6 +63,8 @@ public class VMControlFlowInstructionTest {
 
         // Place LABEL molecule at target position
         environment.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), labelPos);
+        // Place WAIT at expected IP to stop instant-skip loop
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), expectedIp);
 
         // Place JMPI instruction with label hash as single operand
         placeInstruction("JMPI", labelHash);
@@ -88,6 +90,8 @@ public class VMControlFlowInstructionTest {
 
         // Place LABEL molecule at target position
         environment.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), labelPos);
+        // Place WAIT at expected IP to stop instant-skip loop
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), expectedIp);
 
         // Place CALL instruction with label hash as single operand
         placeInstruction("CALL", labelHash);
@@ -113,6 +117,8 @@ public class VMControlFlowInstructionTest {
 
         // Place LABEL molecule at target position
         environment.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), labelPos);
+        // Place WAIT at expected IP to stop instant-skip loop
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), expectedIp);
 
         // Store label hash in register DR0
         org.setDr(0, labelHash);
@@ -138,6 +144,8 @@ public class VMControlFlowInstructionTest {
 
         // Place LABEL molecule at target position
         environment.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), labelPos);
+        // Place WAIT at expected IP to stop instant-skip loop
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), expectedIp);
 
         // Push label hash onto stack
         org.getDataStack().push(labelHash);
@@ -163,6 +171,9 @@ public class VMControlFlowInstructionTest {
         Object[] fprsSnapshot = org.getFprs().toArray(new Object[0]);
 
         org.getCallStack().push(new Organism.ProcFrame("TEST_PROC", expectedIp, callIp, prsSnapshot, fprsSnapshot, java.util.Collections.emptyMap()));
+
+        // Place WAIT at expected IP to stop instant-skip loop
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), expectedIp);
 
         placeInstruction("RET");
 

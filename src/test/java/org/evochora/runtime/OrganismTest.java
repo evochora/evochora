@@ -117,9 +117,10 @@ public class OrganismTest {
         org.setDv(new int[]{1, 0});
         // Use WAIT (not NOP) because NOP is instant-skip and would advance IP multiple times per tick
         int waitId = Instruction.getInstructionIdByName("WAIT");
-        // Place WAIT at [0,0] and [1,0]
+        // Place WAIT at [0,0], [1,0], and [2,0] to stop instant-skip loop
         environment.setMolecule(new Molecule(Config.TYPE_CODE, waitId), new int[]{0, 0});
         environment.setMolecule(new Molecule(Config.TYPE_CODE, waitId), new int[]{1, 0});
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, waitId), new int[]{2, 0});
 
         assertThat(org.getIp()).isEqualTo(new int[]{0, 0});
         sim.tick();

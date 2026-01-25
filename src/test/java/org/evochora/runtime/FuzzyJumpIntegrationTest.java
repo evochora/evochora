@@ -67,8 +67,8 @@ class FuzzyJumpIntegrationTest {
         // Place LABEL at target position
         environment.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), labelPos);
 
-        // Place NOP after label (so we can verify we landed there)
-        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("NOP")), expectedIp);
+        // Place WAIT after label (not NOP, which is instant-skip) (so we can verify we landed there)
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), expectedIp);
 
         // Place JMPI with exact hash
         placeInstruction("JMPI", labelHash);
@@ -93,8 +93,8 @@ class FuzzyJumpIntegrationTest {
         // Place LABEL with ORIGINAL hash
         environment.setMolecule(new Molecule(Config.TYPE_LABEL, originalHash), labelPos);
 
-        // Place NOP after label
-        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("NOP")), expectedIp);
+        // Place WAIT after label (not NOP, which is instant-skip)
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), expectedIp);
 
         // Place JMPI with MUTATED hash (1 bit different)
         placeInstruction("JMPI", mutatedHash);
@@ -122,8 +122,8 @@ class FuzzyJumpIntegrationTest {
         // Place LABEL with ORIGINAL hash
         environment.setMolecule(new Molecule(Config.TYPE_LABEL, originalHash), labelPos);
 
-        // Place NOP after label
-        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("NOP")), expectedIp);
+        // Place WAIT after label (not NOP, which is instant-skip)
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), expectedIp);
 
         // Place JMPI with MUTATED hash (2 bits different)
         placeInstruction("JMPI", mutatedHash);
@@ -182,7 +182,7 @@ class FuzzyJumpIntegrationTest {
         environment.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), ownerId, ownLabelPos);
 
         // Place NOP after own label
-        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("NOP")), expectedIp);
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), expectedIp);
 
         // Place JMPI with exact hash
         placeInstruction("JMPI", labelHash);
@@ -213,7 +213,7 @@ class FuzzyJumpIntegrationTest {
         sim3D.addOrganism(org3D);
 
         int labelHash = 99999 & Config.VALUE_MASK;
-        int nopOpcode = Instruction.getInstructionIdByName("NOP");
+        int nopOpcode = Instruction.getInstructionIdByName("WAIT");
 
         // Layout in 3D environment along x-axis (y=0, z=0):
         // [0,0,0] IFI r0, 999   <- condition FALSE, skip next instruction
@@ -276,7 +276,7 @@ class FuzzyJumpIntegrationTest {
         environment.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), farLabelPos);
 
         // Place NOP after near label
-        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("NOP")), expectedIp);
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), expectedIp);
 
         // Place JMPI at position 0
         placeInstruction("JMPI", labelHash);
