@@ -90,7 +90,7 @@ public class ControlFlowInstruction extends Instruction {
                         organism.instructionFailed("CALL: No matching label found for hash " + callLabelHash);
                         return;
                     }
-                    callHandler.executeCall(callTargetIp, artifact);
+                    callHandler.executeCall(callTargetIp, callLabelHash, artifact);
                     break;
                 case "RET":
                     callHandler.executeReturn();

@@ -20,7 +20,6 @@ import java.util.Map;
  * @param callSiteBindings A map from linear address of a CALL instruction to its target coordinates.
  * @param relativeCoordToLinearAddress A map from relative coordinate string to linear address.
  * @param linearAddressToCoord A map from linear address to relative coordinates.
- * @param labelAddressToName A map from linear address of a label to its name.
  * @param registerAliasMap A map from register alias names (e.g., "%MY_REG") to their physical register index.
  * @param procNameToParamNames A map from procedure names to a list of their parameter information (name and type).
  * @param tokenMap A map from SourceInfo to TokenInfo for deterministic token classification.
@@ -39,7 +38,6 @@ public record ProgramArtifact(
         Map<Integer, int[]> callSiteBindings,
         Map<String, Integer> relativeCoordToLinearAddress,
         Map<Integer, int[]> linearAddressToCoord,
-        Map<Integer, String> labelAddressToName,
         Map<String, Integer> registerAliasMap,
         Map<String, List<ParamInfo>> procNameToParamNames,
         Map<SourceInfo, TokenInfo> tokenMap,
@@ -56,7 +54,6 @@ public record ProgramArtifact(
         callSiteBindings = Collections.unmodifiableMap(callSiteBindings);
         relativeCoordToLinearAddress = Collections.unmodifiableMap(relativeCoordToLinearAddress);
         linearAddressToCoord = Collections.unmodifiableMap(linearAddressToCoord);
-        labelAddressToName = Collections.unmodifiableMap(labelAddressToName);
         registerAliasMap = Collections.unmodifiableMap(registerAliasMap);
         procNameToParamNames = procNameToParamNames != null 
                 ? Collections.unmodifiableMap(procNameToParamNames) 

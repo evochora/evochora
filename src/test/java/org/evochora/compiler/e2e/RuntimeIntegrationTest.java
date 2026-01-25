@@ -172,7 +172,6 @@ public class RuntimeIntegrationTest {
                 corruptedBindings,
                 correctArtifact.relativeCoordToLinearAddress(),
                 correctArtifact.linearAddressToCoord(),
-                correctArtifact.labelAddressToName(),
                 correctArtifact.registerAliasMap(),
                 correctArtifact.procNameToParamNames(),
                 correctArtifact.tokenMap(),

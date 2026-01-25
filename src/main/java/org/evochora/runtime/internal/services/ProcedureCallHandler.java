@@ -29,9 +29,10 @@ public class ProcedureCallHandler {
      * Executes a procedure call. This involves resolving parameter bindings,
      * saving the current processor state, and jumping to the target procedure's address.
      * @param targetIp The absolute coordinates of the target procedure (resolved via LabelIndex).
+     * @param labelHash The hash value of the target label (used to look up the procedure name).
      * @param artifact The program artifact containing metadata about the procedure.
      */
-    public void executeCall(int[] targetIp, ProgramArtifact artifact) {
+    public void executeCall(int[] targetIp, int labelHash, ProgramArtifact artifact) {
         Organism organism = context.getOrganism();
         Environment environment = context.getWorld();
 
@@ -64,25 +65,9 @@ public class ProcedureCallHandler {
         Object[] fprsSnapshot = organism.getFprs().toArray();
 
         String procName = "";
-
-        if (artifact != null) {
-            int[] origin = organism.getInitialPosition();
-            int[] relTarget = new int[targetIp.length];
-            for (int i = 0; i < targetIp.length; i++) {
-                relTarget[i] = targetIp[i] - origin[i];
-            }
-
-            StringBuilder keyBuilder = new StringBuilder();
-            for (int i = 0; i < relTarget.length; i++) {
-                if (i > 0) keyBuilder.append('|');
-                keyBuilder.append(relTarget[i]);
-            }
-            String relativeKey = keyBuilder.toString();
-            Integer targetAddress = artifact.relativeCoordToLinearAddress().get(relativeKey);
-            if (targetAddress != null) {
-                String name = artifact.labelAddressToName().get(targetAddress);
-                if (name != null) procName = name;
-            }
+        if (artifact != null && artifact.labelValueToName() != null) {
+            String name = artifact.labelValueToName().get(labelHash);
+            if (name != null) procName = name;
         }
 
         Organism.ProcFrame frame = new Organism.ProcFrame(procName, returnIp, ipBeforeFetch, prsSnapshot, fprsSnapshot, fprBindings);

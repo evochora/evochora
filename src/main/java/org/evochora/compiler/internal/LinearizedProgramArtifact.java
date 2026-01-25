@@ -49,7 +49,6 @@ import java.util.Map;
  *   <li><strong>callSiteBindings</strong>: Map<Integer, int[]> (unchanged)</li>
  *   <li><strong>relativeCoordToLinearAddress</strong>: Map<String, Integer> (unchanged)</li>
  *   <li><strong>linearAddressToCoord</strong>: Map<Integer, int[]> (unchanged)</li>
- *   <li><strong>labelAddressToName</strong>: Map<Integer, String> (unchanged)</li>
  *   <li><strong>registerAliasMap</strong>: Map<String, Integer> (unchanged)</li>
  *   <li><strong>procNameToParamNames</strong>: Map<String, List<ParamInfo>> (unchanged)</li>
  *   <li><strong>tokenMap</strong>: Map<SerializableSourceInfo, TokenInfo> (unchanged)</li>
@@ -78,7 +77,6 @@ public record LinearizedProgramArtifact(
         Map<Integer, int[]> callSiteBindings,
         Map<String, Integer> relativeCoordToLinearAddress,
         Map<Integer, int[]> linearAddressToCoord,
-        Map<Integer, String> labelAddressToName,
         Map<String, Integer> registerAliasMap,
         Map<String, List<org.evochora.compiler.api.ParamInfo>> procNameToParamNames,
         Map<SerializableSourceInfo, TokenInfo> tokenMap,
@@ -97,7 +95,6 @@ public record LinearizedProgramArtifact(
         callSiteBindings = callSiteBindings != null ? Collections.unmodifiableMap(callSiteBindings) : Collections.emptyMap();
         relativeCoordToLinearAddress = relativeCoordToLinearAddress != null ? Collections.unmodifiableMap(relativeCoordToLinearAddress) : Collections.emptyMap();
         linearAddressToCoord = linearAddressToCoord != null ? Collections.unmodifiableMap(linearAddressToCoord) : Collections.emptyMap();
-        labelAddressToName = labelAddressToName != null ? Collections.unmodifiableMap(labelAddressToName) : Collections.emptyMap();
         registerAliasMap = registerAliasMap != null ? Collections.unmodifiableMap(registerAliasMap) : Collections.emptyMap();
         procNameToParamNames = procNameToParamNames != null ? Collections.unmodifiableMap(procNameToParamNames) : Collections.emptyMap();
         tokenMap = tokenMap != null ? Collections.unmodifiableMap(tokenMap) : Collections.emptyMap();
@@ -126,7 +123,6 @@ public record LinearizedProgramArtifact(
                 artifact.callSiteBindings(),
                 artifact.relativeCoordToLinearAddress(),
                 artifact.linearAddressToCoord(),
-                artifact.labelAddressToName(),
                 artifact.registerAliasMap(),
                 artifact.procNameToParamNames(),
                 convertTokenMap(artifact.tokenMap()),
@@ -154,7 +150,6 @@ public record LinearizedProgramArtifact(
                 callSiteBindings(),
                 relativeCoordToLinearAddress(),
                 linearAddressToCoord(),
-                labelAddressToName(),
                 registerAliasMap(),
                 procNameToParamNames,
                 convertTokenMapBack(tokenMap),

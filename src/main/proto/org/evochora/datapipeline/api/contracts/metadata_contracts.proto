@@ -193,11 +193,8 @@ message ProgramArtifact {
   // Used to convert linear addresses back to coordinates
   repeated LinearAddressToCoord linear_address_to_coord = 8;
 
-  // Human-readable labels for addresses
-  // Source: ProgramArtifact.labelAddressToName()
-  // Maps addresses of labels to their names from source code
-  // Used by debugger to display label names
-  repeated LabelMapping label_address_to_name = 9;
+  // Field 9 reserved (was: label_address_to_name, removed with fuzzy jumps)
+  reserved 9;
 
   // Register aliases defined in source code
   // Source: ProgramArtifact.registerAliasMap()
@@ -347,16 +344,6 @@ message LinearAddressToCoord {
 
   // Corresponding relative coordinate
   Vector coord = 2;
-}
-
-// Maps an address to a label name from source code.
-// Protobuf-compatible representation of Map.Entry<Integer, String>.
-message LabelMapping {
-  // Linear address where label is defined
-  int32 linear_address = 1;
-
-  // Human-readable label name from source
-  string label_name = 2;
 }
 
 // Enumeration for parameter types (REF, VAL, or legacy WITH).

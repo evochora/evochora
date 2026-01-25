@@ -182,40 +182,6 @@ export class AnnotationUtils {
     }
 
     /**
-     * Resolves a label or procedure name to its world coordinates by searching the program artifact.
-     *
-     * @param {string} name - The name of the label or procedure to resolve.
-     * @param {object} artifact - The program artifact containing the necessary lookup maps (`labelAddressToName`, `linearAddressToCoord`).
-     * @returns {number[]} An array of coordinates (e.g., [x, y]).
-     * @throws {Error} If the name cannot be resolved or if the artifact is invalid.
-     */
-    static resolveNameToCoords(name, artifact) {
-        if (!name || !artifact || !Array.isArray(artifact.labelAddressToName) || !Array.isArray(artifact.linearAddressToCoord)) {
-            throw new Error(`Invalid artifact provided for resolving name: "${name}"`);
-        }
-        
-        const actualName = name.includes('.') ? name.substring(name.lastIndexOf('.') + 1) : name;
-
-        const labelMapping = artifact.labelAddressToName.find(mapping => 
-            mapping.labelName && mapping.labelName.toUpperCase() === actualName.toUpperCase()
-        );
-
-        if (labelMapping) {
-            const numericAddress = labelMapping.linearAddress;
-            
-            const coordMapping = artifact.linearAddressToCoord.find(mapping => 
-                mapping.linearAddress === numericAddress
-            );
-
-            if (coordMapping && coordMapping.coord && Array.isArray(coordMapping.coord.components)) {
-                return coordMapping.coord.components;
-            }
-        }
-
-        throw new Error(`Could not resolve coordinates for name: "${actualName}"`);
-    }
-
-    /**
      * Resolves the binding chain through the call stack to find the actual register for a procedure parameter.
      * Starts with an FPR index (parameter index) and walks through FPR bindings in the call stack to find the final DR/PR register.
      * <p>

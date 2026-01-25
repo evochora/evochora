@@ -62,8 +62,6 @@ public class Emitter {
         // Map to collect machine instructions per source line for frontend visualization
         // Key: "fileName:lineNumber", Value: List of machine instructions (sorted by linear address)
         Map<String, List<MachineInstructionInfo>> sourceLineToInstructions = new HashMap<>();
-        Map<Integer, String> labelAddressToNameForDisplay = new HashMap<>();
-        layout.labelToAddress().forEach((name, addr) -> labelAddressToNameForDisplay.put(addr, name));
 
         int address = 0;
         for (IrItem item : program.items()) {
@@ -140,9 +138,6 @@ public class Emitter {
             }
         }
 
-        Map<Integer, String> labelAddressToName = new HashMap<>();
-        layout.labelToAddress().forEach((name, addr) -> labelAddressToName.put(addr, name));
-
         // Sort machine instructions within each source line by linear address
         Map<String, List<MachineInstructionInfo>> sortedSourceLineToInstructions = new LinkedHashMap<>();
         for (Map.Entry<String, List<MachineInstructionInfo>> entry : sourceLineToInstructions.entrySet()) {
@@ -180,7 +175,6 @@ public class Emitter {
                 linkingContext.callSiteBindings(),
                 coordToLinear,
                 linearToCoord,
-                labelAddressToName,
                 registerAliasMap,
                 procNameToParamNames,
                 tokenMap,

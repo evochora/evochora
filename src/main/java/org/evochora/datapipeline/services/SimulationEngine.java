@@ -24,7 +24,6 @@ import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
 import org.evochora.datapipeline.api.contracts.FileTokenLookup;
 import org.evochora.datapipeline.api.contracts.InitialOrganismSetup;
 import org.evochora.datapipeline.api.contracts.InstructionMapping;
-import org.evochora.datapipeline.api.contracts.LabelMapping;
 import org.evochora.datapipeline.api.contracts.LineTokenLookup;
 import org.evochora.datapipeline.api.contracts.LinearAddressToCoord;
 import org.evochora.datapipeline.api.contracts.OrganismConfig;
@@ -562,11 +561,6 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 builder.addLinearAddressToCoord(LinearAddressToCoord.newBuilder()
                         .setLinearAddress(address)
                         .setCoord(convertVector(coord))));
-
-        artifact.labelAddressToName().forEach((address, name) ->
-                builder.addLabelAddressToName(LabelMapping.newBuilder()
-                        .setLinearAddress(address)
-                        .setLabelName(name)));
 
         builder.putAllRegisterAliasMap(artifact.registerAliasMap());
 
