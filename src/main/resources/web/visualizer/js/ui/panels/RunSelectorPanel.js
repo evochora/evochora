@@ -1,6 +1,7 @@
 /**
  * Run selector panel for choosing simulation runs.
  * Positioned at the bottom-right as a footer panel.
+ * Features keyboard navigation (ArrowUp/Down) and filter input.
  *
  * @class RunSelectorPanel
  */
@@ -17,7 +18,9 @@ export class RunSelectorPanel {
         this.getCurrentRunId = getCurrentRunId;
         this.onRunChange = onRunChange;
         this.runs = [];
+        this.filteredRuns = [];
         this.isOpen = false;
+        this.selectedIndex = -1;
 
         this.createDOM();
         this.attachEvents();
@@ -34,14 +37,17 @@ export class RunSelectorPanel {
         this.element.innerHTML = `
             <div class="run-selector-content">
                 <span class="run-selector-label">Run:</span>
-                <span class="run-selector-value"></span>
-                <div class="run-selector-overlay"></div>
+                <div class="run-selector-field">
+                    <span class="run-selector-value"></span>
+                    <div class="run-selector-list"></div>
+                </div>
             </div>
         `;
 
         this.contentEl = this.element.querySelector('.run-selector-content');
+        this.fieldEl = this.element.querySelector('.run-selector-field');
         this.valueEl = this.element.querySelector('.run-selector-value');
-        this.overlayEl = this.element.querySelector('.run-selector-overlay');
+        this.listEl = this.element.querySelector('.run-selector-list');
 
         document.body.appendChild(this.element);
         this.updateCurrent();
@@ -53,11 +59,11 @@ export class RunSelectorPanel {
     async open() {
         await this.ensureRunsLoaded();
         this.showInput('');
-        this.renderOverlay('');
+        this.renderList('');
         this.isOpen = true;
-        this.overlayEl.classList.add('visible');
+        this.fieldEl.classList.add('open');
+        this.selectedIndex = -1;
         this.inputEl?.focus();
-        this.inputEl?.select();
     }
 
     /**
@@ -65,7 +71,7 @@ export class RunSelectorPanel {
      */
     close() {
         this.isOpen = false;
-        this.overlayEl.classList.remove('visible');
+        this.fieldEl.classList.remove('open');
         this.teardownInput();
         this.updateCurrent();
     }
@@ -80,16 +86,14 @@ export class RunSelectorPanel {
         input.className = 'run-selector-input';
         input.type = 'text';
         input.value = prefill;
-        input.addEventListener('input', (e) => this.renderOverlay(e.target.value));
-        input.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
-                this.close();
-            } else if (e.key === 'Enter') {
-                this.selectFirst();
-            }
+        input.placeholder = 'Filter...';
+        input.addEventListener('input', (e) => {
+            this.selectedIndex = -1;
+            this.renderList(e.target.value);
         });
+        input.addEventListener('keydown', (e) => this.handleKeyDown(e));
         input.addEventListener('blur', () => {
-            // Delay close to allow click on overlay items
+            // Delay close to allow click on list items
             setTimeout(() => {
                 if (this.isOpen && !this.element.contains(document.activeElement)) {
                     this.close();
@@ -98,6 +102,86 @@ export class RunSelectorPanel {
         });
         this.valueEl.replaceWith(input);
         this.inputEl = input;
+    }
+
+    /**
+     * Handles keyboard navigation in the dropdown.
+     * @param {KeyboardEvent} e - The keyboard event
+     * @private
+     */
+    handleKeyDown(e) {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            this.close();
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            this.selectCurrent();
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            this.navigateList(1);
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            this.navigateList(-1);
+        }
+    }
+
+    /**
+     * Navigates the list selection by delta.
+     * @param {number} delta - Direction to move (+1 or -1)
+     * @private
+     */
+    navigateList(delta) {
+        if (this.filteredRuns.length === 0) return;
+
+        const newIndex = this.selectedIndex + delta;
+        if (newIndex < 0) {
+            this.selectedIndex = this.filteredRuns.length - 1;
+        } else if (newIndex >= this.filteredRuns.length) {
+            this.selectedIndex = 0;
+        } else {
+            this.selectedIndex = newIndex;
+        }
+
+        this.updateListSelection();
+        this.scrollToSelected();
+    }
+
+    /**
+     * Updates the visual selection in the list.
+     * @private
+     */
+    updateListSelection() {
+        const items = this.listEl.querySelectorAll('.run-selector-item');
+        items.forEach((item, index) => {
+            item.classList.toggle('selected', index === this.selectedIndex);
+        });
+    }
+
+    /**
+     * Scrolls the list to make the selected item visible.
+     * @private
+     */
+    scrollToSelected() {
+        const selected = this.listEl.querySelector('.run-selector-item.selected');
+        if (selected) {
+            selected.scrollIntoView({ block: 'nearest' });
+        }
+    }
+
+    /**
+     * Selects the currently highlighted item or the first item.
+     * @private
+     */
+    selectCurrent() {
+        const index = this.selectedIndex >= 0 ? this.selectedIndex : 0;
+        const run = this.filteredRuns[index];
+        if (run) {
+            Promise.resolve(this.onRunChange(run.runId)).finally(() => {
+                this.close();
+            });
+        } else {
+            this.close();
+        }
     }
 
     /**
@@ -114,53 +198,40 @@ export class RunSelectorPanel {
     }
 
     /**
-     * Renders the overlay with filtered run list.
+     * Renders the list with filtered runs.
      * @param {string} filterText - Text to filter runs by
      * @private
      */
-    renderOverlay(filterText) {
+    renderList(filterText) {
         const term = (filterText || '').toLowerCase();
-        const matches = this.runs.filter(r => r.runId && r.runId.toLowerCase().includes(term));
-        const listItems = matches.map(r => `
-            <div class="run-selector-item" data-run="${r.runId}">
+        this.filteredRuns = this.runs.filter(r => r.runId && r.runId.toLowerCase().includes(term));
+
+        if (this.filteredRuns.length === 0) {
+            this.listEl.innerHTML = `<div class="run-selector-empty">No runs available</div>`;
+            return;
+        }
+
+        this.listEl.innerHTML = this.filteredRuns.map((r, index) => `
+            <div class="run-selector-item${index === this.selectedIndex ? ' selected' : ''}" data-index="${index}">
                 <span class="run-id" title="${r.runId}">${this.formatDisplay(r.runId)}</span>
             </div>
-        `).join('') || `<div class="run-selector-empty">No runs available</div>`;
+        `).join('');
 
-        this.overlayEl.innerHTML = `
-            <div class="run-selector-list">${listItems}</div>
-        `;
-
-        this.overlayEl.querySelectorAll('.run-selector-item').forEach(item => {
+        this.listEl.querySelectorAll('.run-selector-item').forEach(item => {
             item.addEventListener('click', () => {
-                const runId = item.dataset.run;
-                if (runId) {
-                    Promise.resolve(this.onRunChange(runId)).finally(() => {
+                const index = parseInt(item.dataset.index, 10);
+                const run = this.filteredRuns[index];
+                if (run) {
+                    Promise.resolve(this.onRunChange(run.runId)).finally(() => {
                         this.close();
                     });
-                } else {
-                    this.close();
                 }
             });
+            item.addEventListener('mouseenter', () => {
+                this.selectedIndex = parseInt(item.dataset.index, 10);
+                this.updateListSelection();
+            });
         });
-    }
-
-    /**
-     * Selects the first item in the filtered list.
-     * @private
-     */
-    selectFirst() {
-        const first = this.overlayEl.querySelector('.run-selector-item');
-        if (first) {
-            const runId = first.dataset.run;
-            if (runId) {
-                Promise.resolve(this.onRunChange(runId)).finally(() => {
-                    this.close();
-                });
-                return;
-            }
-        }
-        this.close();
     }
 
     /**
@@ -257,16 +328,14 @@ export class RunSelectorPanel {
      * @private
      */
     attachEvents() {
-        this.contentEl.addEventListener('click', (e) => {
+        this.fieldEl.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (this.isOpen) {
-                this.close();
-            } else {
+            if (!this.isOpen) {
                 this.open();
             }
         });
 
-        this.overlayEl.addEventListener('click', (e) => {
+        this.listEl.addEventListener('click', (e) => {
             e.stopPropagation();
         });
 

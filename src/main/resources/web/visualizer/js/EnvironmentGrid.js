@@ -433,6 +433,11 @@ export class EnvironmentGrid {
             if (event.button !== 0) return; // Only handle left mouse button
             event.preventDefault();
 
+            // Remove focus from any input field when clicking on the grid
+            if (document.activeElement && document.activeElement.tagName === 'INPUT') {
+                document.activeElement.blur();
+            }
+
             isPotentialDrag = true;
             this.isPanning = false; // Reset panning state
             this.panStartX = event.clientX;

@@ -43,7 +43,10 @@ export class HeaderbarView {
             }
         });
         this.elements.largeStepInput.addEventListener('keydown', (e) => {
-            if (e.key === 'ArrowUp') {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                this.elements.largeStepInput.blur();
+            } else if (e.key === 'ArrowUp') {
                 e.preventDefault();
                 const current = parseInt(this.elements.largeStepInput.value, 10) || 100;
                 this.elements.largeStepInput.value = current * 10;

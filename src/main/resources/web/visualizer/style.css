@@ -169,7 +169,7 @@ header {
    ============================================ */
 
 #organism-panel {
-    right: 35px;
+    right: 20px;
     width: 640px;
     padding: 0;
     display: flex;
@@ -1220,18 +1220,16 @@ main.container {
 
 /* --- Run Selector Panel --- */
 #run-selector-panel {
-    right: 10px;
+    right: 20px;
     padding: 4px 10px;
     display: flex;
     align-items: center;
-    cursor: pointer;
 }
 
 .run-selector-content {
     display: flex;
     align-items: center;
     gap: 8px;
-    position: relative;
 }
 
 .run-selector-label {
@@ -1239,60 +1237,74 @@ main.container {
     font-size: 11px;
 }
 
-.run-selector-value {
+/* The field container that "expands" into a dropdown */
+.run-selector-field {
+    position: relative;
     min-width: 180px;
-    max-width: 240px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    cursor: pointer;
+}
+
+.run-selector-value {
+    display: block;
     padding: 4px 8px;
     border: 1px solid #333;
     border-radius: 4px;
     background: #0f0f18;
     font-size: 11px;
     color: #e0e0e0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     transition: border-color 0.15s ease, background 0.15s ease;
 }
 
-#run-selector-panel:hover .run-selector-value {
+.run-selector-field:hover .run-selector-value {
     border-color: #555;
     background: #141422;
 }
 
+/* Input replaces value when open */
 .run-selector-input {
-    min-width: 180px;
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
     background: #0a0a14;
     border: 1px solid #4a9eff;
+    border-bottom: 1px solid #333;
+    border-radius: 4px 4px 0 0;
     color: #e0e0e0;
     padding: 4px 8px;
-    border-radius: 4px;
     font-family: inherit;
     font-size: 11px;
     outline: none;
 }
 
-.run-selector-overlay {
-    position: absolute;
-    bottom: calc(100% + 6px);
-    right: 0;
-    min-width: 220px;
-    background: #191923;
-    border: 1px solid #333;
-    border-radius: 4px;
-    display: none;
-    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.35);
-    z-index: 1001;
-    overflow: hidden;
-}
-
-.run-selector-overlay.visible {
-    display: block;
-}
-
+/* List appears directly below input, connected visually */
 .run-selector-list {
+    display: none;
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
     max-height: 260px;
     overflow-x: hidden;
     overflow-y: auto;
+    background: #0f0f18;
+    border: 1px solid #4a9eff;
+    border-bottom: none;
+    border-radius: 4px 4px 0 0;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.35);
+    z-index: 1001;
+}
+
+/* When field is open, show list and adjust input border */
+.run-selector-field.open .run-selector-list {
+    display: block;
+}
+
+.run-selector-field.open .run-selector-input {
+    border-radius: 0 0 4px 4px;
+    border-top: none;
 }
 
 .run-selector-item {
@@ -1300,18 +1312,23 @@ main.container {
     cursor: pointer;
     border-bottom: 1px solid #222;
     font-size: 11px;
+    color: #e0e0e0;
+}
+
+.run-selector-item:first-child {
+    border-radius: 4px 4px 0 0;
 }
 
 .run-selector-item:last-child {
     border-bottom: none;
 }
 
-.run-selector-item:hover {
-    background: #1a1a2a;
+.run-selector-item:hover,
+.run-selector-item.selected {
+    background: #1a2a3a;
 }
 
 .run-selector-item .run-id {
-    color: #e0e0e0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
