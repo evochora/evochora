@@ -55,7 +55,7 @@ public class CompilerEndToEndTest {
 
 		assertThat(artifact).isNotNull();
 		assertThat(artifact.machineCodeLayout()).isNotEmpty();
-		assertThat(artifact.labelAddressToName()).isNotEmpty();
+		assertThat(artifact.labelValueToName()).isNotEmpty();
 
 		long opcodeCount = artifact.machineCodeLayout().values().stream()
 				.filter(v -> (v & 0xFF) == 0 /* CODE type is 0 for opcodes */)

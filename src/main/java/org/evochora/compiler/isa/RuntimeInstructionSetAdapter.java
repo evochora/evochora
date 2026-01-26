@@ -39,14 +39,6 @@ public final class RuntimeInstructionSetAdapter implements IInstructionSet {
      * {@inheritDoc}
      */
     @Override
-    public int getInstructionLengthById(int id) {
-        return Instruction.getInstructionLengthById(id);
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    @Override
     public Optional<Integer> resolveRegisterToken(String token) {
         // Now calls the central method
         return Instruction.resolveRegToken(token);

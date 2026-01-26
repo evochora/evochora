@@ -410,14 +410,10 @@ public final class OrganismStateConverter {
                         registerType = "DR";
                     }
                     
-                    // Resolve register value: use value BEFORE execution (required, no fallback)
-                    if (registerValuesBefore == null || !registerValuesBefore.containsKey(registerId)) {
-                        throw new IllegalStateException(
-                            String.format("Register value before execution not available for register ID %d in instruction %d (%s). " +
-                                "This indicates corrupted data or missing registerValuesBefore map.",
-                                registerId, opcodeId, opcodeName));
-                    }
-                    RegisterValueView registerValue = registerValuesBefore.get(registerId);
+                    // Resolve register value: use value BEFORE execution (null if unavailable)
+                    RegisterValueView registerValue = (registerValuesBefore != null)
+                        ? registerValuesBefore.get(registerId)
+                        : null;
                     
                     resolvedArgs.add(InstructionArgumentView.register(registerId, registerValue, registerType));
                     argIndex++;
@@ -455,14 +451,10 @@ public final class OrganismStateConverter {
                             registerId, opcodeId, opcodeName, locationRegisters.size() - 1, locationRegisters.size()));
                 }
                 
-                // Resolve register value: use value BEFORE execution (required, no fallback)
-                if (registerValuesBefore == null || !registerValuesBefore.containsKey(registerId)) {
-                    throw new IllegalStateException(
-                        String.format("Register value before execution not available for LR register ID %d in instruction %d (%s). " +
-                            "This indicates corrupted data or missing registerValuesBefore map.",
-                            registerId, opcodeId, opcodeName));
-                }
-                RegisterValueView registerValue = registerValuesBefore.get(registerId);
+                // Resolve register value: use value BEFORE execution (null if unavailable)
+                RegisterValueView registerValue = (registerValuesBefore != null)
+                    ? registerValuesBefore.get(registerId)
+                    : null;
                 
                 resolvedArgs.add(InstructionArgumentView.register(registerId, registerValue, registerType));
                 argIndex++;
@@ -498,22 +490,17 @@ public final class OrganismStateConverter {
                     resolvedArgs.add(InstructionArgumentView.vector(components));
                 }
             } else if (argType == org.evochora.runtime.isa.InstructionArgumentType.LABEL) {
-                // LABEL: Group multiple arguments into int[] array
+                // LABEL: Single scalar hash value (20-bit) since fuzzy jumps refactoring
+                // Formatted like IMMEDIATE with molecule type (typically DATA)
                 argumentTypesList.add("LABEL");
-                int dims = envDimensions != null ? envDimensions.length : 2;
-                int[] components = new int[dims];
-                boolean hasComponents = false;
-                
-                for (int dim = 0; dim < dims && argIndex < rawArguments.size(); dim++) {
+                if (argIndex < rawArguments.size()) {
                     int rawArg = rawArguments.get(argIndex);
                     Molecule molecule = Molecule.fromInt(rawArg);
-                    components[dim] = molecule.toScalarValue();
-                    hasComponents = true;
+                    int typeId = molecule.type();
+                    String moleculeType = MoleculeTypeRegistry.typeToName(typeId);
+                    int hashValue = molecule.toScalarValue();
+                    resolvedArgs.add(InstructionArgumentView.label(rawArg, moleculeType, hashValue));
                     argIndex++;
-                }
-                
-                if (hasComponents) {
-                    resolvedArgs.add(InstructionArgumentView.label(components));
                 }
             }
         }

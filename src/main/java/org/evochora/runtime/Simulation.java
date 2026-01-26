@@ -12,6 +12,7 @@ import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.isa.IEnvironmentModifyingInstruction;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.evochora.runtime.spi.ITickPlugin;
@@ -167,31 +168,66 @@ public class Simulation {
             }
         }
 
+        int maxSkipsPerTick = organismConfig.hasPath("max-skips-per-tick")
+                ? organismConfig.getInt("max-skips-per-tick")
+                : 100;
+
+        // PHASE 1: Plan - each organism plans their next instruction
         List<Instruction> plannedInstructions = new ArrayList<>();
         for (Organism organism : this.organisms) {
-            if (!organism.isDead()) {
-                Instruction instruction = vm.plan(organism);
-                instruction.setExecutedInTick(false);
-                instruction.setConflictStatus(Instruction.ConflictResolutionStatus.NOT_APPLICABLE);
-                plannedInstructions.add(instruction);
-            }
+            if (organism.isDead()) continue;
+
+            Instruction instruction = vm.plan(organism);
+            instruction.setExecutedInTick(false);
+            instruction.setConflictStatus(Instruction.ConflictResolutionStatus.NOT_APPLICABLE);
+            plannedInstructions.add(instruction);
         }
 
         resolveConflicts(plannedInstructions);
 
+        // PHASE 3: Execute - run winning instructions, then instant-skip NOPs
         for (Instruction instruction : plannedInstructions) {
             Organism organism = instruction.getOrganism();
             boolean wasAlive = !organism.isDead();
-            
+
             if (instruction.isExecutedInTick()) {
                 vm.execute(instruction);
+
+                // Instant-skip loop: after executing, skip any following NOP/LABEL molecules
+                // Check molecule directly to avoid vm.plan() side effects (instructionFailed)
+                if (!organism.isDead()) {
+                    int skips = 0;
+                    int nopOpcodeId = Instruction.getInstructionIdByName("NOP");
+
+                    while (!organism.isDead()) {
+                        Molecule nextMolecule = environment.getMolecule(organism.getIp());
+
+                        // Check if this cell is skippable (NOP-like)
+                        boolean isSkippable = nextMolecule.isEmpty()
+                                || nextMolecule.type() == org.evochora.runtime.Config.TYPE_LABEL
+                                || (nextMolecule.type() == org.evochora.runtime.Config.TYPE_CODE && nextMolecule.value() == nopOpcodeId);
+
+                        if (!isSkippable) {
+                            break;  // Found a real instruction, stop skipping
+                        }
+
+                        // Skip this NOP/LABEL/empty cell
+                        organism.advanceIpBy(1, environment);
+                        skips++;
+
+                        if (skips >= maxSkipsPerTick) {
+                            organism.instructionFailed("Max instant-skips exceeded (" + maxSkipsPerTick + ")");
+                            break;
+                        }
+                    }
+                }
             }
-            
+
             // Clear ownership if organism died during this tick
             if (wasAlive && organism.isDead()) {
                 environment.clearOwnershipFor(organism.getId());
             }
-            
+
             if (organism.isLoggingEnabled()) {
                 LOG.debug("Tick={} Org={} Instr={} Status={}",
                         currentTick,

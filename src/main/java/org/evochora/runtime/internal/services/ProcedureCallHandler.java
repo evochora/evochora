@@ -28,10 +28,11 @@ public class ProcedureCallHandler {
     /**
      * Executes a procedure call. This involves resolving parameter bindings,
      * saving the current processor state, and jumping to the target procedure's address.
-     * @param targetDelta The relative coordinates of the target procedure.
+     * @param targetIp The absolute coordinates of the target procedure (resolved via LabelIndex).
+     * @param labelHash The hash value of the target label (used to look up the procedure name).
      * @param artifact The program artifact containing metadata about the procedure.
      */
-    public void executeCall(int[] targetDelta, ProgramArtifact artifact) {
+    public void executeCall(int[] targetIp, int labelHash, ProgramArtifact artifact) {
         Organism organism = context.getOrganism();
         Environment environment = context.getWorld();
 
@@ -53,37 +54,20 @@ public class ProcedureCallHandler {
             }
         }
 
-        int instructionLength = 1 + environment.getShape().length;
+        // CALL now only consumes 1 operand (label hash) instead of N (coordinate delta)
+        int instructionLength = 1 + 1; // opcode + label hash
         int[] returnIp = ipBeforeFetch;
         for (int i = 0; i < instructionLength; i++) {
-            returnIp = organism.getNextInstructionPosition(returnIp, organism.getDvBeforeFetch(), environment); // CORRECTED
+            returnIp = organism.getNextInstructionPosition(returnIp, organism.getDvBeforeFetch(), environment);
         }
 
         Object[] prsSnapshot = organism.getPrs().toArray();
         Object[] fprsSnapshot = organism.getFprs().toArray();
 
         String procName = "";
-
-        int[] targetIp = organism.getTargetCoordinate(organism.getInitialPosition(), targetDelta, environment);
-
-        if (artifact != null) {
-            int[] origin = organism.getInitialPosition();
-            int[] relTarget = new int[targetDelta.length];
-            for (int i = 0; i < targetDelta.length; i++) {
-                relTarget[i] = targetIp[i] - origin[i];
-            }
-
-            StringBuilder keyBuilder = new StringBuilder();
-            for (int i = 0; i < relTarget.length; i++) {
-                if (i > 0) keyBuilder.append('|');
-                keyBuilder.append(relTarget[i]);
-            }
-            String relativeKey = keyBuilder.toString();
-            Integer targetAddress = artifact.relativeCoordToLinearAddress().get(relativeKey);
-            if (targetAddress != null) {
-                String name = artifact.labelAddressToName().get(targetAddress);
-                if (name != null) procName = name;
-            }
+        if (artifact != null && artifact.labelValueToName() != null) {
+            String name = artifact.labelValueToName().get(labelHash);
+            if (name != null) procName = name;
         }
 
         Organism.ProcFrame frame = new Organism.ProcFrame(procName, returnIp, ipBeforeFetch, prsSnapshot, fprsSnapshot, fprBindings);
@@ -105,7 +89,9 @@ public class ProcedureCallHandler {
         }
         */
 
-        organism.setIp(targetIp);
+        // Skip past the LABEL molecule to the actual procedure code
+        int[] codeIp = organism.getNextInstructionPosition(targetIp, organism.getDv(), environment);
+        organism.setIp(codeIp);
         organism.setSkipIpAdvance(true);
     }
 

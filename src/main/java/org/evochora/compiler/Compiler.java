@@ -31,7 +31,6 @@ import org.evochora.compiler.backend.emit.EmissionRegistry;
 import org.evochora.compiler.backend.emit.IEmissionRule;
 import org.evochora.compiler.backend.emit.Emitter;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
-import org.evochora.compiler.util.DebugDump;
 
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -241,7 +240,6 @@ public class Compiler implements ICompiler {
         }
 
         org.evochora.compiler.diagnostics.CompilerLogger.debug("Compiler: " + programName + " programId:" + artifact.programId());
-        DebugDump.dumpProgramArtifact(programName, artifact);
         return artifact;
     }
     

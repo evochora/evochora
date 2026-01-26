@@ -24,7 +24,6 @@ import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
 import org.evochora.datapipeline.api.contracts.FileTokenLookup;
 import org.evochora.datapipeline.api.contracts.InitialOrganismSetup;
 import org.evochora.datapipeline.api.contracts.InstructionMapping;
-import org.evochora.datapipeline.api.contracts.LabelMapping;
 import org.evochora.datapipeline.api.contracts.LineTokenLookup;
 import org.evochora.datapipeline.api.contracts.LinearAddressToCoord;
 import org.evochora.datapipeline.api.contracts.OrganismConfig;
@@ -157,12 +156,19 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         this.randomProvider = new SeededRandomProvider(seed);
         this.tickPlugins = initializeTickPlugins(options.getConfigList("tickPlugins"), this.randomProvider);
 
-        Environment environment = new Environment(envProps);
-        
+        // Extract runtime configuration before creating components
         Config runtimeConfig = options.hasPath("runtime") ? options.getConfig("runtime") : com.typesafe.config.ConfigFactory.empty();
         Config thermoConfig = runtimeConfig.hasPath("thermodynamics") ? runtimeConfig.getConfig("thermodynamics") : com.typesafe.config.ConfigFactory.empty();
         ThermodynamicPolicyManager policyManager = new ThermodynamicPolicyManager(thermoConfig);
         Config organismConfig = runtimeConfig.hasPath("organism") ? runtimeConfig.getConfig("organism") : com.typesafe.config.ConfigFactory.empty();
+
+        // Create label matching strategy from config (or use default)
+        org.evochora.runtime.label.ILabelMatchingStrategy labelMatchingStrategy =
+            Environment.createLabelMatchingStrategy(
+                runtimeConfig.hasPath("label-matching") ? runtimeConfig.getConfig("label-matching") : null
+            );
+
+        Environment environment = new Environment(envProps, labelMatchingStrategy);
 
         this.simulation = new Simulation(environment, policyManager, organismConfig);
         this.simulation.setRandomProvider(this.randomProvider);
@@ -556,11 +562,6 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                         .setLinearAddress(address)
                         .setCoord(convertVector(coord))));
 
-        artifact.labelAddressToName().forEach((address, name) ->
-                builder.addLabelAddressToName(LabelMapping.newBuilder()
-                        .setLinearAddress(address)
-                        .setLabelName(name)));
-
         builder.putAllRegisterAliasMap(artifact.registerAliasMap());
 
         artifact.procNameToParamNames().forEach((procName, params) -> {
@@ -606,10 +607,15 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                         .setLinearAddress(info.linearAddress())
                         .setOpcode(info.opcode())
                         .setOperandsAsString(info.operandsAsString() != null ? info.operandsAsString() : "")
+                        .setSynthetic(info.synthetic())
                         .build());
             }
             builder.putSourceLineToInstructions(sourceLineKey, listBuilder.build());
         });
+
+        // Label hash value mappings for fuzzy jump display
+        builder.putAllLabelValueToName(artifact.labelValueToName());
+        builder.putAllLabelNameToValue(artifact.labelNameToValue());
 
         return builder.build();
     }
@@ -653,6 +659,10 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             registerBuilder.setScalar((Integer) rv);
         } else if (rv instanceof int[]) {
             registerBuilder.setVector(convertVectorReuse((int[]) rv, vectorBuilder));
+        } else {
+            throw new IllegalStateException(
+                "RegisterValue must be Integer or int[], but got: " +
+                (rv == null ? "null" : rv.getClass().getName()));
         }
         return registerBuilder.build();
     }
@@ -691,11 +701,10 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 absolutePos[i] = startPosition[i] + relativePos[i];
             }
 
-            simulation.getEnvironment().setMolecule(
-                org.evochora.runtime.model.Molecule.fromInt(entry.getValue()),
-                organism.getId(),
-                absolutePos
-            );
+            org.evochora.runtime.model.Molecule molecule = org.evochora.runtime.model.Molecule.fromInt(entry.getValue());
+            // CODE:0 should always have owner=0 (represents empty cell)
+            int ownerId = (molecule.type() == org.evochora.runtime.Config.TYPE_CODE && molecule.toScalarValue() == 0) ? 0 : organism.getId();
+            simulation.getEnvironment().setMolecule(molecule, ownerId, absolutePos);
         }
 
         // Place initial world objects
@@ -707,9 +716,11 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             }
 
             org.evochora.compiler.api.PlacedMolecule pm = entry.getValue();
+            // CODE:0 should always have owner=0 (represents empty cell)
+            int ownerId = (pm.type() == org.evochora.runtime.Config.TYPE_CODE && pm.value() == 0) ? 0 : organism.getId();
             simulation.getEnvironment().setMolecule(
                 new org.evochora.runtime.model.Molecule(pm.type(), pm.value()),
-                organism.getId(),
+                ownerId,
                 absolutePos
             );
         }

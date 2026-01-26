@@ -11,6 +11,9 @@ import org.evochora.runtime.isa.IEnvironmentReader;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.ints.IntSet;
+import org.evochora.runtime.label.ILabelMatchingStrategy;
+import org.evochora.runtime.label.LabelIndex;
+import org.evochora.runtime.label.PreExpandedHammingStrategy;
 
 /**
  * Represents the simulation environment, managing the grid of molecules and their owners.
@@ -33,7 +36,11 @@ public class Environment implements IEnvironmentReader {
     // Used by SimulationEngine to create incremental/accumulated deltas
     // Memory: 1 bit per cell (e.g., 125KB for 1M cells)
     private final BitSet changedSinceLastReset;
-    
+
+    // Label index for fuzzy jump matching
+    // Maintains index of all LABEL molecules for O(1) lookup
+    private final LabelIndex labelIndex;
+
     // Total number of cells (cached for performance)
     private final int totalCells;
     
@@ -43,22 +50,68 @@ public class Environment implements IEnvironmentReader {
      */
     public final EnvironmentProperties properties;
 
+    // ==================== Static Factory Methods ====================
+
+    /**
+     * Creates a label matching strategy from configuration.
+     * <p>
+     * If config is null or has no className, returns the default {@link PreExpandedHammingStrategy}.
+     * Otherwise instantiates the configured strategy class via reflection, passing the options
+     * sub-config to the strategy's constructor.
+     *
+     * @param config The label-matching configuration block (may be null)
+     * @return The configured label matching strategy
+     * @throws IllegalArgumentException if the configured class cannot be instantiated
+     */
+    public static ILabelMatchingStrategy createLabelMatchingStrategy(com.typesafe.config.Config config) {
+        if (config == null || !config.hasPath("className")) {
+            return new PreExpandedHammingStrategy();
+        }
+        String className = config.getString("className");
+        com.typesafe.config.Config options = config.hasPath("options")
+            ? config.getConfig("options")
+            : com.typesafe.config.ConfigFactory.empty();
+        try {
+            return (ILabelMatchingStrategy) Class.forName(className)
+                .getConstructor(com.typesafe.config.Config.class)
+                .newInstance(options);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalArgumentException(
+                "Failed to instantiate label matching strategy: " + className, e);
+        }
+    }
+
+    // ==================== Constructors ====================
+
     /**
      * Creates a new environment with the specified shape and toroidal setting.
-     * 
+     * Uses default label matching strategy.
+     *
      * @param shape The dimensions of the world.
      * @param toroidal Whether the world wraps around at edges.
      */
     public Environment(int[] shape, boolean toroidal) {
         this(new EnvironmentProperties(shape, toroidal));
     }
-    
+
     /**
      * Creates a new environment with the specified properties.
-     * 
+     * Uses default label matching strategy.
+     *
      * @param properties The environment properties.
      */
     public Environment(EnvironmentProperties properties) {
+        this(properties, new org.evochora.runtime.label.PreExpandedHammingStrategy());
+    }
+
+    /**
+     * Creates a new environment with the specified properties and label matching strategy.
+     * This is the primary constructor used by SimulationEngine.
+     *
+     * @param properties The environment properties.
+     * @param labelMatchingStrategy The strategy for fuzzy label matching in jump instructions.
+     */
+    public Environment(EnvironmentProperties properties, org.evochora.runtime.label.ILabelMatchingStrategy labelMatchingStrategy) {
         this.properties = properties;
         this.shape = properties.getWorldShape();
         this.isToroidal = properties.isToroidal();
@@ -82,15 +135,18 @@ public class Environment implements IEnvironmentReader {
             this.strides[i] = stride;
             stride *= shape[i];
         }
-        
+
         // Initialize sparse cell tracking if enabled (using primitive int indices for performance)
         this.occupiedIndices = Config.ENABLE_SPARSE_CELL_TRACKING ? new IntOpenHashSet() : null;
-        
+
         // Initialize ownership index
         this.cellsByOwner = new Int2ObjectOpenHashMap<>();
-        
+
         // Initialize change tracking for delta compression
         this.changedSinceLastReset = new BitSet(size);
+
+        // Initialize label index for fuzzy jump matching
+        this.labelIndex = new LabelIndex(labelMatchingStrategy);
     }
 
     /**
@@ -150,11 +206,17 @@ public class Environment implements IEnvironmentReader {
     public void setMolecule(Molecule molecule, int... coord) {
         int index = getFlatIndex(coord);
         if (index != -1) {
-            this.grid[index] = molecule.toInt();
-            
+            int oldMoleculeInt = this.grid[index];
+            int newMoleculeInt = molecule.toInt();
+            this.grid[index] = newMoleculeInt;
+
             // Track change for delta compression
             changedSinceLastReset.set(index);
-            
+
+            // Update label index for fuzzy jump matching
+            int owner = this.ownerGrid[index];
+            labelIndex.onMoleculeSet(index, oldMoleculeInt, newMoleculeInt, owner);
+
             // Update sparse cell tracking if enabled
             if (Config.ENABLE_SPARSE_CELL_TRACKING && occupiedIndices != null) {
                 updateOccupiedIndices(index);
@@ -171,19 +233,23 @@ public class Environment implements IEnvironmentReader {
     public void setMolecule(Molecule molecule, int ownerId, int... coord) {
         int index = getFlatIndex(coord);
         if (index != -1) {
-            int packed = molecule.toInt();
-            this.grid[index] = packed;
-            
+            int oldMoleculeInt = this.grid[index];
+            int newMoleculeInt = molecule.toInt();
+            this.grid[index] = newMoleculeInt;
+
             // Track change for delta compression
             changedSinceLastReset.set(index);
-            
+
             // Update ownership index
             int oldOwner = this.ownerGrid[index];
             if (oldOwner != ownerId) {
                 updateOwnershipIndex(index, oldOwner, ownerId);
             }
             this.ownerGrid[index] = ownerId;
-            
+
+            // Update label index for fuzzy jump matching
+            labelIndex.onMoleculeSet(index, oldMoleculeInt, newMoleculeInt, ownerId);
+
             // Update sparse cell tracking if enabled
             if (Config.ENABLE_SPARSE_CELL_TRACKING && occupiedIndices != null) {
                 updateOccupiedIndices(index);
@@ -214,14 +280,18 @@ public class Environment implements IEnvironmentReader {
         if (index != -1) {
             // Track change for delta compression (owner change is also a change)
             changedSinceLastReset.set(index);
-            
+
             // Update ownership index
             int oldOwner = this.ownerGrid[index];
             if (oldOwner != ownerId) {
                 updateOwnershipIndex(index, oldOwner, ownerId);
+
+                // Update label index for fuzzy jump matching
+                int moleculeInt = this.grid[index];
+                labelIndex.onOwnerChange(index, moleculeInt, ownerId);
             }
             this.ownerGrid[index] = ownerId;
-            
+
             // Update sparse cell tracking if enabled
             if (Config.ENABLE_SPARSE_CELL_TRACKING && occupiedIndices != null) {
                 updateOccupiedIndices(index);
@@ -418,7 +488,8 @@ public class Environment implements IEnvironmentReader {
 
         fromSet.forEach((int flatIndex) -> {
             int moleculeInt = grid[flatIndex];
-            int marker = (moleculeInt & Config.MARKER_MASK) >> Config.MARKER_SHIFT;
+            // Use unsigned shift (>>>) to avoid sign-extension when bit 31 is set (marker >= 8)
+            int marker = (moleculeInt & Config.MARKER_MASK) >>> Config.MARKER_SHIFT;
             if (marker == markerToMatch) {
                 toTransfer.add(flatIndex);
             }
@@ -436,6 +507,10 @@ public class Environment implements IEnvironmentReader {
             // Update ownership index
             fromSet.remove(flatIndex);
             toSet.add(flatIndex);
+            // Update label index: owner changed and marker reset to 0
+            int moleculeInt = grid[flatIndex];
+            labelIndex.onOwnerChange(flatIndex, moleculeInt, toOwnerId);
+            labelIndex.onMarkerChange(flatIndex, moleculeInt);
         }
         
         // Clean up empty set
@@ -467,11 +542,75 @@ public class Environment implements IEnvironmentReader {
             grid[flatIndex] = grid[flatIndex] & ~Config.MARKER_MASK;
             // Track change for delta compression
             changedSinceLastReset.set(flatIndex);
+            // Update label index: owner cleared and marker reset to 0
+            int moleculeInt = grid[flatIndex];
+            labelIndex.onOwnerChange(flatIndex, moleculeInt, 0);
+            labelIndex.onMarkerChange(flatIndex, moleculeInt);
         });
-        
+
         return count;
     }
-    
+
+    /**
+     * Clears the marker and ownership of all molecules owned by the specified organism
+     * that have a matching marker value. Sets both marker and owner to 0 for all affected cells.
+     * <p>
+     * This is used during reproduction when a replication attempt is aborted - the partially
+     * replicated molecules need to be "orphaned" (owner=0, marker=0) so they:
+     * <ul>
+     *   <li>Won't be transferred during a subsequent FORK operation</li>
+     *   <li>Won't be accidentally jumped to by the parent organism (fuzzy jump matching
+     *       treats owner=0 as "foreign", applying foreignPenalty)</li>
+     * </ul>
+     * <p>
+     * <strong>Performance:</strong> O(occupied cells by owner) - iterates using sparse cell tracking.
+     *
+     * @param ownerId       The ID of the organism whose molecules should be checked.
+     * @param markerToMatch The marker value that molecules must have to be orphaned.
+     * @return The number of molecules that were orphaned.
+     */
+    public int clearMarkersFor(int ownerId, int markerToMatch) {
+        IntOpenHashSet owned = cellsByOwner.get(ownerId);
+        if (owned == null || owned.isEmpty()) {
+            return 0;
+        }
+
+        // Collect indices to orphan (can't modify during iteration since we're changing ownership)
+        it.unimi.dsi.fastutil.ints.IntList toOrphan = new it.unimi.dsi.fastutil.ints.IntArrayList();
+        owned.forEach((int flatIndex) -> {
+            int moleculeInt = grid[flatIndex];
+            // Use unsigned shift (>>>) to avoid sign-extension when bit 31 is set (marker >= 8)
+            int marker = (moleculeInt & Config.MARKER_MASK) >>> Config.MARKER_SHIFT;
+            if (marker == markerToMatch) {
+                toOrphan.add(flatIndex);
+            }
+        });
+
+        // Orphan the collected cells: set marker=0 and owner=0
+        for (int i = 0; i < toOrphan.size(); i++) {
+            int flatIndex = toOrphan.getInt(i);
+            // Reset marker to 0: clear marker bits and keep value/type
+            grid[flatIndex] = grid[flatIndex] & ~Config.MARKER_MASK;
+            // Set owner to 0 (orphan)
+            ownerGrid[flatIndex] = 0;
+            // Track change for delta compression
+            changedSinceLastReset.set(flatIndex);
+            // Update ownership index: remove from owner's set
+            owned.remove(flatIndex);
+            // Update label index: owner changed to 0 and marker reset to 0
+            int moleculeInt = grid[flatIndex];
+            labelIndex.onOwnerChange(flatIndex, moleculeInt, 0);
+            labelIndex.onMarkerChange(flatIndex, moleculeInt);
+        }
+
+        // Clean up empty set
+        if (owned.isEmpty()) {
+            cellsByOwner.remove(ownerId);
+        }
+
+        return toOrphan.size();
+    }
+
     // ========================================================================
     // Delta Compression Support
     // ========================================================================
@@ -510,5 +649,21 @@ public class Environment implements IEnvironmentReader {
      */
     public int getTotalCells() {
         return totalCells;
+    }
+
+    // ========================================================================
+    // Label Index Support (Fuzzy Jump Matching)
+    // ========================================================================
+
+    /**
+     * Gets the label index for fuzzy jump matching.
+     * <p>
+     * The label index maintains an index of all LABEL molecules in the environment,
+     * enabling O(1) lookup for jump targets using Hamming distance tolerance.
+     *
+     * @return The label index
+     */
+    public LabelIndex getLabelIndex() {
+        return labelIndex;
     }
 }

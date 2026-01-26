@@ -75,4 +75,28 @@ class BitwiseInstructionCompilerTest extends CompilerTestBase {
             assertThat(artifact.machineCodeLayout()).isNotEmpty();
         });
     }
+
+    @Test
+    void testNOR_EQU_ADN_ORN_operations() {
+        String source = String.join("\n",
+                "NORR %DR0 %DR1",
+                "NORI %DR0 DATA:1",
+                "NORS",
+                "EQUR %DR0 %DR1",
+                "EQUI %DR0 DATA:1",
+                "EQUS",
+                "ADNR %DR0 %DR1",
+                "ADNI %DR0 DATA:1",
+                "ADNS",
+                "ORNR %DR0 %DR1",
+                "ORNI %DR0 DATA:1",
+                "ORNS"
+        );
+        List<String> lines = List.of(source.split("\n"));
+        assertDoesNotThrow(() -> {
+            ProgramArtifact artifact = compiler.compile(lines, "bit_new.s", testEnvProps);
+            assertThat(artifact).isNotNull();
+            assertThat(artifact.machineCodeLayout()).isNotEmpty();
+        });
+    }
 }

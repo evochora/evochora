@@ -52,6 +52,11 @@ public class VirtualMachine {
 
         if (Config.STRICT_TYPING) {
             if (molecule.type() != Config.TYPE_CODE && !molecule.isEmpty()) {
+                // LABEL molecules: skip like NOP (no error)
+                if (molecule.type() == Config.TYPE_LABEL) {
+                    int nopOpcodeId = Instruction.getInstructionIdByName("NOP");
+                    return new org.evochora.runtime.isa.instructions.NopInstruction(organism, nopOpcodeId);
+                }
                 organism.instructionFailed("Illegal cell type (not CODE) at IP");
                 return new org.evochora.runtime.isa.instructions.NopInstruction(organism, molecule.toInt());
             }
@@ -97,11 +102,14 @@ public class VirtualMachine {
                             int rawArg = rawArgs.get(argIndex);
                             Molecule molecule = Molecule.fromInt(rawArg);
                             int registerId = molecule.toScalarValue();
-                            
+
                             // Read register value BEFORE execution (DR/PR/FPR)
                             Object registerValue = organism.readOperand(registerId);
-                            registerValuesBefore.put(registerId, registerValue);
-                            
+                            if (registerValue != null) {
+                                registerValuesBefore.put(registerId, registerValue);
+                            }
+                            // null means invalid register - don't store, frontend shows register name only
+
                             argIndex++;
                         }
                     } else if (argType == InstructionArgumentType.LOCATION_REGISTER) {

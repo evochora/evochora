@@ -823,6 +823,7 @@ export class EnvironmentGrid {
             case C.typeData: return 'DATA';
             case C.typeEnergy: return 'ENERGY';
             case C.typeStructure: return 'STRUCTURE';
+            case C.typeLabel: return 'LABEL';
             default: return 'UNKNOWN';
         }
     }
@@ -867,8 +868,8 @@ class BaseRendererStrategy {
     }
     init() { /* no-op */ }
     clear() { /* no-op */ }
-    renderCells(cells, region) { /* no-op */ }
-    renderOrganisms(organisms) { /* no-op */ }
+    renderCells(_cells, _region) { /* no-op */ }
+    renderOrganisms(_organisms) { /* no-op */ }
     
     _getOrganismColor(organismId, energy) {
         return this.grid._getOrganismColor(organismId, energy);
@@ -885,7 +886,7 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
         this.ipGraphics = new Map();
         this.dpGraphics = new Map();
         
-        this.typeMapping = { 'CODE': 0, 'DATA': 1, 'ENERGY': 2, 'STRUCTURE': 3 };
+        this.typeMapping = { 'CODE': 0, 'DATA': 1, 'ENERGY': 2, 'STRUCTURE': 3, 'LABEL': 4 };
         this.cellFont = {
             fontFamily: 'Monospaced, "Courier New"',
             fontSize: this.config.cellSize * 0.4,
@@ -986,6 +987,12 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
                 label = (cell.opcodeName && typeof cell.opcodeName === 'string') ? cell.opcodeName : String(cell.value);
             } else {
                 label = cell.value.toString();
+            }
+
+            // Split long values (> 4 chars) into two lines for better readability
+            if (label.length > 4) {
+                const mid = Math.ceil(label.length / 2);
+                label = label.slice(0, mid) + '\n' + label.slice(mid);
             }
 
             if (!text) {
@@ -1167,6 +1174,7 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
             case this.typeMapping['DATA']: return C.colorDataBg;
             case this.typeMapping['ENERGY']: return C.colorEnergyBg;
             case this.typeMapping['STRUCTURE']: return C.colorStructureBg;
+            case this.typeMapping['LABEL']: return C.colorLabelBg;
             default: return C.colorEmptyBg;
         }
     }
@@ -1178,6 +1186,7 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
             case this.typeMapping['ENERGY']: return C.colorEnergyText;
             case this.typeMapping['DATA']: return C.colorDataText;
             case this.typeMapping['CODE']: return C.colorCodeText;
+            case this.typeMapping['LABEL']: return C.colorLabelText;
             default: return C.colorText;
         }
     }
@@ -1251,10 +1260,10 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
         return cached;
     }
 
-    renderCells(cells, region) {
+    renderCells(cells, _region) {
         const width = this.grid.worldWidthCells;
         const height = this.grid.worldHeightCells;
-        
+
         if (width <= 0 || height <= 0) return;
         
         // --- Step 1: Create pixel buffer ---

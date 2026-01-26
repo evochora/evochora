@@ -4,6 +4,8 @@ import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.lexer.TokenType;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.runtime.isa.Instruction;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -18,6 +20,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * These are unit tests and do not require external resources.
  */
 public class LexerTest {
+
+    @BeforeAll
+    static void init() {
+        Instruction.init();
+    }
 
     /**
      * Verifies that the lexer correctly tokenizes a source string containing various language elements,
@@ -82,5 +89,60 @@ public class LexerTest {
         assertThat(setiToken).isNotNull();
         assertThat(setiToken.type()).isEqualTo(TokenType.OPCODE);
         assertThat(setiToken.text()).isEqualTo("SETI");
+    }
+
+    /**
+     * Verifies that semicolons are tokenized as NEWLINE tokens, enabling multiple instructions per line.
+     * This allows syntax like "NOP; SETI %DR0 1; NOP" to be parsed as three separate instructions.
+     */
+    @Test
+    @Tag("unit")
+    void testSemicolonAsStatementSeparator() {
+        // Arrange
+        String source = "NOP; SETI %DR0 1; NOP";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics);
+
+        // Act
+        List<Token> tokens = lexer.scanTokens();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(tokens).extracting(Token::type).containsExactly(
+                TokenType.OPCODE,    // NOP
+                TokenType.NEWLINE,   // ;
+                TokenType.OPCODE,    // SETI
+                TokenType.REGISTER,  // %DR0
+                TokenType.NUMBER,    // 1
+                TokenType.NEWLINE,   // ;
+                TokenType.OPCODE,    // NOP
+                TokenType.END_OF_FILE
+        );
+    }
+
+    /**
+     * Verifies that semicolons and newlines can be mixed freely, allowing flexible formatting.
+     */
+    @Test
+    @Tag("unit")
+    void testMixedSemicolonsAndNewlines() {
+        // Arrange
+        String source = "NOP; NOP\nNOP";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics);
+
+        // Act
+        List<Token> tokens = lexer.scanTokens();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(tokens).extracting(Token::type).containsExactly(
+                TokenType.OPCODE,    // NOP
+                TokenType.NEWLINE,   // ;
+                TokenType.OPCODE,    // NOP
+                TokenType.NEWLINE,   // \n
+                TokenType.OPCODE,    // NOP
+                TokenType.END_OF_FILE
+        );
     }
 }

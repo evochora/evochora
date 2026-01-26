@@ -1,4 +1,5 @@
 import * as ChartRegistry from './ChartRegistry.js';
+import { formatTickValue } from './ChartUtils.js';
 
 /**
  * Band Chart Implementation
@@ -137,8 +138,15 @@ export function render(canvas, data, config) {
                 },
                 scales: {
                     x: {
-                        title: { display: true, text: formatLabel(xKey), color: '#888' },
-                        ticks: { color: '#888', maxTicksLimit: 10 },
+                        title: { display: false },
+                        ticks: {
+                            color: '#888',
+                            maxTicksLimit: 10,
+                            callback: function(value) {
+                                const label = this.getLabelForValue(value);
+                                return formatTickValue(label);
+                            }
+                        },
                         grid: { color: '#333', drawBorder: false }
                     },
                     y: {

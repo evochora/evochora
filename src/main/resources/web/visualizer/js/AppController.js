@@ -60,16 +60,19 @@ export class AppController {
             typeData: 1,
             typeEnergy: 2,
             typeStructure: 3,
+            typeLabel: 4,
             backgroundColor: '#1a1a28', // Border area visible when scrolling beyond grid
             colorEmptyBg: '#14141e',
             colorCodeBg: '#3c5078',
             colorDataBg: '#32323c',
             colorStructureBg: '#ff7878',
             colorEnergyBg: '#ffe664',
+            colorLabelBg: '#a0a0a8', // Light gray for jump target labels
             colorCodeText: '#ffffff',
             colorDataText: '#ffffff',
             colorStructureText: '#323232',
             colorEnergyText: '#323232',
+            colorLabelText: '#323232', // Dark text on light background
             colorText: '#ffffff'
         };
         
@@ -405,11 +408,13 @@ export class AppController {
                 if (programIdForState) {
                     // 1. Resolve Artifact (Controller responsibility)
                     let artifactForState = this.programArtifactCache.get(programIdForState) || null;
-                    
+
                     // 2. Set Context (View decides if update needed)
                     this.stateView.setProgram(artifactForState);
+                    this.instructionView.setProgram(artifactForState);
                 } else {
                     this.stateView.setProgram(null);
+                    this.instructionView.setProgram(null);
                 }
 
                 // Update Source View (Clean Architecture)

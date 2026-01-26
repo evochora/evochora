@@ -8,6 +8,7 @@ The Evochora CLI (`bin/evochora`) is the main entry point for running the simula
 - **Compile**: compile EvoASM (Evochora Assembly) programs.
 - **Inspect**: inspect stored simulation data.
 - **Video**: render simulation runs into videos.
+- **Cleanup**: clean up old simulation runs from storage, database, and topics.
 
 For day-to-day usage (including production deployments and release archives), the **start script** is the primary entry point:
 
@@ -29,6 +30,7 @@ bin/evochora help node
 bin/evochora help compile
 bin/evochora help video
 bin/evochora help inspect
+bin/evochora help cleanup
 
 # Show help for inspect storage subcommand
 bin/evochora inspect storage --help
@@ -220,6 +222,75 @@ The `video` command renders simulation data into video files using ffmpeg. It su
 - `--verbose`: Show detailed debug output from ffmpeg
 
 **Note**: The `video` command requires ffmpeg to be installed and available in your PATH. For a complete list of all options and their descriptions, run `bin/evochora help video`.
+
+---
+
+## Clean Up Simulation Runs
+
+The `cleanup` command removes old simulation runs from storage, database, and Artemis topics. It uses glob patterns to specify which runs to keep or delete.
+
+```bash
+# Preview what would be deleted (dry-run, default)
+bin/evochora cleanup --keep "20260117*"
+
+# Actually delete (requires --force)
+bin/evochora cleanup --keep "20260117*" --force
+
+# Delete runs matching a pattern (keep all others)
+bin/evochora cleanup --delete "20260122*"
+
+# Target specific areas only
+bin/evochora cleanup --keep "20260117*" --storage
+bin/evochora cleanup --keep "20260117*" --database --topics
+```
+
+**Parameters:**
+
+| Parameter | Description |
+|-----------|-------------|
+| `--keep <pattern>` | Glob pattern for runs to KEEP (delete all non-matching runs) |
+| `--delete <pattern>` | Glob pattern for runs to DELETE (keep all non-matching runs) |
+| `--storage` | Target storage directories only |
+| `--database` | Target database schemas only |
+| `--topics` | Target Artemis topics/queues only |
+| `--force` | Execute deletion (default: dry-run preview only) |
+
+**Notes:**
+- `--keep` and `--delete` are mutually exclusive (use one or the other)
+- If no area flags are specified, all three areas are targeted
+- The default mode is **dry-run** - nothing is deleted without `--force`
+- Pattern uses glob syntax: `*` matches any characters, `?` matches single character
+
+**Example output (dry-run):**
+```
+=== Cleanup Preview (dry-run mode, use --force to execute) ===
+Pattern: KEEP runs matching "20260117*"
+
+Storage (/home/user/evochora/data/storage):
+  ✓ KEEP   20260117-22042059-d59177fc-1eba-4ce8-85a6-36bd2032e3cb
+  ✗ DELETE 20260122-23234622-42ca3fea-4793-45bd-8dc8-0453cfa2319d
+  ✗ DELETE 20260123-00013250-d6c3c75a-3129-4dde-ab77-4aad8af9c207
+  ...
+
+Database (jdbc:h2:.../indexdb):
+  ✓ KEEP   SIM_20260117_22042059_D59177FC_1EBA_4CE8_85A6_36BD2032E3CB
+  ✗ DELETE SIM_20260122_23234622_42CA3FEA_4793_45BD_8DC8_0453CFA2319D
+  ...
+
+Topics (/home/user/evochora/data/topic):
+  ✓ KEEP   batch-topic_20260117-22042059-d59177fc-1eba-4ce8-85a6-36bd2032e3cb
+  ✗ DELETE batch-topic_20260122-23234622-42ca3fea-4793-45bd-8dc8-0453cfa2319d
+  ...
+
+=== Summary ===
+Storage:  1 kept, 93 to delete
+Database: 1 kept, 93 to delete
+Topics:   14 kept, 190 to delete
+
+Run with --force to execute deletion.
+```
+
+---
 
 ## Configuration
 

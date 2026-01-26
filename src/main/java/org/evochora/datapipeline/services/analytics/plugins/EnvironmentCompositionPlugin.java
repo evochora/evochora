@@ -26,6 +26,7 @@ import org.evochora.runtime.Config;
  *   <li>{@code data_cells} - Count of cells with DATA molecules</li>
  *   <li>{@code energy_cells} - Count of cells with ENERGY molecules</li>
  *   <li>{@code structure_cells} - Count of cells with STRUCTURE molecules</li>
+ *   <li>{@code label_cells} - Count of cells with LABEL molecules (jump targets)</li>
  *   <li>{@code empty_cells} - Count of empty cells</li>
  * </ul>
  * <p>
@@ -43,6 +44,7 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
         .column("data_cells", ColumnType.BIGINT)
         .column("energy_cells", ColumnType.BIGINT)
         .column("structure_cells", ColumnType.BIGINT)
+        .column("label_cells", ColumnType.BIGINT)
         .column("unknown_cells", ColumnType.BIGINT)
         .column("empty_cells", ColumnType.BIGINT)
         .build();
@@ -82,6 +84,7 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
         long dataCells = 0;
         long energyCells = 0;
         long structureCells = 0;
+        long labelCells = 0;
         long unknownCells = 0;
         long totalCells = 0;
 
@@ -95,11 +98,11 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
         // Direct access to the underlying list - NO COPYING to ArrayList
         CellDataColumns columns = tick.getCellColumns();
         int cellsAvailable = columns.getFlatIndicesCount();
-        
+
         if (monteCarloSamples > 0 && cellsAvailable > monteCarloSamples) {
             // Sampling mode: Random sample without copying
             java.util.concurrent.ThreadLocalRandom random = java.util.concurrent.ThreadLocalRandom.current();
-            long[] counts = new long[5]; // code, data, energy, structure, unknown
+            long[] counts = new long[6]; // code, data, energy, structure, label, unknown
 
             for (int i = 0; i < monteCarloSamples; i++) {
                 int index = random.nextInt(cellsAvailable);
@@ -112,10 +115,11 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
             dataCells = (long) (counts[1] * factor);
             energyCells = (long) (counts[2] * factor);
             structureCells = (long) (counts[3] * factor);
-            unknownCells = (long) (counts[4] * factor);
+            labelCells = (long) (counts[4] * factor);
+            unknownCells = (long) (counts[5] * factor);
         } else {
             // Exact mode: count all non-empty cells
-            long[] counts = new long[5];
+            long[] counts = new long[6];
             for (int i = 0; i < cellsAvailable; i++) {
                 countCell(columns.getMoleculeData(i), counts);
             }
@@ -123,12 +127,13 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
             dataCells = counts[1];
             energyCells = counts[2];
             structureCells = counts[3];
-            unknownCells = counts[4];
+            labelCells = counts[4];
+            unknownCells = counts[5];
         }
 
         // Empty = total world size - all categorized cells
         // This includes: truly empty cells (not in TickData) + CODE:0 cells
-        long emptyCells = Math.max(0, totalCells - codeCells - dataCells - energyCells - structureCells - unknownCells);
+        long emptyCells = Math.max(0, totalCells - codeCells - dataCells - energyCells - structureCells - labelCells - unknownCells);
 
         return Collections.singletonList(new Object[]{
             tick.getTickNumber(),
@@ -136,6 +141,7 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
             dataCells,
             energyCells,
             structureCells,
+            labelCells,
             unknownCells,
             emptyCells
         });
@@ -151,11 +157,12 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
      *   <li>DATA → data_cells</li>
      *   <li>ENERGY → energy_cells</li>
      *   <li>STRUCTURE → structure_cells</li>
+     *   <li>LABEL → label_cells (fuzzy jump targets)</li>
      *   <li>Unknown type → unknown_cells</li>
      * </ul>
      *
      * @param moleculeInt The packed molecule integer
-     * @param counts Array: [code, data, energy, structure, unknown]
+     * @param counts Array: [code, data, energy, structure, label, unknown]
      */
     private void countCell(int moleculeInt, long[] counts) {
         int type = moleculeInt & Config.TYPE_MASK;
@@ -172,8 +179,10 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
             counts[2]++;
         } else if (type == Config.TYPE_STRUCTURE) {
             counts[3]++;
+        } else if (type == Config.TYPE_LABEL) {
+            counts[4]++; // LABEL molecules (fuzzy jump targets)
         } else {
-            counts[4]++; // Unknown type
+            counts[5]++; // Unknown type
         }
     }
 
@@ -194,7 +203,7 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
         entry.visualization.type = "stacked-area-chart";
         entry.visualization.config = new HashMap<>();
         entry.visualization.config.put("x", "tick");
-        entry.visualization.config.put("y", List.of("code_cells", "data_cells", "energy_cells", "structure_cells", "unknown_cells", "empty_cells"));
+        entry.visualization.config.put("y", List.of("code_cells", "data_cells", "energy_cells", "structure_cells", "label_cells", "unknown_cells", "empty_cells"));
         entry.visualization.config.put("yAxisMode", "percent");
 
         return entry;

@@ -3,6 +3,7 @@ package org.evochora.runtime.isa.instructions;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
+import static org.evochora.runtime.isa.Variant.NONE;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Environment;
 
@@ -10,6 +11,23 @@ import org.evochora.runtime.model.Environment;
  * Represents the NOP (No Operation) instruction, which does nothing.
  */
 public class NopInstruction extends Instruction {
+
+    private static int family;
+
+    /**
+     * Registers all NOP instructions with the instruction registry.
+     *
+     * @param f the family ID for this instruction family
+     */
+    public static void register(int f) {
+        family = f;
+        reg(0, NONE, "NOP");
+        reg(1, NONE, "WAIT");
+    }
+
+    private static void reg(int op, int variant, String name, OperandSource... sources) {
+        Instruction.registerOp(NopInstruction.class, family, op, variant, name, sources);
+    }
 
     /**
      * The length of the NOP instruction in the environment.

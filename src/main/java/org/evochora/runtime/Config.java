@@ -155,6 +155,13 @@ public final class Config {
     public static final int TYPE_STRUCTURE = (0x03 & ((1 << TYPE_BITS) - 1)) << TYPE_SHIFT;
 
     /**
+     * The type code for a cell representing a jump target label marker.
+     * Labels are used for fuzzy jump matching - the runtime finds matching LABEL
+     * molecules using Hamming distance tolerance rather than absolute coordinates.
+     */
+    public static final int TYPE_LABEL = (0x04 & ((1 << TYPE_BITS) - 1)) << TYPE_SHIFT;
+
+    /**
      * Enables sparse cell tracking for performance optimization in large worlds.
      * When enabled, the Environment maintains a set of occupied cells to avoid
      * iterating through all cells during serialization.

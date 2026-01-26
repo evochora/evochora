@@ -16,6 +16,16 @@ export class OrganismInstructionView {
      */
     constructor(root) {
         this.root = root;
+        this.artifact = null;
+    }
+
+    /**
+     * Sets the program artifact for label name resolution.
+     * This is static metadata that changes only when the program changes.
+     * @param {object} artifact - The ProgramArtifact containing labelValueToName map.
+     */
+    setProgram(artifact) {
+        this.artifact = artifact;
     }
     
     /**
@@ -162,13 +172,14 @@ export class OrganismInstructionView {
         
         switch (arg.type) {
             case 'REGISTER': {
-                const regName = arg.registerType 
-                    ? this.getRegisterNameFromType(arg.registerId, arg.registerType)
-                    : this.getRegisterName(arg.registerId, arg.registerValue);
+                if (!arg.registerType) {
+                    throw new Error(`REGISTER argument missing registerType for registerId ${arg.registerId}`);
+                }
+                const regName = this.getRegisterNameFromType(arg.registerId, arg.registerType);
                 if (arg.registerValue) {
                     const valueStr = ValueFormatter.format(arg.registerValue);
                     const annotation = `=${valueStr.replace(/^\[|\]$/g, '')}`; // Remove brackets for inline view
-                    return `${regName}<span class="register-annotation">${annotation}</span>`;
+                    return `${regName}<span class="annotation">${annotation}</span>`;
                 }
                 return regName;
             }
@@ -181,11 +192,25 @@ export class OrganismInstructionView {
                 return `IMMEDIATE:${arg.rawValue || '?'}`;
             }
             case 'VECTOR':
-            case 'LABEL':
                 if (arg.components && arg.components.length > 0) {
                     return arg.components.join('|');
                 }
                 return '?';
+            case 'LABEL': {
+                // LABEL is a scalar hash value since fuzzy jumps refactoring
+                // Format like IMMEDIATE (e.g., "DATA:123456") with label name annotation
+                let formatted = `LABEL:${arg.value || '?'}`;
+                if (arg.moleculeType && arg.value !== undefined) {
+                    const molecule = { kind: 'MOLECULE', type: arg.moleculeType, value: arg.value };
+                    formatted = ValueFormatter.format(molecule);
+                }
+                // Annotate with label name if artifact is available
+                const labelName = AnnotationUtils.resolveLabelHashToName(arg.value, this.artifact);
+                if (labelName) {
+                    return `${formatted}<span class="annotation">=${labelName}</span>`;
+                }
+                return formatted;
+            }
             case 'STACK':
                 return 'STACK';
             default:
@@ -212,48 +237,6 @@ export class OrganismInstructionView {
      */
     getRegisterNameFromType(registerId, registerType) {
         return AnnotationUtils.formatRegisterName(registerId, registerType);
-    }
-    
-    /**
-     * Gets the register name from its ID using a heuristic.
-     * This is a fallback for older data where the explicit `registerType` is not available.
-     * It is not 100% reliable for distinguishing LRs from DRs.
-     *
-     * @param {number} registerId - The numeric ID of the register.
-     * @param {object} registerValue - The value of the register, used in the heuristic.
-     * @returns {string} The formatted register name.
-     * @private
-     */
-    getRegisterName(registerId, registerValue) {
-        if (registerId === null || registerId === undefined) {
-            return '?';
-        }
-        
-        // For registerId >= 1000, use central utility (can distinguish FPR/PR/DR)
-        if (registerId >= INSTRUCTION_CONSTANTS.PR_BASE) {
-            return AnnotationUtils.formatRegisterName(registerId);
-        }
-        
-        // For registerId < 1000, we need to distinguish between LR and DR
-        // Backend logic: if registerId < locationRegisters.size() then LR, else DR
-        // Since we don't have locationRegisters.size(), we use a heuristic:
-        // - If registerValue is VECTOR and registerId < 4, it's likely LR
-        // - But DR can also have VECTOR values, so this is not 100% reliable
-        // - However, LR always have VECTOR values, so if we see VECTOR with registerId < 4, it's most likely LR
-        if (registerId >= 0 && registerId < 4) {
-            // Heuristic: if value is VECTOR, it's likely LR (LR always have VECTOR values)
-            // But we need to be careful: DR can also have VECTOR values
-            // The backend checks LR first if registerId < locationRegisters.size()
-            // Since we don't have that info, we use the heuristic that VECTOR + registerId < 4 = LR
-            if (registerValue && registerValue.kind === 'VECTOR') {
-                return `%LR${registerId}`;
-            }
-            // If value is MOLECULE or null, it's DR
-            return `%DR${registerId}`;
-        }
-        
-        // For registerId >= 4 and < PR_BASE, it's always DR - use central utility
-        return AnnotationUtils.formatRegisterName(registerId);
     }
 
     /**

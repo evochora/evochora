@@ -49,7 +49,6 @@ import java.util.Map;
  *   <li><strong>callSiteBindings</strong>: Map<Integer, int[]> (unchanged)</li>
  *   <li><strong>relativeCoordToLinearAddress</strong>: Map<String, Integer> (unchanged)</li>
  *   <li><strong>linearAddressToCoord</strong>: Map<Integer, int[]> (unchanged)</li>
- *   <li><strong>labelAddressToName</strong>: Map<Integer, String> (unchanged)</li>
  *   <li><strong>registerAliasMap</strong>: Map<String, Integer> (unchanged)</li>
  *   <li><strong>procNameToParamNames</strong>: Map<String, List<ParamInfo>> (unchanged)</li>
  *   <li><strong>tokenMap</strong>: Map<SerializableSourceInfo, TokenInfo> (unchanged)</li>
@@ -78,12 +77,13 @@ public record LinearizedProgramArtifact(
         Map<Integer, int[]> callSiteBindings,
         Map<String, Integer> relativeCoordToLinearAddress,
         Map<Integer, int[]> linearAddressToCoord,
-        Map<Integer, String> labelAddressToName,
         Map<String, Integer> registerAliasMap,
         Map<String, List<org.evochora.compiler.api.ParamInfo>> procNameToParamNames,
         Map<SerializableSourceInfo, TokenInfo> tokenMap,
         Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup,
         Map<String, List<org.evochora.compiler.api.MachineInstructionInfo>> sourceLineToInstructions,
+        Map<Integer, String> labelValueToName,
+        Map<String, Integer> labelNameToValue,
         EnvironmentProperties envProps
 ) {
     
@@ -95,12 +95,13 @@ public record LinearizedProgramArtifact(
         callSiteBindings = callSiteBindings != null ? Collections.unmodifiableMap(callSiteBindings) : Collections.emptyMap();
         relativeCoordToLinearAddress = relativeCoordToLinearAddress != null ? Collections.unmodifiableMap(relativeCoordToLinearAddress) : Collections.emptyMap();
         linearAddressToCoord = linearAddressToCoord != null ? Collections.unmodifiableMap(linearAddressToCoord) : Collections.emptyMap();
-        labelAddressToName = labelAddressToName != null ? Collections.unmodifiableMap(labelAddressToName) : Collections.emptyMap();
         registerAliasMap = registerAliasMap != null ? Collections.unmodifiableMap(registerAliasMap) : Collections.emptyMap();
         procNameToParamNames = procNameToParamNames != null ? Collections.unmodifiableMap(procNameToParamNames) : Collections.emptyMap();
         tokenMap = tokenMap != null ? Collections.unmodifiableMap(tokenMap) : Collections.emptyMap();
         tokenLookup = tokenLookup != null ? Collections.unmodifiableMap(tokenLookup) : Collections.emptyMap();
         sourceLineToInstructions = sourceLineToInstructions != null ? Collections.unmodifiableMap(sourceLineToInstructions) : Collections.emptyMap();
+        labelValueToName = labelValueToName != null ? Collections.unmodifiableMap(labelValueToName) : Collections.emptyMap();
+        labelNameToValue = labelNameToValue != null ? Collections.unmodifiableMap(labelNameToValue) : Collections.emptyMap();
         envProps = envProps != null ? envProps : new EnvironmentProperties(new int[0], false);
     }
     
@@ -122,12 +123,13 @@ public record LinearizedProgramArtifact(
                 artifact.callSiteBindings(),
                 artifact.relativeCoordToLinearAddress(),
                 artifact.linearAddressToCoord(),
-                artifact.labelAddressToName(),
                 artifact.registerAliasMap(),
                 artifact.procNameToParamNames(),
                 convertTokenMap(artifact.tokenMap()),
                 artifact.tokenLookup(),
                 artifact.sourceLineToInstructions(),
+                artifact.labelValueToName(),
+                artifact.labelNameToValue(),
                 envProps
         );
     }
@@ -148,12 +150,13 @@ public record LinearizedProgramArtifact(
                 callSiteBindings(),
                 relativeCoordToLinearAddress(),
                 linearAddressToCoord(),
-                labelAddressToName(),
                 registerAliasMap(),
                 procNameToParamNames,
                 convertTokenMapBack(tokenMap),
                 tokenLookup,
-                sourceLineToInstructions
+                sourceLineToInstructions,
+                labelValueToName,
+                labelNameToValue
         );
     }
     

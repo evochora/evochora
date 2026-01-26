@@ -4,6 +4,7 @@ import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.Variant;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Environment;
@@ -12,11 +13,92 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.NoSuchElementException;
 
+import static org.evochora.runtime.isa.Instruction.OperandSource.*;
+
 /**
  * Handles conditional instructions, which compare values and skip the next instruction
  * if the condition is not met. It supports different operand types and sources.
  */
 public class ConditionalInstruction extends Instruction {
+
+    private static int family;
+
+    /**
+     * Registers all conditional instructions with the instruction registry.
+     *
+     * @param f the family ID for this instruction family
+     */
+    public static void register(int f) {
+        family = f;
+        // Operation 0: IF/EQ (If Equal)
+        reg(0, Variant.RR, "IFR", REGISTER, REGISTER);
+        reg(0, Variant.RI, "IFI", REGISTER, IMMEDIATE);
+        reg(0, Variant.SS, "IFS", STACK, STACK);
+        // Operation 1: NE (Not Equal)
+        reg(1, Variant.RR, "INR", REGISTER, REGISTER);
+        reg(1, Variant.RI, "INI", REGISTER, IMMEDIATE);
+        reg(1, Variant.SS, "INS", STACK, STACK);
+        // Operation 2: LT (Less Than)
+        reg(2, Variant.RR, "LTR", REGISTER, REGISTER);
+        reg(2, Variant.RI, "LTI", REGISTER, IMMEDIATE);
+        reg(2, Variant.SS, "LTS", STACK, STACK);
+        // Operation 3: GT (Greater Than)
+        reg(3, Variant.RR, "GTR", REGISTER, REGISTER);
+        reg(3, Variant.RI, "GTI", REGISTER, IMMEDIATE);
+        reg(3, Variant.SS, "GTS", STACK, STACK);
+        // Operation 4: LE (Less Than or Equal)
+        reg(4, Variant.RR, "LETR", REGISTER, REGISTER);
+        reg(4, Variant.RI, "LETI", REGISTER, IMMEDIATE);
+        reg(4, Variant.SS, "LETS", STACK, STACK);
+        // Operation 5: GE (Greater Than or Equal)
+        reg(5, Variant.RR, "GETR", REGISTER, REGISTER);
+        reg(5, Variant.RI, "GETI", REGISTER, IMMEDIATE);
+        reg(5, Variant.SS, "GETS", STACK, STACK);
+        // Operation 6: IFT (If True / non-zero)
+        reg(6, Variant.RR, "IFTR", REGISTER, REGISTER);
+        reg(6, Variant.RI, "IFTI", REGISTER, IMMEDIATE);
+        reg(6, Variant.SS, "IFTS", STACK, STACK);
+        // Operation 7: INT (If Not True / zero)
+        reg(7, Variant.RR, "INTR", REGISTER, REGISTER);
+        reg(7, Variant.RI, "INTI", REGISTER, IMMEDIATE);
+        reg(7, Variant.SS, "INTS", STACK, STACK);
+        // Operation 8: IFM (If Mine - ownership check)
+        reg(8, Variant.R, "IFMR", REGISTER);
+        reg(8, Variant.V, "IFMI", VECTOR);  // Note: uses VECTOR operand despite "I" suffix
+        reg(8, Variant.S, "IFMS", STACK);
+        // Operation 9: INM (If Not Mine - ownership check)
+        reg(9, Variant.R, "INMR", REGISTER);
+        reg(9, Variant.V, "INMI", VECTOR);  // Note: uses VECTOR operand despite "I" suffix
+        reg(9, Variant.S, "INMS", STACK);
+        // Operation 10: IFP (If Passable)
+        reg(10, Variant.R, "IFPR", REGISTER);
+        reg(10, Variant.V, "IFPI", VECTOR);  // Note: uses VECTOR operand despite "I" suffix
+        reg(10, Variant.S, "IFPS", STACK);
+        // Operation 11: INP (If Not Passable)
+        reg(11, Variant.R, "INPR", REGISTER);
+        reg(11, Variant.V, "INPI", VECTOR);  // Note: uses VECTOR operand despite "I" suffix
+        reg(11, Variant.S, "INPS", STACK);
+        // Operation 12: IFF (If Foreign ownership)
+        reg(12, Variant.R, "IFFR", REGISTER);
+        reg(12, Variant.V, "IFFI", VECTOR);  // Note: uses VECTOR operand despite "I" suffix
+        reg(12, Variant.S, "IFFS", STACK);
+        // Operation 13: INF (If Not Foreign ownership)
+        reg(13, Variant.R, "INFR", REGISTER);
+        reg(13, Variant.V, "INFI", VECTOR);  // Note: uses VECTOR operand despite "I" suffix
+        reg(13, Variant.S, "INFS", STACK);
+        // Operation 14: IFV (If Vacant ownership)
+        reg(14, Variant.R, "IFVR", REGISTER);
+        reg(14, Variant.V, "IFVI", VECTOR);  // Note: uses VECTOR operand despite "I" suffix
+        reg(14, Variant.S, "IFVS", STACK);
+        // Operation 15: INV (If Not Vacant ownership)
+        reg(15, Variant.R, "INVR", REGISTER);
+        reg(15, Variant.V, "INVI", VECTOR);  // Note: uses VECTOR operand despite "I" suffix
+        reg(15, Variant.S, "INVS", STACK);
+    }
+
+    private static void reg(int op, int variant, String name, OperandSource... sources) {
+        Instruction.registerOp(ConditionalInstruction.class, family, op, variant, name, sources);
+    }
 
     /**
      * Constructs a new ConditionalInstruction.

@@ -24,13 +24,6 @@ public interface IInstructionSet {
 	Optional<Signature> getSignatureById(int id);
 
 	/**
-	 * Gets the length of an instruction by its ID.
-	 * @param id The ID of the instruction.
-	 * @return The length of the instruction in memory slots.
-	 */
-	int getInstructionLengthById(int id);
-
-	/**
 	 * Resolves a register token (e.g., "%DR0") to its ID.
 	 * @param token The register token to resolve.
 	 * @return An optional containing the register ID, or empty if not found.

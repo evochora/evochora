@@ -9,14 +9,55 @@ import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.Variant;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+
+import static org.evochora.runtime.isa.Instruction.OperandSource.*;
 
 /**
  * Implements n-dimensional vector manipulation instructions, including VGET, VSET, VBLD,
  * bit-to-vector/vector-to-bit conversions, and vector rotation.
  */
 public class VectorInstruction extends Instruction {
+
+    private static int family;
+
+    /**
+     * Registers all vector manipulation instructions with the instruction registry.
+     *
+     * @param f the family ID for this instruction family
+     */
+    public static void register(int f) {
+        family = f;
+        // Operation 0: VGT (Vector get)
+        reg(0, Variant.RRR, "VGTR", REGISTER, REGISTER, REGISTER);
+        reg(0, Variant.RRI, "VGTI", REGISTER, REGISTER, IMMEDIATE);
+        reg(0, Variant.SS, "VGTS", STACK, STACK);  // index, vector
+        // Operation 1: VST (Vector set)
+        reg(1, Variant.RRR, "VSTR", REGISTER, REGISTER, REGISTER);
+        reg(1, Variant.RII, "VSTI", REGISTER, IMMEDIATE, IMMEDIATE);
+        reg(1, Variant.SSS, "VSTS", STACK, STACK, STACK);  // value, index, vector
+        // Operation 2: VBL (Vector build)
+        reg(2, Variant.R, "VBLD", REGISTER);
+        reg(2, Variant.NONE, "VBLS");
+        // Operation 3: B2V (Bytes to vector)
+        reg(3, Variant.RR, "B2VR", REGISTER, REGISTER);
+        reg(3, Variant.RI, "B2VI", REGISTER, IMMEDIATE);
+        reg(3, Variant.S, "B2VS", STACK);  // mask
+        // Operation 4: V2B (Vector to bytes)
+        reg(4, Variant.RR, "V2BR", REGISTER, REGISTER);
+        reg(4, Variant.RV, "V2BI", REGISTER, VECTOR);
+        reg(4, Variant.S, "V2BS", STACK);  // vector
+        // Operation 5: RTR (Retarget / Rotate Right by 90 degrees in plane of two axes)
+        reg(5, Variant.RRR, "RTRR", REGISTER, REGISTER, REGISTER);
+        reg(5, Variant.RII, "RTRI", REGISTER, IMMEDIATE, IMMEDIATE);
+        reg(5, Variant.SSS, "RTRS", STACK, STACK, STACK);  // axis2, axis1, vector
+    }
+
+    private static void reg(int op, int variant, String name, OperandSource... sources) {
+        Instruction.registerOp(VectorInstruction.class, family, op, variant, name, sources);
+    }
 
     /**
      * Constructs a new VectorInstruction.

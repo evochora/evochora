@@ -4,6 +4,7 @@ import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.Variant;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
 
@@ -12,8 +13,35 @@ import java.util.NoSuchElementException;
 
 /**
  * Handles stack manipulation instructions like DUP, SWAP, DROP, and ROT.
+ * <p>
+ * Note: These are part of the DATA family but handled by a separate class for cleaner implementation.
  */
 public class StackInstruction extends Instruction {
+
+    private static int family;
+
+    /**
+     * Registers all stack manipulation instructions with the instruction registry.
+     * <p>
+     * Note: Stack operations share the DATA family ID, continuing from DataInstruction's operations.
+     *
+     * @param f the family ID for this instruction family (should be DATA family)
+     */
+    public static void register(int f) {
+        family = f;
+        // Operation 3: DUP (duplicate top of stack)
+        reg(3, Variant.NONE, "DUP");
+        // Operation 4: SWAP (swap top two stack values)
+        reg(4, Variant.NONE, "SWAP");
+        // Operation 5: DROP (discard top of stack)
+        reg(5, Variant.NONE, "DROP");
+        // Operation 6: ROT (stack rotate)
+        reg(6, Variant.NONE, "ROT");
+    }
+
+    private static void reg(int op, int variant, String name, OperandSource... sources) {
+        Instruction.registerOp(StackInstruction.class, family, op, variant, name, sources);
+    }
 
     /**
      * Constructs a new StackInstruction.

@@ -62,11 +62,27 @@ public class Emitter {
         // Map to collect machine instructions per source line for frontend visualization
         // Key: "fileName:lineNumber", Value: List of machine instructions (sorted by linear address)
         Map<String, List<MachineInstructionInfo>> sourceLineToInstructions = new HashMap<>();
-        Map<Integer, String> labelAddressToNameForDisplay = new HashMap<>();
-        layout.labelToAddress().forEach((name, addr) -> labelAddressToNameForDisplay.put(addr, name));
 
         int address = 0;
         for (IrItem item : program.items()) {
+            // Emit LABEL molecules (jump target markers)
+            if (item instanceof IrLabelDef lbl) {
+                // Use the label's registered linear address from the layout, not the sequential counter
+                Integer labelLinearAddr = layout.labelToAddress().get(lbl.name());
+                if (labelLinearAddr == null) {
+                    throw new CompilationException(formatSource(lbl.source(), "Label '" + lbl.name() + "' not found in layout"));
+                }
+                int[] labelCoord = linearToCoord.get(labelLinearAddr);
+                if (labelCoord == null) {
+                    throw new CompilationException(formatSource(lbl.source(), "Missing coord for label address " + labelLinearAddr));
+                }
+                // Generate label hash from name (19-bit, always positive)
+                int labelHash = lbl.name().hashCode() & 0x7FFFF;
+                machineCodeLayout.put(labelCoord, new Molecule(Config.TYPE_LABEL, labelHash).toInt());
+                address = labelLinearAddr + 1; // Sync the counter for subsequent items
+                continue;
+            }
+
             if (item instanceof IrInstruction ins) {
                 // Track the opcode address (where this instruction's opcode is located)
                 int opcodeAddress = address;
@@ -88,7 +104,8 @@ public class Emitter {
                     MachineInstructionInfo machineInfo = new MachineInstructionInfo(
                             opcodeAddress,
                             ins.opcode(),
-                            operandsAsString
+                            operandsAsString,
+                            ins.synthetic()
                     );
                     sourceLineToInstructions.computeIfAbsent(sourceLineKey, k -> new ArrayList<>()).add(machineInfo);
                 }
@@ -105,26 +122,11 @@ public class Emitter {
                                 address++;
                             }
                         } else if (op instanceof IrLabelRef ref) {
-                            // Fallback: resolve any remaining label refs here using the opcode coordinate
-                            Integer targetAddr = layout.labelToAddress().get(ref.labelName());
-                            if (targetAddr == null) {
-                                throw new CompilationException(formatSource(ins.source(), "Unknown label reference: " + ref.labelName()));
-                            }
-                            int[] dstCoord = linearToCoord.get(targetAddr);
-                            if (dstCoord == null) throw new CompilationException(formatSource(ins.source(), "Missing coord for label target address " + targetAddr));
-                            int dims = Math.max(opcodeCoord.length, dstCoord.length);
-                            int[] delta = new int[dims];
-                            for (int d = 0; d < dims; d++) {
-                                int s = d < opcodeCoord.length ? opcodeCoord[d] : 0;
-                                int t = d < dstCoord.length ? dstCoord[d] : 0;
-                                delta[d] = t - s;
-                            }
-                            for (int c : delta) {
-                                int[] coord = linearToCoord.get(address);
-                                if (coord == null) throw new CompilationException(formatSource(ins.source(), "Missing coord for address " + address));
-                                machineCodeLayout.put(coord, new Molecule(Config.TYPE_DATA, c).toInt());
-                                address++;
-                            }
+                            // IrLabelRef should have been converted to IrImm by LabelRefLinkingRule
+                            // If we reach here, something is wrong in the linking phase
+                            throw new CompilationException(formatSource(ins.source(),
+                                "Internal error: IrLabelRef '" + ref.labelName() + "' was not resolved during linking. " +
+                                "This indicates a bug in LabelRefLinkingRule or a missing label definition."));
                         } else {
                             int[] coord = linearToCoord.get(address);
                             if (coord == null) throw new CompilationException(formatSource(ins.source(), "Missing coord for address " + address));
@@ -136,9 +138,6 @@ public class Emitter {
                 }
             }
         }
-
-        Map<Integer, String> labelAddressToName = new HashMap<>();
-        layout.labelToAddress().forEach((name, addr) -> labelAddressToName.put(addr, name));
 
         // Sort machine instructions within each source line by linear address
         Map<String, List<MachineInstructionInfo>> sortedSourceLineToInstructions = new LinkedHashMap<>();
@@ -157,6 +156,17 @@ public class Emitter {
 
         String programId = Integer.toHexString(machineCodeLayout.hashCode());
 
+        // Build label hash maps for fuzzy jump matching visualization
+        Map<Integer, String> labelValueToName = new HashMap<>();
+        Map<String, Integer> labelNameToValue = new HashMap<>();
+        for (Map.Entry<String, Integer> entry : layout.labelToAddress().entrySet()) {
+            String name = entry.getKey();
+            // Hash must match the formula used in LabelRefLinkingRule (19-bit, always positive)
+            int hash = name.hashCode() & 0x7FFFF;
+            labelValueToName.put(hash, name);
+            labelNameToValue.put(name, hash);
+        }
+
         return new ProgramArtifact(
                 programId,
                 sources,
@@ -166,12 +176,13 @@ public class Emitter {
                 linkingContext.callSiteBindings(),
                 coordToLinear,
                 linearToCoord,
-                labelAddressToName,
                 registerAliasMap,
                 procNameToParamNames,
                 tokenMap,
                 tokenLookup,
-                sortedSourceLineToInstructions
+                sortedSourceLineToInstructions,
+                labelValueToName,
+                labelNameToValue
         );
     }
 

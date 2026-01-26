@@ -146,37 +146,39 @@ export class AnnotationUtils {
     }
 
     /**
-     * Resolves a label or procedure name to its world coordinates by searching the program artifact.
+     * Resolves a label hash value to its name using the program artifact.
+     * Used for displaying human-readable label names in the instruction view.
      *
-     * @param {string} name - The name of the label or procedure to resolve.
-     * @param {object} artifact - The program artifact containing the necessary lookup maps (`labelAddressToName`, `linearAddressToCoord`).
-     * @returns {number[]} An array of coordinates (e.g., [x, y]).
-     * @throws {Error} If the name cannot be resolved or if the artifact is invalid.
+     * @param {number} hashValue - The 20-bit hash value of the label.
+     * @param {object} artifact - The program artifact containing `labelValueToName` map.
+     * @returns {string|null} The label name, or null if not found.
      */
-    static resolveNameToCoords(name, artifact) {
-        if (!name || !artifact || !Array.isArray(artifact.labelAddressToName) || !Array.isArray(artifact.linearAddressToCoord)) {
-            throw new Error(`Invalid artifact provided for resolving name: "${name}"`);
+    static resolveLabelHashToName(hashValue, artifact) {
+        if (hashValue === null || hashValue === undefined) {
+            return null;
         }
-        
-        const actualName = name.includes('.') ? name.substring(name.lastIndexOf('.') + 1) : name;
-
-        const labelMapping = artifact.labelAddressToName.find(mapping => 
-            mapping.labelName && mapping.labelName.toUpperCase() === actualName.toUpperCase()
-        );
-
-        if (labelMapping) {
-            const numericAddress = labelMapping.linearAddress;
-            
-            const coordMapping = artifact.linearAddressToCoord.find(mapping => 
-                mapping.linearAddress === numericAddress
-            );
-
-            if (coordMapping && coordMapping.coord && Array.isArray(coordMapping.coord.components)) {
-                return coordMapping.coord.components;
-            }
+        if (!artifact || !artifact.labelValueToName) {
+            return null;
         }
+        // labelValueToName is a map from int32 hash to string name
+        return artifact.labelValueToName[hashValue] || null;
+    }
 
-        throw new Error(`Could not resolve coordinates for name: "${actualName}"`);
+    /**
+     * Resolves a label name to its hash value using the program artifact.
+     * Used for displaying the hash value in the source view annotations.
+     *
+     * @param {string} name - The label or procedure name.
+     * @param {object} artifact - The program artifact containing `labelNameToValue` map.
+     * @returns {number|null} The 20-bit hash value, or null if not found.
+     */
+    static resolveLabelNameToHash(name, artifact) {
+        if (!name || !artifact || !artifact.labelNameToValue) {
+            return null;
+        }
+        const upperName = name.toUpperCase();
+        // labelNameToValue is a map from string name to int32 hash
+        return artifact.labelNameToValue[upperName] ?? null;
     }
 
     /**

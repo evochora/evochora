@@ -24,12 +24,16 @@ import org.evochora.runtime.isa.Instruction.InstructionInfo;
  * stores raw counts per tick. The query aggregates data into ~100 buckets for
  * visualization as a stacked bar chart with percentage normalization.
  * <p>
+ * Additionally tracks instruction failure rates on a secondary Y-axis,
+ * showing the percentage of executed instructions that failed.
+ * <p>
  * <strong>Design:</strong>
  * <ul>
  *   <li>Stateless: only extracts current tick's instruction counts</li>
  *   <li>Dynamic: instruction families discovered at startup</li>
  *   <li>Bucket aggregation: ~100 time buckets for readable visualization</li>
  *   <li>Percentage mode: each bar totals 100%</li>
+ *   <li>Failure rate: secondary line showing % failed instructions</li>
  * </ul>
  */
 public class InstructionUsagePlugin extends AbstractAnalyticsPlugin {
@@ -65,6 +69,8 @@ public class InstructionUsagePlugin extends AbstractAnalyticsPlugin {
         for (String familyName : FAMILY_NAMES) {
             builder.column(familyName, ColumnType.INTEGER);
         }
+        // Track failed instruction count for failure rate calculation
+        builder.column("failure_count", ColumnType.INTEGER);
         SCHEMA = builder.build();
     }
 
@@ -76,21 +82,28 @@ public class InstructionUsagePlugin extends AbstractAnalyticsPlugin {
     @Override
     public List<Object[]> extractRows(TickData tick) {
         Map<String, Integer> counts = FAMILY_NAMES.stream().collect(Collectors.toMap(name -> name, name -> 0));
+        int failureCount = 0;
 
-        tick.getOrganismsList().forEach(org -> {
+        for (var org : tick.getOrganismsList()) {
             if (org.hasInstructionOpcodeId()) {
                 String familyName = OPCODE_TO_FAMILY_NAME.get(org.getInstructionOpcodeId());
                 if (familyName != null) {
                     counts.compute(familyName, (k, v) -> (v == null) ? 1 : v + 1);
                 }
+                // Count failed instructions (only those that attempted execution)
+                if (org.getInstructionFailed()) {
+                    failureCount++;
+                }
             }
-        });
-        
-        Object[] row = new Object[FAMILY_NAMES.size() + 1];
+        }
+
+        // Row: tick, [family counts...], failure_count
+        Object[] row = new Object[FAMILY_NAMES.size() + 2];
         row[0] = tick.getTickNumber();
         for (int i = 0; i < FAMILY_NAMES.size(); i++) {
             row[i + 1] = counts.get(FAMILY_NAMES.get(i));
         }
+        row[FAMILY_NAMES.size() + 1] = failureCount;
 
         return Collections.singletonList(row);
     }
@@ -101,6 +114,9 @@ public class InstructionUsagePlugin extends AbstractAnalyticsPlugin {
      * The query aggregates instruction counts into ~100 buckets, summing
      * all counts per family within each bucket. Percentage normalization
      * is done client-side by the chart component.
+     * <p>
+     * For failure rate, calculates the maximum rate within each bucket
+     * and records the tick where that maximum occurred.
      *
      * @return SQL query string with {table} placeholder
      */
@@ -109,20 +125,40 @@ public class InstructionUsagePlugin extends AbstractAnalyticsPlugin {
         String sumColumns = FAMILY_NAMES.stream()
             .map(name -> "SUM(" + name + ")::BIGINT AS " + name)
             .collect(Collectors.joining(",\n                "));
-        
+
+        // Build total calculation from all family columns (for per-tick rate)
+        String totalExpr = FAMILY_NAMES.stream()
+            .map(name -> name)
+            .collect(Collectors.joining(" + "));
+
         return """
             WITH
             params AS (
                 SELECT GREATEST(1, (MAX(tick) - MIN(tick)) / %d)::BIGINT AS bucket_size
                 FROM {table}
+            ),
+            per_tick AS (
+                SELECT
+                    tick,
+                    (FLOOR(tick / (SELECT bucket_size FROM params)) * (SELECT bucket_size FROM params))::BIGINT AS bucket_tick,
+                    CASE
+                        WHEN (%s) = 0 THEN 0.0
+                        ELSE (failure_count::DOUBLE * 100.0 / (%s))
+                    END AS tick_failure_rate,
+                    %s
+                FROM {table}
             )
             SELECT
-                (FLOOR(tick / (SELECT bucket_size FROM params)) * (SELECT bucket_size FROM params))::BIGINT AS tick,
-                %s
-            FROM {table}
+                bucket_tick AS tick,
+                %s,
+                MAX(tick_failure_rate) AS failure_rate,
+                ARG_MAX(tick, tick_failure_rate) AS failure_rate_peak_tick
+            FROM per_tick
             GROUP BY 1
             ORDER BY tick
-            """.formatted(TARGET_BUCKETS, sumColumns);
+            """.formatted(TARGET_BUCKETS, totalExpr, totalExpr,
+                         FAMILY_NAMES.stream().collect(Collectors.joining(", ")),
+                         sumColumns);
     }
 
     @Override
@@ -130,9 +166,7 @@ public class InstructionUsagePlugin extends AbstractAnalyticsPlugin {
         ManifestEntry entry = new ManifestEntry();
         entry.id = metricId;
         entry.name = "Instruction Usage";
-        entry.description = "Distribution of executed instruction families over time. "
-            + "Data is aggregated into ~" + TARGET_BUCKETS + " time buckets. "
-            + "Each bar shows the percentage breakdown of instruction types.";
+        entry.description = "Instruction family breakdown (%) with maximum failure rate (sampled).";
 
         entry.dataSources = new HashMap<>();
         for (int level = 0; level < lodLevels; level++) {
@@ -142,11 +176,13 @@ public class InstructionUsagePlugin extends AbstractAnalyticsPlugin {
         
         // Use aggregated query with bucketing
         entry.generatedQuery = generateAggregatedQuery();
-        
-        // Output columns: tick + all family names
+
+        // Output columns: tick + all family names + failure_rate + peak_tick
         List<String> outputCols = new java.util.ArrayList<>();
         outputCols.add("tick");
         outputCols.addAll(FAMILY_NAMES);
+        outputCols.add("failure_rate");
+        outputCols.add("failure_rate_peak_tick");
         entry.outputColumns = outputCols;
 
         entry.visualization = new VisualizationHint();
@@ -155,6 +191,10 @@ public class InstructionUsagePlugin extends AbstractAnalyticsPlugin {
         entry.visualization.config.put("x", "tick");
         entry.visualization.config.put("y", FAMILY_NAMES);
         entry.visualization.config.put("yAxisMode", "percent");
+        // Secondary Y-axis for failure rate (line overlay)
+        entry.visualization.config.put("y2", "failure_rate");
+        entry.visualization.config.put("y2Label", "Failure Rate");
+        entry.visualization.config.put("y2PeakTick", "failure_rate_peak_tick");
 
         return entry;
     }

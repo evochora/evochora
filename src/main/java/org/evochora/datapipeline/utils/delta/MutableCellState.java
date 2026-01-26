@@ -101,16 +101,10 @@ public class MutableCellState {
         for (int i = 0; i < count; i++) {
             int flatIndex = delta.getFlatIndices(i);
             if (flatIndex >= 0 && flatIndex < totalCells) {
-                int data = delta.getMoleculeData(i);
-                if (data == 0) {
-                    // Cell cleared
-                    moleculeData[flatIndex] = 0;
-                    ownerIds[flatIndex] = 0;
-                } else {
-                    // Cell set/updated
-                    moleculeData[flatIndex] = data;
-                    ownerIds[flatIndex] = delta.getOwnerIds(i);
-                }
+                // Always read both moleculeData and ownerId from the delta.
+                // This ensures backward compatibility and correct handling of any data.
+                moleculeData[flatIndex] = delta.getMoleculeData(i);
+                ownerIds[flatIndex] = delta.getOwnerIds(i);
             }
         }
     }
@@ -145,7 +139,9 @@ public class MutableCellState {
      * @throws IndexOutOfBoundsException if flatIndex is out of range
      */
     public boolean isOccupied(int flatIndex) {
-        return moleculeData[flatIndex] != 0;
+        // A cell is "occupied" if it has non-empty molecule data OR has an owner.
+        // This handles backward compatibility with data where CODE:0 may have owner!=0.
+        return moleculeData[flatIndex] != 0 || ownerIds[flatIndex] != 0;
     }
     
     /**
@@ -173,14 +169,16 @@ public class MutableCellState {
     /**
      * Counts the number of occupied cells.
      * <p>
+     * A cell is "occupied" if it has non-empty molecule data OR has an owner.
+     * <p>
      * Note: This is O(totalCells) - use sparingly.
      *
-     * @return the number of cells with non-zero molecule data
+     * @return the number of occupied cells
      */
     public int countOccupied() {
         int count = 0;
-        for (int data : moleculeData) {
-            if (data != 0) {
+        for (int i = 0; i < totalCells; i++) {
+            if (moleculeData[i] != 0 || ownerIds[i] != 0) {
                 count++;
             }
         }
@@ -197,7 +195,9 @@ public class MutableCellState {
     public CellDataColumns toCellDataColumns() {
         CellDataColumns.Builder builder = CellDataColumns.newBuilder();
         for (int i = 0; i < totalCells; i++) {
-            if (moleculeData[i] != 0) {
+            // A cell is "occupied" if it has non-empty molecule data OR has an owner.
+            // CODE:0 (moleculeData=0) can have a valid owner (e.g., initial world objects).
+            if (moleculeData[i] != 0 || ownerIds[i] != 0) {
                 builder.addFlatIndices(i);
                 builder.addMoleculeData(moleculeData[i]);
                 builder.addOwnerIds(ownerIds[i]);

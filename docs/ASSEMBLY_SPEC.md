@@ -147,11 +147,21 @@ The syntax of Evochora assembly is designed to be simple and readable. It follow
 
 ### Statement Structure
 
-A typical line of code consists of an optional label, followed by an instruction or a directive, and then its arguments. Each component is separated by whitespace. Each statement must end with a newline character; you cannot place multiple instructions on the same line. Empty lines are ignored.
+A typical line of code consists of an optional label, followed by an instruction or a directive, and then its arguments. Each component is separated by whitespace. Statements are terminated by a newline character or a semicolon (`;`). Empty lines are ignored.
 
 ```
 OPCODE ARGUMENT1 ARGUMENT2  # Comment
 ```
+
+#### Multiple Instructions Per Line
+
+You can place multiple instructions on a single line by separating them with semicolons:
+
+```
+NOP; SETI %DR0 DATA:1; NOP
+```
+
+This is equivalent to writing each instruction on its own line. Semicolons and newlines can be mixed freely.
 
 ### Comments
 
@@ -239,6 +249,7 @@ The instruction set defines the fundamental operations an organism can perform. 
 * `SETI %REG <Literal>`: Sets `<%REG>` to the immediate `<Literal>`.
 * `SETR %DEST_REG %SRC_REG`: Copies the value from `<%SRC_REG>` to `<%DEST_REG>`.
 * `SETV %REG <Vector|Label>`: Sets `<%REG>` to the specified vector or the vector to the label.
+* `XCHG %REG1 %REG2`: Exchanges (swaps) the contents of two registers atomically.
 * `PUSH %REG`: Pushes the value of `<%REG>` onto the Data Stack.
 * `POP %REG`: Pops a value from the Data Stack into `<%REG>`.
 * `PUSI <Literal>`: Pushes the immediate `<Literal>` onto the Data Stack.
@@ -257,6 +268,13 @@ These instructions operate on scalar `DATA` values. `ADD` and `SUB` also support
 * `MULR %REG1 %REG2`, `MULI %REG1 <Literal>`, `MULS`: Performs multiplication (scalars only).
 * `DIVR %REG1 %REG2`, `DIVI %REG1 <Literal>`, `DIVS`: Performs division (scalars only).
 * `MODR %REG1 %REG2`, `MODI %REG1 <Literal>`, `MODS`: Performs modulo (scalars only).
+* `NEGR %REG`, `NEGS`: Negates the value (`-x`).
+* `ABSR %REG`, `ABSS`: Computes absolute value (`|x|`).
+* `INCR %REG`, `INCS`: Increments by one (`x + 1`).
+* `DECR %REG`, `DECS`: Decrements by one (`x - 1`).
+* `MINR %REG1 %REG2`, `MINI %REG1 <Literal>`, `MINS`: Returns the minimum of two values.
+* `MAXR %REG1 %REG2`, `MAXI %REG1 <Literal>`, `MAXS`: Returns the maximum of two values.
+* `SGNR %REG`, `SGNS`: Returns the sign of a value (-1, 0, or +1).
 * `DOTR %DEST_REG %VEC_REG1 %VEC_REG2`, `DOTS`: Calculates the dot product of two vectors.
 * `CRSR %DEST_REG %VEC_REG1 %VEC_REG2`, `CRSS`: Calculates the 2D cross product of two vectors.
 
@@ -267,7 +285,11 @@ These instructions operate on the integer value of scalars.
 * `ANDR %REG1 %REG2`, `ANDI %REG1 <Literal>`, `ANDS`: Bitwise AND.
 * `ORR %REG1 %REG2`, `ORI %REG1 <Literal>`, `ORS`: Bitwise OR.
 * `XORR %REG1 %REG2`, `XORI %REG1 <Literal>`, `XORS`: Bitwise XOR.
-* `NADR %REG1 %REG2`, `NADI %REG1 <Literal>`, `NADS`: Bitwise NAND.
+* `NADR %REG1 %REG2`, `NADI %REG1 <Literal>`, `NADS`: Bitwise NAND (`~(a & b)`).
+* `NORR %REG1 %REG2`, `NORI %REG1 <Literal>`, `NORS`: Bitwise NOR (`~(a | b)`).
+* `EQUR %REG1 %REG2`, `EQUI %REG1 <Literal>`, `EQUS`: Bitwise equivalence/XNOR (`~(a ^ b)`). Returns 1 bits where both inputs are equal.
+* `ADNR %REG1 %REG2`, `ADNI %REG1 <Literal>`, `ADNS`: Bitwise AND-NOT (`a & ~b`). Clears bits in first operand that are set in second.
+* `ORNR %REG1 %REG2`, `ORNI %REG1 <Literal>`, `ORNS`: Bitwise OR-NOT (`a | ~b`).
 * `NOT %REG`, `NOTS`: Bitwise NOT.
 * `SHLR %REG_VAL %REG_AMT`, `SHLI %REG_VAL <Literal>`, `SHLS`: Logical shift left.
 * `SHRR %REG_VAL %REG_AMT`, `SHRI %REG_VAL <Literal>`, `SHRS`: Logical shift right.
@@ -392,6 +414,8 @@ Note on conflicts: If a world interaction loses conflict resolution for its targ
 * `FRKI <DP_Vec> <NRG_Lit> <DV_Vec>`, `FRKS`: Creates a child organism (immediate/stack variants). Same ownership transfer behavior as `FORK`.
 * `ADPR %REG`, `ADPI <Literal>`, `ADPS`: Sets the active Data Pointer index.
 * `SMR %REG`, `SMRI <Literal>`, `SMRS`: Sets the Molecule Marker Register (`MR`) to the value from the register, literal, or stack. The operand must be of type `DATA`; otherwise, the instruction fails. The value is masked to 4 bits (0-15).
+* `GMR %REG`, `GMRS`: Gets the current value of the Molecule Marker Register (`MR`) and stores it in the specified register or pushes it onto the stack. The result is of type `DATA`.
+* `CMR %REG`, `CMRI <Literal>`, `CMRS`: Orphans all molecules owned by this organism that have a marker value matching the operand. Sets both marker and owner to 0. The operand must be of type `DATA`.
 
 ### Location Stack and Register Operations
 
@@ -492,6 +516,41 @@ Directives are special commands that instruct the compiler on how to assemble th
     
     INCREMENT %DR0  # This line expands to "ADDI %DR0 DATA:1"
     ```
+
+### Repetition
+
+The `.REPEAT` directive and its shorthand `^n` syntax allow repeating instructions without writing them multiple times. This is particularly useful for adding NOP buffers or redundant safety jumps.
+
+#### Directive Syntax
+
+* `.REPEAT <Count> <Body>`: Repeats the body (until the next newline or semicolon) the specified number of times.
+    ```
+    .REPEAT 5 NOP              # Expands to: NOP; NOP; NOP; NOP; NOP
+    .REPEAT 3 JMPI MAIN_LOOP   # Expands to: JMPI MAIN_LOOP; JMPI MAIN_LOOP; JMPI MAIN_LOOP
+    ```
+
+* `.REPEAT <Count>; <Body> .ENDR`: Block mode for repeating multiple statements. When a newline or semicolon immediately follows the count, the directive enters block mode and repeats everything until `.ENDR`.
+    ```
+    .REPEAT 2; JMPI LOOP; NOP; .ENDR
+    # Expands to: JMPI LOOP; NOP; JMPI LOOP; NOP
+
+    .REPEAT 3
+      NOP
+      JMPI START
+    .ENDR
+    # Expands to: NOP; JMPI START; NOP; JMPI START; NOP; JMPI START
+    ```
+
+#### Shorthand Syntax
+
+* `<Body>^<Count>`: A compact shorthand that repeats everything before the `^` (up to the previous semicolon or newline) the specified number of times.
+    ```
+    NOP^5                      # Expands to: NOP; NOP; NOP; NOP; NOP
+    JMPI LOOP^3                # Expands to: JMPI LOOP; JMPI LOOP; JMPI LOOP
+    JMPI START; NOP^10; JMPI END  # Mixed with other instructions
+    ```
+
+Both syntaxes produce identical results—the shorthand is transformed into `.REPEAT` internally before expansion.
 
 ### Modules and Procedures
 

@@ -1,4 +1,5 @@
 import * as ChartRegistry from './ChartRegistry.js';
+import { formatTickValue } from './ChartUtils.js';
 
 /**
  * Line Chart Implementation
@@ -152,14 +153,14 @@ export function render(canvas, data, config) {
                 },
                 scales: {
                     x: {
-                        title: {
-                            display: true,
-                            text: formatLabel(xKey),
-                            color: '#888'
-                        },
+                        title: { display: false },
                         ticks: {
                             color: '#888',
-                            maxTicksLimit: 10
+                            maxTicksLimit: 10,
+                            callback: function(value) {
+                                const label = this.getLabelForValue(value);
+                                return formatTickValue(label);
+                            }
                         },
                         grid: {
                             color: '#333',

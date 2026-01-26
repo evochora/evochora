@@ -363,4 +363,176 @@ public class VMBitwiseInstructionTest {
         sim.tick();
         assertThat(Molecule.fromInt((Integer) org.getDataStack().pop()).toScalarValue()).isEqualTo(0);
     }
+
+    // --- NOR ---
+    /**
+     * Tests the NORR (Bitwise NOR Register) instruction.
+     * NOR = ~(a | b)
+     */
+    @Test
+    @Tag("unit")
+    void testNorr() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+        org.setDr(1, new Molecule(Config.TYPE_DATA, 0b1100).toInt());
+        placeInstruction("NORR", 0, 1);
+        sim.tick();
+        // NOR(1010, 1100) = ~(1110) = ...0001
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, ~0b1110).toInt());
+    }
+
+    /**
+     * Tests the NORI (Bitwise NOR Immediate) instruction.
+     */
+    @Test
+    @Tag("unit")
+    void testNori() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+        placeInstruction("NORI", 0, 0b0101);
+        sim.tick();
+        // NOR(1010, 0101) = ~(1111) = ...0000
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, ~0b1111).toInt());
+    }
+
+    /**
+     * Tests the NORS (Bitwise NOR Stack) instruction.
+     */
+    @Test
+    @Tag("unit")
+    void testNors() {
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 0b0100).toInt());
+        placeInstruction("NORS");
+        sim.tick();
+        // NOR(0100, 1010) = ~(1110) = ...0001
+        assertThat(org.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, ~0b1110).toInt());
+    }
+
+    // --- EQU (XNOR) ---
+    /**
+     * Tests the EQUR (Bitwise XNOR/Equivalence Register) instruction.
+     * EQU = ~(a ^ b) - bits are 1 where a and b are equal
+     */
+    @Test
+    @Tag("unit")
+    void testEqur() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+        org.setDr(1, new Molecule(Config.TYPE_DATA, 0b1100).toInt());
+        placeInstruction("EQUR", 0, 1);
+        sim.tick();
+        // EQU(1010, 1100) = ~(0110) = ...1001
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, ~0b0110).toInt());
+    }
+
+    /**
+     * Tests the EQUI (Bitwise XNOR Immediate) instruction.
+     */
+    @Test
+    @Tag("unit")
+    void testEqui() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1111).toInt());
+        placeInstruction("EQUI", 0, 0b1111);
+        sim.tick();
+        // EQU(1111, 1111) = ~(0000) = all 1s
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, ~0).toInt());
+    }
+
+    /**
+     * Tests the EQUS (Bitwise XNOR Stack) instruction.
+     */
+    @Test
+    @Tag("unit")
+    void testEqus() {
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+        placeInstruction("EQUS");
+        sim.tick();
+        // EQU(1010, 1010) = ~(0000) = all 1s
+        assertThat(org.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, ~0).toInt());
+    }
+
+    // --- ADN (AND-NOT) ---
+    /**
+     * Tests the ADNR (AND-NOT Register) instruction.
+     * ADN = a & ~b - clears bits in a that are set in b
+     */
+    @Test
+    @Tag("unit")
+    void testAdnr() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1111).toInt());
+        org.setDr(1, new Molecule(Config.TYPE_DATA, 0b0101).toInt());
+        placeInstruction("ADNR", 0, 1);
+        sim.tick();
+        // ADN(1111, 0101) = 1111 & ~0101 = 1111 & 1010 = 1010
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+    }
+
+    /**
+     * Tests the ADNI (AND-NOT Immediate) instruction.
+     */
+    @Test
+    @Tag("unit")
+    void testAdni() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1111).toInt());
+        placeInstruction("ADNI", 0, 0b0011);
+        sim.tick();
+        // ADN(1111, 0011) = 1111 & ~0011 = 1111 & 1100 = 1100
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1100).toInt());
+    }
+
+    /**
+     * Tests the ADNS (AND-NOT Stack) instruction.
+     */
+    @Test
+    @Tag("unit")
+    void testAdns() {
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 0b0011).toInt()); // b (mask to clear)
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 0b1111).toInt()); // a
+        placeInstruction("ADNS");
+        sim.tick();
+        // ADN(1111, 0011) = 1111 & ~0011 = 1100
+        assertThat(org.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1100).toInt());
+    }
+
+    // --- ORN (OR-NOT) ---
+    /**
+     * Tests the ORNR (OR-NOT Register) instruction.
+     * ORN = a | ~b
+     */
+    @Test
+    @Tag("unit")
+    void testOrnr() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b0000).toInt());
+        org.setDr(1, new Molecule(Config.TYPE_DATA, 0b1111).toInt());
+        placeInstruction("ORNR", 0, 1);
+        sim.tick();
+        // ORN(0000, 1111) = 0000 | ~1111 = 0000 | ...0000 = ...0000
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, ~0b1111).toInt());
+    }
+
+    /**
+     * Tests the ORNI (OR-NOT Immediate) instruction.
+     */
+    @Test
+    @Tag("unit")
+    void testOrni() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+        placeInstruction("ORNI", 0, 0b1100);
+        sim.tick();
+        // ORN(1010, 1100) = 1010 | ~1100 = 1010 | ...0011 = ...1011
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1010 | ~0b1100).toInt());
+    }
+
+    /**
+     * Tests the ORNS (OR-NOT Stack) instruction.
+     */
+    @Test
+    @Tag("unit")
+    void testOrns() {
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 0b1111).toInt()); // b
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, 0b0000).toInt()); // a
+        placeInstruction("ORNS");
+        sim.tick();
+        // ORN(0000, 1111) = 0000 | ~1111 = ...0000
+        assertThat(org.getDataStack().pop()).isEqualTo(new Molecule(Config.TYPE_DATA, ~0b1111).toInt());
+    }
 }

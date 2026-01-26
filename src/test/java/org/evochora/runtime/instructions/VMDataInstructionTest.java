@@ -209,4 +209,37 @@ public class VMDataInstructionTest {
         int[] vectorValue = (int[]) dr5Value;
         assertThat(vectorValue).containsExactly(1, 0);
     }
+
+    /**
+     * Tests the XCHG (Exchange Registers) instruction.
+     * This swaps the contents of two registers.
+     */
+    @Test
+    @Tag("unit")
+    void testXchg() {
+        int value1 = new Molecule(Config.TYPE_DATA, 111).toInt();
+        int value2 = new Molecule(Config.TYPE_DATA, 222).toInt();
+        org.setDr(0, value1);
+        org.setDr(1, value2);
+        placeInstruction("XCHG", 0, 1);
+        sim.tick();
+        assertThat(org.getDr(0)).isEqualTo(value2);
+        assertThat(org.getDr(1)).isEqualTo(value1);
+    }
+
+    /**
+     * Tests the XCHG instruction with vector values.
+     */
+    @Test
+    @Tag("unit")
+    void testXchgVectors() {
+        int[] vec1 = new int[]{1, 2};
+        int[] vec2 = new int[]{3, 4};
+        org.setDr(0, vec1);
+        org.setDr(1, vec2);
+        placeInstruction("XCHG", 0, 1);
+        sim.tick();
+        assertThat((int[]) org.getDr(0)).containsExactly(3, 4);
+        assertThat((int[]) org.getDr(1)).containsExactly(1, 2);
+    }
 }

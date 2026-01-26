@@ -4,17 +4,47 @@ import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.Variant;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
 
 import java.util.List;
 import java.util.NoSuchElementException;
 
+import static org.evochora.runtime.isa.Instruction.OperandSource.*;
+
 /**
  * Handles data movement instructions like SET, PUSH, and POP.
  * It supports different operand sources and destinations.
  */
 public class DataInstruction extends Instruction {
+
+    private static int family;
+
+    /**
+     * Registers all data movement instructions with the instruction registry.
+     *
+     * @param f the family ID for this instruction family
+     */
+    public static void register(int f) {
+        family = f;
+        // Operation 0: SET (copy value to register)
+        reg(0, Variant.RR, "SETR", REGISTER, REGISTER);
+        reg(0, Variant.RI, "SETI", REGISTER, IMMEDIATE);
+        reg(0, Variant.RV, "SETV", REGISTER, VECTOR);
+        // Operation 1: PUSH (push value onto stack)
+        reg(1, Variant.R, "PUSH", REGISTER);
+        reg(1, Variant.I, "PUSI", IMMEDIATE);
+        reg(1, Variant.V, "PUSV", VECTOR);
+        // Operation 2: POP (pop value from stack)
+        reg(2, Variant.R, "POP", REGISTER);
+        // Operation 7: XCHG (exchange registers)
+        reg(7, Variant.RR, "XCHG", REGISTER, REGISTER);
+    }
+
+    private static void reg(int op, int variant, String name, OperandSource... sources) {
+        Instruction.registerOp(DataInstruction.class, family, op, variant, name, sources);
+    }
 
     /**
      * Constructs a new DataInstruction.
@@ -82,6 +112,19 @@ public class DataInstruction extends Instruction {
                     Object value = operands.get(0).value();
                     if (value == null) { organism.instructionFailed("Null value for PUSV"); return; }
                     organism.getDataStack().push(value);
+                    break;
+                }
+                case "XCHG": {
+                    if (operands.size() != 2) { organism.instructionFailed("Invalid operands for XCHG"); return; }
+                    Operand op1 = operands.get(0);
+                    Operand op2 = operands.get(1);
+                    int reg1 = op1.rawSourceId();
+                    int reg2 = op2.rawSourceId();
+                    if (reg1 == -1 || reg2 == -1) { organism.instructionFailed("XCHG requires two register operands"); return; }
+                    Object val1 = op1.value();
+                    Object val2 = op2.value();
+                    if (!writeOperand(reg1, val2)) { return; }
+                    if (!writeOperand(reg2, val1)) { return; }
                     break;
                 }
                 default:

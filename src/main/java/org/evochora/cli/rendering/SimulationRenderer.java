@@ -54,6 +54,7 @@ public class SimulationRenderer {
     private final int colorDataBg = Color.decode("#32323c").getRGB();
     private final int colorStructureBg = Color.decode("#ff7878").getRGB();
     private final int colorEnergyBg = Color.decode("#ffe664").getRGB();
+    private final int colorLabelBg = Color.decode("#a0a0a8").getRGB(); // Light gray for jump targets
     private final int colorDead = Color.decode("#505050").getRGB();
     
     private final Color[] organismColorPalette = {
@@ -384,6 +385,8 @@ public class SimulationRenderer {
             return colorEnergyBg;
         } else if (moleculeType == Config.TYPE_STRUCTURE) {
             return colorStructureBg;
+        } else if (moleculeType == Config.TYPE_LABEL) {
+            return colorLabelBg;
         } else {
             return colorEmptyBg;
         }

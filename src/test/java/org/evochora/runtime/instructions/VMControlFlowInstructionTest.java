@@ -40,15 +40,6 @@ public class VMControlFlowInstructionTest {
         sim.addOrganism(org);
     }
 
-    private void placeInstructionWithVector(String name, int[] vector) {
-        int opcode = Instruction.getInstructionIdByName(name);
-        environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
-        int[] currentPos = org.getIp();
-        for (int val : vector) {
-            currentPos = org.getNextInstructionPosition(currentPos, org.getDv(), environment);            environment.setMolecule(new Molecule(Config.TYPE_DATA, val), currentPos);
-        }
-    }
-
     private void placeInstruction(String name, Integer... args) {
         int opcode = Instruction.getInstructionIdByName(name);
         environment.setMolecule(new Molecule(Config.TYPE_CODE, opcode), org.getIp());
@@ -59,72 +50,110 @@ public class VMControlFlowInstructionTest {
     }
 
     /**
-     * Tests the JMPI (Jump Immediate) instruction.
+     * Tests the JMPI (Jump Immediate) instruction with fuzzy label matching.
+     * Places a LABEL molecule at the target position and uses its hash as the operand.
      * This is a unit test for the VM's instruction logic.
      */
     @Test
     @Tag("unit")
     void testJmpi() {
-        int[] jumpDelta = new int[]{10};
-        int[] expectedIp = org.getTargetCoordinate(org.getIp(), jumpDelta, environment);
-        placeInstructionWithVector("JMPI", jumpDelta);
+        int[] labelPos = new int[]{15}; // LABEL molecule position
+        int[] expectedIp = new int[]{16}; // Expected IP after jump (past the LABEL)
+        int labelHash = 12345 & Config.VALUE_MASK; // Label hash value
+
+        // Place LABEL molecule at target position
+        environment.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), labelPos);
+        // Place WAIT at expected IP to stop instant-skip loop
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), expectedIp);
+
+        // Place JMPI instruction with label hash as single operand
+        placeInstruction("JMPI", labelHash);
 
         sim.tick();
 
+        // IP should land AFTER the LABEL, not on it
         assertThat(org.getIp()).isEqualTo(expectedIp);
     }
 
     /**
-     * Tests the CALL instruction. Verifies that the instruction pointer moves
-     * and a new frame is pushed to the call stack.
+     * Tests the CALL instruction with fuzzy label matching.
+     * Places a LABEL molecule at the target position and uses its hash as the operand.
+     * Verifies that the instruction pointer moves and a new frame is pushed to the call stack.
      * This is a unit test for the VM's instruction logic.
      */
     @Test
     @Tag("unit")
     void testCall() {
-        int[] jumpDelta = new int[]{7};
-        int[] expectedIp = org.getTargetCoordinate(org.getIp(), jumpDelta, environment);
-        placeInstructionWithVector("CALL", jumpDelta);
+        int[] labelPos = new int[]{12}; // LABEL molecule position
+        int[] expectedIp = new int[]{13}; // Expected IP after call (past the LABEL)
+        int labelHash = 54321 & Config.VALUE_MASK; // Label hash value
+
+        // Place LABEL molecule at target position
+        environment.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), labelPos);
+        // Place WAIT at expected IP to stop instant-skip loop
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), expectedIp);
+
+        // Place CALL instruction with label hash as single operand
+        placeInstruction("CALL", labelHash);
 
         sim.tick();
 
+        // IP should land AFTER the LABEL, not on it
         assertThat(org.getIp()).isEqualTo(expectedIp);
         assertThat(org.getCallStack().peek()).isInstanceOf(Organism.ProcFrame.class);
     }
 
     /**
-     * Tests the JMPR (Jump Register) instruction.
+     * Tests the JMPR (Jump Register) instruction with fuzzy label matching.
+     * Stores a label hash in a register and places a LABEL molecule at the target.
      * This is a unit test for the VM's instruction logic.
      */
     @Test
     @Tag("unit")
     void testJmpr() {
-        int[] jumpVector = new int[]{12};
-        int[] currentIp = org.getIp();
-        int[] expectedIp = org.getTargetCoordinate(currentIp, jumpVector, environment);
+        int[] labelPos = new int[]{17}; // LABEL molecule position
+        int[] expectedIp = new int[]{18}; // Expected IP after jump (past the LABEL)
+        int labelHash = 11111 & Config.VALUE_MASK; // Label hash value
 
-        org.setDr(0, jumpVector);
+        // Place LABEL molecule at target position
+        environment.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), labelPos);
+        // Place WAIT at expected IP to stop instant-skip loop
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), expectedIp);
+
+        // Store label hash in register DR0
+        org.setDr(0, labelHash);
         placeInstruction("JMPR", 0);
 
         sim.tick();
 
+        // IP should land AFTER the LABEL, not on it
         assertThat(org.getIp()).isEqualTo(expectedIp);
     }
 
     /**
-     * Tests the JMPS (Jump Stack) instruction.
+     * Tests the JMPS (Jump Stack) instruction with fuzzy label matching.
+     * Pushes a label hash onto the stack and places a LABEL molecule at the target.
      * This is a unit test for the VM's instruction logic.
      */
     @Test
     @Tag("unit")
     void testJmps() {
-        int[] jumpDelta = new int[]{8};
-        int[] expectedIp = org.getTargetCoordinate(org.getIp(), jumpDelta, environment);
-        org.getDataStack().push(jumpDelta);
+        int[] labelPos = new int[]{22}; // LABEL molecule position
+        int[] expectedIp = new int[]{23}; // Expected IP after jump (past the LABEL)
+        int labelHash = 22222 & Config.VALUE_MASK; // Label hash value
+
+        // Place LABEL molecule at target position
+        environment.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), labelPos);
+        // Place WAIT at expected IP to stop instant-skip loop
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), expectedIp);
+
+        // Push label hash onto stack
+        org.getDataStack().push(labelHash);
         placeInstruction("JMPS");
 
         sim.tick();
 
+        // IP should land AFTER the LABEL, not on it
         assertThat(org.getIp()).isEqualTo(expectedIp);
     }
 
@@ -142,6 +171,9 @@ public class VMControlFlowInstructionTest {
         Object[] fprsSnapshot = org.getFprs().toArray(new Object[0]);
 
         org.getCallStack().push(new Organism.ProcFrame("TEST_PROC", expectedIp, callIp, prsSnapshot, fprsSnapshot, java.util.Collections.emptyMap()));
+
+        // Place WAIT at expected IP to stop instant-skip loop
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), expectedIp);
 
         placeInstruction("RET");
 

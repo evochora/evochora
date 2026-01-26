@@ -8,15 +8,95 @@ import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.Variant;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+
+import static org.evochora.runtime.isa.Instruction.OperandSource.*;
 
 /**
  * Handles a wide variety of state-related instructions, such as TURN, SYNC, NRG, FORK,
  * DIFF, POS, RAND, SEEK, and various scanning instructions.
  */
 public class StateInstruction extends Instruction {
+
+    private static int family;
+
+    /**
+     * Registers all state instructions with the instruction registry.
+     *
+     * @param f the family ID for this instruction family
+     */
+    public static void register(int f) {
+        family = f;
+        // Operation 0: SCAN (scan environment in direction)
+        reg(0, Variant.RR, "SCAN", REGISTER, REGISTER);
+        reg(0, Variant.RV, "SCNI", REGISTER, VECTOR);
+        reg(0, Variant.S, "SCNS", STACK);
+        // Operation 1: SEEK (set active data pointer direction)
+        reg(1, Variant.R, "SEEK", REGISTER);
+        reg(1, Variant.V, "SEKI", VECTOR);
+        reg(1, Variant.S, "SEKS", STACK);
+        // Operation 2: TURN (turn/rotate direction)
+        reg(2, Variant.R, "TURN", REGISTER);
+        reg(2, Variant.V, "TRNI", VECTOR);
+        reg(2, Variant.S, "TRNS", STACK);
+        // Operation 3: SYNC (synchronize/wait)
+        reg(3, Variant.NONE, "SYNC");
+        // Operation 4: NRG (get energy)
+        reg(4, Variant.R, "NRG", REGISTER);
+        reg(4, Variant.NONE, "NRGS");
+        // Operation 5: NTR (get entropy)
+        reg(5, Variant.R, "NTR", REGISTER);
+        reg(5, Variant.NONE, "NTRS");
+        // Operation 6: DIFF (get difficulty/thermodynamic gradient)
+        reg(6, Variant.R, "DIFF", REGISTER);
+        reg(6, Variant.NONE, "DIFS");
+        // Operation 7: POS (get position)
+        reg(7, Variant.R, "POS", REGISTER);
+        reg(7, Variant.NONE, "POSS");
+        // Operation 8: RAND (random number)
+        reg(8, Variant.R, "RAND", REGISTER);
+        reg(8, Variant.S, "RNDS", STACK);
+        // Operation 9: FORK (replicate organism)
+        reg(9, Variant.RRR, "FORK", REGISTER, REGISTER, REGISTER);
+        reg(9, Variant.VIV, "FRKI", VECTOR, IMMEDIATE, VECTOR);
+        reg(9, Variant.SSS, "FRKS", STACK, STACK, STACK);
+        // Operation 10: ADP (active data pointer selection)
+        reg(10, Variant.R, "ADPR", REGISTER);
+        reg(10, Variant.I, "ADPI", IMMEDIATE);
+        reg(10, Variant.S, "ADPS", STACK);
+        // Operation 11: SPN (scan passable neighbors)
+        reg(11, Variant.R, "SPNR", REGISTER);
+        reg(11, Variant.NONE, "SPNS");
+        // Operation 12: SNT (scan neighbors by type)
+        reg(12, Variant.RR, "SNTR", REGISTER, REGISTER);
+        reg(12, Variant.RI, "SNTI", REGISTER, IMMEDIATE);
+        reg(12, Variant.S, "SNTS", STACK);
+        // Operation 13: RBI (random bit from mask)
+        reg(13, Variant.RR, "RBIR", REGISTER, REGISTER);
+        reg(13, Variant.RI, "RBII", REGISTER, IMMEDIATE);
+        reg(13, Variant.S, "RBIS", STACK);
+        // Operation 14: GDV (get DV value)
+        reg(14, Variant.R, "GDVR", REGISTER);
+        reg(14, Variant.NONE, "GDVS");
+        // Operation 15: SMR (set molecule marker register)
+        reg(15, Variant.R, "SMR", REGISTER);
+        reg(15, Variant.I, "SMRI", IMMEDIATE);
+        reg(15, Variant.S, "SMRS", STACK);
+        // Operation 16: GMR (get molecule marker register)
+        reg(16, Variant.R, "GMR", REGISTER);
+        reg(16, Variant.NONE, "GMRS");
+        // Operation 17: CMR (clear markers - reset markers of own molecules to 0)
+        reg(17, Variant.R, "CMR", REGISTER);
+        reg(17, Variant.I, "CMRI", IMMEDIATE);
+        reg(17, Variant.S, "CMRS", STACK);
+    }
+
+    private static void reg(int op, int variant, String name, OperandSource... sources) {
+        Instruction.registerOp(StateInstruction.class, family, op, variant, name, sources);
+    }
 
     /**
      * Constructs a new StateInstruction.
@@ -117,6 +197,15 @@ public class StateInstruction extends Instruction {
                 case "SMRI":
                 case "SMRS":
                     handleSmr(opName, operands);
+                    break;
+                case "GMR":
+                case "GMRS":
+                    handleGmr(opName, operands);
+                    break;
+                case "CMR":
+                case "CMRI":
+                case "CMRS":
+                    handleCmr(opName, operands, context.getWorld());
                     break;
                 default:
                     organism.instructionFailed("Unknown state instruction: " + opName);
@@ -644,5 +733,87 @@ public class StateInstruction extends Instruction {
         // Extract value and mask to valid marker range
         int markerValue = source.value() & Config.MARKER_VALUE_MASK;
         organism.setMr(markerValue);
+    }
+
+    /**
+     * Handles the GMR and GMRS instructions (Get Molecule marker Register).
+     * Reads the organism's MR register value and places it in a register or on the stack.
+     *
+     * @param opName   The instruction name (GMR or GMRS)
+     * @param operands The operands (only used for GMR)
+     */
+    private void handleGmr(String opName, List<Operand> operands) {
+        int mrValue = organism.getMr();
+        Molecule result = new Molecule(Config.TYPE_DATA, mrValue);
+
+        if ("GMRS".equals(opName)) {
+            if (!operands.isEmpty()) {
+                organism.instructionFailed("GMRS expects no operands.");
+                return;
+            }
+            organism.getDataStack().push(result.toInt());
+        } else {
+            // GMR - register variant
+            if (operands.size() != 1) {
+                organism.instructionFailed("GMR requires one register operand.");
+                return;
+            }
+            int targetReg = operands.get(0).rawSourceId();
+            writeOperand(targetReg, result.toInt());
+        }
+    }
+
+    /**
+     * Handles the CMR, CMRI, and CMRS instructions (Clear Markers).
+     * Resets to 0 the marker of all molecules owned by this organism that have a matching marker value.
+     * <p>
+     * This is used during reproduction when a replication attempt is aborted - the partially
+     * replicated molecules need to have their markers cleared so they won't be transferred
+     * during a subsequent FORK operation.
+     *
+     * @param opName      The instruction name (CMR, CMRI, or CMRS)
+     * @param operands    The operands containing the marker value to match
+     * @param environment The environment to operate on
+     */
+    private void handleCmr(String opName, List<Operand> operands, Environment environment) {
+        Molecule source;
+
+        if ("CMRS".equals(opName)) {
+            // Stack variant
+            if (operands.isEmpty()) {
+                organism.instructionFailed("CMRS requires a value on the data stack.");
+                return;
+            }
+            Object stackValue = operands.get(0).value();
+            if (!(stackValue instanceof Integer intValue)) {
+                organism.instructionFailed("CMRS requires a scalar value on the stack.");
+                return;
+            }
+            source = Molecule.fromInt(intValue);
+        } else {
+            // Register or Immediate variant
+            if (operands.size() != 1) {
+                organism.instructionFailed("Invalid operands for " + opName + ".");
+                return;
+            }
+            Object value = operands.get(0).value();
+            if (!(value instanceof Integer intValue)) {
+                organism.instructionFailed(opName + " requires a scalar operand.");
+                return;
+            }
+            source = Molecule.fromInt(intValue);
+        }
+
+        // Type check: must be DATA
+        if (source.type() != Config.TYPE_DATA) {
+            organism.instructionFailed(opName + " requires DATA type operand.");
+            return;
+        }
+
+        // Extract value and mask to valid marker range
+        int markerToMatch = source.value() & Config.MARKER_VALUE_MASK;
+
+        // Clear markers of all own molecules with matching marker
+        environment.clearMarkersFor(organism.getId(), markerToMatch);
     }
 }

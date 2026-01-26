@@ -22,6 +22,7 @@ class MoleculeTypeRegistryTest {
         assertThat(MoleculeTypeRegistry.typeToName(Config.TYPE_DATA)).isEqualTo("DATA");
         assertThat(MoleculeTypeRegistry.typeToName(Config.TYPE_ENERGY)).isEqualTo("ENERGY");
         assertThat(MoleculeTypeRegistry.typeToName(Config.TYPE_STRUCTURE)).isEqualTo("STRUCTURE");
+        assertThat(MoleculeTypeRegistry.typeToName(Config.TYPE_LABEL)).isEqualTo("LABEL");
     }
     
     @Test
@@ -44,6 +45,7 @@ class MoleculeTypeRegistryTest {
         assertThat(MoleculeTypeRegistry.nameToType("DATA")).isEqualTo(Config.TYPE_DATA);
         assertThat(MoleculeTypeRegistry.nameToType("ENERGY")).isEqualTo(Config.TYPE_ENERGY);
         assertThat(MoleculeTypeRegistry.nameToType("STRUCTURE")).isEqualTo(Config.TYPE_STRUCTURE);
+        assertThat(MoleculeTypeRegistry.nameToType("LABEL")).isEqualTo(Config.TYPE_LABEL);
     }
     
     @Test
@@ -63,6 +65,9 @@ class MoleculeTypeRegistryTest {
         
         assertThat(MoleculeTypeRegistry.nameToType("structure")).isEqualTo(Config.TYPE_STRUCTURE);
         assertThat(MoleculeTypeRegistry.nameToType("STRUCTURE")).isEqualTo(Config.TYPE_STRUCTURE);
+
+        assertThat(MoleculeTypeRegistry.nameToType("label")).isEqualTo(Config.TYPE_LABEL);
+        assertThat(MoleculeTypeRegistry.nameToType("LABEL")).isEqualTo(Config.TYPE_LABEL);
     }
     
     @Test
@@ -106,6 +111,8 @@ class MoleculeTypeRegistryTest {
             .isEqualTo(Config.TYPE_ENERGY);
         assertThat(MoleculeTypeRegistry.nameToType(MoleculeTypeRegistry.typeToName(Config.TYPE_STRUCTURE)))
             .isEqualTo(Config.TYPE_STRUCTURE);
+        assertThat(MoleculeTypeRegistry.nameToType(MoleculeTypeRegistry.typeToName(Config.TYPE_LABEL)))
+            .isEqualTo(Config.TYPE_LABEL);
     }
     
     @Test
@@ -114,7 +121,8 @@ class MoleculeTypeRegistryTest {
         assertThat(MoleculeTypeRegistry.isRegistered(Config.TYPE_DATA)).isTrue();
         assertThat(MoleculeTypeRegistry.isRegistered(Config.TYPE_ENERGY)).isTrue();
         assertThat(MoleculeTypeRegistry.isRegistered(Config.TYPE_STRUCTURE)).isTrue();
-        
+        assertThat(MoleculeTypeRegistry.isRegistered(Config.TYPE_LABEL)).isTrue();
+
         assertThat(MoleculeTypeRegistry.isRegistered(999999)).isFalse();
         assertThat(MoleculeTypeRegistry.isRegistered(-1)).isFalse();
     }
@@ -126,7 +134,8 @@ class MoleculeTypeRegistryTest {
         assertThat(MoleculeTypeRegistry.typeToName(Config.TYPE_DATA)).isEqualTo("DATA");
         assertThat(MoleculeTypeRegistry.typeToName(Config.TYPE_ENERGY)).isEqualTo("ENERGY");
         assertThat(MoleculeTypeRegistry.typeToName(Config.TYPE_STRUCTURE)).isEqualTo("STRUCTURE");
-        
+        assertThat(MoleculeTypeRegistry.typeToName(Config.TYPE_LABEL)).isEqualTo("LABEL");
+
         // Verify uppercase
         String codeName = MoleculeTypeRegistry.typeToName(Config.TYPE_CODE);
         assertThat(codeName).isEqualTo(codeName.toUpperCase());
