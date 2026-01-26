@@ -1,4 +1,12 @@
 export class Footer {
+    /**
+     * Creates a new Footer.
+     * @param {Object} options
+     * @param {HTMLElement} options.element - Container element
+     * @param {Function} options.fetchRuns - Async function to fetch available runs
+     * @param {Function} options.getCurrentRunId - Function returning current run ID
+     * @param {Function} options.onRunChange - Callback when run is changed
+     */
     constructor({ element, fetchRuns, getCurrentRunId, onRunChange }) {
         if (!element) {
             throw new Error('Footer requires a target element.');
@@ -16,10 +24,13 @@ export class Footer {
     render() {
         this.element.innerHTML = `
             <div class="footer-bar">
-                <div class="footer-run" title="">
-                    <span class="footer-run-label">Run:</span>
-                    <span class="footer-run-value"></span>
-                    <div class="footer-overlay"></div>
+                <div class="footer-left"></div>
+                <div class="footer-right">
+                    <div class="footer-run" title="">
+                        <span class="footer-run-label">Run:</span>
+                        <span class="footer-run-value"></span>
+                        <div class="footer-overlay"></div>
+                    </div>
                 </div>
             </div>
         `;
@@ -235,5 +246,6 @@ export class Footer {
             }
         });
     }
+
 }
 

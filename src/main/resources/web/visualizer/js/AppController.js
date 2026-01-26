@@ -272,22 +272,34 @@ export class AppController {
      * Toggles the zoom state of the environment grid and forces a full refresh.
      */
     async toggleZoom() {
-        this.state.isZoomedOut = !this.state.isZoomedOut;
-        
+        await this.setZoom(!this.state.isZoomedOut);
+    }
+
+    /**
+     * Sets the zoom state.
+     * @param {boolean} isZoomedOut - True for overview, false for detailed view
+     */
+    async setZoom(isZoomedOut) {
+        if (this.state.isZoomedOut === isZoomedOut) return;
+
+        this.state.isZoomedOut = isZoomedOut;
+
         // Persist zoom state
-        localStorage.setItem('evochora-zoom-state', this.state.isZoomedOut ? 'true' : 'false');
-        
+        localStorage.setItem('evochora-zoom-state', isZoomedOut ? 'true' : 'false');
+
         // Update button text via headerbar view
-        this.headerbar.updateZoomButton(this.state.isZoomedOut);
+        this.headerbar.updateZoomButton(isZoomedOut);
+
+        // Update minimap panel zoom button
+        this.minimapView?.updateZoomButton(isZoomedOut);
 
         // Tell the renderer to update its internal state
-        this.renderer.setZoom(this.state.isZoomedOut);
-        
-        // Force a full re-render of the current tick. This will recalculate the
-        // viewport based on the new cell size and redraw everything.
-        await this.navigateToTick(this.state.currentTick, true); // Force full reload
+        this.renderer.setZoom(isZoomedOut);
+
+        // Force a full re-render of the current tick
+        await this.navigateToTick(this.state.currentTick, true);
     }
-    
+
     /**
      * Initializes the tick and organism panel managers.
      * @private
@@ -477,10 +489,17 @@ export class AppController {
             // Initialize renderer
             await this.renderer.init();
 
-            // Create minimap AFTER renderer.init() (which clears the container)
-            this.minimapView = new MinimapView(this.worldContainer, (worldX, worldY) => {
-                this.renderer.centerOn(worldX, worldY);
-            });
+            // Create minimap panel (positioned fixed, appended to body)
+            this.minimapView = new MinimapView(
+                (worldX, worldY) => {
+                    this.renderer.centerOn(worldX, worldY);
+                },
+                (isZoomedOut) => {
+                    this.setZoom(isZoomedOut);
+                }
+            );
+            this.minimapView.restoreState(); // Restore expanded/collapsed state
+            this.minimapView.updateZoomButton(this.state.isZoomedOut);
 
             // Abort previous request if it's still running
             if (this.simulationRequestController) {
