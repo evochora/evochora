@@ -247,9 +247,10 @@ export class EnvironmentGrid {
      * Fetches and renders environment data for the current viewport.
      * @param {number} tick - The current tick number to load data for.
      * @param {string|null} [runId=null] - The optional run ID.
-     * @returns {Promise<void>}
+     * @param {boolean} [includeMinimap=false] - Whether to include minimap data in the response.
+     * @returns {Promise<{minimap?: {width: number, height: number, cellTypes: Uint8Array}}>} Result with optional minimap data.
      */
-    async loadViewport(tick, runId = null) {
+    async loadViewport(tick, runId = null, includeMinimap = false) {
         // Ensure viewport size is known
         if (this.viewportWidth === 0 || this.viewportHeight === 0) {
             await new Promise(resolve => {
@@ -263,7 +264,7 @@ export class EnvironmentGrid {
 
         this.currentTick = tick;
         const viewport = this.getVisibleRegion();
-        
+
         // Abort previous request
         if (this.currentAbortController) {
             this.currentAbortController.abort();
@@ -272,7 +273,8 @@ export class EnvironmentGrid {
 
         const data = await this.environmentApi.fetchEnvironmentData(tick, viewport, {
             runId: runId,
-            signal: this.currentAbortController.signal
+            signal: this.currentAbortController.signal,
+            includeMinimap: includeMinimap
         });
 
         // --- Timing: Build cell lookup map ---
@@ -304,6 +306,9 @@ export class EnvironmentGrid {
         if (this.currentAbortController && !this.currentAbortController.signal.aborted) {
             this.currentAbortController = null;
         }
+
+        // Return minimap data if present
+        return { minimap: data.minimap };
     }
 
     /**
@@ -372,6 +377,22 @@ export class EnvironmentGrid {
         const y1 = Math.floor(this.cameraY / cellSize);
         const y2 = Math.ceil((this.cameraY + this.viewportHeight) / cellSize);
         return { x1, x2, y1, y2 };
+    }
+
+    /**
+     * Returns the viewport bounds in world (cell) coordinates.
+     * Used by the minimap to show the currently visible area.
+     *
+     * @returns {{x: number, y: number, width: number, height: number}} Viewport bounds in cell coordinates.
+     */
+    getViewportBounds() {
+        const region = this.getVisibleRegion();
+        return {
+            x: region.x1,
+            y: region.y1,
+            width: region.x2 - region.x1,
+            height: region.y2 - region.y1
+        };
     }
 
     /**
@@ -450,8 +471,7 @@ export class EnvironmentGrid {
                     const worldY = (upEvent.clientY - rect.top) + this.cameraY;
                     const cellX = Math.floor(worldX / this.config.cellSize);
                     const cellY = Math.floor(worldY / this.config.cellSize);
-                    console.log(`[DEBUG] Click detected on cell: ${cellX}, ${cellY}`);
-                    // For example: this.onCellClick(cellX, cellY);
+                    // Cell click detected - cellX, cellY available for future use
                 }
                 
                 // Cleanup

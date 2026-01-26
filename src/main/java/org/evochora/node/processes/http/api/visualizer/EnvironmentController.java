@@ -6,6 +6,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.evochora.datapipeline.api.contracts.CellHttpResponse;
 import org.evochora.datapipeline.api.contracts.EnvironmentHttpResponse;
+import org.evochora.datapipeline.api.contracts.MinimapData;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
@@ -35,6 +36,8 @@ import io.javalin.openapi.OpenApi;
 import io.javalin.openapi.OpenApiContent;
 import io.javalin.openapi.OpenApiParam;
 import io.javalin.openapi.OpenApiResponse;
+
+import com.google.protobuf.ByteString;
 
 /**
  * HTTP controller for environment data visualization.
@@ -93,6 +96,11 @@ public class EnvironmentController extends VisualizerBaseController {
     private final Cache<String, EnvironmentProperties> envPropsCache;
 
     /**
+     * Aggregator for generating minimap data from environment cells.
+     */
+    private final MinimapAggregator minimapAggregator;
+
+    /**
      * Constructs a new EnvironmentController with chunk caching.
      * <p>
      * Cache configuration is read from options:
@@ -131,7 +139,10 @@ public class EnvironmentController extends VisualizerBaseController {
         // Note: Decoders are NOT cached because they are not thread-safe.
         // Each request creates its own Decoder instance to avoid concurrent
         // modification of internal state (MutableCellState, currentChunk, currentTick).
-        
+
+        // Minimap aggregator is stateless and thread-safe
+        this.minimapAggregator = new MinimapAggregator();
+
         LOGGER.info("EnvironmentController chunk cache initialized: maxSize={}, expireAfterAccess={}s",
             maxSize, expireAfterAccessSeconds);
     }
@@ -193,7 +204,8 @@ public class EnvironmentController extends VisualizerBaseController {
         },
         queryParams = {
             @OpenApiParam(name = "region", description = "Optional spatial region as comma-separated bounds (e.g., \"0,100,0,100\")", required = false),
-            @OpenApiParam(name = "runId", description = "Optional simulation run ID (defaults to latest run)", required = false)
+            @OpenApiParam(name = "runId", description = "Optional simulation run ID (defaults to latest run)", required = false),
+            @OpenApiParam(name = "minimap", description = "Include minimap data in response (presence of parameter enables)", required = false)
         },
         responses = {
             @OpenApiResponse(status = "200", description = "OK (application/x-protobuf binary)", content = @OpenApiContent(from = byte[].class)),
@@ -213,11 +225,15 @@ public class EnvironmentController extends VisualizerBaseController {
         // Parse region parameter (optional)
         final String regionParam = ctx.queryParam("region");
         final SpatialRegion region = parseRegion(regionParam);
-        
+
+        // Parse minimap parameter (optional - presence enables minimap)
+        final boolean includeMinimap = ctx.queryParam("minimap") != null;
+
         // Resolve run ID (query parameter → latest)
         final String runId = resolveRunId(ctx);
-        
-        LOGGER.debug("Retrieving environment data: tick={}, runId={}, region={}", tickNumber, runId, region);
+
+        LOGGER.debug("Retrieving environment data: tick={}, runId={}, region={}, minimap={}",
+            tickNumber, runId, region, includeMinimap);
         
         // Parse cache configuration
         final CacheConfig cacheConfig = CacheConfig.fromConfig(options, "environment");
@@ -266,10 +282,10 @@ public class EnvironmentController extends VisualizerBaseController {
             
             // Ensure instruction set is initialized before resolving opcode names
             ensureInstructionSetInitialized();
-            
+
             // Convert to Protobuf response format (using IDs instead of strings)
             final EnvironmentHttpResponse response = convertTickDataToProtobuf(
-                    tickData, tickNumber, region, envProps);
+                    tickData, tickNumber, region, envProps, includeMinimap);
             final int cellCount = response.getCellsCount();
             
             final long transformTimeMs = (System.nanoTime() - transformStartNs) / 1_000_000;
@@ -383,7 +399,7 @@ public class EnvironmentController extends VisualizerBaseController {
     }
     
     /**
-     * Converts TickData to Protobuf EnvironmentHttpResponse, with optional region filtering.
+     * Converts TickData to Protobuf EnvironmentHttpResponse, with optional region filtering and minimap.
      * <p>
      * Uses numeric IDs instead of string names for molecule types and opcodes.
      * Clients resolve IDs to names using mappings from the metadata endpoint.
@@ -392,58 +408,72 @@ public class EnvironmentController extends VisualizerBaseController {
      * @param tickNumber The tick number for this response.
      * @param region Optional region filter (null for all cells).
      * @param envProps Environment properties for coordinate conversion.
+     * @param includeMinimap If true, generate and include minimap data in response.
      * @return Protobuf response ready for serialization.
      */
     private EnvironmentHttpResponse convertTickDataToProtobuf(final TickData tickData,
                                                                final long tickNumber,
                                                                final SpatialRegion region,
-                                                               final EnvironmentProperties envProps) {
+                                                               final EnvironmentProperties envProps,
+                                                               final boolean includeMinimap) {
         final var cellColumns = tickData.getCellColumns();
         final int cellCount = cellColumns.getFlatIndicesCount();
         final int dimensions = envProps.getDimensions();
-        
+
         final EnvironmentHttpResponse.Builder responseBuilder = EnvironmentHttpResponse.newBuilder()
                 .setTickNumber(tickNumber)
                 .setTotalCells(envProps.getTotalCells());
-        
+
         for (int i = 0; i < cellCount; i++) {
             final int flatIndex = cellColumns.getFlatIndices(i);
             final int[] coords = envProps.flatIndexToCoordinates(flatIndex);
-            
+
             // Filter by region if provided
             if (region != null && !isInRegion(coords, region, dimensions)) {
                 continue;
             }
-            
+
             final int moleculeInt = cellColumns.getMoleculeData(i);
             final int moleculeType = moleculeInt & org.evochora.runtime.Config.TYPE_MASK;
             final int moleculeValue = MoleculeDataUtils.extractSignedValue(moleculeInt);
-            final int marker = (moleculeInt & org.evochora.runtime.Config.MARKER_MASK) 
+            final int marker = (moleculeInt & org.evochora.runtime.Config.MARKER_MASK)
                     >> org.evochora.runtime.Config.MARKER_SHIFT;
             final int ownerId = cellColumns.getOwnerIds(i);
-            
+
             // Build cell with IDs (not string names)
             final CellHttpResponse.Builder cellBuilder = CellHttpResponse.newBuilder()
                     .setMoleculeType(moleculeType)
                     .setMoleculeValue(moleculeValue)
                     .setOwnerId(ownerId)
                     .setMarker(marker);
-            
+
             // Add coordinates
             for (int coord : coords) {
                 cellBuilder.addCoordinates(coord);
             }
-            
+
             // For CODE molecules, include opcode ID (which equals moleculeValue)
             if (moleculeType == org.evochora.runtime.Config.TYPE_CODE) {
                 cellBuilder.setOpcodeId(moleculeValue);
             } else {
                 cellBuilder.setOpcodeId(-1);  // Not a CODE molecule
             }
-            
+
             responseBuilder.addCells(cellBuilder.build());
         }
-        
+
+        // Generate minimap if requested
+        if (includeMinimap) {
+            final var minimapResult = minimapAggregator.aggregate(cellColumns, envProps);
+            if (minimapResult != null) {
+                responseBuilder.setMinimap(MinimapData.newBuilder()
+                        .setWidth(minimapResult.width())
+                        .setHeight(minimapResult.height())
+                        .setCellTypes(ByteString.copyFrom(minimapResult.cellTypes()))
+                        .build());
+            }
+        }
+
         return responseBuilder.build();
     }
     

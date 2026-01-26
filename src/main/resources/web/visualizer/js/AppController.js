@@ -3,6 +3,7 @@ import { OrganismApi } from './api/OrganismApi.js';
 import { SimulationApi } from './api/SimulationApi.js';
 import { EnvironmentGrid } from './EnvironmentGrid.js';
 import { HeaderbarView } from './ui/HeaderbarView.js';
+import { MinimapView } from './ui/minimap/MinimapView.js';
 import { OrganismInstructionView } from './ui/organism/OrganismInstructionView.js';
 import { OrganismSourceView } from './ui/organism/OrganismSourceView.js';
 import { OrganismStateView } from './ui/organism/OrganismStateView.js';
@@ -80,14 +81,19 @@ export class AppController {
         this.worldContainer = document.querySelector('.world-container');
         this.renderer = new EnvironmentGrid(this, this.worldContainer, defaultConfig, this.environmentApi);
         this.headerbar = new HeaderbarView(this);
-        
+
+        // Minimap is initialized in init() after renderer.init() completes
+        // (renderer.init() clears the container, so we must add minimap after)
+        this.minimapView = null;
+        this.lastMinimapTick = null;
+
         // Apply initial zoom state (persisted from localStorage, default zoomed out)
         this.renderer.setZoom(this.state.isZoomedOut);
         this.headerbar.updateZoomButton(this.state.isZoomedOut);
-        
+
         // Initialize panel managers
         this.initPanelManagers();
-        
+
         // Organism details views (render into organism-details container in the panel)
         const detailsRoot = document.getElementById('organism-details');
         if (!detailsRoot) {
@@ -96,13 +102,15 @@ export class AppController {
         this.instructionView = new OrganismInstructionView(detailsRoot);
         this.stateView = new OrganismStateView(detailsRoot);
         this.sourceView = new OrganismSourceView(detailsRoot);
-        
+
         // Load initial state (runId, tick) from URL if present
         this.loadFromUrl();
-        
+
         // Setup viewport change handler (environment only, organisms are cached per tick)
         this.renderer.onViewportChange = () => {
             this.loadEnvironmentForCurrentViewport();
+            // Update minimap viewport rectangle
+            this.updateMinimapViewport();
         };
 
         // Keep footer display in sync when state changes externally
@@ -142,6 +150,10 @@ export class AppController {
             this.organismPanelManager?.updateInfo(0, 0);
             this.organismPanelManager?.updateList([], null);
             this.clearOrganismDetails();
+
+            // Reset minimap state
+            this.lastMinimapTick = null;
+            this.minimapView?.clear();
             
             this.headerbar.updateTickDisplay(this.state.currentTick, this.state.maxTick);
 
@@ -440,7 +452,7 @@ export class AppController {
         } catch (error) {
             // Ignore AbortError, as it's an expected cancellation
             if (error.name === 'AbortError') {
-                console.debug('Request aborted by user navigation.');
+                // Request aborted by user navigation - expected
                 return;
             }
             console.error('Failed to load organism details:', error);
@@ -464,7 +476,12 @@ export class AppController {
 
             // Initialize renderer
             await this.renderer.init();
-            
+
+            // Create minimap AFTER renderer.init() (which clears the container)
+            this.minimapView = new MinimapView(this.worldContainer, (worldX, worldY) => {
+                this.renderer.centerOn(worldX, worldY);
+            });
+
             // Abort previous request if it's still running
             if (this.simulationRequestController) {
                 this.simulationRequestController.abort();
@@ -503,7 +520,6 @@ export class AppController {
                             this.programArtifactCache.set(program.programId, program);
                         }
                     }
-                    console.debug(`Cached ${this.programArtifactCache.size} program artifacts.`);
                 }
                 
                 // Update organism panel manager with metadata
@@ -550,7 +566,7 @@ export class AppController {
         } catch (error) {
             // Ignore AbortError, as it's an expected cancellation
             if (error.name === 'AbortError') {
-                console.debug('Request aborted by user navigation.');
+                // Request aborted by user navigation - expected
                 return;
             }
             console.error('Failed to initialize application:', error);
@@ -688,8 +704,25 @@ export class AppController {
 
         try {
             hideError();
-            // Load environment cells first (viewport-based)
-            await this.renderer.loadViewport(this.state.currentTick, this.state.runId);
+
+            // Request minimap only on tick change (not on panning)
+            const needMinimap = this.state.currentTick !== this.lastMinimapTick;
+
+            // Load environment cells (viewport-based), with optional minimap
+            const result = await this.renderer.loadViewport(
+                this.state.currentTick,
+                this.state.runId,
+                needMinimap
+            );
+
+            // Update minimap if data received
+            if (result?.minimap && this.state.worldShape) {
+                this.minimapView.update(result.minimap, this.state.worldShape);
+                this.lastMinimapTick = this.state.currentTick;
+            }
+
+            // Update minimap viewport rectangle
+            this.updateMinimapViewport();
 
             // Then load organisms for this tick (no region; filtering happens client-side)
             const organisms = await this.organismApi.fetchOrganismsAtTick(
@@ -723,7 +756,7 @@ export class AppController {
         } catch (error) {
             // Ignore AbortError, as it's an expected cancellation
             if (error.name === 'AbortError') {
-                console.debug('Request aborted by user navigation.');
+                // Request aborted by user navigation - expected
                 return;
             }
             console.error('Failed to load viewport:', error);
@@ -749,7 +782,7 @@ export class AppController {
         } catch (error) {
             // Ignore AbortError, as it's an expected cancellation
             if (error.name === 'AbortError') {
-                console.debug('Request aborted by user navigation.');
+                // Request aborted by user navigation - expected
                 return;
             }
             console.error('Failed to load environment for viewport:', error);
@@ -885,6 +918,18 @@ export class AppController {
             }
         } catch (error) {
             console.error('Failed to auto-select runId:', error);
+        }
+    }
+
+    /**
+     * Updates the minimap viewport rectangle to show the current visible area.
+     * Called on viewport changes (pan, zoom).
+     * @private
+     */
+    updateMinimapViewport() {
+        if (this.minimapView && this.renderer && this.state.worldShape) {
+            const bounds = this.renderer.getViewportBounds();
+            this.minimapView.updateViewport(bounds);
         }
     }
 }

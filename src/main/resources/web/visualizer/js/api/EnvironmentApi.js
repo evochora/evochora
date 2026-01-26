@@ -86,6 +86,7 @@ message EnvironmentHttpResponse {
   int64 tick_number = 1;
   int64 total_cells = 2;
   repeated CellHttpResponse cells = 3;
+  MinimapData minimap = 4;
 }
 message CellHttpResponse {
   repeated int32 coordinates = 1 [packed=true];
@@ -94,6 +95,11 @@ message CellHttpResponse {
   int32 owner_id = 4;
   int32 opcode_id = 5;
   int32 marker = 6;
+}
+message MinimapData {
+  int32 width = 1;
+  int32 height = 2;
+  bytes cell_types = 3;
 }
 `;
 
@@ -146,17 +152,18 @@ export class EnvironmentApi {
      * Fetches environment data (cell states) for a specific tick and a given rectangular region.
      * Supports cancellation via an AbortSignal.
      * Includes performance timing (visible in browser console at Debug level).
-     * 
+     *
      * @param {number} tick - The tick number to fetch data for.
      * @param {{x1: number, x2: number, y1: number, y2: number}} region - The viewport region to fetch.
      * @param {object} [options={}] - Optional parameters for the request.
      * @param {string|null} [options.runId=null] - The specific run ID to query. Defaults to the latest run if null.
      * @param {AbortSignal|null} [options.signal=null] - An AbortSignal to allow for request cancellation.
-     * @returns {Promise<{cells: Array<object>}>} A promise that resolves to the environment data.
+     * @param {boolean} [options.includeMinimap=false] - Include minimap data in response.
+     * @returns {Promise<{cells: Array<object>, minimap?: {width: number, height: number, cellTypes: Uint8Array}}>} A promise that resolves to the environment data.
      * @throws {Error} If the network request fails, is aborted, or the server returns an error.
      */
     async fetchEnvironmentData(tick, region, options = {}) {
-        const { runId = null, signal = null } = options;
+        const { runId = null, signal = null, includeMinimap = false } = options;
         
         // Ensure protobuf is initialized
         await ensureProtoInitialized();
@@ -168,6 +175,9 @@ export class EnvironmentApi {
         let url = `/visualizer/api/environment/${tick}?region=${encodeURIComponent(regionParam)}`;
         if (runId) {
             url += `&runId=${encodeURIComponent(runId)}`;
+        }
+        if (includeMinimap) {
+            url += '&minimap';
         }
         
         const fetchOptions = {
@@ -251,12 +261,22 @@ export class EnvironmentApi {
                     totalMs: totalTime.toFixed(1)
                 },
                 cells: serverTiming.cellCount,
-                sizeKb: response.headers.get('Content-Length') 
-                    ? (parseInt(response.headers.get('Content-Length')) / 1024).toFixed(1) 
+                sizeKb: response.headers.get('Content-Length')
+                    ? (parseInt(response.headers.get('Content-Length')) / 1024).toFixed(1)
                     : 'unknown'
             });
-            
-            return { cells };
+
+            // Build result with optional minimap
+            const result = { cells };
+            if (message.minimap) {
+                result.minimap = {
+                    width: message.minimap.width,
+                    height: message.minimap.height,
+                    cellTypes: new Uint8Array(message.minimap.cellTypes)
+                };
+            }
+
+            return result;
         } catch (error) {
             if (error instanceof TypeError && error.message.includes('fetch')) {
                 throw new Error('Server not reachable. Is it running?');
