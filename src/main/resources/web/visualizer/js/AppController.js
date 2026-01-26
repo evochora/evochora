@@ -89,7 +89,6 @@ export class AppController {
 
         // Apply initial zoom state (persisted from localStorage, default zoomed out)
         this.renderer.setZoom(this.state.isZoomedOut);
-        this.headerbar.updateZoomButton(this.state.isZoomedOut);
 
         // Initialize panel managers
         this.initPanelManagers();
@@ -287,9 +286,6 @@ export class AppController {
         // Persist zoom state
         localStorage.setItem('evochora-zoom-state', isZoomedOut ? 'true' : 'false');
 
-        // Update button text via headerbar view
-        this.headerbar.updateZoomButton(isZoomedOut);
-
         // Update minimap panel zoom button
         this.minimapView?.updateZoomButton(isZoomedOut);
 
@@ -305,14 +301,9 @@ export class AppController {
      * @private
      */
     initPanelManagers() {
-        // Tick panel
+        // Tick panel (always visible, not collapsible)
         this.tickPanelManager = new TickPanelManager({
             panel: document.getElementById('tick-panel'),
-            collapsed: document.getElementById('tick-panel-collapsed'),
-            hideBtn: document.getElementById('tick-panel-hide'),
-            tickInput: document.getElementById('tick-input'),
-            tickTotal: document.getElementById('tick-total-suffix'),
-            tickInfo: document.getElementById('tick-info'),
             multiplierWrapper: document.getElementById('multiplier-wrapper'),
             multiplierSuffix: document.getElementById('multiplier-suffix')
         });
@@ -326,6 +317,8 @@ export class AppController {
             organismCount: document.getElementById('organism-count'),
             organismList: document.getElementById('organism-list'),
             selectedDisplay: document.getElementById('organism-selected-display'),
+            filterInput: document.getElementById('organism-filter'),
+            filterClear: document.getElementById('organism-filter-clear'),
             onOrganismSelect: (organismId) => this.selectOrganism(organismId),
             onPositionClick: (x, y) => this.renderer?.centerOn(x, y),
             onTickClick: (tick) => this.navigateToTick(tick),

@@ -39,12 +39,8 @@
     </div>
     <div class="header-right"></div>
     
-    <!-- Tick Panel (left) -->
-    <div id="tick-panel-collapsed" class="header-panel-collapsed" title="Show tick controls">
-        ▼<span class="panel-info" id="tick-info"></span>
-    </div>
+    <!-- Tick Panel (left, always visible) -->
     <div id="tick-panel" class="header-panel">
-        <button class="panel-toggle" id="tick-panel-hide" data-tooltip="Hide tick controls">▲</button>
         <button id="btn-prev-large" data-tooltip="">&lt;&lt;</button>
         <button id="btn-prev-small" data-tooltip="">&lt;</button>
         <div class="tick-input-wrapper">
@@ -57,7 +53,6 @@
             <input type="number" id="large-step-multiplier" class="tick-input" value="100" min="1">
             <span id="multiplier-suffix" class="tick-total-suffix">x1</span>
         </div>
-        <button id="btn-zoom-toggle" data-tooltip="Toggle Zoom Level">Zoom Out</button>
     </div>
     
     <!-- Organism Panel (right) -->
@@ -66,6 +61,10 @@
             <div class="organism-panel-title">
                 <span>Organisms</span>
                 <span class="organism-count" id="organism-count">(0/0)</span>
+            </div>
+            <div class="organism-filter-wrapper" id="organism-filter-wrapper">
+                <input type="text" id="organism-filter" class="organism-filter-input" placeholder="Filter...">
+                <button class="organism-filter-clear hidden" id="organism-filter-clear" title="Clear filter">✕</button>
             </div>
             <div class="organism-panel-controls">
                 <button class="panel-toggle" id="organism-list-collapse" title="Collapse/Expand list">▲</button>

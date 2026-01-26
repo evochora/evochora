@@ -42,8 +42,7 @@ export class MinimapView {
         this.collapsedElement.className = 'footer-panel-collapsed hidden';
         this.collapsedElement.innerHTML = `
             <div class="minimap-collapsed-left">
-                <span class="panel-icon">🗺</span>
-                <span class="panel-label">Minimap</span>
+                <span class="panel-label world-size">— × —</span>
             </div>
             <div class="minimap-collapsed-right">
                 <button class="minimap-zoom-btn">Zoom In</button>
@@ -58,8 +57,7 @@ export class MinimapView {
         this.element.innerHTML = `
             <div class="minimap-panel-header">
                 <div class="minimap-panel-title">
-                    <span class="panel-icon">🗺</span>
-                    <span>Minimap</span>
+                    <span class="world-size">— × —</span>
                 </div>
                 <div class="minimap-panel-controls">
                     <button class="minimap-zoom-btn">Zoom In</button>
@@ -79,7 +77,8 @@ export class MinimapView {
         this.zoomBtnCollapsed = this.collapsedElement.querySelector('.minimap-zoom-btn');
         this.collapseBtn = this.element.querySelector('.panel-toggle');
         this.panelHeader = this.element.querySelector('.minimap-panel-header');
-        this.collapsedLeft = this.collapsedElement.querySelector('.minimap-collapsed-left');
+        this.worldSizeExpanded = this.element.querySelector('.world-size');
+        this.worldSizeCollapsed = this.collapsedElement.querySelector('.world-size');
 
         document.body.appendChild(this.collapsedElement);
         document.body.appendChild(this.element);
@@ -90,13 +89,10 @@ export class MinimapView {
      * @private
      */
     attachEvents() {
-        // Collapsed tab left part click - expand panel
-        this.collapsedLeft.addEventListener('click', () => {
-            this.expand();
-        });
-
-        // Collapsed arrow click - expand panel
-        this.collapsedElement.querySelector('.panel-arrow').addEventListener('click', () => {
+        // Collapsed panel click - expand (except zoom button)
+        this.collapsedElement.addEventListener('click', (e) => {
+            // Don't expand if clicking on zoom button
+            if (e.target.closest('.minimap-zoom-btn')) return;
             this.expand();
         });
 
@@ -143,6 +139,9 @@ export class MinimapView {
         this.worldShape = worldShape;
         this.lastMinimapData = minimapData;
 
+        // Update world size display
+        this.updateWorldSizeDisplay(worldShape);
+
         // Initialize navigator on first update
         if (!this.navigator && worldShape) {
             this.navigator = new MinimapNavigator(this.canvas, worldShape);
@@ -162,6 +161,9 @@ export class MinimapView {
         if (this.viewportBounds && worldShape) {
             this.renderer.drawViewportRect(this.viewportBounds, worldShape);
         }
+
+        // Sync collapsed panel width with expanded panel
+        this.syncPanelWidths();
 
         // Show the minimap
         this.show();
@@ -193,6 +195,53 @@ export class MinimapView {
         }
         if (this.zoomBtnCollapsed) {
             this.zoomBtnCollapsed.textContent = text;
+        }
+    }
+
+    /**
+     * Updates the world size display in both panel states.
+     * @param {number[]} worldShape - World dimensions [width, height].
+     * @private
+     */
+    updateWorldSizeDisplay(worldShape) {
+        if (!worldShape || worldShape.length < 2) return;
+        const text = `${worldShape[0]} × ${worldShape[1]}`;
+        if (this.worldSizeExpanded) {
+            this.worldSizeExpanded.textContent = text;
+        }
+        if (this.worldSizeCollapsed) {
+            this.worldSizeCollapsed.textContent = text;
+        }
+    }
+
+    /**
+     * Synchronizes the collapsed panel width to match the expanded panel.
+     * Measures the expanded panel's actual width for accurate matching.
+     * @private
+     */
+    syncPanelWidths() {
+        if (!this.collapsedElement || !this.element) return;
+
+        // Temporarily show expanded panel to measure its width
+        const wasHidden = this.element.classList.contains('hidden');
+        if (wasHidden) {
+            // Briefly show to measure (off-screen measurement trick)
+            this.element.style.visibility = 'hidden';
+            this.element.classList.remove('hidden');
+        }
+
+        // Get the actual rendered width of the expanded panel
+        const expandedWidth = this.element.offsetWidth;
+
+        // Restore hidden state if it was hidden
+        if (wasHidden) {
+            this.element.classList.add('hidden');
+            this.element.style.visibility = '';
+        }
+
+        // Apply the same width to collapsed panel (uses border-box sizing)
+        if (expandedWidth > 0) {
+            this.collapsedElement.style.width = `${expandedWidth}px`;
         }
     }
 

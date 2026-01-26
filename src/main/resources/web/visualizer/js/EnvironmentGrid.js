@@ -554,6 +554,42 @@ export class EnvironmentGrid {
             window.addEventListener('mousemove', onMouseMove);
             window.addEventListener('mouseup', onMouseUp);
         });
+
+        // --- Horizontal Track Click (jump to position) ---
+        this.hScrollTrack.addEventListener('click', (e) => {
+            // Ignore if clicking on thumb
+            if (e.target === this.hScrollThumb) return;
+
+            const trackRect = this.hScrollTrack.getBoundingClientRect();
+            const clickX = e.clientX - trackRect.left;
+            const trackWidth = this.hScrollTrack.clientWidth;
+            const worldWidthPx = this.worldWidthCells * this.getCurrentCellSize();
+            const scrollableWidth = worldWidthPx + 2 * margin;
+
+            // Calculate camera position from click position
+            this.cameraX = (clickX / trackWidth) * scrollableWidth - margin;
+            this.clampCameraToWorld();
+            this.updateStagePosition();
+            this.requestViewportLoad();
+        });
+
+        // --- Vertical Track Click (jump to position) ---
+        this.vScrollTrack.addEventListener('click', (e) => {
+            // Ignore if clicking on thumb
+            if (e.target === this.vScrollThumb) return;
+
+            const trackRect = this.vScrollTrack.getBoundingClientRect();
+            const clickY = e.clientY - trackRect.top;
+            const trackHeight = this.vScrollTrack.clientHeight;
+            const worldHeightPx = this.worldHeightCells * this.getCurrentCellSize();
+            const scrollableHeight = worldHeightPx + 2 * margin;
+
+            // Calculate camera position from click position
+            this.cameraY = (clickY / trackHeight) * scrollableHeight - margin;
+            this.clampCameraToWorld();
+            this.updateStagePosition();
+            this.requestViewportLoad();
+        });
     }
 
     /**

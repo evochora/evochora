@@ -135,16 +135,34 @@ header {
    ============================================ */
 
 #tick-panel {
-    left: 22px;
-    padding: 6px 10px 6px 0;
+    left: 10px;
+    padding: 4px 10px;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
 }
 
-#tick-panel-collapsed {
-    left: 22px;
-    padding: 2px 10px;
+/* Tick panel buttons - compact style matching minimap panel */
+#tick-panel button {
+    padding: 4px 8px;
+    font-size: 11px;
+}
+
+/* Tick panel inputs - compact style */
+#tick-panel .tick-input-wrapper input[type="number"] {
+    width: 90px;
+    padding: 4px 36px 4px 6px;
+    font-size: 11px;
+}
+
+#tick-panel .tick-input-wrapper .tick-total-suffix {
+    font-size: 11px;
+    right: 6px;
+}
+
+#tick-panel .multiplier-wrapper input.tick-input {
+    width: 50px;
+    padding-right: 28px;
 }
 
 /* ============================================
@@ -166,7 +184,7 @@ header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 2px 10px;
+    padding: 4px 10px;
     border-bottom: 1px solid #333;
     cursor: pointer;
 }
@@ -192,6 +210,64 @@ header {
     display: flex;
     align-items: center;
     gap: 4px;
+}
+
+/* Organism filter input - matches tick panel style */
+.organism-filter-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    margin-left: auto;
+    margin-right: 8px;
+}
+
+.organism-filter-input {
+    width: 70px;
+    padding: 4px 20px 4px 6px;
+    background-color: #222;
+    border: 1px solid #555;
+    border-radius: 4px;
+    color: #e0e0e0;
+    font-family: 'Roboto Mono', 'Courier New', monospace;
+    font-size: 11px;
+    outline: none;
+    transition: border-color 0.15s ease;
+}
+
+.organism-filter-input:focus {
+    border-color: #4a9eff;
+}
+
+.organism-filter-input::placeholder {
+    color: #666;
+}
+
+.organism-filter-clear {
+    position: absolute;
+    right: 4px;
+    background: transparent;
+    border: none;
+    color: #666;
+    cursor: pointer;
+    padding: 2px 4px;
+    font-size: 10px;
+    line-height: 1;
+}
+
+.organism-filter-clear:hover {
+    color: #ff6666;
+}
+
+.organism-filter-clear.hidden {
+    display: none;
+}
+
+/* No matches message */
+.organism-list-empty {
+    padding: 8px 12px;
+    color: #666;
+    font-size: 11px;
+    font-style: italic;
 }
 
 /* Organism list (collapsible) */
@@ -961,7 +1037,8 @@ main.container {
     display: none; /* Initially hidden */
     z-index: 10;
     /* Adjustments for positioning within main.container */
-    box-sizing: border-box; 
+    box-sizing: border-box;
+    cursor: pointer;
 }
 .scrollbar-track-v {
     right: 0;
@@ -1073,12 +1150,14 @@ main.container {
     padding: 0;
     display: flex;
     flex-direction: column;
-    min-width: 180px;
+    /* Width determined by minimap canvas content (up to 300px + padding) */
 }
 
 #minimap-panel-collapsed {
     left: 10px;
-    min-width: 180px;
+    cursor: pointer;
+    box-sizing: border-box;
+    /* Width is set dynamically via JavaScript to match expanded panel */
 }
 
 /* Minimap panel header */

@@ -16,7 +16,6 @@ export class HeaderbarView {
             nextSmall: document.getElementById('btn-next-small'),
             prevLarge: document.getElementById('btn-prev-large'),
             nextLarge: document.getElementById('btn-next-large'),
-            zoomToggle: document.getElementById('btn-zoom-toggle'),
             tickInput: document.getElementById('tick-input'),
             largeStepInput: document.getElementById('large-step-multiplier'),
         };
@@ -31,14 +30,31 @@ export class HeaderbarView {
         this.elements.nextSmall.addEventListener('click', () => this.navigateInDirection('forward'));
         this.elements.prevLarge.addEventListener('click', () => this.navigateLargeStep('backward'));
         this.elements.nextLarge.addEventListener('click', () => this.navigateLargeStep('forward'));
-        this.elements.zoomToggle.addEventListener('click', () => this.controller.toggleZoom());
         
         // Input field listeners
         this.elements.tickInput.addEventListener('keydown', (e) => this.handleTickInputKeyDown(e));
         this.elements.tickInput.addEventListener('change', () => this.handleTickInputChange());
         this.elements.tickInput.addEventListener('click', () => this.elements.tickInput.select());
         this.elements.largeStepInput.addEventListener('change', () => this.handleMultiplierChange());
-        this.elements.largeStepInput.addEventListener('keyup', () => this.handleMultiplierChange());
+        this.elements.largeStepInput.addEventListener('keyup', (e) => {
+            // Don't trigger on arrow keys (handled by keydown)
+            if (!['ArrowUp', 'ArrowDown'].includes(e.key)) {
+                this.handleMultiplierChange();
+            }
+        });
+        this.elements.largeStepInput.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                const current = parseInt(this.elements.largeStepInput.value, 10) || 100;
+                this.elements.largeStepInput.value = current * 10;
+                this.handleMultiplierChange();
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                const current = parseInt(this.elements.largeStepInput.value, 10) || 100;
+                this.elements.largeStepInput.value = Math.max(1, Math.floor(current / 10));
+                this.handleMultiplierChange();
+            }
+        });
         this.elements.largeStepInput.addEventListener('click', () => this.elements.largeStepInput.select());
 
         // Global keyboard shortcuts
@@ -113,6 +129,7 @@ export class HeaderbarView {
 
     /**
      * Handles keydown events on the tick input field.
+     * Arrow keys use default behavior (cursor movement).
      * @param {KeyboardEvent} e The keyboard event.
      */
     handleTickInputKeyDown(e) {
@@ -120,17 +137,11 @@ export class HeaderbarView {
             e.preventDefault();
             this.handleTickInputChange();
             setTimeout(() => this.elements.tickInput.select(), 0);
-        } else if (['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
-            e.preventDefault();
-            this.handleGlobalKeyDown(e);
-            setTimeout(() => {
-                this.elements.tickInput.focus();
-                this.elements.tickInput.select();
-            }, 0);
         } else if (e.key === 'Escape') {
             e.preventDefault();
             this.elements.tickInput.blur();
         }
+        // Arrow keys: default behavior (cursor movement in input)
     }
 
     /**
@@ -144,44 +155,39 @@ export class HeaderbarView {
     }
 
     /**
-     * Updates the text of the zoom button based on the current zoom state.
-     * @param {boolean} isZoomedOut - True if the view is zoomed out.
-     */
-    updateZoomButton(isZoomedOut) {
-        const button = this.elements.zoomToggle;
-        if (button) {
-            button.textContent = isZoomedOut ? 'Zoom In' : 'Zoom Out';
-        }
-    }
-
-    /**
      * Central handler for global keydown events, routing to the correct action.
      * @param {KeyboardEvent} e The keyboard event.
      * @private
      */
     handleGlobalKeyDown(e) {
-        // Ignore most shortcuts if a text input is focused, except for our navigation keys
+        // Ignore all navigation shortcuts if any input is focused
         if (document.activeElement.matches('input[type="text"], input[type="number"]')) {
-             if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Enter', 'Escape'].includes(e.key)) {
-                return;
-             }
+            return;
         }
 
-        switch (e.key) {
+        if (['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+            e.preventDefault();
+            this.handleNavigationKey(e.key);
+        }
+    }
+
+    /**
+     * Handles a navigation key press (arrow keys).
+     * @param {string} key - The key that was pressed.
+     * @private
+     */
+    handleNavigationKey(key) {
+        switch (key) {
             case 'ArrowRight':
-                e.preventDefault();
                 this.handleKeyPress('forward');
                 break;
             case 'ArrowLeft':
-                e.preventDefault();
                 this.handleKeyPress('backward');
                 break;
             case 'ArrowUp':
-                e.preventDefault();
                 this.navigateLargeStep('forward');
                 break;
             case 'ArrowDown':
-                e.preventDefault();
                 this.navigateLargeStep('backward');
                 break;
         }
