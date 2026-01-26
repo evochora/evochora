@@ -335,33 +335,35 @@ function transformCells(protoCells) {
 
 /**
  * Resolves molecule type ID to name using cached mapping.
- * Fails fast if mappings not initialized (developer error).
+ * Returns fallback value if mappings not yet initialized (can happen during startup race condition).
  * Returns 'UNKNOWN' for unknown IDs (valid simulation state from mutations).
- * 
+ *
  * @param {number} typeId - The molecule type ID.
- * @returns {string} The molecule type name or "UNKNOWN".
- * @throws {Error} If moleculeTypeMap not initialized.
+ * @returns {string} The molecule type name, 'UNKNOWN', or 'TYPE_{id}' if not initialized.
  */
 function resolveMoleculeType(typeId) {
     if (!moleculeTypeMap) {
-        throw new Error('moleculeTypeMap not initialized. Call setTypeMappings() first.');
+        // Graceful degradation during startup race condition.
+        // Data will be reloaded once metadata is available.
+        return `TYPE_${typeId}`;
     }
     return moleculeTypeMap[typeId] || 'UNKNOWN';
 }
 
 /**
  * Resolves opcode ID to name using cached mapping.
- * Fails fast if mappings not initialized (developer error).
+ * Returns fallback value if mappings not yet initialized (can happen during startup race condition).
  * Returns '??' for unknown IDs (valid simulation state from mutations).
  * The raw opcodeId is passed separately for tooltip display.
- * 
+ *
  * @param {number} opcodeId - The opcode ID.
- * @returns {string} The opcode name or "??" for unknown.
- * @throws {Error} If opcodeMap not initialized.
+ * @returns {string} The opcode name, '??', or 'OP_{id}' if not initialized.
  */
 function resolveOpcode(opcodeId) {
     if (!opcodeMap) {
-        throw new Error('opcodeMap not initialized. Call setTypeMappings() first.');
+        // Graceful degradation during startup race condition.
+        // Data will be reloaded once metadata is available.
+        return `OP_${opcodeId}`;
     }
     return opcodeMap[opcodeId] || '??';
 }

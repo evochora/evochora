@@ -154,41 +154,48 @@ export class OrganismSourceView {
             const lineNumber = index + 1;
             // Note: We do NOT set 'active' class here initially. It's handled by updateExecutionState.
             
-            // Check if this line has multiple machine instructions (collapsible)
-            let hasMultipleInstructions = false;
+            // Check if this line should show collapsible machine instructions.
+            // Filter out NOPs - they are padding for mutation robustness and clutter the display.
+            // Show collapsible if (after NOP filtering): (a) multiple instructions, OR (b) any synthetic instruction.
+            let showCollapsible = false;
+            let filteredInstructions = [];
             if (this.artifact && this.artifact.sourceLineToInstructions) {
                 const sourceLineKey = `${this.selectedFile}:${lineNumber}`;
                 const machineInstructions = this.artifact.sourceLineToInstructions[sourceLineKey];
-                hasMultipleInstructions = machineInstructions && machineInstructions.instructions && machineInstructions.instructions.length > 1;
+                if (machineInstructions && machineInstructions.instructions) {
+                    // Filter out NOP and WAIT instructions (padding for mutation robustness)
+                    filteredInstructions = machineInstructions.instructions.filter(
+                        i => i.opcode !== 'NOP' && i.opcode !== 'WAIT'
+                    );
+                    const hasMultiple = filteredInstructions.length > 1;
+                    const hasSynthetic = filteredInstructions.some(i => i.synthetic);
+                    showCollapsible = hasMultiple || hasSynthetic;
+                }
             }
-            
-            const collapsibleClass = hasMultipleInstructions ? 'collapsible-source-line' : '';
+
+            const collapsibleClass = showCollapsible ? 'collapsible-source-line' : '';
             // Always include collapse indicator column - either with symbol or empty placeholder
-            const collapseIndicator = hasMultipleInstructions 
+            const collapseIndicator = showCollapsible
                 ? `<span class="collapse-indicator" data-source-line="${lineNumber}">▶</span>`
                 : '<span class="collapse-indicator-placeholder"></span>';
-            
+
             let html = `<div class="source-line ${collapsibleClass}" data-line="${lineNumber}">
                         <span class="line-number">${String(lineNumber).padStart(3, ' ')}</span>
                         ${collapseIndicator}
                         <pre class="assembly-line">${line.replace(/</g, '&lt;')}</pre>
                     </div>`;
-            
-            // Add machine instructions if available for this source line (only if more than one instruction)
-            if (this.artifact && this.artifact.sourceLineToInstructions) {
-                const sourceLineKey = `${this.selectedFile}:${lineNumber}`;
-                const machineInstructions = this.artifact.sourceLineToInstructions[sourceLineKey];
-                if (machineInstructions && machineInstructions.instructions && machineInstructions.instructions.length > 1) {
-                    const machineInstructionsHtml = machineInstructions.instructions.map((inst, instIndex) => {
-                        const operandsDisplay = inst.operandsAsString ? ` ${inst.operandsAsString}` : '';
-                        return `<div class="machine-instruction" data-linear-address="${inst.linearAddress}" data-instruction-index="${instIndex}">
-                                    <span class="machine-instruction-indicator"> </span>
-                                    <span class="machine-instruction-opcode">${this.escapeHtml(inst.opcode)}</span>
-                                    <span class="machine-instruction-operands">${this.escapeHtml(operandsDisplay)}</span>
-                                </div>`;
-                    }).join('');
-                    html += `<div class="machine-instructions-container collapsed" data-source-line="${lineNumber}" data-indicator-line="${lineNumber}">${machineInstructionsHtml}</div>`;
-                }
+
+            // Add machine instructions container if collapsible (uses filtered instructions without NOPs)
+            if (showCollapsible && filteredInstructions.length > 0) {
+                const machineInstructionsHtml = filteredInstructions.map((inst, instIndex) => {
+                    const operandsDisplay = inst.operandsAsString ? ` ${inst.operandsAsString}` : '';
+                    return `<div class="machine-instruction" data-linear-address="${inst.linearAddress}" data-instruction-index="${instIndex}">
+                                <span class="machine-instruction-indicator"> </span>
+                                <span class="machine-instruction-opcode">${this.escapeHtml(inst.opcode)}</span>
+                                <span class="machine-instruction-operands">${this.escapeHtml(operandsDisplay)}</span>
+                            </div>`;
+                }).join('');
+                html += `<div class="machine-instructions-container collapsed" data-source-line="${lineNumber}" data-indicator-line="${lineNumber}">${machineInstructionsHtml}</div>`;
             }
             
             return html;

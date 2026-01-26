@@ -68,8 +68,8 @@ public final class CallerMarshallingRule implements IEmissionRule {
         String negatedOpcode = ConditionalUtils.getNegatedOpcode(conditional.opcode());
 
         // 1. Emit negated conditional and jump.
-        out.add(new IrInstruction(negatedOpcode, conditional.operands(), conditional.source()));
-        out.add(new IrInstruction("JMPI", List.of(new IrLabelRef(label)), conditional.source()));
+        out.add(IrInstruction.synthetic(negatedOpcode, conditional.operands(), conditional.source()));
+        out.add(IrInstruction.synthetic("JMPI", List.of(new IrLabelRef(label)), conditional.source()));
 
         // 2. Emit the marshalling sequence for the CALL.
         emitStandardMarshalling(out, call);
@@ -83,19 +83,19 @@ public final class CallerMarshallingRule implements IEmissionRule {
         for (int j = call.valOperands().size() - 1; j >= 0; j--) {
             IrOperand operand = call.valOperands().get(j);
             if (operand instanceof IrImm imm) {
-                out.add(new IrInstruction("PUSI", List.of(imm), call.source()));
+                out.add(IrInstruction.synthetic("PUSI", List.of(imm), call.source()));
             } else if (operand instanceof IrLabelRef) {
                 // Labels as VAL parameters should be pushed as vectors (addresses)
-                out.add(new IrInstruction("PUSV", List.of(operand), call.source()));
+                out.add(IrInstruction.synthetic("PUSV", List.of(operand), call.source()));
             } else if (operand instanceof IrTypedImm typedImm) {
                 // Keep IrTypedImm to preserve type information for display
-                out.add(new IrInstruction("PUSI", List.of(typedImm), call.source()));
+                out.add(IrInstruction.synthetic("PUSI", List.of(typedImm), call.source()));
             } else {
-                out.add(new IrInstruction("PUSH", List.of(operand), call.source()));
+                out.add(IrInstruction.synthetic("PUSH", List.of(operand), call.source()));
             }
         }
         for (int j = call.refOperands().size() - 1; j >= 0; j--) {
-            out.add(new IrInstruction("PUSH", List.of(call.refOperands().get(j)), call.source()));
+            out.add(IrInstruction.synthetic("PUSH", List.of(call.refOperands().get(j)), call.source()));
         }
 
         // The CALL itself.
@@ -104,7 +104,7 @@ public final class CallerMarshallingRule implements IEmissionRule {
         // Post-call: Clean up stack (pop REF args in correct order to match callee's PUSH).
         // FIX: Reverse order loop because Stack is LIFO. Last pushed (by callee) must be popped first.
         for (int j = call.refOperands().size() - 1; j >= 0; j--) {
-            out.add(new IrInstruction("POP", List.of(call.refOperands().get(j)), call.source()));
+            out.add(IrInstruction.synthetic("POP", List.of(call.refOperands().get(j)), call.source()));
         }
     }
 
@@ -118,11 +118,11 @@ public final class CallerMarshallingRule implements IEmissionRule {
 
         SourceInfo originalSourceInfo = call.source();
         for (String r : actualRegs) {
-            out.add(new IrInstruction("PUSH", List.of(new IrReg(r)), originalSourceInfo));
+            out.add(IrInstruction.synthetic("PUSH", List.of(new IrReg(r)), originalSourceInfo));
         }
         out.add(nextItem); // Add the call
         for (int a = actualRegs.size() - 1; a >= 0; a--) {
-            out.add(new IrInstruction("POP", List.of(new IrReg(actualRegs.get(a))), originalSourceInfo));
+            out.add(IrInstruction.synthetic("POP", List.of(new IrReg(actualRegs.get(a))), originalSourceInfo));
         }
     }
 }

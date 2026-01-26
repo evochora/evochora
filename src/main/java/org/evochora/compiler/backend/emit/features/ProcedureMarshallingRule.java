@@ -60,7 +60,7 @@ public class ProcedureMarshallingRule implements IEmissionRule {
         // Prologue: POP all parameters into FPRs
         // Parameters are pushed in reverse order (VALs first, then REFs), so we pop them in the same order
         for (int p = 0; p < allParams.size(); p++) {
-            out.add(new IrInstruction("POP", List.of(new IrReg("%FPR" + p)), enterDirective.source()));
+            out.add(IrInstruction.synthetic("POP", List.of(new IrReg("%FPR" + p)), enterDirective.source()));
         }
 
         // Process body for RET instructions
@@ -73,7 +73,7 @@ public class ProcedureMarshallingRule implements IEmissionRule {
 
         // Prologue: Load parameters from the stack into the %FPR registers
         for (int p = arity - 1; p >= 0; p--) {
-            out.add(new IrInstruction("POP", List.of(new IrReg("%FPR" + p)), enterDirective.source()));
+            out.add(IrInstruction.synthetic("POP", List.of(new IrReg("%FPR" + p)), enterDirective.source()));
         }
 
         // Process body for RET instructions
@@ -110,8 +110,8 @@ public class ProcedureMarshallingRule implements IEmissionRule {
         String label = "_safe_ret_" + safeRetCounter.getAndIncrement();
         String negatedOpcode = ConditionalUtils.getNegatedOpcode(conditional.opcode());
 
-        out.add(new IrInstruction(negatedOpcode, conditional.operands(), conditional.source()));
-        out.add(new IrInstruction("JMPI", List.of(new IrLabelRef(label)), conditional.source()));
+        out.add(IrInstruction.synthetic(negatedOpcode, conditional.operands(), conditional.source()));
+        out.add(IrInstruction.synthetic("JMPI", List.of(new IrLabelRef(label)), conditional.source()));
 
         emitStandardEpilogue(out, ret, refParams, arity);
 
@@ -122,11 +122,11 @@ public class ProcedureMarshallingRule implements IEmissionRule {
         if (refParams != null) { // New REF/VAL syntax
             // Only push REF parameters back to stack (VAL parameters are call-by-value)
             for (int p = 0; p < refParams.size(); p++) {
-                out.add(new IrInstruction("PUSH", List.of(new IrReg("%FPR" + p)), ret.source()));
+                out.add(IrInstruction.synthetic("PUSH", List.of(new IrReg("%FPR" + p)), ret.source()));
             }
         } else { // Legacy arity syntax
             for (int p = 0; p < arity; p++) {
-                out.add(new IrInstruction("PUSH", List.of(new IrReg("%FPR" + p)), ret.source()));
+                out.add(IrInstruction.synthetic("PUSH", List.of(new IrReg("%FPR" + p)), ret.source()));
             }
         }
         out.add(ret);

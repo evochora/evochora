@@ -607,6 +607,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                         .setLinearAddress(info.linearAddress())
                         .setOpcode(info.opcode())
                         .setOperandsAsString(info.operandsAsString() != null ? info.operandsAsString() : "")
+                        .setSynthetic(info.synthetic())
                         .build());
             }
             builder.putSourceLineToInstructions(sourceLineKey, listBuilder.build());

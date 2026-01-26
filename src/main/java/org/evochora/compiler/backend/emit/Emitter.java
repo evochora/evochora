@@ -104,7 +104,8 @@ public class Emitter {
                     MachineInstructionInfo machineInfo = new MachineInstructionInfo(
                             opcodeAddress,
                             ins.opcode(),
-                            operandsAsString
+                            operandsAsString,
+                            ins.synthetic()
                     );
                     sourceLineToInstructions.computeIfAbsent(sourceLineKey, k -> new ArrayList<>()).add(machineInfo);
                 }
