@@ -8,7 +8,7 @@ export class MinimapRenderer {
 
     /**
      * Color palette matching the main environment grid colors.
-     * Index corresponds to cell type: 0=CODE, 1=DATA, 2=ENERGY, 3=STRUCTURE, 4=LABEL.
+     * Index corresponds to cell type: 0=CODE, 1=DATA, 2=ENERGY, 3=STRUCTURE, 4=LABEL, 5=EMPTY.
      * Colors are stored as 0xRRGGBB integers for fast pixel manipulation.
      */
     static DEFAULT_PALETTE = {
@@ -17,7 +17,8 @@ export class MinimapRenderer {
         2: 0xffe664,   // ENERGY - yellow
         3: 0xff7878,   // STRUCTURE - red/pink (high visibility for organism boundaries)
         4: 0xa0a0a8,   // LABEL - light gray
-        empty: 0x14141e // Empty cell background
+        5: 0x1e1e28,   // EMPTY - slightly lighter than background (CODE with value 0)
+        empty: 0x14141e // Background (no cell data)
     };
 
     /**

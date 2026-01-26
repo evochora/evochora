@@ -9,10 +9,17 @@ import org.evochora.runtime.model.EnvironmentProperties;
  * <p>
  * This class is stateless and thread-safe. It performs downsampling of the environment
  * grid into a fixed-size minimap while preserving the aspect ratio. Cell types are
- * aggregated using a priority system where STRUCTURE cells take precedence over others,
- * ensuring organism boundaries remain visible even at high zoom-out levels.
+ * aggregated using majority voting - the most common cell type in each block wins.
  * <p>
- * <strong>Priority Order:</strong> STRUCTURE &gt; CODE &gt; LABEL &gt; DATA = ENERGY &gt; EMPTY
+ * <strong>Cell Types:</strong>
+ * <ul>
+ *   <li>0 = CODE (non-empty instruction)</li>
+ *   <li>1 = DATA</li>
+ *   <li>2 = ENERGY</li>
+ *   <li>3 = STRUCTURE</li>
+ *   <li>4 = LABEL</li>
+ *   <li>5 = EMPTY (CODE with value 0)</li>
+ * </ul>
  * <p>
  * <strong>Performance:</strong> For a 4000x3000 environment with 5% occupancy (~600K cells),
  * aggregation completes in approximately 2-5ms.
@@ -26,24 +33,22 @@ public class MinimapAggregator {
     private static final int MAX_SIZE = 300;
 
     /**
-     * Priority values for cell types during aggregation.
-     * Higher values win when multiple cells map to the same minimap pixel.
-     * Index corresponds to raw cell type value (0=CODE, 1=DATA, 2=ENERGY, 3=STRUCTURE, 4=LABEL).
+     * Number of cell types tracked for majority voting.
+     * Types 0-4 are standard types, type 5 is EMPTY (CODE with value 0).
      */
-    private static final int[] TYPE_PRIORITIES = {
-        3,  // CODE (0) - high priority, shows organism code
-        1,  // DATA (1) - low priority
-        1,  // ENERGY (2) - low priority
-        4,  // STRUCTURE (3) - highest priority, organism boundaries must be visible
-        2   // LABEL (4) - medium priority
-    };
+    private static final int NUM_TYPES = 6;
+
+    /**
+     * Type value used for EMPTY cells (CODE with value 0).
+     */
+    private static final byte TYPE_EMPTY = 5;
 
     /**
      * Result of minimap aggregation containing dimensions and cell type data.
      *
      * @param width     Width of the minimap in pixels
      * @param height    Height of the minimap in pixels
-     * @param cellTypes Raw cell type values (0-4), one byte per pixel in row-major order
+     * @param cellTypes Cell type values (0-5), one byte per pixel in row-major order
      */
     public record MinimapResult(int width, int height, byte[] cellTypes) {}
 
@@ -52,8 +57,8 @@ public class MinimapAggregator {
      * <p>
      * The minimap dimensions are calculated to fit within {@link #MAX_SIZE} while
      * preserving the environment's aspect ratio. Each minimap pixel represents a
-     * block of environment cells, with the cell type determined by priority-based
-     * aggregation.
+     * block of environment cells, with the cell type determined by majority voting
+     * (the most common type wins).
      *
      * @param columns  The cell data in columnar format from {@code TickData.getCellColumns()}
      * @param envProps Environment properties containing world shape
@@ -83,10 +88,11 @@ public class MinimapAggregator {
             minimapWidth = Math.max(1, Math.round((float) MAX_SIZE * worldWidth / worldHeight));
         }
 
-        // Initialize minimap with zeros (empty cells)
-        final byte[] minimap = new byte[minimapWidth * minimapHeight];
-        // Track priorities to avoid repeated lookups
-        final byte[] priorities = new byte[minimapWidth * minimapHeight];
+        final int minimapSize = minimapWidth * minimapHeight;
+
+        // Track type counts for each minimap pixel (for majority voting)
+        // counts[pixelIndex * NUM_TYPES + typeIndex] = count of that type
+        final short[] counts = new short[minimapSize * NUM_TYPES];
 
         // Calculate scale factors
         final int scaleX = worldWidth / minimapWidth;
@@ -107,30 +113,83 @@ public class MinimapAggregator {
             final int my = Math.min(y / scaleY, minimapHeight - 1);
             final int mIdx = my * minimapWidth + mx;
 
-            // Extract raw cell type (0-4)
-            final int rawType = (moleculeData & Config.TYPE_MASK) >> Config.TYPE_SHIFT;
+            // Determine cell type (with EMPTY detection)
+            final int cellType = classifyCellType(moleculeData);
 
-            // Priority-based aggregation: higher priority wins
-            final int priority = getPriority(rawType);
-            if (priority > priorities[mIdx]) {
-                minimap[mIdx] = (byte) rawType;
-                priorities[mIdx] = (byte) priority;
+            // Increment count for this type at this pixel
+            counts[mIdx * NUM_TYPES + cellType]++;
+        }
+
+        // Add background (empty) cells to the count with reduced weight
+        // Each minimap pixel represents approximately scaleX * scaleY environment cells
+        // Cells not in the data are truly empty background
+        // Empty cells count at 25% weight to avoid always winning in sparse areas
+        final int cellsPerBlock = scaleX * scaleY;
+        for (int i = 0; i < minimapSize; i++) {
+            int totalCounted = 0;
+            final int baseIdx = i * NUM_TYPES;
+            for (int t = 0; t < NUM_TYPES; t++) {
+                totalCounted += counts[baseIdx + t];
             }
+            // Add missing cells as EMPTY with 12.5% weight
+            final int backgroundCells = cellsPerBlock - totalCounted;
+            if (backgroundCells > 0) {
+                final int weightedEmpty = backgroundCells / 8;  // 12.5% weight
+                counts[baseIdx + TYPE_EMPTY] += (short) Math.min(weightedEmpty, Short.MAX_VALUE);
+            }
+        }
+
+        // Build result by selecting majority type for each pixel
+        final byte[] minimap = new byte[minimapSize];
+        for (int i = 0; i < minimapSize; i++) {
+            minimap[i] = findMajorityType(counts, i);
         }
 
         return new MinimapResult(minimapWidth, minimapHeight, minimap);
     }
 
     /**
-     * Returns the aggregation priority for a cell type.
+     * Classifies a cell's molecule data into a type for the minimap.
+     * Distinguishes EMPTY (CODE with value 0) from regular CODE.
      *
-     * @param rawType Raw cell type value (0-4)
-     * @return Priority value (higher = more important)
+     * @param moleculeData Raw molecule data from the environment
+     * @return Cell type (0-5)
      */
-    private int getPriority(final int rawType) {
-        if (rawType >= 0 && rawType < TYPE_PRIORITIES.length) {
-            return TYPE_PRIORITIES[rawType];
+    private int classifyCellType(final int moleculeData) {
+        final int rawType = (moleculeData & Config.TYPE_MASK) >> Config.TYPE_SHIFT;
+
+        // Check for EMPTY: CODE type with value 0
+        if (rawType == 0) {  // TYPE_CODE
+            final int value = moleculeData & Config.VALUE_MASK;
+            if (value == 0) {
+                return TYPE_EMPTY;
+            }
         }
-        return 0; // Unknown types have lowest priority
+
+        return rawType;
+    }
+
+    /**
+     * Finds the majority cell type for a minimap pixel.
+     * If no cells were counted (all empty background), returns EMPTY.
+     *
+     * @param counts Type count array
+     * @param pixelIndex Minimap pixel index
+     * @return The most common cell type (0-5)
+     */
+    private byte findMajorityType(final short[] counts, final int pixelIndex) {
+        final int baseIdx = pixelIndex * NUM_TYPES;
+        int maxCount = 0;
+        byte majorityType = TYPE_EMPTY;  // Default to EMPTY if no cells
+
+        for (int t = 0; t < NUM_TYPES; t++) {
+            final int count = counts[baseIdx + t];
+            if (count > maxCount) {
+                maxCount = count;
+                majorityType = (byte) t;
+            }
+        }
+
+        return majorityType;
     }
 }
