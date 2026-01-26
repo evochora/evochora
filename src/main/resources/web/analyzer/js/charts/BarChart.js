@@ -1,4 +1,5 @@
 import * as ChartRegistry from './ChartRegistry.js';
+import { formatTickValue } from './ChartUtils.js';
 
 /**
  * Bar Chart Implementation
@@ -76,7 +77,13 @@ export function render(canvas, data, config) {
                 },
                 scales: {
                     x: {
-                        ticks: { color: '#888' },
+                        ticks: {
+                            color: '#888',
+                            callback: function(value) {
+                                const label = this.getLabelForValue(value);
+                                return formatTickValue(label);
+                            }
+                        },
                         grid: { color: '#333' }
                     },
                     y: {

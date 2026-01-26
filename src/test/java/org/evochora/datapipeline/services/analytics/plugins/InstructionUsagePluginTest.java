@@ -30,11 +30,12 @@ class InstructionUsagePluginTest {
     @Test
     void testSchema_IsCreatedDynamically() {
         // We know from Instruction.java that there are at least these families
-        assertThat(plugin.getSchema().getColumns().stream().map(c -> c.name())).contains("tick", "arithmetic", "controlflow", "data");
+        assertThat(plugin.getSchema().getColumns().stream().map(c -> c.name()))
+            .contains("tick", "arithmetic", "controlflow", "data", "failure_count");
     }
 
     @Test
-    void testExtractRows_CountsFamiliesCorrectly() {
+    void testExtractRows_CountsFamiliesAndFailuresCorrectly() {
         // Use the new public API to get a valid opcode
         Instruction.InstructionInfo addrInfo = Instruction.getInstructionSetInfo().stream()
             .filter(info -> info.name().equals("ADDR")).findFirst().orElseThrow();
@@ -43,26 +44,34 @@ class InstructionUsagePluginTest {
 
         TickData tick = TickData.newBuilder()
             .setTickNumber(123L)
-            .addOrganisms(OrganismState.newBuilder().setInstructionOpcodeId(addrInfo.opcodeId()))
-            .addOrganisms(OrganismState.newBuilder().setInstructionOpcodeId(addrInfo.opcodeId()))
-            .addOrganisms(OrganismState.newBuilder().setInstructionOpcodeId(jmpiInfo.opcodeId()))
-            .addOrganisms(OrganismState.newBuilder()) // 1 with no instruction
+            .addOrganisms(OrganismState.newBuilder()
+                .setInstructionOpcodeId(addrInfo.opcodeId())
+                .setInstructionFailed(false))
+            .addOrganisms(OrganismState.newBuilder()
+                .setInstructionOpcodeId(addrInfo.opcodeId())
+                .setInstructionFailed(true))  // 1 failed arithmetic
+            .addOrganisms(OrganismState.newBuilder()
+                .setInstructionOpcodeId(jmpiInfo.opcodeId())
+                .setInstructionFailed(false))
+            .addOrganisms(OrganismState.newBuilder()) // 1 with no instruction (not counted)
             .build();
 
         List<Object[]> rows = plugin.extractRows(tick);
         assertThat(rows).hasSize(1);
-        
+
         Object[] row = rows.get(0);
-        
+
         List<String> columnNames = plugin.getSchema().getColumns().stream().map(c -> c.name()).collect(Collectors.toList());
         int tickIndex = columnNames.indexOf("tick");
         int arithIndex = columnNames.indexOf("arithmetic");
         int cfIndex = columnNames.indexOf("controlflow");
         int dataIndex = columnNames.indexOf("data");
+        int failureIndex = columnNames.indexOf("failure_count");
 
         assertThat(row[tickIndex]).isEqualTo(123L);
         assertThat(row[arithIndex]).isEqualTo(2);
         assertThat(row[cfIndex]).isEqualTo(1);
         assertThat(row[dataIndex]).isEqualTo(0);
+        assertThat(row[failureIndex]).isEqualTo(1);  // 1 of 3 instructions failed
     }
 }
