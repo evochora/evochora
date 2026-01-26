@@ -1,6 +1,5 @@
-/* Footer height variable - must be defined at root level */
 :root {
-    --footer-height: 24px;
+    /* Variables can be added here if needed */
 }
 
 /* Grundlegende Stile und Farbschema */
@@ -175,7 +174,7 @@ header {
     padding: 0;
     display: flex;
     flex-direction: column;
-    max-height: calc(100vh - 54px - 40px - var(--footer-height, 24px));
+    max-height: calc(100vh - 54px - 40px);
     overflow: hidden;
 }
 
@@ -644,7 +643,6 @@ main.container {
     flex-grow: 1;
     position: relative;
     overflow: hidden;
-    margin-bottom: var(--footer-height); /* Leave space for fixed footer */
 }
 
 /* Welt-Container, der den Viewport für das Canvas bereitstellt (keine DOM-Scrollbars für die Welt) */
@@ -1069,10 +1067,10 @@ main.container {
    Footer Panels - Bottom-attached panels
    ============================================ */
 
-/* Base footer panel - floating above footer */
+/* Base footer panel - attached to window bottom edge */
 .footer-panel {
     position: fixed;
-    bottom: var(--footer-height);
+    bottom: 0;
     background-color: #191923;
     border: 1px solid #333;
     border-bottom: none;
@@ -1088,7 +1086,7 @@ main.container {
 /* Collapsed state tab */
 .footer-panel-collapsed {
     position: fixed;
-    bottom: var(--footer-height);
+    bottom: 0;
     background-color: #191923;
     border: 1px solid #333;
     border-bottom: none;
@@ -1218,6 +1216,112 @@ main.container {
     display: block;
     image-rendering: pixelated;
     image-rendering: crisp-edges;
+}
+
+/* --- Run Selector Panel --- */
+#run-selector-panel {
+    right: 10px;
+    padding: 4px 10px;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+}
+
+.run-selector-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: relative;
+}
+
+.run-selector-label {
+    color: #888;
+    font-size: 11px;
+}
+
+.run-selector-value {
+    min-width: 180px;
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 4px 8px;
+    border: 1px solid #333;
+    border-radius: 4px;
+    background: #0f0f18;
+    font-size: 11px;
+    color: #e0e0e0;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+#run-selector-panel:hover .run-selector-value {
+    border-color: #555;
+    background: #141422;
+}
+
+.run-selector-input {
+    min-width: 180px;
+    background: #0a0a14;
+    border: 1px solid #4a9eff;
+    color: #e0e0e0;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-family: inherit;
+    font-size: 11px;
+    outline: none;
+}
+
+.run-selector-overlay {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    right: 0;
+    min-width: 220px;
+    background: #191923;
+    border: 1px solid #333;
+    border-radius: 4px;
+    display: none;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.35);
+    z-index: 1001;
+    overflow: hidden;
+}
+
+.run-selector-overlay.visible {
+    display: block;
+}
+
+.run-selector-list {
+    max-height: 260px;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+.run-selector-item {
+    padding: 6px 10px;
+    cursor: pointer;
+    border-bottom: 1px solid #222;
+    font-size: 11px;
+}
+
+.run-selector-item:last-child {
+    border-bottom: none;
+}
+
+.run-selector-item:hover {
+    background: #1a1a2a;
+}
+
+.run-selector-item .run-id {
+    color: #e0e0e0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.run-selector-empty {
+    color: #888;
+    padding: 10px;
+    font-size: 11px;
+    text-align: center;
 }
 
 /* --- Tooltips --- */

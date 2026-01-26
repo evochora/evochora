@@ -112,8 +112,8 @@ export class AppController {
             this.updateMinimapViewport();
         };
 
-        // Keep footer display in sync when state changes externally
-        window.addEventListener('tickChanged', () => window.footer?.updateCurrent?.());
+        // Keep run selector display in sync when state changes externally
+        window.addEventListener('tickChanged', () => window.runSelectorPanel?.updateCurrent?.());
     }
     
     /**
@@ -202,7 +202,7 @@ export class AppController {
 
             // Load initial tick for new run
             await this.navigateToTick(this.state.currentTick, true);
-            window.footer?.updateCurrent?.();
+            window.runSelectorPanel?.updateCurrent?.();
         } catch (error) {
             console.error('Failed to change run:', error);
             showError('Failed to change run: ' + error.message);
@@ -573,7 +573,7 @@ export class AppController {
             
             // Load initial tick, force reload to bypass optimization on first load
             await this.navigateToTick(this.state.currentTick, true);
-            window.footer?.updateCurrent?.();
+            window.runSelectorPanel?.updateCurrent?.();
             
         } catch (error) {
             // Ignore AbortError, as it's an expected cancellation
