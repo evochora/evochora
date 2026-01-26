@@ -140,4 +140,17 @@ public class CleanupService {
 
         return new CleanupResult(storageStats, databaseStats, topicsStats);
     }
+
+    /**
+     * Attempts to compact the H2 database to reclaim disk space after schema deletions.
+     * <p>
+     * This will only succeed if there are no other active connections to the database.
+     * Active connections are never disconnected - if they exist, the method returns
+     * a failure result suggesting to retry later with --compact.
+     *
+     * @return result indicating success or failure with explanation
+     */
+    public CompactionResult compactDatabase() {
+        return databaseCleaner.compact();
+    }
 }

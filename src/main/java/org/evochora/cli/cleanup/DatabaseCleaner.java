@@ -179,4 +179,41 @@ public class DatabaseCleaner {
     private String runIdToSchemaName(String runId) {
         return "SIM_" + runId.replace('-', '_').toUpperCase();
     }
+
+    /**
+     * Attempts to compact the H2 database to reclaim disk space.
+     * <p>
+     * This will only succeed if there are no other active connections to the database.
+     * If other connections exist, the method returns a failure result without disconnecting them.
+     *
+     * @return result indicating success or failure with explanation
+     */
+    public CompactionResult compact() {
+        try (Connection conn = DriverManager.getConnection(jdbcUrl, username, password);
+             Statement stmt = conn.createStatement()) {
+
+            // Check for other active sessions (excluding our own)
+            int otherSessions = 0;
+            try (ResultSet rs = stmt.executeQuery(
+                    "SELECT COUNT(*) FROM INFORMATION_SCHEMA.SESSIONS WHERE SESSION_ID != SESSION_ID()")) {
+                if (rs.next()) {
+                    otherSessions = rs.getInt(1);
+                }
+            }
+
+            if (otherSessions > 0) {
+                return new CompactionResult(false,
+                    String.format("%d active connection(s) detected. Cannot compact while database is in use.",
+                        otherSessions));
+            }
+
+            // No other connections, safe to compact
+            stmt.execute("SHUTDOWN COMPACT");
+            return new CompactionResult(true, "Database compacted successfully.");
+
+        } catch (SQLException e) {
+            log.error("Database compaction failed: {}", e.getMessage());
+            return new CompactionResult(false, "Compaction failed: " + e.getMessage());
+        }
+    }
 }
