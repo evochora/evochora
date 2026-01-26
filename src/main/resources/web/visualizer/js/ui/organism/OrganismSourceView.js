@@ -73,8 +73,8 @@ export class OrganismSourceView {
 
         const activeLocation = this.calculateActiveLocation(organismState, staticInfo);
         
-        // 1. Handle Status Bar (Errors/Warnings)
-        this.updateStatusBar(activeLocation);
+        // 1. Handle Status Bar (Errors/Warnings including mutation detection)
+        this.updateStatusBar(activeLocation, organismState);
 
         // 2. Auto-switch file if execution moved to a different file
         if (activeLocation && activeLocation.fileName) {
@@ -470,23 +470,70 @@ export class OrganismSourceView {
     }
 
     /**
-     * Updates the status bar at the top of the source view, typically to display errors.
+     * Updates the status bar at the top of the source view to display errors and warnings.
+     * Checks for location errors and opcode mismatches (runtime vs compiled).
+     *
      * @param {object|null} activeLocation - The location object which may contain an `error` property.
+     * @param {object|null} organismState - The organism's dynamic state for opcode comparison.
      * @private
      */
-    updateStatusBar(activeLocation) {
+    updateStatusBar(activeLocation, organismState) {
         if (!this.dom.status) return;
-        
+
+        // Collect warning message (location error or opcode mismatch)
+        let warning = null;
+
         if (activeLocation && activeLocation.error) {
+            warning = activeLocation.error;
+        } else {
+            const mismatch = this.detectOpcodeMismatch(activeLocation, organismState);
+            if (mismatch) {
+                warning = `Opcode mismatch: expected ${mismatch.expected}, found ${mismatch.actual}`;
+            }
+        }
+
+        // Render or hide status bar
+        if (warning) {
             this.dom.status.innerHTML = `
                 <div style="color: #ffaa00; padding: 5px; font-size: 0.85em; border-bottom: 1px solid #333; background-color: #191923;">
-                    ⚠️ ${activeLocation.error}
+                    ⚠️ ${warning}
                 </div>`;
             this.dom.status.style.display = 'block';
         } else {
             this.dom.status.style.display = 'none';
             this.dom.status.innerHTML = '';
         }
+    }
+
+    /**
+     * Detects if the runtime opcode differs from the compiled opcode at the current IP.
+     *
+     * @param {object|null} activeLocation - The location with linearAddress.
+     * @param {object|null} organismState - The organism state with instructions.next.
+     * @returns {{expected: string, actual: string}|null} Mismatch info or null if no mismatch.
+     * @private
+     */
+    detectOpcodeMismatch(activeLocation, organismState) {
+        if (!activeLocation || activeLocation.linearAddress === undefined) return null;
+
+        const actualOpcode = organismState?.instructions?.next?.opcodeName;
+        if (!actualOpcode) return null;
+
+        if (!this.artifact || !this.artifact.sourceLineToInstructions) return null;
+
+        const sourceLineKey = `${activeLocation.fileName}:${activeLocation.lineNumber}`;
+        const machineInstructions = this.artifact.sourceLineToInstructions[sourceLineKey];
+        if (!machineInstructions?.instructions) return null;
+
+        const expectedInstruction = machineInstructions.instructions.find(
+            i => i.linearAddress === activeLocation.linearAddress
+        );
+        if (!expectedInstruction) return null;
+
+        if (expectedInstruction.opcode !== actualOpcode) {
+            return { expected: expectedInstruction.opcode, actual: actualOpcode };
+        }
+        return null;
     }
 
     /**
