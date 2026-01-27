@@ -37,7 +37,7 @@ class MinimapAggregatorUnitTest {
     class AspectRatioTests {
 
         @Test
-        @DisplayName("Wide world (4:3) produces 150x112 minimap")
+        @DisplayName("Wide world (4:3) produces 300x225 minimap")
         void wideWorld_preservesAspectRatio() {
             var envProps = new EnvironmentProperties(new int[]{4000, 3000}, false);
             var columns = createEmptyColumns();
@@ -45,12 +45,12 @@ class MinimapAggregatorUnitTest {
             MinimapResult result = aggregator.aggregate(columns, envProps);
 
             assertThat(result).isNotNull();
-            assertThat(result.width()).isEqualTo(150);
-            assertThat(result.height()).isEqualTo(113); // 150 * 3000/4000 = 112.5 → 113
+            assertThat(result.width()).isEqualTo(300);
+            assertThat(result.height()).isEqualTo(225); // 300 * 3000/4000 = 225
         }
 
         @Test
-        @DisplayName("Tall world (3:4) produces 112x150 minimap")
+        @DisplayName("Tall world (3:4) produces 225x300 minimap")
         void tallWorld_preservesAspectRatio() {
             var envProps = new EnvironmentProperties(new int[]{3000, 4000}, false);
             var columns = createEmptyColumns();
@@ -58,12 +58,12 @@ class MinimapAggregatorUnitTest {
             MinimapResult result = aggregator.aggregate(columns, envProps);
 
             assertThat(result).isNotNull();
-            assertThat(result.width()).isEqualTo(113); // 150 * 3000/4000 = 112.5 → 113
-            assertThat(result.height()).isEqualTo(150);
+            assertThat(result.width()).isEqualTo(225); // 300 * 3000/4000 = 225
+            assertThat(result.height()).isEqualTo(300);
         }
 
         @Test
-        @DisplayName("Square world (1:1) produces 150x150 minimap")
+        @DisplayName("Square world (1:1) produces 300x300 minimap")
         void squareWorld_preservesAspectRatio() {
             var envProps = new EnvironmentProperties(new int[]{1000, 1000}, false);
             var columns = createEmptyColumns();
@@ -71,12 +71,12 @@ class MinimapAggregatorUnitTest {
             MinimapResult result = aggregator.aggregate(columns, envProps);
 
             assertThat(result).isNotNull();
-            assertThat(result.width()).isEqualTo(150);
-            assertThat(result.height()).isEqualTo(150);
+            assertThat(result.width()).isEqualTo(300);
+            assertThat(result.height()).isEqualTo(300);
         }
 
         @Test
-        @DisplayName("Very wide world (10:1) produces 150x15 minimap")
+        @DisplayName("Very wide world (10:1) produces 300x30 minimap")
         void veryWideWorld_preservesAspectRatio() {
             var envProps = new EnvironmentProperties(new int[]{1000, 100}, false);
             var columns = createEmptyColumns();
@@ -84,8 +84,8 @@ class MinimapAggregatorUnitTest {
             MinimapResult result = aggregator.aggregate(columns, envProps);
 
             assertThat(result).isNotNull();
-            assertThat(result.width()).isEqualTo(150);
-            assertThat(result.height()).isEqualTo(15);
+            assertThat(result.width()).isEqualTo(300);
+            assertThat(result.height()).isEqualTo(30);
         }
     }
 
@@ -96,69 +96,95 @@ class MinimapAggregatorUnitTest {
         @Test
         @DisplayName("Single cell maps to correct minimap position")
         void singleCell_mapsCorrectly() {
-            var envProps = new EnvironmentProperties(new int[]{150, 150}, false);
-            // Place a STRUCTURE cell at (75, 75) - center of world
+            // Use 600x600 world which scales to 300x300 minimap (2:1 ratio)
+            var envProps = new EnvironmentProperties(new int[]{600, 600}, false);
+            // Place a STRUCTURE cell at (300, 300) - center of world
+            // flatIndex = x * height + y (row-major)
             var columns = createColumns(
-                new int[]{75 + 75 * 150}, // flatIndex = x + y * width
+                new int[]{300 * 600 + 300}, // flatIndex = x * height + y
                 new int[]{packMolecule(3)} // TYPE_STRUCTURE = 3
             );
 
             MinimapResult result = aggregator.aggregate(columns, envProps);
 
             assertThat(result).isNotNull();
-            // Center of 150x150 world maps to center of 150x150 minimap
-            int minimapIndex = 75 + 75 * 150;
+            // Center of 600x600 world (300, 300) maps to center of 300x300 minimap (150, 150)
+            // Minimap index: my * width + mx = 150 * 300 + 150
+            int minimapIndex = 150 * 300 + 150;
             assertThat(result.cellTypes()[minimapIndex]).isEqualTo((byte) 3);
         }
 
         @Test
-        @DisplayName("STRUCTURE wins over CODE at same position")
+        @DisplayName("STRUCTURE wins over CODE when it has majority")
         void structureWinsOverCode() {
-            var envProps = new EnvironmentProperties(new int[]{150, 150}, false);
-            // Place both CODE and STRUCTURE at positions that map to same minimap pixel
-            // With 150x150 world and 150x150 minimap, scale is 1:1, so use same position
-            int flatIndex = 50 + 50 * 150;
+            // Use 600x600 world which scales to 300x300 minimap (2:1 ratio, 4 cells per pixel)
+            var envProps = new EnvironmentProperties(new int[]{600, 600}, false);
+            // Place 3 STRUCTURE and 1 CODE in same minimap pixel block
+            // Cells at (100, 100), (100, 101), (101, 100), (101, 101) all map to minimap pixel (50, 50)
+            // flatIndex = x * height + y
             var columns = createColumns(
-                new int[]{flatIndex, flatIndex},
-                new int[]{packMolecule(0), packMolecule(3)} // CODE first, then STRUCTURE
+                new int[]{
+                    100 * 600 + 100, // (100, 100) -> CODE
+                    100 * 600 + 101, // (100, 101) -> STRUCTURE
+                    101 * 600 + 100, // (101, 100) -> STRUCTURE
+                    101 * 600 + 101  // (101, 101) -> STRUCTURE
+                },
+                new int[]{packMolecule(0), packMolecule(3), packMolecule(3), packMolecule(3)}
             );
 
             MinimapResult result = aggregator.aggregate(columns, envProps);
 
             assertThat(result).isNotNull();
-            int minimapIndex = 50 + 50 * 150;
-            assertThat(result.cellTypes()[minimapIndex]).isEqualTo((byte) 3); // STRUCTURE wins
+            // Minimap pixel: my * width + mx = 50 * 300 + 50
+            int minimapIndex = 50 * 300 + 50;
+            assertThat(result.cellTypes()[minimapIndex]).isEqualTo((byte) 3); // STRUCTURE wins (majority)
         }
 
         @Test
-        @DisplayName("CODE wins over DATA at same position")
+        @DisplayName("CODE wins over DATA when it has majority")
         void codeWinsOverData() {
-            var envProps = new EnvironmentProperties(new int[]{150, 150}, false);
-            int flatIndex = 25 + 25 * 150;
+            // Use 600x600 world which scales to 300x300 minimap (2:1 ratio, 4 cells per pixel)
+            var envProps = new EnvironmentProperties(new int[]{600, 600}, false);
+            // Place 3 CODE and 1 DATA in same minimap pixel block
+            // Cells at (50, 50), (50, 51), (51, 50), (51, 51) all map to minimap pixel (25, 25)
+            // flatIndex = x * height + y
             var columns = createColumns(
-                new int[]{flatIndex, flatIndex},
-                new int[]{packMolecule(1), packMolecule(0)} // DATA first, then CODE
+                new int[]{
+                    50 * 600 + 50, // (50, 50) -> DATA
+                    50 * 600 + 51, // (50, 51) -> CODE
+                    51 * 600 + 50, // (51, 50) -> CODE
+                    51 * 600 + 51  // (51, 51) -> CODE
+                },
+                new int[]{packMolecule(1), packMolecule(0), packMolecule(0), packMolecule(0)}
             );
 
             MinimapResult result = aggregator.aggregate(columns, envProps);
 
             assertThat(result).isNotNull();
-            int minimapIndex = 25 + 25 * 150;
-            assertThat(result.cellTypes()[minimapIndex]).isEqualTo((byte) 0); // CODE wins
+            // Minimap pixel: my * width + mx = 25 * 300 + 25
+            int minimapIndex = 25 * 300 + 25;
+            assertThat(result.cellTypes()[minimapIndex]).isEqualTo((byte) 0); // CODE wins (majority)
         }
 
         @Test
         @DisplayName("Downsampling aggregates multiple cells to one pixel")
         void downsampling_aggregatesCorrectly() {
-            // 300x300 world maps to 150x150 minimap (2:1 scale)
-            var envProps = new EnvironmentProperties(new int[]{300, 300}, false);
-            // Place cells at (0,0), (1,0), (0,1), (1,1) - all map to minimap (0,0)
+            // 600x600 world maps to 300x300 minimap (2:1 scale)
+            var envProps = new EnvironmentProperties(new int[]{600, 600}, false);
+            // Place cells at (0,0), (0,1), (1,0), (1,1) - all map to minimap (0,0)
+            // flatIndex = x * height + y
+            // With 3 STRUCTURE cells, STRUCTURE wins by majority
             var columns = createColumns(
-                new int[]{0, 1, 300, 301}, // flatIndices
+                new int[]{
+                    0 * 600 + 0, // (0,0)
+                    0 * 600 + 1, // (0,1)
+                    1 * 600 + 0, // (1,0)
+                    1 * 600 + 1  // (1,1)
+                },
                 new int[]{
                     packMolecule(1), // DATA at (0,0)
-                    packMolecule(2), // ENERGY at (1,0)
-                    packMolecule(0), // CODE at (0,1)
+                    packMolecule(3), // STRUCTURE at (0,1)
+                    packMolecule(3), // STRUCTURE at (1,0)
                     packMolecule(3)  // STRUCTURE at (1,1)
                 }
             );
@@ -166,9 +192,9 @@ class MinimapAggregatorUnitTest {
             MinimapResult result = aggregator.aggregate(columns, envProps);
 
             assertThat(result).isNotNull();
-            assertThat(result.width()).isEqualTo(150);
-            assertThat(result.height()).isEqualTo(150);
-            // STRUCTURE (priority 4) wins over CODE (priority 3)
+            assertThat(result.width()).isEqualTo(300);
+            assertThat(result.height()).isEqualTo(300);
+            // STRUCTURE wins by majority (3 out of 4 cells)
             assertThat(result.cellTypes()[0]).isEqualTo((byte) 3);
         }
     }
@@ -180,15 +206,16 @@ class MinimapAggregatorUnitTest {
         @Test
         @DisplayName("Empty columns produces empty minimap")
         void emptyColumns_producesEmptyMinimap() {
-            var envProps = new EnvironmentProperties(new int[]{100, 100}, false);
+            // Use a larger world to ensure proper scaling
+            var envProps = new EnvironmentProperties(new int[]{600, 600}, false);
             var columns = createEmptyColumns();
 
             MinimapResult result = aggregator.aggregate(columns, envProps);
 
             assertThat(result).isNotNull();
-            // All bytes should be 0 (empty)
+            // All bytes should be 5 (TYPE_EMPTY) since there are no cells
             for (byte b : result.cellTypes()) {
-                assertThat(b).isEqualTo((byte) 0);
+                assertThat(b).isEqualTo((byte) 5);
             }
         }
 
@@ -238,9 +265,12 @@ class MinimapAggregatorUnitTest {
 
     /**
      * Packs a raw type value (0-4) into the molecule data format.
+     * For CODE type (0), includes a non-zero value to distinguish from EMPTY.
      */
     private int packMolecule(int rawType) {
         // Type is stored at bits 20-27 (TYPE_SHIFT = 20)
-        return rawType << 20; // Config.TYPE_SHIFT = 20
+        // For CODE type, include value=1 so it's not classified as EMPTY
+        int value = (rawType == 0) ? 1 : 0;
+        return (rawType << 20) | value; // Config.TYPE_SHIFT = 20
     }
 }

@@ -94,9 +94,9 @@ public class MinimapAggregator {
         // counts[pixelIndex * NUM_TYPES + typeIndex] = count of that type
         final short[] counts = new short[minimapSize * NUM_TYPES];
 
-        // Calculate scale factors
-        final int scaleX = worldWidth / minimapWidth;
-        final int scaleY = worldHeight / minimapHeight;
+        // Calculate scale factors (minimum 1 to avoid division by zero for small worlds)
+        final int scaleX = Math.max(1, worldWidth / minimapWidth);
+        final int scaleY = Math.max(1, worldHeight / minimapHeight);
 
         // Iterate only over occupied cells (sparse iteration)
         final int cellCount = columns.getFlatIndicesCount();
