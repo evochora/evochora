@@ -302,6 +302,23 @@ export class EnvironmentGrid {
         if (renderer.isRegionFullyLoaded(viewport)) {
             // Even if cache hit, trigger prefetch
             this._triggerPrefetch(tick, runId, viewport);
+
+            // On cache hit, still fetch minimap if requested (needed for initial load)
+            if (includeMinimap) {
+                const minimapController = new AbortController();
+                try {
+                    const data = await this.environmentApi.fetchEnvironmentData(tick, viewport, {
+                        runId: runId,
+                        signal: minimapController.signal,
+                        includeMinimap: true
+                    });
+                    return { minimap: data.minimap };
+                } catch (error) {
+                    if (error.name !== 'AbortError') {
+                        console.warn('[EnvironmentGrid] Failed to fetch minimap on cache hit:', error.message);
+                    }
+                }
+            }
             return {};
         }
 
