@@ -51,7 +51,8 @@ body {
 .top-panel {
     position: fixed;
     top: 0;
-    background-color: #191923;
+    background: rgba(25, 25, 35, 0.85);
+    backdrop-filter: blur(8px);
     border: 1px solid #333;
     border-top: none;
     border-radius: 0 0 6px 6px;
@@ -99,7 +100,8 @@ body {
     right: -1px;
     width: auto;  /* Override shared CSS width: 300px */
     margin-top: 0;  /* No gap - seamless connection */
-    background-color: #191923;
+    background: rgba(25, 25, 35, 0.85);
+    backdrop-filter: blur(8px);
     border: 1px solid #333;
     border-top: none;  /* No top border - continues from panel */
     border-radius: 0 0 6px 6px;  /* Only bottom corners rounded */
@@ -630,6 +632,12 @@ button:hover { background-color: #4a4a6a; }
     border-radius: 4px;
     font-family: 'Roboto Mono', 'Courier New', monospace;
     font-size: 14px;
+    outline: none;
+    transition: border-color 0.15s ease;
+}
+
+.tick-input-wrapper input[type="number"]:focus {
+    border-color: #4a9eff;
 }
 .tick-input-wrapper input[type="number"]::-webkit-outer-spin-button,
 .tick-input-wrapper input[type="number"]::-webkit-inner-spin-button {
@@ -1093,7 +1101,8 @@ main.container {
 .footer-panel {
     position: fixed;
     bottom: 0;
-    background-color: #191923;
+    background: rgba(25, 25, 35, 0.85);
+    backdrop-filter: blur(8px);
     border: 1px solid #333;
     border-bottom: none;
     border-radius: 6px 6px 0 0;
@@ -1109,7 +1118,8 @@ main.container {
 .footer-panel-collapsed {
     position: fixed;
     bottom: 0;
-    background-color: #191923;
+    background: rgba(25, 25, 35, 0.85);
+    backdrop-filter: blur(8px);
     border: 1px solid #333;
     border-bottom: none;
     border-radius: 4px 4px 0 0;
@@ -1290,15 +1300,19 @@ main.container {
     display: block;
     width: 100%;
     box-sizing: border-box;
-    background: #0a0a14;
-    border: 1px solid #4a9eff;
-    border-bottom: 1px solid #333;
-    border-radius: 4px 4px 0 0;
+    background: #222;
+    border: 1px solid #555;
+    border-radius: 4px;
     color: #e0e0e0;
     padding: 4px 8px;
     font-family: inherit;
     font-size: 11px;
     outline: none;
+    transition: border-color 0.15s ease;
+}
+
+.run-selector-input:focus {
+    border-color: #4a9eff;
 }
 
 /* List appears directly below input, connected visually */
@@ -1325,6 +1339,7 @@ main.container {
 }
 
 .run-selector-field.open .run-selector-input {
+    border-color: #4a9eff;
     border-radius: 0 0 4px 4px;
     border-top: none;
 }
