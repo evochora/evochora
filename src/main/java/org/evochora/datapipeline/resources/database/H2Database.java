@@ -754,10 +754,37 @@ public class H2Database extends AbstractDatabaseResource
      * <p>
      * This is called by {@link AbstractDatabaseResource#close()} after all wrappers
      * have been closed and connections released back to the pool.
+     * <p>
+     * <strong>Important:</strong> Before closing the pool, we execute a SQL {@code SHUTDOWN}
+     * command to ensure the H2 MVStore flushes all pending writes to disk. This prevents
+     * database corruption ("Double mark" errors) that can occur when the database file
+     * is not cleanly closed. The issue is that {@code DB_CLOSE_ON_EXIT=FALSE} combined with
+     * {@code DB_CLOSE_DELAY=-1} keeps the database open until explicit shutdown, but
+     * HikariCP's {@code close()} only releases connections without triggering H2's shutdown.
      */
     @Override
     protected void closeConnectionPool() {
         if (dataSource != null && !dataSource.isClosed()) {
+            // Execute SHUTDOWN to ensure H2 MVStore flushes all pages to disk
+            // This prevents "Double mark" corruption errors on next startup
+            try (Connection conn = dataSource.getConnection();
+                 Statement stmt = conn.createStatement()) {
+                stmt.execute("SHUTDOWN");
+                log.debug("H2 database '{}' shutdown command executed", getResourceName());
+            } catch (SQLException e) {
+                // H2 error code 90121 = "Database is already closed"
+                // This is expected for in-memory databases without DB_CLOSE_ON_EXIT=FALSE
+                // or when all connections have been released, triggering auto-close
+                if (e.getErrorCode() == 90121) {
+                    log.debug("H2 database '{}' already closed (in-memory or auto-closed)", getResourceName());
+                } else {
+                    // Unexpected error - log warning but continue with pool close
+                    // Corruption is still possible but we've done our best
+                    log.warn("H2 database '{}' shutdown command failed: {}",
+                        getResourceName(), e.getMessage());
+                }
+            }
+
             dataSource.close();
             log.debug("H2 database '{}' connection pool closed", getResourceName());
         }

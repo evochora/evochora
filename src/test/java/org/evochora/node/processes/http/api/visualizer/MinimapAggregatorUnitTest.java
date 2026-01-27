@@ -3,7 +3,6 @@ package org.evochora.node.processes.http.api.visualizer;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
-import org.evochora.runtime.Config;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.node.processes.http.api.visualizer.MinimapAggregator.MinimapResult;
 import org.junit.jupiter.api.BeforeEach;

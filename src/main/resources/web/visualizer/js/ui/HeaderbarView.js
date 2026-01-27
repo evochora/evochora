@@ -48,14 +48,10 @@ export class HeaderbarView {
                 this.elements.largeStepInput.blur();
             } else if (e.key === 'ArrowUp') {
                 e.preventDefault();
-                const current = parseInt(this.elements.largeStepInput.value, 10) || 100;
-                this.elements.largeStepInput.value = current * 10;
-                this.handleMultiplierChange();
+                this.navigateLargeStep('forward');
             } else if (e.key === 'ArrowDown') {
                 e.preventDefault();
-                const current = parseInt(this.elements.largeStepInput.value, 10) || 100;
-                this.elements.largeStepInput.value = Math.max(1, Math.floor(current / 10));
-                this.handleMultiplierChange();
+                this.navigateLargeStep('backward');
             }
         });
         this.elements.largeStepInput.addEventListener('click', () => this.elements.largeStepInput.select());
@@ -132,7 +128,7 @@ export class HeaderbarView {
 
     /**
      * Handles keydown events on the tick input field.
-     * Arrow keys use default behavior (cursor movement).
+     * ArrowUp/Down navigate ticks, ArrowLeft/Right use default cursor movement.
      * @param {KeyboardEvent} e The keyboard event.
      */
     handleTickInputKeyDown(e) {
@@ -143,8 +139,14 @@ export class HeaderbarView {
         } else if (e.key === 'Escape') {
             e.preventDefault();
             this.elements.tickInput.blur();
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            this.navigateLargeStep('forward');
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            this.navigateLargeStep('backward');
         }
-        // Arrow keys: default behavior (cursor movement in input)
+        // ArrowLeft/Right: default behavior (cursor movement in input)
     }
 
     /**
