@@ -2,7 +2,6 @@ import { EnvironmentApi, setTypeMappings } from './api/EnvironmentApi.js';
 import { OrganismApi } from './api/OrganismApi.js';
 import { SimulationApi } from './api/SimulationApi.js';
 import { EnvironmentGrid } from './EnvironmentGrid.js';
-import { HeaderbarView } from './ui/HeaderbarView.js';
 import { MinimapView } from './ui/minimap/MinimapView.js';
 import { OrganismInstructionView } from './ui/organism/OrganismInstructionView.js';
 import { OrganismSourceView } from './ui/organism/OrganismSourceView.js';
@@ -80,7 +79,6 @@ export class AppController {
         // Components
         this.worldContainer = document.querySelector('.world-container');
         this.renderer = new EnvironmentGrid(this, this.worldContainer, defaultConfig, this.environmentApi);
-        this.headerbar = new HeaderbarView(this);
 
         // Minimap is initialized in init() after renderer.init() completes
         // (renderer.init() clears the container, so we must add minimap after)
@@ -154,7 +152,7 @@ export class AppController {
             this.lastMinimapTick = null;
             this.minimapView?.clear();
             
-            this.headerbar.updateTickDisplay(this.state.currentTick, this.state.maxTick);
+            this.tickPanelManager.updateTickDisplay(this.state.currentTick, this.state.maxTick);
 
             // Fetch metadata for new run
             const metadata = await this.simulationApi.fetchMetadata(this.state.runId);
@@ -165,8 +163,8 @@ export class AppController {
 
             // Update UI components that depend on metadata
             this.tickPanelManager?.updateSamplingInfo(metadata?.samplingInterval || 1);
-            this.headerbar?.loadMultiplierForRun(this.state.runId); // Load after metadata is ready
-            this.headerbar?.updateTooltips();
+            this.tickPanelManager?.loadMultiplierForRun(this.state.runId); // Load after metadata is ready
+            this.tickPanelManager?.updateTooltips();
 
             if (metadata?.environment?.shape) {
                 this.state.worldShape = Array.from(metadata.environment.shape);
@@ -198,7 +196,7 @@ export class AppController {
             } else if (orgTickRange?.maxTick !== undefined) {
                 this.state.maxTick = orgTickRange.maxTick;
             }
-            this.headerbar.updateTickDisplay(this.state.currentTick, this.state.maxTick);
+            this.tickPanelManager.updateTickDisplay(this.state.currentTick, this.state.maxTick);
 
             // Load initial tick for new run
             await this.navigateToTick(this.state.currentTick, true);
@@ -301,11 +299,25 @@ export class AppController {
      * @private
      */
     initPanelManagers() {
-        // Tick panel (always visible, not collapsible)
+        // Tick panel (navigation buttons, tick input, multiplier, keyboard shortcuts)
         this.tickPanelManager = new TickPanelManager({
             panel: document.getElementById('tick-panel'),
+            prevSmallBtn: document.getElementById('btn-prev-small'),
+            nextSmallBtn: document.getElementById('btn-next-small'),
+            prevLargeBtn: document.getElementById('btn-prev-large'),
+            nextLargeBtn: document.getElementById('btn-next-large'),
+            tickInput: document.getElementById('tick-input'),
+            tickSuffix: document.getElementById('tick-total-suffix'),
+            multiplierInput: document.getElementById('large-step-multiplier'),
             multiplierWrapper: document.getElementById('multiplier-wrapper'),
-            multiplierSuffix: document.getElementById('multiplier-suffix')
+            multiplierSuffix: document.getElementById('multiplier-suffix'),
+            onNavigate: (targetTick) => this.navigateToTick(targetTick),
+            getState: () => ({
+                currentTick: this.state.currentTick,
+                maxTick: this.state.maxTick,
+                runId: this.state.runId,
+                samplingInterval: this.state.metadata?.samplingInterval || 1
+            })
         });
 
         // Organism panel
@@ -511,8 +523,8 @@ export class AppController {
 
                 // Update sampling info in the UI
                 this.tickPanelManager?.updateSamplingInfo(metadata?.samplingInterval || 1);
-                this.headerbar?.loadMultiplierForRun(this.state.runId);
-                this.headerbar?.updateTooltips();
+                this.tickPanelManager?.loadMultiplierForRun(this.state.runId);
+                this.tickPanelManager?.updateTooltips();
                 
                 if (metadata.runId && !this.state.runId) {
                     this.state.runId = metadata.runId;
@@ -553,7 +565,7 @@ export class AppController {
             } else if (orgTickRange?.maxTick !== undefined) {
                 this.state.maxTick = orgTickRange.maxTick;
             }
-            this.headerbar.updateTickDisplay(this.state.currentTick, this.state.maxTick);
+            this.tickPanelManager.updateTickDisplay(this.state.currentTick, this.state.maxTick);
             
             // Wait for layout to be calculated before loading initial viewport
             // This ensures correct viewport size calculation on first load,
@@ -613,7 +625,7 @@ export class AppController {
             
             if (newMaxTick !== null && newMaxTick !== this.state.maxTick) {
                 this.state.maxTick = newMaxTick;
-                this.headerbar.updateTickDisplay(this.state.currentTick, this.state.maxTick);
+                this.tickPanelManager.updateTickDisplay(this.state.currentTick, this.state.maxTick);
             }
         } catch (error) {
             // Silently fail - don't interrupt navigation if update fails
@@ -650,7 +662,7 @@ export class AppController {
         if (this.state.currentTick === target && !forceReload) {
             // Even if we bail, ensure the header bar reflects the clamped value,
             // giving feedback to the user if their input was out of bounds.
-            this.headerbar.updateTickDisplay(target, this.state.maxTick);
+            this.tickPanelManager.updateTickDisplay(target, this.state.maxTick);
             return;
         }
 
@@ -663,7 +675,7 @@ export class AppController {
         this.state.currentTick = target;
         
         // Update headerbar with current values
-        this.headerbar.updateTickDisplay(this.state.currentTick, this.state.maxTick);
+        this.tickPanelManager.updateTickDisplay(this.state.currentTick, this.state.maxTick);
 
         // Update URL state
         this.updateUrlState();
