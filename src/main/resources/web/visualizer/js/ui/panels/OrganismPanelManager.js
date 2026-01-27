@@ -221,6 +221,14 @@ export class OrganismPanelManager {
                 return this.renderOrganismRow(org, isSelected, isSelected);
             }).join('');
             this.bindRowListeners(this.organismList);
+
+            // Scroll to selected organism if list is visible
+            if (this.selectedId && !this.isListCollapsed()) {
+                const selectedRow = this.organismList.querySelector('.organism-list-item.selected');
+                if (selectedRow) {
+                    selectedRow.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                }
+            }
         }
 
         this.updateSelectedDisplay();
