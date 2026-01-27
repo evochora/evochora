@@ -64,6 +64,7 @@ export class MinimapView {
                     <span class="world-size">— × —</span>
                 </div>
                 <div class="minimap-panel-controls">
+                    <button class="minimap-organism-toggle active" title="Toggle organism overlay">Org</button>
                     <button class="minimap-zoom-btn">Zoom In</button>
                     <button class="panel-toggle" title="Collapse minimap">▼</button>
                 </div>
@@ -80,6 +81,7 @@ export class MinimapView {
         this.zoomBtn = this.element.querySelector('.minimap-zoom-btn');
         this.zoomBtnCollapsed = this.collapsedElement.querySelector('.minimap-zoom-btn');
         this.collapseBtn = this.element.querySelector('.panel-toggle');
+        this.organismToggleBtn = this.element.querySelector('.minimap-organism-toggle');
         this.panelHeader = this.element.querySelector('.minimap-panel-header');
         this.worldSizeExpanded = this.element.querySelector('.world-size');
         this.worldSizeCollapsed = this.collapsedElement.querySelector('.world-size');
@@ -126,6 +128,11 @@ export class MinimapView {
             if (this.onZoomToggle) {
                 this.onZoomToggle(!this.isZoomedOut);
             }
+        });
+
+        // Organism overlay toggle button
+        this.organismToggleBtn.addEventListener('click', () => {
+            this.toggleOrganismOverlay();
         });
     }
 
@@ -190,7 +197,10 @@ export class MinimapView {
         this.viewportBounds = bounds;
 
         if (this.lastMinimapData && this.worldShape) {
-            this.renderer.updateViewportRect(bounds, this.worldShape);
+            // Re-render full minimap: environment + organisms + viewport rect
+            this.renderer.render(this.lastMinimapData);
+            this._renderOrganismOverlay();
+            this.renderer.drawViewportRect(bounds, this.worldShape);
         }
 
         // Check if minimap is useful (after viewportBounds is set)
@@ -240,11 +250,26 @@ export class MinimapView {
     }
 
     /**
+     * Toggles the organism overlay on/off.
+     */
+    toggleOrganismOverlay() {
+        this.setOrganismOverlayEnabled(!this.organismOverlay.isEnabled());
+    }
+
+    /**
      * Sets whether the organism overlay is visible.
      * @param {boolean} enabled - True to show organisms, false to hide
      */
     setOrganismOverlayEnabled(enabled) {
         this.organismOverlay.setEnabled(enabled);
+
+        // Update button appearance
+        if (this.organismToggleBtn) {
+            this.organismToggleBtn.classList.toggle('active', enabled);
+        }
+
+        // Persist to localStorage
+        localStorage.setItem('minimapOrganismOverlay', enabled ? 'true' : 'false');
 
         // Re-render to apply change
         if (this.lastMinimapData && this.worldShape) {
@@ -444,12 +469,21 @@ export class MinimapView {
     }
 
     /**
-     * Restores expanded state from localStorage.
+     * Restores expanded state and organism overlay state from localStorage.
      */
     restoreState() {
         const expanded = localStorage.getItem('minimapExpanded');
         if (expanded === 'false') {
             this.expanded = false;
+        }
+
+        // Restore organism overlay state (default: enabled)
+        const organismOverlay = localStorage.getItem('minimapOrganismOverlay');
+        if (organismOverlay === 'false') {
+            this.organismOverlay.setEnabled(false);
+            if (this.organismToggleBtn) {
+                this.organismToggleBtn.classList.remove('active');
+            }
         }
     }
 

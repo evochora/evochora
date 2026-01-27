@@ -1229,10 +1229,41 @@ main.container {
     padding: 4px 10px;
     cursor: pointer;
     transition: background-color 0.15s ease;
+    width: 80px;
+    text-align: center;
+    white-space: nowrap;
 }
 
 .minimap-zoom-btn:hover {
     background-color: #4a4a6a;
+}
+
+/* Organism overlay toggle button */
+.minimap-organism-toggle {
+    background-color: #2a2a4a;
+    border: 1px solid #4a4a6a;
+    border-radius: 4px;
+    color: #808090;
+    font-family: 'Roboto Mono', 'Courier New', monospace;
+    font-size: 11px;
+    padding: 4px 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.minimap-organism-toggle:hover {
+    background-color: #3a3a5a;
+    color: #a0a0b0;
+}
+
+.minimap-organism-toggle.active {
+    background-color: #1a3a2a;
+    border-color: #4a9a6a;
+    color: #5aaa7a;
+}
+
+.minimap-organism-toggle.active:hover {
+    background-color: #2a4a3a;
 }
 
 /* Minimap content */

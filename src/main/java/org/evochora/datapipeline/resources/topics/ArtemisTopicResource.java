@@ -615,6 +615,8 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
 
     /**
      * Returns whether journal retention is enabled for the embedded broker.
+     * <p>
+     * <b>Thread Safety:</b> Safe to call from any thread (reads volatile field).
      *
      * @return true if retention is enabled and replay is available
      */
@@ -626,6 +628,8 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
      * Returns the embedded Artemis server instance for management operations.
      * <p>
      * Used by reader delegates to query queue existence and trigger replay.
+     * <p>
+     * <b>Thread Safety:</b> Safe to call from any thread (reads volatile/atomic fields).
      *
      * @return the ActiveMQServer, or null if broker not started or external broker used
      */
@@ -645,10 +649,13 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
      *   <li>Assuming "exists" when it doesn't → Consumer misses all historical messages</li>
      *   <li>Assuming "not exists" when it does → Consumer replays millions of messages unnecessarily</li>
      * </ul>
+     * <p>
+     * <b>Thread Safety:</b> Safe to call concurrently. Broker handles synchronization.
      *
-     * @param queueName the internal queue name (format: "topicName::subscriptionName")
+     * @param queueName the internal queue name (format: "topicName::subscriptionName"), must not be null
      * @return true if queue exists, false if it definitely does not exist
-     * @throws RuntimeException if queue existence cannot be determined
+     * @throws UnsupportedOperationException if external broker is used (JMX not implemented)
+     * @throws RuntimeException if queue existence cannot be determined due to broker error
      */
     static boolean queueExistsInBroker(String queueName) {
         ActiveMQServer server = getEmbeddedServer();
@@ -698,9 +705,11 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
      * <p>
      * Returns true if this is the first time we've seen this subscription
      * in the current JVM lifetime. Used as fast-path before broker query.
+     * <p>
+     * <b>Thread Safety:</b> Safe to call concurrently (uses ConcurrentHashMap).
      *
-     * @param topicName the topic name (address)
-     * @param subscriptionName the subscription name
+     * @param topicName the topic name (address), must not be null
+     * @param subscriptionName the subscription name, must not be null
      * @return true if newly registered (first time), false if already known
      */
     static boolean registerSubscriptionInMemory(String topicName, String subscriptionName) {
@@ -718,9 +727,9 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
      * <b>Thread Safety:</b> Safe to call concurrently. Artemis handles
      * internal synchronization.
      *
-     * @param addressName the address (topic) to replay from
-     * @param queueName the queue to replay into (format: "topicName::subscriptionName")
-     * @throws Exception if replay fails
+     * @param addressName the address (topic) to replay from, must not be null
+     * @param queueName the queue to replay into (format: "topicName::subscriptionName"), must not be null
+     * @throws Exception if replay fails or broker is unavailable
      */
     static void triggerReplay(String addressName, String queueName) throws Exception {
         ActiveMQServer server = getEmbeddedServer();

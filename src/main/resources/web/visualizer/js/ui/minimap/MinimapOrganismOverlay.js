@@ -10,7 +10,7 @@ export class MinimapOrganismOverlay {
 
     /** Default configuration */
     static DEFAULT_CONFIG = {
-        color: '#32cd32',           // Lime green - not used in environment
+        color: '#4a9a6a',           // Muted green - visible but not aggressive
         coreSize: 3,                // Solid center size in pixels
         glowSizes: [6, 10, 14, 18], // Glow sprite sizes for density thresholds
         densityThresholds: [3, 10, 30], // count <= 3, <= 10, <= 30, > 30
