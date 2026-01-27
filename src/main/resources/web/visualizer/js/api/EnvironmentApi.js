@@ -1,155 +1,111 @@
 import { loadingManager } from '../ui/LoadingManager.js';
 
-/* global protobuf */
-
-/*
- * =============================================================================
- * SCHEMA DUPLICATION NOTICE
- * =============================================================================
- * 
- * The Protobuf schema below is DUPLICATED from the server-side definition at:
- *   src/main/proto/org/evochora/datapipeline/api/contracts/http_api_contracts.proto
- * 
- * This duplication exists to avoid adding Node.js as a build dependency.
- * The trade-off is that schema changes must be manually synchronized.
- * 
- * WHEN TO REFACTOR:
- *   - If 3+ Protobuf messages are used in the frontend
- *   - If schema drift bugs occur frequently
- *   - If the project adds Node.js for other reasons anyway
- * 
- * HOW TO REFACTOR (using protoc --js_out + google-protobuf):
- * 
- * 1. Add to build.gradle.kts:
- *    
- *    protobuf {
- *        generateProtoTasks {
- *            all().forEach { task ->
- *                task.builtins {
- *                    create("js") {
- *                        option("import_style=commonjs,binary")
- *                    }
- *                }
- *            }
- *        }
- *    }
- *    
- *    tasks.register<Copy>("copyProtoJsToWeb") {
- *        dependsOn("generateProto")
- *        from("build/generated/source/proto/main/js")
- *        into("src/main/resources/web/visualizer/proto")
- *    }
- * 
- * 2. Update index.html (load as CommonJS before ES6 modules):
- *    
- *    <script src="https://cdn.jsdelivr.net/npm/google-protobuf/google-protobuf.min.js"></script>
- *    <script src="./proto/org/evochora/datapipeline/api/contracts/http_api_contracts_pb.js"></script>
- *    <script type="module" src="./js/main.js"></script>
- * 
- * 3. Update this file:
- *    
- *    // Remove PROTO_SCHEMA constant and ensureProtoInitialized()
- *    // Access global namespace instead:
- *    const { EnvironmentHttpResponse, CellHttpResponse } = 
- *        proto.org.evochora.datapipeline.api.contracts;
- *    
- *    // Change decode call:
- *    // FROM: EnvironmentHttpResponse.decode(new Uint8Array(arrayBuffer))
- *    // TO:   EnvironmentHttpResponse.deserializeBinary(new Uint8Array(arrayBuffer))
- *    
- *    // Change field access:
- *    // FROM: message.cells, message.tickNumber
- *    // TO:   message.getCellsList(), message.getTickNumber()
- * 
- * Benefits of refactoring:
- *   - Single source of truth (no schema duplication)
- *   - Smaller bundle (google-protobuf ~30KB vs protobufjs ~170KB)
- *   - No runtime schema parsing overhead
- * 
- * Trade-offs:
- *   - Generated JS is CommonJS (loaded via <script>, not ES6 import)
- *   - google-protobuf is ~10-20% slower at decoding than protobufjs
- * =============================================================================
+/**
+ * Web Worker instance for heavy data processing.
+ * Initialized lazily on first use.
  */
+let worker = null;
+let requestCounter = 0;
+const pendingRequests = new Map();
 
 /**
- * Protobuf schema for environment API responses.
- * 
- * WARNING: This is duplicated from http_api_contracts.proto on the server.
- * If you modify the server schema, you MUST update this definition as well.
- * 
- * @see src/main/proto/org/evochora/datapipeline/api/contracts/http_api_contracts.proto
+ * Initialize the Web Worker lazily.
  */
-const PROTO_SCHEMA = `
-syntax = "proto3";
-message EnvironmentHttpResponse {
-  int64 tick_number = 1;
-  int64 total_cells = 2;
-  repeated CellHttpResponse cells = 3;
-  MinimapData minimap = 4;
-}
-message CellHttpResponse {
-  repeated int32 coordinates = 1 [packed=true];
-  int32 molecule_type = 2;
-  int32 molecule_value = 3;
-  int32 owner_id = 4;
-  int32 opcode_id = 5;
-  int32 marker = 6;
-}
-message MinimapData {
-  int32 width = 1;
-  int32 height = 2;
-  bytes cell_types = 3;
-}
-`;
+function ensureWorkerInitialized() {
+    if (worker) return;
 
-// Cached protobuf type (initialized lazily)
-let EnvironmentHttpResponse = null;
+    worker = new Worker('./js/workers/EnvironmentWorker.js');
 
-// Cached type mappings from metadata (id -> name)
-let moleculeTypeMap = null;
-let opcodeMap = null;
+    worker.onmessage = (e) => {
+        const { type, requestId, error, data, timing, meta } = e.data;
+
+        const pending = pendingRequests.get(requestId);
+        if (!pending) return; // Request was aborted or already handled
+
+        pendingRequests.delete(requestId);
+
+        if (type === 'error') {
+            pending.reject(new Error(error));
+        } else if (type === 'fetchComplete') {
+            pending.resolve({ data, timing, meta });
+        } else if (type === 'mappingsSet') {
+            pending.resolve();
+        }
+    };
+
+    worker.onerror = (e) => {
+        console.error('[EnvironmentApi Worker] Error:', e.message);
+        // Reject all pending requests
+        for (const [requestId, pending] of pendingRequests.entries()) {
+            pending.reject(new Error(`Worker error: ${e.message}`));
+            pendingRequests.delete(requestId);
+        }
+    };
+}
 
 /**
- * Initializes the Protobuf parser lazily.
- * Uses runtime schema parsing (protobufjs) - see header comment for codegen alternative.
- * @returns {Promise<void>}
+ * Send a message to the worker and return a promise for the response.
  */
-async function ensureProtoInitialized() {
-    if (EnvironmentHttpResponse) return;
-    
-    const root = protobuf.parse(PROTO_SCHEMA).root;
-    EnvironmentHttpResponse = root.lookupType('EnvironmentHttpResponse');
+function sendToWorker(type, payload, signal = null) {
+    ensureWorkerInitialized();
+
+    const requestId = ++requestCounter;
+
+    return new Promise((resolve, reject) => {
+        // Handle abort signal
+        if (signal) {
+            if (signal.aborted) {
+                reject(new DOMException('Aborted', 'AbortError'));
+                return;
+            }
+            signal.addEventListener('abort', () => {
+                pendingRequests.delete(requestId);
+                // Tell the worker to abort the actual fetch
+                worker.postMessage({ type: 'abort', requestId });
+                reject(new DOMException('Aborted', 'AbortError'));
+            });
+        }
+
+        pendingRequests.set(requestId, { resolve, reject });
+        worker.postMessage({ type, payload, requestId });
+    });
 }
 
 /**
  * Sets the type mappings from metadata.
- * Call this after fetching metadata to enable ID-to-name resolution.
+ * Forwards to the worker for ID-to-name resolution.
  * Safe to call with null/undefined metadata (no-op).
- * 
+ *
  * @param {object|null|undefined} metadata - The simulation metadata containing moleculeTypes and opcodes maps.
  */
 export function setTypeMappings(metadata) {
-    if (!metadata) return;  // Guard: fetchMetadata may return null/undefined
+    if (!metadata) return;
+
+    const payload = {};
     if (metadata.moleculeTypes) {
-        moleculeTypeMap = metadata.moleculeTypes;
+        payload.moleculeTypes = metadata.moleculeTypes;
     }
     if (metadata.opcodes) {
-        opcodeMap = metadata.opcodes;
+        payload.opcodes = metadata.opcodes;
+    }
+
+    if (Object.keys(payload).length > 0) {
+        sendToWorker('setMappings', payload).catch((err) => {
+            console.warn('[EnvironmentApi] Failed to set mappings in worker:', err.message);
+        });
     }
 }
 
 /**
  * API client for environment-related data endpoints.
- * This class handles fetching the state of the world grid for a specific region and time (tick).
- * 
- * Uses Protobuf binary format for efficient transfer of large environment data.
+ * Uses a Web Worker for heavy Protobuf processing to prevent UI freezing.
  *
  * @class EnvironmentApi
  */
 export class EnvironmentApi {
     /**
      * Fetches environment data (cell states) for a specific tick and a given rectangular region.
+     * Processing happens in a Web Worker to keep the UI responsive.
      * Supports cancellation via an AbortSignal.
      * Includes performance timing (visible in browser console at Debug level).
      *
@@ -164,13 +120,10 @@ export class EnvironmentApi {
      */
     async fetchEnvironmentData(tick, region, options = {}) {
         const { runId = null, signal = null, includeMinimap = false } = options;
-        
-        // Ensure protobuf is initialized
-        await ensureProtoInitialized();
-        
+
         // Build region query parameter
         const regionParam = `${region.x1},${region.x2},${region.y1},${region.y2}`;
-        
+
         // Build URL
         let url = `/visualizer/api/environment/${tick}?region=${encodeURIComponent(regionParam)}`;
         if (runId) {
@@ -179,106 +132,53 @@ export class EnvironmentApi {
         if (includeMinimap) {
             url += '&minimap';
         }
-        
-        const fetchOptions = {
-            headers: {
-                'Accept': 'application/x-protobuf'
-            }
-        };
-        if (signal) {
-            fetchOptions.signal = signal;
-        }
-        
-        // --- Timing: Start ---
-        const totalStart = performance.now();
-        
+
         if (loadingManager) {
             loadingManager.incrementRequests();
         }
-        
+
+        // Measure total time from main thread perspective (includes message passing)
+        const mainThreadStart = performance.now();
+
         try {
-            // --- Timing: Network fetch ---
-            const fetchStart = performance.now();
-            const response = await fetch(url, fetchOptions);
-            const fetchTime = performance.now() - fetchStart;
-            
-            if (!response.ok) {
-                // Try to parse error as JSON
-                const errorText = await response.text();
-                let errorMessage;
-                try {
-                    const errorData = JSON.parse(errorText);
-                    errorMessage = errorData.message || `HTTP ${response.status}: ${response.statusText}`;
-                } catch {
-                    errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-                }
-                throw new Error(errorMessage);
-            }
-            
-            // Read server timing headers
-            const serverTiming = {
-                load: response.headers.get('X-Timing-Load-Ms'),
-                db: response.headers.get('X-Timing-Db-Ms'),
-                decompress: response.headers.get('X-Timing-Decompress-Ms'),
-                transform: response.headers.get('X-Timing-Transform-Ms'),
-                serialize: response.headers.get('X-Timing-Serialize-Ms'),
-                total: response.headers.get('X-Timing-Total-Ms'),
-                cellCount: response.headers.get('X-Cell-Count')
-            };
-            
-            // --- Timing: Get binary data ---
-            const binaryStart = performance.now();
-            const arrayBuffer = await response.arrayBuffer();
-            const binaryTime = performance.now() - binaryStart;
-            
-            // --- Timing: Parse Protobuf ---
-            const parseStart = performance.now();
-            const message = EnvironmentHttpResponse.decode(new Uint8Array(arrayBuffer));
-            const parseTime = performance.now() - parseStart;
-            
-            // --- Timing: Transform to app format ---
-            const transformStart = performance.now();
-            const cells = transformCells(message.cells);
-            const transformTime = performance.now() - transformStart;
-            
-            const totalTime = performance.now() - totalStart;
-            
-            // Log timing at debug level (only visible when "Verbose" is enabled in DevTools)
+            // Delegate heavy work to Web Worker
+            const { data, timing, meta } = await sendToWorker('fetch', { url }, signal);
+
+            const mainThreadTotal = (performance.now() - mainThreadStart).toFixed(1);
+
+            // Log timing at debug level
+            // client.workerMs = time spent in worker, client.totalMs = total including message passing
             console.debug(`[Environment API] Tick ${tick}`, {
-                server: {
-                    loadMs: serverTiming.load,
-                    dbMs: serverTiming.db,
-                    decompressMs: serverTiming.decompress,
-                    transformMs: serverTiming.transform,
-                    serializeMs: serverTiming.serialize,
-                    totalMs: serverTiming.total
-                },
+                server: timing.server,
                 client: {
-                    fetchMs: fetchTime.toFixed(1),
-                    binaryMs: binaryTime.toFixed(1),
-                    parseMs: parseTime.toFixed(1),
-                    transformMs: transformTime.toFixed(1),
-                    totalMs: totalTime.toFixed(1)
+                    fetchMs: timing.client.fetchMs,
+                    binaryMs: timing.client.binaryMs,
+                    parseMs: timing.client.parseMs,
+                    transformMs: timing.client.transformMs,
+                    workerMs: timing.client.totalMs,  // Total time in worker
+                    totalMs: mainThreadTotal          // Total time including message passing
                 },
-                cells: serverTiming.cellCount,
-                sizeKb: response.headers.get('Content-Length')
-                    ? (parseInt(response.headers.get('Content-Length')) / 1024).toFixed(1)
-                    : 'unknown'
+                cells: meta.cellCount,
+                sizeKb: meta.sizeKb
             });
 
-            // Build result with optional minimap
-            const result = { cells };
-            if (message.minimap) {
+            // Convert minimap cellTypes back to Uint8Array (was converted to Array for transfer)
+            const result = { cells: data.cells };
+            if (data.minimap) {
                 result.minimap = {
-                    width: message.minimap.width,
-                    height: message.minimap.height,
-                    cellTypes: new Uint8Array(message.minimap.cellTypes)
+                    width: data.minimap.width,
+                    height: data.minimap.height,
+                    cellTypes: new Uint8Array(data.minimap.cellTypes)
                 };
             }
 
             return result;
         } catch (error) {
-            if (error instanceof TypeError && error.message.includes('fetch')) {
+            // Don't log abort errors
+            if (error.name === 'AbortError') {
+                throw error;
+            }
+            if (error.message.includes('fetch') || error.message.includes('Worker')) {
                 throw new Error('Server not reachable. Is it running?');
             }
             throw error;
@@ -291,9 +191,8 @@ export class EnvironmentApi {
 
     /**
      * Fetches the available tick range (minTick, maxTick) for environment data.
-     * Returns the ticks that have been indexed by the EnvironmentIndexer.
-     * If no run ID is provided, the server will default to the latest available run.
-     * 
+     * This remains on the main thread as it's a small JSON payload.
+     *
      * @param {string|null} [runId=null] - The specific run ID to fetch the tick range for.
      * @returns {Promise<{minTick: number, maxTick: number}>} A promise that resolves to an object containing the min and max tick.
      * @throws {Error} If the network request fails or the server returns an error.
@@ -302,12 +201,11 @@ export class EnvironmentApi {
         const url = runId
             ? `/visualizer/api/environment/ticks?runId=${encodeURIComponent(runId)}`
             : `/visualizer/api/environment/ticks`;
-        
-        // Tick range is still JSON (small payload)
+
         if (loadingManager) {
             loadingManager.incrementRequests();
         }
-        
+
         try {
             const response = await fetch(url);
             if (!response.ok) {
@@ -321,69 +219,4 @@ export class EnvironmentApi {
             }
         }
     }
-}
-
-/**
- * Transforms Protobuf cells to the format expected by the app.
- * Resolves numeric IDs to names using cached mappings.
- * Optimized for large datasets (1M+ cells).
- * 
- * @param {Array} protoCells - Array of CellHttpResponse messages.
- * @returns {Array<object>} Transformed cells with string names.
- */
-function transformCells(protoCells) {
-    const len = protoCells.length;
-    const result = new Array(len);
-    
-    for (let i = 0; i < len; i++) {
-        const cell = protoCells[i];
-        const opcodeId = cell.opcodeId;
-        
-        result[i] = {
-            coordinates: cell.coordinates,  // Already an array-like, no need to copy
-            moleculeType: resolveMoleculeType(cell.moleculeType),
-            moleculeValue: cell.moleculeValue,
-            ownerId: cell.ownerId,
-            opcodeName: opcodeId >= 0 ? resolveOpcode(opcodeId) : null,
-            opcodeId: opcodeId,  // Raw ID for tooltip (shows full ID for unknown opcodes)
-            marker: cell.marker
-        };
-    }
-    
-    return result;
-}
-
-/**
- * Resolves molecule type ID to name using cached mapping.
- * Returns fallback value if mappings not yet initialized (can happen during startup race condition).
- * Returns 'UNKNOWN' for unknown IDs (valid simulation state from mutations).
- *
- * @param {number} typeId - The molecule type ID.
- * @returns {string} The molecule type name, 'UNKNOWN', or 'TYPE_{id}' if not initialized.
- */
-function resolveMoleculeType(typeId) {
-    if (!moleculeTypeMap) {
-        // Graceful degradation during startup race condition.
-        // Data will be reloaded once metadata is available.
-        return `TYPE_${typeId}`;
-    }
-    return moleculeTypeMap[typeId] || 'UNKNOWN';
-}
-
-/**
- * Resolves opcode ID to name using cached mapping.
- * Returns fallback value if mappings not yet initialized (can happen during startup race condition).
- * Returns '??' for unknown IDs (valid simulation state from mutations).
- * The raw opcodeId is passed separately for tooltip display.
- *
- * @param {number} opcodeId - The opcode ID.
- * @returns {string} The opcode name, '??', or 'OP_{id}' if not initialized.
- */
-function resolveOpcode(opcodeId) {
-    if (!opcodeMap) {
-        // Graceful degradation during startup race condition.
-        // Data will be reloaded once metadata is available.
-        return `OP_${opcodeId}`;
-    }
-    return opcodeMap[opcodeId] || '??';
 }
