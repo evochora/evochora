@@ -52,6 +52,10 @@ export class EnvironmentGrid {
         this._rawCells = null;      // Raw cells from API (for lazy cellData building)
         this._cellDataDirty = false; // Flag for lazy cellData building
 
+        // --- Prefetch Management ---
+        this._prefetchAbortController = null;  // Separate controller for background prefetch
+        this._fullWorldPrefetched = false;     // Track if full world prefetch completed for current tick
+
         // --- Zoomed-Out Viewport Caching is handled by ZoomedOutRendererStrategy ---
         // The renderer preserves its pixel buffer across pans and tracks loaded regions
 
@@ -285,10 +289,19 @@ export class EnvironmentGrid {
             renderer.clearCache();
             renderer._loadedTick = tick;
             renderer._loadedRunId = runId;
+            this._fullWorldPrefetched = false; // Reset prefetch state on tick change
+        }
+
+        // Abort any running prefetch when viewport changes (user scrolled)
+        if (this._prefetchAbortController) {
+            this._prefetchAbortController.abort();
+            this._prefetchAbortController = null;
         }
 
         // Check if all cells in viewport have been loaded
         if (renderer.isRegionFullyLoaded(viewport)) {
+            // Even if cache hit, trigger prefetch
+            this._triggerPrefetch(tick, runId, viewport);
             return {};
         }
 
@@ -337,8 +350,163 @@ export class EnvironmentGrid {
             this.currentAbortController = null;
         }
 
+        // Trigger prefetch based on mode
+        this._triggerPrefetch(tick, runId, viewport);
+
         // Return minimap data if present
         return { minimap: data.minimap };
+    }
+
+    /**
+     * Triggers background prefetch based on current mode:
+     * - Zoomed-Out: Full world prefetch
+     * - Zoomed-In: Ring prefetch (expanding outward from viewport)
+     * @param {number} tick - The current tick.
+     * @param {string|null} runId - The current run ID.
+     * @param {{x1: number, y1: number, x2: number, y2: number}} viewport - Current viewport.
+     * @private
+     */
+    _triggerPrefetch(tick, runId, viewport) {
+        if (this.isZoomedOut) {
+            this._triggerFullWorldPrefetch(tick, runId);
+        } else {
+            this._triggerRingPrefetch(tick, runId, viewport, 1);
+        }
+    }
+
+    /**
+     * Triggers a background prefetch of the full world in zoomed-out mode.
+     * Uses requestIdleCallback for low-priority execution.
+     * @param {number} tick - The current tick.
+     * @param {string|null} runId - The current run ID.
+     * @private
+     */
+    _triggerFullWorldPrefetch(tick, runId) {
+        // Skip if already prefetched for this tick
+        if (this._fullWorldPrefetched) return;
+
+        // Skip if world size unknown
+        if (!this.worldWidthCells || !this.worldHeightCells) return;
+
+        const fullRegion = { x1: 0, y1: 0, x2: this.worldWidthCells, y2: this.worldHeightCells };
+
+        // Skip if full world is already loaded
+        if (this.zoomedOutRenderer.isRegionFullyLoaded(fullRegion)) {
+            this._fullWorldPrefetched = true;
+            return;
+        }
+
+        // Use requestIdleCallback for low-priority prefetch (0s delay, but doesn't block)
+        requestIdleCallback(async () => {
+            // Double-check state hasn't changed
+            if (!this.isZoomedOut || this._fullWorldPrefetched) return;
+            if (this.zoomedOutRenderer._loadedTick !== tick) return;
+
+            console.debug(`[Prefetch] Starting full world prefetch for tick ${tick}`);
+            const prefetchStart = performance.now();
+
+            // Create dedicated abort controller for prefetch
+            this._prefetchAbortController = new AbortController();
+
+            try {
+                const data = await this.environmentApi.fetchEnvironmentData(tick, fullRegion, {
+                    runId: runId,
+                    signal: this._prefetchAbortController.signal,
+                    includeMinimap: false  // Already have minimap
+                });
+
+                // Verify we're still in the same state before rendering
+                if (!this.isZoomedOut || this.zoomedOutRenderer._loadedTick !== tick) {
+                    console.debug('[Prefetch] State changed, discarding data');
+                    return;
+                }
+
+                // Render the prefetched cells (accumulates into existing pixel buffer)
+                this.zoomedOutRenderer.renderCells(data.cells, fullRegion);
+                this._fullWorldPrefetched = true;
+
+                const prefetchTime = (performance.now() - prefetchStart).toFixed(0);
+                console.debug(`[Prefetch] Full world prefetch completed in ${prefetchTime}ms (${data.cells.length} cells)`);
+
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    console.warn('[Prefetch] Failed:', error.message);
+                }
+            } finally {
+                this._prefetchAbortController = null;
+            }
+        }, { timeout: 100 }); // Short timeout - execute soon but yield to user interactions
+    }
+
+    /**
+     * Triggers a ring prefetch for zoomed-in mode.
+     * Expands outward from the current viewport in rings.
+     * @param {number} tick - The current tick.
+     * @param {string|null} runId - The current run ID.
+     * @param {{x1: number, y1: number, x2: number, y2: number}} viewport - Current viewport.
+     * @param {number} ringNumber - Ring expansion factor (1 = +1 viewport around current).
+     * @private
+     */
+    _triggerRingPrefetch(tick, runId, viewport, ringNumber) {
+        // Skip if world size unknown
+        if (!this.worldWidthCells || !this.worldHeightCells) return;
+
+        // Calculate expanded region (ring around viewport)
+        const viewportWidth = viewport.x2 - viewport.x1;
+        const viewportHeight = viewport.y2 - viewport.y1;
+        const expansion = ringNumber;
+
+        const expandedRegion = {
+            x1: Math.max(0, viewport.x1 - viewportWidth * expansion),
+            y1: Math.max(0, viewport.y1 - viewportHeight * expansion),
+            x2: Math.min(this.worldWidthCells, viewport.x2 + viewportWidth * expansion),
+            y2: Math.min(this.worldHeightCells, viewport.y2 + viewportHeight * expansion)
+        };
+
+        // Skip if expanded region is already fully loaded
+        if (this.detailedRenderer.isRegionFullyLoaded(expandedRegion)) {
+            return;
+        }
+
+        // Use requestIdleCallback for low-priority prefetch
+        requestIdleCallback(async () => {
+            // Verify state hasn't changed
+            if (this.isZoomedOut) return;
+            if (this.detailedRenderer._loadedTick !== tick) return;
+
+            console.debug(`[Prefetch] Starting ring ${ringNumber} prefetch for tick ${tick}`);
+            const prefetchStart = performance.now();
+
+            // Create dedicated abort controller for prefetch
+            this._prefetchAbortController = new AbortController();
+
+            try {
+                const data = await this.environmentApi.fetchEnvironmentData(tick, expandedRegion, {
+                    runId: runId,
+                    signal: this._prefetchAbortController.signal,
+                    includeMinimap: false
+                });
+
+                // Verify we're still in the same state before rendering
+                if (this.isZoomedOut || this.detailedRenderer._loadedTick !== tick) {
+                    console.debug('[Prefetch] State changed, discarding data');
+                    return;
+                }
+
+                // Render the prefetched cells
+                this.detailedRenderer.renderCells(data.cells, expandedRegion);
+
+                const prefetchTime = (performance.now() - prefetchStart).toFixed(0);
+                console.debug(`[Prefetch] Ring ${ringNumber} completed in ${prefetchTime}ms (${data.cells.length} cells)`);
+
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    console.warn('[Prefetch] Failed:', error.message);
+                }
+            } finally {
+                this._prefetchAbortController = null;
+            }
+        }, { timeout: 500 }); // Longer timeout for ring prefetch - less urgent
     }
 
     /**
@@ -1043,6 +1211,9 @@ class BaseRendererStrategy {
  * Renders the environment with full details: cell text, organism markers with direction, etc.
  */
 class DetailedRendererStrategy extends BaseRendererStrategy {
+    /** Maximum number of cells to keep in memory (LRU eviction budget) */
+    static MAX_CELLS = 100_000;
+
     constructor(grid) {
         super(grid);
         this.cellObjects = new Map();
@@ -1056,6 +1227,9 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
             fill: 0xffffff,
             align: 'center',
         };
+
+        // LRU tracking for eviction
+        this._cellAccessTime = new Map(); // key -> timestamp
     }
 
     clear() {
@@ -1064,7 +1238,8 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
             if (text) this.grid.textContainer.removeChild(text);
         }
         this.cellObjects.clear();
-        this.clearCache(); // From base class
+        this._cellAccessTime.clear();
+        this.clearCache(); // From base class (clears _loadedMask)
 
         for (const g of this.ipGraphics.values()) {
             this.grid.organismContainer.removeChild(g);
@@ -1080,6 +1255,7 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
     
     renderCells(cells, region) {
         const updatedKeys = new Set();
+        const now = performance.now();
 
         // First pass: update or create all cells from response
         for (const cell of cells) {
@@ -1098,6 +1274,9 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
                 marker: cell.marker || 0
             };
             this.drawCell(cellData, coords);
+
+            // LRU: Update access time
+            this._cellAccessTime.set(key, now);
         }
 
         // Second pass: remove cells in this region that weren't updated
@@ -1120,11 +1299,18 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
                 if (background) this.grid.cellContainer.removeChild(background);
                 if (text) this.grid.textContainer.removeChild(text);
                 this.cellObjects.delete(key);
+                this._cellAccessTime.delete(key);
             }
         }
 
         // Mark region as loaded (base class method)
         this._markRegionLoaded(region);
+
+        // LRU Eviction: Remove oldest cells if over budget
+        if (this.cellObjects.size > DetailedRendererStrategy.MAX_CELLS) {
+            const excess = this.cellObjects.size - DetailedRendererStrategy.MAX_CELLS;
+            this._evictOldestCells(excess);
+        }
     }
     
     drawCell(cell, pos) {
@@ -1176,6 +1362,54 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
         }
 
         this.cellObjects.set(key, { background, text });
+    }
+
+    /**
+     * Clears the LRU cache (called when tick or run changes).
+     * Overrides base class to also clear access time tracking.
+     */
+    clearCache() {
+        super.clearCache();
+        this._cellAccessTime.clear();
+    }
+
+    /**
+     * Evicts the oldest (least recently accessed) cells to stay within budget.
+     * Also marks evicted cells as unloaded in _loadedMask.
+     * @param {number} count - Number of cells to evict.
+     * @private
+     */
+    _evictOldestCells(count) {
+        if (count <= 0) return;
+
+        // Sort by access time, get oldest 'count' cells
+        const sorted = [...this._cellAccessTime.entries()]
+            .sort((a, b) => a[1] - b[1])
+            .slice(0, count);
+
+        const worldWidth = this.grid.worldWidthCells;
+
+        for (const [key] of sorted) {
+            const entry = this.cellObjects.get(key);
+            if (entry) {
+                if (entry.background) this.grid.cellContainer.removeChild(entry.background);
+                if (entry.text) this.grid.textContainer.removeChild(entry.text);
+                this.cellObjects.delete(key);
+            }
+            this._cellAccessTime.delete(key);
+
+            // Mark as unloaded in _loadedMask (so it will be re-fetched if scrolled back)
+            if (this._loadedMask && worldWidth > 0) {
+                const parts = key.split(',');
+                const x = Number.parseInt(parts[0], 10);
+                const y = Number.parseInt(parts[1], 10);
+                if (!Number.isNaN(x) && !Number.isNaN(y)) {
+                    this._loadedMask[y * worldWidth + x] = 0;
+                }
+            }
+        }
+
+        console.debug(`[LRU Eviction] Removed ${sorted.length} cells, now at ${this.cellObjects.size}`);
     }
 
     renderOrganisms(organisms) {
