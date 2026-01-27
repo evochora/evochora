@@ -22,65 +22,62 @@
 <body>
 <div id="error-banner" class="error-bar" style="display: none;">
     <span id="error-message" class="error-bar-message"></span>
-    <button id="close-error-banner" class="error-bar-close">&times;</button>
+    <button id="close-error-banner" class="error-bar-close">Close</button>
 </div>
 
 <!-- Tooltip für Zell-Informationen -->
 <div id="cell-tooltip" class="cell-tooltip"></div>
 
-<header>
-    <div class="header-left">
-        <div id="app-switcher-container"></div>
-        <div class="logo-container">
-            <span class="logo-text">EVOCHORA</span>
-            <div class="loading-indicator" id="loading-indicator"></div>
+<!-- Logo Panel (top-left) -->
+<div id="logo-panel" class="top-panel">
+    <div id="app-switcher-container"></div>
+    <div class="logo-container">
+        <span class="logo-text">EVOCHORA<div class="loading-indicator" id="loading-indicator"></div></span>
+    </div>
+</div>
+
+<!-- Tick Panel (next to logo) -->
+<div id="tick-panel" class="top-panel">
+    <button id="btn-prev-large" data-tooltip="">&lt;&lt;</button>
+    <button id="btn-prev-small" data-tooltip="">&lt;</button>
+    <div class="tick-input-wrapper">
+        <input type="number" id="tick-input" class="tick-input" min="0" value="0" aria-label="Tick">
+        <span class="tick-total-suffix" id="tick-total-suffix">/N/A</span>
+    </div>
+    <button id="btn-next-small" data-tooltip="">&gt;</button>
+    <button id="btn-next-large" data-tooltip="">&gt;&gt;</button>
+    <div id="multiplier-wrapper" class="tick-input-wrapper multiplier-wrapper" style="display: none;">
+        <input type="number" id="large-step-multiplier" class="tick-input" value="100" min="1">
+        <span id="multiplier-suffix" class="tick-total-suffix">x1</span>
+    </div>
+</div>
+
+<!-- Organism Panel (top-right) -->
+<div id="organism-panel" class="top-panel">
+    <div class="organism-panel-header" id="organism-panel-header">
+        <div class="organism-panel-title">
+            <span>Organisms</span>
+            <span class="organism-count" id="organism-count">(0/0)</span>
+        </div>
+        <div class="organism-filter-wrapper" id="organism-filter-wrapper">
+            <input type="text" id="organism-filter" class="organism-filter-input" placeholder="Filter...">
+            <button class="organism-filter-clear hidden" id="organism-filter-clear" title="Clear filter">✕</button>
+        </div>
+        <div class="organism-panel-controls">
+            <button class="panel-toggle" id="organism-list-collapse" title="Collapse/Expand list">▲</button>
         </div>
     </div>
-    <div class="header-right"></div>
-    
-    <!-- Tick Panel (left, always visible) -->
-    <div id="tick-panel" class="header-panel">
-        <button id="btn-prev-large" data-tooltip="">&lt;&lt;</button>
-        <button id="btn-prev-small" data-tooltip="">&lt;</button>
-        <div class="tick-input-wrapper">
-            <input type="number" id="tick-input" class="tick-input" min="0" value="0" aria-label="Tick">
-            <span class="tick-total-suffix" id="tick-total-suffix">/N/A</span>
-        </div>
-        <button id="btn-next-small" data-tooltip="">&gt;</button>
-        <button id="btn-next-large" data-tooltip="">&gt;&gt;</button>
-        <div id="multiplier-wrapper" class="tick-input-wrapper multiplier-wrapper" style="display: none;">
-            <input type="number" id="large-step-multiplier" class="tick-input" value="100" min="1">
-            <span id="multiplier-suffix" class="tick-total-suffix">x1</span>
-        </div>
+    <div class="organism-list-container" id="organism-list-container">
+        <div class="organism-list" id="organism-list"></div>
     </div>
-    
-    <!-- Organism Panel (right) -->
-    <div id="organism-panel" class="header-panel">
-        <div class="organism-panel-header" id="organism-panel-header">
-            <div class="organism-panel-title">
-                <span>Organisms</span>
-                <span class="organism-count" id="organism-count">(0/0)</span>
-            </div>
-            <div class="organism-filter-wrapper" id="organism-filter-wrapper">
-                <input type="text" id="organism-filter" class="organism-filter-input" placeholder="Filter...">
-                <button class="organism-filter-clear hidden" id="organism-filter-clear" title="Clear filter">✕</button>
-            </div>
-            <div class="organism-panel-controls">
-                <button class="panel-toggle" id="organism-list-collapse" title="Collapse/Expand list">▲</button>
-            </div>
-        </div>
-        <div class="organism-list-container" id="organism-list-container">
-            <div class="organism-list" id="organism-list"></div>
-        </div>
-        <div class="organism-selected-display" id="organism-selected-display"></div>
-        <div class="organism-details-container" id="organism-details">
-            <div data-section="info"></div>
-            <div data-section="state"></div>
-            <div data-section="instructions"></div>
-            <div data-section="source"></div>
-        </div>
+    <div class="organism-selected-display" id="organism-selected-display"></div>
+    <div class="organism-details-container" id="organism-details">
+        <div data-section="info"></div>
+        <div data-section="state"></div>
+        <div data-section="instructions"></div>
+        <div data-section="source"></div>
     </div>
-</header>
+</div>
 
 <main class="container">
     <div class="world-container">

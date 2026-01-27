@@ -36,6 +36,20 @@ function setupErrorHandling() {
     if (closeButton) {
         closeButton.addEventListener('click', window.hideError);
     }
+
+    // Close error modal with ESC key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && errorBanner && errorBanner.style.display !== 'none') {
+            window.hideError();
+        }
+    });
+
+    // Close error modal when clicking on backdrop
+    errorBanner?.addEventListener('click', (e) => {
+        if (e.target === errorBanner) {
+            window.hideError();
+        }
+    });
 }
 
 /**
