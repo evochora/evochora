@@ -122,33 +122,89 @@ public class ArtemisTopicReaderDelegate<T extends Message>
 
     /**
      * Ensures the consumer is initialized and subscribed to the correct topic.
+     * <p>
      * Implements lazy initialization and re-creation after invalidation.
-     * This method is synchronized to be thread-safe.
+     * <p>
+     * <b>Journal Retention Replay:</b>
+     * If journal retention is enabled and this is a NEW subscription (queue
+     * doesn't exist in broker), we trigger a replay of all retained messages
+     * after creating the subscription. This gives new consumer groups access
+     * to all historical messages.
      *
-     * @throws JMSException
+     * @throws JMSException if consumer creation fails
      */
     private synchronized void ensureConsumerInitialized() throws JMSException {
         final String targetTopicName = parent.getTopicName();
         final String runId = parent.getSimulationRunId();
-        
-        // Subscription names must be unique per topic subscription. Since we have a unique topic per run,
-        // we must also have a unique subscription name per run.
-        final String targetSubscriptionName = this.consumerGroup + (runId != null ? "_" + runId.trim() : "");
 
-        // If consumer is null or is subscribed to an outdated topic/subscription, recreate it.
-        if (this.consumer == null || !targetSubscriptionName.equals(this.activeSubscriptionName)) {
-            // Invalidate just in case it's an outdated consumer and we are just updating the topic
-            invalidateConsumer();
-            
-            Topic topic = session.createTopic(targetTopicName);
-            
-            // Create Shared Durable Consumer (JMS 2.0)
-            this.consumer = session.createSharedDurableConsumer(topic, targetSubscriptionName);
-            this.activeTopicName = targetTopicName;
-            this.activeSubscriptionName = targetSubscriptionName;
-            
-            log.debug("Artemis consumer initialized for topic '{}' with subscription '{}'", this.activeTopicName, this.activeSubscriptionName);
+        // Build subscription name: consumerGroup + runId for uniqueness
+        final String targetSubscriptionName = this.consumerGroup
+            + (runId != null ? "_" + runId.trim() : "");
+
+        // If consumer exists and is on correct subscription, nothing to do
+        if (this.consumer != null && targetSubscriptionName.equals(this.activeSubscriptionName)) {
+            return;
         }
+
+        // Invalidate old consumer if exists
+        invalidateConsumer();
+
+        // =================================================================
+        // Journal Retention: Detect if this is a NEW subscription
+        // =================================================================
+        boolean shouldReplay = false;
+        String internalQueueName = targetTopicName + "::" + targetSubscriptionName;
+
+        if (ArtemisTopicResource.isJournalRetentionEnabled()) {
+            // Step 1: Fast-path check - have we seen this subscription in this JVM?
+            boolean firstTimeInJvm = ArtemisTopicResource.registerSubscriptionInMemory(
+                targetTopicName, targetSubscriptionName);
+
+            if (firstTimeInJvm) {
+                // Step 2: Check if queue actually exists in broker (persisted from previous run)
+                boolean queueExistsInBroker = ArtemisTopicResource.queueExistsInBroker(internalQueueName);
+
+                if (!queueExistsInBroker) {
+                    // This is a truly NEW subscription - will need replay after creation
+                    shouldReplay = true;
+                    log.debug("Detected NEW subscription '{}' on topic '{}' - will replay history",
+                        targetSubscriptionName, targetTopicName);
+                } else {
+                    log.debug("Subscription '{}' already exists in broker - no replay needed",
+                        targetSubscriptionName);
+                }
+            }
+        }
+        // =================================================================
+
+        // Create the JMS consumer (this creates the queue in broker if not exists)
+        Topic topic = session.createTopic(targetTopicName);
+        this.consumer = session.createSharedDurableConsumer(topic, targetSubscriptionName);
+        this.activeTopicName = targetTopicName;
+        this.activeSubscriptionName = targetSubscriptionName;
+
+        log.debug("Artemis consumer initialized for topic '{}' with subscription '{}'",
+            this.activeTopicName, this.activeSubscriptionName);
+
+        // =================================================================
+        // Journal Retention: Trigger replay for new subscriptions
+        // =================================================================
+        if (shouldReplay) {
+            try {
+                ArtemisTopicResource.triggerReplay(targetTopicName, internalQueueName);
+                log.debug("Replay triggered for new consumer group '{}' on topic '{}'",
+                    this.consumerGroup, targetTopicName);
+            } catch (Exception e) {
+                // Replay failure is not fatal - consumer still works for new messages
+                log.warn("Failed to replay historical messages for consumer group '{}': {}. "
+                    + "Consumer will only receive NEW messages.",
+                    this.consumerGroup, e.getMessage());
+                recordError("REPLAY_FAILED",
+                    "Historical message replay failed for new consumer group",
+                    "ConsumerGroup: " + this.consumerGroup + ", Error: " + e.getMessage());
+            }
+        }
+        // =================================================================
     }
 
     @Override

@@ -1,5 +1,6 @@
 package org.evochora.datapipeline.resources.topics;
 
+import java.io.File;
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
@@ -15,6 +16,7 @@ import javax.jms.JMSException;
 
 import org.apache.activemq.artemis.api.core.SimpleString;
 import org.apache.activemq.artemis.api.core.TransportConfiguration;
+import org.apache.activemq.artemis.core.server.ActiveMQServer;
 import org.apache.activemq.artemis.core.config.Configuration;
 import org.apache.activemq.artemis.core.config.impl.ConfigurationImpl;
 import org.apache.activemq.artemis.core.remoting.impl.invm.InVMAcceptorFactory;
@@ -66,6 +68,23 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
     private static EmbeddedActiveMQ embeddedBroker;
     private static final AtomicBoolean brokerStarted = new AtomicBoolean(false);
     private static final Object brokerLock = new Object();
+
+    // =========================================================================
+    // Journal Retention State
+    // =========================================================================
+
+    /**
+     * Tracks whether journal retention is enabled for the embedded broker.
+     * Set during broker startup, used by reader delegates to decide on replay.
+     */
+    private static volatile boolean journalRetentionEnabled = false;
+
+    /**
+     * Registry of known subscriptions (format: "topicName::subscriptionName").
+     * Used as fast-path check before querying the broker.
+     * Thread-safe via ConcurrentHashMap.
+     */
+    private static final Set<String> knownSubscriptions = ConcurrentHashMap.newKeySet();
     
     private final String brokerUrl;
     private final String baseTopicName; // Renamed from topicName
@@ -227,7 +246,81 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
                     } else {
                         log.debug("Artemis global maxDiskUsage is set to {}%", maxDiskUsage);
                     }
-                    
+
+                    // =============================================================
+                    // Journal Retention Configuration (Kafka-like Message Persistence)
+                    // =============================================================
+                    // When enabled, ALL messages are permanently stored in the retention
+                    // journal - even after consumers ACK them. This enables:
+                    //   - New consumer groups receive all historical messages
+                    //   - Post-mortem analysis of past simulations
+                    //   - Recovery after index database corruption
+                    //
+                    // Default: ENABLED (true) with UNLIMITED retention (periodDays=0, maxBytes=0)
+                    // =============================================================
+                    boolean retentionEnabled = !options.hasPath("embedded.journalRetention.enabled")
+                        || options.getBoolean("embedded.journalRetention.enabled"); // Default: true
+
+                    if (retentionEnabled) {
+                        if (!persistenceEnabled) {
+                            log.warn("Journal retention requires persistenceEnabled=true. "
+                                + "Retention will be DISABLED.");
+                        } else {
+                            // Directory for retention journal (must be separate from main journal)
+                            String dataDir = options.hasPath("embedded.dataDirectory")
+                                ? options.getString("embedded.dataDirectory")
+                                : System.getProperty("user.dir") + "/data/topic";
+
+                            String retentionDir = options.hasPath("embedded.journalRetention.directory")
+                                ? options.getString("embedded.journalRetention.directory")
+                                : dataDir + "/history";
+
+                            // Create directory if it doesn't exist
+                            File retentionDirFile = new File(retentionDir);
+                            if (!retentionDirFile.exists() && !retentionDirFile.mkdirs()) {
+                                throw new RuntimeException(
+                                    "Cannot create journal retention directory: "
+                                    + retentionDirFile.getAbsolutePath());
+                            }
+
+                            // Period in days (default: 0 = unlimited)
+                            int periodDays = options.hasPath("embedded.journalRetention.periodDays")
+                                ? options.getInt("embedded.journalRetention.periodDays")
+                                : 0;
+
+                            // Max bytes (default: 0 = unlimited)
+                            long maxBytes = options.hasPath("embedded.journalRetention.maxBytes")
+                                ? options.getLong("embedded.journalRetention.maxBytes")
+                                : 0;
+
+                            // Apply to Artemis Configuration
+                            config.setJournalRetentionDirectory(retentionDir);
+
+                            if (periodDays > 0) {
+                                config.setJournalRetentionPeriod(TimeUnit.DAYS, periodDays);
+                            }
+                            // Note: periodDays=0 means unlimited (don't call setter)
+
+                            if (maxBytes > 0) {
+                                config.setJournalRetentionMaxBytes(maxBytes);
+                            }
+                            // Note: maxBytes=0 means unlimited (don't call setter)
+
+                            // Mark retention as enabled for reader delegates
+                            journalRetentionEnabled = true;
+
+                            log.debug("Journal retention enabled: directory={}, periodDays={}, maxBytes={}",
+                                retentionDir,
+                                periodDays == 0 ? "unlimited" : periodDays,
+                                maxBytes == 0 ? "unlimited" : maxBytes);
+                        }
+                    } else {
+                        log.debug("Journal retention DISABLED (standard JMS behavior)");
+                    }
+                    // =============================================================
+                    // END: Journal Retention Configuration
+                    // =============================================================
+
                     // Address Settings for redelivery behavior (broker-side)
                     // These settings apply when a consumer connection is lost or transaction rolled back
                     // Complements the client-side watchdog for stuck threads
@@ -498,14 +591,154 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
         // which represents the max heap buffer before paging. Add a baseline for the broker itself.
         long brokerBaseline = 32L * 1024 * 1024; // ~32MB baseline for broker internals
         long estimatedBytes = brokerBaseline + this.maxSizeBytesForEstimation;
-        
+
         return List.of(new MemoryEstimate(
             getResourceName(),
             estimatedBytes,
-            "Artemis Broker (" + (brokerBaseline / 1024 / 1024) + "MB) + Topic Heap Buffer (" 
+            "Artemis Broker (" + (brokerBaseline / 1024 / 1024) + "MB) + Topic Heap Buffer ("
                 + (this.maxSizeBytesForEstimation / 1024 / 1024) + "MB)",
             MemoryEstimate.Category.TOPIC
         ));
+    }
+
+    // =========================================================================
+    // Journal Retention API
+    // =========================================================================
+
+    /**
+     * Returns whether journal retention is enabled for the embedded broker.
+     *
+     * @return true if retention is enabled and replay is available
+     */
+    static boolean isJournalRetentionEnabled() {
+        return journalRetentionEnabled;
+    }
+
+    /**
+     * Returns the embedded Artemis server instance for management operations.
+     * <p>
+     * Used by reader delegates to query queue existence and trigger replay.
+     *
+     * @return the ActiveMQServer, or null if broker not started or external broker used
+     */
+    static ActiveMQServer getEmbeddedServer() {
+        if (embeddedBroker != null && brokerStarted.get()) {
+            return embeddedBroker.getActiveMQServer();
+        }
+        return null;
+    }
+
+    /**
+     * Checks if a queue exists in the broker.
+     * <p>
+     * FAIL FAST: If we cannot determine queue existence, we throw an exception.
+     * We must NOT guess - both wrong guesses lead to silent failures:
+     * <ul>
+     *   <li>Assuming "exists" when it doesn't → Consumer misses all historical messages</li>
+     *   <li>Assuming "not exists" when it does → Consumer replays millions of messages unnecessarily</li>
+     * </ul>
+     *
+     * @param queueName the internal queue name (format: "topicName::subscriptionName")
+     * @return true if queue exists, false if it definitely does not exist
+     * @throws RuntimeException if queue existence cannot be determined
+     */
+    static boolean queueExistsInBroker(String queueName) {
+        ActiveMQServer server = getEmbeddedServer();
+
+        try {
+            String[] queueNames;
+
+            if (server != null) {
+                // Embedded: Direct access via management control
+                queueNames = server.getActiveMQServerControl().getQueueNames();
+            } else {
+                // External broker: Would require JMX - not implemented yet
+                // For now, fail fast with clear error message
+                throw new UnsupportedOperationException(
+                    "Queue existence check for external broker not yet implemented. " +
+                    "External broker support requires JMX configuration.");
+            }
+
+            for (String existing : queueNames) {
+                if (existing.equals(queueName)) {
+                    return true;
+                }
+            }
+            return false;
+
+        } catch (UnsupportedOperationException e) {
+            // Re-throw our own exception
+            throw e;
+        } catch (Exception e) {
+            // FAIL FAST: We cannot guess.
+            // - Wrong "exists" → Consumer misses all historical messages
+            // - Wrong "not exists" → Consumer replays millions of messages unnecessarily
+            // Both are silent failures that can go unnoticed for days.
+            // Better: Fail loudly, user sees problem immediately.
+            String errorMsg = String.format(
+                "Cannot determine if queue '%s' exists in broker. " +
+                "Broker query failed: %s. " +
+                "Consumer cannot start safely - fix broker connectivity first.",
+                queueName, e.getMessage());
+            log.error(errorMsg);
+            throw new RuntimeException(errorMsg, e);
+        }
+    }
+
+    /**
+     * Registers a subscription in the in-memory registry.
+     * <p>
+     * Returns true if this is the first time we've seen this subscription
+     * in the current JVM lifetime. Used as fast-path before broker query.
+     *
+     * @param topicName the topic name (address)
+     * @param subscriptionName the subscription name
+     * @return true if newly registered (first time), false if already known
+     */
+    static boolean registerSubscriptionInMemory(String topicName, String subscriptionName) {
+        String key = topicName + "::" + subscriptionName;
+        return knownSubscriptions.add(key);
+    }
+
+    /**
+     * Triggers replay of all retained messages from the journal to a queue.
+     * <p>
+     * This copies ALL messages from the retention journal that were sent to
+     * the specified address into the target queue. Used when a new consumer
+     * group is detected to give it all historical messages.
+     * <p>
+     * <b>Thread Safety:</b> Safe to call concurrently. Artemis handles
+     * internal synchronization.
+     *
+     * @param addressName the address (topic) to replay from
+     * @param queueName the queue to replay into (format: "topicName::subscriptionName")
+     * @throws Exception if replay fails
+     */
+    static void triggerReplay(String addressName, String queueName) throws Exception {
+        ActiveMQServer server = getEmbeddedServer();
+        if (server == null) {
+            log.warn("Cannot replay messages: embedded server not available. "
+                + "New consumer group '{}' will NOT receive historical messages.", queueName);
+            return;
+        }
+
+        log.debug("Replaying retained messages from address '{}' to queue '{}'...",
+            addressName, queueName);
+
+        long startTime = System.currentTimeMillis();
+
+        // Replay all messages (no date filter, no message filter)
+        // Parameters: start (null = beginning), end (null = now), address, target, filter (null = all)
+        server.replay(
+            null,           // start date: null = from beginning
+            null,           // end date: null = until now
+            addressName,    // source address (topic name)
+            queueName,      // target queue (topicName::subscriptionName)
+            null            // filter: null = replay ALL messages
+        );
+
+        long duration = System.currentTimeMillis() - startTime;
+        log.debug("Replay completed for queue '{}' in {} ms", queueName, duration);
     }
 
     @Override
