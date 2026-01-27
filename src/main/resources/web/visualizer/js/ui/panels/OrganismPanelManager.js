@@ -19,6 +19,8 @@ export class OrganismPanelManager {
      * @param {HTMLElement} options.organismCount - The organism count display in header
      * @param {HTMLElement} options.organismList - The organism list element
      * @param {HTMLElement} options.selectedDisplay - Element showing selected organism when list collapsed
+     * @param {HTMLElement} options.filterInput - Filter input element
+     * @param {HTMLElement} options.filterClear - Filter clear button element
      * @param {Function} options.onOrganismSelect - Callback when an organism is selected
      * @param {Function} options.onPositionClick - Callback when a position link is clicked (x, y)
      * @param {Function} options.onTickClick - Callback when a tick link is clicked (tick)
@@ -32,6 +34,8 @@ export class OrganismPanelManager {
         organismCount,
         organismList,
         selectedDisplay,
+        filterInput,
+        filterClear,
         onOrganismSelect,
         onPositionClick,
         onTickClick,
@@ -44,15 +48,18 @@ export class OrganismPanelManager {
         this.organismCount = organismCount;
         this.organismList = organismList;
         this.selectedDisplay = selectedDisplay;
+        this.filterInput = filterInput;
+        this.filterClear = filterClear;
         this.onOrganismSelect = onOrganismSelect;
         this.onPositionClick = onPositionClick;
         this.onTickClick = onTickClick;
         this.onParentClick = onParentClick;
-        
+
         // Store current organisms and selection
         this.currentOrganisms = [];
         this.selectedId = null;
-        
+        this.filterText = '';
+
         // Store metadata for accessing organism config (max-entropy, etc.)
         this.metadata = null;
 
@@ -97,6 +104,134 @@ export class OrganismPanelManager {
                 this.setListCollapsed(!this.isListCollapsed());
             });
         }
+
+        // Filter input events
+        if (this.filterInput) {
+            this.filterInput.addEventListener('input', () => {
+                this.filterText = this.filterInput.value;
+                this.updateFilterClearButton();
+                // Auto-expand when typing
+                if (this.filterText && this.isListCollapsed()) {
+                    this.setListCollapsed(false);
+                }
+                this.renderFilteredList();
+            });
+
+            // ESC clears the filter
+            this.filterInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    this.clearFilter();
+                    this.filterInput.blur();
+                }
+            });
+
+            // Prevent header click from toggling when clicking input
+            this.filterInput.addEventListener('click', (e) => {
+                e.stopPropagation();
+            });
+        }
+
+        // Filter clear button
+        if (this.filterClear) {
+            this.filterClear.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.clearFilter();
+            });
+        }
+    }
+
+    /**
+     * Clears the filter input and re-renders the list.
+     */
+    clearFilter() {
+        this.filterText = '';
+        if (this.filterInput) {
+            this.filterInput.value = '';
+        }
+        this.updateFilterClearButton();
+        this.renderFilteredList();
+    }
+
+    /**
+     * Updates the visibility of the filter clear button.
+     * @private
+     */
+    updateFilterClearButton() {
+        if (this.filterClear) {
+            this.filterClear.classList.toggle('hidden', !this.filterText);
+        }
+    }
+
+    /**
+     * Checks if an organism matches the current filter.
+     * Matches: exact ID, or any value containing the filter number (ER, IP coords, DP coords).
+     * @param {object} org - Organism data
+     * @returns {boolean} True if organism matches filter
+     * @private
+     */
+    matchesFilter(org) {
+        if (!this.filterText) return true;
+
+        const filter = this.filterText.trim();
+        if (!filter) return true;
+
+        // Exact ID match
+        if (org.id === filter) return true;
+
+        // Try to parse as number for value matching
+        const filterNum = parseInt(filter, 10);
+        if (isNaN(filterNum)) return false;
+
+        // Match ER (energy)
+        if (org.energy === filterNum) return true;
+
+        // Match entropy register
+        if (org.entropyRegister === filterNum) return true;
+
+        // Match IP coordinates
+        if (org.ip && Array.isArray(org.ip)) {
+            if (org.ip.includes(filterNum)) return true;
+        }
+
+        // Match DP coordinates
+        if (org.dataPointers && Array.isArray(org.dataPointers)) {
+            for (const dp of org.dataPointers) {
+                if (dp && Array.isArray(dp) && dp.includes(filterNum)) return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Renders the filtered organism list.
+     * @private
+     */
+    renderFilteredList() {
+        if (!this.organismList) return;
+
+        const filtered = this.currentOrganisms.filter(org => this.matchesFilter(org));
+
+        if (filtered.length === 0 && this.filterText) {
+            this.organismList.innerHTML = '<div class="organism-list-empty">No matches</div>';
+        } else {
+            this.organismList.innerHTML = filtered.map(org => {
+                const isSelected = org.id === this.selectedId;
+                return this.renderOrganismRow(org, isSelected, isSelected);
+            }).join('');
+            this.bindRowListeners(this.organismList);
+
+            // Scroll to selected organism if list is visible
+            if (this.selectedId && !this.isListCollapsed()) {
+                const selectedRow = this.organismList.querySelector('.organism-list-item.selected');
+                if (selectedRow) {
+                    selectedRow.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                }
+            }
+        }
+
+        this.updateSelectedDisplay();
     }
 
     /**
@@ -270,17 +405,9 @@ export class OrganismPanelManager {
     updateList(organisms, selectedId) {
         this.currentOrganisms = organisms;
         this.selectedId = selectedId;
-        
-        if (!this.organismList) return;
 
-        // Render all organisms, selected one gets deselect button
-        this.organismList.innerHTML = organisms.map(org => {
-            const isSelected = org.id === selectedId;
-            return this.renderOrganismRow(org, isSelected, isSelected);
-        }).join('');
-
-        this.bindRowListeners(this.organismList);
-        this.updateSelectedDisplay();
+        // Use filtered rendering
+        this.renderFilteredList();
     }
 
     /**
@@ -289,30 +416,8 @@ export class OrganismPanelManager {
      */
     updateSelection(selectedId) {
         this.selectedId = selectedId;
-        
-        if (!this.organismList) return;
-
-        this.organismList.querySelectorAll('.organism-list-item').forEach(item => {
-            const isSelected = item.dataset.organismId === selectedId;
-            item.classList.toggle('selected', isSelected);
-            
-            // Add/remove deselect button
-            const deselectCol = item.querySelector('.organism-col-deselect');
-            if (isSelected && !deselectCol) {
-                const btn = document.createElement('span');
-                btn.className = 'organism-col organism-col-deselect';
-                btn.innerHTML = '<button class="organism-deselect" title="Deselect">✕</button>';
-                btn.querySelector('button').addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    if (this.onOrganismSelect) this.onOrganismSelect(null);
-                });
-                item.appendChild(btn);
-            } else if (!isSelected && deselectCol) {
-                deselectCol.remove();
-            }
-        });
-        
-        this.updateSelectedDisplay();
+        // Re-render with filter applied
+        this.renderFilteredList();
     }
 
     /**

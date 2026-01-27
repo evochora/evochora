@@ -128,12 +128,12 @@ public class HttpServerProcess extends AbstractProcess {
                 gzipHandler.setMinGzipSize(1024); // Compress responses > 1KB
                 gzipHandler.addIncludedMimeTypes(
                     "application/json",
-                    "text/html", 
+                    "text/html",
                     "text/plain",
                     "text/css",
-                    "application/javascript"
+                    "application/javascript",
+                    "application/octet-stream"  // Protobuf responses
                 );
-                gzipHandler.addExcludedMimeTypes("application/octet-stream");
                 handler.insertHandler(gzipHandler);
             });
             

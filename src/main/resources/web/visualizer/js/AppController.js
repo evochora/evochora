@@ -2,7 +2,7 @@ import { EnvironmentApi, setTypeMappings } from './api/EnvironmentApi.js';
 import { OrganismApi } from './api/OrganismApi.js';
 import { SimulationApi } from './api/SimulationApi.js';
 import { EnvironmentGrid } from './EnvironmentGrid.js';
-import { HeaderbarView } from './ui/HeaderbarView.js';
+import { MinimapView } from './ui/minimap/MinimapView.js';
 import { OrganismInstructionView } from './ui/organism/OrganismInstructionView.js';
 import { OrganismSourceView } from './ui/organism/OrganismSourceView.js';
 import { OrganismStateView } from './ui/organism/OrganismStateView.js';
@@ -79,15 +79,18 @@ export class AppController {
         // Components
         this.worldContainer = document.querySelector('.world-container');
         this.renderer = new EnvironmentGrid(this, this.worldContainer, defaultConfig, this.environmentApi);
-        this.headerbar = new HeaderbarView(this);
-        
+
+        // Minimap is initialized in init() after renderer.init() completes
+        // (renderer.init() clears the container, so we must add minimap after)
+        this.minimapView = null;
+        this.lastMinimapTick = null;
+
         // Apply initial zoom state (persisted from localStorage, default zoomed out)
         this.renderer.setZoom(this.state.isZoomedOut);
-        this.headerbar.updateZoomButton(this.state.isZoomedOut);
-        
+
         // Initialize panel managers
         this.initPanelManagers();
-        
+
         // Organism details views (render into organism-details container in the panel)
         const detailsRoot = document.getElementById('organism-details');
         if (!detailsRoot) {
@@ -96,17 +99,19 @@ export class AppController {
         this.instructionView = new OrganismInstructionView(detailsRoot);
         this.stateView = new OrganismStateView(detailsRoot);
         this.sourceView = new OrganismSourceView(detailsRoot);
-        
+
         // Load initial state (runId, tick) from URL if present
         this.loadFromUrl();
-        
+
         // Setup viewport change handler (environment only, organisms are cached per tick)
         this.renderer.onViewportChange = () => {
             this.loadEnvironmentForCurrentViewport();
+            // Update minimap viewport rectangle
+            this.updateMinimapViewport();
         };
 
-        // Keep footer display in sync when state changes externally
-        window.addEventListener('tickChanged', () => window.footer?.updateCurrent?.());
+        // Keep run selector display in sync when state changes externally
+        window.addEventListener('tickChanged', () => window.runSelectorPanel?.updateCurrent?.());
     }
     
     /**
@@ -142,8 +147,12 @@ export class AppController {
             this.organismPanelManager?.updateInfo(0, 0);
             this.organismPanelManager?.updateList([], null);
             this.clearOrganismDetails();
+
+            // Reset minimap state
+            this.lastMinimapTick = null;
+            this.minimapView?.clear();
             
-            this.headerbar.updateTickDisplay(this.state.currentTick, this.state.maxTick);
+            this.tickPanelManager.updateTickDisplay(this.state.currentTick, this.state.maxTick);
 
             // Fetch metadata for new run
             const metadata = await this.simulationApi.fetchMetadata(this.state.runId);
@@ -154,8 +163,8 @@ export class AppController {
 
             // Update UI components that depend on metadata
             this.tickPanelManager?.updateSamplingInfo(metadata?.samplingInterval || 1);
-            this.headerbar?.loadMultiplierForRun(this.state.runId); // Load after metadata is ready
-            this.headerbar?.updateTooltips();
+            this.tickPanelManager?.loadMultiplierForRun(this.state.runId); // Load after metadata is ready
+            this.tickPanelManager?.updateTooltips();
 
             if (metadata?.environment?.shape) {
                 this.state.worldShape = Array.from(metadata.environment.shape);
@@ -187,11 +196,11 @@ export class AppController {
             } else if (orgTickRange?.maxTick !== undefined) {
                 this.state.maxTick = orgTickRange.maxTick;
             }
-            this.headerbar.updateTickDisplay(this.state.currentTick, this.state.maxTick);
+            this.tickPanelManager.updateTickDisplay(this.state.currentTick, this.state.maxTick);
 
             // Load initial tick for new run
             await this.navigateToTick(this.state.currentTick, true);
-            window.footer?.updateCurrent?.();
+            window.runSelectorPanel?.updateCurrent?.();
         } catch (error) {
             console.error('Failed to change run:', error);
             showError('Failed to change run: ' + error.message);
@@ -260,37 +269,55 @@ export class AppController {
      * Toggles the zoom state of the environment grid and forces a full refresh.
      */
     async toggleZoom() {
-        this.state.isZoomedOut = !this.state.isZoomedOut;
-        
+        await this.setZoom(!this.state.isZoomedOut);
+    }
+
+    /**
+     * Sets the zoom state.
+     * @param {boolean} isZoomedOut - True for overview, false for detailed view
+     */
+    async setZoom(isZoomedOut) {
+        if (this.state.isZoomedOut === isZoomedOut) return;
+
+        this.state.isZoomedOut = isZoomedOut;
+
         // Persist zoom state
-        localStorage.setItem('evochora-zoom-state', this.state.isZoomedOut ? 'true' : 'false');
-        
-        // Update button text via headerbar view
-        this.headerbar.updateZoomButton(this.state.isZoomedOut);
+        localStorage.setItem('evochora-zoom-state', isZoomedOut ? 'true' : 'false');
+
+        // Update minimap panel zoom button
+        this.minimapView?.updateZoomButton(isZoomedOut);
 
         // Tell the renderer to update its internal state
-        this.renderer.setZoom(this.state.isZoomedOut);
-        
-        // Force a full re-render of the current tick. This will recalculate the
-        // viewport based on the new cell size and redraw everything.
-        await this.navigateToTick(this.state.currentTick, true); // Force full reload
+        this.renderer.setZoom(isZoomedOut);
+
+        // Force a full re-render of the current tick
+        await this.navigateToTick(this.state.currentTick, true);
     }
-    
+
     /**
      * Initializes the tick and organism panel managers.
      * @private
      */
     initPanelManagers() {
-        // Tick panel
+        // Tick panel (navigation buttons, tick input, multiplier, keyboard shortcuts)
         this.tickPanelManager = new TickPanelManager({
             panel: document.getElementById('tick-panel'),
-            collapsed: document.getElementById('tick-panel-collapsed'),
-            hideBtn: document.getElementById('tick-panel-hide'),
+            prevSmallBtn: document.getElementById('btn-prev-small'),
+            nextSmallBtn: document.getElementById('btn-next-small'),
+            prevLargeBtn: document.getElementById('btn-prev-large'),
+            nextLargeBtn: document.getElementById('btn-next-large'),
             tickInput: document.getElementById('tick-input'),
-            tickTotal: document.getElementById('tick-total-suffix'),
-            tickInfo: document.getElementById('tick-info'),
+            tickSuffix: document.getElementById('tick-total-suffix'),
+            multiplierInput: document.getElementById('large-step-multiplier'),
             multiplierWrapper: document.getElementById('multiplier-wrapper'),
-            multiplierSuffix: document.getElementById('multiplier-suffix')
+            multiplierSuffix: document.getElementById('multiplier-suffix'),
+            onNavigate: (targetTick) => this.navigateToTick(targetTick),
+            getState: () => ({
+                currentTick: this.state.currentTick,
+                maxTick: this.state.maxTick,
+                runId: this.state.runId,
+                samplingInterval: this.state.metadata?.samplingInterval || 1
+            })
         });
 
         // Organism panel
@@ -302,6 +329,8 @@ export class AppController {
             organismCount: document.getElementById('organism-count'),
             organismList: document.getElementById('organism-list'),
             selectedDisplay: document.getElementById('organism-selected-display'),
+            filterInput: document.getElementById('organism-filter'),
+            filterClear: document.getElementById('organism-filter-clear'),
             onOrganismSelect: (organismId) => this.selectOrganism(organismId),
             onPositionClick: (x, y) => this.renderer?.centerOn(x, y),
             onTickClick: (tick) => this.navigateToTick(tick),
@@ -440,7 +469,7 @@ export class AppController {
         } catch (error) {
             // Ignore AbortError, as it's an expected cancellation
             if (error.name === 'AbortError') {
-                console.debug('Request aborted by user navigation.');
+                // Request aborted by user navigation - expected
                 return;
             }
             console.error('Failed to load organism details:', error);
@@ -464,7 +493,19 @@ export class AppController {
 
             // Initialize renderer
             await this.renderer.init();
-            
+
+            // Create minimap panel (positioned fixed, appended to body)
+            this.minimapView = new MinimapView(
+                (worldX, worldY) => {
+                    this.renderer.centerOn(worldX, worldY);
+                },
+                (isZoomedOut) => {
+                    this.setZoom(isZoomedOut);
+                }
+            );
+            this.minimapView.restoreState(); // Restore expanded/collapsed state
+            this.minimapView.updateZoomButton(this.state.isZoomedOut);
+
             // Abort previous request if it's still running
             if (this.simulationRequestController) {
                 this.simulationRequestController.abort();
@@ -482,8 +523,8 @@ export class AppController {
 
                 // Update sampling info in the UI
                 this.tickPanelManager?.updateSamplingInfo(metadata?.samplingInterval || 1);
-                this.headerbar?.loadMultiplierForRun(this.state.runId);
-                this.headerbar?.updateTooltips();
+                this.tickPanelManager?.loadMultiplierForRun(this.state.runId);
+                this.tickPanelManager?.updateTooltips();
                 
                 if (metadata.runId && !this.state.runId) {
                     this.state.runId = metadata.runId;
@@ -503,7 +544,6 @@ export class AppController {
                             this.programArtifactCache.set(program.programId, program);
                         }
                     }
-                    console.debug(`Cached ${this.programArtifactCache.size} program artifacts.`);
                 }
                 
                 // Update organism panel manager with metadata
@@ -525,7 +565,7 @@ export class AppController {
             } else if (orgTickRange?.maxTick !== undefined) {
                 this.state.maxTick = orgTickRange.maxTick;
             }
-            this.headerbar.updateTickDisplay(this.state.currentTick, this.state.maxTick);
+            this.tickPanelManager.updateTickDisplay(this.state.currentTick, this.state.maxTick);
             
             // Wait for layout to be calculated before loading initial viewport
             // This ensures correct viewport size calculation on first load,
@@ -545,12 +585,12 @@ export class AppController {
             
             // Load initial tick, force reload to bypass optimization on first load
             await this.navigateToTick(this.state.currentTick, true);
-            window.footer?.updateCurrent?.();
+            window.runSelectorPanel?.updateCurrent?.();
             
         } catch (error) {
             // Ignore AbortError, as it's an expected cancellation
             if (error.name === 'AbortError') {
-                console.debug('Request aborted by user navigation.');
+                // Request aborted by user navigation - expected
                 return;
             }
             console.error('Failed to initialize application:', error);
@@ -585,7 +625,7 @@ export class AppController {
             
             if (newMaxTick !== null && newMaxTick !== this.state.maxTick) {
                 this.state.maxTick = newMaxTick;
-                this.headerbar.updateTickDisplay(this.state.currentTick, this.state.maxTick);
+                this.tickPanelManager.updateTickDisplay(this.state.currentTick, this.state.maxTick);
             }
         } catch (error) {
             // Silently fail - don't interrupt navigation if update fails
@@ -622,7 +662,7 @@ export class AppController {
         if (this.state.currentTick === target && !forceReload) {
             // Even if we bail, ensure the header bar reflects the clamped value,
             // giving feedback to the user if their input was out of bounds.
-            this.headerbar.updateTickDisplay(target, this.state.maxTick);
+            this.tickPanelManager.updateTickDisplay(target, this.state.maxTick);
             return;
         }
 
@@ -635,7 +675,7 @@ export class AppController {
         this.state.currentTick = target;
         
         // Update headerbar with current values
-        this.headerbar.updateTickDisplay(this.state.currentTick, this.state.maxTick);
+        this.tickPanelManager.updateTickDisplay(this.state.currentTick, this.state.maxTick);
 
         // Update URL state
         this.updateUrlState();
@@ -688,8 +728,25 @@ export class AppController {
 
         try {
             hideError();
-            // Load environment cells first (viewport-based)
-            await this.renderer.loadViewport(this.state.currentTick, this.state.runId);
+
+            // Request minimap only on tick change (not on panning)
+            const needMinimap = this.state.currentTick !== this.lastMinimapTick;
+
+            // Load environment cells (viewport-based), with optional minimap
+            const result = await this.renderer.loadViewport(
+                this.state.currentTick,
+                this.state.runId,
+                needMinimap
+            );
+
+            // Update minimap if data received
+            if (result?.minimap && this.state.worldShape) {
+                this.minimapView.update(result.minimap, this.state.worldShape);
+                this.lastMinimapTick = this.state.currentTick;
+            }
+
+            // Update minimap viewport rectangle
+            this.updateMinimapViewport();
 
             // Then load organisms for this tick (no region; filtering happens client-side)
             const organisms = await this.organismApi.fetchOrganismsAtTick(
@@ -699,6 +756,9 @@ export class AppController {
             );
             this.renderer.renderOrganisms(organisms);
             this.updateOrganismPanel(organisms, isForwardStep);
+
+            // Update minimap organism overlay
+            this.minimapView?.updateOrganisms(organisms);
             
             // Reload organism details if one is selected
             if (this.state.selectedOrganismId) {
@@ -723,7 +783,7 @@ export class AppController {
         } catch (error) {
             // Ignore AbortError, as it's an expected cancellation
             if (error.name === 'AbortError') {
-                console.debug('Request aborted by user navigation.');
+                // Request aborted by user navigation - expected
                 return;
             }
             console.error('Failed to load viewport:', error);
@@ -749,7 +809,7 @@ export class AppController {
         } catch (error) {
             // Ignore AbortError, as it's an expected cancellation
             if (error.name === 'AbortError') {
-                console.debug('Request aborted by user navigation.');
+                // Request aborted by user navigation - expected
                 return;
             }
             console.error('Failed to load environment for viewport:', error);
@@ -885,6 +945,18 @@ export class AppController {
             }
         } catch (error) {
             console.error('Failed to auto-select runId:', error);
+        }
+    }
+
+    /**
+     * Updates the minimap viewport rectangle to show the current visible area.
+     * Called on viewport changes (pan, zoom).
+     * @private
+     */
+    updateMinimapViewport() {
+        if (this.minimapView && this.renderer && this.state.worldShape) {
+            const bounds = this.renderer.getViewportBounds();
+            this.minimapView.updateViewport(bounds);
         }
     }
 }

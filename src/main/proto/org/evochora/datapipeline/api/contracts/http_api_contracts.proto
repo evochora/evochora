@@ -29,13 +29,32 @@ option java_package = "org.evochora.datapipeline.api.contracts";
 message EnvironmentHttpResponse {
   // Tick number this response represents
   int64 tick_number = 1;
-  
+
   // Total cells in the environment (for progress display)
   // Uses int64 to support worlds larger than 46k x 46k (> 2.1 billion cells)
   int64 total_cells = 2;
-  
+
   // All non-empty cells (sparse representation)
   repeated CellHttpResponse cells = 3;
+
+  // Minimap data (included when ?minimap query parameter is set)
+  // Provides a downsampled view of the entire environment for navigation.
+  MinimapData minimap = 4;
+}
+
+// Downsampled minimap data for navigation overview.
+// Each pixel represents a block of cells aggregated by priority (STRUCTURE > CODE > others).
+message MinimapData {
+  // Width of the minimap in pixels (aspect-ratio preserved from environment)
+  int32 width = 1;
+
+  // Height of the minimap in pixels
+  int32 height = 2;
+
+  // Cell types as raw bytes, one byte per pixel (row-major order).
+  // Values: 0=CODE, 1=DATA, 2=ENERGY, 3=STRUCTURE, 4=LABEL, 0=EMPTY
+  // Client maps these to colors using the same palette as the main grid.
+  bytes cell_types = 3;
 }
 
 // A single cell optimized for HTTP response.

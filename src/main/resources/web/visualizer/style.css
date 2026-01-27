@@ -1,8 +1,3 @@
-/* Footer height variable - must be defined at root level */
-:root {
-    --footer-height: 24px;
-}
-
 /* Grundlegende Stile und Farbschema */
 body {
     font-family: 'Roboto Mono', 'Courier New', monospace;
@@ -44,33 +39,16 @@ body {
     scrollbar-color: #3a3a4a #1a1a24;
 }
 
-/* Header-Bereich für die Steuerung */
-header {
-    position: relative;
-    background-color: #191923;
-    padding: 8px 15px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-shrink: 0;
-    border-bottom: 1px solid #333;
-}
-
-.header-left, .header-right {
-    display: flex;
-    align-items: center;
-    gap: 15px;
-}
-
 /* ============================================
-   Header Panels - Shared Styles
+   Top Panels - Floating panels at window top edge
    ============================================ */
 
-/* Base panel - floating below header */
-.header-panel {
-    position: absolute;
-    top: 100%;
-    background-color: #191923;
+/* Base panel - floating at top edge of window */
+.top-panel {
+    position: fixed;
+    top: 0;
+    background: rgba(25, 25, 35, 0.85);
+    backdrop-filter: blur(8px);
     border: 1px solid #333;
     border-top: none;
     border-radius: 0 0 6px 6px;
@@ -78,40 +56,72 @@ header {
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
 }
 
-.header-panel.hidden {
+.top-panel.hidden {
     display: none !important;
 }
 
-/* Collapsed state button */
-.header-panel-collapsed {
-    position: absolute;
-    top: 100%;
-    background-color: #191923;
-    border: 1px solid #333;
-    border-top: none;
-    border-radius: 0 0 4px 4px;
-    z-index: 100;
+/* --- Logo Panel --- */
+#logo-panel {
+    left: 10px;
+    padding: 4px 10px;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
+}
+
+/* When app-switcher overlay is open, remove bottom corners for seamless connection */
+#logo-panel:has(.app-switcher-overlay.visible) {
+    border-radius: 0;
+    border-bottom: none;
+}
+
+/* Smaller app-switcher button for compact panel */
+#logo-panel .app-switcher-button {
+    width: 22px;
+    height: 22px;
+    margin-right: 0;
+}
+
+#logo-panel .app-switcher-button svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* App-switcher overlay - seamlessly extends the logo panel downward
+   Override shared app-switcher.css which sets position:fixed and width:300px */
+#logo-panel .app-switcher-overlay {
+    position: absolute;
+    top: 100%;  /* Below the panel */
+    left: -1px;   /* Align with panel's outer border edge */
+    right: -1px;
+    width: auto;  /* Override shared CSS width: 300px */
+    margin-top: 0;  /* No gap - seamless connection */
+    background: rgba(25, 25, 35, 0.85);
+    backdrop-filter: blur(8px);
+    border: 1px solid #333;
+    border-top: none;  /* No top border - continues from panel */
+    border-radius: 0 0 6px 6px;  /* Only bottom corners rounded */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+    padding: 6px 10px 8px 10px;
+    gap: 2px;
+}
+
+#logo-panel .app-switcher-overlay a {
+    padding: 8px 10px;
+    border-radius: 4px;
     font-size: 12px;
-    font-family: 'Roboto Mono', 'Courier New', monospace;
-    color: #888;
-    cursor: pointer;
 }
 
-.header-panel-collapsed:hover {
-    color: #e0e0e0;
+#logo-panel .app-switcher-overlay a .app-name {
+    font-weight: 500;
 }
 
-.header-panel-collapsed.hidden {
-    display: none !important;
+#logo-panel .app-switcher-overlay a .app-description {
+    font-size: 10px;
+    margin-top: 2px;
+    opacity: 0.7;
 }
 
-.header-panel-collapsed .panel-info {
-    font-family: 'Roboto Mono', 'Courier New', monospace;
-    white-space: nowrap;
-}
 
 /* Toggle button inside panels */
 .panel-toggle {
@@ -131,20 +141,38 @@ header {
 }
 
 /* ============================================
-   Tick Panel - Left side
+   Tick Panel - Next to logo panel
    ============================================ */
 
 #tick-panel {
-    left: 22px;
-    padding: 6px 10px 6px 0;
+    left: 165px;  /* After logo panel with gap */
+    padding: 4px 10px;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
 }
 
-#tick-panel-collapsed {
-    left: 22px;
-    padding: 2px 10px;
+/* Tick panel buttons - compact style matching minimap panel */
+#tick-panel button {
+    padding: 4px 8px;
+    font-size: 11px;
+}
+
+/* Tick panel inputs - compact style */
+#tick-panel .tick-input-wrapper input[type="number"] {
+    width: 90px;
+    padding: 4px 36px 4px 6px;
+    font-size: 11px;
+}
+
+#tick-panel .tick-input-wrapper .tick-total-suffix {
+    font-size: 11px;
+    right: 6px;
+}
+
+#tick-panel .multiplier-wrapper input.tick-input {
+    width: 50px;
+    padding-right: 28px;
 }
 
 /* ============================================
@@ -152,12 +180,12 @@ header {
    ============================================ */
 
 #organism-panel {
-    right: 35px;
+    right: 20px;
     width: 640px;
     padding: 0;
     display: flex;
     flex-direction: column;
-    max-height: calc(100vh - 54px - 40px - var(--footer-height, 24px));
+    max-height: calc(100vh - 40px);  /* Full height minus margin at bottom */
     overflow: hidden;
 }
 
@@ -166,7 +194,7 @@ header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 2px 10px;
+    padding: 4px 10px;
     border-bottom: 1px solid #333;
     cursor: pointer;
 }
@@ -192,6 +220,64 @@ header {
     display: flex;
     align-items: center;
     gap: 4px;
+}
+
+/* Organism filter input - matches tick panel style */
+.organism-filter-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+    margin-left: auto;
+    margin-right: 8px;
+}
+
+.organism-filter-input {
+    width: 70px;
+    padding: 4px 20px 4px 6px;
+    background-color: #222;
+    border: 1px solid #555;
+    border-radius: 4px;
+    color: #e0e0e0;
+    font-family: 'Roboto Mono', 'Courier New', monospace;
+    font-size: 11px;
+    outline: none;
+    transition: border-color 0.15s ease;
+}
+
+.organism-filter-input:focus {
+    border-color: #4a9eff;
+}
+
+.organism-filter-input::placeholder {
+    color: #666;
+}
+
+.organism-filter-clear {
+    position: absolute;
+    right: 4px;
+    background: transparent;
+    border: none;
+    color: #666;
+    cursor: pointer;
+    padding: 2px 4px;
+    font-size: 10px;
+    line-height: 1;
+}
+
+.organism-filter-clear:hover {
+    color: #ff6666;
+}
+
+.organism-filter-clear.hidden {
+    display: none;
+}
+
+/* No matches message */
+.organism-list-empty {
+    padding: 8px 12px;
+    color: #666;
+    font-size: 11px;
+    font-style: italic;
 }
 
 /* Organism list (collapsible) */
@@ -373,35 +459,35 @@ header {
     position: relative;
 }
 
-/* Logo Text - Doto Black 900 */
+/* Logo Text - compact for panel */
 .logo-text {
     font-family: 'Doto', sans-serif;
     font-weight: 900;
-    font-size: 36px;
+    font-size: 18px;
     color: #e0e0e0;
-    letter-spacing: 2px;
+    letter-spacing: 1px;
     line-height: 1;
-    opacity: 0.9;
     white-space: nowrap;
+    position: relative;
 }
 
-/* Loading Indicator - animated line under the logo */
+/* Loading Indicator - animated line under the logo, exactly logo width */
 .loading-indicator {
     position: absolute;
-    top: 100%; /* Position directly below the logo text */
-    left: 50%;
-    transform: translateX(-50%);
-    width: 0;
-    height: 2px;
+    top: 100%;
+    left: 0;
+    right: 0;
+    height: 1px;
     background-color: #4a9eff;
     opacity: 0;
     transition: opacity 0.2s ease-in-out;
-    margin-top: 2px;
-    /* Ensure it doesn't affect header height by being absolutely positioned */
+    margin-top: 1px;
     pointer-events: none;
+    transform-origin: center;
+    transform: scaleX(0);
 }
 
-/* When active, animate width to match logo text width */
+/* When active, animate scale from center */
 .loading-indicator.active {
     opacity: 1;
     animation: loading-pulse 1.5s ease-in-out infinite;
@@ -409,14 +495,13 @@ header {
 
 @keyframes loading-pulse {
     0% {
-        width: 0;
+        transform: scaleX(0);
     }
     50% {
-        /* Width matches the logo text width - calculated dynamically via JavaScript */
-        width: var(--logo-text-width, 280px);
+        transform: scaleX(1);
     }
     100% {
-        width: 0;
+        transform: scaleX(0);
     }
 }
 
@@ -543,6 +628,12 @@ button:hover { background-color: #4a4a6a; }
     border-radius: 4px;
     font-family: 'Roboto Mono', 'Courier New', monospace;
     font-size: 14px;
+    outline: none;
+    transition: border-color 0.15s ease;
+}
+
+.tick-input-wrapper input[type="number"]:focus {
+    border-color: #4a9eff;
 }
 .tick-input-wrapper input[type="number"]::-webkit-outer-spin-button,
 .tick-input-wrapper input[type="number"]::-webkit-inner-spin-button {
@@ -564,11 +655,13 @@ button:hover { background-color: #4a4a6a; }
 
 /* Hauptcontainer (ohne Header) */
 main.container {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
     display: flex;
-    flex-grow: 1;
-    position: relative;
     overflow: hidden;
-    margin-bottom: var(--footer-height); /* Leave space for fixed footer */
 }
 
 /* Welt-Container, der den Viewport für das Canvas bereitstellt (keine DOM-Scrollbars für die Welt) */
@@ -723,22 +816,41 @@ main.container {
     opacity: 0.8;
 }
 
-/* Error bar for displaying API errors */
+/* Error modal - centered overlay */
 .error-bar {
-    position: fixed; /* Take the element out of the normal document flow */
-    top: 54px; /* Position it directly below the header (approx. height) */
-    left: 0;
-    width: 100%;
-    box-sizing: border-box; /* Ensure padding is included in the width */
-    background-color: #8b1a1a; /* Dark red background */
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    max-width: 500px;
+    min-width: 300px;
+    box-sizing: border-box;
+    background-color: #1a1a24;
     color: #ffffff;
-    padding: 10px 40px 10px 15px;
-    display: none; /* Hidden by default */
-    align-items: center;
-    justify-content: space-between;
-    border-bottom: 1px solid #aa2a2a;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-    z-index: 1001; /* Ensure it's above the world-container and sidebar */
+    padding: 20px 24px;
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+    border: 1px solid #aa2a2a;
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    z-index: 1002;
+}
+
+/* Semi-transparent backdrop */
+.error-bar::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: -1;
+    /* Extend backdrop to cover viewport from modal center */
+    margin: -50vh -50vw;
+    width: 200vw;
+    height: 200vh;
 }
 
 .error-bar.error-bar-visible {
@@ -746,38 +858,26 @@ main.container {
 }
 
 .error-bar-message {
-    flex: 1;
-    font-size: 0.9em;
-    line-height: 1.4;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #ff8888;
+    word-break: break-word;
 }
 
 .error-bar-close {
-    position: absolute;
-    right: 10px;
-    top: 50%;
-    transform: translateY(-50%);
-    background: transparent;
-    border: none;
-    color: #ffffff;
-    font-size: 24px;
-    line-height: 1;
+    align-self: flex-end;
+    background: #3a3a5a;
+    border: 1px solid #5a5a7a;
+    border-radius: 4px;
+    color: #e0e0e0;
+    font-size: 12px;
     cursor: pointer;
-    padding: 0;
-    width: 24px;
-    height: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 3px;
-    transition: background-color 0.2s;
+    padding: 6px 16px;
+    transition: background-color 0.15s ease;
 }
 
 .error-bar-close:hover {
-    background-color: rgba(255, 255, 255, 0.2);
-}
-
-.error-bar-close:active {
-    background-color: rgba(255, 255, 255, 0.3);
+    background-color: #4a4a6a;
 }
 
 .header-bar {
@@ -961,7 +1061,8 @@ main.container {
     display: none; /* Initially hidden */
     z-index: 10;
     /* Adjustments for positioning within main.container */
-    box-sizing: border-box; 
+    box-sizing: border-box;
+    cursor: pointer;
 }
 .scrollbar-track-v {
     right: 0;
@@ -986,6 +1087,322 @@ main.container {
 }
 .scrollbar-thumb-h {
     height: 100%;
+}
+
+/* ============================================
+   Footer Panels - Bottom-attached panels
+   ============================================ */
+
+/* Base footer panel - attached to window bottom edge */
+.footer-panel {
+    position: fixed;
+    bottom: 0;
+    background: rgba(25, 25, 35, 0.85);
+    backdrop-filter: blur(8px);
+    border: 1px solid #333;
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    z-index: 999;
+    box-shadow: 0 -4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.footer-panel.hidden {
+    display: none !important;
+}
+
+/* Collapsed state tab */
+.footer-panel-collapsed {
+    position: fixed;
+    bottom: 0;
+    background: rgba(25, 25, 35, 0.85);
+    backdrop-filter: blur(8px);
+    border: 1px solid #333;
+    border-bottom: none;
+    border-radius: 4px 4px 0 0;
+    z-index: 999;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    font-family: 'Roboto Mono', 'Courier New', monospace;
+    color: #888;
+    padding: 4px 10px;
+}
+
+.footer-panel-collapsed.hidden {
+    display: none !important;
+}
+
+.footer-panel-collapsed .panel-icon {
+    font-size: 14px;
+}
+
+.footer-panel-collapsed .panel-label {
+    font-family: 'Roboto Mono', 'Courier New', monospace;
+    white-space: nowrap;
+}
+
+/* Collapsed state left/right sections */
+.minimap-collapsed-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    transition: color 0.15s ease;
+}
+
+.minimap-collapsed-left:hover {
+    color: #e0e0e0;
+}
+
+.minimap-collapsed-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.minimap-collapsed-right .panel-arrow {
+    cursor: pointer;
+    transition: color 0.15s ease;
+}
+
+.minimap-collapsed-right .panel-arrow:hover {
+    color: #e0e0e0;
+}
+
+/* --- Minimap Panel --- */
+#minimap-panel {
+    left: 10px;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    /* Width determined by minimap canvas content (up to 300px + padding) */
+}
+
+#minimap-panel-collapsed {
+    left: 10px;
+    cursor: pointer;
+    box-sizing: border-box;
+    /* Width is set dynamically via JavaScript to match expanded panel */
+}
+
+/* Minimap panel header */
+.minimap-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 10px;
+    border-bottom: 1px solid #333;
+    cursor: pointer;
+}
+
+.minimap-panel-header:hover {
+    background: rgba(255,255,255,0.02);
+}
+
+.minimap-panel-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #e0e0e0;
+}
+
+.minimap-panel-title .panel-icon {
+    font-size: 14px;
+}
+
+.minimap-panel-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Zoom button inside panel - matches tick panel buttons */
+.minimap-zoom-btn {
+    background-color: #3a3a5a;
+    border: 1px solid #5a5a7a;
+    border-radius: 4px;
+    color: #e0e0e0;
+    font-family: 'Roboto Mono', 'Courier New', monospace;
+    font-size: 11px;
+    padding: 4px 10px;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+    width: 80px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.minimap-zoom-btn:hover {
+    background-color: #4a4a6a;
+}
+
+/* Organism overlay toggle button */
+.minimap-organism-toggle {
+    background-color: #2a2a4a;
+    border: 1px solid #4a4a6a;
+    border-radius: 4px;
+    color: #808090;
+    font-family: 'Roboto Mono', 'Courier New', monospace;
+    font-size: 11px;
+    padding: 4px 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.minimap-organism-toggle:hover {
+    background-color: #3a3a5a;
+    color: #a0a0b0;
+}
+
+.minimap-organism-toggle.active {
+    background-color: #1a3a2a;
+    border-color: #4a9a6a;
+    color: #5aaa7a;
+}
+
+.minimap-organism-toggle.active:hover {
+    background-color: #2a4a3a;
+}
+
+/* Minimap content */
+.minimap-content {
+    padding: 6px;
+}
+
+.minimap-canvas {
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+}
+
+/* --- Run Selector Panel --- */
+#run-selector-panel {
+    right: 20px;
+    padding: 4px 10px;
+    display: flex;
+    align-items: center;
+}
+
+.run-selector-content {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.run-selector-label {
+    color: #888;
+    font-size: 11px;
+}
+
+/* The field container that "expands" into a dropdown */
+.run-selector-field {
+    position: relative;
+    min-width: 180px;
+    cursor: pointer;
+}
+
+.run-selector-value {
+    display: block;
+    padding: 4px 8px;
+    border: 1px solid #333;
+    border-radius: 4px;
+    background: #0f0f18;
+    font-size: 11px;
+    color: #e0e0e0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.run-selector-field:hover .run-selector-value {
+    border-color: #555;
+    background: #141422;
+}
+
+/* Input replaces value when open */
+.run-selector-input {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    background: #222;
+    border: 1px solid #555;
+    border-radius: 4px;
+    color: #e0e0e0;
+    padding: 4px 8px;
+    font-family: inherit;
+    font-size: 11px;
+    outline: none;
+    transition: border-color 0.15s ease;
+}
+
+.run-selector-input:focus {
+    border-color: #4a9eff;
+}
+
+/* List appears directly below input, connected visually */
+.run-selector-list {
+    display: none;
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    max-height: 260px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    background: #0f0f18;
+    border: 1px solid #4a9eff;
+    border-bottom: none;
+    border-radius: 4px 4px 0 0;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.35);
+    z-index: 1001;
+}
+
+/* When field is open, show list and adjust input border */
+.run-selector-field.open .run-selector-list {
+    display: block;
+}
+
+.run-selector-field.open .run-selector-input {
+    border-color: #4a9eff;
+    border-radius: 0 0 4px 4px;
+    border-top: none;
+}
+
+.run-selector-item {
+    padding: 6px 10px;
+    cursor: pointer;
+    border-bottom: 1px solid #222;
+    font-size: 11px;
+    color: #e0e0e0;
+}
+
+.run-selector-item:first-child {
+    border-radius: 4px 4px 0 0;
+}
+
+.run-selector-item:last-child {
+    border-bottom: none;
+}
+
+.run-selector-item:hover,
+.run-selector-item.selected {
+    background: #1a2a3a;
+}
+
+.run-selector-item .run-id {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.run-selector-empty {
+    color: #888;
+    padding: 10px;
+    font-size: 11px;
+    text-align: center;
 }
 
 /* --- Tooltips --- */

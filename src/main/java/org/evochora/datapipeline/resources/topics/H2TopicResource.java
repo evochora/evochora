@@ -425,9 +425,28 @@ public class H2TopicResource<T extends Message> extends AbstractTopicResource<T,
     public void close() throws Exception {
         // Step 1: Close all delegates (releases connections back to pool)
         super.close();
-        
-        // Step 2: Close connection pool (after all delegates are closed)
+
+        // Step 2: Execute SHUTDOWN to ensure H2 MVStore flushes all pages to disk
+        // This prevents "Double mark" corruption errors on next startup
         if (dataSource != null && !dataSource.isClosed()) {
+            try (Connection conn = dataSource.getConnection();
+                 Statement stmt = conn.createStatement()) {
+                stmt.execute("SHUTDOWN");
+                log.debug("H2 topic '{}' shutdown command executed", getResourceName());
+            } catch (SQLException e) {
+                // H2 error code 90121 = "Database is already closed"
+                // This is expected for in-memory databases without DB_CLOSE_ON_EXIT=FALSE
+                // or when all connections have been released, triggering auto-close
+                if (e.getErrorCode() == 90121) {
+                    log.debug("H2 topic '{}' already closed (in-memory or auto-closed)", getResourceName());
+                } else {
+                    // Unexpected error - log warning but continue with pool close
+                    log.warn("H2 topic '{}' shutdown command failed: {}",
+                        getResourceName(), e.getMessage());
+                }
+            }
+
+            // Step 3: Close connection pool
             dataSource.close();
             log.debug("H2 topic '{}' connection pool closed", getResourceName());
         }

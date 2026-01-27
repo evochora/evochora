@@ -2,11 +2,11 @@
 
 /**
  * @file Main entry point for the visualizer application.
- * Initializes all components: AppController, AppSwitcher, and Footer.
+ * Initializes all components: AppController, AppSwitcher, and RunSelectorPanel.
  */
 import { AppController } from './AppController.js';
 import { AppSwitcher } from '../../shared/app-switcher/AppSwitcher.js';
-import { Footer } from '../../shared/footer/Footer.js';
+import { RunSelectorPanel } from './ui/panels/RunSelectorPanel.js';
 
 // App controller instance (created after DOM is ready)
 export let appController = null;
@@ -36,6 +36,20 @@ function setupErrorHandling() {
     if (closeButton) {
         closeButton.addEventListener('click', window.hideError);
     }
+
+    // Close error modal with ESC key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && errorBanner && errorBanner.style.display !== 'none') {
+            window.hideError();
+        }
+    });
+
+    // Close error modal when clicking on backdrop
+    errorBanner?.addEventListener('click', (e) => {
+        if (e.target === errorBanner) {
+            window.hideError();
+        }
+    });
 }
 
 /**
@@ -63,13 +77,10 @@ async function initAppSwitcher() {
 }
 
 /**
- * Initializes the Footer component.
+ * Initializes the Run Selector Panel.
  */
-async function initFooter() {
+async function initRunSelector() {
     try {
-        const container = document.getElementById('footer-container');
-        if (!container) return;
-
         const fetchRuns = async () => {
             const response = await fetch('/analyzer/api/runs');
             if (!response.ok) {
@@ -79,14 +90,13 @@ async function initFooter() {
             return response.json();
         };
 
-        window.footer = new Footer({
-            element: container,
+        window.runSelectorPanel = new RunSelectorPanel({
             fetchRuns,
             getCurrentRunId: () => appController?.state?.runId || null,
             onRunChange: (runId) => appController?.changeRun(runId)
         });
     } catch (error) {
-        console.error('Failed to initialize Footer:', error);
+        console.error('Failed to initialize RunSelectorPanel:', error);
     }
 }
 
@@ -104,7 +114,7 @@ async function init() {
         // Initialize shared components in parallel
         await Promise.all([
             initAppSwitcher(),
-            initFooter()
+            initRunSelector()
         ]);
 
         // Initialize the main controller

@@ -52,6 +52,13 @@ export class EnvironmentGrid {
         this._rawCells = null;      // Raw cells from API (for lazy cellData building)
         this._cellDataDirty = false; // Flag for lazy cellData building
 
+        // --- Prefetch Management ---
+        this._prefetchAbortController = null;  // Separate controller for background prefetch
+        this._fullWorldPrefetched = false;     // Track if full world prefetch completed for current tick
+
+        // --- Zoomed-Out Viewport Caching is handled by ZoomedOutRendererStrategy ---
+        // The renderer preserves its pixel buffer across pans and tracks loaded regions
+
         // --- UI & Interaction State ---
         this.tooltip = document.getElementById('cell-tooltip');
         this.tooltipTimeout = null;
@@ -130,12 +137,21 @@ export class EnvironmentGrid {
     setZoom(isZoomedOut) {
         this.isZoomedOut = isZoomedOut;
         this.activeRenderer = this.isZoomedOut ? this.zoomedOutRenderer : this.detailedRenderer;
-        
+
         // Clear everything, as all scales and positions are now invalid.
         this.clear();
         this.updateGridBackground();
         this.clampCameraToWorld();
         this.updateStagePosition();
+
+        // Invalidate caches when switching modes (free memory)
+        // Note: clear() already calls clearCache() on both renderers,
+        // but we explicitly clear the "other" renderer to ensure memory is freed
+        if (isZoomedOut) {
+            this.detailedRenderer.clearCache();
+        } else {
+            this.zoomedOutRenderer.clearCache();
+        }
     }
     
     getCurrentCellSize() {
@@ -247,9 +263,10 @@ export class EnvironmentGrid {
      * Fetches and renders environment data for the current viewport.
      * @param {number} tick - The current tick number to load data for.
      * @param {string|null} [runId=null] - The optional run ID.
-     * @returns {Promise<void>}
+     * @param {boolean} [includeMinimap=false] - Whether to include minimap data in the response.
+     * @returns {Promise<{minimap?: {width: number, height: number, cellTypes: Uint8Array}}>} Result with optional minimap data.
      */
-    async loadViewport(tick, runId = null) {
+    async loadViewport(tick, runId = null, includeMinimap = false) {
         // Ensure viewport size is known
         if (this.viewportWidth === 0 || this.viewportHeight === 0) {
             await new Promise(resolve => {
@@ -263,7 +280,48 @@ export class EnvironmentGrid {
 
         this.currentTick = tick;
         const viewport = this.getVisibleRegion();
-        
+
+        // --- Check if viewport is already loaded (both modes) ---
+        const renderer = this.activeRenderer;
+
+        // Invalidate if tick or run changed
+        if (renderer._loadedTick !== tick || renderer._loadedRunId !== runId) {
+            renderer.clearCache();
+            renderer._loadedTick = tick;
+            renderer._loadedRunId = runId;
+            this._fullWorldPrefetched = false; // Reset prefetch state on tick change
+        }
+
+        // Abort any running prefetch when viewport changes (user scrolled)
+        if (this._prefetchAbortController) {
+            this._prefetchAbortController.abort();
+            this._prefetchAbortController = null;
+        }
+
+        // Check if all cells in viewport have been loaded
+        if (renderer.isRegionFullyLoaded(viewport)) {
+            // Even if cache hit, trigger prefetch
+            this._triggerPrefetch(tick, runId, viewport);
+
+            // On cache hit, still fetch minimap if requested (needed for initial load)
+            if (includeMinimap) {
+                const minimapController = new AbortController();
+                try {
+                    const data = await this.environmentApi.fetchEnvironmentData(tick, viewport, {
+                        runId: runId,
+                        signal: minimapController.signal,
+                        includeMinimap: true
+                    });
+                    return { minimap: data.minimap };
+                } catch (error) {
+                    if (error.name !== 'AbortError') {
+                        console.warn('[EnvironmentGrid] Failed to fetch minimap on cache hit:', error.message);
+                    }
+                }
+            }
+            return {};
+        }
+
         // Abort previous request
         if (this.currentAbortController) {
             this.currentAbortController.abort();
@@ -272,8 +330,12 @@ export class EnvironmentGrid {
 
         const data = await this.environmentApi.fetchEnvironmentData(tick, viewport, {
             runId: runId,
-            signal: this.currentAbortController.signal
+            signal: this.currentAbortController.signal,
+            includeMinimap: includeMinimap
         });
+
+        // --- Update Zoomed-Out Cache ---
+        // The renderer tracks loaded regions internally when renderCells is called
 
         // --- Timing: Build cell lookup map ---
         const mapStart = performance.now();
@@ -304,6 +366,164 @@ export class EnvironmentGrid {
         if (this.currentAbortController && !this.currentAbortController.signal.aborted) {
             this.currentAbortController = null;
         }
+
+        // Trigger prefetch based on mode
+        this._triggerPrefetch(tick, runId, viewport);
+
+        // Return minimap data if present
+        return { minimap: data.minimap };
+    }
+
+    /**
+     * Triggers background prefetch based on current mode:
+     * - Zoomed-Out: Full world prefetch
+     * - Zoomed-In: Ring prefetch (expanding outward from viewport)
+     * @param {number} tick - The current tick.
+     * @param {string|null} runId - The current run ID.
+     * @param {{x1: number, y1: number, x2: number, y2: number}} viewport - Current viewport.
+     * @private
+     */
+    _triggerPrefetch(tick, runId, viewport) {
+        if (this.isZoomedOut) {
+            this._triggerFullWorldPrefetch(tick, runId);
+        } else {
+            this._triggerRingPrefetch(tick, runId, viewport, 1);
+        }
+    }
+
+    /**
+     * Triggers a background prefetch of the full world in zoomed-out mode.
+     * Uses requestIdleCallback for low-priority execution.
+     * @param {number} tick - The current tick.
+     * @param {string|null} runId - The current run ID.
+     * @private
+     */
+    _triggerFullWorldPrefetch(tick, runId) {
+        // Skip if already prefetched for this tick
+        if (this._fullWorldPrefetched) return;
+
+        // Skip if world size unknown
+        if (!this.worldWidthCells || !this.worldHeightCells) return;
+
+        const fullRegion = { x1: 0, y1: 0, x2: this.worldWidthCells, y2: this.worldHeightCells };
+
+        // Skip if full world is already loaded
+        if (this.zoomedOutRenderer.isRegionFullyLoaded(fullRegion)) {
+            this._fullWorldPrefetched = true;
+            return;
+        }
+
+        // Use requestIdleCallback for low-priority prefetch (0s delay, but doesn't block)
+        requestIdleCallback(async () => {
+            // Double-check state hasn't changed
+            if (!this.isZoomedOut || this._fullWorldPrefetched) return;
+            if (this.zoomedOutRenderer._loadedTick !== tick) return;
+
+            console.debug(`[Prefetch] Starting full world prefetch for tick ${tick}`);
+            const prefetchStart = performance.now();
+
+            // Create dedicated abort controller for prefetch
+            this._prefetchAbortController = new AbortController();
+
+            try {
+                const data = await this.environmentApi.fetchEnvironmentData(tick, fullRegion, {
+                    runId: runId,
+                    signal: this._prefetchAbortController.signal,
+                    includeMinimap: false  // Already have minimap
+                });
+
+                // Verify we're still in the same state before rendering
+                if (!this.isZoomedOut || this.zoomedOutRenderer._loadedTick !== tick) {
+                    console.debug('[Prefetch] State changed, discarding data');
+                    return;
+                }
+
+                // Render the prefetched cells (accumulates into existing pixel buffer)
+                this.zoomedOutRenderer.renderCells(data.cells, fullRegion);
+                this._fullWorldPrefetched = true;
+
+                const prefetchTime = (performance.now() - prefetchStart).toFixed(0);
+                console.debug(`[Prefetch] Full world prefetch completed in ${prefetchTime}ms (${data.cells.length} cells)`);
+
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    console.warn('[Prefetch] Failed:', error.message);
+                }
+            } finally {
+                this._prefetchAbortController = null;
+            }
+        }, { timeout: 100 }); // Short timeout - execute soon but yield to user interactions
+    }
+
+    /**
+     * Triggers a ring prefetch for zoomed-in mode.
+     * Expands outward from the current viewport in rings.
+     * @param {number} tick - The current tick.
+     * @param {string|null} runId - The current run ID.
+     * @param {{x1: number, y1: number, x2: number, y2: number}} viewport - Current viewport.
+     * @param {number} ringNumber - Ring expansion factor (1 = +1 viewport around current).
+     * @private
+     */
+    _triggerRingPrefetch(tick, runId, viewport, ringNumber) {
+        // Skip if world size unknown
+        if (!this.worldWidthCells || !this.worldHeightCells) return;
+
+        // Calculate expanded region (ring around viewport)
+        const viewportWidth = viewport.x2 - viewport.x1;
+        const viewportHeight = viewport.y2 - viewport.y1;
+        const expansion = ringNumber;
+
+        const expandedRegion = {
+            x1: Math.max(0, viewport.x1 - viewportWidth * expansion),
+            y1: Math.max(0, viewport.y1 - viewportHeight * expansion),
+            x2: Math.min(this.worldWidthCells, viewport.x2 + viewportWidth * expansion),
+            y2: Math.min(this.worldHeightCells, viewport.y2 + viewportHeight * expansion)
+        };
+
+        // Skip if expanded region is already fully loaded
+        if (this.detailedRenderer.isRegionFullyLoaded(expandedRegion)) {
+            return;
+        }
+
+        // Use requestIdleCallback for low-priority prefetch
+        requestIdleCallback(async () => {
+            // Verify state hasn't changed
+            if (this.isZoomedOut) return;
+            if (this.detailedRenderer._loadedTick !== tick) return;
+
+            console.debug(`[Prefetch] Starting ring ${ringNumber} prefetch for tick ${tick}`);
+            const prefetchStart = performance.now();
+
+            // Create dedicated abort controller for prefetch
+            this._prefetchAbortController = new AbortController();
+
+            try {
+                const data = await this.environmentApi.fetchEnvironmentData(tick, expandedRegion, {
+                    runId: runId,
+                    signal: this._prefetchAbortController.signal,
+                    includeMinimap: false
+                });
+
+                // Verify we're still in the same state before rendering
+                if (this.isZoomedOut || this.detailedRenderer._loadedTick !== tick) {
+                    console.debug('[Prefetch] State changed, discarding data');
+                    return;
+                }
+
+                // Render the prefetched cells
+                this.detailedRenderer.renderCells(data.cells, expandedRegion);
+
+                const prefetchTime = (performance.now() - prefetchStart).toFixed(0);
+                console.debug(`[Prefetch] Ring ${ringNumber} completed in ${prefetchTime}ms (${data.cells.length} cells)`);
+
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    console.warn('[Prefetch] Failed:', error.message);
+                }
+            } finally {
+                this._prefetchAbortController = null;
+            }
+        }, { timeout: 500 }); // Longer timeout for ring prefetch - less urgent
     }
 
     /**
@@ -375,6 +595,22 @@ export class EnvironmentGrid {
     }
 
     /**
+     * Returns the viewport bounds in world (cell) coordinates.
+     * Used by the minimap to show the currently visible area.
+     *
+     * @returns {{x: number, y: number, width: number, height: number}} Viewport bounds in cell coordinates.
+     */
+    getViewportBounds() {
+        const region = this.getVisibleRegion();
+        return {
+            x: region.x1,
+            y: region.y1,
+            width: region.x2 - region.x1,
+            height: region.y2 - region.y1
+        };
+    }
+
+    /**
      * Renders organism markers. Delegates to the active renderer.
      * @param {Array<object>} organismsForTick - An array of organism summary objects.
      */
@@ -411,6 +647,11 @@ export class EnvironmentGrid {
         canvas.addEventListener('mousedown', (event) => {
             if (event.button !== 0) return; // Only handle left mouse button
             event.preventDefault();
+
+            // Remove focus from any input field when clicking on the grid
+            if (document.activeElement && document.activeElement.tagName === 'INPUT') {
+                document.activeElement.blur();
+            }
 
             isPotentialDrag = true;
             this.isPanning = false; // Reset panning state
@@ -450,8 +691,7 @@ export class EnvironmentGrid {
                     const worldY = (upEvent.clientY - rect.top) + this.cameraY;
                     const cellX = Math.floor(worldX / this.config.cellSize);
                     const cellY = Math.floor(worldY / this.config.cellSize);
-                    console.log(`[DEBUG] Click detected on cell: ${cellX}, ${cellY}`);
-                    // For example: this.onCellClick(cellX, cellY);
+                    // Cell click detected - cellX, cellY available for future use
                 }
                 
                 // Cleanup
@@ -533,6 +773,42 @@ export class EnvironmentGrid {
 
             window.addEventListener('mousemove', onMouseMove);
             window.addEventListener('mouseup', onMouseUp);
+        });
+
+        // --- Horizontal Track Click (jump to position) ---
+        this.hScrollTrack.addEventListener('click', (e) => {
+            // Ignore if clicking on thumb
+            if (e.target === this.hScrollThumb) return;
+
+            const trackRect = this.hScrollTrack.getBoundingClientRect();
+            const clickX = e.clientX - trackRect.left;
+            const trackWidth = this.hScrollTrack.clientWidth;
+            const worldWidthPx = this.worldWidthCells * this.getCurrentCellSize();
+            const scrollableWidth = worldWidthPx + 2 * margin;
+
+            // Calculate camera position from click position
+            this.cameraX = (clickX / trackWidth) * scrollableWidth - margin;
+            this.clampCameraToWorld();
+            this.updateStagePosition();
+            this.requestViewportLoad();
+        });
+
+        // --- Vertical Track Click (jump to position) ---
+        this.vScrollTrack.addEventListener('click', (e) => {
+            // Ignore if clicking on thumb
+            if (e.target === this.vScrollThumb) return;
+
+            const trackRect = this.vScrollTrack.getBoundingClientRect();
+            const clickY = e.clientY - trackRect.top;
+            const trackHeight = this.vScrollTrack.clientHeight;
+            const worldHeightPx = this.worldHeightCells * this.getCurrentCellSize();
+            const scrollableHeight = worldHeightPx + 2 * margin;
+
+            // Calculate camera position from click position
+            this.cameraY = (clickY / trackHeight) * scrollableHeight - margin;
+            this.clampCameraToWorld();
+            this.updateStagePosition();
+            this.requestViewportLoad();
         });
     }
 
@@ -860,17 +1136,89 @@ export class EnvironmentGrid {
 
 /**
  * Abstract base class for a rendering strategy.
+ * Provides shared viewport caching logic via a loaded mask.
  */
 class BaseRendererStrategy {
     constructor(grid) {
         this.grid = grid;
         this.config = grid.config;
+
+        // --- Viewport Caching: Shared by all strategies ---
+        this._loadedMask = null;       // Uint8Array, 1 = cell loaded, 0 = not loaded
+        this._loadedTick = null;       // Current tick for cache invalidation
+        this._loadedRunId = null;      // Current run for cache invalidation
     }
+
     init() { /* no-op */ }
     clear() { /* no-op */ }
     renderCells(_cells, _region) { /* no-op */ }
     renderOrganisms(_organisms) { /* no-op */ }
-    
+
+    /**
+     * Clears the loaded mask (called when tick or run changes).
+     * Subclasses may override to clear additional cached data.
+     */
+    clearCache() {
+        this._loadedMask = null;
+        this._loadedTick = null;
+        this._loadedRunId = null;
+    }
+
+    /**
+     * Checks if the given viewport is fully covered by already loaded data.
+     * @param {{x1: number, y1: number, x2: number, y2: number}} viewport
+     * @returns {boolean}
+     */
+    isRegionFullyLoaded(viewport) {
+        if (!this._loadedMask) return false;
+
+        const width = this.grid.worldWidthCells;
+        const height = this.grid.worldHeightCells;
+
+        const x1 = Math.max(0, viewport.x1);
+        const y1 = Math.max(0, viewport.y1);
+        const x2 = Math.min(width, viewport.x2);
+        const y2 = Math.min(height, viewport.y2);
+
+        for (let y = y1; y < y2; y++) {
+            const rowOffset = y * width;
+            for (let x = x1; x < x2; x++) {
+                if (this._loadedMask[rowOffset + x] === 0) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Marks the given region as loaded in the mask.
+     * @param {{x1: number, y1: number, x2: number, y2: number}} region
+     * @protected
+     */
+    _markRegionLoaded(region) {
+        const width = this.grid.worldWidthCells;
+        const height = this.grid.worldHeightCells;
+        const pixelCount = width * height;
+
+        // Ensure mask exists
+        if (!this._loadedMask || this._loadedMask.length !== pixelCount) {
+            this._loadedMask = new Uint8Array(pixelCount);
+        }
+
+        const x1 = Math.max(0, region.x1);
+        const y1 = Math.max(0, region.y1);
+        const x2 = Math.min(width, region.x2);
+        const y2 = Math.min(height, region.y2);
+
+        for (let y = y1; y < y2; y++) {
+            const rowOffset = y * width;
+            for (let x = x1; x < x2; x++) {
+                this._loadedMask[rowOffset + x] = 1;
+            }
+        }
+    }
+
     _getOrganismColor(organismId, energy) {
         return this.grid._getOrganismColor(organismId, energy);
     }
@@ -880,12 +1228,15 @@ class BaseRendererStrategy {
  * Renders the environment with full details: cell text, organism markers with direction, etc.
  */
 class DetailedRendererStrategy extends BaseRendererStrategy {
+    /** Maximum number of cells to keep in memory (LRU eviction budget) */
+    static MAX_CELLS = 100_000;
+
     constructor(grid) {
         super(grid);
         this.cellObjects = new Map();
         this.ipGraphics = new Map();
         this.dpGraphics = new Map();
-        
+
         this.typeMapping = { 'CODE': 0, 'DATA': 1, 'ENERGY': 2, 'STRUCTURE': 3, 'LABEL': 4 };
         this.cellFont = {
             fontFamily: 'Monospaced, "Courier New"',
@@ -893,6 +1244,9 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
             fill: 0xffffff,
             align: 'center',
         };
+
+        // LRU tracking for eviction
+        this._cellAccessTime = new Map(); // key -> timestamp
     }
 
     clear() {
@@ -901,6 +1255,8 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
             if (text) this.grid.textContainer.removeChild(text);
         }
         this.cellObjects.clear();
+        this._cellAccessTime.clear();
+        this.clearCache(); // From base class (clears _loadedMask)
 
         for (const g of this.ipGraphics.values()) {
             this.grid.organismContainer.removeChild(g);
@@ -915,8 +1271,8 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
     }
     
     renderCells(cells, region) {
-        // This is essentially the logic from the old renderCellsWithCleanup
         const updatedKeys = new Set();
+        const now = performance.now();
 
         // First pass: update or create all cells from response
         for (const cell of cells) {
@@ -925,7 +1281,7 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
 
             const key = `${coords[0]},${coords[1]}`;
             updatedKeys.add(key);
-            
+
             // Convert raw cell to internal format and draw directly
             const cellData = {
                 type: this.typeMapping[cell.moleculeType] ?? 0,
@@ -935,6 +1291,9 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
                 marker: cell.marker || 0
             };
             this.drawCell(cellData, coords);
+
+            // LRU: Update access time
+            this._cellAccessTime.set(key, now);
         }
 
         // Second pass: remove cells in this region that weren't updated
@@ -947,7 +1306,7 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
 
             const parts = key.split(",");
             if (parts.length !== 2) continue;
-            
+
             const cx = Number.parseInt(parts[0], 10);
             const cy = Number.parseInt(parts[1], 10);
             if (Number.isNaN(cx) || Number.isNaN(cy)) continue;
@@ -957,7 +1316,17 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
                 if (background) this.grid.cellContainer.removeChild(background);
                 if (text) this.grid.textContainer.removeChild(text);
                 this.cellObjects.delete(key);
+                this._cellAccessTime.delete(key);
             }
+        }
+
+        // Mark region as loaded (base class method)
+        this._markRegionLoaded(region);
+
+        // LRU Eviction: Remove oldest cells if over budget
+        if (this.cellObjects.size > DetailedRendererStrategy.MAX_CELLS) {
+            const excess = this.cellObjects.size - DetailedRendererStrategy.MAX_CELLS;
+            this._evictOldestCells(excess);
         }
     }
     
@@ -1010,6 +1379,54 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
         }
 
         this.cellObjects.set(key, { background, text });
+    }
+
+    /**
+     * Clears the LRU cache (called when tick or run changes).
+     * Overrides base class to also clear access time tracking.
+     */
+    clearCache() {
+        super.clearCache();
+        this._cellAccessTime.clear();
+    }
+
+    /**
+     * Evicts the oldest (least recently accessed) cells to stay within budget.
+     * Also marks evicted cells as unloaded in _loadedMask.
+     * @param {number} count - Number of cells to evict.
+     * @private
+     */
+    _evictOldestCells(count) {
+        if (count <= 0) return;
+
+        // Sort by access time, get oldest 'count' cells
+        const sorted = [...this._cellAccessTime.entries()]
+            .sort((a, b) => a[1] - b[1])
+            .slice(0, count);
+
+        const worldWidth = this.grid.worldWidthCells;
+
+        for (const [key] of sorted) {
+            const entry = this.cellObjects.get(key);
+            if (entry) {
+                if (entry.background) this.grid.cellContainer.removeChild(entry.background);
+                if (entry.text) this.grid.textContainer.removeChild(entry.text);
+                this.cellObjects.delete(key);
+            }
+            this._cellAccessTime.delete(key);
+
+            // Mark as unloaded in _loadedMask (so it will be re-fetched if scrolled back)
+            if (this._loadedMask && worldWidth > 0) {
+                const parts = key.split(',');
+                const x = Number.parseInt(parts[0], 10);
+                const y = Number.parseInt(parts[1], 10);
+                if (!Number.isNaN(x) && !Number.isNaN(y)) {
+                    this._loadedMask[y * worldWidth + x] = 0;
+                }
+            }
+        }
+
+        console.debug(`[LRU Eviction] Removed ${sorted.length} cells, now at ${this.cellObjects.size}`);
     }
 
     renderOrganisms(organisms) {
@@ -1207,13 +1624,25 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
         this.offscreenCanvas = null;
         this.ipGraphics = new Map(); // Still need separate graphics for organisms
         this.dpGraphics = new Map(); // And DPs
-        
+
         // Pre-compute color lookup table (hex -> {r,g,b})
         this._colorCache = new Map();
+
+        // Persistent pixel buffer for the entire world (specific to zoomed-out mode)
+        this._pixelBuffer = null;
     }
 
     init() {
         // Defer texture creation until it's actually needed and world size is known
+    }
+
+    /**
+     * Clears the persistent pixel cache and loaded mask.
+     * Overrides base class to also clear the pixel buffer.
+     */
+    clearCache() {
+        super.clearCache();
+        this._pixelBuffer = null;
     }
 
     clear() {
@@ -1226,6 +1655,8 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
             this.textureSprite = null;
         }
         this.offscreenCanvas = null;
+        this.clearCache();
+
         for (const g of this.ipGraphics.values()) this.grid.organismContainer.removeChild(g);
         this.ipGraphics.clear();
         for (const { graphics } of this.dpGraphics.values()) this.grid.organismContainer.removeChild(graphics);
@@ -1260,63 +1691,88 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
         return cached;
     }
 
-    renderCells(cells, _region) {
+    renderCells(cells, region) {
         const width = this.grid.worldWidthCells;
         const height = this.grid.worldHeightCells;
 
         if (width <= 0 || height <= 0) return;
-        
-        // --- Step 1: Create pixel buffer ---
+
         const pixelCount = width * height;
-        const pixels = new Uint8ClampedArray(pixelCount * 4);
-        
-        // Fill with empty cell background color
-        const emptyColor = this._hexToRgb(this.config.colorEmptyBg);
-        for (let i = 0; i < pixelCount; i++) {
-            const idx = i * 4;
-            pixels[idx] = emptyColor.r;
-            pixels[idx + 1] = emptyColor.g;
-            pixels[idx + 2] = emptyColor.b;
-            pixels[idx + 3] = 255; // Alpha
+
+        // --- Step 1: Get or create persistent pixel buffer ---
+        const needsNewBuffer = !this._pixelBuffer || this._pixelBuffer.length !== pixelCount * 4;
+
+        if (needsNewBuffer) {
+            this._pixelBuffer = new Uint8ClampedArray(pixelCount * 4);
+
+            // Fill new buffer with empty cell background color
+            const emptyColor = this._hexToRgb(this.config.colorEmptyBg);
+            for (let i = 0; i < pixelCount; i++) {
+                const idx = i * 4;
+                this._pixelBuffer[idx] = emptyColor.r;
+                this._pixelBuffer[idx + 1] = emptyColor.g;
+                this._pixelBuffer[idx + 2] = emptyColor.b;
+                this._pixelBuffer[idx + 3] = 255; // Alpha
+            }
         }
-        
-        // --- Step 2: Draw cells into pixel buffer ---
+        // Otherwise: PRESERVE existing buffer - this is the key optimization!
+
+        // --- Step 2: Draw cells into pixel buffer (accumulating, not replacing) ---
         const typeMapping = this.grid.detailedRenderer.typeMapping;
         const getColor = (typeId) => this.grid.detailedRenderer.getBackgroundColorForType(typeId);
-        
+        const emptyColor = this._hexToRgb(this.config.colorEmptyBg);
+
+        // First: clear the region we're about to update with empty color
+        const { x1, y1, x2, y2 } = region;
+        const clampedX1 = Math.max(0, x1);
+        const clampedY1 = Math.max(0, y1);
+        const clampedX2 = Math.min(width, x2);
+        const clampedY2 = Math.min(height, y2);
+
+        for (let y = clampedY1; y < clampedY2; y++) {
+            for (let x = clampedX1; x < clampedX2; x++) {
+                const idx = (y * width + x) * 4;
+                this._pixelBuffer[idx] = emptyColor.r;
+                this._pixelBuffer[idx + 1] = emptyColor.g;
+                this._pixelBuffer[idx + 2] = emptyColor.b;
+            }
+        }
+
+        // Then: draw the actual cells
         for (let i = 0; i < cells.length; i++) {
             const cell = cells[i];
             const coords = cell.coordinates;
             if (!Array.isArray(coords) || coords.length < 2) continue;
-            
+
             const x = coords[0];
             const y = coords[1];
-            
-            // Bounds check
+
             if (x < 0 || x >= width || y < 0 || y >= height) continue;
-            
+
             const typeId = typeMapping[cell.moleculeType] ?? 0;
             const color = this._hexToRgb(getColor(typeId));
-            
+
             const idx = (y * width + x) * 4;
-            pixels[idx] = color.r;
-            pixels[idx + 1] = color.g;
-            pixels[idx + 2] = color.b;
-            // Alpha already 255
+            this._pixelBuffer[idx] = color.r;
+            this._pixelBuffer[idx + 1] = color.g;
+            this._pixelBuffer[idx + 2] = color.b;
         }
-        
-        // --- Step 3: Create ImageData and upload to Canvas ---
+
+        // --- Step 3: Mark region as loaded (base class method) ---
+        this._markRegionLoaded(region);
+
+        // --- Step 4: Create ImageData and upload to Canvas ---
         if (!this.offscreenCanvas || this.offscreenCanvas.width !== width || this.offscreenCanvas.height !== height) {
             this.offscreenCanvas = document.createElement('canvas');
             this.offscreenCanvas.width = width;
             this.offscreenCanvas.height = height;
         }
-        
+
         const ctx = this.offscreenCanvas.getContext('2d');
-        const imageData = new ImageData(pixels, width, height);
+        const imageData = new ImageData(this._pixelBuffer, width, height);
         ctx.putImageData(imageData, 0, 0);
-        
-        // --- Step 4: Create/update PIXI texture from canvas ---
+
+        // --- Step 5: Create/update PIXI texture from canvas ---
         if (this.textureSprite) {
             // Destroy old texture to free GPU memory
             if (this.textureSprite.texture) {
@@ -1325,7 +1781,7 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
             this.grid.cellContainer.removeChild(this.textureSprite);
             this.textureSprite.destroy();
         }
-        
+
         // PIXI v8 uses string scale modes: 'nearest' for pixel-perfect rendering
         const texture = PIXI.Texture.from(this.offscreenCanvas, { scaleMode: 'nearest' });
         this.textureSprite = new PIXI.Sprite(texture);

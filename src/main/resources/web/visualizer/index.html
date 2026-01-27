@@ -16,73 +16,68 @@
     <link href="https://fonts.googleapis.com/css2?family=Doto:wght@900&family=Roboto:wght@400;700&family=Roboto+Mono&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <link rel="stylesheet" href="../shared/app-switcher/app-switcher.css">
-    <link rel="stylesheet" href="../shared/footer/footer.css">
     <script src="https://cdn.jsdelivr.net/npm/pixi.js@8.12.0/dist/pixi.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/protobufjs@7.4.0/dist/protobuf.min.js"></script>
 </head>
 <body>
 <div id="error-banner" class="error-bar" style="display: none;">
     <span id="error-message" class="error-bar-message"></span>
-    <button id="close-error-banner" class="error-bar-close">&times;</button>
+    <button id="close-error-banner" class="error-bar-close">Close</button>
 </div>
 
 <!-- Tooltip für Zell-Informationen -->
 <div id="cell-tooltip" class="cell-tooltip"></div>
 
-<header>
-    <div class="header-left">
-        <div id="app-switcher-container"></div>
-        <div class="logo-container">
-            <span class="logo-text">EVOCHORA</span>
-            <div class="loading-indicator" id="loading-indicator"></div>
+<!-- Logo Panel (top-left) -->
+<div id="logo-panel" class="top-panel">
+    <div id="app-switcher-container"></div>
+    <div class="logo-container">
+        <span class="logo-text">EVOCHORA<div class="loading-indicator" id="loading-indicator"></div></span>
+    </div>
+</div>
+
+<!-- Tick Panel (next to logo) -->
+<div id="tick-panel" class="top-panel">
+    <button id="btn-prev-large" data-tooltip="">&lt;&lt;</button>
+    <button id="btn-prev-small" data-tooltip="">&lt;</button>
+    <div class="tick-input-wrapper">
+        <input type="number" id="tick-input" class="tick-input" min="0" value="0" aria-label="Tick">
+        <span class="tick-total-suffix" id="tick-total-suffix">/N/A</span>
+    </div>
+    <button id="btn-next-small" data-tooltip="">&gt;</button>
+    <button id="btn-next-large" data-tooltip="">&gt;&gt;</button>
+    <div id="multiplier-wrapper" class="tick-input-wrapper multiplier-wrapper" style="display: none;">
+        <input type="number" id="large-step-multiplier" class="tick-input" value="100" min="1">
+        <span id="multiplier-suffix" class="tick-total-suffix">x1</span>
+    </div>
+</div>
+
+<!-- Organism Panel (top-right) -->
+<div id="organism-panel" class="top-panel">
+    <div class="organism-panel-header" id="organism-panel-header">
+        <div class="organism-panel-title">
+            <span>Organisms</span>
+            <span class="organism-count" id="organism-count">(0/0)</span>
+        </div>
+        <div class="organism-filter-wrapper" id="organism-filter-wrapper">
+            <input type="text" id="organism-filter" class="organism-filter-input" placeholder="Filter...">
+            <button class="organism-filter-clear hidden" id="organism-filter-clear" title="Clear filter">✕</button>
+        </div>
+        <div class="organism-panel-controls">
+            <button class="panel-toggle" id="organism-list-collapse" title="Collapse/Expand list">▲</button>
         </div>
     </div>
-    <div class="header-right"></div>
-    
-    <!-- Tick Panel (left) -->
-    <div id="tick-panel-collapsed" class="header-panel-collapsed" title="Show tick controls">
-        ▼<span class="panel-info" id="tick-info"></span>
+    <div class="organism-list-container" id="organism-list-container">
+        <div class="organism-list" id="organism-list"></div>
     </div>
-    <div id="tick-panel" class="header-panel">
-        <button class="panel-toggle" id="tick-panel-hide" data-tooltip="Hide tick controls">▲</button>
-        <button id="btn-prev-large" data-tooltip="">&lt;&lt;</button>
-        <button id="btn-prev-small" data-tooltip="">&lt;</button>
-        <div class="tick-input-wrapper">
-            <input type="number" id="tick-input" class="tick-input" min="0" value="0" aria-label="Tick">
-            <span class="tick-total-suffix" id="tick-total-suffix">/N/A</span>
-        </div>
-        <button id="btn-next-small" data-tooltip="">&gt;</button>
-        <button id="btn-next-large" data-tooltip="">&gt;&gt;</button>
-        <div id="multiplier-wrapper" class="tick-input-wrapper multiplier-wrapper" style="display: none;">
-            <input type="number" id="large-step-multiplier" class="tick-input" value="100" min="1">
-            <span id="multiplier-suffix" class="tick-total-suffix">x1</span>
-        </div>
-        <button id="btn-zoom-toggle" data-tooltip="Toggle Zoom Level">Zoom Out</button>
+    <div class="organism-selected-display" id="organism-selected-display"></div>
+    <div class="organism-details-container" id="organism-details">
+        <div data-section="info"></div>
+        <div data-section="state"></div>
+        <div data-section="instructions"></div>
+        <div data-section="source"></div>
     </div>
-    
-    <!-- Organism Panel (right) -->
-    <div id="organism-panel" class="header-panel">
-        <div class="organism-panel-header" id="organism-panel-header">
-            <div class="organism-panel-title">
-                <span>Organisms</span>
-                <span class="organism-count" id="organism-count">(0/0)</span>
-            </div>
-            <div class="organism-panel-controls">
-                <button class="panel-toggle" id="organism-list-collapse" title="Collapse/Expand list">▲</button>
-            </div>
-        </div>
-        <div class="organism-list-container" id="organism-list-container">
-            <div class="organism-list" id="organism-list"></div>
-        </div>
-        <div class="organism-selected-display" id="organism-selected-display"></div>
-        <div class="organism-details-container" id="organism-details">
-            <div data-section="info"></div>
-            <div data-section="state"></div>
-            <div data-section="instructions"></div>
-            <div data-section="source"></div>
-        </div>
-    </div>
-</header>
+</div>
 
 <main class="container">
     <div class="world-container">
@@ -95,8 +90,6 @@
         <div id="scrollbar-thumb-h" class="scrollbar-thumb-h"></div>
     </div>
 </main>
-
-<div id="footer-container"></div>
 
 <!-- Single entry point - all initialization in main.js -->
 <script type="module" src="js/main.js"></script>
