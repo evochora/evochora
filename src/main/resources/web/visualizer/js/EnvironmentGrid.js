@@ -52,6 +52,9 @@ export class EnvironmentGrid {
         this._rawCells = null;      // Raw cells from API (for lazy cellData building)
         this._cellDataDirty = false; // Flag for lazy cellData building
 
+        // --- Zoomed-Out Viewport Caching is handled by ZoomedOutRendererStrategy ---
+        // The renderer preserves its pixel buffer across pans and tracks loaded regions
+
         // --- UI & Interaction State ---
         this.tooltip = document.getElementById('cell-tooltip');
         this.tooltipTimeout = null;
@@ -130,12 +133,21 @@ export class EnvironmentGrid {
     setZoom(isZoomedOut) {
         this.isZoomedOut = isZoomedOut;
         this.activeRenderer = this.isZoomedOut ? this.zoomedOutRenderer : this.detailedRenderer;
-        
+
         // Clear everything, as all scales and positions are now invalid.
         this.clear();
         this.updateGridBackground();
         this.clampCameraToWorld();
         this.updateStagePosition();
+
+        // Invalidate caches when switching modes (free memory)
+        // Note: clear() already calls clearCache() on both renderers,
+        // but we explicitly clear the "other" renderer to ensure memory is freed
+        if (isZoomedOut) {
+            this.detailedRenderer.clearCache();
+        } else {
+            this.zoomedOutRenderer.clearCache();
+        }
     }
     
     getCurrentCellSize() {
@@ -265,6 +277,21 @@ export class EnvironmentGrid {
         this.currentTick = tick;
         const viewport = this.getVisibleRegion();
 
+        // --- Check if viewport is already loaded (both modes) ---
+        const renderer = this.activeRenderer;
+
+        // Invalidate if tick or run changed
+        if (renderer._loadedTick !== tick || renderer._loadedRunId !== runId) {
+            renderer.clearCache();
+            renderer._loadedTick = tick;
+            renderer._loadedRunId = runId;
+        }
+
+        // Check if all cells in viewport have been loaded
+        if (renderer.isRegionFullyLoaded(viewport)) {
+            return {};
+        }
+
         // Abort previous request
         if (this.currentAbortController) {
             this.currentAbortController.abort();
@@ -276,6 +303,9 @@ export class EnvironmentGrid {
             signal: this.currentAbortController.signal,
             includeMinimap: includeMinimap
         });
+
+        // --- Update Zoomed-Out Cache ---
+        // The renderer tracks loaded regions internally when renderCells is called
 
         // --- Timing: Build cell lookup map ---
         const mapStart = performance.now();
@@ -921,17 +951,89 @@ export class EnvironmentGrid {
 
 /**
  * Abstract base class for a rendering strategy.
+ * Provides shared viewport caching logic via a loaded mask.
  */
 class BaseRendererStrategy {
     constructor(grid) {
         this.grid = grid;
         this.config = grid.config;
+
+        // --- Viewport Caching: Shared by all strategies ---
+        this._loadedMask = null;       // Uint8Array, 1 = cell loaded, 0 = not loaded
+        this._loadedTick = null;       // Current tick for cache invalidation
+        this._loadedRunId = null;      // Current run for cache invalidation
     }
+
     init() { /* no-op */ }
     clear() { /* no-op */ }
     renderCells(_cells, _region) { /* no-op */ }
     renderOrganisms(_organisms) { /* no-op */ }
-    
+
+    /**
+     * Clears the loaded mask (called when tick or run changes).
+     * Subclasses may override to clear additional cached data.
+     */
+    clearCache() {
+        this._loadedMask = null;
+        this._loadedTick = null;
+        this._loadedRunId = null;
+    }
+
+    /**
+     * Checks if the given viewport is fully covered by already loaded data.
+     * @param {{x1: number, y1: number, x2: number, y2: number}} viewport
+     * @returns {boolean}
+     */
+    isRegionFullyLoaded(viewport) {
+        if (!this._loadedMask) return false;
+
+        const width = this.grid.worldWidthCells;
+        const height = this.grid.worldHeightCells;
+
+        const x1 = Math.max(0, viewport.x1);
+        const y1 = Math.max(0, viewport.y1);
+        const x2 = Math.min(width, viewport.x2);
+        const y2 = Math.min(height, viewport.y2);
+
+        for (let y = y1; y < y2; y++) {
+            const rowOffset = y * width;
+            for (let x = x1; x < x2; x++) {
+                if (this._loadedMask[rowOffset + x] === 0) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
+     * Marks the given region as loaded in the mask.
+     * @param {{x1: number, y1: number, x2: number, y2: number}} region
+     * @protected
+     */
+    _markRegionLoaded(region) {
+        const width = this.grid.worldWidthCells;
+        const height = this.grid.worldHeightCells;
+        const pixelCount = width * height;
+
+        // Ensure mask exists
+        if (!this._loadedMask || this._loadedMask.length !== pixelCount) {
+            this._loadedMask = new Uint8Array(pixelCount);
+        }
+
+        const x1 = Math.max(0, region.x1);
+        const y1 = Math.max(0, region.y1);
+        const x2 = Math.min(width, region.x2);
+        const y2 = Math.min(height, region.y2);
+
+        for (let y = y1; y < y2; y++) {
+            const rowOffset = y * width;
+            for (let x = x1; x < x2; x++) {
+                this._loadedMask[rowOffset + x] = 1;
+            }
+        }
+    }
+
     _getOrganismColor(organismId, energy) {
         return this.grid._getOrganismColor(organismId, energy);
     }
@@ -946,7 +1048,7 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
         this.cellObjects = new Map();
         this.ipGraphics = new Map();
         this.dpGraphics = new Map();
-        
+
         this.typeMapping = { 'CODE': 0, 'DATA': 1, 'ENERGY': 2, 'STRUCTURE': 3, 'LABEL': 4 };
         this.cellFont = {
             fontFamily: 'Monospaced, "Courier New"',
@@ -962,6 +1064,7 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
             if (text) this.grid.textContainer.removeChild(text);
         }
         this.cellObjects.clear();
+        this.clearCache(); // From base class
 
         for (const g of this.ipGraphics.values()) {
             this.grid.organismContainer.removeChild(g);
@@ -976,7 +1079,6 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
     }
     
     renderCells(cells, region) {
-        // This is essentially the logic from the old renderCellsWithCleanup
         const updatedKeys = new Set();
 
         // First pass: update or create all cells from response
@@ -986,7 +1088,7 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
 
             const key = `${coords[0]},${coords[1]}`;
             updatedKeys.add(key);
-            
+
             // Convert raw cell to internal format and draw directly
             const cellData = {
                 type: this.typeMapping[cell.moleculeType] ?? 0,
@@ -1008,7 +1110,7 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
 
             const parts = key.split(",");
             if (parts.length !== 2) continue;
-            
+
             const cx = Number.parseInt(parts[0], 10);
             const cy = Number.parseInt(parts[1], 10);
             if (Number.isNaN(cx) || Number.isNaN(cy)) continue;
@@ -1020,6 +1122,9 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
                 this.cellObjects.delete(key);
             }
         }
+
+        // Mark region as loaded (base class method)
+        this._markRegionLoaded(region);
     }
     
     drawCell(cell, pos) {
@@ -1268,13 +1373,25 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
         this.offscreenCanvas = null;
         this.ipGraphics = new Map(); // Still need separate graphics for organisms
         this.dpGraphics = new Map(); // And DPs
-        
+
         // Pre-compute color lookup table (hex -> {r,g,b})
         this._colorCache = new Map();
+
+        // Persistent pixel buffer for the entire world (specific to zoomed-out mode)
+        this._pixelBuffer = null;
     }
 
     init() {
         // Defer texture creation until it's actually needed and world size is known
+    }
+
+    /**
+     * Clears the persistent pixel cache and loaded mask.
+     * Overrides base class to also clear the pixel buffer.
+     */
+    clearCache() {
+        super.clearCache();
+        this._pixelBuffer = null;
     }
 
     clear() {
@@ -1287,6 +1404,8 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
             this.textureSprite = null;
         }
         this.offscreenCanvas = null;
+        this.clearCache();
+
         for (const g of this.ipGraphics.values()) this.grid.organismContainer.removeChild(g);
         this.ipGraphics.clear();
         for (const { graphics } of this.dpGraphics.values()) this.grid.organismContainer.removeChild(graphics);
@@ -1321,63 +1440,88 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
         return cached;
     }
 
-    renderCells(cells, _region) {
+    renderCells(cells, region) {
         const width = this.grid.worldWidthCells;
         const height = this.grid.worldHeightCells;
 
         if (width <= 0 || height <= 0) return;
-        
-        // --- Step 1: Create pixel buffer ---
+
         const pixelCount = width * height;
-        const pixels = new Uint8ClampedArray(pixelCount * 4);
-        
-        // Fill with empty cell background color
-        const emptyColor = this._hexToRgb(this.config.colorEmptyBg);
-        for (let i = 0; i < pixelCount; i++) {
-            const idx = i * 4;
-            pixels[idx] = emptyColor.r;
-            pixels[idx + 1] = emptyColor.g;
-            pixels[idx + 2] = emptyColor.b;
-            pixels[idx + 3] = 255; // Alpha
+
+        // --- Step 1: Get or create persistent pixel buffer ---
+        const needsNewBuffer = !this._pixelBuffer || this._pixelBuffer.length !== pixelCount * 4;
+
+        if (needsNewBuffer) {
+            this._pixelBuffer = new Uint8ClampedArray(pixelCount * 4);
+
+            // Fill new buffer with empty cell background color
+            const emptyColor = this._hexToRgb(this.config.colorEmptyBg);
+            for (let i = 0; i < pixelCount; i++) {
+                const idx = i * 4;
+                this._pixelBuffer[idx] = emptyColor.r;
+                this._pixelBuffer[idx + 1] = emptyColor.g;
+                this._pixelBuffer[idx + 2] = emptyColor.b;
+                this._pixelBuffer[idx + 3] = 255; // Alpha
+            }
         }
-        
-        // --- Step 2: Draw cells into pixel buffer ---
+        // Otherwise: PRESERVE existing buffer - this is the key optimization!
+
+        // --- Step 2: Draw cells into pixel buffer (accumulating, not replacing) ---
         const typeMapping = this.grid.detailedRenderer.typeMapping;
         const getColor = (typeId) => this.grid.detailedRenderer.getBackgroundColorForType(typeId);
-        
+        const emptyColor = this._hexToRgb(this.config.colorEmptyBg);
+
+        // First: clear the region we're about to update with empty color
+        const { x1, y1, x2, y2 } = region;
+        const clampedX1 = Math.max(0, x1);
+        const clampedY1 = Math.max(0, y1);
+        const clampedX2 = Math.min(width, x2);
+        const clampedY2 = Math.min(height, y2);
+
+        for (let y = clampedY1; y < clampedY2; y++) {
+            for (let x = clampedX1; x < clampedX2; x++) {
+                const idx = (y * width + x) * 4;
+                this._pixelBuffer[idx] = emptyColor.r;
+                this._pixelBuffer[idx + 1] = emptyColor.g;
+                this._pixelBuffer[idx + 2] = emptyColor.b;
+            }
+        }
+
+        // Then: draw the actual cells
         for (let i = 0; i < cells.length; i++) {
             const cell = cells[i];
             const coords = cell.coordinates;
             if (!Array.isArray(coords) || coords.length < 2) continue;
-            
+
             const x = coords[0];
             const y = coords[1];
-            
-            // Bounds check
+
             if (x < 0 || x >= width || y < 0 || y >= height) continue;
-            
+
             const typeId = typeMapping[cell.moleculeType] ?? 0;
             const color = this._hexToRgb(getColor(typeId));
-            
+
             const idx = (y * width + x) * 4;
-            pixels[idx] = color.r;
-            pixels[idx + 1] = color.g;
-            pixels[idx + 2] = color.b;
-            // Alpha already 255
+            this._pixelBuffer[idx] = color.r;
+            this._pixelBuffer[idx + 1] = color.g;
+            this._pixelBuffer[idx + 2] = color.b;
         }
-        
-        // --- Step 3: Create ImageData and upload to Canvas ---
+
+        // --- Step 3: Mark region as loaded (base class method) ---
+        this._markRegionLoaded(region);
+
+        // --- Step 4: Create ImageData and upload to Canvas ---
         if (!this.offscreenCanvas || this.offscreenCanvas.width !== width || this.offscreenCanvas.height !== height) {
             this.offscreenCanvas = document.createElement('canvas');
             this.offscreenCanvas.width = width;
             this.offscreenCanvas.height = height;
         }
-        
+
         const ctx = this.offscreenCanvas.getContext('2d');
-        const imageData = new ImageData(pixels, width, height);
+        const imageData = new ImageData(this._pixelBuffer, width, height);
         ctx.putImageData(imageData, 0, 0);
-        
-        // --- Step 4: Create/update PIXI texture from canvas ---
+
+        // --- Step 5: Create/update PIXI texture from canvas ---
         if (this.textureSprite) {
             // Destroy old texture to free GPU memory
             if (this.textureSprite.texture) {
@@ -1386,7 +1530,7 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
             this.grid.cellContainer.removeChild(this.textureSprite);
             this.textureSprite.destroy();
         }
-        
+
         // PIXI v8 uses string scale modes: 'nearest' for pixel-perfect rendering
         const texture = PIXI.Texture.from(this.offscreenCanvas, { scaleMode: 'nearest' });
         this.textureSprite = new PIXI.Sprite(texture);
