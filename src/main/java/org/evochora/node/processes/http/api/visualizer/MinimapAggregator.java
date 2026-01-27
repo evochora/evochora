@@ -123,7 +123,7 @@ public class MinimapAggregator {
         // Add background (empty) cells to the count with reduced weight
         // Each minimap pixel represents approximately scaleX * scaleY environment cells
         // Cells not in the data are truly empty background
-        // Empty cells count at 25% weight to avoid always winning in sparse areas
+        // Empty cells count at 2.5% weight to avoid always winning in sparse areas
         final int cellsPerBlock = scaleX * scaleY;
         for (int i = 0; i < minimapSize; i++) {
             int totalCounted = 0;
@@ -131,10 +131,10 @@ public class MinimapAggregator {
             for (int t = 0; t < NUM_TYPES; t++) {
                 totalCounted += counts[baseIdx + t];
             }
-            // Add missing cells as EMPTY with 12.5% weight
+            // Add missing cells as EMPTY with 6.25% weight
             final int backgroundCells = cellsPerBlock - totalCounted;
             if (backgroundCells > 0) {
-                final int weightedEmpty = backgroundCells / 8;  // 12.5% weight
+                final int weightedEmpty = backgroundCells / 40;  // 2.5% weight
                 counts[baseIdx + TYPE_EMPTY] += (short) Math.min(weightedEmpty, Short.MAX_VALUE);
             }
         }

@@ -58,6 +58,10 @@ class ArtemisTopicIntegrationTest {
             deleteDirectory(testDir);
         }, "artemis-test-cleanup"));
 
+        // Replace backslashes with forward slashes for Windows compatibility
+        // (HOCON interprets backslashes as escape characters)
+        String configPath = testDirPath.replace("\\", "/");
+
         sharedConfig = ConfigFactory.parseString("""
             brokerUrl = "vm://0"
             embedded {
@@ -69,7 +73,7 @@ class ArtemisTopicIntegrationTest {
                     directory = "%s/history"
                 }
             }
-            """.formatted(testDirPath, testDirPath));
+            """.formatted(configPath, configPath));
     }
 
     @AfterEach

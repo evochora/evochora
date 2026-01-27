@@ -1,5 +1,6 @@
 import { MinimapRenderer } from './MinimapRenderer.js';
 import { MinimapNavigator } from './MinimapNavigator.js';
+import { MinimapOrganismOverlay } from './MinimapOrganismOverlay.js';
 
 /**
  * Orchestrates minimap rendering and navigation as a collapsible panel.
@@ -24,9 +25,12 @@ export class MinimapView {
         this.expanded = true;
         this.visible = false;
         this.isZoomedOut = true;
+        this.minimapUseful = true; // True when world is larger than viewport
 
         this.createDOM();
         this.renderer = new MinimapRenderer(this.canvas);
+        this.organismOverlay = new MinimapOrganismOverlay();
+        this.currentOrganisms = null; // Cached for re-rendering
         this.navigator = null; // Initialized when worldShape is set
         this.attachEvents();
     }
@@ -46,7 +50,7 @@ export class MinimapView {
             </div>
             <div class="minimap-collapsed-right">
                 <button class="minimap-zoom-btn">Zoom In</button>
-                <span class="panel-arrow">▲</span>
+                <span class="panel-arrow minimap-expand-arrow">▲</span>
             </div>
         `;
 
@@ -79,6 +83,7 @@ export class MinimapView {
         this.panelHeader = this.element.querySelector('.minimap-panel-header');
         this.worldSizeExpanded = this.element.querySelector('.world-size');
         this.worldSizeCollapsed = this.collapsedElement.querySelector('.world-size');
+        this.expandArrow = this.collapsedElement.querySelector('.minimap-expand-arrow');
 
         document.body.appendChild(this.collapsedElement);
         document.body.appendChild(this.element);
@@ -157,6 +162,9 @@ export class MinimapView {
         // Render minimap
         this.renderer.render(minimapData);
 
+        // Render organism overlay (if enabled and we have organisms)
+        this._renderOrganismOverlay();
+
         // Draw viewport rectangle if we have bounds
         if (this.viewportBounds && worldShape) {
             this.renderer.drawViewportRect(this.viewportBounds, worldShape);
@@ -164,6 +172,9 @@ export class MinimapView {
 
         // Sync collapsed panel width with expanded panel
         this.syncPanelWidths();
+
+        // Check if minimap is useful (after worldShape is set)
+        this.updateMinimapUsefulness();
 
         // Show the minimap
         this.show();
@@ -181,6 +192,76 @@ export class MinimapView {
         if (this.lastMinimapData && this.worldShape) {
             this.renderer.updateViewportRect(bounds, this.worldShape);
         }
+
+        // Check if minimap is useful (after viewportBounds is set)
+        this.updateMinimapUsefulness();
+    }
+
+    /**
+     * Updates the organism overlay with new organism data.
+     * Should be called when organisms are loaded for the current tick.
+     *
+     * @param {Array} organisms - Array of organism objects with ip and dataPointers
+     */
+    updateOrganisms(organisms) {
+        this.currentOrganisms = organisms;
+
+        // Re-render if we have minimap data (overlay draws on top of environment)
+        if (this.lastMinimapData && this.worldShape) {
+            // Re-render environment
+            this.renderer.render(this.lastMinimapData);
+
+            // Render organism overlay
+            this._renderOrganismOverlay();
+
+            // Re-draw viewport rectangle
+            if (this.viewportBounds) {
+                this.renderer.drawViewportRect(this.viewportBounds, this.worldShape);
+            }
+        }
+    }
+
+    /**
+     * Renders the organism overlay on the minimap canvas.
+     * @private
+     */
+    _renderOrganismOverlay() {
+        if (!this.currentOrganisms || !this.worldShape) {
+            return;
+        }
+
+        const ctx = this.canvas.getContext('2d');
+        const canvasSize = {
+            width: this.canvas.width,
+            height: this.canvas.height
+        };
+
+        this.organismOverlay.render(ctx, this.currentOrganisms, this.worldShape, canvasSize);
+    }
+
+    /**
+     * Sets whether the organism overlay is visible.
+     * @param {boolean} enabled - True to show organisms, false to hide
+     */
+    setOrganismOverlayEnabled(enabled) {
+        this.organismOverlay.setEnabled(enabled);
+
+        // Re-render to apply change
+        if (this.lastMinimapData && this.worldShape) {
+            this.renderer.render(this.lastMinimapData);
+            this._renderOrganismOverlay();
+            if (this.viewportBounds) {
+                this.renderer.drawViewportRect(this.viewportBounds, this.worldShape);
+            }
+        }
+    }
+
+    /**
+     * Returns whether the organism overlay is currently enabled.
+     * @returns {boolean}
+     */
+    isOrganismOverlayEnabled() {
+        return this.organismOverlay.isEnabled();
     }
 
     /**
@@ -211,6 +292,51 @@ export class MinimapView {
         }
         if (this.worldSizeCollapsed) {
             this.worldSizeCollapsed.textContent = text;
+        }
+    }
+
+    /**
+     * Checks if the minimap is useful (world larger than viewport) and updates UI accordingly.
+     * When the world fits entirely in the viewport, the minimap provides no navigation value,
+     * so we hide the expand functionality and show only the world size + zoom button.
+     *
+     * IMPORTANT: This does NOT change the `expanded` state, which represents the user's
+     * preference. When the minimap becomes useful again, it will restore to the user's
+     * preferred state (expanded or collapsed).
+     * @private
+     */
+    updateMinimapUsefulness() {
+        // Need both worldShape and viewportBounds to determine usefulness
+        if (!this.worldShape || !this.viewportBounds) {
+            return;
+        }
+
+        const worldWidth = this.worldShape[0];
+        const worldHeight = this.worldShape[1];
+        const viewportWidth = this.viewportBounds.width;
+        const viewportHeight = this.viewportBounds.height;
+
+        // Minimap is useful when world is larger than viewport in any dimension
+        const newUseful = viewportWidth < worldWidth || viewportHeight < worldHeight;
+
+        if (newUseful !== this.minimapUseful) {
+            this.minimapUseful = newUseful;
+
+            // Update UI based on usefulness
+            if (this.expandArrow) {
+                this.expandArrow.style.display = this.minimapUseful ? '' : 'none';
+            }
+
+            // Update cursor style on collapsed panel (not clickable if not useful)
+            if (this.collapsedElement) {
+                this.collapsedElement.style.cursor = this.minimapUseful ? 'pointer' : 'default';
+            }
+
+            // Re-apply visibility to reflect usefulness change
+            // This will restore to user's preferred state (expanded) if minimap became useful again
+            if (this.visible) {
+                this.show();
+            }
         }
     }
 
@@ -247,8 +373,14 @@ export class MinimapView {
 
     /**
      * Expands the minimap panel.
+     * Does nothing if minimap is not useful (world fits in viewport).
      */
     expand() {
+        // Don't expand if minimap is not useful
+        if (!this.minimapUseful) {
+            return;
+        }
+
         this.expanded = true;
         this.collapsedElement.classList.add('hidden');
         if (this.visible) {
@@ -271,9 +403,18 @@ export class MinimapView {
 
     /**
      * Shows the minimap (either collapsed tab or expanded panel).
+     * If minimap is not useful, always shows collapsed header only.
      */
     show() {
         this.visible = true;
+
+        // If minimap is not useful, always show collapsed (header-only) view
+        if (!this.minimapUseful) {
+            this.element.classList.add('hidden');
+            this.collapsedElement.classList.remove('hidden');
+            return;
+        }
+
         if (this.expanded) {
             this.element.classList.remove('hidden');
             this.collapsedElement.classList.add('hidden');
@@ -298,6 +439,7 @@ export class MinimapView {
     clear() {
         this.lastMinimapData = null;
         this.viewportBounds = null;
+        this.currentOrganisms = null;
         this.hide();
     }
 
@@ -317,6 +459,9 @@ export class MinimapView {
     destroy() {
         if (this.navigator) {
             this.navigator.destroy();
+        }
+        if (this.organismOverlay) {
+            this.organismOverlay.destroy();
         }
         if (this.element && this.element.parentNode) {
             this.element.parentNode.removeChild(this.element);

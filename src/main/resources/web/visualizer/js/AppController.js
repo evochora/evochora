@@ -756,6 +756,9 @@ export class AppController {
             );
             this.renderer.renderOrganisms(organisms);
             this.updateOrganismPanel(organisms, isForwardStep);
+
+            // Update minimap organism overlay
+            this.minimapView?.updateOrganisms(organisms);
             
             // Reload organism details if one is selected
             if (this.state.selectedOrganismId) {

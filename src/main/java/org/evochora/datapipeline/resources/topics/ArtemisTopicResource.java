@@ -63,27 +63,32 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
     
     private static final Logger log = LoggerFactory.getLogger(ArtemisTopicResource.class);
     
-    // Shared Embedded Broker instance (Singleton per JVM)
-    // The broker runs for the lifetime of the JVM - stopping it early causes ACK failures
+    // =========================================================================
+    // JVM Singleton State (static fields)
+    // =========================================================================
+    // These fields are STATIC because the embedded Artemis broker is a JVM-wide
+    // singleton. Multiple ArtemisTopicResource instances share one broker.
+    //
+    // Why singleton?
+    //   - Artemis in-vm transport (vm://0) only allows one broker per JVM
+    //   - Multiple topics share the same broker for efficiency
+    //   - Broker lifecycle = JVM lifecycle (stopping early breaks ACKs)
+    //
+    // Thread safety:
+    //   - brokerLock: Synchronizes broker startup
+    //   - brokerStarted: AtomicBoolean for lock-free reads
+    //   - journalRetentionEnabled: volatile for visibility
+    //   - knownSubscriptions: ConcurrentHashMap for concurrent access
+    // =========================================================================
+
     private static EmbeddedActiveMQ embeddedBroker;
     private static final AtomicBoolean brokerStarted = new AtomicBoolean(false);
     private static final Object brokerLock = new Object();
 
-    // =========================================================================
-    // Journal Retention State
-    // =========================================================================
-
-    /**
-     * Tracks whether journal retention is enabled for the embedded broker.
-     * Set during broker startup, used by reader delegates to decide on replay.
-     */
+    /** Tracks whether journal retention is enabled. Set once during broker startup. */
     private static volatile boolean journalRetentionEnabled = false;
 
-    /**
-     * Registry of known subscriptions (format: "topicName::subscriptionName").
-     * Used as fast-path check before querying the broker.
-     * Thread-safe via ConcurrentHashMap.
-     */
+    /** Fast-path registry of known subscriptions (format: "topicName::subscriptionName"). */
     private static final Set<String> knownSubscriptions = ConcurrentHashMap.newKeySet();
     
     private final String brokerUrl;
@@ -132,6 +137,9 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
         // Start embedded broker if configured and using In-VM transport
         if (brokerUrl.startsWith("vm://")) {
             ensureEmbeddedBrokerStarted(options);
+        } else if (options.hasPath("embedded.journalRetention.enabled")
+                && options.getBoolean("embedded.journalRetention.enabled")) {
+            log.warn("Journal retention configured but ignored - only available with embedded broker (vm://)");
         }
         
         // Create ConnectionFactory
