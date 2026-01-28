@@ -31,6 +31,27 @@ import java.util.Optional;
 public interface IBatchStorageRead extends IResource {
 
     /**
+     * Specifies the sort order for batch file listing operations.
+     * <p>
+     * Batch files are named with zero-padded tick numbers (e.g., {@code batch_0000001000_0000001099.pb}),
+     * so lexicographic sorting equals tick order.
+     */
+    enum SortOrder {
+        /**
+         * Sort batch files by tick number in ascending order (oldest first).
+         * This is the default behavior for all existing {@code listBatchFiles} methods.
+         */
+        ASCENDING,
+
+        /**
+         * Sort batch files by tick number in descending order (newest first).
+         * Use this when only the most recent files are needed, such as finding
+         * the last checkpoint for resume.
+         */
+        DESCENDING
+    }
+
+    /**
      * Lists simulation run IDs in storage that started after the given timestamp.
      * <p>
      * Used by indexers for run discovery in parallel mode.
@@ -151,7 +172,7 @@ public interface IBatchStorageRead extends IResource {
      * <p>
      * This method returns batch files matching the prefix, with support for iterating through
      * large result sets without loading all filenames into memory. Results are sorted
-     * lexicographically by filename, which gives tick-order naturally.
+     * lexicographically by filename in ascending order (oldest first).
      * <p>
      * Only files matching the pattern "batch_*" are returned. The search is recursive through
      * the hierarchical folder structure.
@@ -181,6 +202,41 @@ public interface IBatchStorageRead extends IResource {
      * @throws IllegalArgumentException If prefix is null or maxResults <= 0
      */
     BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults) throws IOException;
+
+    /**
+     * Lists batch files with pagination and configurable sort order.
+     * <p>
+     * This method is useful when only the most recent files are needed, such as finding
+     * the last checkpoint for resume operations. Using {@link SortOrder#DESCENDING} with
+     * {@code maxResults=1} efficiently returns just the last batch file without loading
+     * all filenames into memory.
+     * <p>
+     * Only files matching the pattern "batch_*" are returned. The search is recursive through
+     * the hierarchical folder structure.
+     * <p>
+     * <strong>Example usage (SnapshotLoader finding last batch for resume):</strong>
+     * <pre>
+     * BatchFileListResult result = storage.listBatchFiles(
+     *     "sim123/raw/",
+     *     null,
+     *     1,
+     *     SortOrder.DESCENDING
+     * );
+     * if (!result.getFilenames().isEmpty()) {
+     *     StoragePath lastBatchPath = result.getFilenames().get(0);
+     *     // Resume from this checkpoint...
+     * }
+     * </pre>
+     *
+     * @param prefix Filter prefix (e.g., "sim123/" for specific simulation, "" for all)
+     * @param continuationToken Token from previous call, or null for first page
+     * @param maxResults Maximum files to return per page (must be > 0)
+     * @param sortOrder Sort order for results ({@link SortOrder#ASCENDING} or {@link SortOrder#DESCENDING})
+     * @return Paginated result with filenames and continuation token
+     * @throws IOException If storage access fails
+     * @throws IllegalArgumentException If prefix is null, sortOrder is null, or maxResults <= 0
+     */
+    BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults, SortOrder sortOrder) throws IOException;
 
     /**
      * Lists batch files starting from a specific tick with pagination support.

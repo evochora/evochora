@@ -76,6 +76,36 @@ public class Simulation {
         this.vm = new VirtualMachine(this);
     }
 
+    /**
+     * Creates a Simulation instance for resuming from a previously saved checkpoint.
+     * <p>
+     * This factory method creates a Simulation pre-initialized with state from a checkpoint,
+     * allowing the simulation to continue from where it was interrupted. Organisms must be
+     * added after construction via {@link #addOrganism(Organism)}.
+     * <p>
+     * Note: The random provider and tick plugins must be set separately after calling this method.
+     *
+     * @param environment Pre-populated environment with restored cell state
+     * @param currentTick The tick number to resume from
+     * @param totalOrganismsCreated Total number of organisms created in the original run
+     *                              (used to calculate next organism ID)
+     * @param policyManager Thermodynamic policy manager (from Metadata config)
+     * @param organismConfig Organism configuration (from Metadata config)
+     * @return Simulation ready for organism addition and resumption
+     */
+    public static Simulation forResume(
+            Environment environment,
+            long currentTick,
+            long totalOrganismsCreated,
+            ThermodynamicPolicyManager policyManager,
+            Config organismConfig) {
+
+        Simulation sim = new Simulation(environment, policyManager, organismConfig);
+        sim.currentTick = currentTick;
+        sim.nextOrganismId = (int) totalOrganismsCreated + 1;
+        return sim;
+    }
+
     public ThermodynamicPolicyManager getPolicyManager() {
         return policyManager;
     }

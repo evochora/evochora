@@ -236,28 +236,108 @@ class DeltaCodecEncoderTest {
         // Small intervals for easy testing: 1 accumulated, 2 snapshots, 1 chunk
         // = 2 samples per chunk
         DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 100, 1, 2, 1);
-        
+
         // Chunk 1: samples 0, 1
         env.setMolecule(Molecule.fromInt(10), new int[]{0, 0});
         Optional<TickDataChunk> chunk1sample0 = captureTick(encoder, 0);
         assertFalse(chunk1sample0.isPresent());
-        
+
         env.setMolecule(Molecule.fromInt(20), new int[]{1, 0});
         Optional<TickDataChunk> chunk1 = captureTick(encoder, 1);
         assertTrue(chunk1.isPresent());
         assertEquals(0, chunk1.get().getFirstTick());
         assertEquals(1, chunk1.get().getLastTick());
-        
+
         // Chunk 2: samples 2, 3
         env.setMolecule(Molecule.fromInt(30), new int[]{2, 0});
         Optional<TickDataChunk> chunk2sample0 = captureTick(encoder, 2);
         assertFalse(chunk2sample0.isPresent());
-        
+
         env.setMolecule(Molecule.fromInt(40), new int[]{3, 0});
         Optional<TickDataChunk> chunk2 = captureTick(encoder, 3);
         assertTrue(chunk2.isPresent());
         assertEquals(2, chunk2.get().getFirstTick());
         assertEquals(3, chunk2.get().getLastTick());
+    }
+
+    @Test
+    void captureTick_withChunkIntervalGreaterThanOne_producesLargerChunks() {
+        // Test that chunkInterval > 1 works correctly
+        // accumulatedDeltaInterval=2, snapshotInterval=2, chunkInterval=2
+        // samplesPerSnapshot = 2 * 2 = 4
+        // samplesPerChunk = 4 * 2 = 8
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 100, 2, 2, 2);
+        assertEquals(8, encoder.getSamplesPerChunk());
+
+        // Capture 8 samples (ticks 0-7)
+        // Sample 0: snapshot
+        // Sample 1: incremental
+        // Sample 2: accumulated
+        // Sample 3: incremental
+        // Sample 4: incremental (NOT a new snapshot!)
+        // Sample 5: incremental
+        // Sample 6: accumulated
+        // Sample 7: incremental -> chunk complete!
+        for (int i = 0; i < 7; i++) {
+            env.setMolecule(Molecule.fromInt(100 + i), new int[]{i % 10, i / 10});
+            Optional<TickDataChunk> result = captureTick(encoder, i);
+            assertFalse(result.isPresent(), "Chunk should not complete at tick " + i);
+        }
+
+        // 8th sample (tick 7) should complete the chunk
+        env.setMolecule(Molecule.fromInt(200), new int[]{7, 0});
+        Optional<TickDataChunk> chunk = captureTick(encoder, 7);
+
+        assertTrue(chunk.isPresent(), "Chunk should complete at tick 7");
+        assertEquals(0, chunk.get().getFirstTick());
+        assertEquals(7, chunk.get().getLastTick());
+        assertEquals(8, chunk.get().getTickCount());  // 1 snapshot + 7 deltas
+
+        // Verify delta types
+        // isAccumulated = !isSnapshot && (samplesSinceSnapshot % accumulatedDeltaInterval == 0)
+        // With accumulatedDeltaInterval=2:
+        // tick 1 (sample 1): 1%2=1 → INCREMENTAL
+        // tick 2 (sample 2): 2%2=0 → ACCUMULATED
+        // tick 3 (sample 3): 3%2=1 → INCREMENTAL
+        // tick 4 (sample 4): 4%2=0 → ACCUMULATED
+        // tick 5 (sample 5): 5%2=1 → INCREMENTAL
+        // tick 6 (sample 6): 6%2=0 → ACCUMULATED
+        // tick 7 (sample 7): 7%2=1 → INCREMENTAL
+        var deltas = chunk.get().getDeltasList();
+        assertEquals(7, deltas.size());
+        assertEquals(DeltaType.INCREMENTAL, deltas.get(0).getDeltaType()); // tick 1
+        assertEquals(DeltaType.ACCUMULATED, deltas.get(1).getDeltaType()); // tick 2
+        assertEquals(DeltaType.INCREMENTAL, deltas.get(2).getDeltaType()); // tick 3
+        assertEquals(DeltaType.ACCUMULATED, deltas.get(3).getDeltaType()); // tick 4
+        assertEquals(DeltaType.INCREMENTAL, deltas.get(4).getDeltaType()); // tick 5
+        assertEquals(DeltaType.ACCUMULATED, deltas.get(5).getDeltaType()); // tick 6
+        assertEquals(DeltaType.INCREMENTAL, deltas.get(6).getDeltaType()); // tick 7
+    }
+
+    @Test
+    void captureTick_withChunkIntervalThree_producesCorrectChunks() {
+        // Even larger chunkInterval to confirm scalability
+        // accumulatedDeltaInterval=1, snapshotInterval=2, chunkInterval=3
+        // samplesPerSnapshot = 1 * 2 = 2
+        // samplesPerChunk = 2 * 3 = 6
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder(RUN_ID, 100, 1, 2, 3);
+        assertEquals(6, encoder.getSamplesPerChunk());
+
+        // Capture 6 samples
+        for (int i = 0; i < 5; i++) {
+            env.setMolecule(Molecule.fromInt(100 + i), new int[]{i, 0});
+            Optional<TickDataChunk> result = captureTick(encoder, i);
+            assertFalse(result.isPresent(), "Chunk should not complete at tick " + i);
+        }
+
+        // 6th sample should complete chunk
+        env.setMolecule(Molecule.fromInt(200), new int[]{5, 0});
+        Optional<TickDataChunk> chunk = captureTick(encoder, 5);
+
+        assertTrue(chunk.isPresent(), "Chunk should complete at tick 5");
+        assertEquals(0, chunk.get().getFirstTick());
+        assertEquals(5, chunk.get().getLastTick());
+        assertEquals(6, chunk.get().getTickCount());
     }
     
     // ========================================================================

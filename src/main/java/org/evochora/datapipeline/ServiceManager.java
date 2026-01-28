@@ -51,7 +51,6 @@ public class ServiceManager implements IMonitorable {
     // Stores the wrapped resources currently being created for a service (used to coordinate between factory and bindings)
     private final Map<String, Map<String, List<IResource>>> activeWrappedResources = new ConcurrentHashMap<>();
 
-
     public ServiceManager(Config rootConfig) {
         this.pipelineConfig = loadPipelineConfig(rootConfig);
         log.info("Initializing ServiceManager...");
@@ -238,23 +237,23 @@ public class ServiceManager implements IMonitorable {
                 }
                 pendingBindingsMap.put(serviceName, pendingBindings);
 
+                final String factoryServiceName = serviceName;  // Effectively final for lambda
                 Constructor<?> constructor = Class.forName(className)
                         .getConstructor(String.class, Config.class, Map.class);
 
                 IServiceFactory factory = () -> {
                     try {
                         // Use wrapped resources from activeWrappedResources (populated by startService)
-                        Map<String, List<IResource>> injectableResources = activeWrappedResources.get(serviceName);
+                        Map<String, List<IResource>> injectableResources = activeWrappedResources.get(factoryServiceName);
                         if (injectableResources == null) {
-                            throw new IllegalStateException("No wrapped resources prepared for service: " + serviceName);
+                            throw new IllegalStateException("No wrapped resources prepared for service: " + factoryServiceName);
                         }
-                        return (IService) constructor.newInstance(serviceName, options, injectableResources);
+                        return (IService) constructor.newInstance(factoryServiceName, options, injectableResources);
                     } catch (Exception e) {
-                        throw new RuntimeException("Failed to create an instance of service '" + serviceName + "'", e);
+                        throw new RuntimeException("Failed to create an instance of service '" + factoryServiceName + "'", e);
                     }
                 };
                 serviceFactories.put(serviceName, factory);
-
                 log.info("Built factory for service '{}' of type {}", serviceName, className);
             } catch (Exception e) {
                 // Extract root cause for clear error message (no stack trace)
@@ -399,6 +398,29 @@ public class ServiceManager implements IMonitorable {
         log.info("Restarting all services...");
         stopAll();
         startAll();
+    }
+
+    /**
+     * Registers a custom factory for a service, overriding the config-based factory.
+     * <p>
+     * This is useful for resume mode where a service needs to be created with
+     * pre-existing state rather than fresh from configuration.
+     * <p>
+     * <strong>Important:</strong> This method must be called BEFORE {@link #startAll()}
+     * or {@link #startService(String)} for the custom factory to take effect.
+     *
+     * @param serviceName The name of the service to override
+     * @param factory The custom factory that will create the service instance
+     * @throws IllegalArgumentException if the serviceName is not defined in config
+     */
+    public void registerCustomFactory(String serviceName, IServiceFactory factory) {
+        if (!serviceFactories.containsKey(serviceName)) {
+            throw new IllegalArgumentException(
+                "Cannot register custom factory for unknown service: " + serviceName +
+                ". The service must be defined in the pipeline configuration.");
+        }
+        serviceFactories.put(serviceName, factory);
+        log.info("Registered custom factory for service '{}'", serviceName);
     }
 
     public void startService(String name) {

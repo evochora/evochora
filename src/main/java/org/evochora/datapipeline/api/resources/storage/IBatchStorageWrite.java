@@ -98,4 +98,33 @@ public interface IBatchStorageWrite extends IResource {
      * @throws IllegalArgumentException If key is null/empty or message is null
      */
     <T extends MessageLite> StoragePath writeMessage(String key, T message) throws IOException;
+
+    /**
+     * Moves a batch file to the superseded folder for crash-safe truncation.
+     * <p>
+     * This method is used during simulation resume to move batch files that need to be
+     * superseded (e.g., files written after a crash that contain incomplete or stale data).
+     * Moving rather than deleting preserves the data for potential forensic analysis.
+     * <p>
+     * The file is moved to a flat superseded folder structure:
+     * {@code {runId}/raw/superseded/{originalFilename}}
+     * <p>
+     * Files in the superseded folder are excluded from {@link IBatchStorageRead#listBatchFiles}
+     * results, ensuring they don't interfere with normal replay or resume operations.
+     * <p>
+     * <strong>Example usage (SnapshotLoader during resume):</strong>
+     * <pre>
+     * // Find batch files after the resume point that need truncation
+     * List&lt;StoragePath&gt; filesToTruncate = findBatchesAfterTick(resumeFromTick);
+     * for (StoragePath file : filesToTruncate) {
+     *     storage.moveToSuperseded(file);
+     *     log.info("Moved stale batch to superseded: {}", file);
+     * }
+     * </pre>
+     *
+     * @param path The physical storage path of the file to move (as returned by writeChunkBatch)
+     * @throws IOException If the move fails (source not found, destination exists, etc.)
+     * @throws IllegalArgumentException If path is null or doesn't appear to be a batch file
+     */
+    void moveToSuperseded(StoragePath path) throws IOException;
 }

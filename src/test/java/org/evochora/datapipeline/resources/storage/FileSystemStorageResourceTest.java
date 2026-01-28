@@ -28,6 +28,8 @@ import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
+import org.evochora.junit.extensions.logging.ExpectLog;
+import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -409,5 +411,129 @@ class FileSystemStorageResourceTest {
     void testReadChunkBatch_NotFound() {
         StoragePath nonExistentPath = StoragePath.of("test-sim/raw/000/000/batch_not_found.pb");
         assertThrows(IOException.class, () -> storage.readChunkBatch(nonExistentPath));
+    }
+
+    // ========================================================================
+    // moveToSuperseded Tests
+    // ========================================================================
+
+    @Test
+    void testMoveToSuperseded_Success() throws IOException {
+        // Write a batch file
+        TickDataChunk chunk = createChunk(0, 9, 10);
+        StoragePath originalPath = storage.writeChunkBatch(List.of(chunk), 0, 9);
+
+        // Verify file exists at original location
+        List<TickDataChunk> readBatch = storage.readChunkBatch(originalPath);
+        assertEquals(1, readBatch.size());
+
+        // Move to superseded
+        storage.moveToSuperseded(originalPath);
+
+        // Verify original file no longer exists
+        assertThrows(IOException.class, () -> storage.readChunkBatch(originalPath));
+
+        // Verify file exists in superseded folder
+        String filename = originalPath.asString().substring(originalPath.asString().lastIndexOf('/') + 1);
+        File supersededFile = new File(tempDir.toFile(), "test-sim/raw/superseded/" + filename);
+        assertTrue(supersededFile.exists(), "File should exist in superseded folder");
+    }
+
+    @Test
+    void testMoveToSuperseded_ExcludedFromListBatchFiles() throws IOException {
+        // Write two batch files
+        TickDataChunk chunk1 = createChunk(0, 9, 10);
+        TickDataChunk chunk2 = createChunk(10, 19, 10);
+        StoragePath path1 = storage.writeChunkBatch(List.of(chunk1), 0, 9);
+        StoragePath path2 = storage.writeChunkBatch(List.of(chunk2), 10, 19);
+
+        // Verify both are listed
+        BatchFileListResult beforeMove = storage.listBatchFiles("test-sim/", null, 10);
+        assertEquals(2, beforeMove.getFilenames().size(), "Should have 2 batch files before move");
+
+        // Move one to superseded
+        storage.moveToSuperseded(path1);
+
+        // Verify only one is listed now (superseded excluded)
+        BatchFileListResult afterMove = storage.listBatchFiles("test-sim/", null, 10);
+        assertEquals(1, afterMove.getFilenames().size(), "Should have 1 batch file after move");
+        assertEquals(path2.asString(), afterMove.getFilenames().get(0).asString(),
+                "Remaining file should be the one not moved");
+    }
+
+    @Test
+    void testMoveToSuperseded_NonExistentFile_ThrowsException() {
+        StoragePath nonExistentPath = StoragePath.of("test-sim/raw/000/000/batch_0000000000000000000_0000000000000000009.pb");
+        assertThrows(IOException.class, () -> storage.moveToSuperseded(nonExistentPath));
+    }
+
+    @Test
+    void testMoveToSuperseded_NullPath_ThrowsException() {
+        assertThrows(IllegalArgumentException.class, () -> storage.moveToSuperseded(null));
+    }
+
+    @Test
+    void testMoveToSuperseded_NonBatchFile_ThrowsException() {
+        StoragePath nonBatchPath = StoragePath.of("test-sim/raw/metadata.pb");
+        assertThrows(IllegalArgumentException.class, () -> storage.moveToSuperseded(nonBatchPath));
+    }
+
+    @Test
+    void testMoveToSuperseded_PathWithoutRawSegment_ThrowsException() {
+        StoragePath invalidPath = StoragePath.of("test-sim/batch_0000000000000000000_0000000000000000009.pb");
+        assertThrows(IllegalArgumentException.class, () -> storage.moveToSuperseded(invalidPath));
+    }
+
+    // ========================================================================
+    // listBatchFiles Deduplication Tests
+    // ========================================================================
+
+    @Test
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*AbstractBatchStorageResource.*",
+               messagePattern = ".*Duplicate batch files for firstTick.*")
+    void testListBatchFiles_Deduplication_KeepsSmallerLastTick() throws IOException {
+        // Simulate crash scenario: two files with same firstTick but different lastTick
+        // This happens when a batch file is being written during crash
+
+        // Create two batch files manually with same firstTick (0) but different lastTick
+        // File 1: batch_0_9 (the complete file before crash)
+        TickDataChunk chunk1 = createChunk(0, 9, 10);
+        storage.writeChunkBatch(List.of(chunk1), 0, 9);
+
+        // File 2: batch_0_19 (partial file from crash - simulated by writing directly)
+        // We need to manually create this file since writeChunkBatch would use different folder
+        File batchDir = new File(tempDir.toFile(), "test-sim/raw/000/000");
+        batchDir.mkdirs();
+        File duplicateFile = new File(batchDir, "batch_0000000000000000000_0000000000000000019.pb");
+        // Write minimal content (just to make the file exist)
+        TickDataChunk chunk2 = createChunk(0, 19, 20);
+        try (java.io.OutputStream out = Files.newOutputStream(duplicateFile.toPath())) {
+            chunk2.writeDelimitedTo(out);
+        }
+
+        // List batch files - should only return one (the one with smaller lastTick)
+        BatchFileListResult result = storage.listBatchFiles("test-sim/", null, 10);
+
+        assertEquals(1, result.getFilenames().size(),
+                "Should deduplicate to 1 file when same firstTick");
+        assertTrue(result.getFilenames().get(0).asString().contains("_0000000000000000009.pb"),
+                "Should keep the file with smaller lastTick (9, not 19)");
+    }
+
+    @Test
+    void testListBatchFiles_NoDuplicates_ReturnsAll() throws IOException {
+        // Write multiple batch files with different firstTick values
+        TickDataChunk chunk1 = createChunk(0, 9, 10);
+        TickDataChunk chunk2 = createChunk(10, 19, 10);
+        TickDataChunk chunk3 = createChunk(20, 29, 10);
+
+        storage.writeChunkBatch(List.of(chunk1), 0, 9);
+        storage.writeChunkBatch(List.of(chunk2), 10, 19);
+        storage.writeChunkBatch(List.of(chunk3), 20, 29);
+
+        // List batch files - should return all 3
+        BatchFileListResult result = storage.listBatchFiles("test-sim/", null, 10);
+
+        assertEquals(3, result.getFilenames().size(), "Should return all 3 unique batch files");
     }
 }

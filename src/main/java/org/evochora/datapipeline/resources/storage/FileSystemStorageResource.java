@@ -154,6 +154,30 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
     }
 
     @Override
+    protected void moveRaw(String sourcePath, String destPath) throws IOException {
+        validateKey(sourcePath);
+        validateKey(destPath);
+
+        File sourceFile = new File(rootDirectory, sourcePath);
+        File destFile = new File(rootDirectory, destPath);
+
+        if (!sourceFile.exists()) {
+            throw new IOException("Source file does not exist: " + sourcePath);
+        }
+
+        // Create parent directories for destination if needed
+        File destParent = destFile.getParentFile();
+        if (destParent != null && !destParent.exists()) {
+            if (!destParent.mkdirs() && !destParent.isDirectory()) {
+                throw new IOException("Failed to create destination directories: " + destParent.getAbsolutePath());
+            }
+        }
+
+        // Atomic move
+        Files.move(sourceFile.toPath(), destFile.toPath(), StandardCopyOption.ATOMIC_MOVE);
+    }
+
+    @Override
     protected List<String> listRaw(String prefix, boolean listDirectories, String continuationToken, int maxResults,
                                     Long startTick, Long endTick) throws IOException {
         final String finalPrefix = (prefix == null) ? "" : prefix;
@@ -208,9 +232,11 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
             while (iterator.hasNext()) {
                 try {
                     Path path = iterator.next();
-                    // Skip .tmp files and directories
+                    // Skip .tmp files, directories, and superseded folder
                     String filename = path.getFileName().toString();
-                    if (!filename.endsWith(".tmp") && Files.isRegularFile(path)) {
+                    String pathStr = path.toString().replace(File.separatorChar, '/');
+                    boolean isSuperseded = pathStr.contains("/superseded/");
+                    if (!filename.endsWith(".tmp") && !isSuperseded && Files.isRegularFile(path)) {
                         validPaths.add(path);
                     }
                 } catch (java.io.UncheckedIOException e) {

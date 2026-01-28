@@ -99,7 +99,7 @@ public class MonitoredBatchStorageWriter implements IBatchStorageWrite, IWrapped
             // Record performance metrics (count as 1 message batch)
             long latencyNanos = System.nanoTime() - startNanos;
             recordWrite(1, bytes, latencyNanos);
-            
+
             return path;
         } catch (IOException e) {
             writeErrors.incrementAndGet();
@@ -107,6 +107,11 @@ public class MonitoredBatchStorageWriter implements IBatchStorageWrite, IWrapped
         }
     }
 
+    @Override
+    public void moveToSuperseded(StoragePath path) throws IOException {
+        // Delegate directly - this is an administrative operation, not a typical write
+        delegate.moveToSuperseded(path);
+    }
 
     @Override
     public String getResourceName() {

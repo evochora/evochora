@@ -283,6 +283,36 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         return message;
     }
 
+    @Override
+    public void moveToSuperseded(StoragePath path) throws IOException {
+        if (path == null) {
+            throw new IllegalArgumentException("path cannot be null");
+        }
+
+        String physicalPath = path.asString();
+
+        // Validate it looks like a batch file
+        String filename = physicalPath.substring(physicalPath.lastIndexOf('/') + 1);
+        if (!filename.startsWith("batch_") || !filename.contains(".pb")) {
+            throw new IllegalArgumentException(
+                "Path doesn't appear to be a batch file: " + physicalPath);
+        }
+
+        // Extract runId from path (first component before "/raw/")
+        int rawIndex = physicalPath.indexOf("/raw/");
+        if (rawIndex == -1) {
+            throw new IllegalArgumentException(
+                "Path doesn't contain /raw/ segment: " + physicalPath);
+        }
+        String runId = physicalPath.substring(0, rawIndex);
+
+        // Build superseded destination path: {runId}/raw/superseded/{filename}
+        String destPath = runId + "/raw/superseded/" + filename;
+
+        log.debug("Moving batch file to superseded: {} -> {}", physicalPath, destPath);
+        moveRaw(physicalPath, destPath);
+    }
+
     /**
      * Parses the start tick from a batch filename.
      * <p>
@@ -421,7 +451,16 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
 
     @Override
     public BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults) throws IOException {
-        return listBatchFilesInternal(prefix, continuationToken, maxResults, null, null);
+        return listBatchFilesInternal(prefix, continuationToken, maxResults, null, null, IBatchStorageRead.SortOrder.ASCENDING);
+    }
+
+    @Override
+    public BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults,
+                                               IBatchStorageRead.SortOrder sortOrder) throws IOException {
+        if (sortOrder == null) {
+            throw new IllegalArgumentException("sortOrder cannot be null");
+        }
+        return listBatchFilesInternal(prefix, continuationToken, maxResults, null, null, sortOrder);
     }
 
     @Override
@@ -429,7 +468,7 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         if (startTick < 0) {
             throw new IllegalArgumentException("startTick must be >= 0");
         }
-        return listBatchFilesInternal(prefix, continuationToken, maxResults, startTick, null);
+        return listBatchFilesInternal(prefix, continuationToken, maxResults, startTick, null, IBatchStorageRead.SortOrder.ASCENDING);
     }
 
     @Override
@@ -440,25 +479,36 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         if (endTick < startTick) {
             throw new IllegalArgumentException("endTick must be >= startTick");
         }
-        return listBatchFilesInternal(prefix, continuationToken, maxResults, startTick, endTick);
+        return listBatchFilesInternal(prefix, continuationToken, maxResults, startTick, endTick, IBatchStorageRead.SortOrder.ASCENDING);
     }
 
     /**
-     * Internal implementation for listing batch files with optional tick filtering.
+     * Internal implementation for listing batch files with optional tick filtering and sort order.
      * <p>
      * This method delegates to {@link #listRaw} with nullable tick parameters and performs
-     * the common logic of filtering to batch files and wrapping as StoragePath.
+     * the common logic of filtering to batch files, deduplication, and wrapping as StoragePath.
+     * <p>
+     * <strong>Deduplication:</strong> If multiple batch files have the same firstTick (which can
+     * happen after a crash during write), only the file with the smallest lastTick is kept.
+     * This ensures we use the complete file written before the crash, not a potentially partial
+     * file that was being written when the crash occurred.
+     * <p>
+     * <strong>Sort Order:</strong> Results can be sorted in ascending (oldest first) or descending
+     * (newest first) order. Use {@link IBatchStorageRead.SortOrder#DESCENDING} with maxResults=1
+     * to efficiently get only the last batch file for resume operations.
      *
      * @param prefix Filter prefix (e.g., "sim123/" for specific simulation)
      * @param continuationToken Token from previous call, or null for first page
      * @param maxResults Maximum files to return per page
      * @param startTick Minimum start tick (nullable - null means no lower bound)
      * @param endTick Maximum start tick (nullable - null means no upper bound)
+     * @param sortOrder Sort order for results (ASCENDING or DESCENDING)
      * @return Paginated result with matching batch physical paths
      * @throws IOException If storage access fails
      */
     private BatchFileListResult listBatchFilesInternal(String prefix, String continuationToken, int maxResults,
-                                                        Long startTick, Long endTick) throws IOException {
+                                                        Long startTick, Long endTick,
+                                                        IBatchStorageRead.SortOrder sortOrder) throws IOException {
         if (prefix == null) {
             throw new IllegalArgumentException("prefix cannot be null");
         }
@@ -468,16 +518,57 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
 
         // Delegate to subclass to get all files with prefix (potentially paginated internally)
         // listRaw returns PHYSICAL paths (with compression extensions)
-        // Request maxResults + 1 to detect truncation
-        List<String> allPhysicalFiles = listRaw(prefix, false, continuationToken, maxResults + 1, startTick, endTick);
+        // Request more results to account for potential duplicates that will be filtered
+        List<String> allPhysicalFiles = listRaw(prefix, false, continuationToken, (maxResults + 1) * 2, startTick, endTick);
 
-        // Filter to batch files and wrap as StoragePath (keep physical paths!)
-        List<StoragePath> batchFiles = allPhysicalFiles.stream()
+        // Filter to batch files and sort lexicographically (ascending tick order)
+        List<String> batchFilePaths = allPhysicalFiles.stream()
             .filter(path -> {
                 String filename = path.substring(path.lastIndexOf('/') + 1);
                 return filename.startsWith("batch_") && filename.contains(".pb");
             })
-            .sorted()  // Lexicographic order = tick order
+            .sorted()  // Lexicographic order = tick order (ascending)
+            .collect(Collectors.toCollection(ArrayList::new));
+
+        // Deduplicate: group by firstTick, keep file with smallest lastTick
+        Map<Long, String> deduplicatedByFirstTick = new java.util.LinkedHashMap<>();
+        for (String path : batchFilePaths) {
+            long firstTick = parseBatchStartTick(path);
+            long lastTick = parseBatchEndTick(path);
+
+            if (firstTick < 0 || lastTick < 0) {
+                // Failed to parse, include it anyway
+                deduplicatedByFirstTick.putIfAbsent(System.nanoTime(), path);  // Use unique key
+                continue;
+            }
+
+            String existing = deduplicatedByFirstTick.get(firstTick);
+            if (existing == null) {
+                deduplicatedByFirstTick.put(firstTick, path);
+            } else {
+                // Duplicate found - keep the one with smaller lastTick
+                long existingLastTick = parseBatchEndTick(existing);
+                if (lastTick < existingLastTick) {
+                    // New file has smaller lastTick, replace
+                    log.warn("Duplicate batch files for firstTick {}: keeping {} (lastTick={}) over {} (lastTick={})",
+                            firstTick, path, lastTick, existing, existingLastTick);
+                    deduplicatedByFirstTick.put(firstTick, path);
+                } else {
+                    // Existing file has smaller or equal lastTick, keep it
+                    log.warn("Duplicate batch files for firstTick {}: keeping {} (lastTick={}) over {} (lastTick={})",
+                            firstTick, existing, existingLastTick, path, lastTick);
+                }
+            }
+        }
+
+        // Apply sort order: deduplicatedByFirstTick is already in ascending order from LinkedHashMap
+        List<String> sortedPaths = new ArrayList<>(deduplicatedByFirstTick.values());
+        if (sortOrder == IBatchStorageRead.SortOrder.DESCENDING) {
+            java.util.Collections.reverse(sortedPaths);
+        }
+
+        // Convert to StoragePath list with limit
+        List<StoragePath> batchFiles = sortedPaths.stream()
             .limit(maxResults + 1)  // +1 to detect truncation
             .map(StoragePath::of)
             .toList();
@@ -721,6 +812,29 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      * @throws IOException if file not found or read fails
      */
     protected abstract byte[] getRaw(String physicalPath) throws IOException;
+
+    /**
+     * Moves a file from source path to destination path atomically.
+     * <p>
+     * Implementation must:
+     * <ul>
+     *   <li>Create parent directories of destination if needed</li>
+     *   <li>Perform atomic move if supported by the backend</li>
+     *   <li>Fail if source doesn't exist</li>
+     *   <li>Handle existing destination according to backend behavior</li>
+     * </ul>
+     * <p>
+     * Example implementations:
+     * <ul>
+     *   <li>FileSystem: Files.move(source, dest, ATOMIC_MOVE)</li>
+     *   <li>S3: copyObject + deleteObject (not atomic, but best available)</li>
+     * </ul>
+     *
+     * @param sourcePath physical path of file to move
+     * @param destPath physical path of destination
+     * @throws IOException if source doesn't exist or move fails
+     */
+    protected abstract void moveRaw(String sourcePath, String destPath) throws IOException;
 
     /**
      * Lists physical paths or directory prefixes matching a prefix, with optional tick filtering.

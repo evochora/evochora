@@ -207,15 +207,17 @@ public final class DeltaCodec {
             }
             
             samplesSinceSnapshot++;
-            
+
             // Reset change tracking for next sample
             env.resetChangeTracking();
-            
+
             // Check if chunk is complete
-            if (snapshotsInChunk >= chunkInterval && samplesSinceSnapshot >= samplesPerSnapshot) {
+            // Note: chunkInterval is a multiplier for chunk size, not "snapshots per chunk"
+            // (TickDataChunk only holds one snapshot; chunkInterval just means larger chunks)
+            if (samplesSinceSnapshot >= samplesPerChunk) {
                 return Optional.of(buildAndResetChunk());
             }
-            
+
             return Optional.empty();
         }
         
