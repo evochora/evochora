@@ -305,8 +305,10 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
                     // Initialize topic with simulation run ID on first batch
                     String simulationRunId = batch.get(0).getSimulationRunId();
                     if (!topicInitialized) {
+                        log.debug("Initializing topic with runId: {}", simulationRunId);
                         batchTopic.setSimulationRun(simulationRunId);
                         topicInitialized = true;
+                        log.debug("Topic initialized successfully");
                     }
 
                     // Send notification to topic (must succeed for operation to complete)
@@ -317,9 +319,13 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
                         .setTickEnd(lastTick)
                         .setWrittenAtMs(System.currentTimeMillis())
                         .build();
-                    
+
+                    log.debug("Sending BatchInfo to topic: ticks {}-{}", firstTick, lastTick);
                     batchTopic.send(notification);
+                    log.debug("BatchInfo sent successfully");
                     notificationsSent.incrementAndGet();
+                } else {
+                    log.debug("batchTopic is null - skipping notification");
                 }
 
                 // Success - update metrics

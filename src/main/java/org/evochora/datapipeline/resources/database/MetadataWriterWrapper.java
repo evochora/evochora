@@ -49,6 +49,19 @@ public class MetadataWriterWrapper extends AbstractDatabaseWrapper implements IR
         }
     }
 
+    @Override
+    public boolean hasMetadata(String simulationRunId) {
+        try {
+            return database.doHasMetadata(ensureConnection(), simulationRunId);
+        } catch (Exception e) {
+            operationErrors.incrementAndGet();
+            log.warn("Failed to check metadata existence for run: {}", simulationRunId);
+            recordError("HAS_METADATA_FAILED", "Failed to check metadata existence",
+                       "RunId: " + simulationRunId + ", Error: " + e.getMessage());
+            throw new RuntimeException("Failed to check metadata existence: " + simulationRunId, e);
+        }
+    }
+
     // Note: close(), isHealthy(), getErrors(), clearErrors(), getResourceName(), 
     // getUsageState(), setSimulationRun(), releaseConnection() are inherited from AbstractDatabaseWrapper
 

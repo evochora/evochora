@@ -42,6 +42,17 @@ public interface IMetadataWriter extends AutoCloseable {
     void insertMetadata(SimulationMetadata metadata);
 
     /**
+     * Checks if metadata already exists in the database for the given run.
+     * <p>
+     * Used to detect resume scenarios where metadata was already indexed in a previous run.
+     * This allows services to skip waiting for metadata notifications when data already exists.
+     *
+     * @param simulationRunId The simulation run ID to check
+     * @return true if metadata exists for this run, false otherwise
+     */
+    boolean hasMetadata(String simulationRunId);
+
+    /**
      * Closes the database wrapper and releases its dedicated connection back to the pool.
      * <p>
      * This method is automatically called when used with try-with-resources.
