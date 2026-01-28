@@ -536,4 +536,162 @@ class FileSystemStorageResourceTest {
 
         assertEquals(3, result.getFilenames().size(), "Should return all 3 unique batch files");
     }
+
+    // ========================================================================
+    // findLastBatchFile Tests
+    // ========================================================================
+
+    @Test
+    void testFindLastBatchFile_Success() throws IOException {
+        // Write multiple batch files
+        TickDataChunk chunk1 = createChunk(0, 9, 10);
+        TickDataChunk chunk2 = createChunk(10, 19, 10);
+        TickDataChunk chunk3 = createChunk(100, 109, 10);
+
+        storage.writeChunkBatch(List.of(chunk1), 0, 9);
+        storage.writeChunkBatch(List.of(chunk2), 10, 19);
+        StoragePath lastPath = storage.writeChunkBatch(List.of(chunk3), 100, 109);
+
+        // Find last batch file
+        java.util.Optional<org.evochora.datapipeline.api.resources.storage.StoragePath> found =
+            storage.findLastBatchFile("test-sim/raw/");
+
+        assertTrue(found.isPresent(), "Should find last batch file");
+        assertEquals(lastPath.asString(), found.get().asString(),
+            "Should return the batch file with highest tick numbers");
+    }
+
+    @Test
+    void testFindLastBatchFile_NullRunIdPrefix_ThrowsException() {
+        assertThrows(IllegalArgumentException.class,
+            () -> storage.findLastBatchFile(null),
+            "Should throw IllegalArgumentException for null runIdPrefix");
+    }
+
+    @Test
+    void testFindLastBatchFile_NonExistentDirectory_ReturnsEmpty() throws IOException {
+        java.util.Optional<org.evochora.datapipeline.api.resources.storage.StoragePath> found =
+            storage.findLastBatchFile("non-existent-run/raw/");
+
+        assertFalse(found.isPresent(), "Should return empty for non-existent directory");
+    }
+
+    @Test
+    void testFindLastBatchFile_EmptyDirectory_ReturnsEmpty() throws IOException {
+        // Create empty directory structure
+        File emptyDir = new File(tempDir.toFile(), "empty-run/raw/000/000");
+        emptyDir.mkdirs();
+
+        java.util.Optional<org.evochora.datapipeline.api.resources.storage.StoragePath> found =
+            storage.findLastBatchFile("empty-run/raw/");
+
+        assertFalse(found.isPresent(), "Should return empty for directory with no batch files");
+    }
+
+    @Test
+    void testFindLastBatchFile_MultipleFolders_ReturnsLastBatch() throws IOException {
+        // Create batch files in different folder levels
+        // Folder structure: 000/000, 000/001, 001/000
+        TickDataChunk chunk1 = createChunk(0, 9, 10);           // -> 000/000
+        TickDataChunk chunk2 = createChunk(100_000, 100_009, 10); // -> 000/001
+        TickDataChunk chunk3 = createChunk(100_000_000, 100_000_009, 10); // -> 001/000
+
+        storage.writeChunkBatch(List.of(chunk1), 0, 9);
+        storage.writeChunkBatch(List.of(chunk2), 100_000, 100_009);
+        StoragePath lastPath = storage.writeChunkBatch(List.of(chunk3), 100_000_000, 100_000_009);
+
+        // Find last batch file - should be in folder 001/000
+        java.util.Optional<org.evochora.datapipeline.api.resources.storage.StoragePath> found =
+            storage.findLastBatchFile("test-sim/raw/");
+
+        assertTrue(found.isPresent(), "Should find last batch file across folders");
+        assertEquals(lastPath.asString(), found.get().asString(),
+            "Should return batch from highest numbered folder");
+    }
+
+    @Test
+    void testFindLastBatchFile_EmptySubdirectory_BacktracksToNextFolder() throws IOException {
+        // Write batch to 000/000
+        TickDataChunk chunk = createChunk(0, 9, 10);
+        StoragePath expectedPath = storage.writeChunkBatch(List.of(chunk), 0, 9);
+
+        // Create empty folder 000/001 (higher numbered but empty)
+        File emptyHigherFolder = new File(tempDir.toFile(), "test-sim/raw/000/001");
+        emptyHigherFolder.mkdirs();
+
+        // findLastBatchFile should backtrack from empty 001 to 000
+        java.util.Optional<org.evochora.datapipeline.api.resources.storage.StoragePath> found =
+            storage.findLastBatchFile("test-sim/raw/");
+
+        assertTrue(found.isPresent(), "Should find batch file after backtracking from empty folder");
+        assertEquals(expectedPath.asString(), found.get().asString(),
+            "Should return batch from non-empty folder after backtracking");
+    }
+
+    @Test
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*FileSystemStorageResource.*",
+               messagePattern = ".*Duplicate batch files for firstTick.*")
+    void testFindLastBatchFile_Deduplication_PrefersSmallerLastTick() throws IOException {
+        // Write a normal batch file
+        TickDataChunk chunk1 = createChunk(100, 109, 10);
+        storage.writeChunkBatch(List.of(chunk1), 100, 109);
+
+        // Manually create a duplicate file with same firstTick but larger lastTick
+        // (simulates crash scenario)
+        File batchDir = new File(tempDir.toFile(), "test-sim/raw/000/000");
+        File duplicateFile = new File(batchDir, "batch_0000000000000000100_0000000000000000119.pb");
+        TickDataChunk chunk2 = createChunk(100, 119, 20);
+        try (java.io.OutputStream out = Files.newOutputStream(duplicateFile.toPath())) {
+            chunk2.writeDelimitedTo(out);
+        }
+
+        // Find last batch file - should prefer the one with smaller lastTick (109)
+        java.util.Optional<org.evochora.datapipeline.api.resources.storage.StoragePath> found =
+            storage.findLastBatchFile("test-sim/raw/");
+
+        assertTrue(found.isPresent(), "Should find batch file");
+        assertTrue(found.get().asString().contains("_0000000000000000109.pb"),
+            "Should prefer batch file with smaller lastTick for deduplication");
+    }
+
+    @Test
+    void testFindLastBatchFile_SupersededExcluded() throws IOException {
+        // Write two batch files
+        TickDataChunk chunk1 = createChunk(0, 9, 10);
+        TickDataChunk chunk2 = createChunk(100, 109, 10);
+
+        StoragePath path1 = storage.writeChunkBatch(List.of(chunk1), 0, 9);
+        StoragePath path2 = storage.writeChunkBatch(List.of(chunk2), 100, 109);
+
+        // Move the higher one to superseded
+        storage.moveToSuperseded(path2);
+
+        // Find last batch file - should return the one NOT in superseded
+        java.util.Optional<org.evochora.datapipeline.api.resources.storage.StoragePath> found =
+            storage.findLastBatchFile("test-sim/raw/");
+
+        assertTrue(found.isPresent(), "Should find batch file");
+        assertEquals(path1.asString(), found.get().asString(),
+            "Should return batch that is NOT in superseded folder");
+    }
+
+    @Test
+    void testFindLastBatchFile_IgnoresTmpFiles() throws IOException {
+        // Write a normal batch file
+        TickDataChunk chunk = createChunk(0, 9, 10);
+        StoragePath normalPath = storage.writeChunkBatch(List.of(chunk), 0, 9);
+
+        // Create a .tmp file that would sort higher
+        File batchDir = new File(tempDir.toFile(), "test-sim/raw/000/000");
+        File tmpFile = new File(batchDir, "batch_0000000000000001000_0000000000000001009.pb.tmp");
+        tmpFile.createNewFile();
+
+        // Find last batch file - should ignore .tmp file
+        java.util.Optional<org.evochora.datapipeline.api.resources.storage.StoragePath> found =
+            storage.findLastBatchFile("test-sim/raw/");
+
+        assertTrue(found.isPresent(), "Should find batch file");
+        assertEquals(normalPath.asString(), found.get().asString(),
+            "Should ignore .tmp files and return valid batch file");
+    }
 }

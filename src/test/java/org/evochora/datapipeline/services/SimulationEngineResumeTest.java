@@ -2,11 +2,7 @@ package org.evochora.datapipeline.services;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
-
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
@@ -26,7 +22,6 @@ import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
-import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead.SortOrder;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.resume.ResumeException;
@@ -275,6 +270,11 @@ class SimulationEngineResumeTest {
         @Override
         public Optional<StoragePath> findMetadataPath(String runId) {
             return metadataPath;
+        }
+
+        @Override
+        public Optional<StoragePath> findLastBatchFile(String runIdPrefix) {
+            return Optional.ofNullable(batchPath);
         }
 
         @Override

@@ -184,7 +184,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      * Initializes simulation state from a checkpoint for resume mode.
      */
     private InitializedState initializeFromCheckpoint(Config options) {
-        log.info("Initializing from checkpoint (resume mode)");
+        log.debug("Initializing from checkpoint (resume mode)");
 
         if (!options.hasPath("resume.runId")) {
             throw new IllegalStateException(
@@ -204,7 +204,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             // Load checkpoint
             SnapshotLoader snapshotLoader = new SnapshotLoader(storageRead, storageWrite);
             ResumeCheckpoint checkpoint = snapshotLoader.loadLatestCheckpoint(runId);
-            log.info("Loaded checkpoint at tick {}, will resume from tick {}",
+            log.debug("Loaded checkpoint at tick {}, will resume from tick {}",
                 checkpoint.getCheckpointTick(), checkpoint.getResumeFromTick());
 
             // Restore state
@@ -221,7 +221,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             restored.programArtifacts().forEach((id, artifact) ->
                 programInfo.put(id, new ProgramInfo(id, id, artifact)));
 
-            log.info("Restored {} organisms from checkpoint", restored.simulation().getOrganisms().size());
+            log.debug("Restored {} organisms from checkpoint", restored.simulation().getOrganisms().size());
 
             return new InitializedState(
                 restored.simulation(),
@@ -356,7 +356,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 throw e; // Let AbstractService handle it as normal shutdown
             }
         } else {
-            log.info("Resume mode: skipping metadata send (already exists for run {})", runId);
+            log.debug("Resume mode: skipping metadata send (already exists for run {})", runId);
         }
 
         // Check isStopRequested() for graceful shutdown (in addition to state and interrupt)

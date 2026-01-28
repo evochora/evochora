@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -18,9 +17,7 @@ import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TickDelta;
-import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
-import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead.SortOrder;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.junit.extensions.logging.AllowLog;
@@ -68,7 +65,6 @@ class SnapshotLoaderTest {
         TickData.newBuilder().build();
         TickDelta.newBuilder().build();
         CellDataColumns.newBuilder().build();
-        BatchFileListResult.class.getName();
     }
 
     @BeforeEach
@@ -90,8 +86,7 @@ class SnapshotLoaderTest {
 
         // Setup: One batch file with only incremental deltas (no accumulated)
         StoragePath batchPath = StoragePath.of(TEST_RUN_ID + "/raw/000/000/batch_0000000000000001000_0000000000000001000.pb");
-        when(storageRead.listBatchFiles(eq(TEST_RUN_ID + "/raw/"), any(), eq(1), eq(SortOrder.DESCENDING)))
-            .thenReturn(new BatchFileListResult(List.of(batchPath), null, false));
+        when(storageRead.findLastBatchFile(TEST_RUN_ID + "/raw/")).thenReturn(Optional.of(batchPath));
 
         TickDataChunk chunk = createChunkWithoutAccumulatedDelta(1000);
         when(storageRead.readChunkBatch(batchPath)).thenReturn(List.of(chunk));
@@ -115,8 +110,7 @@ class SnapshotLoaderTest {
 
         // Setup: Batch file with accumulated delta at 1040 but ticks go up to 1060
         StoragePath originalPath = StoragePath.of(TEST_RUN_ID + "/raw/000/000/batch_0000000000000001000_0000000000000001060.pb");
-        when(storageRead.listBatchFiles(eq(TEST_RUN_ID + "/raw/"), any(), eq(1), eq(SortOrder.DESCENDING)))
-            .thenReturn(new BatchFileListResult(List.of(originalPath), null, false));
+        when(storageRead.findLastBatchFile(TEST_RUN_ID + "/raw/")).thenReturn(Optional.of(originalPath));
 
         TickDataChunk chunk = createChunkWithAccumulatedDeltaAndExtra(1000, 1040, 1060);
         when(storageRead.readChunkBatch(originalPath)).thenReturn(List.of(chunk));
@@ -162,8 +156,7 @@ class SnapshotLoaderTest {
         when(storageRead.readMessage(eq(metadataPath), any())).thenReturn(metadata);
 
         // No batch files
-        when(storageRead.listBatchFiles(any(), any(), eq(1), eq(SortOrder.DESCENDING)))
-            .thenReturn(new BatchFileListResult(List.of(), null, false));
+        when(storageRead.findLastBatchFile(TEST_RUN_ID + "/raw/")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> loader.loadLatestCheckpoint(TEST_RUN_ID))
             .isInstanceOf(ResumeException.class)
@@ -180,8 +173,7 @@ class SnapshotLoaderTest {
 
         // Batch file exists but is empty
         StoragePath batchPath = StoragePath.of(TEST_RUN_ID + "/raw/batch.pb");
-        when(storageRead.listBatchFiles(any(), any(), eq(1), eq(SortOrder.DESCENDING)))
-            .thenReturn(new BatchFileListResult(List.of(batchPath), null, false));
+        when(storageRead.findLastBatchFile(TEST_RUN_ID + "/raw/")).thenReturn(Optional.of(batchPath));
         when(storageRead.readChunkBatch(batchPath)).thenReturn(List.of());
 
         assertThatThrownBy(() -> loader.loadLatestCheckpoint(TEST_RUN_ID))

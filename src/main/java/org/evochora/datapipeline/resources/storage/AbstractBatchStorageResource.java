@@ -27,6 +27,7 @@ import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.resources.AbstractResource;
 import org.evochora.datapipeline.resources.storage.wrappers.MonitoredAnalyticsStorageWriter;
 import org.evochora.datapipeline.resources.storage.wrappers.MonitoredBatchStorageReader;
+import org.evochora.datapipeline.resources.storage.wrappers.MonitoredBatchStorageReadWriter;
 import org.evochora.datapipeline.resources.storage.wrappers.MonitoredBatchStorageWriter;
 import org.evochora.datapipeline.utils.compression.ICompressionCodec;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
@@ -516,9 +517,9 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
             throw new IllegalArgumentException("maxResults must be > 0");
         }
 
-        // Delegate to subclass to get all files with prefix (potentially paginated internally)
+        // Delegate to subclass to get all files with prefix
         // listRaw returns PHYSICAL paths (with compression extensions)
-        // Request more results to account for potential duplicates that will be filtered
+        // Note: For descending order / finding the last batch, use findLastBatchFile() instead
         List<String> allPhysicalFiles = listRaw(prefix, false, continuationToken, (maxResults + 1) * 2, startTick, endTick);
 
         // Filter to batch files and sort lexicographically (ascending tick order)
@@ -561,11 +562,8 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
             }
         }
 
-        // Apply sort order: deduplicatedByFirstTick is already in ascending order from LinkedHashMap
+        // deduplicatedByFirstTick is already in ascending order from LinkedHashMap
         List<String> sortedPaths = new ArrayList<>(deduplicatedByFirstTick.values());
-        if (sortOrder == IBatchStorageRead.SortOrder.DESCENDING) {
-            java.util.Collections.reverse(sortedPaths);
-        }
 
         // Convert to StoragePath list with limit
         List<StoragePath> batchFiles = sortedPaths.stream()
@@ -704,6 +702,9 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      * <ul>
      *   <li>storage-write - Returns a {@link MonitoredBatchStorageWriter} that tracks write metrics</li>
      *   <li>storage-read - Returns a {@link MonitoredBatchStorageReader} that tracks read metrics</li>
+     *   <li>storage-readwrite - Returns a {@link MonitoredBatchStorageReadWriter} for services needing both
+     *       read and write access (e.g., SimulationEngine in resume mode)</li>
+     *   <li>analytics-write - Returns a {@link MonitoredAnalyticsStorageWriter} for analytics data</li>
      * </ul>
      *
      * @param context The resource context containing usage type and service information
@@ -724,10 +725,11 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         return switch (context.usageType()) {
             case "storage-write" -> new MonitoredBatchStorageWriter(this, context);
             case "storage-read" -> new MonitoredBatchStorageReader(this, context);
+            case "storage-readwrite" -> new MonitoredBatchStorageReadWriter(this, context);
             case "analytics-write" -> new MonitoredAnalyticsStorageWriter(this, context);
             default -> throw new IllegalArgumentException(String.format(
                 "Unsupported usage type '%s' for storage resource '%s'. " +
-                "Supported types: storage-write, storage-read, analytics-write",
+                "Supported types: storage-write, storage-read, storage-readwrite, analytics-write",
                 context.usageType(), getResourceName()
             ));
         };

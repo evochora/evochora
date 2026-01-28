@@ -309,4 +309,33 @@ public interface IBatchStorageRead extends IResource {
      * @throws IllegalArgumentException If prefix is null, ticks invalid, or maxResults <= 0
      */
     BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults, long startTick, long endTick) throws IOException;
+
+    /**
+     * Finds the last (most recent by tick number) batch file for a given run prefix.
+     * <p>
+     * This method is optimized for efficiently finding the last batch file without loading
+     * all batch file names. Each storage backend can implement this optimally:
+     * <ul>
+     *   <li>Filesystem: Traverse folder hierarchy from highest-numbered folders</li>
+     *   <li>S3: Use reverse listing or folder-based traversal</li>
+     * </ul>
+     * <p>
+     * <strong>Primary use case:</strong> Resume operations that need to find the last
+     * checkpoint to restore simulation state.
+     * <p>
+     * <strong>Example usage (SnapshotLoader finding last batch for resume):</strong>
+     * <pre>
+     * Optional&lt;StoragePath&gt; lastBatch = storage.findLastBatchFile("sim123/raw/");
+     * if (lastBatch.isPresent()) {
+     *     List&lt;TickDataChunk&gt; chunks = storage.readChunkBatch(lastBatch.get());
+     *     // Resume from last chunk...
+     * }
+     * </pre>
+     *
+     * @param runIdPrefix The run prefix to search (e.g., "runId/raw/")
+     * @return Optional containing the path to the last batch file, or empty if no batches exist
+     * @throws IOException If storage access fails
+     * @throws IllegalArgumentException If runIdPrefix is null
+     */
+    Optional<StoragePath> findLastBatchFile(String runIdPrefix) throws IOException;
 }

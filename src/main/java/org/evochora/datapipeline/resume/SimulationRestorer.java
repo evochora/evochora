@@ -125,7 +125,7 @@ public class SimulationRestorer {
         TickData snapshot = checkpoint.snapshot();
         TickDelta accumulatedDelta = checkpoint.accumulatedDelta();
 
-        log.info("Restoring simulation {} from tick {}",
+        log.debug("Restoring simulation {} from tick {}",
             metadata.getSimulationRunId(), checkpoint.getCheckpointTick());
 
         // 1. Parse config from metadata
@@ -175,7 +175,7 @@ public class SimulationRestorer {
             pluginStates = snapshot.getPluginStatesList();
         }
 
-        log.info("Resume state: currentTick={}, totalOrganismsCreated={}, organisms={}",
+        log.debug("Resume state: currentTick={}, totalOrganismsCreated={}, organisms={}",
             currentTick, totalOrganismsCreated, organismStates.size());
 
         // 6. Create Simulation using forResume()
@@ -197,7 +197,7 @@ public class SimulationRestorer {
         // 8. Restore ProgramArtifacts
         Map<String, ProgramArtifact> programs = restoreProgramArtifacts(metadata);
         simulation.setProgramArtifacts(programs);
-        log.info("Restored {} program artifacts", programs.size());
+        log.debug("Restored {} program artifacts", programs.size());
 
         // 9. Restore Organisms
         for (OrganismState state : organismStates) {
@@ -207,7 +207,7 @@ public class SimulationRestorer {
             Organism organism = restoreOrganism(state, simulation);
             simulation.addOrganism(organism);
         }
-        log.info("Restored {} live organisms", simulation.getOrganisms().size());
+        log.debug("Restored {} live organisms", simulation.getOrganisms().size());
 
         // 10. Restore TickPlugins (with their configs for SimulationEngine)
         List<PluginWithConfig> pluginsWithConfig = restoreTickPlugins(
@@ -218,7 +218,7 @@ public class SimulationRestorer {
         for (PluginWithConfig pwc : pluginsWithConfig) {
             simulation.addTickPlugin(pwc.plugin());
         }
-        log.info("Restored {} tick plugins", pluginsWithConfig.size());
+        log.debug("Restored {} tick plugins", pluginsWithConfig.size());
 
         // 11. Build and return RestoredState
         return new RestoredState(

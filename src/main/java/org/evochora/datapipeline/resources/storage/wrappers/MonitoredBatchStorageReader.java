@@ -93,6 +93,11 @@ public class MonitoredBatchStorageReader implements IResourceBatchStorageRead, I
     }
 
     @Override
+    public java.util.Optional<StoragePath> findLastBatchFile(String runIdPrefix) throws IOException {
+        return delegate.findLastBatchFile(runIdPrefix);
+    }
+
+    @Override
     public List<TickDataChunk> readChunkBatch(StoragePath path) throws IOException {
         long startNanos = System.nanoTime();
         try {

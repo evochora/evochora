@@ -11,9 +11,7 @@ import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TickDelta;
-import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
-import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead.SortOrder;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.slf4j.Logger;
@@ -91,19 +89,17 @@ public class SnapshotLoader {
                 runId, metadata.getSimulationRunId()));
         }
 
-        log.info("Loaded metadata for run: {}", runId);
+        log.debug("Loaded metadata for run: {}", runId);
 
         // 2. Find last batch file
-        // Note: listBatchFiles() already handles deduplication for crash recovery
-        // Use DESCENDING order with limit=1 to efficiently get only the last batch file
-        BatchFileListResult batches = storageRead.listBatchFiles(
-            runId + "/raw/", null, 1, SortOrder.DESCENDING);
-        if (batches.getFilenames().isEmpty()) {
+        // Uses optimized folder traversal to find the last batch efficiently
+        Optional<StoragePath> lastBatchOpt = storageRead.findLastBatchFile(runId + "/raw/");
+        if (lastBatchOpt.isEmpty()) {
             throw new ResumeException("No tick data found for run: " + runId);
         }
 
-        StoragePath lastBatchPath = batches.getFilenames().get(0);
-        log.info("Found last batch file: {}", lastBatchPath);
+        StoragePath lastBatchPath = lastBatchOpt.get();
+        log.debug("Found last batch file: {}", lastBatchPath);
 
         // 3. Read all chunks from last batch
         List<TickDataChunk> chunks = storageRead.readChunkBatch(lastBatchPath);
@@ -112,7 +108,7 @@ public class SnapshotLoader {
         }
         TickDataChunk lastChunk = chunks.get(chunks.size() - 1);
 
-        log.info("Read {} chunks from batch, last chunk: ticks {}-{}",
+        log.debug("Read {} chunks from batch, last chunk: ticks {}-{}",
             chunks.size(), lastChunk.getFirstTick(), lastChunk.getLastTick());
 
         // 4. Find last accumulated delta
@@ -134,7 +130,7 @@ public class SnapshotLoader {
         boolean needsTruncation = lastChunk.getLastTick() > resumePointTick;
 
         if (needsTruncation) {
-            log.info("Truncating last chunk: removing ticks {} to {} (resume point: {})",
+            log.debug("Truncating last chunk: removing ticks {} to {} (resume point: {})",
                 resumePointTick + 1, lastChunk.getLastTick(), resumePointTick);
 
             // 6a. Truncate the last chunk
@@ -157,25 +153,21 @@ public class SnapshotLoader {
             long newLastTick = truncatedBatch.get(truncatedBatch.size() - 1).getLastTick();
             StoragePath truncatedPath = storageWrite.writeChunkBatch(
                 truncatedBatch, newFirstTick, newLastTick);
-            log.info("Wrote truncated batch: {} (ticks {}-{})",
+            log.debug("Wrote truncated batch: {} (ticks {}-{})",
                 truncatedPath, newFirstTick, newLastTick);
 
             // 6d. Move original to superseded (if crash before this, load-time
             //     heuristic will prefer truncated file with smaller lastTick)
             storageWrite.moveToSuperseded(lastBatchPath);
-            log.info("Moved original batch to superseded: {}", lastBatchPath);
+            log.debug("Moved original batch to superseded: {}", lastBatchPath);
 
             // Use truncated chunk for state reconstruction
             lastChunk = truncatedChunk;
         }
 
         // Log resume point info
-        if (lastAccumulatedDelta != null) {
-            log.info("Resuming from accumulated delta at tick {}", resumePointTick);
-        } else {
-            log.info("No accumulated delta found, resuming from snapshot at tick {}",
-                resumePointTick);
-        }
+        log.debug("Resume point: tick {} (from {})",
+            resumePointTick, lastAccumulatedDelta != null ? "accumulated delta" : "snapshot");
 
         return new ResumeCheckpoint(
             metadata,

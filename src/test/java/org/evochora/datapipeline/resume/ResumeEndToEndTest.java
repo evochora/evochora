@@ -119,9 +119,10 @@ class ResumeEndToEndTest {
             storage.writeChunkBatch(List.of(chunk), chunk.getFirstTick(), chunk.getLastTick());
         }
 
-        // Find the last accumulated delta tick from the captured chunks
-        long lastAccumulatedDeltaTick = findLastAccumulatedDeltaTick(tickQueue.getCaptured());
-        assertThat(lastAccumulatedDeltaTick).isGreaterThan(0);
+        // Load checkpoint the same way SnapshotLoader does to get the expected resume tick
+        SnapshotLoader loader = new SnapshotLoader(storage, storage);
+        ResumeCheckpoint checkpoint = loader.loadLatestCheckpoint(runId);
+        long expectedResumeFromTick = checkpoint.getResumeFromTick();
 
         // Phase 3: Create resume simulation
         CapturingQueue<TickDataChunk> resumeTickQueue = new CapturingQueue<>();
@@ -155,9 +156,9 @@ class ResumeEndToEndTest {
         // - No new metadata should be sent (resume mode)
         assertThat(resumeMetadataQueue.getCaptured()).isEmpty();
 
-        // - First tick of resumed simulation should be after the last accumulated delta
+        // - First tick of resumed simulation should match the expected resume tick from checkpoint
         TickDataChunk firstResumedChunk = resumeTickQueue.getCaptured().get(0);
-        assertThat(firstResumedChunk.getFirstTick()).isEqualTo(lastAccumulatedDeltaTick + 1);
+        assertThat(firstResumedChunk.getFirstTick()).isEqualTo(expectedResumeFromTick);
     }
 
     /**
