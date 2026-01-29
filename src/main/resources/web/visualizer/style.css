@@ -484,7 +484,7 @@ body {
     margin-top: 1px;
     pointer-events: none;
     transform-origin: center;
-    transform: scaleX(0);
+    transform: scaleX(0.3);
 }
 
 /* When active, animate scale from center */
@@ -495,13 +495,13 @@ body {
 
 @keyframes loading-pulse {
     0% {
-        transform: scaleX(0);
+        transform: scaleX(0.3);
     }
     50% {
         transform: scaleX(1);
     }
     100% {
-        transform: scaleX(0);
+        transform: scaleX(0.3);
     }
 }
 

@@ -106,7 +106,10 @@ export class AppController {
         // Setup viewport change handler (environment only, organisms are cached per tick)
         this.renderer.onViewportChange = () => {
             this.loadEnvironmentForCurrentViewport();
-            // Update minimap viewport rectangle
+        };
+
+        // Setup camera moved handler (immediate visual feedback, not debounced)
+        this.renderer.onCameraMoved = () => {
             this.updateMinimapViewport();
         };
 

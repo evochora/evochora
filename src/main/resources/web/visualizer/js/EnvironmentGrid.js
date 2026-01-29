@@ -49,8 +49,8 @@ export class EnvironmentGrid {
         this.currentRunId = null;
         this.currentOrganisms = [];
         this.cellData = new Map(); // key: "x,y" -> {type,value,ownerId,opcodeName}
-        this._rawCells = null;      // Raw cells from API (for lazy cellData building)
-        this._cellDataDirty = false; // Flag for lazy cellData building
+        this._rawCells = null;      // Raw cells from API (for async cellData building)
+        this._cellDataReady = false; // Flag: true when cellData map is fully built
 
         // --- Prefetch Management ---
         this._prefetchAbortController = null;  // Separate controller for background prefetch
@@ -70,6 +70,7 @@ export class EnvironmentGrid {
         this.cameraStartX = 0;
         this.cameraStartY = 0;
         this.viewportLoadTimeout = null;
+        this._stageUpdatePending = false; // RAF throttle flag for stage position updates
 
         // --- Virtual Scrollbar Elements ---
         this.vScrollTrack = document.getElementById('scrollbar-track-v');
@@ -227,7 +228,26 @@ export class EnvironmentGrid {
         this.app.stage.y = -this.cameraY;
         this.updateScrollbars();
     }
-    
+
+    /**
+     * Schedules a stage position update for the next animation frame.
+     * Throttles rapid updates (e.g., from high-frequency mouse events) to max once per frame.
+     * @private
+     */
+    _scheduleStageUpdate() {
+        if (this._stageUpdatePending) return;
+        this._stageUpdatePending = true;
+        requestAnimationFrame(() => {
+            this.clampCameraToWorld();
+            this.updateStagePosition();
+            this._stageUpdatePending = false;
+            // Notify camera moved (for immediate visual feedback like minimap)
+            if (this.onCameraMoved) {
+                this.onCameraMoved();
+            }
+        });
+    }
+
     /**
      * Calculates the visible region in grid coordinates based on camera and viewport.
      * @returns {{x1: number, x2: number, y1: number, y2: number}}
@@ -292,11 +312,8 @@ export class EnvironmentGrid {
             this._fullWorldPrefetched = false; // Reset prefetch state on tick change
         }
 
-        // Abort any running prefetch when viewport changes (user scrolled)
-        if (this._prefetchAbortController) {
-            this._prefetchAbortController.abort();
-            this._prefetchAbortController = null;
-        }
+        // Note: We intentionally do NOT abort running prefetch when viewport changes.
+        // Prefetch loads in background and will complete, making future pans faster.
 
         // Check if all cells in viewport have been loaded
         if (renderer.isRegionFullyLoaded(viewport)) {
@@ -337,14 +354,9 @@ export class EnvironmentGrid {
         // --- Update Zoomed-Out Cache ---
         // The renderer tracks loaded regions internally when renderCells is called
 
-        // --- Timing: Build cell lookup map ---
-        const mapStart = performance.now();
-        
-        // Store raw cells for lazy tooltip lookup (avoid upfront Map building for large datasets)
+        // Store raw cells and start async map building for tooltips
         this._rawCells = data.cells;
-        this._cellDataDirty = true;
-        
-        const mapTime = performance.now() - mapStart;
+        this._buildCellDataAsync();  // Non-blocking, runs in background
 
         // --- Timing: Render cells ---
         const renderStart = performance.now();
@@ -356,9 +368,7 @@ export class EnvironmentGrid {
         
         // Log post-fetch timing (complements EnvironmentApi profiling)
         console.debug(`[EnvironmentGrid] Tick ${tick}`, {
-            cellMapMs: mapTime.toFixed(1),
             renderMs: renderTime.toFixed(1),
-            totalPostFetchMs: (mapTime + renderTime).toFixed(1),
             cells: data.cells.length
         });
 
@@ -402,6 +412,9 @@ export class EnvironmentGrid {
         // Skip if already prefetched for this tick
         if (this._fullWorldPrefetched) return;
 
+        // Skip if a prefetch is already running (let it complete)
+        if (this._prefetchAbortController) return;
+
         // Skip if world size unknown
         if (!this.worldWidthCells || !this.worldHeightCells) return;
 
@@ -429,7 +442,8 @@ export class EnvironmentGrid {
                 const data = await this.environmentApi.fetchEnvironmentData(tick, fullRegion, {
                     runId: runId,
                     signal: this._prefetchAbortController.signal,
-                    includeMinimap: false  // Already have minimap
+                    includeMinimap: false,  // Already have minimap
+                    showLoading: false      // Prefetch should not trigger loading indicator
                 });
 
                 // Verify we're still in the same state before rendering
@@ -438,12 +452,12 @@ export class EnvironmentGrid {
                     return;
                 }
 
-                // Render the prefetched cells (accumulates into existing pixel buffer)
-                this.zoomedOutRenderer.renderCells(data.cells, fullRegion);
-                this._fullWorldPrefetched = true;
-
-                const prefetchTime = (performance.now() - prefetchStart).toFixed(0);
-                console.debug(`[Prefetch] Full world prefetch completed in ${prefetchTime}ms (${data.cells.length} cells)`);
+                // Render when browser is idle to avoid blocking user interactions
+                requestIdleCallback(() => {
+                    if (!this.isZoomedOut || this.zoomedOutRenderer._loadedTick !== tick) return;
+                    this.zoomedOutRenderer.renderCells(data.cells, fullRegion);
+                    this._fullWorldPrefetched = true;
+                }, { timeout: 100 });
 
             } catch (error) {
                 if (error.name !== 'AbortError') {
@@ -465,6 +479,9 @@ export class EnvironmentGrid {
      * @private
      */
     _triggerRingPrefetch(tick, runId, viewport, ringNumber) {
+        // Skip if a prefetch is already running (let it complete)
+        if (this._prefetchAbortController) return;
+
         // Skip if world size unknown
         if (!this.worldWidthCells || !this.worldHeightCells) return;
 
@@ -501,7 +518,8 @@ export class EnvironmentGrid {
                 const data = await this.environmentApi.fetchEnvironmentData(tick, expandedRegion, {
                     runId: runId,
                     signal: this._prefetchAbortController.signal,
-                    includeMinimap: false
+                    includeMinimap: false,
+                    showLoading: false  // Prefetch should not trigger loading indicator
                 });
 
                 // Verify we're still in the same state before rendering
@@ -510,11 +528,11 @@ export class EnvironmentGrid {
                     return;
                 }
 
-                // Render the prefetched cells
-                this.detailedRenderer.renderCells(data.cells, expandedRegion);
-
-                const prefetchTime = (performance.now() - prefetchStart).toFixed(0);
-                console.debug(`[Prefetch] Ring ${ringNumber} completed in ${prefetchTime}ms (${data.cells.length} cells)`);
+                // Render when browser is idle to avoid blocking user interactions
+                requestIdleCallback(() => {
+                    if (this.isZoomedOut || this.detailedRenderer._loadedTick !== tick) return;
+                    this.detailedRenderer.renderCells(data.cells, expandedRegion);
+                }, { timeout: 100 });
 
             } catch (error) {
                 if (error.name !== 'AbortError') {
@@ -558,25 +576,18 @@ export class EnvironmentGrid {
      */
     centerOn(cellX, cellY) {
         const cellSize = this.getCurrentCellSize();
-        
+
         // Convert cell coordinates to pixel coordinates
         const worldX = cellX * cellSize;
         const worldY = cellY * cellSize;
-        
+
         // Center the camera on this position
         this.cameraX = worldX - this.viewportWidth / 2;
         this.cameraY = worldY - this.viewportHeight / 2;
-        
-        // Clamp camera to world bounds
-        this.clampCameraToWorld();
-        
-        // Update stage position
-        this.updateStagePosition();
-        
-        // Trigger viewport reload to show the new region
-        if (this.onViewportChange) {
-            this.onViewportChange();
-        }
+
+        // Use throttled update (same as panning) to avoid blocking during minimap drag
+        this._scheduleStageUpdate();
+        this.requestViewportLoad();
     }
 
     /**
@@ -675,8 +686,7 @@ export class EnvironmentGrid {
                     this.cameraX = this.cameraStartX - dx;
                     this.cameraY = this.cameraStartY - dy;
 
-                    this.clampCameraToWorld();
-                    this.updateStagePosition();
+                    this._scheduleStageUpdate();
                     this.requestViewportLoad();
                 }
             };
@@ -732,8 +742,7 @@ export class EnvironmentGrid {
                 const cameraDeltaX = (dx / trackWidth) * scrollableWidth;
                 this.cameraX = startCameraX + cameraDeltaX;
 
-                this.clampCameraToWorld();
-                this.updateStagePosition();
+                this._scheduleStageUpdate();
                 this.requestViewportLoad(); // Debounced load
             };
 
@@ -761,8 +770,7 @@ export class EnvironmentGrid {
                 const cameraDeltaY = (dy / trackHeight) * scrollableHeight;
                 this.cameraY = startCameraY + cameraDeltaY;
 
-                this.clampCameraToWorld();
-                this.updateStagePosition();
+                this._scheduleStageUpdate();
                 this.requestViewportLoad(); // Debounced load
             };
 
@@ -973,28 +981,42 @@ export class EnvironmentGrid {
     }
 
     /**
-     * Lazily builds the cellData map from raw cells (only when needed for tooltips).
-     * This avoids the upfront cost of building a Map for 1M+ cells.
+     * Builds the cellData map asynchronously in chunks to avoid blocking the UI.
+     * Tooltips are unavailable until the map is fully built.
      * @private
      */
-    _ensureCellDataBuilt() {
-        if (!this._cellDataDirty || !this._rawCells) return;
-        
+    async _buildCellDataAsync() {
+        if (!this._rawCells) return;
+
+        this._cellDataReady = false;
         this.cellData.clear();
-        for (const cell of this._rawCells) {
-            const coords = cell.coordinates;
-            if (!Array.isArray(coords) || coords.length < 2) continue;
-            const key = `${coords[0]},${coords[1]}`;
-            this.cellData.set(key, {
-                type: this.detailedRenderer.typeMapping[cell.moleculeType] ?? 0,
-                value: cell.moleculeValue,
-                ownerId: cell.ownerId,
-                opcodeName: cell.opcodeName || null,
-                opcodeId: cell.opcodeId,  // Raw ID for tooltip (unknown opcodes show full ID)
-                marker: cell.marker || 0
-            });
+
+        const CHUNK_SIZE = 50000;
+        const cells = this._rawCells;
+
+        for (let i = 0; i < cells.length; i += CHUNK_SIZE) {
+            const end = Math.min(i + CHUNK_SIZE, cells.length);
+
+            for (let j = i; j < end; j++) {
+                const cell = cells[j];
+                const coords = cell.coordinates;
+                if (!Array.isArray(coords) || coords.length < 2) continue;
+                const key = `${coords[0]},${coords[1]}`;
+                this.cellData.set(key, {
+                    type: this.detailedRenderer.typeMapping[cell.moleculeType] ?? 0,
+                    value: cell.moleculeValue,
+                    ownerId: cell.ownerId,
+                    opcodeName: cell.opcodeName || null,
+                    opcodeId: cell.opcodeId,
+                    marker: cell.marker || 0
+                });
+            }
+
+            // Yield to browser between chunks to keep UI responsive
+            await new Promise(resolve => setTimeout(resolve, 0));
         }
-        this._cellDataDirty = false;
+
+        this._cellDataReady = true;
     }
     
     /**
@@ -1002,13 +1024,15 @@ export class EnvironmentGrid {
      *
      * @param {number} gridX - The grid X coordinate.
      * @param {number} gridY - The grid Y coordinate.
-     * @returns {object|null} The cell data object, or a default object for an empty cell.
+     * @returns {object|null} The cell data object, null if map not ready, or default for empty cell.
      * @private
      */
     findCellAt(gridX, gridY) {
-        // Lazily build cellData map on first tooltip access
-        this._ensureCellDataBuilt();
-        
+        // Return null if cellData map is still being built
+        if (!this._cellDataReady) {
+            return null;
+        }
+
         const key = `${gridX},${gridY}`;
         return this.cellData.get(key) || {
             type: 0,

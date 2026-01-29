@@ -236,7 +236,7 @@ class SimulationEngineResumeTest {
     /**
      * Simple mock storage resource for resume mode (read-only).
      */
-    private static class StorageResourceMock implements IBatchStorageRead, IResource {
+    private static class StorageResourceMock implements IBatchStorageRead {
         private Optional<StoragePath> metadataPath = Optional.empty();
         private SimulationMetadata metadata;
         private StoragePath batchPath;

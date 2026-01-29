@@ -32,6 +32,10 @@ export class MinimapRenderer {
         this.ctx = canvas.getContext('2d', { alpha: false });
         this.palette = palette;
         this.lastMinimapData = null;
+
+        // Off-screen canvas for caching background (environment + organisms)
+        this._cacheCanvas = document.createElement('canvas');
+        this._cacheCtx = this._cacheCanvas.getContext('2d', { alpha: false });
     }
 
     /**
@@ -106,6 +110,27 @@ export class MinimapRenderer {
         // Inner subtle fill to make it more visible
         this.ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
         this.ctx.fillRect(rectX, rectY, rectW, rectH);
+    }
+
+    /**
+     * Caches the current canvas content (environment + organisms) for fast restoration.
+     * Call this after rendering environment and organism overlay, before drawing viewport rect.
+     */
+    cacheBackground() {
+        if (this._cacheCanvas.width !== this.canvas.width ||
+            this._cacheCanvas.height !== this.canvas.height) {
+            this._cacheCanvas.width = this.canvas.width;
+            this._cacheCanvas.height = this.canvas.height;
+        }
+        this._cacheCtx.drawImage(this.canvas, 0, 0);
+    }
+
+    /**
+     * Restores the cached background (environment + organisms) onto the canvas.
+     * Use this before drawing the viewport rect to avoid full re-render.
+     */
+    restoreBackground() {
+        this.ctx.drawImage(this._cacheCanvas, 0, 0);
     }
 
     /**
