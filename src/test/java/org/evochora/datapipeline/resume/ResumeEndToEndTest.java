@@ -1,6 +1,7 @@
 package org.evochora.datapipeline.resume;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.fail;
 import static org.awaitility.Awaitility.await;
 
 import java.io.IOException;
@@ -122,7 +123,11 @@ class ResumeEndToEndTest {
         // Load checkpoint the same way SnapshotLoader does to get the expected resume tick
         SnapshotLoader loader = new SnapshotLoader(storage);
         ResumeCheckpoint checkpoint = loader.loadLatestCheckpoint(runId);
-        long expectedResumeFromTick = checkpoint.getResumeFromTick();
+
+        // The first chunk after resume starts at the checkpoint snapshot tick.
+        // The encoder is initialized with the checkpoint snapshot, so the chunk's firstTick
+        // equals the snapshot's tick number.
+        long expectedFirstTick = checkpoint.getCheckpointTick();
 
         // Phase 3: Create resume simulation
         CapturingQueue<TickDataChunk> resumeTickQueue = new CapturingQueue<>();
@@ -156,9 +161,69 @@ class ResumeEndToEndTest {
         // - No new metadata should be sent (resume mode)
         assertThat(resumeMetadataQueue.getCaptured()).isEmpty();
 
-        // - First tick of resumed simulation should match the expected resume tick from checkpoint
+        // - First tick of resumed simulation should be at chunk boundary containing resumeFromTick
+        // (recapture overwrites any orphaned batch and ensures notification is sent)
         TickDataChunk firstResumedChunk = resumeTickQueue.getCaptured().get(0);
-        assertThat(firstResumedChunk.getFirstTick()).isEqualTo(expectedResumeFromTick);
+        assertThat(firstResumedChunk.getFirstTick()).isEqualTo(expectedFirstTick);
+
+        // Phase 6: Verify NO GAPS or unexpected OVERLAPS in combined chunk sequence
+        // Combine initial chunks with resumed chunks and verify continuity
+        List<TickDataChunk> allChunks = new ArrayList<>();
+        allChunks.addAll(tickQueue.getCaptured());
+        allChunks.addAll(resumeTickQueue.getCaptured());
+        assertNoGapsOrUnexpectedOverlaps(allChunks, expectedFirstTick);
+    }
+
+    /**
+     * Verifies that a list of chunks has no gaps and no unexpected overlaps.
+     * <p>
+     * Expected behavior after resume:
+     * <ul>
+     *   <li>Chunks should be contiguous (no gaps)</li>
+     *   <li>The recaptured chunk may duplicate the last chunk from initial run (expected overlap)</li>
+     *   <li>All other chunks should not overlap</li>
+     * </ul>
+     *
+     * @param chunks all chunks in order of production
+     * @param recapturedFirstTick the firstTick of the recaptured chunk (expected duplicate)
+     */
+    private void assertNoGapsOrUnexpectedOverlaps(List<TickDataChunk> chunks, long recapturedFirstTick) {
+        if (chunks.size() < 2) {
+            return; // Nothing to verify with 0 or 1 chunks
+        }
+
+        // Sort by firstTick to handle any ordering issues
+        List<TickDataChunk> sorted = chunks.stream()
+            .sorted((a, b) -> Long.compare(a.getFirstTick(), b.getFirstTick()))
+            .toList();
+
+        for (int i = 1; i < sorted.size(); i++) {
+            TickDataChunk prev = sorted.get(i - 1);
+            TickDataChunk curr = sorted.get(i);
+
+            long expectedNextStart = prev.getLastTick() + 1;
+            long actualStart = curr.getFirstTick();
+
+            if (actualStart == prev.getFirstTick()) {
+                // Duplicate chunk (recapture case) - verify it's the expected recaptured chunk
+                assertThat(actualStart)
+                    .as("Duplicate chunk at tick %d should be the recaptured chunk at tick %d",
+                        actualStart, recapturedFirstTick)
+                    .isEqualTo(recapturedFirstTick);
+            } else if (actualStart < expectedNextStart) {
+                // Unexpected overlap
+                fail("Unexpected overlap: chunk [%d-%d] overlaps with chunk [%d-%d]",
+                    prev.getFirstTick(), prev.getLastTick(),
+                    curr.getFirstTick(), curr.getLastTick());
+            } else if (actualStart > expectedNextStart) {
+                // Gap detected
+                fail("Gap detected: missing ticks %d-%d between chunk [%d-%d] and chunk [%d-%d]",
+                    expectedNextStart, actualStart - 1,
+                    prev.getFirstTick(), prev.getLastTick(),
+                    curr.getFirstTick(), curr.getLastTick());
+            }
+            // else: actualStart == expectedNextStart → perfect continuity ✓
+        }
     }
 
     /**

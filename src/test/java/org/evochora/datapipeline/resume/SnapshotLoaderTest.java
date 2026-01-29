@@ -183,6 +183,10 @@ class SnapshotLoaderTest {
             .setSimulationRunId(runId)
             .setStartTimeMs(System.currentTimeMillis())
             .setInitialSeed(42)
+            .setSamplingInterval(1)
+            .setAccumulatedDeltaInterval(5)
+            .setSnapshotInterval(20)
+            .setChunkInterval(1)
             .build();
     }
 

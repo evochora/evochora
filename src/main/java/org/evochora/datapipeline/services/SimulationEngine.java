@@ -34,6 +34,7 @@ import org.evochora.datapipeline.api.contracts.SourceInfo;
 import org.evochora.datapipeline.api.contracts.SourceLines;
 import org.evochora.datapipeline.api.contracts.SourceMapEntry;
 import org.evochora.datapipeline.api.contracts.PluginState;
+import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TokenInfo;
 import org.evochora.datapipeline.api.contracts.TokenMapEntry;
@@ -97,6 +98,11 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     /**
      * Holds the initialized state from either resume or new simulation mode.
      * This record allows both initialization paths to produce the same output structure.
+     * Includes delta compression intervals to ensure resume uses original values from metadata.
+     *
+     * @param resumeSnapshot checkpoint snapshot for resume mode (null for new simulations).
+     *                       When present, the encoder is initialized with this snapshot so
+     *                       subsequent ticks are treated as deltas within the same chunk.
      */
     private record InitializedState(
         Simulation simulation,
@@ -106,7 +112,12 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         String runId,
         long seed,
         long startTimeMs,
-        long initialTick
+        long initialTick,
+        int samplingInterval,
+        int accumulatedDeltaInterval,
+        int snapshotInterval,
+        int chunkInterval,
+        TickData resumeSnapshot
     ) {}
 
     public SimulationEngine(String name, Config options, Map<String, List<IResource>> resources) {
@@ -119,11 +130,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         this.tickDataOutput = initializeTickQueue();
         this.metadataOutput = initializeMetadataQueue();
 
-        // Common configuration
-        this.samplingInterval = readPositiveInt(options, "samplingInterval", 1);
-        this.accumulatedDeltaInterval = readInt(options, "accumulatedDeltaInterval", SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL);
-        this.snapshotInterval = readInt(options, "snapshotInterval", SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL);
-        this.chunkInterval = readInt(options, "chunkInterval", SimulationParameters.DEFAULT_CHUNK_INTERVAL);
+        // Common configuration (intervals come from InitializedState to support resume from metadata)
         this.metricsWindowSeconds = readInt(options, "metricsWindowSeconds", 1);
         this.pauseTicks = options.hasPath("pauseTicks") ? options.getLongList("pauseTicks") : Collections.emptyList();
 
@@ -143,8 +150,21 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         this.currentTick.set(state.initialTick());
         state.programInfo().forEach(programInfoByPath::put);
 
+        // Intervals from state (config for new simulation, metadata for resume)
+        this.samplingInterval = state.samplingInterval();
+        this.accumulatedDeltaInterval = state.accumulatedDeltaInterval();
+        this.snapshotInterval = state.snapshotInterval();
+        this.chunkInterval = state.chunkInterval();
+
         // Common finalization
         this.chunkEncoder = createChunkEncoder();
+
+        // For resume: prime encoder with checkpoint snapshot so subsequent ticks are deltas
+        if (state.resumeSnapshot() != null) {
+            this.chunkEncoder.initializeFromSnapshot(state.resumeSnapshot());
+            log.debug("Encoder initialized with checkpoint snapshot at tick {}",
+                state.resumeSnapshot().getTickNumber());
+        }
     }
 
     @SuppressWarnings("unchecked")
@@ -218,6 +238,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
             log.debug("Restored {} organisms from checkpoint", restored.simulation().getOrganisms().size());
 
+            // Get intervals from metadata (must match original simulation!)
+            SimulationMetadata metadata = checkpoint.metadata();
             return new InitializedState(
                 restored.simulation(),
                 randomProvider,
@@ -225,8 +247,13 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 programInfo,
                 runId,
                 seed,
-                checkpoint.metadata().getStartTimeMs(),
-                checkpoint.getResumeFromTick() - 1
+                metadata.getStartTimeMs(),
+                checkpoint.getResumeFromTick() - 1,
+                metadata.getSamplingInterval(),
+                metadata.getAccumulatedDeltaInterval(),
+                metadata.getSnapshotInterval(),
+                metadata.getChunkInterval(),
+                checkpoint.snapshot()  // Pass snapshot to prime the encoder
             );
         } catch (IOException e) {
             throw new IllegalStateException("Failed to load checkpoint: " + e.getMessage(), e);
@@ -317,7 +344,14 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         String runId = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmssSS"))
             + "-" + UUID.randomUUID().toString();
 
-        return new InitializedState(simulation, randomProvider, plugins, programInfo, runId, seed, startTimeMs, -1);
+        return new InitializedState(
+            simulation, randomProvider, plugins, programInfo, runId, seed, startTimeMs, -1,
+            readPositiveInt(options, "samplingInterval", 1),
+            readInt(options, "accumulatedDeltaInterval", SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL),
+            readInt(options, "snapshotInterval", SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL),
+            readInt(options, "chunkInterval", SimulationParameters.DEFAULT_CHUNK_INTERVAL),
+            null  // No resume snapshot for new simulations
+        );
     }
 
     @Override
@@ -364,23 +398,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
             if (tick % samplingInterval == 0) {
                 try {
-                    // Use DeltaCodec.Encoder for delta compression
-                    List<OrganismState> organismStates = extractOrganismStates();
-                    List<PluginState> pluginStates = extractPluginStates();
-                    ByteString rngState = ByteString.copyFrom(randomProvider.saveState());
-                    
-                    java.util.Optional<TickDataChunk> chunk = chunkEncoder.captureTick(
-                            tick,
-                            simulation.getEnvironment(),
-                            organismStates,
-                            simulation.getTotalOrganismsCreatedCount(),
-                            rngState,
-                            pluginStates);
-                    
-                    if (chunk.isPresent()) {
-                        tickDataOutput.put(chunk.get());
-                        messagesSent.incrementAndGet();
-                    }
+                    captureSampledTick(tick);
                 } catch (InterruptedException e) {
                     // Shutdown signal received while sending tick data - this is expected
                     log.debug("Interrupted while sending tick data for tick {} during shutdown", tick);
@@ -397,20 +415,10 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 continue;
             }
         }
-        
-        // Flush any partial chunk on shutdown
-        try {
-            java.util.Optional<TickDataChunk> partialChunk = chunkEncoder.flushPartialChunk();
-            if (partialChunk.isPresent()) {
-                tickDataOutput.put(partialChunk.get());
-                messagesSent.incrementAndGet();
-                log.info("Flushed partial chunk with {} ticks on shutdown", partialChunk.get().getTickCount());
-            }
-        } catch (InterruptedException e) {
-            log.debug("Interrupted while flushing partial chunk during shutdown");
-            Thread.currentThread().interrupt();
-        }
-        
+
+        // Note: No flushPartialChunk() - partial chunks cause duplicate/shifted boundaries on resume.
+        // Only complete chunks are persisted; partial data is discarded and regenerated on resume.
+
         log.info("Simulation loop finished.");
     }
 
@@ -440,6 +448,38 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
     private boolean shouldAutoPause(long tick) { return pauseTicks.contains(tick); }
 
+    /**
+     * Captures the current simulation state for a sampled tick.
+     * <p>
+     * This method extracts all organism states, plugin states, and RNG state,
+     * then passes them to the DeltaCodec.Encoder. If a complete chunk is produced,
+     * it is sent to the tick data output queue.
+     *
+     * @param tick the tick number to capture
+     * @return true if a complete chunk was produced and sent, false otherwise
+     * @throws InterruptedException if interrupted while sending to queue
+     */
+    private boolean captureSampledTick(long tick) throws InterruptedException {
+        List<OrganismState> organismStates = extractOrganismStates();
+        List<PluginState> pluginStates = extractPluginStates();
+        ByteString rngState = ByteString.copyFrom(randomProvider.saveState());
+
+        java.util.Optional<TickDataChunk> chunk = chunkEncoder.captureTick(
+                tick,
+                simulation.getEnvironment(),
+                organismStates,
+                simulation.getTotalOrganismsCreatedCount(),
+                rngState,
+                pluginStates);
+
+        if (chunk.isPresent()) {
+            tickDataOutput.put(chunk.get());
+            messagesSent.incrementAndGet();
+            return true;
+        }
+        return false;
+    }
+
     private List<PluginWithConfig> initializeTickPlugins(List<? extends Config> configs, IRandomProvider random) {
         return configs.stream().map(config -> {
             try {
@@ -459,6 +499,9 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         builder.setStartTimeMs(this.startTimeMs);
         builder.setInitialSeed(this.seed);
         builder.setSamplingInterval(this.samplingInterval);
+        builder.setAccumulatedDeltaInterval(this.accumulatedDeltaInterval);
+        builder.setSnapshotInterval(this.snapshotInterval);
+        builder.setChunkInterval(this.chunkInterval);
 
         EnvironmentProperties envProps = this.simulation.getEnvironment().getProperties();
         EnvironmentConfig.Builder envConfigBuilder = EnvironmentConfig.newBuilder();

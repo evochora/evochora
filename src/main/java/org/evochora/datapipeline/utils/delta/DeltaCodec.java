@@ -136,7 +136,39 @@ public final class DeltaCodec {
             
             this.accumulatedSinceSnapshot = new BitSet(totalCells);
         }
-        
+
+        /**
+         * Initializes the encoder with an existing snapshot for resume scenarios.
+         * <p>
+         * When resuming a simulation, the checkpoint contains a snapshot at the chunk start.
+         * This method primes the encoder with that snapshot so subsequent ticks are treated
+         * as deltas within the same chunk, not as new chunk starts.
+         * <p>
+         * After calling this method:
+         * <ul>
+         *   <li>{@code currentSnapshot} = provided snapshot</li>
+         *   <li>{@code samplesSinceSnapshot} = 1 (snapshot counts as sample 0)</li>
+         *   <li>Next {@code captureTick()} call creates a delta, not a snapshot</li>
+         * </ul>
+         *
+         * @param snapshot the checkpoint snapshot to use as chunk start
+         * @throws IllegalArgumentException if snapshot is null
+         * @throws IllegalStateException if encoder already has data (must be called on fresh encoder)
+         */
+        public void initializeFromSnapshot(TickData snapshot) {
+            if (snapshot == null) {
+                throw new IllegalArgumentException("snapshot cannot be null");
+            }
+            if (currentSnapshot != null || !currentDeltas.isEmpty()) {
+                throw new IllegalStateException("Encoder already has data - initializeFromSnapshot must be called on fresh encoder");
+            }
+
+            this.currentSnapshot = snapshot;
+            this.samplesSinceSnapshot = 1;  // Snapshot counts as sample 0, next tick is sample 1
+            this.snapshotsInChunk = 1;
+            this.accumulatedSinceSnapshot.clear();
+        }
+
         /**
          * Captures a sampled tick and returns a chunk if one is complete.
          * <p>

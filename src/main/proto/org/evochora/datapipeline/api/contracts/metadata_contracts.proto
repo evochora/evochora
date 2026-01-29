@@ -70,6 +70,14 @@ message SimulationMetadata {
   // Source: evochora.conf "runtime.organism" section
   // Defines maximum energy, maximum entropy, and error penalty cost
   OrganismConfig organism_config = 11;
+
+  // Delta compression intervals (must match during resume!)
+  // These values determine chunk boundaries and are stored to ensure
+  // resume uses the same intervals as the original simulation.
+  // Source: SimulationEngine options
+  int32 accumulated_delta_interval = 12;  // Samples between accumulated deltas
+  int32 snapshot_interval = 13;           // Accumulated deltas between snapshots
+  int32 chunk_interval = 14;              // Snapshots per chunk
 }
 
 // Configuration for organism runtime behavior.
