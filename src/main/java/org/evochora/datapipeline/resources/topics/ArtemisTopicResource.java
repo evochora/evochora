@@ -556,6 +556,18 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
         return effectiveTopicName;
     }
 
+    /**
+     * Returns the base topic name (without runId suffix).
+     * <p>
+     * Used by readers to build unique subscription names that include the topic name,
+     * preventing queue name collisions between different topics.
+     *
+     * @return Base topic name (e.g., "batch-topic")
+     */
+    public String getBaseTopicName() {
+        return baseTopicName;
+    }
+
     @Override
     protected ITopicReader<T, javax.jms.Message> createReaderDelegate(ResourceContext context) {
         return new ArtemisTopicReaderDelegate<>(this, context);
@@ -674,6 +686,12 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
                     "External broker support requires JMX configuration.");
             }
 
+            // Debug: Log what we're looking for and what exists
+            if (log.isDebugEnabled()) {
+                log.debug("Checking for queue '{}' in broker. Existing queues: {}",
+                    queueName, java.util.Arrays.toString(queueNames));
+            }
+
             for (String existing : queueNames) {
                 if (existing.equals(queueName)) {
                     return true;
@@ -728,7 +746,7 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
      * internal synchronization.
      *
      * @param addressName the address (topic) to replay from, must not be null
-     * @param queueName the queue to replay into (format: "topicName::subscriptionName"), must not be null
+     * @param queueName the queue to replay into (the subscription name, e.g., "batch-topic_analytics_runId"), must not be null
      * @throws Exception if replay fails or broker is unavailable
      */
     static void triggerReplay(String addressName, String queueName) throws Exception {
@@ -750,7 +768,7 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
             null,           // start date: null = from beginning
             null,           // end date: null = until now
             addressName,    // source address (topic name)
-            queueName,      // target queue (topicName::subscriptionName)
+            queueName,      // target queue (subscription name)
             null            // filter: null = replay ALL messages
         );
 

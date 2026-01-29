@@ -14,6 +14,7 @@ import org.evochora.datapipeline.api.delta.ChunkCorruptedException;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
+import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.evochora.datapipeline.utils.MoleculeDataUtils;
 import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.runtime.Config;
@@ -154,17 +155,18 @@ public class InspectStorageSubcommand implements Callable<Integer> {
     }
 
     private int calculateTotalCells(SimulationMetadata metadata) {
-        if (!metadata.hasEnvironment()) {
-            throw new IllegalStateException("Simulation metadata is missing environment configuration. Cannot calculate total cells for decoder.");
+        if (metadata.getResolvedConfigJson().isEmpty()) {
+            throw new IllegalStateException("Simulation metadata is missing resolved config. Cannot calculate total cells for decoder.");
         }
-        
-        if (metadata.getEnvironment().getShapeCount() == 0) {
-             throw new IllegalStateException("Simulation metadata has empty environment shape. Cannot calculate total cells for decoder.");
+
+        int[] shape = MetadataConfigHelper.getEnvironmentShape(metadata);
+        if (shape.length == 0) {
+            throw new IllegalStateException("Simulation metadata has empty environment shape. Cannot calculate total cells for decoder.");
         }
 
         // Use long to detect overflow, then validate fits in int (DeltaCodec uses int arrays)
         long total = 1L;
-        for (int dim : metadata.getEnvironment().getShapeList()) {
+        for (int dim : shape) {
             total *= dim;
         }
         if (total > Integer.MAX_VALUE) {

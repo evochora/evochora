@@ -13,6 +13,7 @@ import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
+import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.evochora.datapipeline.utils.MoleculeDataUtils;
 import org.evochora.runtime.Config;
 
@@ -88,9 +89,9 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
         long unknownCells = 0;
         long totalCells = 0;
 
-        if (context != null && context.getMetadata() != null && context.getMetadata().hasEnvironment()) {
+        if (context != null && context.getMetadata() != null && !context.getMetadata().getResolvedConfigJson().isEmpty()) {
             totalCells = 1;
-            for (int dim : context.getMetadata().getEnvironment().getShapeList()) {
+            for (int dim : MetadataConfigHelper.getEnvironmentShape(context.getMetadata())) {
                 totalCells *= dim;
             }
         }

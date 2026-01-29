@@ -281,6 +281,11 @@ public abstract class AbstractDatabaseResource extends AbstractResource
         throw new UnsupportedOperationException("This operation must be called on a wrapped resource.");
     }
 
+    @Override
+    public boolean hasMetadata(String simulationRunId) {
+        throw new UnsupportedOperationException("This operation must be called on a wrapped resource.");
+    }
+
     /**
      * Closes the database resource and all its wrappers.
      * <p>

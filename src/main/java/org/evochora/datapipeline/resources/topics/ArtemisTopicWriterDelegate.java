@@ -69,7 +69,8 @@ public class ArtemisTopicWriterDelegate<T extends Message> extends AbstractTopic
                 message.setStringProperty("message_id", envelope.getMessageId());
                 
                 producer.send(message);
-                
+                log.debug("Sent message to Artemis topic: {}", currentTopicName);
+
                 // Record metrics (O(1) - AtomicLong increment + SlidingWindowCounter)
                 parent.recordWrite();
             }

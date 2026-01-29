@@ -23,6 +23,7 @@ import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
 import org.evochora.datapipeline.resources.database.h2.IH2EnvStorageStrategy;
 import org.evochora.datapipeline.resources.database.h2.IH2OrgStorageStrategy;
 import org.evochora.datapipeline.utils.H2SchemaUtil;
+import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.evochora.datapipeline.utils.protobuf.ProtobufConverter;
 import org.slf4j.Logger;
@@ -373,16 +374,22 @@ public class H2Database extends AbstractDatabaseResource
             
             Gson gson = new Gson();
             Map<String, String> kvPairs = new HashMap<>();
-            
-            // Environment: Use ProtobufConverter (direct Protobuf → JSON, fastest)
-            kvPairs.put("environment", ProtobufConverter.toJson(metadata.getEnvironment()));
 
-            // Simulation info: Use GSON (no Protobuf message available, safer than String.format)
+            // Environment: Extract from resolvedConfigJson
+            int[] shape = MetadataConfigHelper.getEnvironmentShape(metadata);
+            boolean toroidal = MetadataConfigHelper.isEnvironmentToroidal(metadata);
+            Map<String, Object> envMap = new LinkedHashMap<>();
+            envMap.put("dimensions", shape.length);
+            envMap.put("shape", shape);
+            envMap.put("toroidal", toroidal);
+            kvPairs.put("environment", gson.toJson(envMap));
+
+            // Simulation info: Use GSON
             Map<String, Object> simInfoMap = Map.of(
                 "runId", metadata.getSimulationRunId(),
                 "startTime", metadata.getStartTimeMs(),
                 "seed", metadata.getInitialSeed(),
-                "samplingInterval", metadata.getSamplingInterval()
+                "samplingInterval", MetadataConfigHelper.getSamplingInterval(metadata)
             );
             kvPairs.put("simulation_info", gson.toJson(simInfoMap));
 

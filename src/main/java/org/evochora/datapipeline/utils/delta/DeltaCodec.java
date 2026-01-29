@@ -106,7 +106,7 @@ public final class DeltaCodec {
         private int snapshotsInChunk = 0;
         
         /**
-         * Creates a new Encoder with the specified configuration.
+         * Creates a new Encoder for a new simulation.
          *
          * @param runId simulation run ID for chunk metadata
          * @param totalCells total cells in environment (for BitSet allocation)
@@ -115,7 +115,7 @@ public final class DeltaCodec {
          * @param chunkInterval snapshots per chunk (must be >= 1)
          * @throws IllegalArgumentException if any interval is less than 1
          */
-        public Encoder(String runId, int totalCells, 
+        public Encoder(String runId, int totalCells,
                        int accumulatedDeltaInterval, int snapshotInterval, int chunkInterval) {
             if (accumulatedDeltaInterval < 1) {
                 throw new IllegalArgumentException("accumulatedDeltaInterval must be >= 1, got: " + accumulatedDeltaInterval);
@@ -126,17 +126,44 @@ public final class DeltaCodec {
             if (chunkInterval < 1) {
                 throw new IllegalArgumentException("chunkInterval must be >= 1, got: " + chunkInterval);
             }
-            
+
             this.runId = runId;
             this.accumulatedDeltaInterval = accumulatedDeltaInterval;
             this.chunkInterval = chunkInterval;
-            
+
             this.samplesPerSnapshot = accumulatedDeltaInterval * snapshotInterval;
             this.samplesPerChunk = samplesPerSnapshot * chunkInterval;
-            
+
             this.accumulatedSinceSnapshot = new BitSet(totalCells);
         }
-        
+
+        /**
+         * Creates an Encoder initialized with a checkpoint snapshot for resume.
+         * <p>
+         * The encoder is primed with the snapshot so subsequent ticks are treated
+         * as deltas within the same chunk, not as new chunk starts.
+         *
+         * @param resumeSnapshot checkpoint snapshot (must not be null)
+         * @param runId simulation run ID for chunk metadata
+         * @param totalCells total cells in environment (for BitSet allocation)
+         * @param accumulatedDeltaInterval samples between accumulated deltas (must be >= 1)
+         * @param snapshotInterval accumulated deltas between snapshots (must be >= 1)
+         * @param chunkInterval snapshots per chunk (must be >= 1)
+         * @return encoder initialized with the checkpoint snapshot
+         * @throws IllegalArgumentException if resumeSnapshot is null or any interval is less than 1
+         */
+        public static Encoder forResume(TickData resumeSnapshot, String runId, int totalCells,
+                                        int accumulatedDeltaInterval, int snapshotInterval, int chunkInterval) {
+            if (resumeSnapshot == null) {
+                throw new IllegalArgumentException("resumeSnapshot cannot be null");
+            }
+            Encoder encoder = new Encoder(runId, totalCells, accumulatedDeltaInterval, snapshotInterval, chunkInterval);
+            encoder.currentSnapshot = resumeSnapshot;
+            encoder.samplesSinceSnapshot = 1;  // Snapshot counts as sample 0, next tick is sample 1
+            encoder.snapshotsInChunk = 1;
+            return encoder;
+        }
+
         /**
          * Captures a sampled tick and returns a chunk if one is complete.
          * <p>
@@ -190,11 +217,13 @@ public final class DeltaCodec {
                 accumulatedSinceSnapshot.clear();
             } else if (isAccumulated) {
                 // Accumulated delta - all changes since last snapshot
+                // Note: RNG state and plugin states are only stored in snapshots (not accumulated deltas)
+                // since resume always happens from snapshot (chunk start)
                 CellDataColumns changedCells = extractCellsFromBitSet(env, accumulatedSinceSnapshot);
                 DeltaCapture delta = captureDelta(
                         tick, captureTimeMs, DeltaType.ACCUMULATED,
                         changedCells, organisms, totalOrganismsCreated,
-                        rngState, pluginStates);
+                        ByteString.EMPTY, List.of());  // No RNG/plugin state for accumulated
                 currentDeltas.add(delta);
             } else {
                 // Incremental delta - only changes since last sample
@@ -207,15 +236,17 @@ public final class DeltaCodec {
             }
             
             samplesSinceSnapshot++;
-            
+
             // Reset change tracking for next sample
             env.resetChangeTracking();
-            
+
             // Check if chunk is complete
-            if (snapshotsInChunk >= chunkInterval && samplesSinceSnapshot >= samplesPerSnapshot) {
+            // Note: chunkInterval is a multiplier for chunk size, not "snapshots per chunk"
+            // (TickDataChunk only holds one snapshot; chunkInterval just means larger chunks)
+            if (samplesSinceSnapshot >= samplesPerChunk) {
                 return Optional.of(buildAndResetChunk());
             }
-            
+
             return Optional.empty();
         }
         

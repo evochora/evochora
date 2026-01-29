@@ -98,4 +98,5 @@ public interface IBatchStorageWrite extends IResource {
      * @throws IllegalArgumentException If key is null/empty or message is null
      */
     <T extends MessageLite> StoragePath writeMessage(String key, T message) throws IOException;
+
 }

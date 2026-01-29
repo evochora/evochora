@@ -37,6 +37,7 @@ import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.storage.IAnalyticsStorageWrite;
+import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -595,12 +596,12 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
      */
     private DeltaCodec.Decoder createDecoder() {
         SimulationMetadata metadata = getMetadata();
-        if (metadata == null || !metadata.hasEnvironment()) {
+        if (metadata == null || metadata.getResolvedConfigJson().isEmpty()) {
             log.debug("No environment metadata available, using minimal Decoder");
             return new DeltaCodec.Decoder(1);
         }
         long totalCellsLong = 1L;
-        for (int dim : metadata.getEnvironment().getShapeList()) {
+        for (int dim : MetadataConfigHelper.getEnvironmentShape(metadata)) {
             totalCellsLong *= dim;
         }
         // DeltaCodec.Decoder uses int arrays, so worlds > 2.1B cells are not supported

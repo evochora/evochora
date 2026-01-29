@@ -194,6 +194,273 @@ public class Organism {
     }
 
     /**
+     * Entry point for restoring an organism from serialized state.
+     * <p>
+     * This is used during simulation resume to reconstruct organisms from
+     * persisted checkpoint data. Required fields (id, birthTick) are passed here;
+     * optional fields are set via builder methods.
+     *
+     * @param id Unique organism identifier
+     * @param birthTick Tick when organism was created
+     * @return Builder for setting remaining fields
+     */
+    public static RestoreBuilder restore(int id, long birthTick) {
+        return new RestoreBuilder(id, birthTick);
+    }
+
+    /**
+     * Private constructor for restoration - only called by RestoreBuilder.build()
+     */
+    private Organism(RestoreBuilder b, Simulation simulation) {
+        this.id = b.id;
+        this.parentId = b.parentId;
+        this.birthTick = b.birthTick;
+        this.programId = b.programId;
+        this.ip = Arrays.copyOf(b.ip, b.ip.length);
+        this.dv = Arrays.copyOf(b.dv, b.dv.length);
+        this.er = b.er;
+        this.sr = b.sr;
+        this.mr = b.mr;
+
+        // Deep copy data pointers
+        this.dps = new ArrayList<>(b.dps.size());
+        for (int[] dp : b.dps) {
+            this.dps.add(Arrays.copyOf(dp, dp.length));
+        }
+        this.activeDpIndex = b.activeDpIndex;
+
+        // Copy registers (shallow copy is fine, values are immutable Integer or int[])
+        this.drs = new ArrayList<>(b.drs);
+        this.prs = new ArrayList<>(b.prs);
+        this.fprs = new ArrayList<>(b.fprs);
+        this.lrs = new ArrayList<>(b.lrs);
+
+        // Copy stacks
+        this.dataStack = new ArrayDeque<>(b.dataStack);
+        this.locationStack = new ArrayDeque<>(b.locationStack);
+        this.callStack = new ArrayDeque<>(b.callStack);
+
+        // Status flags
+        this.isDead = b.isDead;
+        this.instructionFailed = b.instructionFailed;
+        this.failureReason = b.failureReason;
+        this.failureCallStack = b.failureCallStack != null
+            ? new ArrayDeque<>(b.failureCallStack) : null;
+
+        // Derived fields from simulation
+        this.simulation = simulation;
+        this.logger = null; // Restored organisms don't have individual loggers
+        this.loggingEnabled = false;
+
+        // Load limits from simulation config
+        com.typesafe.config.Config orgConfig = simulation.getOrganismConfig();
+        this.maxEnergy = orgConfig.getInt("max-energy");
+        this.maxEntropy = orgConfig.getInt("max-entropy");
+
+        // Initial position equals current IP at restore time
+        this.initialPosition = Arrays.copyOf(b.ip, b.ip.length);
+
+        // Initialize random from simulation's random provider
+        IRandomProvider baseProvider = simulation.getRandomProvider();
+        if (baseProvider != null) {
+            this.random = baseProvider.deriveFor("organism", this.id).asJavaRandom();
+        } else {
+            this.random = new Random(this.id);
+        }
+
+        // Per-tick state is reset
+        this.skipIpAdvance = false;
+        this.ipBeforeFetch = Arrays.copyOf(this.ip, this.ip.length);
+        this.dvBeforeFetch = Arrays.copyOf(this.dv, this.dv.length);
+        this.lastInstructionExecution = null;
+    }
+
+    /**
+     * Builder for restoring organism state from serialized data.
+     * <p>
+     * Use {@link Organism#restore(int, long)} to obtain an instance.
+     * This builder is used during simulation resume to reconstruct organisms
+     * from persisted checkpoint data.
+     */
+    public static class RestoreBuilder {
+        // Required fields (set in constructor)
+        private final int id;
+        private final long birthTick;
+
+        // Fields with sensible defaults
+        private Integer parentId = null;
+        private String programId = "";
+        private int[] ip = new int[0];
+        private int[] dv = new int[0];
+        private int er = 0;
+        private int sr = 0;
+        private int mr = 0;
+        private List<int[]> dps = new ArrayList<>();
+        private int activeDpIndex = 0;
+        private List<Object> drs = new ArrayList<>();
+        private List<Object> prs = new ArrayList<>();
+        private List<Object> fprs = new ArrayList<>();
+        private List<Object> lrs = new ArrayList<>();
+        private Deque<Object> dataStack = new ArrayDeque<>();
+        private Deque<int[]> locationStack = new ArrayDeque<>();
+        private Deque<ProcFrame> callStack = new ArrayDeque<>();
+        private boolean isDead = false;
+        private boolean instructionFailed = false;
+        private String failureReason = null;
+        private Deque<ProcFrame> failureCallStack = null;
+
+        private RestoreBuilder(int id, long birthTick) {
+            this.id = id;
+            this.birthTick = birthTick;
+        }
+
+        /** Sets the parent organism ID. */
+        public RestoreBuilder parentId(Integer parentId) {
+            this.parentId = parentId;
+            return this;
+        }
+
+        /** Sets the program ID. */
+        public RestoreBuilder programId(String programId) {
+            this.programId = programId;
+            return this;
+        }
+
+        /** Sets the instruction pointer coordinates. */
+        public RestoreBuilder ip(int[] ip) {
+            this.ip = ip;
+            return this;
+        }
+
+        /** Sets the direction vector. */
+        public RestoreBuilder dv(int[] dv) {
+            this.dv = dv;
+            return this;
+        }
+
+        /** Sets the energy register value. */
+        public RestoreBuilder energy(int er) {
+            this.er = er;
+            return this;
+        }
+
+        /** Sets the entropy register value. */
+        public RestoreBuilder entropy(int sr) {
+            this.sr = sr;
+            return this;
+        }
+
+        /** Sets the molecule marker register value. */
+        public RestoreBuilder marker(int mr) {
+            this.mr = mr;
+            return this;
+        }
+
+        /** Sets all data pointer coordinates. */
+        public RestoreBuilder dataPointers(List<int[]> dps) {
+            this.dps = dps;
+            return this;
+        }
+
+        /** Sets the active data pointer index. */
+        public RestoreBuilder activeDpIndex(int idx) {
+            this.activeDpIndex = idx;
+            return this;
+        }
+
+        /** Sets all data register values. */
+        public RestoreBuilder dataRegisters(List<Object> drs) {
+            this.drs = drs;
+            return this;
+        }
+
+        /** Sets all procedure register values. */
+        public RestoreBuilder procRegisters(List<Object> prs) {
+            this.prs = prs;
+            return this;
+        }
+
+        /** Sets all formal parameter register values. */
+        public RestoreBuilder formalParamRegisters(List<Object> fprs) {
+            this.fprs = fprs;
+            return this;
+        }
+
+        /** Sets all location register values. */
+        public RestoreBuilder locationRegisters(List<Object> lrs) {
+            this.lrs = lrs;
+            return this;
+        }
+
+        /** Sets the data stack contents. */
+        public RestoreBuilder dataStack(Deque<Object> stack) {
+            this.dataStack = stack;
+            return this;
+        }
+
+        /** Sets the location stack contents. */
+        public RestoreBuilder locationStack(Deque<int[]> stack) {
+            this.locationStack = stack;
+            return this;
+        }
+
+        /** Sets the call stack contents. */
+        public RestoreBuilder callStack(Deque<ProcFrame> stack) {
+            this.callStack = stack;
+            return this;
+        }
+
+        /** Sets whether the organism is dead. */
+        public RestoreBuilder dead(boolean isDead) {
+            this.isDead = isDead;
+            return this;
+        }
+
+        /** Sets the instruction failure state. */
+        public RestoreBuilder failed(boolean failed, String reason) {
+            this.instructionFailed = failed;
+            this.failureReason = reason;
+            return this;
+        }
+
+        /** Sets the call stack at the time of failure. */
+        public RestoreBuilder failureCallStack(Deque<ProcFrame> stack) {
+            this.failureCallStack = stack;
+            return this;
+        }
+
+        /**
+         * Builds the Organism instance.
+         *
+         * @param simulation The simulation this organism belongs to
+         * @return Fully constructed Organism
+         * @throws IllegalStateException if required fields are missing or invalid
+         */
+        public Organism build(Simulation simulation) {
+            // Validation
+            if (simulation == null) {
+                throw new IllegalStateException("Simulation cannot be null");
+            }
+            if (ip == null || ip.length == 0) {
+                throw new IllegalStateException("IP must be set for restore");
+            }
+            if (dv == null || dv.length == 0) {
+                throw new IllegalStateException("DV must be set for restore");
+            }
+            if (ip.length != dv.length) {
+                throw new IllegalStateException("IP and DV must have same dimensions");
+            }
+            if (er < 0) {
+                throw new IllegalStateException("Energy cannot be negative: " + er);
+            }
+            if (sr < 0) {
+                throw new IllegalStateException("Entropy cannot be negative: " + sr);
+            }
+            return new Organism(this, simulation);
+        }
+    }
+
+    /**
      * Resets the organism's per-tick state. Called by the VirtualMachine before planning a new instruction.
      */
     public void resetTickState() {

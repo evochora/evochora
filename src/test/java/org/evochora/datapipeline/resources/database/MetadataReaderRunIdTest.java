@@ -2,7 +2,7 @@ package org.evochora.datapipeline.resources.database;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
-import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
+import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.database.IMetadataReader;
@@ -63,19 +63,16 @@ class MetadataReaderRunIdTest {
                 .setSimulationRunId(runId)
                 .setStartTimeMs(System.currentTimeMillis())
                 .setInitialSeed(12345L)
-                .setSamplingInterval(1)
-                .setEnvironment(EnvironmentConfig.newBuilder()
-                    .setDimensions(2)
-                    .addShape(100)
-                    .addShape(100)
-                    .addToroidal(true)
-                    .addToroidal(true)
+                .setResolvedConfigJson(TestMetadataHelper.builder()
+                    .shape(100, 100)
+                    .toroidal(true)
+                    .samplingInterval(1)
                     .build())
                 .build();
-            
+
             writer.insertMetadata(metadata);
         }
-        
+
         // Read run-id from schema (without knowing run-id in advance)
         try (IMetadataReader reader = (IMetadataReader) database.getWrappedResource(
                 new ResourceContext("test", "meta-port", "db-meta-read", "test-db", Map.of()))) {
@@ -124,18 +121,48 @@ class MetadataReaderRunIdTest {
                 
                 ((IResourceSchemaAwareMetadataWriter) writer).setSimulationRun(runId);
                 
+                // Use custom JSON for 1D environment
+                String customJson = """
+                    {
+                        "environment": {
+                            "shape": [10],
+                            "topology": "BOUNDED"
+                        },
+                        "samplingInterval": 1,
+                        "accumulatedDeltaInterval": 100,
+                        "snapshotInterval": 10,
+                        "chunkInterval": 1,
+                        "tickPlugins": [],
+                        "organisms": [],
+                        "runtime": {
+                            "organism": {
+                                "max-energy": 32767,
+                                "max-entropy": 8191,
+                                "error-penalty-cost": 10
+                            },
+                            "thermodynamics": {
+                                "default": {
+                                    "className": "org.evochora.runtime.thermodynamics.impl.UniversalThermodynamicPolicy",
+                                    "options": {
+                                        "base-energy": 1,
+                                        "base-entropy": 1
+                                    }
+                                },
+                                "overrides": {
+                                    "instructions": {},
+                                    "families": {}
+                                }
+                            }
+                        }
+                    }
+                    """;
                 SimulationMetadata metadata = SimulationMetadata.newBuilder()
                     .setSimulationRunId(runId)
                     .setStartTimeMs(System.currentTimeMillis())
                     .setInitialSeed(12345L)
-                    .setSamplingInterval(1)
-                    .setEnvironment(EnvironmentConfig.newBuilder()
-                        .setDimensions(1)
-                        .addShape(10)
-                        .addToroidal(false)
-                        .build())
+                    .setResolvedConfigJson(customJson)
                     .build();
-                
+
                 writer.insertMetadata(metadata);
             }
             

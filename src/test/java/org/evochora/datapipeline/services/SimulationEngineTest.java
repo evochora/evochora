@@ -21,7 +21,6 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.evochora.junit.extensions.logging.AllowLog;
-import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.BeforeAll;
@@ -144,7 +143,6 @@ class SimulationEngineTest {
     }
 
     @Test
-    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*", messagePattern = "(?s)Failed to compile program file.*")
     void constructor_shouldThrowException_whenProgramIsInvalid() throws IOException {
         Path invalidProgram = tempDir.resolve("invalid.evo");
         Files.writeString(invalidProgram, "INVALID SYNTAX HERE");
@@ -215,7 +213,7 @@ class SimulationEngineTest {
                 IllegalArgumentException.class,
                 () -> new SimulationEngine("test", config, resources)
         );
-        assertTrue(exception.getMessage().contains("coordinate mismatch"));
+        assertTrue(exception.getMessage().contains("placement mismatch"));
         assertTrue(exception.getMessage().contains("2 dimensions"));
     }
 

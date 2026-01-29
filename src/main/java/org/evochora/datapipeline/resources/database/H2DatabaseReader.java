@@ -19,9 +19,13 @@ import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 import org.evochora.datapipeline.resources.database.h2.IH2EnvStorageStrategy;
 import org.evochora.datapipeline.resources.database.h2.IH2OrgStorageStrategy;
+import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 /**
  * Per-request database reader for H2.
@@ -57,18 +61,14 @@ public class H2DatabaseReader implements IDatabaseReader {
     }
     
     private EnvironmentProperties extractEnvironmentProperties(SimulationMetadata metadata) {
-        org.evochora.datapipeline.api.contracts.EnvironmentConfig envConfig = 
-            metadata.getEnvironment();
-        
-        int[] shape = new int[envConfig.getShapeCount()];
-        for (int i = 0; i < envConfig.getShapeCount(); i++) {
-            shape[i] = envConfig.getShape(i);
-        }
-        
-        // For now, assume all dimensions have same toroidal setting
-        // Probably support per-dimension toroidal settings in future
-        boolean isToroidal = envConfig.getToroidalCount() > 0 && envConfig.getToroidal(0);
-        
+        // Parse environment config from resolvedConfigJson
+        Config resolvedConfig = ConfigFactory.parseString(metadata.getResolvedConfigJson());
+
+        int[] shape = resolvedConfig.getIntList("environment.shape").stream()
+            .mapToInt(i -> i).toArray();
+        boolean isToroidal = "TORUS".equalsIgnoreCase(
+            resolvedConfig.getString("environment.topology"));
+
         return new EnvironmentProperties(shape, isToroidal);
     }
     
@@ -149,7 +149,7 @@ public class H2DatabaseReader implements IDatabaseReader {
 
         // Resolve "next" instruction from tick+1 if sampling_interval=1
         InstructionView nextInstruction = null;
-        int samplingInterval = (int) metadata.getSamplingInterval();
+        int samplingInterval = MetadataConfigHelper.getSamplingInterval(metadata);
         if (samplingInterval == 1) {
             try {
                 OrganismRuntimeView nextState = readOrganismStateForTick(tickNumber + 1, organismId, envDimensions);

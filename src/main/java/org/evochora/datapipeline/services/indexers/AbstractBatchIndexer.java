@@ -482,9 +482,9 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         } catch (Exception e) {
             // Transient error - log, track, but DON'T stop indexer
             log.warn("Failed to process batch (will be redelivered after claimTimeout): {}: {}", batchId, e.getMessage());
-            recordError("BATCH_PROCESSING_FAILED", "Batch processing failed", 
+            recordError("BATCH_PROCESSING_FAILED", "Batch processing failed",
                        "BatchId: " + batchId + ", Error: " + e.getClass().getSimpleName() + ": " + e.getMessage());
-            
+
             // DLQ check (if component configured)
             if (components != null && components.dlq != null) {
                 if (components.dlq.shouldMoveToDlq(batchId)) {

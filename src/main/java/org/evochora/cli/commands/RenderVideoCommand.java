@@ -26,6 +26,7 @@ import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
+import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.evochora.runtime.model.EnvironmentProperties;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
@@ -481,8 +482,8 @@ public class RenderVideoCommand implements Callable<Integer> {
 
         SimulationMetadata metadata = storage.readMessage(metadataPathOpt.get(), SimulationMetadata.parser());
         EnvironmentProperties envProps = new EnvironmentProperties(
-            metadata.getEnvironment().getShapeList().stream().mapToInt(Integer::intValue).toArray(),
-            metadata.getEnvironment().getToroidalList().stream().allMatch(b -> b)
+            MetadataConfigHelper.getEnvironmentShape(metadata),
+            MetadataConfigHelper.isEnvironmentToroidal(metadata)
         );
 
         int baseWidth = envProps.getWorldShape()[0] * cellSize;

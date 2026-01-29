@@ -1,8 +1,10 @@
 package org.evochora.datapipeline.services.indexers;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
@@ -55,6 +57,11 @@ public class OrganismIndexer<ACK> extends AbstractBatchIndexer<ACK> implements I
         super(name, options, resources);
         this.database = getRequiredResource("database", IResourceSchemaAwareOrganismDataWriter.class);
         this.insertBatchSize = options.hasPath("insertBatchSize") ? options.getInt("insertBatchSize") : 5;
+    }
+
+    @Override
+    protected Set<ComponentType> getOptionalComponents() {
+        return EnumSet.of(ComponentType.DLQ);
     }
 
     /**

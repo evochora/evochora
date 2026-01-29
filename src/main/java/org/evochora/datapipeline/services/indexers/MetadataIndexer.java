@@ -42,13 +42,21 @@ public class MetadataIndexer<ACK> extends AbstractIndexer<MetadataInfo, ACK> {
 
     @Override
     protected void indexRun(String runId) throws Exception {
+        // Check if metadata already exists in database (resume mode scenario)
+        try (IResourceSchemaAwareMetadataWriter db = database) {
+            if (db.hasMetadata(runId)) {
+                log.debug("Metadata already indexed for run: {} - skipping (resume mode)", runId);
+                return;
+            }
+        }
+
         log.debug("Waiting for metadata notification for run: {} (timeout: {}ms)", runId, topicPollTimeoutMs);
-        
+
         // Note: topic.setSimulationRun() already called by AbstractIndexer.discoverRunId()
-        
+
         // Poll for metadata notification with timeout
         var message = topic.poll(topicPollTimeoutMs, TimeUnit.MILLISECONDS);
-        
+
         if (message == null) {
             metadataFailed.incrementAndGet();
             log.error("Metadata notification did not arrive within {}ms for run: {}", topicPollTimeoutMs, runId);

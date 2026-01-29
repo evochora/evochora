@@ -16,6 +16,7 @@ import org.evochora.datapipeline.api.resources.database.MetadataNotFoundExceptio
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
 import org.evochora.datapipeline.api.resources.database.dto.TickRange;
+import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.evochora.datapipeline.utils.MoleculeDataUtils;
 import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.node.processes.http.api.pipeline.dto.ErrorResponseDto;
@@ -504,16 +505,10 @@ public class EnvironmentController extends VisualizerBaseController {
      * Extracts environment properties from metadata.
      */
     private EnvironmentProperties extractEnvironmentProperties(final SimulationMetadata metadata) {
-        final var envConfig = metadata.getEnvironment();
-        
-        final int[] shape = new int[envConfig.getShapeCount()];
-        for (int i = 0; i < envConfig.getShapeCount(); i++) {
-            shape[i] = envConfig.getShape(i);
-        }
-        
-        final boolean isToroidal = envConfig.getToroidalCount() > 0 && envConfig.getToroidal(0);
-        
-        return new EnvironmentProperties(shape, isToroidal);
+        return new EnvironmentProperties(
+            MetadataConfigHelper.getEnvironmentShape(metadata),
+            MetadataConfigHelper.isEnvironmentToroidal(metadata)
+        );
     }
     
     /**

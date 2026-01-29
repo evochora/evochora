@@ -208,9 +208,11 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
             while (iterator.hasNext()) {
                 try {
                     Path path = iterator.next();
-                    // Skip .tmp files and directories
+                    // Skip .tmp files, directories, and superseded folder
                     String filename = path.getFileName().toString();
-                    if (!filename.endsWith(".tmp") && Files.isRegularFile(path)) {
+                    String pathStr = path.toString().replace(File.separatorChar, '/');
+                    boolean isSuperseded = pathStr.contains("/superseded/");
+                    if (!filename.endsWith(".tmp") && !isSuperseded && Files.isRegularFile(path)) {
                         validPaths.add(path);
                     }
                 } catch (java.io.UncheckedIOException e) {
@@ -290,6 +292,89 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
         }
     }
 
+
+    @Override
+    public java.util.Optional<org.evochora.datapipeline.api.resources.storage.StoragePath> findLastBatchFile(
+            String runIdPrefix) throws IOException {
+        if (runIdPrefix == null) {
+            throw new IllegalArgumentException("runIdPrefix cannot be null");
+        }
+
+        File baseDir = new File(rootDirectory, runIdPrefix);
+        if (!baseDir.exists() || !baseDir.isDirectory()) {
+            return java.util.Optional.empty();
+        }
+
+        File lastBatchFile = findLastBatchInTree(baseDir, 0);
+        if (lastBatchFile == null) {
+            return java.util.Optional.empty();
+        }
+
+        String relativePath = rootDirectory.toPath()
+            .relativize(lastBatchFile.toPath())
+            .toString()
+            .replace(File.separatorChar, '/');
+
+        log.debug("Found last batch file: {}", relativePath);
+        return java.util.Optional.of(
+            org.evochora.datapipeline.api.resources.storage.StoragePath.of(relativePath));
+    }
+
+    private File findLastBatchInTree(File dir, int level) {
+        if (level < folderLevels.size()) {
+            File[] subDirs = dir.listFiles(f ->
+                f.isDirectory() && !f.getName().equals("superseded"));
+
+            if (subDirs == null || subDirs.length == 0) {
+                return null;
+            }
+
+            Arrays.sort(subDirs, (a, b) -> b.getName().compareTo(a.getName()));
+
+            for (File subDir : subDirs) {
+                File result = findLastBatchInTree(subDir, level + 1);
+                if (result != null) {
+                    return result;
+                }
+            }
+            return null;
+        } else {
+            return findLastBatchInLeaf(dir);
+        }
+    }
+
+    private File findLastBatchInLeaf(File dir) {
+        File[] batchFiles = dir.listFiles((d, name) ->
+            name.startsWith("batch_") && name.contains(".pb") && !name.endsWith(".tmp"));
+
+        if (batchFiles == null || batchFiles.length == 0) {
+            return null;
+        }
+
+        Arrays.sort(batchFiles, (a, b) -> b.getName().compareTo(a.getName()));
+        File lastFile = batchFiles[0];
+
+        long firstTick = parseBatchStartTick(lastFile.getName());
+        if (firstTick >= 0) {
+            long bestLastTick = parseBatchEndTick(lastFile.getName());
+            File bestFile = lastFile;
+
+            for (File f : batchFiles) {
+                if (parseBatchStartTick(f.getName()) == firstTick) {
+                    long lastTick = parseBatchEndTick(f.getName());
+                    if (lastTick < bestLastTick) {
+                        log.warn("Duplicate batch files for firstTick {}: keeping {} (lastTick={}) over {} (lastTick={})",
+                            firstTick, f.getName(), lastTick, bestFile.getName(), bestLastTick);
+                        bestLastTick = lastTick;
+                        bestFile = f;
+                    }
+                }
+            }
+            lastFile = bestFile;
+        }
+
+        return lastFile;
+    }
 
     @Override
     protected void addCustomMetrics(java.util.Map<String, Number> metrics) {

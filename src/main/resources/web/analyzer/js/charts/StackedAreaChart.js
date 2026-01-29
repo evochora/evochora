@@ -98,7 +98,8 @@ export function render(canvas, data, config) {
             borderColor: getColor(index),
             backgroundColor: getColor(index) + '80',
             borderWidth: 1,
-            fill: true,
+            // For proper stacking: first dataset fills to origin, others fill to dataset below
+            fill: index === 0 ? 'origin' : '-1',
             tension: 0.2,
             pointRadius: 0,
             pointHoverRadius: 5

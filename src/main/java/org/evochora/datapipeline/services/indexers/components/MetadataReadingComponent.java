@@ -3,6 +3,7 @@ package org.evochora.datapipeline.services.indexers.components;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataReader;
 import org.evochora.datapipeline.api.resources.database.MetadataNotFoundException;
+import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -89,7 +90,7 @@ public class MetadataReadingComponent {
         if (metadata == null) {
             throw new IllegalStateException("Metadata not loaded - call loadMetadata() first");
         }
-        return metadata.getSamplingInterval();
+        return MetadataConfigHelper.getSamplingInterval(metadata);
     }
     
     /**

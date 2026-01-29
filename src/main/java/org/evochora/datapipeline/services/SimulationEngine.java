@@ -19,14 +19,10 @@ import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.datapipeline.api.contracts.CallSiteBinding;
 import org.evochora.datapipeline.api.contracts.ColumnTokenLookup;
-import org.evochora.datapipeline.api.contracts.TickPluginConfig;
-import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
 import org.evochora.datapipeline.api.contracts.FileTokenLookup;
-import org.evochora.datapipeline.api.contracts.InitialOrganismSetup;
 import org.evochora.datapipeline.api.contracts.InstructionMapping;
 import org.evochora.datapipeline.api.contracts.LineTokenLookup;
 import org.evochora.datapipeline.api.contracts.LinearAddressToCoord;
-import org.evochora.datapipeline.api.contracts.OrganismConfig;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.PlacedMoleculeMapping;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
@@ -34,6 +30,7 @@ import org.evochora.datapipeline.api.contracts.SourceInfo;
 import org.evochora.datapipeline.api.contracts.SourceLines;
 import org.evochora.datapipeline.api.contracts.SourceMapEntry;
 import org.evochora.datapipeline.api.contracts.PluginState;
+import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TokenInfo;
 import org.evochora.datapipeline.api.contracts.TokenMapEntry;
@@ -43,6 +40,10 @@ import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
+import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
+import org.evochora.datapipeline.resume.ResumeCheckpoint;
+import org.evochora.datapipeline.resume.SimulationRestorer;
+import org.evochora.datapipeline.resume.SnapshotLoader;
 import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
@@ -75,6 +76,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     private final List<PluginWithConfig> tickPlugins;
     private final long seed;
     private final long startTimeMs;
+    private final boolean isResume;
     private final AtomicLong currentTick = new AtomicLong(-1);
     private final AtomicLong messagesSent = new AtomicLong(0);
     private long lastMetricTime = System.currentTimeMillis();
@@ -83,139 +85,98 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
     // Helper record bundling program path, ID, and artifact for initialization and metadata building
     private record ProgramInfo(String programPath, String programId, ProgramArtifact artifact) {}
-    
+
     // Mapping from programPath (config key) to ProgramInfo for initialization and metadata building
     private final Map<String, ProgramInfo> programInfoByPath = new HashMap<>();
 
     private record PluginWithConfig(ITickPlugin plugin, Config config) {}
 
+    /**
+     * Holds the initialized state from either resume or new simulation mode.
+     * This record allows both initialization paths to produce the same output structure.
+     * Includes delta compression intervals to ensure resume uses original values from metadata.
+     *
+     * @param resumeSnapshot checkpoint snapshot for resume mode (null for new simulations).
+     *                       When present, the encoder is initialized with this snapshot so
+     *                       subsequent ticks are treated as deltas within the same chunk.
+     */
+    private record InitializedState(
+        Simulation simulation,
+        IRandomProvider randomProvider,
+        List<PluginWithConfig> tickPlugins,
+        Map<String, ProgramInfo> programInfo,
+        String runId,
+        long seed,
+        long startTimeMs,
+        long initialTick,
+        int samplingInterval,
+        int accumulatedDeltaInterval,
+        int snapshotInterval,
+        int chunkInterval,
+        TickData resumeSnapshot
+    ) {}
+
     public SimulationEngine(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
-        this.startTimeMs = System.currentTimeMillis();
 
-        @SuppressWarnings("unchecked")
-        IOutputQueueResource<TickDataChunk> tickQueue = (IOutputQueueResource<TickDataChunk>) getRequiredResource("tickData", IOutputQueueResource.class);
-        this.tickDataOutput = tickQueue;
-
-        @SuppressWarnings("unchecked")
-        IOutputQueueResource<SimulationMetadata> metadataQueue = (IOutputQueueResource<SimulationMetadata>) getRequiredResource("metadataOutput", IOutputQueueResource.class);
-        this.metadataOutput = metadataQueue;
-
-        this.samplingInterval = options.hasPath("samplingInterval") ? options.getInt("samplingInterval") : 1;
-        if (this.samplingInterval < 1) throw new IllegalArgumentException("samplingInterval must be >= 1");
-
-        // Delta compression configuration
-        this.accumulatedDeltaInterval = options.hasPath("accumulatedDeltaInterval") 
-                ? options.getInt("accumulatedDeltaInterval") 
-                : SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL;
-        this.snapshotInterval = options.hasPath("snapshotInterval") 
-                ? options.getInt("snapshotInterval") 
-                : SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL;
-        this.chunkInterval = options.hasPath("chunkInterval") 
-                ? options.getInt("chunkInterval") 
-                : SimulationParameters.DEFAULT_CHUNK_INTERVAL;
-
-        this.metricsWindowSeconds = options.hasPath("metricsWindowSeconds") ? options.getInt("metricsWindowSeconds") : 1;
-        this.pauseTicks = options.hasPath("pauseTicks") ? options.getLongList("pauseTicks") : Collections.emptyList();
-        this.seed = options.hasPath("seed") ? options.getLong("seed") : System.currentTimeMillis();
-
-        List<? extends Config> organismConfigs = options.getConfigList("organisms");
-        if (organismConfigs.isEmpty()) throw new IllegalArgumentException("At least one organism must be configured.");
-
-        // Initialize instruction set before compiling programs
+        // Initialize instruction set (required for both modes)
         org.evochora.runtime.isa.Instruction.init();
 
-        // Map with programId as key (for runtime lookup)
-        Map<String, ProgramArtifact> compiledPrograms = new HashMap<>();
-        Compiler compiler = new Compiler();
+        // Common resource initialization
+        this.tickDataOutput = initializeTickQueue();
+        this.metadataOutput = initializeMetadataQueue();
 
-        boolean isToroidal = "TORUS".equalsIgnoreCase(options.getString("environment.topology"));
-        EnvironmentProperties envProps = new EnvironmentProperties(options.getIntList("environment.shape").stream().mapToInt(i -> i).toArray(), isToroidal);
+        // Common configuration (intervals come from InitializedState to support resume from metadata)
+        this.metricsWindowSeconds = readInt(options, "metricsWindowSeconds", 1);
+        this.pauseTicks = options.hasPath("pauseTicks") ? options.getLongList("pauseTicks") : Collections.emptyList();
 
-        for (Config orgConfig : organismConfigs) {
-            String programPath = orgConfig.getString("program");
-            // Check if we already compiled this program
-            if (!programInfoByPath.containsKey(programPath)) {
-                try {
-                    String source = Files.readString(Paths.get(programPath));
-                    ProgramArtifact artifact = compiler.compile(List.of(source.split("\n")), programPath, envProps);
-                    String programId = artifact.programId();
-                    // Store ProgramInfo for initialization and metadata building
-                    programInfoByPath.put(programPath, new ProgramInfo(programPath, programId, artifact));
-                    // Store artifact with programId as key (for runtime lookups)
-                    compiledPrograms.put(programId, artifact);
-                } catch (CompilationException e) {
-                    log.warn("Failed to compile program file '{}': {}", programPath, e.getMessage());
-                    throw new IllegalArgumentException("Failed to compile program file: " + programPath, e);
-                } catch (IOException e) {
-                    throw new IllegalArgumentException("Failed to read program file: " + programPath, e);
-                }
-            }
-        }
+        // Mode-specific initialization
+        this.isResume = options.hasPath("resume.enabled") && options.getBoolean("resume.enabled");
+        InitializedState state = this.isResume
+            ? initializeFromCheckpoint(options)
+            : initializeNewSimulation(options);
 
-        this.randomProvider = new SeededRandomProvider(seed);
-        this.tickPlugins = initializeTickPlugins(options.getConfigList("tickPlugins"), this.randomProvider);
+        // Apply initialized state
+        this.simulation = state.simulation();
+        this.randomProvider = state.randomProvider();
+        this.tickPlugins = state.tickPlugins();
+        this.runId = state.runId();
+        this.seed = state.seed();
+        this.startTimeMs = state.startTimeMs();
+        this.currentTick.set(state.initialTick());
+        state.programInfo().forEach(programInfoByPath::put);
 
-        // Extract runtime configuration before creating components
-        Config runtimeConfig = options.hasPath("runtime") ? options.getConfig("runtime") : com.typesafe.config.ConfigFactory.empty();
-        Config thermoConfig = runtimeConfig.hasPath("thermodynamics") ? runtimeConfig.getConfig("thermodynamics") : com.typesafe.config.ConfigFactory.empty();
-        ThermodynamicPolicyManager policyManager = new ThermodynamicPolicyManager(thermoConfig);
-        Config organismConfig = runtimeConfig.hasPath("organism") ? runtimeConfig.getConfig("organism") : com.typesafe.config.ConfigFactory.empty();
+        // Intervals from state (config for new simulation, metadata for resume)
+        this.samplingInterval = state.samplingInterval();
+        this.accumulatedDeltaInterval = state.accumulatedDeltaInterval();
+        this.snapshotInterval = state.snapshotInterval();
+        this.chunkInterval = state.chunkInterval();
 
-        // Create label matching strategy from config (or use default)
-        org.evochora.runtime.label.ILabelMatchingStrategy labelMatchingStrategy =
-            Environment.createLabelMatchingStrategy(
-                runtimeConfig.hasPath("label-matching") ? runtimeConfig.getConfig("label-matching") : null
-            );
+        // Common finalization - pass resume snapshot for proper encoder initialization
+        this.chunkEncoder = createChunkEncoder(state.resumeSnapshot());
+    }
 
-        Environment environment = new Environment(envProps, labelMatchingStrategy);
+    @SuppressWarnings("unchecked")
+    private IOutputQueueResource<TickDataChunk> initializeTickQueue() {
+        return (IOutputQueueResource<TickDataChunk>) getRequiredResource("tickData", IOutputQueueResource.class);
+    }
 
-        this.simulation = new Simulation(environment, policyManager, organismConfig);
-        this.simulation.setRandomProvider(this.randomProvider);
-        this.simulation.setProgramArtifacts(compiledPrograms);
+    @SuppressWarnings("unchecked")
+    private IOutputQueueResource<SimulationMetadata> initializeMetadataQueue() {
+        return (IOutputQueueResource<SimulationMetadata>) getRequiredResource("metadataOutput", IOutputQueueResource.class);
+    }
 
-        // Register tick plugins with simulation (they execute at start of each tick)
-        for (PluginWithConfig pwc : this.tickPlugins) {
-            this.simulation.addTickPlugin(pwc.plugin());
-        }
+    private int readInt(Config options, String path, int defaultValue) {
+        return options.hasPath(path) ? options.getInt(path) : defaultValue;
+    }
 
-        // Validate organism placement coordinates match world dimensions
-        int worldDimensions = envProps.getWorldShape().length;
-        for (Config orgConfig : organismConfigs) {
-            List<Integer> positions = orgConfig.getIntList("placement.positions");
-            if (positions.size() != worldDimensions) {
-                String worldShape = Arrays.toString(envProps.getWorldShape());
-                throw new IllegalArgumentException(
-                    "Organism placement coordinate mismatch: World has " + worldDimensions +
-                    " dimensions " + worldShape + " but organism placement has " + positions.size() +
-                    " coordinates " + positions + ". Update organism placement to match world dimensions."
-                );
-            }
-        }
+    private int readPositiveInt(Config options, String path, int defaultValue) {
+        int value = readInt(options, path, defaultValue);
+        if (value < 1) throw new IllegalArgumentException(path + " must be >= 1");
+        return value;
+    }
 
-        for (Config orgConfig : organismConfigs) {
-            String programPath = orgConfig.getString("program");
-            ProgramInfo programInfo = programInfoByPath.get(programPath);
-            if (programInfo == null) {
-                throw new IllegalStateException("Program info not found for path: " + programPath);
-            }
-            int[] startPosition = orgConfig.getIntList("placement.positions").stream().mapToInt(i -> i).toArray();
-            
-            Organism organism = Organism.create(simulation, startPosition, orgConfig.getInt("initialEnergy"), log);
-            organism.setProgramId(programInfo.programId());
-            this.simulation.addOrganism(organism);
-            
-            // Place code and initial world objects in environment
-            placeOrganismCodeAndObjects(organism, programInfo.artifact(), startPosition);
-        }
-        // Generate run ID with timestamp prefix: YYYYMMDD-HHiissmm-UUID
-        LocalDateTime now = LocalDateTime.now();
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmssSS");
-        String timestamp = now.format(formatter);
-        this.runId = timestamp + "-" + UUID.randomUUID().toString();
-        
-        // Initialize chunk encoder for delta compression
-        // DeltaCodec uses int arrays, so worlds > 2.1B cells are not supported
+    private DeltaCodec.Encoder createChunkEncoder(TickData resumeSnapshot) {
         long totalCellsLong = this.simulation.getEnvironment().getTotalCells();
         if (totalCellsLong > Integer.MAX_VALUE) {
             throw new IllegalStateException(
@@ -223,9 +184,178 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 "Reduce environment dimensions.");
         }
         int totalCells = (int) totalCellsLong;
-        this.chunkEncoder = new DeltaCodec.Encoder(
-                this.runId, totalCells,
+
+        if (resumeSnapshot != null) {
+            log.debug("Creating encoder with checkpoint snapshot at tick {}", resumeSnapshot.getTickNumber());
+            return DeltaCodec.Encoder.forResume(
+                resumeSnapshot, this.runId, totalCells,
                 this.accumulatedDeltaInterval, this.snapshotInterval, this.chunkInterval);
+        }
+        return new DeltaCodec.Encoder(
+            this.runId, totalCells,
+            this.accumulatedDeltaInterval, this.snapshotInterval, this.chunkInterval);
+    }
+
+    /**
+     * Initializes simulation state from a checkpoint for resume mode.
+     * <p>
+     * All simulation-affecting configuration is read from the metadata's resolvedConfigJson
+     * to ensure deterministic continuation of the original simulation.
+     */
+    private InitializedState initializeFromCheckpoint(Config options) {
+        log.debug("Initializing from checkpoint (resume mode)");
+
+        if (!options.hasPath("resume.runId")) {
+            throw new IllegalStateException(
+                "Configuration 'resume.runId' is required for resume mode. " +
+                "Set pipeline.runId via config (e.g., -Dpipeline.runId=<RUN_ID>)");
+        }
+        String runId = options.getString("resume.runId");
+
+        // Get storage resource (read-only, no write needed since we don't truncate)
+        IBatchStorageRead storageRead = (IBatchStorageRead) getRequiredResource("resumeStorage", IBatchStorageRead.class);
+
+        try {
+            // Load checkpoint (always from last complete chunk's snapshot)
+            SnapshotLoader snapshotLoader = new SnapshotLoader(storageRead);
+            ResumeCheckpoint checkpoint = snapshotLoader.loadLatestCheckpoint(runId);
+            log.debug("Loaded checkpoint at tick {}, will resume from tick {}",
+                checkpoint.getCheckpointTick(), checkpoint.getResumeFromTick());
+
+            // Parse original config from metadata
+            SimulationMetadata metadata = checkpoint.metadata();
+            Config originalConfig = com.typesafe.config.ConfigFactory.parseString(
+                metadata.getResolvedConfigJson());
+
+            // Restore state using original config
+            long seed = metadata.getInitialSeed();
+            IRandomProvider randomProvider = new SeededRandomProvider(seed);
+            SimulationRestorer.RestoredState restored = SimulationRestorer.restore(checkpoint, randomProvider);
+
+            // Convert to internal format
+            List<PluginWithConfig> plugins = restored.tickPlugins().stream()
+                .map(p -> new PluginWithConfig(p.plugin(), p.config()))
+                .toList();
+
+            Map<String, ProgramInfo> programInfo = new HashMap<>();
+            restored.programArtifacts().forEach((id, artifact) ->
+                programInfo.put(id, new ProgramInfo(id, id, artifact)));
+
+            log.debug("Restored {} organisms from checkpoint", restored.simulation().getOrganisms().size());
+
+            // Read intervals from original config (must match original simulation!)
+            return new InitializedState(
+                restored.simulation(),
+                randomProvider,
+                plugins,
+                programInfo,
+                runId,
+                seed,
+                metadata.getStartTimeMs(),
+                checkpoint.getResumeFromTick() - 1,
+                readPositiveInt(originalConfig, "samplingInterval", 1),
+                readInt(originalConfig, "accumulatedDeltaInterval", SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL),
+                readInt(originalConfig, "snapshotInterval", SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL),
+                readInt(originalConfig, "chunkInterval", SimulationParameters.DEFAULT_CHUNK_INTERVAL),
+                checkpoint.snapshot()  // Pass snapshot to prime the encoder
+            );
+        } catch (IOException e) {
+            throw new IllegalStateException("Failed to load checkpoint: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Initializes a new simulation from configuration.
+     */
+    private InitializedState initializeNewSimulation(Config options) {
+        long startTimeMs = System.currentTimeMillis();
+        long seed = options.hasPath("seed") ? options.getLong("seed") : System.currentTimeMillis();
+
+        List<? extends Config> organismConfigs = options.getConfigList("organisms");
+        if (organismConfigs.isEmpty()) {
+            throw new IllegalArgumentException("At least one organism must be configured.");
+        }
+
+        // Compile programs
+        Map<String, ProgramArtifact> compiledPrograms = new HashMap<>();
+        Map<String, ProgramInfo> programInfo = new HashMap<>();
+        Compiler compiler = new Compiler();
+
+        boolean isToroidal = "TORUS".equalsIgnoreCase(options.getString("environment.topology"));
+        EnvironmentProperties envProps = new EnvironmentProperties(
+            options.getIntList("environment.shape").stream().mapToInt(i -> i).toArray(), isToroidal);
+
+        for (Config orgConfig : organismConfigs) {
+            String programPath = orgConfig.getString("program");
+            if (!programInfo.containsKey(programPath)) {
+                try {
+                    String source = Files.readString(Paths.get(programPath));
+                    ProgramArtifact artifact = compiler.compile(List.of(source.split("\n")), programPath, envProps);
+                    programInfo.put(programPath, new ProgramInfo(programPath, artifact.programId(), artifact));
+                    compiledPrograms.put(artifact.programId(), artifact);
+                } catch (CompilationException e) {
+                    throw new IllegalArgumentException("Failed to compile program: " + programPath, e);
+                } catch (IOException e) {
+                    throw new IllegalArgumentException("Failed to read program file: " + programPath, e);
+                }
+            }
+        }
+
+        // Create runtime components
+        IRandomProvider randomProvider = new SeededRandomProvider(seed);
+        List<PluginWithConfig> plugins = initializeTickPlugins(options.getConfigList("tickPlugins"), randomProvider);
+
+        Config runtimeConfig = options.hasPath("runtime") ? options.getConfig("runtime") : com.typesafe.config.ConfigFactory.empty();
+        ThermodynamicPolicyManager policyManager = new ThermodynamicPolicyManager(
+            runtimeConfig.hasPath("thermodynamics") ? runtimeConfig.getConfig("thermodynamics") : com.typesafe.config.ConfigFactory.empty());
+        Config organismConfig = runtimeConfig.hasPath("organism") ? runtimeConfig.getConfig("organism") : com.typesafe.config.ConfigFactory.empty();
+
+        org.evochora.runtime.label.ILabelMatchingStrategy labelMatchingStrategy =
+            Environment.createLabelMatchingStrategy(
+                runtimeConfig.hasPath("label-matching") ? runtimeConfig.getConfig("label-matching") : null);
+
+        Environment environment = new Environment(envProps, labelMatchingStrategy);
+        Simulation simulation = new Simulation(environment, policyManager, organismConfig);
+        simulation.setRandomProvider(randomProvider);
+        simulation.setProgramArtifacts(compiledPrograms);
+
+        // Register tick plugins
+        for (PluginWithConfig pwc : plugins) {
+            simulation.addTickPlugin(pwc.plugin());
+        }
+
+        // Create and place organisms
+        int worldDimensions = envProps.getWorldShape().length;
+        for (Config orgConfig : organismConfigs) {
+            List<Integer> positions = orgConfig.getIntList("placement.positions");
+            if (positions.size() != worldDimensions) {
+                throw new IllegalArgumentException(
+                    "Organism placement mismatch: World has " + worldDimensions +
+                    " dimensions but placement has " + positions.size() + " coordinates");
+            }
+
+            String programPath = orgConfig.getString("program");
+            ProgramInfo info = programInfo.get(programPath);
+            int[] startPosition = positions.stream().mapToInt(i -> i).toArray();
+
+            Organism organism = Organism.create(simulation, startPosition, orgConfig.getInt("initialEnergy"), log);
+            organism.setProgramId(info.programId());
+            simulation.addOrganism(organism);
+            placeOrganismCodeAndObjects(simulation, organism, info.artifact(), startPosition);
+        }
+
+        // Generate run ID
+        String runId = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmssSS"))
+            + "-" + UUID.randomUUID().toString();
+
+        return new InitializedState(
+            simulation, randomProvider, plugins, programInfo, runId, seed, startTimeMs, -1,
+            readPositiveInt(options, "samplingInterval", 1),
+            readInt(options, "accumulatedDeltaInterval", SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL),
+            readInt(options, "snapshotInterval", SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL),
+            readInt(options, "chunkInterval", SimulationParameters.DEFAULT_CHUNK_INTERVAL),
+            null  // No resume snapshot for new simulations
+        );
     }
 
     @Override
@@ -238,18 +368,28 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 .collect(java.util.stream.Collectors.joining(", "));
 
         int ticksPerChunk = chunkEncoder.getSamplesPerChunk();
-        log.info("SimulationEngine started: world=[{}, {}], organisms={}, tickPlugins={} ({}), seed={}, sampling={}, ticksPerChunk={}, runId={}",
-                worldDims, topology, simulation.getOrganisms().size(), tickPlugins.size(), pluginNames, seed, samplingInterval, ticksPerChunk, runId);
+        if (isResume) {
+            log.info("SimulationEngine RESUMED: world=[{}, {}], organisms={}, tickPlugins={} ({}), seed={}, sampling={}, ticksPerChunk={}, runId={}, resumeFromTick={}",
+                    worldDims, topology, simulation.getOrganisms().size(), tickPlugins.size(), pluginNames, seed, samplingInterval, ticksPerChunk, runId, currentTick.get() + 1);
+        } else {
+            log.info("SimulationEngine started: world=[{}, {}], organisms={}, tickPlugins={} ({}), seed={}, sampling={}, ticksPerChunk={}, runId={}",
+                    worldDims, topology, simulation.getOrganisms().size(), tickPlugins.size(), pluginNames, seed, samplingInterval, ticksPerChunk, runId);
+        }
     }
 
     @Override
     protected void run() throws InterruptedException {
-        try {
-            metadataOutput.put(buildMetadataMessage());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            log.debug("Interrupted while sending initial metadata during shutdown");
-            throw e; // Let AbstractService handle it as normal shutdown
+        // Only send metadata for fresh runs, not for resume (metadata already exists)
+        if (!isResume) {
+            try {
+                metadataOutput.put(buildMetadataMessage());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                log.debug("Interrupted while sending initial metadata during shutdown");
+                throw e; // Let AbstractService handle it as normal shutdown
+            }
+        } else {
+            log.debug("Resume mode: skipping metadata send (already exists for run {})", runId);
         }
 
         // Check isStopRequested() for graceful shutdown (in addition to state and interrupt)
@@ -262,23 +402,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
             if (tick % samplingInterval == 0) {
                 try {
-                    // Use DeltaCodec.Encoder for delta compression
-                    List<OrganismState> organismStates = extractOrganismStates();
-                    List<PluginState> pluginStates = extractPluginStates();
-                    ByteString rngState = ByteString.copyFrom(randomProvider.saveState());
-                    
-                    java.util.Optional<TickDataChunk> chunk = chunkEncoder.captureTick(
-                            tick,
-                            simulation.getEnvironment(),
-                            organismStates,
-                            simulation.getTotalOrganismsCreatedCount(),
-                            rngState,
-                            pluginStates);
-                    
-                    if (chunk.isPresent()) {
-                        tickDataOutput.put(chunk.get());
-                        messagesSent.incrementAndGet();
-                    }
+                    captureSampledTick(tick);
                 } catch (InterruptedException e) {
                     // Shutdown signal received while sending tick data - this is expected
                     log.debug("Interrupted while sending tick data for tick {} during shutdown", tick);
@@ -295,20 +419,10 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 continue;
             }
         }
-        
-        // Flush any partial chunk on shutdown
-        try {
-            java.util.Optional<TickDataChunk> partialChunk = chunkEncoder.flushPartialChunk();
-            if (partialChunk.isPresent()) {
-                tickDataOutput.put(partialChunk.get());
-                messagesSent.incrementAndGet();
-                log.info("Flushed partial chunk with {} ticks on shutdown", partialChunk.get().getTickCount());
-            }
-        } catch (InterruptedException e) {
-            log.debug("Interrupted while flushing partial chunk during shutdown");
-            Thread.currentThread().interrupt();
-        }
-        
+
+        // Note: No flushPartialChunk() - partial chunks cause duplicate/shifted boundaries on resume.
+        // Only complete chunks are persisted; partial data is discarded and regenerated on resume.
+
         log.info("Simulation loop finished.");
     }
 
@@ -338,6 +452,38 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
     private boolean shouldAutoPause(long tick) { return pauseTicks.contains(tick); }
 
+    /**
+     * Captures the current simulation state for a sampled tick.
+     * <p>
+     * This method extracts all organism states, plugin states, and RNG state,
+     * then passes them to the DeltaCodec.Encoder. If a complete chunk is produced,
+     * it is sent to the tick data output queue.
+     *
+     * @param tick the tick number to capture
+     * @return true if a complete chunk was produced and sent, false otherwise
+     * @throws InterruptedException if interrupted while sending to queue
+     */
+    private boolean captureSampledTick(long tick) throws InterruptedException {
+        List<OrganismState> organismStates = extractOrganismStates();
+        List<PluginState> pluginStates = extractPluginStates();
+        ByteString rngState = ByteString.copyFrom(randomProvider.saveState());
+
+        java.util.Optional<TickDataChunk> chunk = chunkEncoder.captureTick(
+                tick,
+                simulation.getEnvironment(),
+                organismStates,
+                simulation.getTotalOrganismsCreatedCount(),
+                rngState,
+                pluginStates);
+
+        if (chunk.isPresent()) {
+            tickDataOutput.put(chunk.get());
+            messagesSent.incrementAndGet();
+            return true;
+        }
+        return false;
+    }
+
     private List<PluginWithConfig> initializeTickPlugins(List<? extends Config> configs, IRandomProvider random) {
         return configs.stream().map(config -> {
             try {
@@ -351,65 +497,29 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         }).toList();
     }
 
+    /**
+     * Builds the metadata message for a new simulation.
+     * <p>
+     * Only stores data that cannot be derived from config:
+     * <ul>
+     *   <li>runId, startTimeMs - runtime-generated identifiers</li>
+     *   <li>seed - the actual seed used (important when auto-generated)</li>
+     *   <li>programs - compiled artifacts with machine code</li>
+     *   <li>resolvedConfigJson - all other configuration</li>
+     * </ul>
+     */
     private SimulationMetadata buildMetadataMessage() {
         SimulationMetadata.Builder builder = SimulationMetadata.newBuilder();
         builder.setSimulationRunId(this.runId);
         builder.setStartTimeMs(this.startTimeMs);
         builder.setInitialSeed(this.seed);
-        builder.setSamplingInterval(this.samplingInterval);
 
-        EnvironmentProperties envProps = this.simulation.getEnvironment().getProperties();
-        EnvironmentConfig.Builder envConfigBuilder = EnvironmentConfig.newBuilder();
-        envConfigBuilder.setDimensions(envProps.getWorldShape().length);
-        for (int dim : envProps.getWorldShape()) {
-            envConfigBuilder.addShape(dim);
-        }
-        for (int i = 0; i < envProps.getWorldShape().length; i++) {
-            envConfigBuilder.addToroidal(envProps.isToroidal());
-        }
-        builder.setEnvironment(envConfigBuilder.build());
+        // Add compiled programs (cannot be derived from config)
+        simulation.getProgramArtifacts().values().forEach(artifact ->
+            builder.addPrograms(convertProgramArtifact(artifact)));
 
-        tickPlugins.forEach(pluginWithConfig -> {
-            TickPluginConfig.Builder pluginBuilder = TickPluginConfig.newBuilder();
-            pluginBuilder.setPluginClass(pluginWithConfig.plugin().getClass().getName());
-            pluginBuilder.setConfigJson(pluginWithConfig.config().root().render(ConfigRenderOptions.concise()));
-            builder.addTickPlugins(pluginBuilder.build());
-        });
-
-        simulation.getProgramArtifacts().values().forEach(artifact -> builder.addPrograms(convertProgramArtifact(artifact)));
-
-        options.getConfigList("organisms").forEach(orgConfig -> {
-            InitialOrganismSetup.Builder orgSetupBuilder = InitialOrganismSetup.newBuilder();
-            String programPath = orgConfig.getString("program");
-            ProgramInfo programInfo = programInfoByPath.get(programPath);
-            if (programInfo != null) {
-                orgSetupBuilder.setProgramId(programInfo.programId());
-            }
-            if (orgConfig.hasPath("id")) {
-                orgSetupBuilder.setOrganismId(orgConfig.getInt("id"));
-            }
-            orgSetupBuilder.setPosition(convertVector(orgConfig.getIntList("placement.positions").stream().mapToInt(i->i).toArray()));
-            orgSetupBuilder.setInitialEnergy(orgConfig.getInt("initialEnergy"));
-            builder.addInitialOrganisms(orgSetupBuilder.build());
-        });
-
-        if (options.hasPath("metadata")) {
-            options.getConfig("metadata").entrySet().forEach(entry -> {
-                builder.putUserMetadata(entry.getKey(), entry.getValue().unwrapped().toString());
-            });
-        }
-
+        // Store complete config - all other values are read from here during resume
         builder.setResolvedConfigJson(options.root().render(ConfigRenderOptions.concise()));
-
-        // Add organism configuration from runtime.organism
-        Config organismConfig = this.simulation.getOrganismConfig();
-        if (organismConfig != null) {
-            OrganismConfig.Builder orgConfigBuilder = OrganismConfig.newBuilder();
-            orgConfigBuilder.setMaxEnergy(organismConfig.getInt("max-energy"));
-            orgConfigBuilder.setMaxEntropy(organismConfig.getInt("max-entropy"));
-            orgConfigBuilder.setErrorPenaltyCost(organismConfig.getInt("error-penalty-cost"));
-            builder.setOrganismConfig(orgConfigBuilder.build());
-        }
 
         return builder.build();
     }
@@ -691,7 +801,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         return builder.build();
     }
 
-    private void placeOrganismCodeAndObjects(Organism organism, ProgramArtifact artifact, int[] startPosition) {
+    private void placeOrganismCodeAndObjects(Simulation sim, Organism organism, ProgramArtifact artifact, int[] startPosition) {
         // Place code in environment
         // ProgramArtifact guarantees deterministic iteration order (sorted by coordinate in Emitter)
         for (Map.Entry<int[], Integer> entry : artifact.machineCodeLayout().entrySet()) {
@@ -704,7 +814,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             org.evochora.runtime.model.Molecule molecule = org.evochora.runtime.model.Molecule.fromInt(entry.getValue());
             // CODE:0 should always have owner=0 (represents empty cell)
             int ownerId = (molecule.type() == org.evochora.runtime.Config.TYPE_CODE && molecule.toScalarValue() == 0) ? 0 : organism.getId();
-            simulation.getEnvironment().setMolecule(molecule, ownerId, absolutePos);
+            sim.getEnvironment().setMolecule(molecule, ownerId, absolutePos);
         }
 
         // Place initial world objects
@@ -718,7 +828,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             org.evochora.compiler.api.PlacedMolecule pm = entry.getValue();
             // CODE:0 should always have owner=0 (represents empty cell)
             int ownerId = (pm.type() == org.evochora.runtime.Config.TYPE_CODE && pm.value() == 0) ? 0 : organism.getId();
-            simulation.getEnvironment().setMolecule(
+            sim.getEnvironment().setMolecule(
                 new org.evochora.runtime.model.Molecule(pm.type(), pm.value()),
                 ownerId,
                 absolutePos

@@ -275,26 +275,50 @@ raw/.../batch_00001000_00001099.pb  ← Original
 raw/.../batch_00001000_00001040.pb  ← Truncated
 ```
 
-The **loading logic** handles this: When multiple batch files have the same `firstTick`, prefer the one with the **smaller `lastTick`** (the truncated version). This is correct because:
+The **`listBatchFiles()` method** handles this automatically: When multiple batch files have the same `firstTick`, it keeps only the one with the **smaller `lastTick`** (the truncated version) and logs a warning. This is correct because:
 - Truncated file = intentionally shortened = authoritative
 - Original file = stale, will be cleaned up on next successful resume
 
-```java
-// In listBatchFiles() post-processing or in SnapshotLoader:
-// Group by firstTick, keep only smallest lastTick per group
-Map<Long, StoragePath> byFirstTick = new HashMap<>();
-for (StoragePath path : allBatchPaths) {
-    long firstTick = parseFirstTick(path);
-    long lastTick = parseLastTick(path);
+This deduplication happens at the storage layer, so all consumers (SnapshotLoader, Indexer, etc.) automatically get consistent, deduplicated results.
 
-    StoragePath existing = byFirstTick.get(firstTick);
-    if (existing == null || lastTick < parseLastTick(existing)) {
-        byFirstTick.put(firstTick, path);
+**Implementation:** This deduplication logic belongs in `listBatchFiles()` itself (not in each consumer), so all services (SnapshotLoader, Indexer, etc.) automatically get consistent behavior.
+
+```java
+// In IBatchStorageRead.listBatchFiles() implementation:
+public BatchFileListResult listBatchFiles(String prefix, ...) {
+    List<StoragePath> allFiles = listRawBatchFiles(prefix);
+
+    // Deduplicate: if multiple files share firstTick, keep smallest lastTick
+    Map<Long, StoragePath> byFirstTick = new LinkedHashMap<>();
+    for (StoragePath path : allFiles) {
+        long firstTick = parseBatchFirstTick(path);
+        long lastTick = parseBatchLastTick(path);
+
+        StoragePath existing = byFirstTick.get(firstTick);
+        if (existing == null) {
+            byFirstTick.put(firstTick, path);
+        } else if (lastTick < parseBatchLastTick(existing)) {
+            log.warn("Duplicate batch files detected for firstTick={}: " +
+                "keeping {} (lastTick={}), ignoring {} (lastTick={}). " +
+                "This indicates incomplete truncation from a previous crash.",
+                firstTick, path, lastTick, existing, parseBatchLastTick(existing));
+            byFirstTick.put(firstTick, path);
+        } else {
+            log.warn("Duplicate batch files detected for firstTick={}: " +
+                "keeping {} (lastTick={}), ignoring {} (lastTick={}). " +
+                "This indicates incomplete truncation from a previous crash.",
+                firstTick, existing, parseBatchLastTick(existing), path, lastTick);
+        }
     }
+
+    return new BatchFileListResult(new ArrayList<>(byFirstTick.values()), ...);
 }
 ```
 
-**No new storage interface methods needed.** The one existing method `moveToSuperseded()` is sufficient.
+This ensures:
+- **Consistency**: All consumers see the same deduplicated view
+- **Visibility**: Warning logged when duplicates found (crash recovery indicator)
+- **No new interface methods**: Behavior change is internal to existing method
 
 #### 3.4.3. Why Supersede Instead of Delete
 
@@ -693,21 +717,11 @@ public class SnapshotLoader {
             throw new ResumeException("No tick data found for run: " + runId);
         }
 
-        // Handle potential duplicates from crash during truncation:
-        // If two files have same firstTick, prefer smaller lastTick (truncated version)
-        Map<Long, StoragePath> deduped = new LinkedHashMap<>();
-        for (StoragePath path : batches.getFilenames()) {
-            long firstTick = parseBatchFirstTick(path);
-            long lastTick = parseBatchLastTick(path);
+        // Note: listBatchFiles() already handles deduplication for crash recovery
+        // (if two files share firstTick, it keeps the one with smaller lastTick)
 
-            StoragePath existing = deduped.get(firstTick);
-            if (existing == null || lastTick < parseBatchLastTick(existing)) {
-                deduped.put(firstTick, path);
-            }
-        }
-
-        // Sort by firstTick and get last batch
-        List<StoragePath> sortedPaths = new ArrayList<>(deduped.values());
+        // Get last batch (list is already sorted by tick order)
+        List<StoragePath> sortedPaths = new ArrayList<>(batches.getFilenames());
         Collections.sort(sortedPaths);
         StoragePath lastBatchPath = sortedPaths.get(sortedPaths.size() - 1);
 
@@ -1425,7 +1439,243 @@ evochora node resume --run-id 2025012614302512-550e8400-e29b-41d4-a716-446655440
 
 ---
 
-## 10. Future Extensions (Out of Scope)
+## 10. Implementation Plan
+
+The implementation is structured in phases to enable **early error detection**. Each phase is independently testable before proceeding to the next.
+
+### Phase 1: Runtime State Restoration (Foundation)
+
+**Goal:** Verify we can correctly reconstruct Runtime objects from primitive data.
+
+**Files:**
+- `Organism.java` – Add `RestoreBuilder` inner class
+- `Simulation.java` – Add `forResume()` factory method
+
+**Tests:**
+- Unit test `RestoreBuilder` with all field combinations
+- Unit test `Simulation.forResume()` with mock Environment
+- Verify `nextOrganismId` calculation: `totalOrganismsCreated + 1`
+
+**Validation Checkpoint:**
+```java
+// Can we round-trip an Organism?
+Organism original = createTestOrganism();
+Organism restored = Organism.restore(original.getId(), original.getBirthTick())
+    .energy(original.getEr())
+    // ... all fields
+    .build(simulation);
+assertEquals(original.getEr(), restored.getEr());
+// ... assert all fields match
+```
+
+**Why first:** If state restoration is broken, nothing else works. Better to find out immediately.
+
+---
+
+### Phase 2: Storage Layer Extensions
+
+**Goal:** Enable truncation workflow and crash-safe deduplication.
+
+**Files:**
+- `IBatchStorageWrite.java` – Add `moveToSuperseded(StoragePath)` method
+- `AbstractBatchStorageResource.java` – Implement `moveToSuperseded()`
+- `IBatchStorageRead.java` / Implementation – Add deduplication logic to `listBatchFiles()`
+
+**Tests:**
+- Integration test: `moveToSuperseded()` moves file correctly
+- Integration test: `listBatchFiles()` deduplicates when two files have same firstTick
+- Verify warning is logged on deduplication
+
+**Validation Checkpoint:**
+```java
+// Create two batch files with same firstTick, different lastTick
+storage.writeChunkBatch(chunks, 1000, 1099);  // Original
+storage.writeChunkBatch(truncatedChunks, 1000, 1040);  // Truncated
+
+List<StoragePath> files = storage.listBatchFiles(runId + "/raw/", ...);
+assertEquals(1, files.size());  // Deduplicated!
+assertTrue(files.get(0).contains("01040"));  // Smaller lastTick wins
+```
+
+**Why second:** SnapshotLoader depends on these methods. Test storage in isolation first.
+
+---
+
+### Phase 3: Checkpoint Loading (SnapshotLoader)
+
+**Goal:** Correctly identify and load the resume checkpoint from storage.
+
+**Files:**
+- `SnapshotLoader.java` (new)
+- `ResumeCheckpoint.java` (new)
+- `ResumeException.java` (new)
+
+**Tests:**
+- Unit test with mock storage: correct batch/chunk/delta selection
+- Test fallback to snapshot when no accumulated delta
+- Test truncation logic (write truncated, move original)
+- Test error cases: missing metadata, no batches, empty batch
+
+**Validation Checkpoint:**
+```java
+// Create test data with known structure
+// batch_1000_1099.pb: Snapshot@1000, AccDelta@1020, AccDelta@1040, Delta@1050
+ResumeCheckpoint checkpoint = loader.loadLatestCheckpoint(runId);
+
+assertEquals(1040, checkpoint.accumulatedDelta().getTickNumber());
+assertEquals(1041, checkpoint.getResumeFromTick());
+// Verify truncated file exists, original in superseded/
+```
+
+**Why third:** SnapshotLoader orchestrates storage operations. Must work before SimulationRestorer can use it.
+
+---
+
+### Phase 4: State Conversion (SimulationRestorer)
+
+**Goal:** Convert Protobuf checkpoint data to Runtime objects.
+
+**Files:**
+- `SimulationRestorer.java` (new)
+
+**Tests:**
+- Test `restoreEnvironmentCells()` – snapshot only and snapshot+delta
+- Test `restoreOrganism()` – all field types (scalars, vectors, stacks)
+- Test `restoreTickPlugins()` – instantiation and state loading
+- Test full `restore()` with realistic checkpoint data
+
+**Validation Checkpoint:**
+```java
+// Load real checkpoint from test fixture
+ResumeCheckpoint checkpoint = loader.loadLatestCheckpoint(testRunId);
+Simulation sim = SimulationRestorer.restore(checkpoint, new XorShiftRandom());
+
+// Verify simulation state matches expected
+assertEquals(1040, sim.getCurrentTick());
+assertEquals(expectedOrganismCount, sim.getOrganisms().size());
+// Verify RNG produces expected sequence
+assertEquals(expectedNextRandom, sim.getRandomProvider().nextInt());
+```
+
+**Why fourth:** Depends on Phase 1 (RestoreBuilder) and Phase 3 (ResumeCheckpoint). Now we test the full conversion pipeline.
+
+---
+
+### Phase 5: Engine Integration
+
+**Goal:** SimulationEngine can start in resume mode and continue simulation.
+
+**Files:**
+- `SimulationEngine.java` – Add resume constructor
+- `ResumedSimulationState.java` (new record)
+
+**Tests:**
+- Test that resumed engine continues from correct tick
+- Test that first tick after resume creates new snapshot (fresh encoder)
+- Test that new tick data is written correctly
+- Test graceful shutdown still works after resume
+
+**Validation Checkpoint:**
+```java
+// Resume from tick 1040
+SimulationEngine engine = new SimulationEngine(name, config, resources, resumeState);
+engine.start();
+
+// Run a few ticks
+await().until(() -> engine.getCurrentTick() >= 1045);
+engine.stop();
+
+// Verify new data written starting at 1041
+List<StoragePath> batches = storage.listBatchFiles(...);
+// New batch should start at 1041 with a snapshot
+```
+
+**Why fifth:** This is where resume actually "runs". Validates the full stack up to here.
+
+---
+
+### Phase 6: Node & CLI Integration
+
+**Goal:** Complete user-facing resume functionality.
+
+**Files:**
+- `Node.java` – Add resume constructor with config override
+- `NodeResumeCommand.java` (new)
+- `NodeCommand.java` – Register subcommand
+
+**Tests:**
+- Test config override: `pipeline.runId` is overwritten
+- Test CLI argument parsing
+- Integration test: full `node resume --run-id ...` flow
+
+**Validation Checkpoint:**
+```bash
+# Start simulation, let it run, kill it
+evochora node run &
+sleep 10
+kill -TERM $!
+
+# Resume and verify
+evochora node resume --run-id $RUN_ID &
+sleep 5
+# Check logs for "Resuming from tick X"
+# Check storage for new batch files continuing from X+1
+```
+
+---
+
+### Phase 7: End-to-End Validation
+
+**Goal:** Verify determinism and crash recovery.
+
+**Tests:**
+
+1. **Determinism Test:**
+   ```
+   Run A: tick 0 → 10000 (uninterrupted)
+   Run B: tick 0 → 5000, stop, resume → 10000
+
+   Assert: State at tick 10000 identical in both runs
+   ```
+
+2. **Crash Recovery Test:**
+   ```
+   Run simulation, SIGKILL mid-tick
+   Resume
+   Verify: No data corruption, simulation continues
+   ```
+
+3. **Multiple Resume Test:**
+   ```
+   Run → crash → resume → crash → resume
+   Verify: Works correctly after multiple cycles
+   ```
+
+---
+
+### Implementation Order Summary
+
+```
+Phase 1: Organism.RestoreBuilder, Simulation.forResume()
+    ↓
+Phase 2: moveToSuperseded(), listBatchFiles() deduplication
+    ↓
+Phase 3: SnapshotLoader, ResumeCheckpoint, ResumeException
+    ↓
+Phase 4: SimulationRestorer
+    ↓
+Phase 5: SimulationEngine resume mode
+    ↓
+Phase 6: Node resume constructor, NodeResumeCommand
+    ↓
+Phase 7: End-to-End tests
+```
+
+**Estimated Effort:** Each phase should be completable and testable independently. If a phase reveals design issues, they're caught before dependent code is written.
+
+---
+
+## 11. Future Extensions (Out of Scope)
 
 The following are explicitly NOT part of this proposal:
 

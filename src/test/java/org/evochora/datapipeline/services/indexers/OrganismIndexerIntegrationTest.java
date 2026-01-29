@@ -14,8 +14,8 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
+import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.BatchInfo;
-import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.ProcFrame;
 import org.evochora.datapipeline.api.contracts.RegisterValue;
@@ -206,19 +206,15 @@ class OrganismIndexerIntegrationTest {
     }
 
     private SimulationMetadata createMetadata(String runId) {
-        EnvironmentConfig.Builder envBuilder = EnvironmentConfig.newBuilder()
-                .setDimensions(2)
-                .addShape(10)
-                .addToroidal(false)
-                .addShape(10)
-                .addToroidal(false);
-
         return SimulationMetadata.newBuilder()
                 .setSimulationRunId(runId)
-                .setEnvironment(envBuilder.build())
+                .setResolvedConfigJson(TestMetadataHelper.builder()
+                    .shape(10, 10)
+                    .toroidal(false)
+                    .samplingInterval(1)
+                    .build())
                 .setStartTimeMs(Instant.now().toEpochMilli())
                 .setInitialSeed(42L)
-                .setSamplingInterval(1)
                 .build();
     }
 

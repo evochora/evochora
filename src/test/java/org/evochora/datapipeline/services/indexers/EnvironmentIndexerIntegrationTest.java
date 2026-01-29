@@ -14,8 +14,8 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 import org.evochora.datapipeline.CellStateTestHelper;
+import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.BatchInfo;
-import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
@@ -430,17 +430,61 @@ class EnvironmentIndexerIntegrationTest {
     }
     
     private SimulationMetadata createMetadata(String runId, int[] worldShape, boolean isToroidal) {
-        EnvironmentConfig.Builder envBuilder = EnvironmentConfig.newBuilder()
-            .setDimensions(worldShape.length);
-        
-        for (int size : worldShape) {
-            envBuilder.addShape(size);
-            envBuilder.addToroidal(isToroidal);
+        // Build resolvedConfigJson using TestMetadataHelper
+        TestMetadataHelper.Builder builder = TestMetadataHelper.builder()
+            .toroidal(isToroidal);
+
+        if (worldShape.length == 1) {
+            builder.width(worldShape[0]).height(1);
+        } else if (worldShape.length == 2) {
+            builder.shape(worldShape[0], worldShape[1]);
+        } else if (worldShape.length == 3) {
+            // For 3D, we need custom JSON since builder only supports 2D
+            String topology = isToroidal ? "TORUS" : "BOUNDED";
+            String customJson = String.format("""
+                {
+                    "environment": {
+                        "shape": [%d, %d, %d],
+                        "topology": "%s"
+                    },
+                    "samplingInterval": 1,
+                    "accumulatedDeltaInterval": 100,
+                    "snapshotInterval": 10,
+                    "chunkInterval": 1,
+                    "tickPlugins": [],
+                    "organisms": [],
+                    "runtime": {
+                        "organism": {
+                            "max-energy": 32767,
+                            "max-entropy": 8191,
+                            "error-penalty-cost": 10
+                        },
+                        "thermodynamics": {
+                            "default": {
+                                "className": "org.evochora.runtime.thermodynamics.impl.UniversalThermodynamicPolicy",
+                                "options": {
+                                    "base-energy": 1,
+                                    "base-entropy": 1
+                                }
+                            },
+                            "overrides": {
+                                "instructions": {},
+                                "families": {}
+                            }
+                        }
+                    }
+                }
+                """, worldShape[0], worldShape[1], worldShape[2], topology);
+            return SimulationMetadata.newBuilder()
+                .setSimulationRunId(runId)
+                .setResolvedConfigJson(customJson)
+                .setStartTimeMs(Instant.now().toEpochMilli())
+                .build();
         }
-        
+
         return SimulationMetadata.newBuilder()
             .setSimulationRunId(runId)
-            .setEnvironment(envBuilder.build())
+            .setResolvedConfigJson(builder.build())
             .setStartTimeMs(Instant.now().toEpochMilli())
             .build();
     }

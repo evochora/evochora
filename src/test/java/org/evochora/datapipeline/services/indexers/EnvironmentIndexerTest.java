@@ -12,8 +12,8 @@ import java.util.List;
 import java.util.Map;
 
 import org.evochora.datapipeline.CellStateTestHelper;
+import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.BatchInfo;
-import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
@@ -149,12 +149,9 @@ class EnvironmentIndexerTest {
         // Given: Metadata with toroidal topology
         SimulationMetadata metadata = SimulationMetadata.newBuilder()
             .setSimulationRunId("test-run")
-            .setEnvironment(EnvironmentConfig.newBuilder()
-                .setDimensions(2)
-                .addShape(100)
-                .addShape(100)
-                .addToroidal(true)
-                .addToroidal(true)
+            .setResolvedConfigJson(TestMetadataHelper.builder()
+                .shape(100, 100)
+                .toroidal(true)
                 .build())
             .build();
         
@@ -172,18 +169,44 @@ class EnvironmentIndexerTest {
     
     @Test
     void testExtractEnvironmentProperties_EuclideanTopology() throws Exception {
-        // Given: Metadata with euclidean (non-toroidal) topology
+        // Given: Metadata with euclidean (non-toroidal) topology - using 3D custom JSON
+        String customJson = """
+            {
+                "environment": {
+                    "shape": [10, 10, 10],
+                    "topology": "BOUNDED"
+                },
+                "samplingInterval": 1,
+                "accumulatedDeltaInterval": 100,
+                "snapshotInterval": 10,
+                "chunkInterval": 1,
+                "tickPlugins": [],
+                "organisms": [],
+                "runtime": {
+                    "organism": {
+                        "max-energy": 32767,
+                        "max-entropy": 8191,
+                        "error-penalty-cost": 10
+                    },
+                    "thermodynamics": {
+                        "default": {
+                            "className": "org.evochora.runtime.thermodynamics.impl.UniversalThermodynamicPolicy",
+                            "options": {
+                                "base-energy": 1,
+                                "base-entropy": 1
+                            }
+                        },
+                        "overrides": {
+                            "instructions": {},
+                            "families": {}
+                        }
+                    }
+                }
+            }
+            """;
         SimulationMetadata metadata = SimulationMetadata.newBuilder()
             .setSimulationRunId("test-run")
-            .setEnvironment(EnvironmentConfig.newBuilder()
-                .setDimensions(3)
-                .addShape(10)
-                .addShape(10)
-                .addShape(10)
-                .addToroidal(false)
-                .addToroidal(false)
-                .addToroidal(false)
-                .build())
+            .setResolvedConfigJson(customJson)
             .build();
         
         // When: Extract environment properties
@@ -200,14 +223,44 @@ class EnvironmentIndexerTest {
     
     @Test
     void testExtractEnvironmentProperties_1D() throws Exception {
-        // Given: Metadata with 1D environment
+        // Given: Metadata with 1D environment - using custom JSON for 1D
+        String customJson = """
+            {
+                "environment": {
+                    "shape": [1000],
+                    "topology": "TORUS"
+                },
+                "samplingInterval": 1,
+                "accumulatedDeltaInterval": 100,
+                "snapshotInterval": 10,
+                "chunkInterval": 1,
+                "tickPlugins": [],
+                "organisms": [],
+                "runtime": {
+                    "organism": {
+                        "max-energy": 32767,
+                        "max-entropy": 8191,
+                        "error-penalty-cost": 10
+                    },
+                    "thermodynamics": {
+                        "default": {
+                            "className": "org.evochora.runtime.thermodynamics.impl.UniversalThermodynamicPolicy",
+                            "options": {
+                                "base-energy": 1,
+                                "base-entropy": 1
+                            }
+                        },
+                        "overrides": {
+                            "instructions": {},
+                            "families": {}
+                        }
+                    }
+                }
+            }
+            """;
         SimulationMetadata metadata = SimulationMetadata.newBuilder()
             .setSimulationRunId("test-run")
-            .setEnvironment(EnvironmentConfig.newBuilder()
-                .setDimensions(1)
-                .addShape(1000)
-                .addToroidal(true)
-                .build())
+            .setResolvedConfigJson(customJson)
             .build();
         
         // When: Extract environment properties

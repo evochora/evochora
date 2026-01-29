@@ -137,8 +137,10 @@ public class ArtemisTopicReaderDelegate<T extends Message>
         final String targetTopicName = parent.getTopicName();
         final String runId = parent.getSimulationRunId();
 
-        // Build subscription name: consumerGroup + runId for uniqueness
-        final String targetSubscriptionName = this.consumerGroup
+        // Build subscription name: baseTopicName + consumerGroup + runId for global uniqueness
+        // The baseTopicName prefix prevents collisions between different topic resources
+        // that might use the same consumer group name.
+        final String targetSubscriptionName = parent.getBaseTopicName() + "_" + this.consumerGroup
             + (runId != null ? "_" + runId.trim() : "");
 
         // If consumer exists and is on correct subscription, nothing to do
@@ -153,7 +155,12 @@ public class ArtemisTopicReaderDelegate<T extends Message>
         // Journal Retention: Detect if this is a NEW subscription
         // =================================================================
         boolean shouldReplay = false;
-        String internalQueueName = targetTopicName + "::" + targetSubscriptionName;
+        // Artemis names JMS shared durable subscription queues using just the subscription name.
+        // Since targetSubscriptionName now includes the topic prefix (e.g., "batch-topic_analytics_runId"),
+        // the queue name in the broker will also be "batch-topic_analytics_runId".
+        String brokerQueueName = targetSubscriptionName;
+        // For server.replay(), Artemis expects the full internal queue name format: "address::queueName"
+        String replayQueueName = targetTopicName + "::" + targetSubscriptionName;
 
         if (ArtemisTopicResource.isJournalRetentionEnabled()) {
             // Step 1: Fast-path check - have we seen this subscription in this JVM?
@@ -162,7 +169,7 @@ public class ArtemisTopicReaderDelegate<T extends Message>
 
             if (firstTimeInJvm) {
                 // Step 2: Check if queue actually exists in broker (persisted from previous run)
-                boolean queueExistsInBroker = ArtemisTopicResource.queueExistsInBroker(internalQueueName);
+                boolean queueExistsInBroker = ArtemisTopicResource.queueExistsInBroker(brokerQueueName);
 
                 if (!queueExistsInBroker) {
                     // This is a truly NEW subscription - will need replay after creation
@@ -191,7 +198,8 @@ public class ArtemisTopicReaderDelegate<T extends Message>
         // =================================================================
         if (shouldReplay) {
             try {
-                ArtemisTopicResource.triggerReplay(targetTopicName, internalQueueName);
+                log.debug("Triggering replay: address='{}', queue='{}'", targetTopicName, replayQueueName);
+                ArtemisTopicResource.triggerReplay(targetTopicName, replayQueueName);
                 log.debug("Replay triggered for new consumer group '{}' on topic '{}'",
                     this.consumerGroup, targetTopicName);
             } catch (Exception e) {

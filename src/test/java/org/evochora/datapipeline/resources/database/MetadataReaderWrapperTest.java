@@ -2,8 +2,10 @@ package org.evochora.datapipeline.resources.database;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.ResourceContext;
+import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.evochora.datapipeline.api.resources.database.MetadataNotFoundException;
 import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
@@ -64,20 +66,22 @@ class MetadataReaderWrapperTest {
         // Given: Mock returns test metadata
         SimulationMetadata testMetadata = SimulationMetadata.newBuilder()
             .setSimulationRunId("test-run")
-            .setSamplingInterval(10)
+            .setResolvedConfigJson(TestMetadataHelper.builder()
+                .samplingInterval(10)
+                .build())
             .build();
-        
+
         when(mockDatabase.doGetMetadata(any(), eq("test-run")))
             .thenReturn(testMetadata);
-        
+
         // When: Get metadata
         SimulationMetadata result = wrapper.getMetadata("test-run");
-        
+
         // Then: Correct delegation and result
         assertNotNull(result);
         assertEquals("test-run", result.getSimulationRunId());
-        assertEquals(10, result.getSamplingInterval());
-        
+        assertEquals(10, MetadataConfigHelper.getSamplingInterval(result));
+
         // Verify metrics updated
         Map<String, Number> metrics = wrapper.getMetrics();
         assertEquals(1, metrics.get("metadata_reads").intValue());
@@ -182,7 +186,9 @@ class MetadataReaderWrapperTest {
         // Given: Perform several operations
         SimulationMetadata testMetadata = SimulationMetadata.newBuilder()
             .setSimulationRunId("test-run")
-            .setSamplingInterval(10)
+            .setResolvedConfigJson(TestMetadataHelper.builder()
+                .samplingInterval(10)
+                .build())
             .build();
         
         when(mockDatabase.doGetMetadata(any(), any())).thenReturn(testMetadata);

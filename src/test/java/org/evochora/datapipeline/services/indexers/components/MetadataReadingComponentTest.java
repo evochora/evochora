@@ -1,5 +1,6 @@
 package org.evochora.datapipeline.services.indexers.components;
 
+import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataReader;
 import org.evochora.datapipeline.api.resources.database.MetadataNotFoundException;
@@ -40,7 +41,9 @@ class MetadataReadingComponentTest {
         // Create test metadata
         testMetadata = SimulationMetadata.newBuilder()
             .setSimulationRunId("test-run")
-            .setSamplingInterval(10)
+            .setResolvedConfigJson(TestMetadataHelper.builder()
+                .samplingInterval(10)
+                .build())
             .setInitialSeed(12345L)
             .build();
         
