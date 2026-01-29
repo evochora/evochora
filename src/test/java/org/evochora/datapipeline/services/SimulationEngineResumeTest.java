@@ -10,19 +10,16 @@ import java.util.Map;
 import java.util.Optional;
 
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
-import org.evochora.datapipeline.api.contracts.DeltaType;
 import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
-import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
-import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.resume.ResumeException;
 import org.evochora.junit.extensions.logging.AllowLog;
@@ -43,6 +40,9 @@ import com.typesafe.config.ConfigFactory;
  * <p>
  * Tests verify that SimulationEngine correctly initializes from a checkpoint
  * when resume mode is enabled via configuration.
+ * <p>
+ * Resume always happens from a snapshot (chunk start), which simplifies
+ * the storage interface (read-only access is sufficient).
  */
 @Tag("unit")
 @ExtendWith(LogWatchExtension.class)
@@ -78,8 +78,8 @@ class SimulationEngineResumeTest {
 
     @Test
     void resumeMode_InitializesFromCheckpoint() throws IOException {
-        // Setup mock storage with checkpoint data
-        setupValidCheckpoint(1000, 1040);
+        // Setup mock storage with checkpoint data (snapshot at tick 1000)
+        setupValidCheckpoint(1000);
 
         Config options = createResumeOptions(TEST_RUN_ID);
 
@@ -125,7 +125,7 @@ class SimulationEngineResumeTest {
 
     // ==================== Helper Methods ====================
 
-    private void setupValidCheckpoint(long snapshotTick, long accumulatedDeltaTick) throws IOException {
+    private void setupValidCheckpoint(long snapshotTick) throws IOException {
         // Setup metadata path
         StoragePath metadataPath = StoragePath.of(TEST_RUN_ID + "/raw/metadata.pb");
         mockStorageResource.setMetadataPath(Optional.of(metadataPath));
@@ -134,7 +134,7 @@ class SimulationEngineResumeTest {
         // Setup batch file
         StoragePath batchPath = StoragePath.of(TEST_RUN_ID + "/raw/000/000/batch.pb");
         mockStorageResource.setBatchPath(batchPath);
-        mockStorageResource.setChunk(createTestChunk(snapshotTick, accumulatedDeltaTick));
+        mockStorageResource.setChunk(createTestChunk(snapshotTick));
     }
 
     private SimulationMetadata createTestMetadata() {
@@ -177,7 +177,8 @@ class SimulationEngineResumeTest {
             .build();
     }
 
-    private TickDataChunk createTestChunk(long snapshotTick, long accumulatedDeltaTick) {
+    private TickDataChunk createTestChunk(long snapshotTick) {
+        // Resume always uses the snapshot at chunk start
         TickData snapshot = TickData.newBuilder()
             .setSimulationRunId(TEST_RUN_ID)
             .setTickNumber(snapshotTick)
@@ -187,22 +188,12 @@ class SimulationEngineResumeTest {
             .addOrganisms(createOrganismState(1, 500))
             .build();
 
-        TickDelta accDelta = TickDelta.newBuilder()
-            .setTickNumber(accumulatedDeltaTick)
-            .setCaptureTimeMs(System.currentTimeMillis())
-            .setDeltaType(DeltaType.ACCUMULATED)
-            .setTotalOrganismsCreated(105)
-            .setChangedCells(CellDataColumns.newBuilder().build())
-            .addOrganisms(createOrganismState(1, 400))
-            .build();
-
         return TickDataChunk.newBuilder()
             .setSimulationRunId(TEST_RUN_ID)
             .setFirstTick(snapshotTick)
-            .setLastTick(accumulatedDeltaTick)
-            .setTickCount((int)(accumulatedDeltaTick - snapshotTick + 1))
+            .setLastTick(snapshotTick + 99)
+            .setTickCount(100)
             .setSnapshot(snapshot)
-            .addDeltas(accDelta)
             .build();
     }
 
@@ -233,9 +224,9 @@ class SimulationEngineResumeTest {
     }
 
     /**
-     * Simple mock storage resource that implements both read and write interfaces.
+     * Simple mock storage resource for resume mode (read-only).
      */
-    private static class StorageResourceMock implements IBatchStorageRead, IBatchStorageWrite, IResource {
+    private static class StorageResourceMock implements IBatchStorageRead, IResource {
         private Optional<StoragePath> metadataPath = Optional.empty();
         private SimulationMetadata metadata;
         private StoragePath batchPath;
@@ -315,23 +306,6 @@ class SimulationEngineResumeTest {
         @Override
         public List<String> listRunIds(java.time.Instant afterTimestamp) {
             return List.of(TEST_RUN_ID);
-        }
-
-        // IBatchStorageWrite methods (minimal implementation)
-
-        @Override
-        public StoragePath writeChunkBatch(List<TickDataChunk> chunks, long firstTick, long lastTick) {
-            return StoragePath.of(TEST_RUN_ID + "/raw/truncated.pb");
-        }
-
-        @Override
-        public <T extends com.google.protobuf.MessageLite> StoragePath writeMessage(String relativePath, T message) {
-            return StoragePath.of(relativePath);
-        }
-
-        @Override
-        public void moveToSuperseded(StoragePath path) {
-            // No-op
         }
     }
 }

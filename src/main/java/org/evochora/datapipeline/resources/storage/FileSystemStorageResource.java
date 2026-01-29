@@ -154,30 +154,6 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
     }
 
     @Override
-    protected void moveRaw(String sourcePath, String destPath) throws IOException {
-        validateKey(sourcePath);
-        validateKey(destPath);
-
-        File sourceFile = new File(rootDirectory, sourcePath);
-        File destFile = new File(rootDirectory, destPath);
-
-        if (!sourceFile.exists()) {
-            throw new IOException("Source file does not exist: " + sourcePath);
-        }
-
-        // Create parent directories for destination if needed
-        File destParent = destFile.getParentFile();
-        if (destParent != null && !destParent.exists()) {
-            if (!destParent.mkdirs() && !destParent.isDirectory()) {
-                throw new IOException("Failed to create destination directories: " + destParent.getAbsolutePath());
-            }
-        }
-
-        // Atomic move
-        Files.move(sourceFile.toPath(), destFile.toPath(), StandardCopyOption.ATOMIC_MOVE);
-    }
-
-    @Override
     protected List<String> listRaw(String prefix, boolean listDirectories, String continuationToken, int maxResults,
                                     Long startTick, Long endTick) throws IOException {
         final String finalPrefix = (prefix == null) ? "" : prefix;

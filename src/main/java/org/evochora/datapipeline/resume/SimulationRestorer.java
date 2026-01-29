@@ -32,7 +32,6 @@ import org.evochora.datapipeline.api.contracts.RegisterValue;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.SourceMapEntry;
 import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.contracts.TickPluginConfig;
 import org.evochora.datapipeline.api.contracts.TokenMapEntry;
 import org.evochora.datapipeline.api.contracts.Vector;
@@ -54,7 +53,7 @@ import com.typesafe.config.ConfigFactory;
  * <p>
  * This class handles the conversion from Protobuf data structures to runtime objects:
  * <ul>
- *   <li>Creates Environment and populates cells from snapshot/delta</li>
+ *   <li>Creates Environment and populates cells from snapshot</li>
  *   <li>Creates Simulation using forResume() factory</li>
  *   <li>Restores RNG state for deterministic continuation</li>
  *   <li>Reconstructs ProgramArtifacts from metadata</li>
@@ -63,6 +62,12 @@ import com.typesafe.config.ConfigFactory;
  * </ul>
  * <p>
  * The restored simulation is ready to run from the next tick after the checkpoint.
+ * Since resume is always from a snapshot (chunk start), this ensures:
+ * <ul>
+ *   <li>Complete state including RNG is available</li>
+ *   <li>No partial chunk handling needed</li>
+ *   <li>Deterministic continuation guaranteed</li>
+ * </ul>
  */
 public class SimulationRestorer {
 
@@ -123,7 +128,6 @@ public class SimulationRestorer {
     public static RestoredState restore(ResumeCheckpoint checkpoint, IRandomProvider randomProvider) {
         SimulationMetadata metadata = checkpoint.metadata();
         TickData snapshot = checkpoint.snapshot();
-        TickDelta accumulatedDelta = checkpoint.accumulatedDelta();
 
         log.debug("Restoring simulation {} from tick {}",
             metadata.getSimulationRunId(), checkpoint.getCheckpointTick());
@@ -143,37 +147,15 @@ public class SimulationRestorer {
         boolean toroidal = envConfig.getToroidalCount() > 0 && envConfig.getToroidal(0);
         Environment environment = new Environment(shape, toroidal);
 
-        // 4. Populate Environment cells
-        // Start with snapshot cells
+        // 4. Populate Environment cells from snapshot
         populateCells(environment, snapshot.getCellColumns(), shape);
 
-        // If we have an accumulated delta, apply its changes on top
-        if (accumulatedDelta != null) {
-            populateCells(environment, accumulatedDelta.getChangedCells(), shape);
-            log.debug("Applied accumulated delta cell changes from tick {}",
-                accumulatedDelta.getTickNumber());
-        }
-
-        // 5. Determine currentTick and totalOrganismsCreated
-        long currentTick;
-        long totalOrganismsCreated;
-        ByteString rngState;
-        List<OrganismState> organismStates;
-        List<PluginState> pluginStates;
-
-        if (accumulatedDelta != null) {
-            currentTick = accumulatedDelta.getTickNumber();
-            totalOrganismsCreated = accumulatedDelta.getTotalOrganismsCreated();
-            rngState = accumulatedDelta.getRngState();
-            organismStates = accumulatedDelta.getOrganismsList();
-            pluginStates = accumulatedDelta.getPluginStatesList();
-        } else {
-            currentTick = snapshot.getTickNumber();
-            totalOrganismsCreated = snapshot.getTotalOrganismsCreated();
-            rngState = snapshot.getRngState();
-            organismStates = snapshot.getOrganismsList();
-            pluginStates = snapshot.getPluginStatesList();
-        }
+        // 5. Extract state from snapshot (always complete since we resume from chunk start)
+        long currentTick = snapshot.getTickNumber();
+        long totalOrganismsCreated = snapshot.getTotalOrganismsCreated();
+        ByteString rngState = snapshot.getRngState();
+        List<OrganismState> organismStates = snapshot.getOrganismsList();
+        List<PluginState> pluginStates = snapshot.getPluginStatesList();
 
         log.debug("Resume state: currentTick={}, totalOrganismsCreated={}, organisms={}",
             currentTick, totalOrganismsCreated, organismStates.size());

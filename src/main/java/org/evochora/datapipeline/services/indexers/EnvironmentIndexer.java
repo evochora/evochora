@@ -1,7 +1,9 @@
 package org.evochora.datapipeline.services.indexers;
 
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
@@ -74,8 +76,12 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> implement
         this.insertBatchSize = options.hasPath("insertBatchSize") ? options.getInt("insertBatchSize") : 5;
     }
     
-    // Use default components: METADATA + BUFFERING
-    // No override needed - AbstractBatchIndexer provides correct defaults
+    // Required components: METADATA + BUFFERING (inherited from AbstractBatchIndexer)
+
+    @Override
+    protected Set<ComponentType> getOptionalComponents() {
+        return EnumSet.of(ComponentType.DLQ);
+    }
     
     /**
      * Prepares database tables for environment data storage.

@@ -120,7 +120,7 @@ class ResumeEndToEndTest {
         }
 
         // Load checkpoint the same way SnapshotLoader does to get the expected resume tick
-        SnapshotLoader loader = new SnapshotLoader(storage, storage);
+        SnapshotLoader loader = new SnapshotLoader(storage);
         ResumeCheckpoint checkpoint = loader.loadLatestCheckpoint(runId);
         long expectedResumeFromTick = checkpoint.getResumeFromTick();
 

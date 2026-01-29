@@ -27,7 +27,6 @@ import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.resources.AbstractResource;
 import org.evochora.datapipeline.resources.storage.wrappers.MonitoredAnalyticsStorageWriter;
 import org.evochora.datapipeline.resources.storage.wrappers.MonitoredBatchStorageReader;
-import org.evochora.datapipeline.resources.storage.wrappers.MonitoredBatchStorageReadWriter;
 import org.evochora.datapipeline.resources.storage.wrappers.MonitoredBatchStorageWriter;
 import org.evochora.datapipeline.utils.compression.ICompressionCodec;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
@@ -282,36 +281,6 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         recordRead(compressed.length, readLatency);
 
         return message;
-    }
-
-    @Override
-    public void moveToSuperseded(StoragePath path) throws IOException {
-        if (path == null) {
-            throw new IllegalArgumentException("path cannot be null");
-        }
-
-        String physicalPath = path.asString();
-
-        // Validate it looks like a batch file
-        String filename = physicalPath.substring(physicalPath.lastIndexOf('/') + 1);
-        if (!filename.startsWith("batch_") || !filename.contains(".pb")) {
-            throw new IllegalArgumentException(
-                "Path doesn't appear to be a batch file: " + physicalPath);
-        }
-
-        // Extract runId from path (first component before "/raw/")
-        int rawIndex = physicalPath.indexOf("/raw/");
-        if (rawIndex == -1) {
-            throw new IllegalArgumentException(
-                "Path doesn't contain /raw/ segment: " + physicalPath);
-        }
-        String runId = physicalPath.substring(0, rawIndex);
-
-        // Build superseded destination path: {runId}/raw/superseded/{filename}
-        String destPath = runId + "/raw/superseded/" + filename;
-
-        log.debug("Moving batch file to superseded: {} -> {}", physicalPath, destPath);
-        moveRaw(physicalPath, destPath);
     }
 
     /**
@@ -725,11 +694,10 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         return switch (context.usageType()) {
             case "storage-write" -> new MonitoredBatchStorageWriter(this, context);
             case "storage-read" -> new MonitoredBatchStorageReader(this, context);
-            case "storage-readwrite" -> new MonitoredBatchStorageReadWriter(this, context);
             case "analytics-write" -> new MonitoredAnalyticsStorageWriter(this, context);
             default -> throw new IllegalArgumentException(String.format(
                 "Unsupported usage type '%s' for storage resource '%s'. " +
-                "Supported types: storage-write, storage-read, storage-readwrite, analytics-write",
+                "Supported types: storage-write, storage-read, analytics-write",
                 context.usageType(), getResourceName()
             ));
         };
@@ -814,29 +782,6 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      * @throws IOException if file not found or read fails
      */
     protected abstract byte[] getRaw(String physicalPath) throws IOException;
-
-    /**
-     * Moves a file from source path to destination path atomically.
-     * <p>
-     * Implementation must:
-     * <ul>
-     *   <li>Create parent directories of destination if needed</li>
-     *   <li>Perform atomic move if supported by the backend</li>
-     *   <li>Fail if source doesn't exist</li>
-     *   <li>Handle existing destination according to backend behavior</li>
-     * </ul>
-     * <p>
-     * Example implementations:
-     * <ul>
-     *   <li>FileSystem: Files.move(source, dest, ATOMIC_MOVE)</li>
-     *   <li>S3: copyObject + deleteObject (not atomic, but best available)</li>
-     * </ul>
-     *
-     * @param sourcePath physical path of file to move
-     * @param destPath physical path of destination
-     * @throws IOException if source doesn't exist or move fails
-     */
-    protected abstract void moveRaw(String sourcePath, String destPath) throws IOException;
 
     /**
      * Lists physical paths or directory prefixes matching a prefix, with optional tick filtering.

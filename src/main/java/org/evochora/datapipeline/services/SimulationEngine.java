@@ -44,7 +44,6 @@ import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
-import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
 import org.evochora.datapipeline.resume.ResumeCheckpoint;
 import org.evochora.datapipeline.resume.SimulationRestorer;
 import org.evochora.datapipeline.resume.SnapshotLoader;
@@ -193,16 +192,12 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         }
         String runId = options.getString("resume.runId");
 
-        // Get storage resources
+        // Get storage resource (read-only, no write needed since we don't truncate)
         IBatchStorageRead storageRead = (IBatchStorageRead) getRequiredResource("resumeStorage", IBatchStorageRead.class);
-        if (!(storageRead instanceof IBatchStorageWrite storageWrite)) {
-            throw new IllegalStateException(
-                "Storage resource must implement both IBatchStorageRead and IBatchStorageWrite for resume mode");
-        }
 
         try {
-            // Load checkpoint
-            SnapshotLoader snapshotLoader = new SnapshotLoader(storageRead, storageWrite);
+            // Load checkpoint (always from last complete chunk's snapshot)
+            SnapshotLoader snapshotLoader = new SnapshotLoader(storageRead);
             ResumeCheckpoint checkpoint = snapshotLoader.loadLatestCheckpoint(runId);
             log.debug("Loaded checkpoint at tick {}, will resume from tick {}",
                 checkpoint.getCheckpointTick(), checkpoint.getResumeFromTick());

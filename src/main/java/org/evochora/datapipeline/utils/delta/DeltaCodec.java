@@ -190,11 +190,13 @@ public final class DeltaCodec {
                 accumulatedSinceSnapshot.clear();
             } else if (isAccumulated) {
                 // Accumulated delta - all changes since last snapshot
+                // Note: RNG state and plugin states are only stored in snapshots (not accumulated deltas)
+                // since resume always happens from snapshot (chunk start)
                 CellDataColumns changedCells = extractCellsFromBitSet(env, accumulatedSinceSnapshot);
                 DeltaCapture delta = captureDelta(
                         tick, captureTimeMs, DeltaType.ACCUMULATED,
                         changedCells, organisms, totalOrganismsCreated,
-                        rngState, pluginStates);
+                        ByteString.EMPTY, List.of());  // No RNG/plugin state for accumulated
                 currentDeltas.add(delta);
             } else {
                 // Incremental delta - only changes since last sample

@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.io.IOException;
@@ -12,13 +11,10 @@ import java.util.List;
 import java.util.Optional;
 
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
-import org.evochora.datapipeline.api.contracts.DeltaType;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
-import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
-import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.LogLevel;
@@ -28,13 +24,15 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
  * Unit tests for {@link SnapshotLoader}.
+ * <p>
+ * Tests the simplified snapshot-only resume logic. Since resume always happens
+ * from a snapshot (chunk start), there is no truncation or accumulated delta handling.
  */
 @Tag("unit")
 @ExtendWith(LogWatchExtension.class)
@@ -46,8 +44,6 @@ class SnapshotLoaderTest {
 
     @Mock
     private IBatchStorageRead storageRead;
-    @Mock
-    private IBatchStorageWrite storageWrite;
     private SnapshotLoader loader;
 
     /**
@@ -63,77 +59,63 @@ class SnapshotLoaderTest {
         SimulationMetadata.newBuilder().build();
         TickDataChunk.newBuilder().build();
         TickData.newBuilder().build();
-        TickDelta.newBuilder().build();
         CellDataColumns.newBuilder().build();
     }
 
     @BeforeEach
     void setUp() {
-        loader = new SnapshotLoader(storageRead, storageWrite);
+        loader = new SnapshotLoader(storageRead);
     }
 
     // ==================== Happy Path Tests ====================
-    // Note: The basic "WithAccumulatedDelta" happy path is covered by ResumeEndToEndTest
-    // which runs a real simulation. Here we only test edge cases.
 
     @Test
-    void loadLatestCheckpoint_WithoutAccumulatedDelta_FallsBackToSnapshot() throws IOException {
+    void loadLatestCheckpoint_ReturnsSnapshotFromLastChunk() throws IOException {
         // Setup: Metadata exists
         StoragePath metadataPath = StoragePath.of(TEST_RUN_ID + "/raw/metadata.pb");
         SimulationMetadata metadata = createMetadata(TEST_RUN_ID);
         when(storageRead.findMetadataPath(TEST_RUN_ID)).thenReturn(Optional.of(metadataPath));
         when(storageRead.readMessage(eq(metadataPath), any())).thenReturn(metadata);
 
-        // Setup: One batch file with only incremental deltas (no accumulated)
-        StoragePath batchPath = StoragePath.of(TEST_RUN_ID + "/raw/000/000/batch_0000000000000001000_0000000000000001000.pb");
+        // Setup: One batch file
+        StoragePath batchPath = StoragePath.of(TEST_RUN_ID + "/raw/000/000/batch_0000000000000001000_0000000000000001099.pb");
         when(storageRead.findLastBatchFile(TEST_RUN_ID + "/raw/")).thenReturn(Optional.of(batchPath));
 
-        TickDataChunk chunk = createChunkWithoutAccumulatedDelta(1000);
+        TickDataChunk chunk = createChunk(1000, 1099);
         when(storageRead.readChunkBatch(batchPath)).thenReturn(List.of(chunk));
 
         // Execute
         ResumeCheckpoint checkpoint = loader.loadLatestCheckpoint(TEST_RUN_ID);
 
-        // Verify fallback to snapshot
-        assertThat(checkpoint.hasAccumulatedDelta()).isFalse();
+        // Verify snapshot is returned
         assertThat(checkpoint.snapshot().getTickNumber()).isEqualTo(1000);
         assertThat(checkpoint.getResumeFromTick()).isEqualTo(1001);
+        assertThat(checkpoint.getCheckpointTick()).isEqualTo(1000);
     }
 
     @Test
-    void loadLatestCheckpoint_WithTicksAfterResumePoint_TruncatesChunk() throws IOException {
+    void loadLatestCheckpoint_MultipleChunks_ReturnsSnapshotFromLastChunk() throws IOException {
         // Setup: Metadata exists
         StoragePath metadataPath = StoragePath.of(TEST_RUN_ID + "/raw/metadata.pb");
         SimulationMetadata metadata = createMetadata(TEST_RUN_ID);
         when(storageRead.findMetadataPath(TEST_RUN_ID)).thenReturn(Optional.of(metadataPath));
         when(storageRead.readMessage(eq(metadataPath), any())).thenReturn(metadata);
 
-        // Setup: Batch file with accumulated delta at 1040 but ticks go up to 1060
-        StoragePath originalPath = StoragePath.of(TEST_RUN_ID + "/raw/000/000/batch_0000000000000001000_0000000000000001060.pb");
-        when(storageRead.findLastBatchFile(TEST_RUN_ID + "/raw/")).thenReturn(Optional.of(originalPath));
+        // Setup: Batch with multiple chunks
+        StoragePath batchPath = StoragePath.of(TEST_RUN_ID + "/raw/000/000/batch.pb");
+        when(storageRead.findLastBatchFile(TEST_RUN_ID + "/raw/")).thenReturn(Optional.of(batchPath));
 
-        TickDataChunk chunk = createChunkWithAccumulatedDeltaAndExtra(1000, 1040, 1060);
-        when(storageRead.readChunkBatch(originalPath)).thenReturn(List.of(chunk));
-
-        // Setup: Mock the write of truncated batch
-        StoragePath truncatedPath = StoragePath.of(TEST_RUN_ID + "/raw/000/000/batch_0000000000000001000_0000000000000001040.pb");
-        when(storageWrite.writeChunkBatch(any(), eq(1000L), eq(1040L))).thenReturn(truncatedPath);
+        TickDataChunk chunk1 = createChunk(1000, 1099);
+        TickDataChunk chunk2 = createChunk(1100, 1199);
+        TickDataChunk chunk3 = createChunk(1200, 1299);
+        when(storageRead.readChunkBatch(batchPath)).thenReturn(List.of(chunk1, chunk2, chunk3));
 
         // Execute
         ResumeCheckpoint checkpoint = loader.loadLatestCheckpoint(TEST_RUN_ID);
 
-        // Verify truncation happened
-        ArgumentCaptor<List<TickDataChunk>> chunkCaptor = ArgumentCaptor.forClass(List.class);
-        verify(storageWrite).writeChunkBatch(chunkCaptor.capture(), eq(1000L), eq(1040L));
-        verify(storageWrite).moveToSuperseded(originalPath);
-
-        // Verify truncated chunk has correct tick range
-        List<TickDataChunk> writtenChunks = chunkCaptor.getValue();
-        assertThat(writtenChunks).hasSize(1);
-        assertThat(writtenChunks.get(0).getLastTick()).isEqualTo(1040);
-
-        // Verify checkpoint data
-        assertThat(checkpoint.getResumeFromTick()).isEqualTo(1041);
+        // Verify snapshot from LAST chunk is returned
+        assertThat(checkpoint.snapshot().getTickNumber()).isEqualTo(1200);
+        assertThat(checkpoint.getResumeFromTick()).isEqualTo(1201);
     }
 
     // ==================== Error Cases ====================
@@ -204,26 +186,7 @@ class SnapshotLoaderTest {
             .build();
     }
 
-    private TickDataChunk createChunkWithoutAccumulatedDelta(long tick) {
-        TickData snapshot = TickData.newBuilder()
-            .setTickNumber(tick)
-            .setSimulationRunId(TEST_RUN_ID)
-            .setCaptureTimeMs(System.currentTimeMillis())
-            .setCellColumns(CellDataColumns.newBuilder().build())
-            .build();
-
-        return TickDataChunk.newBuilder()
-            .setSimulationRunId(TEST_RUN_ID)
-            .setFirstTick(tick)
-            .setLastTick(tick)
-            .setTickCount(1)
-            .setSnapshot(snapshot)
-            .build();
-    }
-
-    private TickDataChunk createChunkWithAccumulatedDeltaAndExtra(
-            long firstTick, long accDeltaTick, long lastTick) {
-
+    private TickDataChunk createChunk(long firstTick, long lastTick) {
         TickData snapshot = TickData.newBuilder()
             .setTickNumber(firstTick)
             .setSimulationRunId(TEST_RUN_ID)
@@ -231,31 +194,12 @@ class SnapshotLoaderTest {
             .setCellColumns(CellDataColumns.newBuilder().build())
             .build();
 
-        TickDataChunk.Builder builder = TickDataChunk.newBuilder()
+        return TickDataChunk.newBuilder()
             .setSimulationRunId(TEST_RUN_ID)
             .setFirstTick(firstTick)
             .setLastTick(lastTick)
             .setTickCount((int)(lastTick - firstTick + 1))
-            .setSnapshot(snapshot);
-
-        // Add accumulated delta at accDeltaTick
-        builder.addDeltas(TickDelta.newBuilder()
-            .setTickNumber(accDeltaTick)
-            .setCaptureTimeMs(System.currentTimeMillis())
-            .setDeltaType(DeltaType.ACCUMULATED)
-            .setChangedCells(CellDataColumns.newBuilder().build())
-            .build());
-
-        // Add incremental deltas after the accumulated delta (these should be truncated)
-        for (long t = accDeltaTick + 10; t <= lastTick; t += 10) {
-            builder.addDeltas(TickDelta.newBuilder()
-                .setTickNumber(t)
-                .setCaptureTimeMs(System.currentTimeMillis())
-                .setDeltaType(DeltaType.INCREMENTAL)
-                .setChangedCells(CellDataColumns.newBuilder().build())
-                .build());
-        }
-
-        return builder.build();
+            .setSnapshot(snapshot)
+            .build();
     }
 }

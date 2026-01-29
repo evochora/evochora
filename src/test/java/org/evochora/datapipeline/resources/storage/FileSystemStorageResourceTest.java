@@ -414,77 +414,6 @@ class FileSystemStorageResourceTest {
     }
 
     // ========================================================================
-    // moveToSuperseded Tests
-    // ========================================================================
-
-    @Test
-    void testMoveToSuperseded_Success() throws IOException {
-        // Write a batch file
-        TickDataChunk chunk = createChunk(0, 9, 10);
-        StoragePath originalPath = storage.writeChunkBatch(List.of(chunk), 0, 9);
-
-        // Verify file exists at original location
-        List<TickDataChunk> readBatch = storage.readChunkBatch(originalPath);
-        assertEquals(1, readBatch.size());
-
-        // Move to superseded
-        storage.moveToSuperseded(originalPath);
-
-        // Verify original file no longer exists
-        assertThrows(IOException.class, () -> storage.readChunkBatch(originalPath));
-
-        // Verify file exists in superseded folder
-        String filename = originalPath.asString().substring(originalPath.asString().lastIndexOf('/') + 1);
-        File supersededFile = new File(tempDir.toFile(), "test-sim/raw/superseded/" + filename);
-        assertTrue(supersededFile.exists(), "File should exist in superseded folder");
-    }
-
-    @Test
-    void testMoveToSuperseded_ExcludedFromListBatchFiles() throws IOException {
-        // Write two batch files
-        TickDataChunk chunk1 = createChunk(0, 9, 10);
-        TickDataChunk chunk2 = createChunk(10, 19, 10);
-        StoragePath path1 = storage.writeChunkBatch(List.of(chunk1), 0, 9);
-        StoragePath path2 = storage.writeChunkBatch(List.of(chunk2), 10, 19);
-
-        // Verify both are listed
-        BatchFileListResult beforeMove = storage.listBatchFiles("test-sim/", null, 10);
-        assertEquals(2, beforeMove.getFilenames().size(), "Should have 2 batch files before move");
-
-        // Move one to superseded
-        storage.moveToSuperseded(path1);
-
-        // Verify only one is listed now (superseded excluded)
-        BatchFileListResult afterMove = storage.listBatchFiles("test-sim/", null, 10);
-        assertEquals(1, afterMove.getFilenames().size(), "Should have 1 batch file after move");
-        assertEquals(path2.asString(), afterMove.getFilenames().get(0).asString(),
-                "Remaining file should be the one not moved");
-    }
-
-    @Test
-    void testMoveToSuperseded_NonExistentFile_ThrowsException() {
-        StoragePath nonExistentPath = StoragePath.of("test-sim/raw/000/000/batch_0000000000000000000_0000000000000000009.pb");
-        assertThrows(IOException.class, () -> storage.moveToSuperseded(nonExistentPath));
-    }
-
-    @Test
-    void testMoveToSuperseded_NullPath_ThrowsException() {
-        assertThrows(IllegalArgumentException.class, () -> storage.moveToSuperseded(null));
-    }
-
-    @Test
-    void testMoveToSuperseded_NonBatchFile_ThrowsException() {
-        StoragePath nonBatchPath = StoragePath.of("test-sim/raw/metadata.pb");
-        assertThrows(IllegalArgumentException.class, () -> storage.moveToSuperseded(nonBatchPath));
-    }
-
-    @Test
-    void testMoveToSuperseded_PathWithoutRawSegment_ThrowsException() {
-        StoragePath invalidPath = StoragePath.of("test-sim/batch_0000000000000000000_0000000000000000009.pb");
-        assertThrows(IllegalArgumentException.class, () -> storage.moveToSuperseded(invalidPath));
-    }
-
-    // ========================================================================
     // listBatchFiles Deduplication Tests
     // ========================================================================
 
@@ -652,27 +581,6 @@ class FileSystemStorageResourceTest {
         assertTrue(found.isPresent(), "Should find batch file");
         assertTrue(found.get().asString().contains("_0000000000000000109.pb"),
             "Should prefer batch file with smaller lastTick for deduplication");
-    }
-
-    @Test
-    void testFindLastBatchFile_SupersededExcluded() throws IOException {
-        // Write two batch files
-        TickDataChunk chunk1 = createChunk(0, 9, 10);
-        TickDataChunk chunk2 = createChunk(100, 109, 10);
-
-        StoragePath path1 = storage.writeChunkBatch(List.of(chunk1), 0, 9);
-        StoragePath path2 = storage.writeChunkBatch(List.of(chunk2), 100, 109);
-
-        // Move the higher one to superseded
-        storage.moveToSuperseded(path2);
-
-        // Find last batch file - should return the one NOT in superseded
-        java.util.Optional<org.evochora.datapipeline.api.resources.storage.StoragePath> found =
-            storage.findLastBatchFile("test-sim/raw/");
-
-        assertTrue(found.isPresent(), "Should find batch file");
-        assertEquals(path1.asString(), found.get().asString(),
-            "Should return batch that is NOT in superseded folder");
     }
 
     @Test

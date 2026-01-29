@@ -108,12 +108,6 @@ public class MonitoredBatchStorageWriter implements IBatchStorageWrite, IWrapped
     }
 
     @Override
-    public void moveToSuperseded(StoragePath path) throws IOException {
-        // Delegate directly - this is an administrative operation, not a typical write
-        delegate.moveToSuperseded(path);
-    }
-
-    @Override
     public String getResourceName() {
         return delegate.getResourceName() + ":" + context.serviceName();
     }

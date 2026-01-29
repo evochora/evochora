@@ -3,13 +3,11 @@ package org.evochora.datapipeline.resume;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
-import org.evochora.datapipeline.api.contracts.DeltaType;
 import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.RegisterValue;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.LogLevel;
@@ -28,6 +26,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 
 /**
  * Unit tests for {@link SimulationRestorer}.
+ * <p>
+ * Tests that simulation state is correctly restored from a snapshot.
+ * Since resume always happens from a snapshot (chunk start), there is
+ * no accumulated delta handling to test.
  */
 @Tag("unit")
 @ExtendWith(LogWatchExtension.class)
@@ -59,8 +61,8 @@ class SimulationRestorerTest {
         // Create snapshot with one organism
         TickData snapshot = createSnapshot(1000, 100);
 
-        // Create checkpoint
-        ResumeCheckpoint checkpoint = new ResumeCheckpoint(metadata, snapshot, null);
+        // Create checkpoint (always from snapshot)
+        ResumeCheckpoint checkpoint = new ResumeCheckpoint(metadata, snapshot);
 
         // Restore
         SimulationRestorer.RestoredState state = SimulationRestorer.restore(checkpoint, randomProvider);
@@ -71,38 +73,6 @@ class SimulationRestorerTest {
         assertThat(simulation.getTotalOrganismsCreatedCount()).isEqualTo(100);
         assertThat(simulation.getEnvironment().getShape()).isEqualTo(new int[]{100, 100});
         assertThat(simulation.getOrganisms()).hasSize(1);
-    }
-
-    @Test
-    void restore_FromAccumulatedDelta_UsesAccumulatedState() {
-        // Create minimal metadata
-        SimulationMetadata metadata = createMinimalMetadata();
-
-        // Create snapshot at tick 1000
-        TickData snapshot = createSnapshot(1000, 100);
-
-        // Create accumulated delta at tick 1040
-        TickDelta accDelta = TickDelta.newBuilder()
-            .setTickNumber(1040)
-            .setCaptureTimeMs(System.currentTimeMillis())
-            .setDeltaType(DeltaType.ACCUMULATED)
-            .setTotalOrganismsCreated(105)
-            .setChangedCells(CellDataColumns.newBuilder().build())
-            .addOrganisms(createOrganismState(1, 500))
-            .addOrganisms(createOrganismState(2, 400))
-            .build();
-
-        // Create checkpoint
-        ResumeCheckpoint checkpoint = new ResumeCheckpoint(metadata, snapshot, accDelta);
-
-        // Restore
-        SimulationRestorer.RestoredState state = SimulationRestorer.restore(checkpoint, randomProvider);
-        Simulation simulation = state.simulation();
-
-        // Verify it uses accumulated delta state
-        assertThat(simulation.getCurrentTick()).isEqualTo(1040);
-        assertThat(simulation.getTotalOrganismsCreatedCount()).isEqualTo(105);
-        assertThat(simulation.getOrganisms()).hasSize(2);
     }
 
     @Test
@@ -137,7 +107,7 @@ class SimulationRestorerTest {
             .addOrganisms(orgState)
             .build();
 
-        ResumeCheckpoint checkpoint = new ResumeCheckpoint(metadata, snapshot, null);
+        ResumeCheckpoint checkpoint = new ResumeCheckpoint(metadata, snapshot);
         SimulationRestorer.RestoredState state = SimulationRestorer.restore(checkpoint, randomProvider);
         Simulation simulation = state.simulation();
 
@@ -183,7 +153,7 @@ class SimulationRestorerTest {
             .addOrganisms(deadOrg)
             .build();
 
-        ResumeCheckpoint checkpoint = new ResumeCheckpoint(metadata, snapshot, null);
+        ResumeCheckpoint checkpoint = new ResumeCheckpoint(metadata, snapshot);
         SimulationRestorer.RestoredState state = SimulationRestorer.restore(checkpoint, randomProvider);
         Simulation simulation = state.simulation();
 
@@ -219,7 +189,7 @@ class SimulationRestorerTest {
             .setCellColumns(cells)
             .build();
 
-        ResumeCheckpoint checkpoint = new ResumeCheckpoint(metadata, snapshot, null);
+        ResumeCheckpoint checkpoint = new ResumeCheckpoint(metadata, snapshot);
         SimulationRestorer.RestoredState state = SimulationRestorer.restore(checkpoint, randomProvider);
         Simulation simulation = state.simulation();
 

@@ -98,7 +98,7 @@ class ResumeIntegrationTest {
         storage.writeChunkBatch(List.of(chunk), 1, 50);
 
         // Load checkpoint
-        SnapshotLoader loader = new SnapshotLoader(storage, storage);
+        SnapshotLoader loader = new SnapshotLoader(storage);
         ResumeCheckpoint checkpoint = loader.loadLatestCheckpoint(TEST_RUN_ID);
 
         assertThat(checkpoint.getCheckpointTick()).isGreaterThan(0);
@@ -128,12 +128,12 @@ class ResumeIntegrationTest {
         storage.writeChunkBatch(List.of(chunk), 1, 50);
 
         // Load checkpoint
-        SnapshotLoader loader = new SnapshotLoader(storage, storage);
+        SnapshotLoader loader = new SnapshotLoader(storage);
         ResumeCheckpoint checkpoint = loader.loadLatestCheckpoint(TEST_RUN_ID);
 
-        // The checkpoint should be at an accumulated delta (tick 40)
-        assertThat(checkpoint.getCheckpointTick()).isEqualTo(40);
-        assertThat(checkpoint.hasAccumulatedDelta()).isTrue();
+        // The checkpoint should be at the snapshot tick (chunk start)
+        // With our test data, the snapshot is at tick 1
+        assertThat(checkpoint.getCheckpointTick()).isEqualTo(1);
     }
 
     /**
@@ -151,7 +151,7 @@ class ResumeIntegrationTest {
         storage.writeChunkBatch(List.of(chunk), 1, 50);
 
         // Load checkpoint
-        SnapshotLoader loader = new SnapshotLoader(storage, storage);
+        SnapshotLoader loader = new SnapshotLoader(storage);
         ResumeCheckpoint checkpoint = loader.loadLatestCheckpoint(TEST_RUN_ID);
 
         // Verify metadata
@@ -176,7 +176,7 @@ class ResumeIntegrationTest {
         storage.writeChunkBatch(List.of(chunk), 1, 50);
 
         // Load checkpoint and restore
-        SnapshotLoader loader = new SnapshotLoader(storage, storage);
+        SnapshotLoader loader = new SnapshotLoader(storage);
         ResumeCheckpoint checkpoint = loader.loadLatestCheckpoint(TEST_RUN_ID);
 
         IRandomProvider randomProvider = new SeededRandomProvider(TEST_SEED);
@@ -209,12 +209,12 @@ class ResumeIntegrationTest {
         storage.writeChunkBatch(List.of(chunk2), 51, 100);
 
         // Load checkpoint
-        SnapshotLoader loader = new SnapshotLoader(storage, storage);
+        SnapshotLoader loader = new SnapshotLoader(storage);
         ResumeCheckpoint checkpoint = loader.loadLatestCheckpoint(TEST_RUN_ID);
 
-        // Should resume from the latest accumulated delta (tick 100 in chunk2)
-        // With ACCUMULATED_DELTA_INTERVAL=20, deltas at 60, 80, 100 in chunk2
-        assertThat(checkpoint.getCheckpointTick()).isEqualTo(100);
+        // Should resume from the snapshot of the latest chunk (tick 51 in chunk2)
+        // Accumulated deltas are no longer used for resume
+        assertThat(checkpoint.getCheckpointTick()).isEqualTo(51);
     }
 
     // ==================== Helper Methods ====================
