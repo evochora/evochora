@@ -7,7 +7,7 @@
  */
 
     // esm.sh automatically resolves all dependencies including apache-arrow
-    const DUCKDB_VERSION = '1.29.0';
+    const DUCKDB_VERSION = '1.30.0';
     const ESM_URL = `https://esm.sh/@duckdb/duckdb-wasm@${DUCKDB_VERSION}`;
     
     // State
@@ -68,8 +68,6 @@ export async function init() {
         initializing = true;
         
         try {
-            console.debug('[DuckDB] Initializing from esm.sh CDN...');
-            
             // Dynamic import from esm.sh (auto-resolves apache-arrow dependency)
             duckdbModule = await import(ESM_URL);
             
@@ -94,8 +92,6 @@ export async function init() {
             conn = await db.connect();
             
             initialized = true;
-            console.debug('[DuckDB] Initialized successfully');
-            
             return { db, conn };
             
         } catch (error) {
@@ -117,10 +113,8 @@ export async function query(sql) {
             await init();
         }
         
-        console.debug('[DuckDB] Query:', sql.substring(0, 200) + (sql.length > 200 ? '...' : ''));
         const result = await conn.query(sql);
         const rows = result.toArray().map(row => convertBigInts(row.toJSON()));
-        console.debug(`[DuckDB] Returned ${rows.length} rows`);
         return rows;
     }
     
@@ -149,11 +143,8 @@ export async function queryParquetBlob(parquetBlob, sql) {
         // Replace ALL {table} placeholders with the file reference
         const finalSql = sql.replaceAll('{table}', `'${fileName}'`);
         
-        console.debug('[DuckDB] Query blob:', finalSql.substring(0, 200) + (finalSql.length > 200 ? '...' : ''));
         const result = await conn.query(finalSql);
         const rows = result.toArray().map(row => convertBigInts(row.toJSON()));
-        console.debug(`[DuckDB] Returned ${rows.length} rows`);
-        
         return rows;
     }
     
@@ -170,7 +161,6 @@ export async function close() {
             db = null;
         }
         initialized = false;
-        console.debug('[DuckDB] Closed');
     }
     
     /**

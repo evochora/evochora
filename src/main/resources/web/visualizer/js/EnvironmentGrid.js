@@ -432,9 +432,6 @@ export class EnvironmentGrid {
             if (!this.isZoomedOut || this._fullWorldPrefetched) return;
             if (this.zoomedOutRenderer._loadedTick !== tick) return;
 
-            console.debug(`[Prefetch] Starting full world prefetch for tick ${tick}`);
-            const prefetchStart = performance.now();
-
             // Create dedicated abort controller for prefetch
             this._prefetchAbortController = new AbortController();
 
@@ -448,7 +445,6 @@ export class EnvironmentGrid {
 
                 // Verify we're still in the same state before rendering
                 if (!this.isZoomedOut || this.zoomedOutRenderer._loadedTick !== tick) {
-                    console.debug('[Prefetch] State changed, discarding data');
                     return;
                 }
 
@@ -508,9 +504,6 @@ export class EnvironmentGrid {
             if (this.isZoomedOut) return;
             if (this.detailedRenderer._loadedTick !== tick) return;
 
-            console.debug(`[Prefetch] Starting ring ${ringNumber} prefetch for tick ${tick}`);
-            const prefetchStart = performance.now();
-
             // Create dedicated abort controller for prefetch
             this._prefetchAbortController = new AbortController();
 
@@ -524,7 +517,6 @@ export class EnvironmentGrid {
 
                 // Verify we're still in the same state before rendering
                 if (this.isZoomedOut || this.detailedRenderer._loadedTick !== tick) {
-                    console.debug('[Prefetch] State changed, discarding data');
                     return;
                 }
 

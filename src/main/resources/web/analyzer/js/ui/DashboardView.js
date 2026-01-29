@@ -18,7 +18,6 @@ export function init() {
     if (!container) {
         console.error('[DashboardView] Dashboard container not found');
     }
-    console.debug('[DashboardView] Initialized');
 }
 
 /**

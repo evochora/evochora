@@ -15,7 +15,7 @@
 /* global protobuf */
 
 // Import protobufjs in worker context
-importScripts('https://cdn.jsdelivr.net/npm/protobufjs@7.2.5/dist/protobuf.min.js');
+importScripts('https://cdn.jsdelivr.net/npm/protobufjs@8.0.0/dist/protobuf.min.js');
 
 // Cached protobuf type
 let EnvironmentHttpResponse = null;

@@ -28,8 +28,6 @@ import { AppSwitcher } from '../../shared/app-switcher/AppSwitcher.js';
  * Initializes the application when the DOM is ready.
  */
     function initApp() {
-        console.debug('[Analytics] Starting Evochora Analytics Dashboard...');
-        
         // Setup error bar close button
         const closeErrorBtn = document.getElementById('close-error-banner');
         if (closeErrorBtn) {

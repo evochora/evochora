@@ -35,8 +35,6 @@ import * as MetricCardView from './ui/MetricCardView.js';
      * Initializes the controller and UI components.
      */
 export async function init() {
-        console.debug('[AnalyzerController] Initializing...');
-        
         // Initialize UI components
         HeaderView.init({
             onRefresh: handleRefresh
@@ -50,8 +48,6 @@ export async function init() {
         
         // Load available runs
         await loadRuns();
-        
-        console.debug('[AnalyzerController] Initialized');
     }
     
     /**
@@ -208,23 +204,11 @@ export async function loadDashboard(runId) {
                 // 1. Fetch merged Parquet blob from server (auto-selects LOD)
                 const { blob: parquetBlob, metadata } = await AnalyticsApi.fetchParquetBlob(metric.id, currentRunId);
                 
-                const fetchDuration = Math.round(performance.now() - startTime);
-                const blobSizeKB = Math.round(parquetBlob.size / 1024);
-                console.debug(`[Analytics] ${metric.id}: Fetched ${metadata.lod} (${metadata.fileCount} files, ${blobSizeKB} KB) in ${fetchDuration}ms (server: ${metadata.processTimeMs}ms)`);
-                
                 // 2. Query locally with DuckDB WASM using the generated SQL
-                const queryStart = performance.now();
                 data = await DuckDBClient.queryParquetBlob(parquetBlob, metric.generatedQuery);
-                const queryDuration = Math.round(performance.now() - queryStart);
-                
-                const totalDuration = Math.round(performance.now() - startTime);
-                console.debug(`[Analytics] ${metric.id}: Query returned ${data.length} rows in ${queryDuration}ms (total: ${totalDuration}ms)`);
             } else {
                 // Legacy: Server-side query (for plugins without generatedQuery)
                 data = await AnalyticsApi.queryData(currentRunId, metric.id);
-                
-                const duration = Math.round(performance.now() - startTime);
-                console.debug(`[Analytics] ${metric.id}: ${data.length} rows loaded via server in ${duration}ms`);
             }
             
             if (data.length === 0) {
