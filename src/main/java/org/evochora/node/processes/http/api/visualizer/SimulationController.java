@@ -211,42 +211,58 @@ public class SimulationController extends VisualizerBaseController {
     }
     
     /**
-     * Adds type mappings (moleculeTypes, opcodes) to the metadata JSON.
+     * Adds type mappings and expands resolvedConfigJson to the metadata JSON.
      * <p>
-     * These mappings allow the client to resolve numeric IDs from the binary
-     * environment API to human-readable names without hardcoding the mappings.
-     * <p>
-     * Added fields:
+     * This method enriches the protobuf-serialized metadata for client consumption:
      * <ul>
+     *   <li>Extracts environment, samplingInterval from resolvedConfigJson to top-level</li>
      *   <li>moleculeTypes: {0: "CODE", 1: "DATA", 2: "ENERGY", 3: "STRUCTURE"}</li>
      *   <li>opcodes: {0x00: "NOP", 0x10: "ADD", ...}</li>
      * </ul>
      *
      * @param metadataJson The original metadata JSON string.
-     * @return JSON string with added type mappings.
+     * @return JSON string with added type mappings and expanded config.
      */
     private String addTypeMappings(final String metadataJson) {
         try {
             final ObjectMapper mapper = new ObjectMapper();
             final ObjectNode root = (ObjectNode) mapper.readTree(metadataJson);
-            
+
+            // Expand resolvedConfigJson into top-level fields for API backward compatibility
+            if (root.has("resolvedConfigJson")) {
+                final String configJson = root.get("resolvedConfigJson").asText();
+                if (configJson != null && !configJson.isEmpty()) {
+                    final ObjectNode configNode = (ObjectNode) mapper.readTree(configJson);
+
+                    // Extract environment to top level
+                    if (configNode.has("environment")) {
+                        root.set("environment", configNode.get("environment"));
+                    }
+
+                    // Extract samplingInterval to top level
+                    if (configNode.has("samplingInterval")) {
+                        root.set("samplingInterval", configNode.get("samplingInterval"));
+                    }
+                }
+            }
+
             // Ensure instruction set is initialized before getting opcodes
             Instruction.init();
-            
+
             // Add molecule type mappings (id -> name)
             final ObjectNode moleculeTypes = mapper.createObjectNode();
             for (Map.Entry<Integer, String> entry : MoleculeTypeRegistry.getAllTypes().entrySet()) {
                 moleculeTypes.put(String.valueOf(entry.getKey()), entry.getValue());
             }
             root.set("moleculeTypes", moleculeTypes);
-            
+
             // Add opcode mappings (id -> name)
             final ObjectNode opcodes = mapper.createObjectNode();
             for (Map.Entry<Integer, String> entry : Instruction.getAllInstructions().entrySet()) {
                 opcodes.put(String.valueOf(entry.getKey()), entry.getValue());
             }
             root.set("opcodes", opcodes);
-            
+
             return mapper.writeValueAsString(root);
         } catch (Exception e) {
             // If JSON manipulation fails, return original (shouldn't happen)

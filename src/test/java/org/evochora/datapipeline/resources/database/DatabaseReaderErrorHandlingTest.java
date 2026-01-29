@@ -2,7 +2,7 @@ package org.evochora.datapipeline.resources.database;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
-import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
+import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataWriter;
@@ -55,20 +55,17 @@ class DatabaseReaderErrorHandlingTest {
                 .setSimulationRunId(runId)
                 .setStartTimeMs(System.currentTimeMillis())
                 .setInitialSeed(12345L)
-                .setSamplingInterval(1)
-                .setEnvironment(EnvironmentConfig.newBuilder()
-                    .setDimensions(2)
-                    .addShape(100)
-                    .addShape(100)
-                    .addToroidal(true)
-                    .addToroidal(true)
+                .setResolvedConfigJson(TestMetadataHelper.builder()
+                    .shape(100, 100)
+                    .toroidal(true)
+                    .samplingInterval(1)
                     .build())
                 .build();
-            
+
             writer.insertMetadata(metadata);
         }
     }
-    
+
     @Test
     void createReader_throwsOnInvalidRunId() {
         // Given: Invalid run-id (schema doesn't exist)
@@ -173,23 +170,20 @@ class DatabaseReaderErrorHandlingTest {
     private void createTestSchema(H2Database db, String runId) throws SQLException {
         try (IResourceSchemaAwareMetadataWriter writer = (IResourceSchemaAwareMetadataWriter) db.getWrappedResource(
                 new ResourceContext("test", "meta-port", "db-meta-write", "test-db", Map.of()))) {
-            
+
             writer.setSimulationRun(runId);
-            
+
             SimulationMetadata metadata = SimulationMetadata.newBuilder()
                 .setSimulationRunId(runId)
                 .setStartTimeMs(System.currentTimeMillis())
                 .setInitialSeed(12345L)
-                .setSamplingInterval(1)
-                .setEnvironment(EnvironmentConfig.newBuilder()
-                    .setDimensions(2)
-                    .addShape(100)
-                    .addShape(100)
-                    .addToroidal(true)
-                    .addToroidal(true)
+                .setResolvedConfigJson(TestMetadataHelper.builder()
+                    .shape(100, 100)
+                    .toroidal(true)
+                    .samplingInterval(1)
                     .build())
                 .build();
-            
+
             writer.insertMetadata(metadata);
         }
     }

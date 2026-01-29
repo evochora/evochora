@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.sql.Connection;
 import java.util.UUID;
 
-import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
+import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.RegisterValue;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
@@ -226,16 +226,13 @@ class H2DatabaseReaderInstructionResolutionTest {
             conn.createStatement().execute("CREATE TABLE IF NOT EXISTS metadata (\"key\" VARCHAR PRIMARY KEY, \"value\" TEXT)");
             SimulationMetadata metadata = SimulationMetadata.newBuilder()
                     .setSimulationRunId(runId)
-                    .setEnvironment(EnvironmentConfig.newBuilder()
-                            .setDimensions(2)
-                            .addShape(10)
-                            .addToroidal(false)
-                            .addShape(10)
-                            .addToroidal(false)
-                            .build())
+                    .setResolvedConfigJson(TestMetadataHelper.builder()
+                        .shape(10, 10)
+                        .toroidal(false)
+                        .samplingInterval(samplingInterval)
+                        .build())
                     .setStartTimeMs(System.currentTimeMillis())
                     .setInitialSeed(42L)
-                    .setSamplingInterval(samplingInterval)
                     .build();
             String metadataJson = org.evochora.datapipeline.utils.protobuf.ProtobufConverter.toJson(metadata);
             conn.createStatement().execute("INSERT INTO metadata (\"key\", \"value\") VALUES ('full_metadata', '" +

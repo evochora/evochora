@@ -22,9 +22,9 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 
 import org.evochora.datapipeline.CellStateTestHelper;
+import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.contracts.CellHttpResponse;
-import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
 import org.evochora.datapipeline.api.contracts.EnvironmentHttpResponse;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
@@ -645,20 +645,23 @@ class EnvironmentControllerIntegrationTest {
     }
 
     private SimulationMetadata createMetadata(String runId, int[] worldShape, boolean isToroidal) {
-        EnvironmentConfig.Builder envBuilder = EnvironmentConfig.newBuilder()
-            .setDimensions(worldShape.length);
+        // Build resolvedConfigJson using TestMetadataHelper
+        TestMetadataHelper.Builder builder = TestMetadataHelper.builder()
+            .toroidal(isToroidal)
+            .samplingInterval(10);
 
-        for (int size : worldShape) {
-            envBuilder.addShape(size);
-            envBuilder.addToroidal(isToroidal);
+        if (worldShape.length == 2) {
+            builder.shape(worldShape[0], worldShape[1]);
+        } else {
+            // For non-2D, use width/height approximation
+            builder.width(worldShape[0]).height(worldShape.length > 1 ? worldShape[1] : 1);
         }
 
         return SimulationMetadata.newBuilder()
             .setSimulationRunId(runId)
-            .setEnvironment(envBuilder.build())
+            .setResolvedConfigJson(builder.build())
             .setStartTimeMs(Instant.now().toEpochMilli())
             .setInitialSeed(42L)
-            .setSamplingInterval(10)
             .build();
     }
 

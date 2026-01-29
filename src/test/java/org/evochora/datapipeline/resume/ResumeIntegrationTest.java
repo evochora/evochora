@@ -10,9 +10,10 @@ import java.util.List;
 import java.util.Map;
 
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
+import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.DeltaType;
-import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
 import org.evochora.datapipeline.api.contracts.OrganismState;
+import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
@@ -158,7 +159,7 @@ class ResumeIntegrationTest {
         SimulationMetadata loadedMetadata = checkpoint.metadata();
         assertThat(loadedMetadata.getSimulationRunId()).isEqualTo(TEST_RUN_ID);
         assertThat(loadedMetadata.getInitialSeed()).isEqualTo(TEST_SEED);
-        assertThat(loadedMetadata.getEnvironment().getDimensions()).isEqualTo(2);
+        assertThat(MetadataConfigHelper.getEnvironmentShape(loadedMetadata).length).isEqualTo(2);
     }
 
     /**
@@ -252,21 +253,27 @@ class ResumeIntegrationTest {
             }
             """;
 
+        // Build the full resolvedConfigJson with environment and runtime
+        String fullConfigJson = TestMetadataHelper.builder()
+            .shape(50, 50)
+            .toroidal(true)
+            .samplingInterval(1)
+            .accumulatedDeltaInterval(ACCUMULATED_DELTA_INTERVAL)
+            .snapshotInterval(1)
+            .chunkInterval(1)
+            .build();
+
+        // Parse and merge with runtime config
+        com.typesafe.config.Config parsedConfig = com.typesafe.config.ConfigFactory.parseString(fullConfigJson);
+        com.typesafe.config.Config runtimeConfig = com.typesafe.config.ConfigFactory.parseString(configJson);
+        String mergedJson = parsedConfig.withFallback(runtimeConfig)
+            .root().render(com.typesafe.config.ConfigRenderOptions.concise());
+
         return SimulationMetadata.newBuilder()
             .setSimulationRunId(TEST_RUN_ID)
             .setInitialSeed(TEST_SEED)
             .setStartTimeMs(System.currentTimeMillis())
-            .setSamplingInterval(1)
-            .setAccumulatedDeltaInterval(ACCUMULATED_DELTA_INTERVAL)
-            .setSnapshotInterval(1)
-            .setChunkInterval(1)
-            .setEnvironment(EnvironmentConfig.newBuilder()
-                .setDimensions(2)
-                .addShape(50)
-                .addShape(50)
-                .addToroidal(true)
-                .build())
-            .setResolvedConfigJson(configJson)
+            .setResolvedConfigJson(mergedJson)
             .build();
     }
 

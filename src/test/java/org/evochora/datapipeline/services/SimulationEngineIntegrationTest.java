@@ -3,7 +3,11 @@ package org.evochora.datapipeline.services;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 import com.typesafe.config.ConfigValueFactory;
-import org.evochora.datapipeline.api.contracts.*;
+import org.evochora.datapipeline.api.contracts.OrganismState;
+import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDataChunk;
+import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue;
 import org.evochora.junit.extensions.logging.AllowLog;
@@ -171,14 +175,13 @@ class SimulationEngineIntegrationTest {
         assertFalse(metadata.getSimulationRunId().isEmpty());
         assertEquals(12345L, metadata.getInitialSeed());
         assertEquals(1, metadata.getProgramsCount());
-        assertEquals(1, metadata.getInitialOrganismsCount());
-        
-        // Verify environment configuration
-        EnvironmentConfig envConfig = metadata.getEnvironment();
-        assertEquals(2, envConfig.getDimensions());
-        assertEquals(10, envConfig.getShape(0));
-        assertEquals(10, envConfig.getShape(1));
-        assertTrue(envConfig.getToroidal(0)); // TORUS topology
+
+        // Verify environment configuration from resolvedConfigJson
+        int[] shape = MetadataConfigHelper.getEnvironmentShape(metadata);
+        assertEquals(2, shape.length);
+        assertEquals(10, shape[0]);
+        assertEquals(10, shape[1]);
+        assertTrue(MetadataConfigHelper.isEnvironmentToroidal(metadata)); // TORUS topology
     }
 
     @Test
@@ -484,13 +487,13 @@ class SimulationEngineIntegrationTest {
         await().atMost(10, TimeUnit.SECONDS)
                 .untilAsserted(() -> assertEquals(AbstractService.State.PAUSED, engine.getCurrentState()));
 
-        // Verify metadata includes tick plugin
+        // Verify metadata includes tick plugin info in resolvedConfigJson
         Optional<SimulationMetadata> metadataOpt = metadataQueue.poll(0, TimeUnit.MILLISECONDS);
         assertTrue(metadataOpt.isPresent());
         SimulationMetadata metadata = metadataOpt.get();
-        assertEquals(1, metadata.getTickPluginsCount());
-        assertEquals("org.evochora.runtime.worldgen.SolarRadiationCreator", 
-                metadata.getTickPlugins(0).getPluginClass());
+        String configJson = metadata.getResolvedConfigJson();
+        assertTrue(configJson.contains("SolarRadiationCreator"),
+                "resolvedConfigJson should contain SolarRadiationCreator plugin");
 
         // Verify tick data includes plugin state
         Optional<TickDataChunk> chunkOpt = tickDataQueue.poll(0, TimeUnit.MILLISECONDS);
@@ -525,13 +528,13 @@ class SimulationEngineIntegrationTest {
         await().atMost(10, TimeUnit.SECONDS)
                 .untilAsserted(() -> assertEquals(AbstractService.State.PAUSED, engine.getCurrentState()));
 
-        // Verify metadata
+        // Verify metadata includes tick plugin info in resolvedConfigJson
         Optional<SimulationMetadata> metadataOpt = metadataQueue.poll(0, TimeUnit.MILLISECONDS);
         assertTrue(metadataOpt.isPresent());
         SimulationMetadata metadata = metadataOpt.get();
-        assertEquals(1, metadata.getTickPluginsCount());
-        assertEquals("org.evochora.runtime.worldgen.GeyserCreator",
-                metadata.getTickPlugins(0).getPluginClass());
+        String configJson = metadata.getResolvedConfigJson();
+        assertTrue(configJson.contains("GeyserCreator"),
+                "resolvedConfigJson should contain GeyserCreator plugin");
 
         // Verify tick data includes plugin state
         Optional<TickDataChunk> chunkOpt = tickDataQueue.poll(0, TimeUnit.MILLISECONDS);
@@ -577,11 +580,15 @@ class SimulationEngineIntegrationTest {
         await().atMost(10, TimeUnit.SECONDS)
                 .untilAsserted(() -> assertEquals(AbstractService.State.PAUSED, engine.getCurrentState()));
 
-        // Verify metadata includes both plugins
+        // Verify metadata includes both plugins in resolvedConfigJson
         Optional<SimulationMetadata> metadataOpt = metadataQueue.poll(0, TimeUnit.MILLISECONDS);
         assertTrue(metadataOpt.isPresent());
         SimulationMetadata metadata = metadataOpt.get();
-        assertEquals(2, metadata.getTickPluginsCount());
+        String configJson = metadata.getResolvedConfigJson();
+        assertTrue(configJson.contains("SolarRadiationCreator"),
+                "resolvedConfigJson should contain SolarRadiationCreator plugin");
+        assertTrue(configJson.contains("GeyserCreator"),
+                "resolvedConfigJson should contain GeyserCreator plugin");
 
         // Verify tick data includes both plugin states
         Optional<TickDataChunk> chunkOpt = tickDataQueue.poll(0, TimeUnit.MILLISECONDS);

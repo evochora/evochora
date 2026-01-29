@@ -20,6 +20,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
+import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
@@ -512,16 +513,13 @@ class AnalyticsIndexerEndToEndTest {
     private SimulationMetadata createTestMetadata(String runId, int samplingInterval) {
         return SimulationMetadata.newBuilder()
             .setSimulationRunId(runId)
-            .setSamplingInterval(samplingInterval)
+            .setResolvedConfigJson(TestMetadataHelper.builder()
+                .shape(100, 100)
+                .toroidal(false)
+                .samplingInterval(samplingInterval)
+                .build())
             .setInitialSeed(12345L)
             .setStartTimeMs(System.currentTimeMillis())
-            .setEnvironment(org.evochora.datapipeline.api.contracts.EnvironmentConfig.newBuilder()
-                .setDimensions(2)
-                .addShape(100)
-                .addShape(100)
-                .addToroidal(false)
-                .addToroidal(false)
-                .build())
             .build();
     }
 

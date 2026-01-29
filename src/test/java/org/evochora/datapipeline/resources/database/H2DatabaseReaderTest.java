@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.UUID;
 
 import org.evochora.datapipeline.CellStateTestHelper;
-import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
+import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.RegisterValue;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
@@ -213,16 +213,13 @@ class H2DatabaseReaderTest {
             conn.createStatement().execute("CREATE TABLE IF NOT EXISTS metadata (\"key\" VARCHAR PRIMARY KEY, \"value\" TEXT)");
             SimulationMetadata metadata = SimulationMetadata.newBuilder()
                     .setSimulationRunId(runId)
-                    .setEnvironment(EnvironmentConfig.newBuilder()
-                            .setDimensions(2)
-                            .addShape(10)
-                            .addToroidal(false)
-                            .addShape(10)
-                            .addToroidal(false)
-                            .build())
+                    .setResolvedConfigJson(TestMetadataHelper.builder()
+                        .shape(10, 10)
+                        .toroidal(false)
+                        .samplingInterval(1)
+                        .build())
                     .setStartTimeMs(System.currentTimeMillis())
                     .setInitialSeed(42L)
-                    .setSamplingInterval(1)
                     .build();
             String metadataJson = org.evochora.datapipeline.utils.protobuf.ProtobufConverter.toJson(metadata);
             conn.createStatement().execute("INSERT INTO metadata (\"key\", \"value\") VALUES ('full_metadata', '" +

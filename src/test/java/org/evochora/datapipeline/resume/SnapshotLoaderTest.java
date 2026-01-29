@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 
+import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
@@ -183,10 +184,12 @@ class SnapshotLoaderTest {
             .setSimulationRunId(runId)
             .setStartTimeMs(System.currentTimeMillis())
             .setInitialSeed(42)
-            .setSamplingInterval(1)
-            .setAccumulatedDeltaInterval(5)
-            .setSnapshotInterval(20)
-            .setChunkInterval(1)
+            .setResolvedConfigJson(TestMetadataHelper.builder()
+                .samplingInterval(1)
+                .accumulatedDeltaInterval(5)
+                .snapshotInterval(20)
+                .chunkInterval(1)
+                .build())
             .build();
     }
 

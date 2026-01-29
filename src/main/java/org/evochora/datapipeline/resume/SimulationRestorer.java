@@ -19,7 +19,6 @@ import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.datapipeline.api.contracts.CallSiteBinding;
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.ColumnTokenLookup;
-import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
 import org.evochora.datapipeline.api.contracts.FileTokenLookup;
 import org.evochora.datapipeline.api.contracts.InstructionMapping;
 import org.evochora.datapipeline.api.contracts.LineTokenLookup;
@@ -32,11 +31,12 @@ import org.evochora.datapipeline.api.contracts.RegisterValue;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.SourceMapEntry;
 import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.api.contracts.TickPluginConfig;
 import org.evochora.datapipeline.api.contracts.TokenMapEntry;
 import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.runtime.Simulation;
+import org.evochora.runtime.label.ILabelMatchingStrategy;
 import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.evochora.runtime.spi.ITickPlugin;
@@ -132,7 +132,7 @@ public class SimulationRestorer {
         log.debug("Restoring simulation {} from tick {}",
             metadata.getSimulationRunId(), checkpoint.getCheckpointTick());
 
-        // 1. Parse config from metadata
+        // 1. Parse config from metadata - ALL simulation config comes from here
         Config resolvedConfig = ConfigFactory.parseString(metadata.getResolvedConfigJson());
         Config runtimeConfig = resolvedConfig.getConfig("runtime");
         Config organismConfig = runtimeConfig.getConfig("organism");
@@ -141,16 +141,20 @@ public class SimulationRestorer {
         // 2. Create ThermodynamicPolicyManager
         ThermodynamicPolicyManager policyManager = new ThermodynamicPolicyManager(thermoConfig);
 
-        // 3. Create Environment
-        EnvironmentConfig envConfig = metadata.getEnvironment();
-        int[] shape = toIntArray(envConfig.getShapeList());
-        boolean toroidal = envConfig.getToroidalCount() > 0 && envConfig.getToroidal(0);
-        Environment environment = new Environment(shape, toroidal);
+        // 3. Create label matching strategy from config (was previously using default!)
+        ILabelMatchingStrategy labelMatchingStrategy = Environment.createLabelMatchingStrategy(
+            runtimeConfig.hasPath("label-matching") ? runtimeConfig.getConfig("label-matching") : null);
 
-        // 4. Populate Environment cells from snapshot
+        // 4. Create Environment from config
+        int[] shape = resolvedConfig.getIntList("environment.shape").stream().mapToInt(i -> i).toArray();
+        boolean toroidal = "TORUS".equalsIgnoreCase(resolvedConfig.getString("environment.topology"));
+        EnvironmentProperties envProps = new EnvironmentProperties(shape, toroidal);
+        Environment environment = new Environment(envProps, labelMatchingStrategy);
+
+        // 5. Populate Environment cells from snapshot
         populateCells(environment, snapshot.getCellColumns(), shape);
 
-        // 5. Extract state from snapshot (always complete since we resume from chunk start)
+        // 6. Extract state from snapshot (always complete since we resume from chunk start)
         long currentTick = snapshot.getTickNumber();
         long totalOrganismsCreated = snapshot.getTotalOrganismsCreated();
         ByteString rngState = snapshot.getRngState();
@@ -160,7 +164,7 @@ public class SimulationRestorer {
         log.debug("Resume state: currentTick={}, totalOrganismsCreated={}, organisms={}",
             currentTick, totalOrganismsCreated, organismStates.size());
 
-        // 6. Create Simulation using forResume()
+        // 7. Create Simulation using forResume()
         Simulation simulation = Simulation.forResume(
             environment,
             currentTick,
@@ -169,19 +173,19 @@ public class SimulationRestorer {
             organismConfig
         );
 
-        // 7. Restore RNG state
+        // 8. Restore RNG state
         if (!rngState.isEmpty()) {
             randomProvider.loadState(rngState.toByteArray());
             log.debug("Loaded RNG state ({} bytes)", rngState.size());
         }
         simulation.setRandomProvider(randomProvider);
 
-        // 8. Restore ProgramArtifacts
+        // 9. Restore ProgramArtifacts
         Map<String, ProgramArtifact> programs = restoreProgramArtifacts(metadata);
         simulation.setProgramArtifacts(programs);
         log.debug("Restored {} program artifacts", programs.size());
 
-        // 9. Restore Organisms
+        // 10. Restore Organisms
         for (OrganismState state : organismStates) {
             if (state.getIsDead()) {
                 continue; // Skip dead organisms
@@ -191,9 +195,9 @@ public class SimulationRestorer {
         }
         log.debug("Restored {} live organisms", simulation.getOrganisms().size());
 
-        // 10. Restore TickPlugins (with their configs for SimulationEngine)
+        // 11. Restore TickPlugins from config (with their configs for SimulationEngine)
         List<PluginWithConfig> pluginsWithConfig = restoreTickPlugins(
-            metadata.getTickPluginsList(),
+            resolvedConfig.getConfigList("tickPlugins"),
             pluginStates,
             randomProvider
         );
@@ -202,7 +206,7 @@ public class SimulationRestorer {
         }
         log.debug("Restored {} tick plugins", pluginsWithConfig.size());
 
-        // 11. Build and return RestoredState
+        // 12. Build and return RestoredState
         return new RestoredState(
             simulation,
             randomProvider,
@@ -546,10 +550,15 @@ public class SimulationRestorer {
     }
 
     /**
-     * Restores tick plugins from metadata configs and saved states.
+     * Restores tick plugins from config and saved states.
+     *
+     * @param pluginConfigs List of plugin configurations from resolvedConfigJson
+     * @param savedStates List of saved plugin states from snapshot
+     * @param randomProvider The random provider for plugin initialization
+     * @return List of restored plugins with their configs
      */
     private static List<PluginWithConfig> restoreTickPlugins(
-            List<TickPluginConfig> configs,
+            List<? extends Config> pluginConfigs,
             List<PluginState> savedStates,
             IRandomProvider randomProvider) {
 
@@ -561,28 +570,29 @@ public class SimulationRestorer {
 
         List<PluginWithConfig> plugins = new ArrayList<>();
 
-        for (TickPluginConfig config : configs) {
+        for (Config pluginConfig : pluginConfigs) {
+            String className = pluginConfig.getString("className");
             try {
-                // Parse plugin options from JSON
-                Config options = ConfigFactory.parseString(config.getConfigJson());
+                // Get plugin options (may be empty)
+                Config options = pluginConfig.hasPath("options")
+                    ? pluginConfig.getConfig("options")
+                    : ConfigFactory.empty();
 
                 // Instantiate via reflection (same pattern as SimulationEngine)
-                ITickPlugin plugin = (ITickPlugin) Class.forName(config.getPluginClass())
+                ITickPlugin plugin = (ITickPlugin) Class.forName(className)
                     .getConstructor(IRandomProvider.class, Config.class)
                     .newInstance(randomProvider, options);
 
                 // Restore saved state if available
-                byte[] savedState = stateByClass.get(config.getPluginClass());
+                byte[] savedState = stateByClass.get(className);
                 if (savedState != null && savedState.length > 0) {
                     plugin.loadState(savedState);
-                    log.debug("Loaded state for plugin {} ({} bytes)",
-                        config.getPluginClass(), savedState.length);
+                    log.debug("Loaded state for plugin {} ({} bytes)", className, savedState.length);
                 }
 
                 plugins.add(new PluginWithConfig(plugin, options));
             } catch (Exception e) {
-                throw new ResumeException(
-                    "Failed to instantiate tick plugin: " + config.getPluginClass(), e);
+                throw new ResumeException("Failed to instantiate tick plugin: " + className, e);
             }
         }
 

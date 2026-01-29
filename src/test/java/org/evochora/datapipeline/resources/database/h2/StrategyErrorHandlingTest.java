@@ -1,6 +1,6 @@
 package org.evochora.datapipeline.resources.database.h2;
 
-import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
+import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.CellStateTestHelper;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
@@ -143,20 +143,17 @@ class StrategyErrorHandlingTest {
                 .setSimulationRunId(runId)
                 .setStartTimeMs(System.currentTimeMillis())
                 .setInitialSeed(12345L)
-                .setSamplingInterval(1)
-                .setEnvironment(EnvironmentConfig.newBuilder()
-                    .setDimensions(2)
-                    .addShape(100)
-                    .addShape(100)
-                    .addToroidal(true)
-                    .addToroidal(true)
+                .setResolvedConfigJson(TestMetadataHelper.builder()
+                    .shape(100, 100)
+                    .toroidal(true)
+                    .samplingInterval(1)
                     .build())
                 .build();
-            
+
             writer.insertMetadata(metadata);
         }
     }
-    
+
     private void insertCorruptedChunk(String runId, long tick) throws SQLException {
         try {
             java.lang.reflect.Field dataSourceField = H2Database.class.getDeclaredField("dataSource");

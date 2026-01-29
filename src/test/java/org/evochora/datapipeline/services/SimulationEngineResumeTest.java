@@ -9,8 +9,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
-import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
@@ -163,21 +163,27 @@ class SimulationEngineResumeTest {
             }
             """;
 
+        // Build the full resolvedConfigJson with environment and runtime
+        String fullConfigJson = TestMetadataHelper.builder()
+            .shape(50, 50)
+            .toroidal(true)
+            .samplingInterval(1)
+            .accumulatedDeltaInterval(40)
+            .snapshotInterval(1000)
+            .chunkInterval(100)
+            .build();
+
+        // Parse and merge with runtime config
+        com.typesafe.config.Config parsedConfig = com.typesafe.config.ConfigFactory.parseString(fullConfigJson);
+        com.typesafe.config.Config runtimeConfig = com.typesafe.config.ConfigFactory.parseString(configJson);
+        String mergedJson = parsedConfig.withFallback(runtimeConfig)
+            .root().render(com.typesafe.config.ConfigRenderOptions.concise());
+
         return SimulationMetadata.newBuilder()
             .setSimulationRunId(TEST_RUN_ID)
             .setStartTimeMs(System.currentTimeMillis())
             .setInitialSeed(42)
-            .setSamplingInterval(1)
-            .setAccumulatedDeltaInterval(40)
-            .setSnapshotInterval(1000)
-            .setChunkInterval(100)
-            .setEnvironment(EnvironmentConfig.newBuilder()
-                .setDimensions(2)
-                .addShape(50)
-                .addShape(50)
-                .addToroidal(true)
-                .build())
-            .setResolvedConfigJson(configJson)
+            .setResolvedConfigJson(mergedJson)
             .build();
     }
 

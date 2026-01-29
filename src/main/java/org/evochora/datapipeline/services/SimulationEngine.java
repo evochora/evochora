@@ -19,14 +19,10 @@ import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.datapipeline.api.contracts.CallSiteBinding;
 import org.evochora.datapipeline.api.contracts.ColumnTokenLookup;
-import org.evochora.datapipeline.api.contracts.TickPluginConfig;
-import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
 import org.evochora.datapipeline.api.contracts.FileTokenLookup;
-import org.evochora.datapipeline.api.contracts.InitialOrganismSetup;
 import org.evochora.datapipeline.api.contracts.InstructionMapping;
 import org.evochora.datapipeline.api.contracts.LineTokenLookup;
 import org.evochora.datapipeline.api.contracts.LinearAddressToCoord;
-import org.evochora.datapipeline.api.contracts.OrganismConfig;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.PlacedMoleculeMapping;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
@@ -201,6 +197,9 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
     /**
      * Initializes simulation state from a checkpoint for resume mode.
+     * <p>
+     * All simulation-affecting configuration is read from the metadata's resolvedConfigJson
+     * to ensure deterministic continuation of the original simulation.
      */
     private InitializedState initializeFromCheckpoint(Config options) {
         log.debug("Initializing from checkpoint (resume mode)");
@@ -222,8 +221,13 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             log.debug("Loaded checkpoint at tick {}, will resume from tick {}",
                 checkpoint.getCheckpointTick(), checkpoint.getResumeFromTick());
 
-            // Restore state
-            long seed = checkpoint.metadata().getInitialSeed();
+            // Parse original config from metadata
+            SimulationMetadata metadata = checkpoint.metadata();
+            Config originalConfig = com.typesafe.config.ConfigFactory.parseString(
+                metadata.getResolvedConfigJson());
+
+            // Restore state using original config
+            long seed = metadata.getInitialSeed();
             IRandomProvider randomProvider = new SeededRandomProvider(seed);
             SimulationRestorer.RestoredState restored = SimulationRestorer.restore(checkpoint, randomProvider);
 
@@ -238,8 +242,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
             log.debug("Restored {} organisms from checkpoint", restored.simulation().getOrganisms().size());
 
-            // Get intervals from metadata (must match original simulation!)
-            SimulationMetadata metadata = checkpoint.metadata();
+            // Read intervals from original config (must match original simulation!)
             return new InitializedState(
                 restored.simulation(),
                 randomProvider,
@@ -249,10 +252,10 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 seed,
                 metadata.getStartTimeMs(),
                 checkpoint.getResumeFromTick() - 1,
-                metadata.getSamplingInterval(),
-                metadata.getAccumulatedDeltaInterval(),
-                metadata.getSnapshotInterval(),
-                metadata.getChunkInterval(),
+                readPositiveInt(originalConfig, "samplingInterval", 1),
+                readInt(originalConfig, "accumulatedDeltaInterval", SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL),
+                readInt(originalConfig, "snapshotInterval", SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL),
+                readInt(originalConfig, "chunkInterval", SimulationParameters.DEFAULT_CHUNK_INTERVAL),
                 checkpoint.snapshot()  // Pass snapshot to prime the encoder
             );
         } catch (IOException e) {
@@ -493,68 +496,29 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         }).toList();
     }
 
+    /**
+     * Builds the metadata message for a new simulation.
+     * <p>
+     * Only stores data that cannot be derived from config:
+     * <ul>
+     *   <li>runId, startTimeMs - runtime-generated identifiers</li>
+     *   <li>seed - the actual seed used (important when auto-generated)</li>
+     *   <li>programs - compiled artifacts with machine code</li>
+     *   <li>resolvedConfigJson - all other configuration</li>
+     * </ul>
+     */
     private SimulationMetadata buildMetadataMessage() {
         SimulationMetadata.Builder builder = SimulationMetadata.newBuilder();
         builder.setSimulationRunId(this.runId);
         builder.setStartTimeMs(this.startTimeMs);
         builder.setInitialSeed(this.seed);
-        builder.setSamplingInterval(this.samplingInterval);
-        builder.setAccumulatedDeltaInterval(this.accumulatedDeltaInterval);
-        builder.setSnapshotInterval(this.snapshotInterval);
-        builder.setChunkInterval(this.chunkInterval);
 
-        EnvironmentProperties envProps = this.simulation.getEnvironment().getProperties();
-        EnvironmentConfig.Builder envConfigBuilder = EnvironmentConfig.newBuilder();
-        envConfigBuilder.setDimensions(envProps.getWorldShape().length);
-        for (int dim : envProps.getWorldShape()) {
-            envConfigBuilder.addShape(dim);
-        }
-        for (int i = 0; i < envProps.getWorldShape().length; i++) {
-            envConfigBuilder.addToroidal(envProps.isToroidal());
-        }
-        builder.setEnvironment(envConfigBuilder.build());
+        // Add compiled programs (cannot be derived from config)
+        simulation.getProgramArtifacts().values().forEach(artifact ->
+            builder.addPrograms(convertProgramArtifact(artifact)));
 
-        tickPlugins.forEach(pluginWithConfig -> {
-            TickPluginConfig.Builder pluginBuilder = TickPluginConfig.newBuilder();
-            pluginBuilder.setPluginClass(pluginWithConfig.plugin().getClass().getName());
-            pluginBuilder.setConfigJson(pluginWithConfig.config().root().render(ConfigRenderOptions.concise()));
-            builder.addTickPlugins(pluginBuilder.build());
-        });
-
-        simulation.getProgramArtifacts().values().forEach(artifact -> builder.addPrograms(convertProgramArtifact(artifact)));
-
-        options.getConfigList("organisms").forEach(orgConfig -> {
-            InitialOrganismSetup.Builder orgSetupBuilder = InitialOrganismSetup.newBuilder();
-            String programPath = orgConfig.getString("program");
-            ProgramInfo programInfo = programInfoByPath.get(programPath);
-            if (programInfo != null) {
-                orgSetupBuilder.setProgramId(programInfo.programId());
-            }
-            if (orgConfig.hasPath("id")) {
-                orgSetupBuilder.setOrganismId(orgConfig.getInt("id"));
-            }
-            orgSetupBuilder.setPosition(convertVector(orgConfig.getIntList("placement.positions").stream().mapToInt(i->i).toArray()));
-            orgSetupBuilder.setInitialEnergy(orgConfig.getInt("initialEnergy"));
-            builder.addInitialOrganisms(orgSetupBuilder.build());
-        });
-
-        if (options.hasPath("metadata")) {
-            options.getConfig("metadata").entrySet().forEach(entry -> {
-                builder.putUserMetadata(entry.getKey(), entry.getValue().unwrapped().toString());
-            });
-        }
-
+        // Store complete config - all other values are read from here during resume
         builder.setResolvedConfigJson(options.root().render(ConfigRenderOptions.concise()));
-
-        // Add organism configuration from runtime.organism
-        Config organismConfig = this.simulation.getOrganismConfig();
-        if (organismConfig != null) {
-            OrganismConfig.Builder orgConfigBuilder = OrganismConfig.newBuilder();
-            orgConfigBuilder.setMaxEnergy(organismConfig.getInt("max-energy"));
-            orgConfigBuilder.setMaxEntropy(organismConfig.getInt("max-entropy"));
-            orgConfigBuilder.setErrorPenaltyCost(organismConfig.getInt("error-penalty-cost"));
-            builder.setOrganismConfig(orgConfigBuilder.build());
-        }
 
         return builder.build();
     }

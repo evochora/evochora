@@ -2,8 +2,8 @@ package org.evochora.datapipeline.resume;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
-import org.evochora.datapipeline.api.contracts.EnvironmentConfig;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.RegisterValue;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
@@ -228,21 +228,27 @@ class SimulationRestorerTest {
             }
             """;
 
+        // Build the full resolvedConfigJson with environment and runtime
+        String fullConfigJson = TestMetadataHelper.builder()
+            .shape(100, 100)
+            .toroidal(true)
+            .samplingInterval(1)
+            .accumulatedDeltaInterval(5)
+            .snapshotInterval(20)
+            .chunkInterval(1)
+            .build();
+
+        // Parse and merge with runtime config
+        com.typesafe.config.Config parsedConfig = com.typesafe.config.ConfigFactory.parseString(fullConfigJson);
+        com.typesafe.config.Config runtimeConfig = com.typesafe.config.ConfigFactory.parseString(configJson);
+        String mergedJson = parsedConfig.withFallback(runtimeConfig)
+            .root().render(com.typesafe.config.ConfigRenderOptions.concise());
+
         return SimulationMetadata.newBuilder()
             .setSimulationRunId(TEST_RUN_ID)
             .setStartTimeMs(System.currentTimeMillis())
             .setInitialSeed(42)
-            .setSamplingInterval(1)
-            .setAccumulatedDeltaInterval(5)
-            .setSnapshotInterval(20)
-            .setChunkInterval(1)
-            .setEnvironment(EnvironmentConfig.newBuilder()
-                .setDimensions(2)
-                .addShape(100)
-                .addShape(100)
-                .addToroidal(true)
-                .build())
-            .setResolvedConfigJson(configJson)
+            .setResolvedConfigJson(mergedJson)
             .build();
     }
 

@@ -12,72 +12,39 @@ option java_package = "org.evochora.datapipeline.api.contracts";
 // Contains all initialization data for a simulation run.
 // This message is sent once at simulation start, before any TickData.
 // It provides complete context for understanding and replaying the simulation.
+//
+// Design: Most configuration is stored in resolved_config_json to avoid redundancy.
+// Only data that cannot be derived from config (runtime-generated values, compiled artifacts)
+// is stored in separate fields.
 message SimulationMetadata {
   // Unique identifier for this simulation run
   // Format: YYYYMMDDHHmmssSS-<UUID> (timestamp prefix with centiseconds + UUID)
-  // Example: 2025100614302512-550e8400-e29b-41d4-a716-446655440000
-  //          └──────┬──────┘└┬┘
-  //           date+time    cs (centiseconds: 00-99)
-  // Used to correlate metadata with tick data and provide temporal ordering
   string simulation_run_id = 1;
 
   // Timestamp when the simulation started (milliseconds since epoch)
-  // Created via: System.currentTimeMillis()
+  // Runtime-generated, cannot be derived from config.
   int64 start_time_ms = 2;
 
   // Initial seed for the random number generator
-  // Source: evochora.conf "simulation.seed" or generated randomly
-  // Used to initialize IRandomProvider (Well19937c)
+  // Stores the ACTUAL seed used (important when auto-generated from System.currentTimeMillis())
   int64 initial_seed = 3;
 
-  // Environment configuration (world size, topology, etc.)
-  // Source: EnvironmentProperties from runtime initialization
-  EnvironmentConfig environment = 4;
-
-  // Tick plugin configurations
-  // Source: All ITickPlugin instances from evochora.conf "simulation.tickPlugins"
-  // Multiple plugins can be active simultaneously (e.g., GeyserCreator + SolarRadiationCreator)
-  repeated TickPluginConfig tick_plugins = 5;
-
   // All compiled programs used in this simulation
-  // Source: Output from Compiler.compile() for each program
-  // Includes machine code, source maps, and debugging metadata
-  repeated ProgramArtifact programs = 6;
-
-  // Initial organism placements at simulation start
-  // Source: evochora.conf "simulation.initialOrganisms" section
-  // Specifies which organisms to create and where to place them
-  repeated InitialOrganismSetup initial_organisms = 7;
-
-  // User-provided metadata (arbitrary key-value pairs)
-  // Source: evochora.conf "simulation.metadata" section
-  // Used for experiment tracking and custom annotations
-  map<string, string> user_metadata = 8;
+  // Compiled artifacts with machine code, source maps, and debugging metadata.
+  // Cannot be derived from config - must be stored separately.
+  repeated ProgramArtifact programs = 4;
 
   // Complete resolved configuration as JSON
-  // Source: TypesafeConfig.root().render(ConfigRenderOptions.concise())
-  // Includes all config values (defaults + overrides) for self-contained replay
-  string resolved_config_json = 9;
-  
-  // Sampling interval for tick data capture
-  // Source: SimulationEngine options "samplingInterval"
-  // Determines which ticks are captured: tick % samplingInterval == 0
-  // Default: 1 (every tick)
-  // Used by indexers for gap detection to distinguish missing batches from unsampled ticks
-  int32 sampling_interval = 10;
-
-  // Organism runtime configuration (limits and penalties)
-  // Source: evochora.conf "runtime.organism" section
-  // Defines maximum energy, maximum entropy, and error penalty cost
-  OrganismConfig organism_config = 11;
-
-  // Delta compression intervals (must match during resume!)
-  // These values determine chunk boundaries and are stored to ensure
-  // resume uses the same intervals as the original simulation.
-  // Source: SimulationEngine options
-  int32 accumulated_delta_interval = 12;  // Samples between accumulated deltas
-  int32 snapshot_interval = 13;           // Accumulated deltas between snapshots
-  int32 chunk_interval = 14;              // Snapshots per chunk
+  // Contains ALL config values needed to understand/resume the simulation:
+  //   - environment.shape, environment.topology
+  //   - organisms[] (initial placements)
+  //   - tickPlugins[] (plugin classes and options)
+  //   - runtime.organism (max-energy, max-entropy, error-penalty-cost)
+  //   - runtime.thermodynamics (energy/entropy policies)
+  //   - runtime.label-matching (fuzzy jump strategy)
+  //   - samplingInterval, accumulatedDeltaInterval, snapshotInterval, chunkInterval
+  //   - metadata (user-provided key-value pairs)
+  string resolved_config_json = 5;
 }
 
 // Configuration for organism runtime behavior.

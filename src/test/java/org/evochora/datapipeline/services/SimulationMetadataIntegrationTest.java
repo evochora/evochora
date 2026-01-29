@@ -18,6 +18,7 @@ import java.util.stream.Stream;
 import org.evochora.datapipeline.ServiceManager;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
+import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.LogLevel;
@@ -193,23 +194,14 @@ class SimulationMetadataIntegrationTest {
         assertEquals(42, metadata.getInitialSeed());
         assertTrue(metadata.getStartTimeMs() > 0);
 
-        // Verify environment configuration
-        assertNotNull(metadata.getEnvironment());
-        assertEquals(2, metadata.getEnvironment().getDimensions());
-        assertEquals(100, metadata.getEnvironment().getShape(0));
-        assertEquals(100, metadata.getEnvironment().getShape(1));
-
-        // Verify tick plugins
-        assertTrue(metadata.getTickPluginsCount() > 0);
+        // Verify environment configuration from resolvedConfigJson
+        int[] shape = MetadataConfigHelper.getEnvironmentShape(metadata);
+        assertEquals(2, shape.length);
+        assertEquals(100, shape[0]);
+        assertEquals(100, shape[1]);
 
         // Verify programs
         assertTrue(metadata.getProgramsCount() > 0);
-
-        // Verify initial organisms
-        assertTrue(metadata.getInitialOrganismsCount() > 0);
-
-        // Verify user metadata
-        assertEquals("test-run", metadata.getUserMetadataOrDefault("experiment", ""));
 
         // Verify resolved config JSON exists
         assertNotNull(metadata.getResolvedConfigJson());

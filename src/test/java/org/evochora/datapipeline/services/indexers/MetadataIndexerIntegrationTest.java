@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
+import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.MetadataInfo;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.resources.IResource;
@@ -208,7 +209,7 @@ class MetadataIndexerIntegrationTest {
                 .setSimulationRunId(runId)
                 .setStartTimeMs(System.currentTimeMillis())
                 .setInitialSeed(12345L)
-                .setSamplingInterval(1)
+                .setResolvedConfigJson(TestMetadataHelper.createResolvedConfigJson(100, 100))
                 .build();
     }
 

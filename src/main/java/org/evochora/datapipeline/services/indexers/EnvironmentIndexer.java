@@ -12,6 +12,7 @@ import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareEnvironmentDataWriter;
+import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -144,17 +145,10 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> implement
      * @return EnvironmentProperties for coordinate conversion
      */
     private EnvironmentProperties extractEnvironmentProperties(SimulationMetadata metadata) {
-        // Extract world shape from metadata
-        int[] worldShape = metadata.getEnvironment().getShapeList().stream()
-            .mapToInt(Integer::intValue)
-            .toArray();
-        
-        // Extract topology - check if ALL dimensions are toroidal
-        // (In practice, all dimensions have same topology for now)
-        boolean isToroidal = !metadata.getEnvironment().getToroidalList().isEmpty() 
-            && metadata.getEnvironment().getToroidal(0);
-        
-        return new EnvironmentProperties(worldShape, isToroidal);
+        return new EnvironmentProperties(
+            MetadataConfigHelper.getEnvironmentShape(metadata),
+            MetadataConfigHelper.isEnvironmentToroidal(metadata)
+        );
     }
     
     // ==================== IMemoryEstimatable ====================

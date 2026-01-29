@@ -22,6 +22,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
@@ -382,7 +383,9 @@ class AbstractBatchIndexerTest {
     private SimulationMetadata createTestMetadata(String runId) {
         return SimulationMetadata.newBuilder()
             .setSimulationRunId(runId)
-            .setSamplingInterval(10)
+            .setResolvedConfigJson(TestMetadataHelper.builder()
+                .samplingInterval(10)
+                .build())
             .setInitialSeed(12345L)
             .setStartTimeMs(System.currentTimeMillis())
             .build();
