@@ -125,7 +125,7 @@ public class TopicCleaner {
                             String[] queueNames = server.getActiveMQServerControl().getQueueNames();
                             for (String queueName : queueNames) {
                                 if (queueName.contains(runId)) {
-                                    server.destroyQueue(SimpleString.toSimpleString(queueName));
+                                    server.destroyQueue(SimpleString.of(queueName));
                                 }
                             }
                             // Then delete the address itself via management control

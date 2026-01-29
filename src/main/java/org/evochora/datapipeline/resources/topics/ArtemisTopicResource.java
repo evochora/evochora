@@ -389,13 +389,13 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
                     String deadLetterAddress = options.hasPath("embedded.addressSettings.deadLetterAddress")
                         ? options.getString("embedded.addressSettings.deadLetterAddress")
                         : "DLQ";
-                    addressSettings.setDeadLetterAddress(SimpleString.toSimpleString(deadLetterAddress));
+                    addressSettings.setDeadLetterAddress(SimpleString.of(deadLetterAddress));
                     
                     // Expiry Queue address - required to suppress broker warnings  
                     String expiryAddress = options.hasPath("embedded.addressSettings.expiryAddress")
                         ? options.getString("embedded.addressSettings.expiryAddress")
                         : "ExpiryQueue";
-                    addressSettings.setExpiryAddress(SimpleString.toSimpleString(expiryAddress));
+                    addressSettings.setExpiryAddress(SimpleString.of(expiryAddress));
                     
                     // Apply settings to all addresses (# = wildcard)
                     config.addAddressSetting("#", addressSettings);
