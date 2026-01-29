@@ -31,41 +31,41 @@ repositories {
 }
 
 dependencies {
-    implementation("com.google.protobuf:protobuf-java:4.29.3")
-    implementation("com.google.protobuf:protobuf-java-util:4.29.3") // For JSON conversion
-    implementation("com.zaxxer:HikariCP:5.1.0") // High-performance JDBC connection pool
+    implementation("com.google.protobuf:protobuf-java:4.33.0")
+    implementation("com.google.protobuf:protobuf-java-util:4.33.0") // For JSON conversion
+    implementation("com.zaxxer:HikariCP:6.2.1") // High-performance JDBC connection pool
     implementation("it.unimi.dsi:fastutil:8.5.12") // High-performance primitive collections
     testImplementation(platform("org.junit:junit-bom:5.10.0"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testImplementation("org.junit.jupiter:junit-jupiter-engine:5.10.2")
-    testImplementation("ch.qos.logback:logback-classic:1.5.6")
+    testImplementation("ch.qos.logback:logback-classic:1.5.26")
     testImplementation("org.mockito:mockito-core:5.12.0")
     testImplementation("org.mockito:mockito-junit-jupiter:5.12.0")
     testImplementation("org.assertj:assertj-core:3.26.3")
     testImplementation("org.awaitility:awaitility:4.2.1")
     testImplementation("io.rest-assured:rest-assured:5.4.0") // For API integration testing
-    testImplementation("io.javalin:javalin-testtools:6.1.3")
+    testImplementation("io.javalin:javalin-testtools:6.7.0")
     
     
     // Explicitly declare test framework implementation dependencies for Gradle 9 compatibility
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
-    implementation("org.slf4j:slf4j-api:2.0.13")
-    implementation("ch.qos.logback:logback-classic:1.5.6")
-    implementation("org.xerial:sqlite-jdbc:3.46.0.0")
-    implementation("com.h2database:h2:2.2.224")
-    implementation("com.fasterxml.jackson.core:jackson-databind:2.17.1")
-    implementation("com.google.code.gson:gson:2.10.1")
-    implementation("info.picocli:picocli:4.7.6")
-    annotationProcessor("info.picocli:picocli-codegen:4.7.6")
-    implementation("io.javalin:javalin:6.1.3")
+    implementation("org.slf4j:slf4j-api:2.0.17")
+    implementation("ch.qos.logback:logback-classic:1.5.26")
+    // REMOVED: sqlite-jdbc - not used, H2 is the primary database
+    implementation("com.h2database:h2:2.4.240")
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.20.1")
+    implementation("com.google.code.gson:gson:2.13.2")
+    implementation("info.picocli:picocli:4.7.7")
+    annotationProcessor("info.picocli:picocli-codegen:4.7.7")
+    implementation("io.javalin:javalin:6.7.0")
     // Javalin OpenAPI Plugin for API documentation
     implementation("io.javalin.community.openapi:javalin-openapi-plugin:6.7.0-1")
     annotationProcessor("io.javalin.community.openapi:openapi-annotation-processor:6.7.0-1")
     implementation("com.typesafe:config:1.4.3")
     implementation("net.logstash.logback:logstash-logback-encoder:8.1")
-    implementation("org.jline:jline:3.30.3")
-    runtimeOnly("org.jline:jline-terminal-jansi:3.30.3")
+    implementation("org.jline:jline:3.30.4")
+    runtimeOnly("org.jline:jline-terminal-jansi:3.30.4")
 
     // Apache Commons Math for scientifically-validated RNG with state serialization
     implementation("org.apache.commons:commons-math3:3.6.1")
@@ -74,25 +74,25 @@ dependencies {
     implementation("com.github.luben:zstd-jni:1.5.5-11")
 
     // Caffeine high-performance cache for chunk caching in EnvironmentController
-    implementation("com.github.ben-manes.caffeine:caffeine:3.1.8")
+    implementation("com.github.ben-manes.caffeine:caffeine:3.2.0")
 
     // DuckDB JDBC driver for analytics
-    implementation("org.duckdb:duckdb_jdbc:1.1.3")
+    implementation("org.duckdb:duckdb_jdbc:1.4.3.0")
 
     // ActiveMQ Artemis for high-performance messaging (Topics/Queues)
-    implementation("org.apache.activemq:artemis-jms-server:2.33.0")
-    implementation("org.apache.activemq:artemis-jms-client:2.33.0")
+    implementation("org.apache.activemq:artemis-jms-server:2.42.0")
+    implementation("org.apache.activemq:artemis-jms-client:2.42.0")
 
     // Artemis JUnit 5 support for testing embedded broker
-    testImplementation("org.apache.activemq:artemis-junit-5:2.33.0") {
+    testImplementation("org.apache.activemq:artemis-junit-5:2.42.0") {
         exclude(group = "org.slf4j")
         exclude(group = "ch.qos.logback")
     }
 
     // Test fixtures: dependencies needed to compile the JUnit extension
     testFixturesImplementation("org.junit.jupiter:junit-jupiter-api:5.10.2")
-    testFixturesImplementation("ch.qos.logback:logback-classic:1.5.6")
-    testFixturesImplementation("com.google.protobuf:protobuf-java:4.29.3")
+    testFixturesImplementation("ch.qos.logback:logback-classic:1.5.26")
+    testFixturesImplementation("com.google.protobuf:protobuf-java:4.33.0")
     testFixturesImplementation("com.typesafe:config:1.4.3")
 
 }
@@ -303,6 +303,6 @@ tasks.jacocoTestReport {
 
 protobuf {
     protoc {
-        artifact = "com.google.protobuf:protoc:4.29.3"
+        artifact = "com.google.protobuf:protoc:4.33.0"
     }
 }

@@ -120,7 +120,7 @@ public class OpenApiController extends AbstractController {
 
             // Collect all changes first
             // Match relative paths from OpenAPI file with our mappings
-            for (final Iterator<Map.Entry<String, JsonNode>> it = pathsObject.fields(); it.hasNext(); ) {
+            for (final Iterator<Map.Entry<String, JsonNode>> it = pathsObject.properties().iterator(); it.hasNext(); ) {
                 final Map.Entry<String, JsonNode> entry = it.next();
                 String relativePath = entry.getKey();
                 
@@ -435,7 +435,7 @@ public class OpenApiController extends AbstractController {
         }
 
         final ObjectNode pathsObject = (ObjectNode) pathsNode;
-        for (final Iterator<Map.Entry<String, JsonNode>> pathIt = pathsObject.fields(); pathIt.hasNext(); ) {
+        for (final Iterator<Map.Entry<String, JsonNode>> pathIt = pathsObject.properties().iterator(); pathIt.hasNext(); ) {
             final JsonNode pathNode = pathIt.next().getValue();
             if (!pathNode.isObject()) {
                 continue;
@@ -443,7 +443,7 @@ public class OpenApiController extends AbstractController {
 
             final ObjectNode pathObject = (ObjectNode) pathNode;
             // Iterate over HTTP methods (get, post, etc.)
-            for (final Iterator<Map.Entry<String, JsonNode>> methodIt = pathObject.fields(); methodIt.hasNext(); ) {
+            for (final Iterator<Map.Entry<String, JsonNode>> methodIt = pathObject.properties().iterator(); methodIt.hasNext(); ) {
                 final JsonNode methodNode = methodIt.next().getValue();
                 if (!methodNode.isObject()) {
                     continue;
@@ -457,7 +457,7 @@ public class OpenApiController extends AbstractController {
 
                 final ObjectNode responsesObject = (ObjectNode) responsesNode;
                 // Iterate over response codes (200, 404, etc.)
-                for (final Iterator<Map.Entry<String, JsonNode>> responseIt = responsesObject.fields(); responseIt.hasNext(); ) {
+                for (final Iterator<Map.Entry<String, JsonNode>> responseIt = responsesObject.properties().iterator(); responseIt.hasNext(); ) {
                     final JsonNode responseNode = responseIt.next().getValue();
                     if (!responseNode.isObject()) {
                         continue;
@@ -471,7 +471,7 @@ public class OpenApiController extends AbstractController {
 
                     final ObjectNode contentObject = (ObjectNode) contentNode;
                     // Iterate over content types (application/json, etc.)
-                    for (final Iterator<Map.Entry<String, JsonNode>> contentTypeIt = contentObject.fields(); contentTypeIt.hasNext(); ) {
+                    for (final Iterator<Map.Entry<String, JsonNode>> contentTypeIt = contentObject.properties().iterator(); contentTypeIt.hasNext(); ) {
                         final JsonNode contentTypeNode = contentTypeIt.next().getValue();
                         if (!contentTypeNode.isObject()) {
                             continue;

@@ -30,8 +30,6 @@ export function init(callbacks) {
     if (refreshBtn) {
         refreshBtn.addEventListener('click', handleRefresh);
     }
-        
-        console.debug('[HeaderView] Initialized');
     }
     
     /**

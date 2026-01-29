@@ -1,11 +1,5 @@
 package org.evochora.datapipeline;
 
-import com.typesafe.config.ConfigFactory;
-import com.typesafe.config.ConfigRenderOptions;
-
-import java.util.HashMap;
-import java.util.Map;
-
 /**
  * Helper class for creating test metadata with resolvedConfigJson.
  * <p>

@@ -84,7 +84,7 @@ header {
     top: 100%;
     left: 50%;
     transform: translateX(-50%);
-    width: 0;
+    width: calc(var(--logo-text-width, 280px) * 0.3);
     height: 2px;
     background-color: var(--accent-blue);
     opacity: 0;
@@ -99,9 +99,9 @@ header {
 }
 
 @keyframes loading-pulse {
-    0% { width: 0; }
+    0% { width: calc(var(--logo-text-width, 280px) * 0.3); }
     50% { width: var(--logo-text-width, 280px); }
-    100% { width: 0; }
+    100% { width: calc(var(--logo-text-width, 280px) * 0.3); }
 }
 
 /* --- Buttons --- */

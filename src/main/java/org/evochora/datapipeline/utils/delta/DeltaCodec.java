@@ -92,18 +92,16 @@ public final class DeltaCodec {
         
         private final String runId;
         private final int accumulatedDeltaInterval;
-        private final int chunkInterval;
-        
+
         // Derived values
         private final int samplesPerSnapshot;
         private final int samplesPerChunk;
-        
+
         // State
         private TickData currentSnapshot;
         private final List<DeltaCapture> currentDeltas = new ArrayList<>();
         private final BitSet accumulatedSinceSnapshot;
         private int samplesSinceSnapshot = 0;
-        private int snapshotsInChunk = 0;
         
         /**
          * Creates a new Encoder for a new simulation.
@@ -129,7 +127,6 @@ public final class DeltaCodec {
 
             this.runId = runId;
             this.accumulatedDeltaInterval = accumulatedDeltaInterval;
-            this.chunkInterval = chunkInterval;
 
             this.samplesPerSnapshot = accumulatedDeltaInterval * snapshotInterval;
             this.samplesPerChunk = samplesPerSnapshot * chunkInterval;
@@ -160,7 +157,6 @@ public final class DeltaCodec {
             Encoder encoder = new Encoder(runId, totalCells, accumulatedDeltaInterval, snapshotInterval, chunkInterval);
             encoder.currentSnapshot = resumeSnapshot;
             encoder.samplesSinceSnapshot = 1;  // Snapshot counts as sample 0, next tick is sample 1
-            encoder.snapshotsInChunk = 1;
             return encoder;
         }
 
@@ -213,7 +209,6 @@ public final class DeltaCodec {
                         .addAllPluginStates(pluginStates)
                         .build();
                 
-                snapshotsInChunk++;
                 accumulatedSinceSnapshot.clear();
             } else if (isAccumulated) {
                 // Accumulated delta - all changes since last snapshot
@@ -294,7 +289,6 @@ public final class DeltaCodec {
             currentSnapshot = null;
             currentDeltas.clear();
             samplesSinceSnapshot = 0;
-            snapshotsInChunk = 0;
             // Note: accumulatedSinceSnapshot is cleared when new snapshot is taken
             
             return chunk;

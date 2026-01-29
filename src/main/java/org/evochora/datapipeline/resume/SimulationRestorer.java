@@ -609,15 +609,4 @@ public class SimulationRestorer {
         }
         return result;
     }
-
-    /**
-     * Converts a List of Integers to int array.
-     */
-    private static int[] toIntArray(List<Integer> list) {
-        int[] result = new int[list.size()];
-        for (int i = 0; i < list.size(); i++) {
-            result[i] = list.get(i);
-        }
-        return result;
-    }
 }

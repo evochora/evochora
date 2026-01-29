@@ -21,7 +21,6 @@ export function register(typeName, chartClass) {
             console.warn(`[ChartRegistry] Overwriting existing chart type: ${typeName}`);
         }
     types[typeName] = chartClass;
-        console.debug(`[ChartRegistry] Registered chart type: ${typeName}`);
     }
     
     /**

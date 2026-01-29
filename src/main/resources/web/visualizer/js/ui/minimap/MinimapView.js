@@ -172,6 +172,9 @@ export class MinimapView {
         // Render organism overlay (if enabled and we have organisms)
         this._renderOrganismOverlay();
 
+        // Cache background (environment + organisms) for fast viewport updates
+        this.renderer.cacheBackground();
+
         // Draw viewport rectangle if we have bounds
         if (this.viewportBounds && worldShape) {
             this.renderer.drawViewportRect(this.viewportBounds, worldShape);
@@ -197,9 +200,8 @@ export class MinimapView {
         this.viewportBounds = bounds;
 
         if (this.lastMinimapData && this.worldShape) {
-            // Re-render full minimap: environment + organisms + viewport rect
-            this.renderer.render(this.lastMinimapData);
-            this._renderOrganismOverlay();
+            // Restore cached background and redraw only viewport rect (fast path)
+            this.renderer.restoreBackground();
             this.renderer.drawViewportRect(bounds, this.worldShape);
         }
 
@@ -223,6 +225,9 @@ export class MinimapView {
 
             // Render organism overlay
             this._renderOrganismOverlay();
+
+            // Update cache with new organism positions
+            this.renderer.cacheBackground();
 
             // Re-draw viewport rectangle
             if (this.viewportBounds) {

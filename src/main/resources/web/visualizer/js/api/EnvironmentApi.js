@@ -115,11 +115,12 @@ export class EnvironmentApi {
      * @param {string|null} [options.runId=null] - The specific run ID to query. Defaults to the latest run if null.
      * @param {AbortSignal|null} [options.signal=null] - An AbortSignal to allow for request cancellation.
      * @param {boolean} [options.includeMinimap=false] - Include minimap data in response.
+     * @param {boolean} [options.showLoading=true] - Whether to trigger the loading indicator.
      * @returns {Promise<{cells: Array<object>, minimap?: {width: number, height: number, cellTypes: Uint8Array}}>} A promise that resolves to the environment data.
      * @throws {Error} If the network request fails, is aborted, or the server returns an error.
      */
     async fetchEnvironmentData(tick, region, options = {}) {
-        const { runId = null, signal = null, includeMinimap = false } = options;
+        const { runId = null, signal = null, includeMinimap = false, showLoading = true } = options;
 
         // Build region query parameter
         const regionParam = `${region.x1},${region.x2},${region.y1},${region.y2}`;
@@ -133,7 +134,7 @@ export class EnvironmentApi {
             url += '&minimap';
         }
 
-        if (loadingManager) {
+        if (showLoading && loadingManager) {
             loadingManager.incrementRequests();
         }
 
@@ -183,7 +184,7 @@ export class EnvironmentApi {
             }
             throw error;
         } finally {
-            if (loadingManager) {
+            if (showLoading && loadingManager) {
                 loadingManager.decrementRequests();
             }
         }
