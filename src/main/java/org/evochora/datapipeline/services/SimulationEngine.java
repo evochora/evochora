@@ -152,15 +152,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         this.snapshotInterval = state.snapshotInterval();
         this.chunkInterval = state.chunkInterval();
 
-        // Common finalization
-        this.chunkEncoder = createChunkEncoder();
-
-        // For resume: prime encoder with checkpoint snapshot so subsequent ticks are deltas
-        if (state.resumeSnapshot() != null) {
-            this.chunkEncoder.initializeFromSnapshot(state.resumeSnapshot());
-            log.debug("Encoder initialized with checkpoint snapshot at tick {}",
-                state.resumeSnapshot().getTickNumber());
-        }
+        // Common finalization - pass resume snapshot for proper encoder initialization
+        this.chunkEncoder = createChunkEncoder(state.resumeSnapshot());
     }
 
     @SuppressWarnings("unchecked")
@@ -183,15 +176,23 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         return value;
     }
 
-    private DeltaCodec.Encoder createChunkEncoder() {
+    private DeltaCodec.Encoder createChunkEncoder(TickData resumeSnapshot) {
         long totalCellsLong = this.simulation.getEnvironment().getTotalCells();
         if (totalCellsLong > Integer.MAX_VALUE) {
             throw new IllegalStateException(
                 "World too large for simulation: " + totalCellsLong + " cells exceeds Integer.MAX_VALUE. " +
                 "Reduce environment dimensions.");
         }
+        int totalCells = (int) totalCellsLong;
+
+        if (resumeSnapshot != null) {
+            log.debug("Creating encoder with checkpoint snapshot at tick {}", resumeSnapshot.getTickNumber());
+            return DeltaCodec.Encoder.forResume(
+                resumeSnapshot, this.runId, totalCells,
+                this.accumulatedDeltaInterval, this.snapshotInterval, this.chunkInterval);
+        }
         return new DeltaCodec.Encoder(
-            this.runId, (int) totalCellsLong,
+            this.runId, totalCells,
             this.accumulatedDeltaInterval, this.snapshotInterval, this.chunkInterval);
     }
 

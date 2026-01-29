@@ -106,7 +106,7 @@ public final class DeltaCodec {
         private int snapshotsInChunk = 0;
         
         /**
-         * Creates a new Encoder with the specified configuration.
+         * Creates a new Encoder for a new simulation.
          *
          * @param runId simulation run ID for chunk metadata
          * @param totalCells total cells in environment (for BitSet allocation)
@@ -115,7 +115,7 @@ public final class DeltaCodec {
          * @param chunkInterval snapshots per chunk (must be >= 1)
          * @throws IllegalArgumentException if any interval is less than 1
          */
-        public Encoder(String runId, int totalCells, 
+        public Encoder(String runId, int totalCells,
                        int accumulatedDeltaInterval, int snapshotInterval, int chunkInterval) {
             if (accumulatedDeltaInterval < 1) {
                 throw new IllegalArgumentException("accumulatedDeltaInterval must be >= 1, got: " + accumulatedDeltaInterval);
@@ -126,47 +126,42 @@ public final class DeltaCodec {
             if (chunkInterval < 1) {
                 throw new IllegalArgumentException("chunkInterval must be >= 1, got: " + chunkInterval);
             }
-            
+
             this.runId = runId;
             this.accumulatedDeltaInterval = accumulatedDeltaInterval;
             this.chunkInterval = chunkInterval;
-            
+
             this.samplesPerSnapshot = accumulatedDeltaInterval * snapshotInterval;
             this.samplesPerChunk = samplesPerSnapshot * chunkInterval;
-            
+
             this.accumulatedSinceSnapshot = new BitSet(totalCells);
         }
 
         /**
-         * Initializes the encoder with an existing snapshot for resume scenarios.
+         * Creates an Encoder initialized with a checkpoint snapshot for resume.
          * <p>
-         * When resuming a simulation, the checkpoint contains a snapshot at the chunk start.
-         * This method primes the encoder with that snapshot so subsequent ticks are treated
+         * The encoder is primed with the snapshot so subsequent ticks are treated
          * as deltas within the same chunk, not as new chunk starts.
-         * <p>
-         * After calling this method:
-         * <ul>
-         *   <li>{@code currentSnapshot} = provided snapshot</li>
-         *   <li>{@code samplesSinceSnapshot} = 1 (snapshot counts as sample 0)</li>
-         *   <li>Next {@code captureTick()} call creates a delta, not a snapshot</li>
-         * </ul>
          *
-         * @param snapshot the checkpoint snapshot to use as chunk start
-         * @throws IllegalArgumentException if snapshot is null
-         * @throws IllegalStateException if encoder already has data (must be called on fresh encoder)
+         * @param resumeSnapshot checkpoint snapshot (must not be null)
+         * @param runId simulation run ID for chunk metadata
+         * @param totalCells total cells in environment (for BitSet allocation)
+         * @param accumulatedDeltaInterval samples between accumulated deltas (must be >= 1)
+         * @param snapshotInterval accumulated deltas between snapshots (must be >= 1)
+         * @param chunkInterval snapshots per chunk (must be >= 1)
+         * @return encoder initialized with the checkpoint snapshot
+         * @throws IllegalArgumentException if resumeSnapshot is null or any interval is less than 1
          */
-        public void initializeFromSnapshot(TickData snapshot) {
-            if (snapshot == null) {
-                throw new IllegalArgumentException("snapshot cannot be null");
+        public static Encoder forResume(TickData resumeSnapshot, String runId, int totalCells,
+                                        int accumulatedDeltaInterval, int snapshotInterval, int chunkInterval) {
+            if (resumeSnapshot == null) {
+                throw new IllegalArgumentException("resumeSnapshot cannot be null");
             }
-            if (currentSnapshot != null || !currentDeltas.isEmpty()) {
-                throw new IllegalStateException("Encoder already has data - initializeFromSnapshot must be called on fresh encoder");
-            }
-
-            this.currentSnapshot = snapshot;
-            this.samplesSinceSnapshot = 1;  // Snapshot counts as sample 0, next tick is sample 1
-            this.snapshotsInChunk = 1;
-            this.accumulatedSinceSnapshot.clear();
+            Encoder encoder = new Encoder(runId, totalCells, accumulatedDeltaInterval, snapshotInterval, chunkInterval);
+            encoder.currentSnapshot = resumeSnapshot;
+            encoder.samplesSinceSnapshot = 1;  // Snapshot counts as sample 0, next tick is sample 1
+            encoder.snapshotsInChunk = 1;
+            return encoder;
         }
 
         /**
