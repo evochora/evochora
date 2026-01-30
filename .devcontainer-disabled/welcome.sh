@@ -13,7 +13,22 @@ NC='\033[0m'
 
 clear
 
+# === CODESPACES WARNING ===
 echo ""
+echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo -e "${YELLOW}${BOLD}  ⚠️  EXPERIMENTAL - Codespaces is NOT recommended for Evochora${NC}"
+echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo -e "  • Limited resources may cause ${BOLD}out-of-memory errors${NC}"
+echo -e "  • Port forwarding requires ${BOLD}manual URL fixes${NC}"
+echo -e "  • Performance is ${BOLD}significantly slower${NC} than local installation"
+echo ""
+echo -e "  For a proper experience, use local installation instead."
+echo -e "  See: ${CYAN}https://github.com/evochora/evochora#quick-start-run-a-simulation${NC}"
+echo ""
+echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
 echo -e "${CYAN}${BOLD}"
 echo "  Welcome to..."
 echo ""
