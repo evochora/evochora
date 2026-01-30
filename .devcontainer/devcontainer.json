@@ -5,11 +5,12 @@
   "image": "mcr.microsoft.com/devcontainers/java:21",
 
   // === Resource Requirements ===
-  // Evochora needs significant resources for meaningful simulations
+  // Minimum requirements - user can choose larger machine manually
+  // Recommended: 4-core/16GB minimum, 8-core/32GB for better performance
   "hostRequirements": {
-    "cpus": 8,
-    "memory": "32gb",
-    "storage": "64gb"
+    "cpus": 4,
+    "memory": "8gb",
+    "storage": "32gb"
   },
 
   // === Lifecycle Commands ===
