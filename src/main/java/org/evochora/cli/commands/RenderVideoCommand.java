@@ -16,8 +16,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.evochora.cli.CliResourceFactory;
+import org.evochora.cli.rendering.OverlayRenderer;
 import org.evochora.cli.rendering.SimulationRenderer;
-import org.evochora.cli.rendering.StatisticsBarRenderer;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
@@ -86,29 +86,11 @@ public class RenderVideoCommand implements Callable<Integer> {
     @Option(names = "--format", description = "Output video format: mkv/mp4/avi/mov/webm. Default: mkv", defaultValue = "mkv")
     private String format;
 
-    @Option(names = "--overlay-tick", description = "Show tick number overlay in video.")
-    private boolean overlayTick;
-
-    @Option(names = "--overlay-time", description = "Show timestamp overlay in video.")
-    private boolean overlayTime;
-
-    @Option(names = "--overlay-run-id", description = "Show run ID overlay in video.")
-    private boolean overlayRunId;
-
-    @Option(names = "--overlay-position", description = "Overlay position (top-left/top-right/bottom-left/bottom-right). Default: top-left", defaultValue = "top-left")
-    private String overlayPosition;
-
-    @Option(names = "--overlay-font-size", description = "Overlay font size in pixels. Default: 24", defaultValue = "24")
-    private int overlayFontSize;
-
-    @Option(names = "--overlay-color", description = "Overlay text color (e.g., white, yellow, #FF0000). Default: white", defaultValue = "white")
-    private String overlayColor;
-
     @Option(names = "--threads", description = "Number of threads for parallel chunk rendering. Default: 1", defaultValue = "1")
     private int threadCount;
 
-    @Option(names = "--overlay-stats", description = "Show organism statistics bar on the right side of the video.")
-    private boolean overlayStats;
+    @Option(names = "--overlay", description = "Show info overlay panel (Tick, Alive, Born) in bottom-right corner.")
+    private boolean overlay;
 
     /**
      * Represents a rendered chunk with all its frames ready to be written.
@@ -122,47 +104,20 @@ public class RenderVideoCommand implements Callable<Integer> {
     }
 
     /**
-     * Represents a single rendered frame.
+     * Represents a single rendered frame with metadata for overlay.
      */
     private static class RenderedFrame {
         final byte[] frameData;
+        final long tickNumber;
         final int aliveCount;
-        final int deadCount;
-        
-        RenderedFrame(byte[] frameData, int aliveCount, int deadCount) {
-            this.frameData = frameData;
-            this.aliveCount = aliveCount;
-            this.deadCount = deadCount;
-        }
-    }
+        final long totalBorn;
 
-    /**
-     * Combines a simulation frame with a statistics bar on the right side.
-     */
-    private byte[] combineFrameWithStatsBar(byte[] simulationFrame, int[] statsBar, 
-                                             int baseWidth, int height, int statsBarWidth) {
-        int combinedWidth = baseWidth + statsBarWidth;
-        byte[] combinedFrame = new byte[combinedWidth * height * 4];
-        
-        for (int y = 0; y < height; y++) {
-            int srcOffset = y * baseWidth * 4;
-            int dstOffset = y * combinedWidth * 4;
-            System.arraycopy(simulationFrame, srcOffset, combinedFrame, dstOffset, baseWidth * 4);
+        RenderedFrame(byte[] frameData, long tickNumber, int aliveCount, long totalBorn) {
+            this.frameData = frameData;
+            this.tickNumber = tickNumber;
+            this.aliveCount = aliveCount;
+            this.totalBorn = totalBorn;
         }
-        
-        for (int y = 0; y < height; y++) {
-            int barIndex = y * statsBarWidth;
-            int dstOffset = y * combinedWidth * 4 + baseWidth * 4;
-            for (int x = 0; x < statsBarWidth; x++) {
-                int rgb = statsBar[barIndex + x];
-                combinedFrame[dstOffset++] = (byte) (rgb & 0xFF);
-                combinedFrame[dstOffset++] = (byte) ((rgb >> 8) & 0xFF);
-                combinedFrame[dstOffset++] = (byte) ((rgb >> 16) & 0xFF);
-                combinedFrame[dstOffset++] = (byte) 255;
-            }
-        }
-        
-        return combinedFrame;
     }
 
     /**
@@ -201,82 +156,100 @@ public class RenderVideoCommand implements Callable<Integer> {
      * Returns total frames written, or -1 on error.
      */
     private long processBatchParallel(
-            List<TickDataChunk> chunks, 
+            List<TickDataChunk> chunks,
             long startIndex,
             List<SimulationRenderer> renderers,
             ExecutorService executor,
             long effectiveStartTick, long effectiveEndTick, int samplingInterval,
             WritableByteChannel channel,
-            StatisticsBarRenderer statsBarRenderer,
-            int maxOrganismId, int currentMaxAlive,
-            int baseWidth, int height, int statsBarWidth,
+            OverlayRenderer overlayRenderer,
+            int imageWidth, int imageHeight,
             Process ffmpeg, AtomicBoolean ffmpegDied) throws Exception {
-        
+
         int batchSize = chunks.size();
-        
+
         // Array to hold results in order
         @SuppressWarnings("unchecked")
         java.util.concurrent.Future<RenderedChunk>[] futures = new java.util.concurrent.Future[batchSize];
-        
+
         // Submit all chunks for parallel rendering
         for (int i = 0; i < batchSize; i++) {
             final TickDataChunk chunk = chunks.get(i);
             final SimulationRenderer renderer = renderers.get(i % renderers.size());
             final long chunkIndex = startIndex + i;
-            
+
             futures[i] = executor.submit(() -> {
-                return renderChunk(chunk, chunkIndex, renderer, 
+                return renderChunk(chunk, chunkIndex, renderer,
                     effectiveStartTick, effectiveEndTick, samplingInterval);
             });
         }
-        
+
         // Wait for all to complete and write in order
         long totalWritten = 0;
         for (int i = 0; i < batchSize; i++) {
             RenderedChunk rendered = futures[i].get();
-            
+
             for (RenderedFrame frame : rendered.frames) {
                 if (!ffmpeg.isAlive() || ffmpegDied.get()) {
                     System.err.println("\nffmpeg died");
                     return -1;
                 }
-                
+
                 byte[] finalFrameData = frame.frameData;
-                if (statsBarRenderer != null) {
-                    int effectiveMax = maxOrganismId > 0 ? maxOrganismId : 
-                        Math.max(currentMaxAlive, frame.aliveCount + frame.deadCount);
-                    int[] statsBar = statsBarRenderer.render(frame.aliveCount, frame.deadCount, effectiveMax);
-                    finalFrameData = combineFrameWithStatsBar(frame.frameData, statsBar, baseWidth, height, statsBarWidth);
+
+                // Apply overlay if enabled (note: for parallel rendering, we apply overlay after
+                // the fact since each renderer has its own frame buffer)
+                if (overlayRenderer != null) {
+                    // Create a temporary image to apply overlay
+                    java.awt.image.BufferedImage tempImage = new java.awt.image.BufferedImage(
+                        imageWidth, imageHeight, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+                    int[] tempBuffer = ((java.awt.image.DataBufferInt) tempImage.getRaster().getDataBuffer()).getData();
+
+                    // Convert BGRA bytes back to ARGB ints
+                    for (int p = 0; p < tempBuffer.length; p++) {
+                        int offset = p * 4;
+                        int b = frame.frameData[offset] & 0xFF;
+                        int g = frame.frameData[offset + 1] & 0xFF;
+                        int r = frame.frameData[offset + 2] & 0xFF;
+                        int a = frame.frameData[offset + 3] & 0xFF;
+                        tempBuffer[p] = (a << 24) | (r << 16) | (g << 8) | b;
+                    }
+
+                    overlayRenderer.render(tempImage, frame.tickNumber, frame.aliveCount, frame.totalBorn);
+
+                    // Convert back to BGRA bytes
+                    finalFrameData = new byte[tempBuffer.length * 4];
+                    for (int p = 0; p < tempBuffer.length; p++) {
+                        int argb = tempBuffer[p];
+                        int offset = p * 4;
+                        finalFrameData[offset] = (byte) (argb & 0xFF);           // B
+                        finalFrameData[offset + 1] = (byte) ((argb >> 8) & 0xFF);  // G
+                        finalFrameData[offset + 2] = (byte) ((argb >> 16) & 0xFF); // R
+                        finalFrameData[offset + 3] = (byte) ((argb >> 24) & 0xFF); // A
+                    }
                 }
-                
+
                 ByteBuffer buffer = ByteBuffer.wrap(finalFrameData);
                 buffer.order(ByteOrder.LITTLE_ENDIAN);
                 channel.write(buffer);
                 totalWritten++;
             }
         }
-        
+
         return totalWritten;
     }
 
     /**
-     * Collects organism statistics.
+     * Counts alive organisms.
      */
-    private int[] collectOrganismStats(List<OrganismState> organisms) {
+    private int countAliveOrganisms(List<OrganismState> organisms) {
         int aliveCount = 0;
-        int deadCount = 0;
-        int maxOrgId = 0;
         for (OrganismState org : organisms) {
-            if (org.getIsDead()) {
-                deadCount++;
-            } else {
+            if (!org.getIsDead()) {
                 aliveCount++;
             }
-            if (org.getOrganismId() > maxOrgId) {
-                maxOrgId = org.getOrganismId();
-            }
         }
-        return new int[]{aliveCount, deadCount, maxOrgId};
+        return aliveCount;
     }
 
     /**
@@ -285,73 +258,67 @@ public class RenderVideoCommand implements Callable<Integer> {
      *
      * @return number of frames written
      */
-    private long renderAndWriteChunkDirect(TickDataChunk chunk, 
+    private long renderAndWriteChunkDirect(TickDataChunk chunk,
                                             SimulationRenderer renderer,
                                             WritableByteChannel channel,
                                             long effectiveStartTick, long effectiveEndTick,
                                             int samplingInterval,
-                                            StatisticsBarRenderer statsBarRenderer,
-                                            int maxOrganismId, int currentMaxAlive,
-                                            int baseWidth, int height, int statsBarWidth) throws java.io.IOException {
+                                            OverlayRenderer overlayRenderer) throws java.io.IOException {
         long framesWritten = 0;
-        
+
         // Process snapshot first
         TickData snapshot = chunk.getSnapshot();
         long snapshotTick = snapshot.getTickNumber();
-        
+
         // Initialize renderer with snapshot
         int[] pixelData = renderer.renderSnapshot(snapshot);
-        
+
         // Check if snapshot should be included
-        if (snapshotTick >= effectiveStartTick && 
+        if (snapshotTick >= effectiveStartTick &&
             snapshotTick <= effectiveEndTick &&
             snapshotTick % samplingInterval == 0) {
-            
-            int[] stats = collectOrganismStats(snapshot.getOrganismsList());
-            byte[] frameData = convertToBgra(pixelData);
-            
-            if (statsBarRenderer != null) {
-                int effectiveMax = maxOrganismId > 0 ? maxOrganismId : 
-                    Math.max(currentMaxAlive, stats[0] + stats[1]);
-                int[] statsBar = statsBarRenderer.render(stats[0], stats[1], effectiveMax);
-                frameData = combineFrameWithStatsBar(frameData, statsBar, baseWidth, height, statsBarWidth);
+
+            // Render overlay if enabled
+            if (overlayRenderer != null) {
+                int aliveCount = countAliveOrganisms(snapshot.getOrganismsList());
+                long totalBorn = snapshot.getTotalOrganismsCreated();
+                overlayRenderer.render(renderer.getFrame(), snapshotTick, aliveCount, totalBorn);
             }
-            
+
+            byte[] frameData = convertToBgra(pixelData);
             ByteBuffer buffer = ByteBuffer.wrap(frameData);
             buffer.order(ByteOrder.LITTLE_ENDIAN);
             channel.write(buffer);
             framesWritten++;
         }
-        
+
         // Process deltas
         for (TickDelta delta : chunk.getDeltasList()) {
             long deltaTick = delta.getTickNumber();
-            
+
             // Always apply delta to keep state consistent
             pixelData = renderer.renderDelta(delta);
-            
+
             // Check if this tick should be included in output
-            if (deltaTick >= effectiveStartTick && 
+            if (deltaTick >= effectiveStartTick &&
                 deltaTick <= effectiveEndTick &&
                 deltaTick % samplingInterval == 0) {
-                
-                int[] stats = collectOrganismStats(delta.getOrganismsList());
-                byte[] frameData = convertToBgra(pixelData);
-                
-                if (statsBarRenderer != null) {
-                    int effectiveMax = maxOrganismId > 0 ? maxOrganismId : 
-                        Math.max(currentMaxAlive, stats[0] + stats[1]);
-                    int[] statsBar = statsBarRenderer.render(stats[0], stats[1], effectiveMax);
-                    frameData = combineFrameWithStatsBar(frameData, statsBar, baseWidth, height, statsBarWidth);
+
+                // Render overlay if enabled
+                if (overlayRenderer != null) {
+                    int aliveCount = countAliveOrganisms(delta.getOrganismsList());
+                    long totalBorn = delta.getTotalOrganismsCreated();
+                    overlayRenderer.render(renderer.getFrame(), deltaTick, aliveCount, totalBorn);
                 }
-                
+
+                byte[] frameData = convertToBgra(pixelData);
                 ByteBuffer buffer = ByteBuffer.wrap(frameData);
                 buffer.order(ByteOrder.LITTLE_ENDIAN);
                 channel.write(buffer);
                 framesWritten++;
             }
         }
-        
+
         return framesWritten;
     }
 
@@ -359,47 +326,49 @@ public class RenderVideoCommand implements Callable<Integer> {
      * Renders a single chunk incrementally and returns all frames.
      * Used for multi-threaded rendering where frames need to be buffered.
      */
-    private RenderedChunk renderChunk(TickDataChunk chunk, long chunkIndex, 
+    private RenderedChunk renderChunk(TickDataChunk chunk, long chunkIndex,
                                        SimulationRenderer renderer,
                                        long effectiveStartTick, long effectiveEndTick,
                                        int samplingInterval) {
         List<RenderedFrame> frames = new ArrayList<>();
-        
+
         // Process snapshot first
         TickData snapshot = chunk.getSnapshot();
         long snapshotTick = snapshot.getTickNumber();
-        
+
         // Initialize renderer with snapshot
         int[] pixelData = renderer.renderSnapshot(snapshot);
-        
+
         // Check if snapshot should be included
-        if (snapshotTick >= effectiveStartTick && 
+        if (snapshotTick >= effectiveStartTick &&
             snapshotTick <= effectiveEndTick &&
             snapshotTick % samplingInterval == 0) {
-            
-            int[] stats = collectOrganismStats(snapshot.getOrganismsList());
+
+            int aliveCount = countAliveOrganisms(snapshot.getOrganismsList());
+            long totalBorn = snapshot.getTotalOrganismsCreated();
             byte[] frameData = convertToBgra(pixelData);
-            frames.add(new RenderedFrame(frameData, stats[0], stats[1]));
+            frames.add(new RenderedFrame(frameData, snapshotTick, aliveCount, totalBorn));
         }
-        
+
         // Process deltas
         for (TickDelta delta : chunk.getDeltasList()) {
             long deltaTick = delta.getTickNumber();
-            
+
             // Always apply delta to keep state consistent
             pixelData = renderer.renderDelta(delta);
-            
+
             // Check if this tick should be included in output
-            if (deltaTick >= effectiveStartTick && 
+            if (deltaTick >= effectiveStartTick &&
                 deltaTick <= effectiveEndTick &&
                 deltaTick % samplingInterval == 0) {
-                
-                int[] stats = collectOrganismStats(delta.getOrganismsList());
+
+                int aliveCount = countAliveOrganisms(delta.getOrganismsList());
+                long totalBorn = delta.getTotalOrganismsCreated();
                 byte[] frameData = convertToBgra(pixelData);
-                frames.add(new RenderedFrame(frameData, stats[0], stats[1]));
+                frames.add(new RenderedFrame(frameData, deltaTick, aliveCount, totalBorn));
             }
         }
-        
+
         return new RenderedChunk(frames);
     }
 
@@ -486,10 +455,8 @@ public class RenderVideoCommand implements Callable<Integer> {
             MetadataConfigHelper.isEnvironmentToroidal(metadata)
         );
 
-        int baseWidth = envProps.getWorldShape()[0] * cellSize;
+        int width = envProps.getWorldShape()[0] * cellSize;
         int height = envProps.getWorldShape()[1] * cellSize;
-        int statsBarWidth = overlayStats ? 60 : 0;
-        int width = baseWidth + statsBarWidth;
 
         long effectiveStartTick = startTick != null ? startTick : 0;
         long effectiveEndTick = endTick != null ? endTick : Long.MAX_VALUE;
@@ -544,57 +511,7 @@ public class RenderVideoCommand implements Callable<Integer> {
                 break;
         }
         ffmpegArgs.add("-pix_fmt"); ffmpegArgs.add("yuv420p");
-        
-        // Overlay filters
-        if (overlayTick || overlayTime || overlayRunId) {
-            String xPos, yPos;
-            switch (overlayPosition.toLowerCase()) {
-                case "top-right": xPos = "main_w-text_w-10"; yPos = "10"; break;
-                case "bottom-left": xPos = "10"; yPos = "main_h-text_h-10"; break;
-                case "bottom-right": xPos = "main_w-text_w-10"; yPos = "main_h-text_h-10"; break;
-                default: xPos = "10"; yPos = "10"; break;
-            }
-            
-            java.util.List<String> filterParts = new java.util.ArrayList<>();
-            int yOffset = 0;
-            
-            if (overlayRunId) {
-                String runText = "Run: " + targetRunId;
-                String escapedRunText = runText.replace("'", "''");
-                filterParts.add(String.format(
-                    "drawtext=text='%s':x=%s:y=%d:fontsize=%d:fontcolor=%s",
-                    escapedRunText, xPos, Integer.parseInt(yPos) + yOffset, overlayFontSize, overlayColor
-                ));
-                yOffset += overlayFontSize + 5;
-            }
-            
-            if (overlayTick) {
-                long firstRenderableTick = ((effectiveStartTick / samplingInterval) * samplingInterval);
-                if (firstRenderableTick < effectiveStartTick) {
-                    firstRenderableTick += samplingInterval;
-                }
-                String tickText = String.format("Tick\\\\:%%{expr\\\\:(n*%d)+%d}", samplingInterval, firstRenderableTick);
-                filterParts.add(String.format(
-                    "drawtext=text=%s:x=%s:y=%d:fontsize=%d:fontcolor=%s",
-                    tickText, xPos, Integer.parseInt(yPos) + yOffset, overlayFontSize, overlayColor
-                ));
-                yOffset += overlayFontSize + 5;
-            }
-            
-            if (overlayTime) {
-                String timeText = String.format("Time\\\\: %%{expr\\\\:n/%d}\\\\.%%{expr\\\\:((n%%%d)*100)/%d} s", fps, fps, fps);
-                filterParts.add(String.format(
-                    "drawtext=text=%s:x=%s:y=%d:fontsize=%d:fontcolor=%s",
-                    timeText, xPos, Integer.parseInt(yPos) + yOffset, overlayFontSize, overlayColor
-                ));
-            }
-            
-            if (!filterParts.isEmpty() && !"webm".equalsIgnoreCase(format)) {
-                ffmpegArgs.add("-vf");
-                ffmpegArgs.add(String.join(",", filterParts));
-            }
-        }
-        
+
         ffmpegArgs.add(outputFile.getAbsolutePath());
         
         ProcessBuilder pb = new ProcessBuilder(ffmpegArgs);
@@ -690,24 +607,19 @@ public class RenderVideoCommand implements Callable<Integer> {
         System.out.println(String.format("Video: %dx%d, %d frames, %d fps", width, height, totalFrames, fps));
         System.out.println(String.format("Rendering: %d thread(s), incremental (delta-optimized)", threadCount));
 
-        // Find max organism ID for stats bar
-        int maxOrganismId = 0;
-        // (simplified - will use dynamic scaling)
-
         final AtomicBoolean shutdownRequested = new AtomicBoolean(false);
         Thread shutdownHook = null;
 
         try (OutputStream ffmpegInput = ffmpeg.getOutputStream();
              WritableByteChannel channel = Channels.newChannel(ffmpegInput)) {
 
-            // Statistics bar renderer
-            StatisticsBarRenderer statsBarRenderer = overlayStats ? new StatisticsBarRenderer(statsBarWidth, height) : null;
-            int currentMaxAlive = 0;
-            
+            // Overlay renderer (if enabled)
+            OverlayRenderer overlayRenderer = overlay ? new OverlayRenderer() : null;
+
             AtomicLong framesWritten = new AtomicLong(0);
             long startTime = System.currentTimeMillis();
             long lastProgressUpdate = startTime;
-            
+
             if (threadCount == 1) {
                 // ============================================================
                 // SINGLE-THREADED: Direct rendering and writing (no buffering)
@@ -742,8 +654,7 @@ public class RenderVideoCommand implements Callable<Integer> {
                         // Render and write directly
                         long written = renderAndWriteChunkDirect(chunk, renderer, channel,
                             effectiveStartTick, effectiveEndTick, samplingInterval,
-                            statsBarRenderer, maxOrganismId, currentMaxAlive,
-                            baseWidth, height, statsBarWidth);
+                            overlayRenderer);
                         framesWritten.addAndGet(written);
                         
                         // Update progress
@@ -820,8 +731,7 @@ public class RenderVideoCommand implements Callable<Integer> {
                         if (chunkBatch.size() >= threadCount) {
                             long written = processBatchParallel(chunkBatch, globalChunkIndex, renderers, executor,
                                 effectiveStartTick, effectiveEndTick, samplingInterval,
-                                channel, statsBarRenderer, maxOrganismId, currentMaxAlive,
-                                baseWidth, height, statsBarWidth, ffmpeg, ffmpegDied);
+                                channel, overlayRenderer, width, height, ffmpeg, ffmpegDied);
                             
                             if (written < 0) {
                                 executor.shutdownNow();
@@ -867,8 +777,7 @@ public class RenderVideoCommand implements Callable<Integer> {
                 if (!chunkBatch.isEmpty() && !shutdownRequested.get()) {
                     long written = processBatchParallel(chunkBatch, globalChunkIndex, renderers, executor,
                         effectiveStartTick, effectiveEndTick, samplingInterval,
-                        channel, statsBarRenderer, maxOrganismId, currentMaxAlive,
-                        baseWidth, height, statsBarWidth, ffmpeg, ffmpegDied);
+                        channel, overlayRenderer, width, height, ffmpeg, ffmpegDied);
                     
                     if (written < 0) {
                         executor.shutdownNow();
