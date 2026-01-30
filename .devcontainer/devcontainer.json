@@ -1,0 +1,59 @@
+{
+  "name": "Evochora Development Environment",
+
+  // Use Microsoft's Java 21 devcontainer as base
+  "image": "mcr.microsoft.com/devcontainers/java:21",
+
+  // === Resource Requirements ===
+  // Evochora needs significant resources for meaningful simulations
+  "hostRequirements": {
+    "cpus": 8,
+    "memory": "32gb",
+    "storage": "64gb"
+  },
+
+  // === Lifecycle Commands ===
+
+  // After container creation: install dependencies and VS Code extension
+  "postCreateCommand": ".devcontainer/setup.sh",
+
+  // When user attaches: show welcome message
+  "postAttachCommand": ".devcontainer/welcome.sh",
+
+  // === Port Forwarding ===
+  "forwardPorts": [8081],
+  "portsAttributes": {
+    "8081": {
+      "label": "Evochora Visualizer & API",
+      "onAutoForward": "notify"
+    }
+  },
+
+  // === VS Code Customization ===
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "vscjava.vscode-java-pack",
+        "vscjava.vscode-gradle"
+      ],
+      "settings": {
+        "java.configuration.runtimes": [
+          {
+            "name": "JavaSE-21",
+            "path": "/usr/lib/jvm/msopenjdk-current",
+            "default": true
+          }
+        ],
+        "java.jdt.ls.vmargs": "-Xmx4g",
+        "editor.formatOnSave": true,
+        "files.associations": {
+          "*.evo": "evoasm"
+        },
+        "terminal.integrated.defaultProfile.linux": "bash"
+      }
+    }
+  },
+
+  // === Container User ===
+  "remoteUser": "vscode"
+}
