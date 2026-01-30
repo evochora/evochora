@@ -49,7 +49,7 @@ public class InspectStorageSubcommand implements Callable<Integer> {
     private long tickNumber;
 
     @Option(
-        names = {"-r", "--run"},
+        names = {"-r", "--run-id"},
         required = true,
         description = "Simulation run ID"
     )

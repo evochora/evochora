@@ -1,4 +1,4 @@
-package org.evochora.cli.rendering;
+package org.evochora.cli.rendering.frame;
 
 import java.awt.Color;
 import java.awt.image.BufferedImage;
@@ -9,6 +9,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.evochora.cli.rendering.AbstractFrameRenderer;
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
@@ -17,37 +18,45 @@ import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.EnvironmentProperties;
 
+import picocli.CommandLine.Command;
+import picocli.CommandLine.Option;
+
 /**
- * Renders simulation ticks to an image buffer.
+ * Exact frame renderer - renders one pixel block per cell.
  * <p>
- * This class uses the same color palette as the web visualizer to produce
- * visually consistent output. It is optimized for performance by drawing
- * directly to the pixel buffer of a BufferedImage.
+ * This renderer produces high-fidelity output where each simulation cell
+ * is represented by a square of {@code scale × scale} pixels. It shows
+ * detailed organism markers including direction triangles for instruction
+ * pointers and squares for data pointers.
  * <p>
- * <strong>Incremental Rendering:</strong> For video rendering with delta compression,
- * use {@link #renderSnapshot(TickData)} for the first frame and {@link #renderDelta(TickDelta)}
- * for subsequent frames. This avoids redrawing unchanged cells, providing massive
- * performance improvements (only ~100-500 changed cells per frame instead of all cells).
+ * <strong>CLI Usage:</strong>
+ * <pre>
+ *   evochora video exact --scale 4 --overlay info -o video.mkv
+ * </pre>
  * <p>
  * <strong>Thread Safety:</strong> Not thread-safe. Use one renderer per thread.
  */
-public class SimulationRenderer {
+@Command(name = "exact", description = "Exact pixel-per-cell rendering with detailed organism markers",
+         mixinStandardHelpOptions = true)
+public class ExactFrameRenderer extends AbstractFrameRenderer {
 
-    private final EnvironmentProperties envProps;
-    private final int cellSize;
-    private final int imageWidth;
-    private final int imageHeight;
-    private final int worldWidth;
-    private final int worldHeight;
-    private final BufferedImage frame;
-    private final int[] frameBuffer;
-    private final int[] strides;
+    @Option(names = "--scale",
+            description = "Pixels per cell (default: ${DEFAULT-VALUE})",
+            defaultValue = "4")
+    private int scale;
 
-    // Internal cell state for incremental rendering
-    private final int[] cellColors;
-
-    // Previous organism positions for cleanup during incremental rendering
-    private List<OrganismPosition> previousOrganismPositions = new ArrayList<>();
+    // Initialized after CLI parsing via init()
+    private int imageWidth;
+    private int imageHeight;
+    private int worldWidth;
+    private int worldHeight;
+    private BufferedImage frame;
+    private int[] frameBuffer;
+    private int[] strides;
+    private int[] cellColors;
+    private int[] coordBuffer;  // Reusable buffer for coordinate conversion
+    private List<OrganismPosition> previousOrganismPositions;
+    private boolean initialized = false;
 
     // Colors with full alpha (0xFF) for ARGB format
     private static final int COLOR_EMPTY_BG = 0xFF000000;
@@ -67,18 +76,31 @@ public class SimulationRenderer {
     private final Map<Integer, Color> organismColorMap = new HashMap<>();
 
     /**
-     * Creates a new renderer for a simulation run.
+     * Default constructor for PicoCLI instantiation.
+     */
+    public ExactFrameRenderer() {
+        // Options populated by PicoCLI
+    }
+
+    /**
+     * Initializes the renderer with environment properties.
+     * <p>
+     * Must be called after PicoCLI has parsed options and before rendering.
      *
      * @param envProps Environment properties (world shape, topology).
-     * @param cellSize The size of each cell in pixels.
+     * @throws IllegalArgumentException if scale is less than 1.
      */
-    public SimulationRenderer(EnvironmentProperties envProps, int cellSize) {
-        this.envProps = envProps;
-        this.cellSize = cellSize;
+    @Override
+    public void init(EnvironmentProperties envProps) {
+        if (scale < 1) {
+            throw new IllegalArgumentException("Exact renderer scale must be >= 1, got: " + scale);
+        }
+
+        super.init(envProps);
         this.worldWidth = envProps.getWorldShape()[0];
         this.worldHeight = envProps.getWorldShape()[1];
-        this.imageWidth = worldWidth * cellSize;
-        this.imageHeight = worldHeight * cellSize;
+        this.imageWidth = worldWidth * scale;
+        this.imageHeight = worldHeight * scale;
 
         this.frame = new BufferedImage(imageWidth, imageHeight, BufferedImage.TYPE_INT_RGB);
         this.frameBuffer = ((DataBufferInt) frame.getRaster().getDataBuffer()).getData();
@@ -95,6 +117,18 @@ public class SimulationRenderer {
         // Initialize cell colors array
         this.cellColors = new int[stride];
         Arrays.fill(cellColors, COLOR_EMPTY_BG);
+
+        // Reusable buffer for coordinate conversion (avoids allocation per cell)
+        this.coordBuffer = new int[shape.length];
+
+        this.previousOrganismPositions = new ArrayList<>();
+        this.initialized = true;
+    }
+
+    private void ensureInitialized() {
+        if (!initialized) {
+            throw new IllegalStateException("Renderer not initialized. Call init(EnvironmentProperties) first.");
+        }
     }
 
     private int coordinatesToFlatIndex(int[] coords) {
@@ -105,37 +139,10 @@ public class SimulationRenderer {
         return flatIndex;
     }
 
-    /**
-     * Renders a single tick into an array of pixel data.
-     *
-     * @param tick The tick data to render.
-     * @return An array of integers representing the RGB pixel data of the rendered frame.
-     */
-    public int[] render(TickData tick) {
-        Arrays.fill(frameBuffer, COLOR_EMPTY_BG);
+    @Override
+    protected int[] doRenderSnapshot(TickData snapshot) {
+        ensureInitialized();
 
-        CellDataColumns columns = tick.getCellColumns();
-        int cellCount = columns.getFlatIndicesCount();
-
-        for (int i = 0; i < cellCount; i++) {
-            int flatIndex = columns.getFlatIndices(i);
-            int moleculeInt = columns.getMoleculeData(i);
-            int[] coord = envProps.flatIndexToCoordinates(flatIndex);
-            int color = getCellColor(moleculeInt);
-            drawCell(coord[0], coord[1], color);
-        }
-
-        drawOrganisms(tick.getOrganismsList());
-        return frameBuffer;
-    }
-
-    /**
-     * Renders a snapshot tick, initializing the internal cell state.
-     *
-     * @param snapshot The snapshot tick data to render.
-     * @return An array of integers representing the RGB pixel data of the rendered frame.
-     */
-    public int[] renderSnapshot(TickData snapshot) {
         Arrays.fill(cellColors, COLOR_EMPTY_BG);
         Arrays.fill(frameBuffer, COLOR_EMPTY_BG);
         previousOrganismPositions.clear();
@@ -148,26 +155,23 @@ public class SimulationRenderer {
             int moleculeInt = columns.getMoleculeData(i);
             int color = getCellColor(moleculeInt);
             cellColors[flatIndex] = color;
-            int[] coord = envProps.flatIndexToCoordinates(flatIndex);
-            drawCell(coord[0], coord[1], color);
+            envProps.flatIndexToCoordinates(flatIndex, coordBuffer);
+            drawCell(coordBuffer[0], coordBuffer[1], color);
         }
 
         drawOrganismsAndTrack(snapshot.getOrganismsList());
         return frameBuffer;
     }
 
-    /**
-     * Renders a delta incrementally, only updating changed cells.
-     *
-     * @param delta The delta containing only changed cells.
-     * @return An array of integers representing the RGB pixel data of the rendered frame.
-     */
-    public int[] renderDelta(TickDelta delta) {
+    @Override
+    protected int[] doRenderDelta(TickDelta delta) {
+        ensureInitialized();
+
         // Clear previous organism positions
         for (OrganismPosition pos : previousOrganismPositions) {
             int color = cellColors[pos.flatIndex];
-            int[] coord = envProps.flatIndexToCoordinates(pos.flatIndex);
-            drawCell(coord[0], coord[1], color);
+            envProps.flatIndexToCoordinates(pos.flatIndex, coordBuffer);
+            drawCell(coordBuffer[0], coordBuffer[1], color);
             clearOrganismArea(pos);
         }
         previousOrganismPositions.clear();
@@ -181,30 +185,30 @@ public class SimulationRenderer {
             int moleculeInt = changed.getMoleculeData(i);
             int color = getCellColor(moleculeInt);
             cellColors[flatIndex] = color;
-            int[] coord = envProps.flatIndexToCoordinates(flatIndex);
-            drawCell(coord[0], coord[1], color);
+            envProps.flatIndexToCoordinates(flatIndex, coordBuffer);
+            drawCell(coordBuffer[0], coordBuffer[1], color);
         }
 
         drawOrganismsAndTrack(delta.getOrganismsList());
         return frameBuffer;
     }
 
-    private void drawOrganisms(List<OrganismState> organisms) {
-        for (OrganismState org : organisms) {
-            if (org.getIsDead()) {
-                drawLargeMarker(org.getIp().getComponents(0), org.getIp().getComponents(1), COLOR_DEAD, 4);
-            } else {
-                Color orgColor = getOrganismColor(org.getOrganismId());
-                int opaqueColor = orgColor.getRGB() | 0xFF000000;
+    @Override
+    public BufferedImage getFrame() {
+        ensureInitialized();
+        return frame;
+    }
 
-                for (Vector dp : org.getDataPointersList()) {
-                    drawLargeMarker(dp.getComponents(0), dp.getComponents(1), opaqueColor, 4);
-                }
+    @Override
+    public int getImageWidth() {
+        ensureInitialized();
+        return imageWidth;
+    }
 
-                int[] dv = new int[]{org.getDv().getComponents(0), org.getDv().getComponents(1)};
-                drawTriangle(org.getIp().getComponents(0), org.getIp().getComponents(1), opaqueColor, 4, dv);
-            }
-        }
+    @Override
+    public int getImageHeight() {
+        ensureInitialized();
+        return imageHeight;
     }
 
     private void drawOrganismsAndTrack(List<OrganismState> organisms) {
@@ -255,19 +259,19 @@ public class SimulationRenderer {
     }
 
     private void drawCell(int cellX, int cellY, int color) {
-        int startX = cellX * cellSize;
-        int startY = cellY * cellSize;
-        for (int y = 0; y < cellSize; y++) {
+        int startX = cellX * scale;
+        int startY = cellY * scale;
+        for (int y = 0; y < scale; y++) {
             int startIndex = (startY + y) * imageWidth + startX;
-            Arrays.fill(frameBuffer, startIndex, startIndex + cellSize, color);
+            Arrays.fill(frameBuffer, startIndex, startIndex + scale, color);
         }
     }
 
     private void drawLargeMarker(int cellX, int cellY, int color, int sizeInCells) {
         int offset = sizeInCells / 2;
-        int startX = (cellX - offset) * cellSize;
-        int startY = (cellY - offset) * cellSize;
-        int markerSizePixels = sizeInCells * cellSize;
+        int startX = (cellX - offset) * scale;
+        int startY = (cellY - offset) * scale;
+        int markerSizePixels = sizeInCells * scale;
 
         for (int y = 0; y < markerSizePixels; y++) {
             int pixelY = startY + y;
@@ -316,9 +320,9 @@ public class SimulationRenderer {
     }
 
     private void drawTriangle(int cellX, int cellY, int color, int sizeInCells, int[] dv) {
-        int centerX = cellX * cellSize + (cellSize / 2);
-        int centerY = cellY * cellSize + (cellSize / 2);
-        int halfSize = (sizeInCells * cellSize) / 2;
+        int centerX = cellX * scale + (scale / 2);
+        int centerY = cellY * scale + (scale / 2);
+        int halfSize = (sizeInCells * scale) / 2;
 
         if (dv != null && dv.length >= 2 && (dv[0] != 0 || dv[1] != 0)) {
             double length = Math.sqrt(dv[0] * dv[0] + dv[1] * dv[1]);
@@ -391,41 +395,14 @@ public class SimulationRenderer {
 
             if (count >= 2) {
                 Arrays.sort(xCoords, 0, count);
-                int startX = Math.max(0, xCoords[0]);
-                int endX = Math.min(imageWidth - 1, xCoords[count - 1]);
+                int lineStartX = Math.max(0, xCoords[0]);
+                int lineEndX = Math.min(imageWidth - 1, xCoords[count - 1]);
 
-                if (startX <= endX) {
-                    Arrays.fill(frameBuffer, y * imageWidth + startX, y * imageWidth + endX + 1, color);
+                if (lineStartX <= lineEndX) {
+                    Arrays.fill(frameBuffer, y * imageWidth + lineStartX, y * imageWidth + lineEndX + 1, color);
                 }
             }
         }
-    }
-
-    /**
-     * Returns the underlying BufferedImage for overlay rendering.
-     *
-     * @return The frame BufferedImage.
-     */
-    public BufferedImage getFrame() {
-        return frame;
-    }
-
-    /**
-     * Returns the image width in pixels.
-     *
-     * @return Image width.
-     */
-    public int getImageWidth() {
-        return imageWidth;
-    }
-
-    /**
-     * Returns the image height in pixels.
-     *
-     * @return Image height.
-     */
-    public int getImageHeight() {
-        return imageHeight;
     }
 
     private static class OrganismPosition {

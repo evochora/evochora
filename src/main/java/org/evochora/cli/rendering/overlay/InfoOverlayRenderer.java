@@ -1,4 +1,4 @@
-package org.evochora.cli.rendering;
+package org.evochora.cli.rendering.overlay;
 
 import java.awt.BasicStroke;
 import java.awt.Color;
@@ -8,10 +8,16 @@ import java.awt.Graphics2D;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.text.NumberFormat;
+import java.util.List;
 import java.util.Locale;
 
+import org.evochora.cli.rendering.IOverlayRenderer;
+import org.evochora.datapipeline.api.contracts.OrganismState;
+import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.TickDelta;
+
 /**
- * Renders an info overlay panel with simulation statistics.
+ * Info overlay renderer displaying simulation statistics.
  * <p>
  * Styled to match the web visualizer's design language:
  * <ul>
@@ -25,7 +31,7 @@ import java.util.Locale;
  * <p>
  * <strong>Thread Safety:</strong> Not thread-safe. Use one renderer per thread.
  */
-public class OverlayRenderer {
+public class InfoOverlayRenderer implements IOverlayRenderer {
 
     // Visualizer-consistent colors
     private static final Color BACKGROUND_COLOR = new Color(25, 25, 35, 217); // rgba(25,25,35,0.85)
@@ -35,7 +41,7 @@ public class OverlayRenderer {
     private static final Color TEXT_ALIVE = new Color(74, 154, 106); // #4a9a6a (organism green)
 
     private static final double MARGIN_RATIO = 0.015;      // Margin = 1.5% of image height
-    private static final double FONT_SIZE_RATIO = 0.0225;  // Font size = 2.25% of image height (50% larger)
+    private static final double FONT_SIZE_RATIO = 0.0225;  // Font size = 2.25% of image height
     private static final int MIN_FONT_SIZE = 18;
     private static final int MAX_FONT_SIZE = 72;
 
@@ -44,11 +50,44 @@ public class OverlayRenderer {
 
     private final NumberFormat numberFormat;
 
+    // Cached rendering resources (lazily initialized on first use)
+    private int cachedImageHeight;
+    private Font cachedFont;
+    private int cachedFontSize;
+
     /**
-     * Creates a new overlay renderer.
+     * Creates a new info overlay renderer.
      */
-    public OverlayRenderer() {
+    public InfoOverlayRenderer() {
         this.numberFormat = NumberFormat.getNumberInstance(Locale.GERMAN); // Uses . as thousands separator
+    }
+
+    @Override
+    public void render(BufferedImage frame, TickData snapshot) {
+        long tick = snapshot.getTickNumber();
+        int aliveCount = countAlive(snapshot.getOrganismsList());
+        long totalBorn = snapshot.getTotalOrganismsCreated();
+
+        renderOverlay(frame, tick, aliveCount, totalBorn);
+    }
+
+    @Override
+    public void render(BufferedImage frame, TickDelta delta) {
+        long tick = delta.getTickNumber();
+        int aliveCount = countAlive(delta.getOrganismsList());
+        long totalBorn = delta.getTotalOrganismsCreated();
+
+        renderOverlay(frame, tick, aliveCount, totalBorn);
+    }
+
+    private int countAlive(List<OrganismState> organisms) {
+        int count = 0;
+        for (OrganismState org : organisms) {
+            if (!org.getIsDead()) {
+                count++;
+            }
+        }
+        return count;
     }
 
     /**
@@ -100,7 +139,7 @@ public class OverlayRenderer {
      * @param aliveCount Number of alive organisms.
      * @param totalBorn Total organisms ever created.
      */
-    public void render(BufferedImage image, long tick, int aliveCount, long totalBorn) {
+    private void renderOverlay(BufferedImage image, long tick, int aliveCount, long totalBorn) {
         int imgWidth = image.getWidth();
         int imgHeight = image.getHeight();
 
@@ -114,12 +153,18 @@ public class OverlayRenderer {
         int borderRadius = fontSize / 2;
         int borderWidth = Math.max(1, fontSize / 10);
 
+        // Cache font if image dimensions changed
+        if (imgHeight != cachedImageHeight || cachedFont == null) {
+            cachedImageHeight = imgHeight;
+            cachedFontSize = fontSize;
+            cachedFont = findAvailableFont(fontSize);
+        }
+
         Graphics2D g2d = image.createGraphics();
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
         g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
 
-        Font font = findAvailableFont(fontSize);
-        g2d.setFont(font);
+        g2d.setFont(cachedFont);
         FontMetrics fm = g2d.getFontMetrics();
 
         // Prepare text content

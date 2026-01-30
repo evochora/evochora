@@ -106,16 +106,16 @@ Compilation produces a JSON object with (among others):
 
 ```bash
 # Inspect tick data from storage (summary format)
-bin/evochora inspect storage --tick=1000 --run=my-simulation-run
+bin/evochora inspect storage --tick=1000 --run-id=my-simulation-run
 
 # Inspect with JSON output format
-bin/evochora inspect storage --tick=1000 --run=my-simulation-run --format=json
+bin/evochora inspect storage --tick=1000 --run-id=my-simulation-run --format=json
 
 # Inspect with raw protobuf output
-bin/evochora inspect storage --tick=1000 --run=my-simulation-run --format=raw
+bin/evochora inspect storage --tick=1000 --run-id=my-simulation-run --format=raw
 
 # Use custom storage resource
-bin/evochora inspect storage --tick=1000 --run=my-simulation-run --storage=custom-storage
+bin/evochora inspect storage --tick=1000 --run-id=my-simulation-run --storage=custom-storage
 ```
 
 The `inspect storage` command allows you to examine tick data that has been persisted to storage for debugging purposes. It supports three output formats:
@@ -126,7 +126,7 @@ The `inspect storage` command allows you to examine tick data that has been pers
 
 **Parameters:**
 - `--tick, -t`: Tick number to inspect (required)
-- `--run, -r`: Simulation run ID (required)
+- `--run-id, -r`: Simulation run ID (required)
 - `--format, -f`: Output format: json, summary, raw (default: summary)
 - `--storage, -s`: Storage resource name (default: tick-storage)
 
@@ -333,7 +333,7 @@ java -jar build/libs/evochora.jar --config my-config.conf node run
 java -jar build/libs/evochora.jar compile --file=assembly/examples/simple.evo
 
 # Inspect storage data
-java -jar build/libs/evochora.jar inspect storage --tick=1000 --run=my-simulation-run
+java -jar build/libs/evochora.jar inspect storage --tick=1000 --run-id=my-simulation-run
 
 # Render video
 java -jar build/libs/evochora.jar video --run-id my-simulation-run --out simulation.mp4
