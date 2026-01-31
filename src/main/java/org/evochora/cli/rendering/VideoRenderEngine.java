@@ -96,7 +96,6 @@ public class VideoRenderEngine {
         int width = frameRenderer.getImageWidth();
         int height = frameRenderer.getImageHeight();
         System.out.println(String.format("Video: %dx%d, %d frames, %d fps", width, height, totalFrames, options.fps));
-        System.out.println(String.format("Rendering: %d thread(s), incremental (delta-optimized)", options.threadCount));
 
         // Render
         AtomicBoolean shutdownRequested = new AtomicBoolean(false);
@@ -321,7 +320,11 @@ public class VideoRenderEngine {
                                       long totalFrames, long startTime,
                                       AtomicBoolean shutdownRequested,
                                       Process ffmpeg, AtomicBoolean ffmpegDied) throws Exception {
-        byte[] bgraBuffer = frameRenderer.getBgraBuffer();
+        System.out.println("Rendering: 1 thread, incremental (delta-optimized)");
+
+        // Direct buffer for zero-copy writes (int[] → channel without byte conversion)
+        int frameSize = frameRenderer.getImageWidth() * frameRenderer.getImageHeight() * 4;
+        ByteBuffer directBuffer = ByteBuffer.allocateDirect(frameSize).order(ByteOrder.LITTLE_ENDIAN);
         long lastProgressUpdate = startTime;
 
         for (StoragePath batchPath : batchPaths) {
@@ -342,20 +345,70 @@ public class VideoRenderEngine {
                     throw new RuntimeException("ffmpeg died");
                 }
 
-                // Render and write frames directly (avoid storing in list)
-                List<byte[]> frames = renderChunkFrames(chunk, frameRenderer,
+                // Render and write frames directly - zero-copy via DirectByteBuffer
+                long written = renderChunkDirect(chunk, frameRenderer, channel, directBuffer,
                     effectiveStartTick, effectiveEndTick, options.samplingInterval);
-
-                for (byte[] frameData : frames) {
-                    ByteBuffer buffer = ByteBuffer.wrap(frameData);
-                    buffer.order(ByteOrder.LITTLE_ENDIAN);
-                    channel.write(buffer);
-                    framesWritten.incrementAndGet();
-                }
+                framesWritten.addAndGet(written);
 
                 lastProgressUpdate = updateProgress(framesWritten.get(), totalFrames, startTime, lastProgressUpdate);
             }
         }
+    }
+
+    /**
+     * Renders a chunk and writes frames directly to channel.
+     * Uses zero-copy: int[] pixels written directly as bytes (bgr0 format).
+     */
+    private long renderChunkDirect(TickDataChunk chunk, IVideoFrameRenderer renderer,
+                                   WritableByteChannel channel, ByteBuffer directBuffer,
+                                   long effectiveStartTick, long effectiveEndTick,
+                                   int samplingInterval) throws java.io.IOException {
+        long written = 0;
+
+        if (samplingInterval == 1) {
+            // Incremental: render and write each frame immediately
+            TickData snapshot = chunk.getSnapshot();
+            long snapshotTick = snapshot.getTickNumber();
+            int[] pixelData = renderer.renderSnapshot(snapshot);
+
+            if (snapshotTick >= effectiveStartTick && snapshotTick <= effectiveEndTick) {
+                writePixelsDirect(channel, directBuffer, pixelData);
+                written++;
+            }
+
+            for (TickDelta delta : chunk.getDeltasList()) {
+                long deltaTick = delta.getTickNumber();
+                pixelData = renderer.renderDelta(delta);
+
+                if (deltaTick >= effectiveStartTick && deltaTick <= effectiveEndTick) {
+                    writePixelsDirect(channel, directBuffer, pixelData);
+                    written++;
+                }
+            }
+        } else {
+            // Sampling mode: use existing logic
+            List<byte[]> frames = renderChunkFrames(chunk, renderer,
+                effectiveStartTick, effectiveEndTick, samplingInterval);
+            for (byte[] frameData : frames) {
+                ByteBuffer buf = ByteBuffer.wrap(frameData);
+                channel.write(buf);
+                written++;
+            }
+        }
+
+        return written;
+    }
+
+    /**
+     * Writes pixel data directly to channel without byte-by-byte conversion.
+     * Java int[] in little-endian memory = BGR0 format that ffmpeg expects.
+     */
+    private void writePixelsDirect(WritableByteChannel channel, ByteBuffer directBuffer,
+                                   int[] pixelData) throws java.io.IOException {
+        directBuffer.clear();
+        directBuffer.asIntBuffer().put(pixelData);
+        directBuffer.rewind();
+        channel.write(directBuffer);
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -374,9 +427,26 @@ public class VideoRenderEngine {
             renderers.add(frameRenderer.createThreadInstance());
         }
 
+        // Calculate safe in-flight limit based on memory
+        // Each chunk can have ~100 frames, each frame = width * height * 4 bytes
+        int frameSize = frameRenderer.getImageWidth() * frameRenderer.getImageHeight() * 4;
+        long estimatedChunkBytes = (long) frameSize * 100;  // ~100 frames per chunk
+        long maxHeap = Runtime.getRuntime().maxMemory();
+        long safeMemoryBudget = maxHeap / 2;  // Use at most half the heap for buffering
+        int maxInFlight = Math.max(2, (int) (safeMemoryBudget / estimatedChunkBytes));
+        int pipelineSize = Math.min(options.threadCount, maxInFlight);
+
+        if (pipelineSize < options.threadCount) {
+            System.out.println(String.format("Rendering: %d/%d thread(s), memory-limited (frame: %.1f MB)",
+                pipelineSize, options.threadCount, frameSize / 1e6));
+        } else {
+            System.out.println(String.format("Rendering: %d thread(s), incremental (delta-optimized)",
+                options.threadCount));
+        }
+
         // Pipeline: submit chunks, write results in order as they complete
         @SuppressWarnings("unchecked")
-        Future<List<byte[]>>[] pendingFutures = new Future[options.threadCount];
+        Future<List<byte[]>>[] pendingFutures = new Future[pipelineSize];
         int head = 0;  // Next slot to write
         int tail = 0;  // Next slot to submit
         int inFlight = 0;
@@ -397,7 +467,7 @@ public class VideoRenderEngine {
                 }
 
                 // If pipeline is full, wait for oldest chunk and write it
-                if (inFlight >= options.threadCount) {
+                if (inFlight >= pipelineSize) {
                     if (!ffmpeg.isAlive() || ffmpegDied.get()) {
                         System.err.println("\nffmpeg died");
                         executor.shutdownNow();
@@ -405,7 +475,7 @@ public class VideoRenderEngine {
                     }
 
                     writeCompletedFrames(pendingFutures[head].get(), channel, framesWritten);
-                    head = (head + 1) % options.threadCount;
+                    head = (head + 1) % pipelineSize;
                     inFlight--;
                 }
 
@@ -418,7 +488,7 @@ public class VideoRenderEngine {
 
                 pendingFutures[tail] = executor.submit(() ->
                     renderChunkFrames(chunkToRender, renderer, effStart, effEnd, sampling));
-                tail = (tail + 1) % options.threadCount;
+                tail = (tail + 1) % pipelineSize;
                 inFlight++;
 
                 lastProgressUpdate = updateProgress(framesWritten.get(), totalFrames, startTime, lastProgressUpdate);
@@ -434,7 +504,7 @@ public class VideoRenderEngine {
             }
 
             writeCompletedFrames(pendingFutures[head].get(), channel, framesWritten);
-            head = (head + 1) % options.threadCount;
+            head = (head + 1) % pipelineSize;
             inFlight--;
         }
     }
@@ -716,7 +786,7 @@ public class VideoRenderEngine {
         args.add("-f"); args.add("rawvideo");
         args.add("-vcodec"); args.add("rawvideo");
         args.add("-s"); args.add(width + "x" + height);
-        args.add("-pix_fmt"); args.add("bgra");
+        args.add("-pix_fmt"); args.add("bgr0");
         args.add("-r"); args.add(String.valueOf(options.fps));
         args.add("-i"); args.add("-");
 

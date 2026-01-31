@@ -45,6 +45,11 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
             defaultValue = "0.3")
     private double scale;
 
+    @Option(names = "--cluster-grid",
+            description = "Organism clustering grid size in world cells (default: ${DEFAULT-VALUE})",
+            defaultValue = "1")
+    private int clusterGrid;
+
     // Cell type constants (indices into CELL_COLORS)
     private static final int TYPE_CODE = 0;
     private static final int TYPE_DATA = 1;
@@ -67,10 +72,12 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
     };
 
     // Glow configuration (matching web minimap)
-    private static final int[] BASE_GLOW_SIZES = {6, 10, 14, 18};
+    // Sprite sizes for density levels (scaled by output resolution)
+    private static final int[] BASE_GLOW_SIZES = {7, 10, 16, 22};
     private static final int[] DENSITY_THRESHOLDS = {3, 10, 30};
     private static final int GLOW_COLOR = 0x4a9a6a;  // Muted green
-    private static final int BASE_CORE_SIZE = 3;
+    // Core is small (bright center dot), glow fades aggressively toward edge
+    private static final int BASE_CORE_SIZE = 2;
     private static final int BASE_OUTPUT_WIDTH = 400;  // Reference width for glow scaling
 
     // Dimensions (initialized in init())
@@ -100,6 +107,9 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
     // Lazy organism access (only deserialize when rendering, not when applying state)
     private TickData lastSnapshot;
     private TickDelta lastDelta;
+
+    // Reusable density buffer for glow rendering (avoids allocation per frame)
+    private int[] glowDensity;
 
     private boolean initialized = false;
 
@@ -144,6 +154,7 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
         int outputSize = outputWidth * outputHeight;
         this.aggregationCounts = new int[outputSize * NUM_NON_EMPTY_TYPES];
         this.pixelGenerations = new int[outputSize];
+        this.glowDensity = new int[outputSize];
 
         this.lastSnapshot = null;
         this.lastDelta = null;
@@ -356,34 +367,45 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
     }
 
     private void renderOrganismGlows(List<OrganismState> organisms) {
-        int[] density = new int[outputWidth * outputHeight];
+        // Clear reusable density buffer (O(outputSize) but unavoidable)
+        java.util.Arrays.fill(glowDensity, 0);
 
+        // Count organism pointers per pixel (with optional coordinate quantization)
+        int totalPixels = glowDensity.length;
         for (OrganismState org : organisms) {
             if (org.getIsDead()) continue;
 
-            // IP position
-            int pixelIdx = worldCoordsToPixelIndex(
-                org.getIp().getComponents(0),
-                org.getIp().getComponents(1));
-            if (pixelIdx >= 0 && pixelIdx < density.length) {
-                density[pixelIdx]++;
+            // IP position (quantized if clusterGrid > 1)
+            int wx = org.getIp().getComponents(0);
+            int wy = org.getIp().getComponents(1);
+            if (clusterGrid > 1) {
+                wx = (wx / clusterGrid) * clusterGrid;
+                wy = (wy / clusterGrid) * clusterGrid;
+            }
+            int pixelIdx = worldCoordsToPixelIndex(wx, wy);
+            if (pixelIdx >= 0 && pixelIdx < totalPixels) {
+                glowDensity[pixelIdx]++;
             }
 
-            // DP positions
+            // DP positions (quantized if clusterGrid > 1)
             for (Vector dp : org.getDataPointersList()) {
-                pixelIdx = worldCoordsToPixelIndex(
-                    dp.getComponents(0),
-                    dp.getComponents(1));
-                if (pixelIdx >= 0 && pixelIdx < density.length) {
-                    density[pixelIdx]++;
+                wx = dp.getComponents(0);
+                wy = dp.getComponents(1);
+                if (clusterGrid > 1) {
+                    wx = (wx / clusterGrid) * clusterGrid;
+                    wy = (wy / clusterGrid) * clusterGrid;
+                }
+                pixelIdx = worldCoordsToPixelIndex(wx, wy);
+                if (pixelIdx >= 0 && pixelIdx < totalPixels) {
+                    glowDensity[pixelIdx]++;
                 }
             }
         }
 
-        // Render glows
+        // Render glows only where density > 0
         for (int my = 0; my < outputHeight; my++) {
             for (int mx = 0; mx < outputWidth; mx++) {
-                int count = density[my * outputWidth + mx];
+                int count = glowDensity[my * outputWidth + mx];
                 if (count > 0) {
                     blitGlowSprite(mx, my, selectSpriteIndex(count));
                 }
@@ -405,14 +427,14 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
     private int[] createGlowSprite(int size) {
         int[] pixels = new int[size * size];
         float center = size / 2.0f;
-        float glowRadius = center;
-        float coreRadius = coreSize / 2.0f;
+        float maxRadius = center;
 
         int r = (GLOW_COLOR >> 16) & 0xFF;
         int g = (GLOW_COLOR >> 8) & 0xFF;
         int b = GLOW_COLOR & 0xFF;
 
-        // Radial gradient: 60% at core edge → 30% at middle → 0% at outer edge
+        // Smooth radial gradient from center (bright) to edge (transparent)
+        // Using Gaussian-like falloff: e^(-k*t²) for smooth continuous fade
         for (int y = 0; y < size; y++) {
             for (int x = 0; x < size; x++) {
                 float dx = x - center + 0.5f;
@@ -420,30 +442,17 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
                 float dist = (float) Math.sqrt(dx * dx + dy * dy);
 
                 int alpha;
-                if (dist <= coreRadius) {
-                    alpha = 153;  // 60%
-                } else if (dist <= glowRadius) {
-                    float t = (dist - coreRadius) / (glowRadius - coreRadius);
-                    alpha = (t < 0.5f)
-                        ? (int) (153 - t * 2 * (153 - 76))   // 60% → 30%
-                        : (int) (76 * (1 - (t - 0.5f) * 2)); // 30% → 0%
+                if (dist <= maxRadius) {
+                    // t goes from 0 (center) to 1 (edge)
+                    float t = dist / maxRadius;
+                    // Gaussian-like: smooth falloff, bright in center, fades continuously
+                    float falloff = (float) Math.exp(-3.5 * t * t);
+                    alpha = (int) (200 * falloff);  // 78% max at center
                 } else {
                     alpha = 0;
                 }
 
                 pixels[y * size + x] = (alpha << 24) | (r << 16) | (g << 8) | b;
-            }
-        }
-
-        // Solid square core
-        int coreStart = (int) (center - coreRadius);
-        int coreEnd = (int) (center + coreRadius);
-        int solidColor = (255 << 24) | (r << 16) | (g << 8) | b;
-        for (int y = coreStart; y < coreEnd; y++) {
-            for (int x = coreStart; x < coreEnd; x++) {
-                if (y >= 0 && y < size && x >= 0 && x < size) {
-                    pixels[y * size + x] = solidColor;
-                }
             }
         }
 

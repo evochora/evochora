@@ -123,24 +123,55 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
 
     @Override
     protected int[] doRenderSnapshot(TickData snapshot) {
-        applySnapshotState(snapshot);
-        return renderCurrentState();
+        ensureInitialized();
+
+        // Reset and draw all cells
+        Arrays.fill(cellColors, COLOR_EMPTY);
+        Arrays.fill(frameBuffer, COLOR_EMPTY);
+
+        CellDataColumns columns = snapshot.getCellColumns();
+        int cellCount = columns.getFlatIndicesCount();
+        for (int i = 0; i < cellCount; i++) {
+            int flatIndex = columns.getFlatIndices(i);
+            int color = getCellColor(columns.getMoleculeData(i));
+            cellColors[flatIndex] = color;
+            drawCellFromFlatIndex(flatIndex, color);
+        }
+
+        this.lastSnapshot = snapshot;
+        this.lastDelta = null;
+
+        renderOrganisms(snapshot.getOrganismsList());
+        return frameBuffer;
     }
 
     @Override
     protected int[] doRenderDelta(TickDelta delta) {
-        applyDeltaState(delta);
-        return renderCurrentState();
+        ensureInitialized();
+
+        // Only update changed cells (incremental!)
+        CellDataColumns changed = delta.getChangedCells();
+        int changedCount = changed.getFlatIndicesCount();
+        for (int i = 0; i < changedCount; i++) {
+            int flatIndex = changed.getFlatIndices(i);
+            int color = getCellColor(changed.getMoleculeData(i));
+            cellColors[flatIndex] = color;
+            drawCellFromFlatIndex(flatIndex, color);
+        }
+
+        this.lastDelta = delta;
+
+        renderOrganisms(delta.getOrganismsList());
+        return frameBuffer;
     }
 
     @Override
     public void applySnapshotState(TickData snapshot) {
         ensureInitialized();
 
-        // Reset all cells to empty
+        // Update state only (no drawing) - for sampling mode
         Arrays.fill(cellColors, COLOR_EMPTY);
 
-        // Update cell colors from snapshot
         CellDataColumns columns = snapshot.getCellColumns();
         int cellCount = columns.getFlatIndicesCount();
         for (int i = 0; i < cellCount; i++) {
@@ -156,7 +187,7 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
     public void applyDeltaState(TickDelta delta) {
         ensureInitialized();
 
-        // Update only changed cells
+        // Update state only (no drawing) - for sampling mode
         CellDataColumns changed = delta.getChangedCells();
         int changedCount = changed.getFlatIndicesCount();
         for (int i = 0; i < changedCount; i++) {
@@ -171,10 +202,8 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
     public int[] renderCurrentState() {
         ensureInitialized();
 
-        // Draw all cells from persistent state
+        // Full redraw from state (for sampling mode)
         renderAllCells();
-
-        // Draw organisms from most recent tick data
         renderOrganisms(getOrganismsLazy());
 
         return frameBuffer;
@@ -194,6 +223,13 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
                 drawCell(wx, wy, cellColors[flatIndex]);
             }
         }
+    }
+
+    private void drawCellFromFlatIndex(int flatIndex, int color) {
+        // Row-major: flatIndex = x * height + y
+        int cellX = flatIndex / worldHeight;
+        int cellY = flatIndex % worldHeight;
+        drawCell(cellX, cellY, color);
     }
 
     private void drawCell(int cellX, int cellY, int color) {
@@ -327,7 +363,7 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
     }
 
     private void fillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, int color) {
-        // Sort vertices by Y coordinate
+        // Sort vertices by Y coordinate (bubble sort, no allocation)
         if (y1 > y2) { int t = x1; x1 = x2; x2 = t; t = y1; y1 = y2; y2 = t; }
         if (y2 > y3) { int t = x2; x2 = x3; x3 = t; t = y2; y2 = y3; y3 = t; }
         if (y1 > y2) { int t = x1; x1 = x2; x2 = t; t = y1; y1 = y2; y2 = t; }
@@ -335,28 +371,26 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
         int minY = Math.max(0, y1);
         int maxY = Math.min(imageHeight - 1, y3);
 
+        // Scan-line fill without per-line allocation
         for (int y = minY; y <= maxY; y++) {
-            int[] xCoords = new int[3];
-            int count = 0;
+            int xLeft, xRight;
 
-            // Find X intersections with triangle edges
-            if (y1 != y2 && y >= Math.min(y1, y2) && y <= Math.max(y1, y2)) {
-                xCoords[count++] = x1 + (x2 - x1) * (y - y1) / (y2 - y1);
-            }
-            if (y2 != y3 && y >= Math.min(y2, y3) && y <= Math.max(y2, y3)) {
-                xCoords[count++] = x2 + (x3 - x2) * (y - y2) / (y3 - y2);
-            }
-            if (y1 != y3 && y >= Math.min(y1, y3) && y <= Math.max(y1, y3)) {
-                xCoords[count++] = x1 + (x3 - x1) * (y - y1) / (y3 - y1);
+            if (y < y2) {
+                // Upper part: edges y1→y2 and y1→y3
+                xLeft = (y2 != y1) ? x1 + (x2 - x1) * (y - y1) / (y2 - y1) : x1;
+                xRight = (y3 != y1) ? x1 + (x3 - x1) * (y - y1) / (y3 - y1) : x1;
+            } else {
+                // Lower part: edges y2→y3 and y1→y3
+                xLeft = (y3 != y2) ? x2 + (x3 - x2) * (y - y2) / (y3 - y2) : x2;
+                xRight = (y3 != y1) ? x1 + (x3 - x1) * (y - y1) / (y3 - y1) : x1;
             }
 
-            if (count >= 2) {
-                Arrays.sort(xCoords, 0, count);
-                int lineStart = Math.max(0, xCoords[0]);
-                int lineEnd = Math.min(imageWidth - 1, xCoords[count - 1]);
-                if (lineStart <= lineEnd) {
-                    Arrays.fill(frameBuffer, y * imageWidth + lineStart, y * imageWidth + lineEnd + 1, color);
-                }
+            if (xLeft > xRight) { int t = xLeft; xLeft = xRight; xRight = t; }
+
+            int lineStart = Math.max(0, xLeft);
+            int lineEnd = Math.min(imageWidth - 1, xRight);
+            if (lineStart <= lineEnd) {
+                Arrays.fill(frameBuffer, y * imageWidth + lineStart, y * imageWidth + lineEnd + 1, color);
             }
         }
     }
