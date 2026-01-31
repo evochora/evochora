@@ -163,14 +163,14 @@ public class CleanupCommand implements Callable<Integer> {
                 out.println("\nRun with --force to execute deletion.");
             }
 
-            // Attempt database compaction after forced cleanup
-            if (force && doDatabase && result.database() != null && result.database().deleted() > 0) {
-                out.println();
-                attemptCompaction(service, out, compact);
-            } else if (compact && doDatabase) {
-                // --compact explicitly requested
+            // Attempt database compaction only when explicitly requested
+            if (compact && doDatabase) {
                 out.println();
                 attemptCompaction(service, out, true);
+            } else if (force && doDatabase && result.database() != null && result.database().deleted() > 0) {
+                // Hint about compaction when deletions occurred
+                out.println();
+                out.println("Tip: Run 'cleanup --compact' to reclaim disk space.");
             }
 
             return 0;

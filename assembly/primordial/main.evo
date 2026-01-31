@@ -8,20 +8,22 @@
 # Register-Aliase (nur Main-State)
 # ----------------------------
 .REG %ER  %DR0   # current energy
-.REG %INI %DR1
+.REG %SR  %DR1   # current entropy
+.REG %INI %DR2
 
 # ----------------------------
 # Constants
 # ----------------------------
 .DEFINE REPRODUCTION_CONTINUE_THRESHOLD DATA:50000
+.DEFINE ENTROPY_REPRODUCTION_CONTINUE_THRESHOLD DATA:4000
 
 # ----------------------------
 # STRUCTURE Shell (50x31)
 # ----------------------------
-.PLACE STRUCTURE:100 -1..60|-1
-.PLACE STRUCTURE:100 -1..60|41
+.PLACE STRUCTURE:100 -1..80|-1
+.PLACE STRUCTURE:100 -1..80|41
 .PLACE STRUCTURE:100 -1|0..40
-.PLACE STRUCTURE:100 60|0..40
+.PLACE STRUCTURE:100 80|0..40
 
 # ----------------------------
 # Init
@@ -33,6 +35,9 @@ INIT: NOP^4
 
 LOCALSTATE_MOVE: NOP                          
   GTI %INI DATA:14
+    JMPI LOCALSTATE_WRITE; NOP^4
+
+  GTI %INI DATA:14                     # Redundanz
     JMPI LOCALSTATE_WRITE; NOP^4
 
   INCR %INI; NOP^4
@@ -53,15 +58,18 @@ LOCALSTATE_WRITE: NOP^4
 # Main loop
 # ----------------------------
 .ORG 0|2
-MAIN_LOOP: NOP^4
+MAIN_LOOP:
   NRG %ER; NOP^4
-  GTI %ER REPRODUCTION_CONTINUE_THRESHOLD
+  NTR %SR; NOP^4
+  GTI %ER REPRODUCTION_CONTINUE_THRESHOLD; NOP^4
     JMPI MAIN_REPRODUCE; NOP^4
-  JMPI MAIN_HARVEST; NOP^4
+  GTI %SR ENTROPY_REPRODUCTION_CONTINUE_THRESHOLD; NOP^4
+    JMPI MAIN_REPRODUCE; NOP^4
+  JMPI MAIN_HARVEST; NOP^4; JMPI MAIN_HARVEST
 
 MAIN_REPRODUCE: NOP^4
   CALL REPRODUCE.CONTINUE REF %ER; NOP^4
-  JMPI MAIN_LOOP_ENERGY_CHECK; NOP^12; JMPI MAIN_LOOP_ENERGY_CHECK
+  JMPI MAIN_LOOP_ENERGY_CHECK; NOP^4; JMPI MAIN_LOOP_ENERGY_CHECK
 
 .ORG 0|3
 MAIN_HARVEST: NOP^4
@@ -73,10 +81,12 @@ MAIN_LOOP_ENERGY_CHECK: NOP^4
   NRG %ER; NOP^4
   GTI %ER REPRODUCTION_CONTINUE_THRESHOLD
     JMPI MAIN_LOOP; NOP^4                   # Genug Energie -> weiter reproduzieren
-  JMPI MAIN_HARVEST                         # Wenig Energie -> Energie suchen
+  GTI %ER REPRODUCTION_CONTINUE_THRESHOLD
+    JMPI MAIN_LOOP; NOP^4                   # Genug Energie -> weiter reproduzieren (Redundanz)
+  JMPI MAIN_HARVEST; NOP^4                  # Wenig Energie -> Energie suchen
 
 # Redundante Safety-Jumps (falls Code durch Mutation hierher fällt)
-NOP; JMPI MAIN_LOOP; NOP^12; JMPI MAIN_LOOP
+JMPI MAIN_LOOP; NOP^12; JMPI MAIN_LOOP
 
 # ----------------------------
 # Energy search
