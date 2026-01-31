@@ -76,6 +76,9 @@ dependencies {
     // Caffeine high-performance cache for chunk caching in EnvironmentController
     implementation("com.github.ben-manes.caffeine:caffeine:3.2.0")
 
+    // Reflections library for dynamic subcommand registration (video renderers)
+    implementation("org.reflections:reflections:0.10.2")
+
     // DuckDB JDBC driver for analytics
     implementation("org.duckdb:duckdb_jdbc:1.4.3.0")
 

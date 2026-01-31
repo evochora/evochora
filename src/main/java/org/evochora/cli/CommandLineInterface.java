@@ -54,10 +54,22 @@ public class CommandLineInterface implements Callable<Integer> {
     }
 
     public static void main(final String[] args) {
-        final CommandLine commandLine = new CommandLine(new CommandLineInterface());
-        commandLine.setCommandName("evochora");
+        final CommandLine commandLine = createCommandLine();
         final int exitCode = commandLine.execute(args);
         System.exit(exitCode);
+    }
+
+    /**
+     * Creates a fully configured CommandLine instance.
+     * <p>
+     * Use this method in tests to get the same configuration as the CLI entry point.
+     *
+     * @return A configured CommandLine instance.
+     */
+    public static CommandLine createCommandLine() {
+        final CommandLine commandLine = new CommandLine(new CommandLineInterface());
+        commandLine.setCommandName("evochora");
+        return commandLine;
     }
 
     private void initialize() {
