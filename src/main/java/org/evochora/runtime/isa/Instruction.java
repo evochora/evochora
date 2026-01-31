@@ -256,6 +256,51 @@ public abstract class Instruction {
         }
     }
 
+    // ========== Fuzzy Jump Helper Methods ==========
+
+    /**
+     * Resolves a label hash operand from the environment.
+     * <p>
+     * Used by fuzzy jump instructions (JMPI, CALL, SKJI, etc.) to read the
+     * 20-bit label hash value from the code stream.
+     *
+     * @param currentIp The current instruction pointer position.
+     * @param environment The environment to fetch from.
+     * @return The label hash value masked to {@link Config#VALUE_MASK}.
+     */
+    protected int resolveLabelHash(int[] currentIp, Environment environment) {
+        Organism.FetchResult res = organism.fetchSignedArgument(currentIp, environment);
+        return res.value() & Config.VALUE_MASK;
+    }
+
+    /**
+     * Resolves a label hash to absolute coordinates using fuzzy matching.
+     * <p>
+     * Uses the environment's LabelIndex to find the best matching LABEL molecule
+     * based on Hamming distance and physical distance, with preference for labels
+     * owned by the same organism.
+     *
+     * @param labelHash The 20-bit hash value of the target label.
+     * @param callerCoords The coordinates to use for distance calculation
+     *                     (e.g., organism's IP for JMPI, or active DP for SKJI).
+     * @param organism The organism executing the instruction (used for ownership checks).
+     * @param environment The environment containing the LabelIndex.
+     * @return The absolute coordinates of the best matching label, or null if no match found.
+     */
+    protected int[] resolveLabelTarget(int labelHash, int[] callerCoords,
+                                       Organism organism, Environment environment) {
+        int targetFlatIndex = environment.getLabelIndex().findTarget(
+                labelHash,
+                organism.getId(),
+                callerCoords,
+                environment
+        );
+        if (targetFlatIndex < 0) {
+            return null;
+        }
+        return environment.getCoordinateFromIndex(targetFlatIndex);
+    }
+
     /**
      * Executes the instruction.
      * @param context The execution context.

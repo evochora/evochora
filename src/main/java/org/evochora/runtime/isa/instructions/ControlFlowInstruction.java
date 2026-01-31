@@ -85,7 +85,7 @@ public class ControlFlowInstruction extends Instruction {
                     Object callTargetObj = operands.get(0).value();
                     if (!(callTargetObj instanceof Integer)) { organism.instructionFailed("CALL target must be a label hash."); return; }
                     int callLabelHash = (Integer) callTargetObj;
-                    int[] callTargetIp = resolveLabelTarget(callLabelHash, organism, environment);
+                    int[] callTargetIp = resolveLabelTarget(callLabelHash, organism.getIp(), organism, environment);
                     if (callTargetIp == null) {
                         organism.instructionFailed("CALL: No matching label found for hash " + callLabelHash);
                         return;
@@ -100,7 +100,7 @@ public class ControlFlowInstruction extends Instruction {
                     Object jmpiTargetObj = operands.get(0).value();
                     if (!(jmpiTargetObj instanceof Integer)) { organism.instructionFailed("JMPI target must be a label hash."); return; }
                     int jmpiLabelHash = (Integer) jmpiTargetObj;
-                    int[] jmpiTargetIp = resolveLabelTarget(jmpiLabelHash, organism, environment);
+                    int[] jmpiTargetIp = resolveLabelTarget(jmpiLabelHash, organism.getIp(), organism, environment);
                     if (jmpiTargetIp == null) {
                         organism.instructionFailed("JMPI: No matching label found for hash " + jmpiLabelHash);
                         return;
@@ -116,7 +116,7 @@ public class ControlFlowInstruction extends Instruction {
                     Object jmprRegObj = operands.get(0).value();
                     int jmprLabelHash = extractLabelHash(jmprRegObj);
                     if (jmprLabelHash < 0) { organism.instructionFailed("JMPR: Invalid register value for label hash."); return; }
-                    int[] jmprTargetIp = resolveLabelTarget(jmprLabelHash, organism, environment);
+                    int[] jmprTargetIp = resolveLabelTarget(jmprLabelHash, organism.getIp(), organism, environment);
                     if (jmprTargetIp == null) {
                         organism.instructionFailed("JMPR: No matching label found for hash " + jmprLabelHash);
                         return;
@@ -132,7 +132,7 @@ public class ControlFlowInstruction extends Instruction {
                     Object jmpsStackObj = operands.get(0).value();
                     int jmpsLabelHash = extractLabelHash(jmpsStackObj);
                     if (jmpsLabelHash < 0) { organism.instructionFailed("JMPS: Invalid stack value for label hash."); return; }
-                    int[] jmpsTargetIp = resolveLabelTarget(jmpsLabelHash, organism, environment);
+                    int[] jmpsTargetIp = resolveLabelTarget(jmpsLabelHash, organism.getIp(), organism, environment);
                     if (jmpsTargetIp == null) {
                         organism.instructionFailed("JMPS: No matching label found for hash " + jmpsLabelHash);
                         return;
@@ -177,35 +177,6 @@ public class ControlFlowInstruction extends Instruction {
             return arr[0] & Config.VALUE_MASK;
         }
         return -1;
-    }
-
-    /**
-     * Resolves a label hash to an absolute target position using fuzzy matching.
-     * Uses the environment's LabelIndex to find the best matching LABEL molecule
-     * based on Hamming distance and physical distance, with preference for labels
-     * owned by the same organism.
-     *
-     * @param labelHash The 20-bit hash value of the target label.
-     * @param organism The organism executing the instruction (used for ownership checks).
-     * @param environment The environment containing the LabelIndex.
-     * @return The absolute coordinates of the best matching label, or null if no match found.
-     */
-    private int[] resolveLabelTarget(int labelHash, Organism organism, Environment environment) {
-        // Get caller coordinates for distance calculation
-        int[] callerCoords = organism.getIp();
-
-        // Find best matching label using fuzzy matching (Hamming + physical distance)
-        int targetFlatIndex = environment.getLabelIndex().findTarget(
-                labelHash,
-                organism.getId(),
-                callerCoords,
-                environment
-        );
-        if (targetFlatIndex < 0) {
-            return null;
-        }
-        // Convert flat index to coordinates
-        return environment.getCoordinateFromIndex(targetFlatIndex);
     }
 
     /**

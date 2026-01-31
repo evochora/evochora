@@ -182,6 +182,31 @@ START_LOOP:
   JMPI START_LOOP
 ```
 
+#### Exported Labels
+
+By default, labels are only visible within the file where they are defined. To make a label accessible from other modules, add the `EXPORT` keyword after the colon:
+
+```
+MY_ENTRY_POINT: EXPORT
+  ...
+```
+
+Exported labels can be referenced from other files using qualified names (similar to procedures). If a module is included with `.REQUIRE "lib.evo" AS LIB`, its exported labels can be accessed as `LIB.LABEL_NAME`.
+
+```
+# In lib.evo
+DATA_TABLE: EXPORT
+  .PLACE DATA:42 0|0
+
+# In main.evo
+.REQUIRE "lib.evo" AS LIB
+.INCLUDE "lib.evo"
+
+START:
+  JMPI LIB.DATA_TABLE  # Jump to the exported label
+  ...
+```
+
 ### Case-Insensitivity
 
 Instructions, directives, and register names are case-insensitive. `SETI`, `seti`, and `SeTi` are all treated as the same instruction. Similarly, `%DR0` is the same as `%dr0`. Label names are also case-insensitive.
@@ -434,6 +459,7 @@ These instructions manage the Location Stack (`LS`) and Location Registers (`%LR
 * `LSDR %DEST_REG`: Copies the top vector from `LS` into `<%DEST_REG>` without popping.
 * `LRLR %LR<Dest> %LR<Src>`: Copies the vector from `%LR<Src>` into `%LR<Dest>`.
 * `CRLR %LR<Index>`: Sets `%LR<Index>` to the vector `[0, 0]`.
+* `SKJI <Label>`, `SKJR %REG`, `SKJS`: Sets the active `DP` to a label position using fuzzy matching (like `JMPI`). Target must be unowned or owned by self.
 
 ### Vector Component Operations
 

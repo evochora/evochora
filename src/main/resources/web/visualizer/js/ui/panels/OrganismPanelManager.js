@@ -277,13 +277,24 @@ export class OrganismPanelManager {
      * @private
      */
     renderOrganismRow(org, isSelected, showDeselect = false) {
-        // Format SR (entropy register) with percentage (aligned: "  0%     0" to "100% maxEntropy")
-        // Read max-entropy from metadata, fallback to 8191 for old data without metadata
-        const MAX_ENTROPY = this.metadata?.organismConfig?.maxEntropy ?? 8191;
+        // Format SR (entropy register) with percentage if max-entropy is available
         const srValue = org.entropyRegister != null ? org.entropyRegister : 0;
-        const srPercent = String(Math.round((srValue / MAX_ENTROPY) * 100)).padStart(3);
-        const srValuePadded = String(srValue).padStart(5);
-        const srDisplay = `${srPercent}% ${srValuePadded}`;
+        let srDisplay;
+        try {
+            const config = this.metadata?.resolvedConfigJson
+                ? JSON.parse(this.metadata.resolvedConfigJson)
+                : null;
+            const maxEntropy = config?.runtime?.organism?.["max-entropy"];
+            if (maxEntropy != null && maxEntropy > 0) {
+                const srPercent = String(Math.round((srValue / maxEntropy) * 100)).padStart(3);
+                const srValuePadded = String(srValue).padStart(5);
+                srDisplay = `${srPercent}% ${srValuePadded}`;
+            } else {
+                srDisplay = String(srValue);
+            }
+        } catch (e) {
+            srDisplay = String(srValue);
+        }
         
         // Format IP with direction arrow
         let ipDisplay = '-';

@@ -37,24 +37,24 @@ public class OrganismTest {
     }
 
     /**
-     * Verifies that an organism attempting to execute a non-code cell (e.g., DATA)
-     * correctly enters a failed state when strict typing is active.
-     * This is a unit test for runtime type safety.
+     * Verifies that an organism encountering a non-code cell (e.g., DATA)
+     * treats it as a NOP instruction (to be skipped). Non-CODE molecules
+     * are auto-skipped by the IP, so they should not cause failures.
+     * This is a unit test for runtime type handling.
      */
     @Test
     @Tag("unit")
     void testPlanTickStrictTypingOnNonCodeCell() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
         sim.addOrganism(org);
-        // Place a DATA symbol at IP to violate strict typing
+        // Place a DATA symbol at IP - should be treated as NOP (auto-skipped)
         environment.setMolecule(new Molecule(Config.TYPE_DATA, 1), org.getIp());
 
         Instruction planned = sim.getVirtualMachine().plan(org);
         assertThat(planned).isNotNull();
-        // Planner yields a no-op placeholder with name "UNKNOWN" for illegal type
-        assertThat(planned.getName()).isEqualTo("UNKNOWN");
-        assertThat(org.isInstructionFailed()).isTrue();
-        assertThat(org.getFailureReason()).contains("Illegal cell type");
+        // Non-CODE molecules are treated as NOP (will be skipped by skipNopCells)
+        assertThat(planned.getName()).isEqualTo("NOP");
+        assertThat(org.isInstructionFailed()).isFalse();
     }
 
     /**

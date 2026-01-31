@@ -84,6 +84,7 @@ public class SemanticAnalyzer {
             }
             if (node instanceof LabelNode lbl) {
                 symbolTable.define(new Symbol(lbl.labelToken(), Symbol.Type.LABEL));
+                symbolTable.registerLabelMeta(lbl.labelToken(), lbl.exported());
             }
 
             if (node instanceof ScopeNode || node instanceof ProcedureNode) {

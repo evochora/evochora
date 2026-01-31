@@ -6,8 +6,10 @@ import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.Variant;
 import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 
+import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 
@@ -59,6 +61,10 @@ public class LocationInstruction extends Instruction {
         reg(10, Variant.L, "CRLR", LOCATION_REGISTER);
         // Operation 11: LRL (Load location register)
         reg(11, Variant.LL, "LRLR", LOCATION_REGISTER, LOCATION_REGISTER);
+        // Operation 12: SKJ (Seek Jump - DP fuzzy jump to label)
+        reg(12, Variant.L, "SKJI", LABEL);
+        reg(12, Variant.R, "SKJR", REGISTER);
+        reg(12, Variant.S, "SKJS", STACK);
     }
 
     private static void reg(int op, int variant, String name, OperandSource... sources) {
@@ -72,6 +78,20 @@ public class LocationInstruction extends Instruction {
      */
     public LocationInstruction(Organism organism, int fullOpcodeId) {
         super(organism, fullOpcodeId);
+    }
+
+    @Override
+    public List<Operand> resolveOperands(Environment environment) {
+        String opName = getName();
+        if ("SKJI".equals(opName)) {
+            // Fuzzy jump: fetch a single label hash value (20-bit, masked with VALUE_MASK)
+            List<Operand> resolved = new ArrayList<>();
+            int[] currentIp = organism.getIpBeforeFetch();
+            int labelHash = resolveLabelHash(currentIp, environment);
+            resolved.add(new Operand(labelHash, -1));
+            return resolved;
+        }
+        return super.resolveOperands(environment);
     }
 
     @Override
@@ -218,15 +238,65 @@ public class LocationInstruction extends Instruction {
             case "CRLR": {
                 if (ops.size() != 1) { org.instructionFailed("CRLR expects <LR>"); return; }
                 int lrIdx = ops.get(0).rawSourceId();
-                
+
                 // Validate that the operand is an LR register
                 if (lrIdx < 0 || lrIdx >= Config.NUM_LOCATION_REGISTERS) {
                     org.instructionFailed("CRLR: Invalid LR index: " + lrIdx);
                     return;
                 }
-                
+
                 // Set the LR to [0, 0]
                 org.setLr(lrIdx, new int[]{0, 0});
+                break;
+            }
+            case "SKJI":
+            case "SKJR":
+            case "SKJS": {
+                // SKJ* - Seek Jump: move active DP to label using fuzzy matching
+                if (ops.isEmpty()) {
+                    org.instructionFailed("SKJ requires label hash operand.");
+                    return;
+                }
+
+                int labelHash;
+                if ("SKJI".equals(name)) {
+                    // Immediate variant: hash already resolved in resolveOperands()
+                    labelHash = (Integer) ops.get(0).value();
+                } else if ("SKJR".equals(name)) {
+                    // Register variant: extract hash from register value
+                    Object raw = ops.get(0).value();
+                    if (!(raw instanceof Integer i)) {
+                        org.instructionFailed("SKJR register must hold scalar.");
+                        return;
+                    }
+                    labelHash = Molecule.fromInt(i).toScalarValue() & Config.VALUE_MASK;
+                } else {
+                    // Stack variant: extract hash from stack value
+                    Object raw = ops.get(0).value();
+                    if (!(raw instanceof Integer i)) {
+                        org.instructionFailed("SKJS requires scalar on stack.");
+                        return;
+                    }
+                    labelHash = Molecule.fromInt(i).toScalarValue() & Config.VALUE_MASK;
+                }
+
+                // Find target label using fuzzy matching (from active DP position)
+                int[] targetCoords = resolveLabelTarget(labelHash, org.getActiveDp(), org, env);
+                if (targetCoords == null) {
+                    org.instructionFailed("SKJ: No matching label found for hash " + labelHash);
+                    return;
+                }
+
+                // Ownership check (like SEEK): target must be unowned or owned by self
+                int ownerIdAtTarget = env.getOwnerId(targetCoords);
+                boolean isUnowned = ownerIdAtTarget == 0;
+                boolean isOwnedBySelf = org.isCellAccessible(ownerIdAtTarget);
+                if (!isUnowned && !isOwnedBySelf) {
+                    org.instructionFailed("SKJ: Target cell is owned by another organism.");
+                    return;
+                }
+
+                org.setActiveDp(targetCoords);
                 break;
             }
             default:

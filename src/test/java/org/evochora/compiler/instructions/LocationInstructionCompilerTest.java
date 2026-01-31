@@ -106,4 +106,23 @@ class LocationInstructionCompilerTest extends CompilerTestBase {
             assertThat(artifact.machineCodeLayout()).isNotEmpty();
         });
     }
+
+    /**
+     * Tests compilation of SKJ* instructions (seek jump to label).
+     */
+    @Test
+    void testSkjInstructions() {
+        String source = String.join("\n",
+                "TARGET:",
+                "SKJI TARGET",
+                "SKJR %DR0",
+                "SKJS"
+        );
+        List<String> lines = List.of(source.split("\n"));
+        assertDoesNotThrow(() -> {
+            ProgramArtifact artifact = compiler.compile(lines, "skj_test.s", testEnvProps);
+            assertThat(artifact).isNotNull();
+            assertThat(artifact.machineCodeLayout()).isNotEmpty();
+        });
+    }
 }

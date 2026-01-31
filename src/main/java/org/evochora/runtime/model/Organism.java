@@ -575,29 +575,61 @@ public class Organism {
     }
 
     /**
-     * Skips the instruction immediately following the currently executing one.
+     * Advances the IP past any non-CODE cells (or NOP) at the current position.
+     * Only real CODE instructions (non-NOP) stop the skip. DATA, ENERGY, STRUCTURE,
+     * LABEL, empty cells, and NOP are all skipped over.
+     * This is used both after instruction execution (instant-skip) and by conditional
+     * instructions to find the next real instruction to skip.
+     *
+     * @param environment The simulation environment.
+     */
+    public void skipNopCells(Environment environment) {
+        int nopOpcodeId = Instruction.getInstructionIdByName("NOP");
+        int maxSkips = simulation != null && simulation.getOrganismConfig().hasPath("max-skips-per-tick")
+                ? simulation.getOrganismConfig().getInt("max-skips-per-tick") : 100;
+
+        for (int skips = 0; skips < maxSkips && !isDead; skips++) {
+            Molecule m = environment.getMolecule(ip);
+            if (m.type() == Config.TYPE_CODE && m.value() != nopOpcodeId) {
+                return;
+            }
+            advanceIpBy(1, environment);
+        }
+        instructionFailed("Max skips exceeded (" + maxSkips + ")");
+    }
+
+    /**
+     * Skips the next real instruction following the currently executing one.
+     * Only CODE molecules (non-NOP) are considered real instructions; all other
+     * molecule types are skipped over to find the actual instruction to skip.
      *
      * @param environment The simulation environment.
      */
     public void skipNextInstruction(Environment environment) {
-        int[] currentInstructionIp = this.getIpBeforeFetch();
-        int currentInstructionOpcode = environment.getMolecule(currentInstructionIp).value();
-        int currentInstructionLength = Instruction.getInstructionLengthById(currentInstructionOpcode, environment);
+        // Move IP past current instruction
+        int[] currentIp = this.getIpBeforeFetch();
+        int currentOpcode = environment.getMolecule(currentIp).value();
+        int currentLength = Instruction.getInstructionLengthById(currentOpcode, environment);
 
-        int[] nextInstructionIp = currentInstructionIp;
-        for (int i = 0; i < currentInstructionLength; i++) {
-            nextInstructionIp = getNextInstructionPosition(nextInstructionIp, this.getDvBeforeFetch(), environment);
+        int[] pos = currentIp;
+        for (int i = 0; i < currentLength; i++) {
+            pos = getNextInstructionPosition(pos, this.getDvBeforeFetch(), environment);
+        }
+        this.setIp(pos);
+
+        // Skip NOPs at new position
+        skipNopCells(environment);
+        if (instructionFailed) {
+            setSkipIpAdvance(true);
+            return;
         }
 
-        int nextOpcode = environment.getMolecule(nextInstructionIp).value();
+        // Skip the real instruction
+        int nextOpcode = environment.getMolecule(ip).value();
         int lengthToSkip = Instruction.getInstructionLengthById(nextOpcode, environment);
+        advanceIpBy(lengthToSkip, environment);
 
-        int[] finalIp = nextInstructionIp;
-        for (int i = 0; i < lengthToSkip; i++) {
-            finalIp = getNextInstructionPosition(finalIp, this.getDvBeforeFetch(), environment);
-        }
-        this.setIp(finalIp);
-        this.setSkipIpAdvance(true);
+        setSkipIpAdvance(true);
     }
 
     /**
