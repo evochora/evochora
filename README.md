@@ -523,7 +523,7 @@ Some key directions for the technical evolution of Evochora:
 
 ---
 
-_Full disclosure: This project uses AI coding assistants. Humans define the  architecture, write specifications, and review all generated code to ensure correctness and maintain the overall design._
+_Full disclosure: This project uses AI coding assistants. Humans define the architecture, write specifications, and review generated code to ensure correctness and maintain the overall design._
 
 
 ## Logo
