@@ -1,6 +1,5 @@
 package org.evochora.cli.rendering.frame;
 
-import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferInt;
 import java.util.ArrayList;
@@ -58,11 +57,13 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
     private static final int COLOR_LABEL = 0xa0a0a8;
     private static final int COLOR_DEAD = 0x555555;
 
-    private static final Color[] ORGANISM_PALETTE = {
-        Color.decode("#32cd32"), Color.decode("#1e90ff"), Color.decode("#dc143c"),
-        Color.decode("#ffd700"), Color.decode("#ffa500"), Color.decode("#9370db"),
-        Color.decode("#00ffff")
+    // Organism colors as int RGB (avoids Color.getRGB() conversion per frame)
+    private static final int[] ORGANISM_PALETTE = {
+        0x32cd32, 0x1e90ff, 0xdc143c, 0xffd700, 0xffa500, 0x9370db, 0x00ffff
     };
+
+    // Marker size for organism rendering (IP triangles, DP squares)
+    private static final int ORGANISM_MARKER_SIZE = 4;
 
     // Dimensions (initialized in init())
     private int imageWidth;
@@ -81,8 +82,8 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
     private TickData lastSnapshot;
     private TickDelta lastDelta;
 
-    // Organism color cache
-    private final Map<Integer, Color> organismColorMap = new HashMap<>();
+    // Organism color cache (maps organismId -> RGB int)
+    private final Map<Integer, Integer> organismColorMap = new HashMap<>();
 
     // Previous organism positions for cleanup during incremental rendering
     private List<OrganismPosition> previousOrganismPositions = new ArrayList<>();
@@ -93,12 +94,10 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
      * Tracks organism marker positions for cleanup between frames.
      */
     private static class OrganismPosition {
-        final int flatIndex;
         final int x;
         final int y;
 
-        OrganismPosition(int flatIndex, int x, int y) {
-            this.flatIndex = flatIndex;
+        OrganismPosition(int x, int y) {
             this.x = x;
             this.y = y;
         }
@@ -294,56 +293,48 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
      * Renders organisms without tracking (for sampling mode full redraws).
      */
     private void renderOrganisms(List<OrganismState> organisms) {
-        for (OrganismState org : organisms) {
-            int ipX = org.getIp().getComponents(0);
-            int ipY = org.getIp().getComponents(1);
-
-            if (org.getIsDead()) {
-                drawSquareMarker(ipX, ipY, COLOR_DEAD, 4);
-            } else {
-                Color orgColor = getOrganismColor(org.getOrganismId());
-                int color = orgColor.getRGB() & 0xFFFFFF;
-
-                for (Vector dp : org.getDataPointersList()) {
-                    drawSquareMarker(dp.getComponents(0), dp.getComponents(1), color, 4);
-                }
-
-                int dvX = org.getDv().getComponents(0);
-                int dvY = org.getDv().getComponents(1);
-                drawTriangle(ipX, ipY, color, 4, dvX, dvY);
-            }
-        }
+        renderOrganismsInternal(organisms, false);
     }
 
     /**
      * Renders organisms and tracks positions for cleanup during incremental rendering.
      */
     private void renderOrganismsAndTrack(List<OrganismState> organisms) {
+        renderOrganismsInternal(organisms, true);
+    }
+
+    /**
+     * Internal organism rendering with optional position tracking.
+     *
+     * @param organisms List of organisms to render.
+     * @param trackPositions If true, stores positions for later cleanup.
+     */
+    private void renderOrganismsInternal(List<OrganismState> organisms, boolean trackPositions) {
         for (OrganismState org : organisms) {
             int ipX = org.getIp().getComponents(0);
             int ipY = org.getIp().getComponents(1);
-            int ipFlatIndex = ipX * worldHeight + ipY;
-            previousOrganismPositions.add(new OrganismPosition(ipFlatIndex, ipX, ipY));
+
+            if (trackPositions) {
+                previousOrganismPositions.add(new OrganismPosition(ipX, ipY));
+            }
 
             if (org.getIsDead()) {
-                drawSquareMarker(ipX, ipY, COLOR_DEAD, 4);
+                drawSquareMarker(ipX, ipY, COLOR_DEAD, ORGANISM_MARKER_SIZE);
             } else {
-                Color orgColor = getOrganismColor(org.getOrganismId());
-                int color = orgColor.getRGB() & 0xFFFFFF;
+                int color = getOrganismColor(org.getOrganismId());
 
-                // Draw data pointers as squares
                 for (Vector dp : org.getDataPointersList()) {
                     int dpX = dp.getComponents(0);
                     int dpY = dp.getComponents(1);
-                    int dpFlatIndex = dpX * worldHeight + dpY;
-                    previousOrganismPositions.add(new OrganismPosition(dpFlatIndex, dpX, dpY));
-                    drawSquareMarker(dpX, dpY, color, 4);
+                    if (trackPositions) {
+                        previousOrganismPositions.add(new OrganismPosition(dpX, dpY));
+                    }
+                    drawSquareMarker(dpX, dpY, color, ORGANISM_MARKER_SIZE);
                 }
 
-                // Draw IP as directional triangle
                 int dvX = org.getDv().getComponents(0);
                 int dvY = org.getDv().getComponents(1);
-                drawTriangle(ipX, ipY, color, 4, dvX, dvY);
+                drawTriangle(ipX, ipY, color, ORGANISM_MARKER_SIZE, dvX, dvY);
             }
         }
     }
@@ -352,8 +343,7 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
      * Clears the organism marker area by redrawing the underlying cells.
      */
     private void clearOrganismArea(OrganismPosition pos) {
-        int markerSize = 4;
-        int half = markerSize / 2;
+        int half = ORGANISM_MARKER_SIZE / 2;
 
         for (int dy = -half; dy <= half; dy++) {
             for (int dx = -half; dx <= half; dx++) {
@@ -371,7 +361,7 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
         }
     }
 
-    private Color getOrganismColor(int organismId) {
+    private int getOrganismColor(int organismId) {
         return organismColorMap.computeIfAbsent(organismId, id -> {
             int idx = (id - 1) % ORGANISM_PALETTE.length;
             return ORGANISM_PALETTE[idx < 0 ? 0 : idx];

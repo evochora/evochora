@@ -53,7 +53,6 @@ public class InfoOverlayRenderer implements IOverlayRenderer {
     // Cached rendering resources (lazily initialized on first use)
     private int cachedImageHeight;
     private Font cachedFont;
-    private int cachedFontSize;
 
     /**
      * Creates a new info overlay renderer.
@@ -156,7 +155,6 @@ public class InfoOverlayRenderer implements IOverlayRenderer {
         // Cache font if image dimensions changed
         if (imgHeight != cachedImageHeight || cachedFont == null) {
             cachedImageHeight = imgHeight;
-            cachedFontSize = fontSize;
             cachedFont = findAvailableFont(fontSize);
         }
 

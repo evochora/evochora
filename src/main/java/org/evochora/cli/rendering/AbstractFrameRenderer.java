@@ -58,7 +58,7 @@ public abstract class AbstractFrameRenderer implements IVideoFrameRenderer, Call
      * Reusable buffer for BGRA conversion. Allocated once per renderer instance
      * to avoid garbage collection pressure during rendering.
      */
-    protected byte[] bgraBuffer;
+    private byte[] bgraBuffer;
 
     /**
      * Initializes the renderer with environment properties.

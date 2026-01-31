@@ -14,7 +14,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
 
 import org.evochora.cli.CliResourceFactory;
 import org.evochora.datapipeline.api.contracts.DeltaType;
@@ -90,8 +89,7 @@ public class VideoRenderEngine {
 
         // Start ffmpeg output reader
         AtomicBoolean ffmpegDied = new AtomicBoolean(false);
-        AtomicReference<String> lastFfmpegOutput = new AtomicReference<>("");
-        Thread outputReader = startFfmpegOutputReader(ffmpeg, ffmpegDied, lastFfmpegOutput);
+        Thread outputReader = startFfmpegOutputReader(ffmpeg, ffmpegDied);
 
         int width = frameRenderer.getImageWidth();
         int height = frameRenderer.getImageHeight();
@@ -481,17 +479,24 @@ public class VideoRenderEngine {
                     inFlight--;
                 }
 
-                // Submit new chunk
+                // Submit new chunk (check shutdown to avoid RejectedExecutionException)
+                if (shutdownRequested.get()) break;
+
                 final TickDataChunk chunkToRender = chunk;
                 final IVideoFrameRenderer renderer = renderers.get(tail % renderers.size());
                 final long effStart = effectiveStartTick;
                 final long effEnd = effectiveEndTick;
                 final int sampling = options.samplingInterval;
 
-                pendingFutures[tail] = executor.submit(() ->
-                    renderChunkPixels(chunkToRender, renderer, effStart, effEnd, sampling));
-                tail = (tail + 1) % pipelineSize;
-                inFlight++;
+                try {
+                    pendingFutures[tail] = executor.submit(() ->
+                        renderChunkPixels(chunkToRender, renderer, effStart, effEnd, sampling));
+                    tail = (tail + 1) % pipelineSize;
+                    inFlight++;
+                } catch (java.util.concurrent.RejectedExecutionException e) {
+                    // Executor was shut down between check and submit - exit gracefully
+                    break;
+                }
 
                 lastProgressUpdate = updateProgress(framesWritten.get(), totalFrames, startTime, lastProgressUpdate);
             }
@@ -807,19 +812,15 @@ public class VideoRenderEngine {
         }
     }
 
-    private Thread startFfmpegOutputReader(Process ffmpeg, AtomicBoolean ffmpegDied,
-                                           AtomicReference<String> lastOutput) {
+    private Thread startFfmpegOutputReader(Process ffmpeg, AtomicBoolean ffmpegDied) {
         Thread reader = new Thread(() -> {
             try (java.io.InputStream stream = ffmpeg.getInputStream()) {
                 byte[] buffer = new byte[1024];
-                StringBuilder output = new StringBuilder();
                 int bytesRead;
                 while ((bytesRead = stream.read(buffer)) != -1) {
-                    String s = new String(buffer, 0, bytesRead);
-                    if (options.verbose) System.err.print("[ffmpeg] " + s);
-                    output.append(s);
-                    if (output.length() > 2000) output.delete(0, output.length() - 2000);
-                    lastOutput.set(output.toString());
+                    if (options.verbose) {
+                        System.err.print("[ffmpeg] " + new String(buffer, 0, bytesRead));
+                    }
                 }
             } catch (Exception e) {
                 if (!ffmpeg.isAlive()) ffmpegDied.set(true);

@@ -76,8 +76,6 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
     private static final int[] BASE_GLOW_SIZES = {7, 10, 16, 22};
     private static final int[] DENSITY_THRESHOLDS = {3, 10, 30};
     private static final int GLOW_COLOR = 0x4a9a6a;  // Muted green
-    // Core is small (bright center dot), glow fades aggressively toward edge
-    private static final int BASE_CORE_SIZE = 2;
     private static final int BASE_OUTPUT_WIDTH = 400;  // Reference width for glow scaling
 
     // Dimensions (initialized in init())
@@ -93,7 +91,6 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
     // Glow sprites (scaled for output resolution)
     private int[][] glowSprites;
     private int[] glowSizes;
-    private int coreSize;
 
     // Persistent cell state using generation numbers (O(1) reset instead of O(worldSize) fill)
     private int[] cellTypes;        // [flatIndex] = type (valid only if generation matches)
@@ -142,7 +139,6 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
         for (int i = 0; i < BASE_GLOW_SIZES.length; i++) {
             this.glowSizes[i] = Math.max(2, (int) (BASE_GLOW_SIZES[i] * glowScale));
         }
-        this.coreSize = Math.max(1, (int) (BASE_CORE_SIZE * glowScale));
         initGlowSprites();
 
         // Persistent state arrays
@@ -375,30 +371,12 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
         for (OrganismState org : organisms) {
             if (org.getIsDead()) continue;
 
-            // IP position (quantized if clusterGrid > 1)
-            int wx = org.getIp().getComponents(0);
-            int wy = org.getIp().getComponents(1);
-            if (clusterGrid > 1) {
-                wx = (wx / clusterGrid) * clusterGrid;
-                wy = (wy / clusterGrid) * clusterGrid;
-            }
-            int pixelIdx = worldCoordsToPixelIndex(wx, wy);
-            if (pixelIdx >= 0 && pixelIdx < totalPixels) {
-                glowDensity[pixelIdx]++;
-            }
+            // IP position
+            addGlowDensity(org.getIp().getComponents(0), org.getIp().getComponents(1), totalPixels);
 
-            // DP positions (quantized if clusterGrid > 1)
+            // DP positions
             for (Vector dp : org.getDataPointersList()) {
-                wx = dp.getComponents(0);
-                wy = dp.getComponents(1);
-                if (clusterGrid > 1) {
-                    wx = (wx / clusterGrid) * clusterGrid;
-                    wy = (wy / clusterGrid) * clusterGrid;
-                }
-                pixelIdx = worldCoordsToPixelIndex(wx, wy);
-                if (pixelIdx >= 0 && pixelIdx < totalPixels) {
-                    glowDensity[pixelIdx]++;
-                }
+                addGlowDensity(dp.getComponents(0), dp.getComponents(1), totalPixels);
             }
         }
 
@@ -410,6 +388,20 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
                     blitGlowSprite(mx, my, selectSpriteIndex(count));
                 }
             }
+        }
+    }
+
+    /**
+     * Adds glow density for an organism position, applying coordinate quantization if enabled.
+     */
+    private void addGlowDensity(int wx, int wy, int totalPixels) {
+        if (clusterGrid > 1) {
+            wx = (wx / clusterGrid) * clusterGrid;
+            wy = (wy / clusterGrid) * clusterGrid;
+        }
+        int pixelIdx = worldCoordsToPixelIndex(wx, wy);
+        if (pixelIdx >= 0 && pixelIdx < totalPixels) {
+            glowDensity[pixelIdx]++;
         }
     }
 
