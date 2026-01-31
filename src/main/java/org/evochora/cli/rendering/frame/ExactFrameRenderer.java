@@ -3,6 +3,7 @@ package org.evochora.cli.rendering.frame;
 import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferInt;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -83,7 +84,25 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
     // Organism color cache
     private final Map<Integer, Color> organismColorMap = new HashMap<>();
 
+    // Previous organism positions for cleanup during incremental rendering
+    private List<OrganismPosition> previousOrganismPositions = new ArrayList<>();
+
     private boolean initialized = false;
+
+    /**
+     * Tracks organism marker positions for cleanup between frames.
+     */
+    private static class OrganismPosition {
+        final int flatIndex;
+        final int x;
+        final int y;
+
+        OrganismPosition(int flatIndex, int x, int y) {
+            this.flatIndex = flatIndex;
+            this.x = x;
+            this.y = y;
+        }
+    }
 
     /**
      * Default constructor for PicoCLI instantiation.
@@ -128,6 +147,7 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
         // Reset and draw all cells
         Arrays.fill(cellColors, COLOR_EMPTY);
         Arrays.fill(frameBuffer, COLOR_EMPTY);
+        previousOrganismPositions.clear();
 
         CellDataColumns columns = snapshot.getCellColumns();
         int cellCount = columns.getFlatIndicesCount();
@@ -141,13 +161,19 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
         this.lastSnapshot = snapshot;
         this.lastDelta = null;
 
-        renderOrganisms(snapshot.getOrganismsList());
+        renderOrganismsAndTrack(snapshot.getOrganismsList());
         return frameBuffer;
     }
 
     @Override
     protected int[] doRenderDelta(TickDelta delta) {
         ensureInitialized();
+
+        // Clear previous organism positions first
+        for (OrganismPosition pos : previousOrganismPositions) {
+            clearOrganismArea(pos);
+        }
+        previousOrganismPositions.clear();
 
         // Only update changed cells (incremental!)
         CellDataColumns changed = delta.getChangedCells();
@@ -161,7 +187,7 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
 
         this.lastDelta = delta;
 
-        renderOrganisms(delta.getOrganismsList());
+        renderOrganismsAndTrack(delta.getOrganismsList());
         return frameBuffer;
     }
 
@@ -264,6 +290,9 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
         return List.of();
     }
 
+    /**
+     * Renders organisms without tracking (for sampling mode full redraws).
+     */
     private void renderOrganisms(List<OrganismState> organisms) {
         for (OrganismState org : organisms) {
             int ipX = org.getIp().getComponents(0);
@@ -275,15 +304,69 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
                 Color orgColor = getOrganismColor(org.getOrganismId());
                 int color = orgColor.getRGB() & 0xFFFFFF;
 
-                // Draw data pointers as squares
                 for (Vector dp : org.getDataPointersList()) {
                     drawSquareMarker(dp.getComponents(0), dp.getComponents(1), color, 4);
+                }
+
+                int dvX = org.getDv().getComponents(0);
+                int dvY = org.getDv().getComponents(1);
+                drawTriangle(ipX, ipY, color, 4, dvX, dvY);
+            }
+        }
+    }
+
+    /**
+     * Renders organisms and tracks positions for cleanup during incremental rendering.
+     */
+    private void renderOrganismsAndTrack(List<OrganismState> organisms) {
+        for (OrganismState org : organisms) {
+            int ipX = org.getIp().getComponents(0);
+            int ipY = org.getIp().getComponents(1);
+            int ipFlatIndex = ipX * worldHeight + ipY;
+            previousOrganismPositions.add(new OrganismPosition(ipFlatIndex, ipX, ipY));
+
+            if (org.getIsDead()) {
+                drawSquareMarker(ipX, ipY, COLOR_DEAD, 4);
+            } else {
+                Color orgColor = getOrganismColor(org.getOrganismId());
+                int color = orgColor.getRGB() & 0xFFFFFF;
+
+                // Draw data pointers as squares
+                for (Vector dp : org.getDataPointersList()) {
+                    int dpX = dp.getComponents(0);
+                    int dpY = dp.getComponents(1);
+                    int dpFlatIndex = dpX * worldHeight + dpY;
+                    previousOrganismPositions.add(new OrganismPosition(dpFlatIndex, dpX, dpY));
+                    drawSquareMarker(dpX, dpY, color, 4);
                 }
 
                 // Draw IP as directional triangle
                 int dvX = org.getDv().getComponents(0);
                 int dvY = org.getDv().getComponents(1);
                 drawTriangle(ipX, ipY, color, 4, dvX, dvY);
+            }
+        }
+    }
+
+    /**
+     * Clears the organism marker area by redrawing the underlying cells.
+     */
+    private void clearOrganismArea(OrganismPosition pos) {
+        int markerSize = 4;
+        int half = markerSize / 2;
+
+        for (int dy = -half; dy <= half; dy++) {
+            for (int dx = -half; dx <= half; dx++) {
+                int cellX = pos.x + dx;
+                int cellY = pos.y + dy;
+
+                if (cellX < 0 || cellX >= worldWidth || cellY < 0 || cellY >= worldHeight) {
+                    continue;
+                }
+
+                int flatIndex = cellX * worldHeight + cellY;
+                int color = cellColors[flatIndex];
+                drawCell(cellX, cellY, color);
             }
         }
     }

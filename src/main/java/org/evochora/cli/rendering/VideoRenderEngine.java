@@ -158,12 +158,12 @@ public class VideoRenderEngine {
 
     /**
      * Processes a chunk and renders frames at sample tick intervals.
-     * Returns rendered frames as byte arrays.
+     * Returns rendered frames as pixel arrays (int[]) for zero-copy writing.
      */
-    private List<byte[]> renderChunkFrames(TickDataChunk chunk, IVideoFrameRenderer renderer,
-                                           long effectiveStartTick, long effectiveEndTick,
-                                           int samplingInterval) {
-        List<byte[]> frames = new ArrayList<>();
+    private List<int[]> renderChunkPixels(TickDataChunk chunk, IVideoFrameRenderer renderer,
+                                          long effectiveStartTick, long effectiveEndTick,
+                                          int samplingInterval) {
+        List<int[]> frames = new ArrayList<>();
 
         if (samplingInterval == 1) {
             // Incremental rendering - every tick
@@ -178,14 +178,14 @@ public class VideoRenderEngine {
 
     private void renderChunkIncremental(TickDataChunk chunk, IVideoFrameRenderer renderer,
                                         long effectiveStartTick, long effectiveEndTick,
-                                        List<byte[]> frames) {
+                                        List<int[]> frames) {
         // Render snapshot
         TickData snapshot = chunk.getSnapshot();
         long snapshotTick = snapshot.getTickNumber();
         int[] pixelData = renderer.renderSnapshot(snapshot);
 
         if (snapshotTick >= effectiveStartTick && snapshotTick <= effectiveEndTick) {
-            frames.add(convertToBgra(pixelData));
+            frames.add(pixelData.clone());  // Clone because frameBuffer is reused
         }
 
         // Render deltas
@@ -194,14 +194,14 @@ public class VideoRenderEngine {
             pixelData = renderer.renderDelta(delta);
 
             if (deltaTick >= effectiveStartTick && deltaTick <= effectiveEndTick) {
-                frames.add(convertToBgra(pixelData));
+                frames.add(pixelData.clone());
             }
         }
     }
 
     private void renderChunkSampled(TickDataChunk chunk, IVideoFrameRenderer renderer,
                                     long effectiveStartTick, long effectiveEndTick,
-                                    int samplingInterval, List<byte[]> frames) {
+                                    int samplingInterval, List<int[]> frames) {
         long chunkFirstTick = chunk.getFirstTick();
         long chunkLastTick = chunk.getLastTick();
 
@@ -221,7 +221,7 @@ public class VideoRenderEngine {
         if (snapshotTick >= effectiveStartTick && snapshotTick <= effectiveEndTick
                 && snapshotTick % samplingInterval == 0) {
             int[] pixelData = renderer.renderSnapshot(snapshot);
-            frames.add(convertToBgra(pixelData));
+            frames.add(pixelData.clone());
         }
 
         // Process remaining sample ticks
@@ -246,7 +246,7 @@ public class VideoRenderEngine {
 
             // Render and store
             int[] pixelData = renderer.renderCurrentState();
-            frames.add(convertToBgra(pixelData));
+            frames.add(pixelData.clone());
 
             currentSampleTick += samplingInterval;
         }
@@ -386,12 +386,11 @@ public class VideoRenderEngine {
                 }
             }
         } else {
-            // Sampling mode: use existing logic
-            List<byte[]> frames = renderChunkFrames(chunk, renderer,
+            // Sampling mode: use pixel-based rendering with zero-copy write
+            List<int[]> frames = renderChunkPixels(chunk, renderer,
                 effectiveStartTick, effectiveEndTick, samplingInterval);
-            for (byte[] frameData : frames) {
-                ByteBuffer buf = ByteBuffer.wrap(frameData);
-                channel.write(buf);
+            for (int[] pixelData : frames) {
+                writePixelsDirect(channel, directBuffer, pixelData);
                 written++;
             }
         }
@@ -444,9 +443,12 @@ public class VideoRenderEngine {
                 options.threadCount));
         }
 
+        // Direct buffer for zero-copy writes (shared, used only by main thread)
+        ByteBuffer directBuffer = ByteBuffer.allocateDirect(frameSize).order(ByteOrder.LITTLE_ENDIAN);
+
         // Pipeline: submit chunks, write results in order as they complete
         @SuppressWarnings("unchecked")
-        Future<List<byte[]>>[] pendingFutures = new Future[pipelineSize];
+        Future<List<int[]>>[] pendingFutures = new Future[pipelineSize];
         int head = 0;  // Next slot to write
         int tail = 0;  // Next slot to submit
         int inFlight = 0;
@@ -474,7 +476,7 @@ public class VideoRenderEngine {
                         throw new RuntimeException("ffmpeg died");
                     }
 
-                    writeCompletedFrames(pendingFutures[head].get(), channel, framesWritten);
+                    writeCompletedPixels(pendingFutures[head].get(), channel, directBuffer, framesWritten);
                     head = (head + 1) % pipelineSize;
                     inFlight--;
                 }
@@ -487,7 +489,7 @@ public class VideoRenderEngine {
                 final int sampling = options.samplingInterval;
 
                 pendingFutures[tail] = executor.submit(() ->
-                    renderChunkFrames(chunkToRender, renderer, effStart, effEnd, sampling));
+                    renderChunkPixels(chunkToRender, renderer, effStart, effEnd, sampling));
                 tail = (tail + 1) % pipelineSize;
                 inFlight++;
 
@@ -503,18 +505,19 @@ public class VideoRenderEngine {
                 throw new RuntimeException("ffmpeg died");
             }
 
-            writeCompletedFrames(pendingFutures[head].get(), channel, framesWritten);
+            writeCompletedPixels(pendingFutures[head].get(), channel, directBuffer, framesWritten);
             head = (head + 1) % pipelineSize;
             inFlight--;
         }
     }
 
-    private void writeCompletedFrames(List<byte[]> frames, WritableByteChannel channel,
-                                      AtomicLong framesWritten) throws Exception {
-        for (byte[] frameData : frames) {
-            ByteBuffer buffer = ByteBuffer.wrap(frameData);
-            buffer.order(ByteOrder.LITTLE_ENDIAN);
-            channel.write(buffer);
+    /**
+     * Writes completed pixel frames using zero-copy DirectByteBuffer.
+     */
+    private void writeCompletedPixels(List<int[]> frames, WritableByteChannel channel,
+                                      ByteBuffer directBuffer, AtomicLong framesWritten) throws Exception {
+        for (int[] pixelData : frames) {
+            writePixelsDirect(channel, directBuffer, pixelData);
             framesWritten.incrementAndGet();
         }
     }
@@ -559,22 +562,6 @@ public class VideoRenderEngine {
         long m = (sec % 3600) / 60;
         long s = sec % 60;
         return h > 0 ? String.format("%d:%02d:%02d", h, m, s) : String.format("%d:%02d", m, s);
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Pixel format conversion
-    // ─────────────────────────────────────────────────────────────────────────────
-
-    private byte[] convertToBgra(int[] pixelData) {
-        byte[] buffer = new byte[pixelData.length * 4];
-        int idx = 0;
-        for (int rgb : pixelData) {
-            buffer[idx++] = (byte) (rgb & 0xFF);          // B
-            buffer[idx++] = (byte) ((rgb >> 8) & 0xFF);   // G
-            buffer[idx++] = (byte) ((rgb >> 16) & 0xFF);  // R
-            buffer[idx++] = (byte) 255;                    // A
-        }
-        return buffer;
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
