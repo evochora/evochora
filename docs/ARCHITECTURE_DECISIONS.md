@@ -14,11 +14,11 @@ This document outlines the **"Why"** behind the engineering choices.
 **The Alternative:** Using standard scripting languages (like Python or Lua) or compiling agents to native code (C++/CUDA).
 
 **The Decision:**
-We developed a custom Virtual Machine and a dedicated Assembly Language (EvoASM).
+Use a custom Virtual Machine and a dedicated Assembly Language (EvoASM).
 
 **The Reasoning:**
 1.  **Mutability:** In this Artificial Life simulation, code is the genome. It must be capable of handling random mutations (bit-flips, insertions, deletions) at runtime. Standard interpreters or compiled binaries are brittle; they typically crash or throw syntax errors when their bytecode is randomly altered.
-2.  **Extensibility:** To manage the growing complexity of the language, we implemented a multi-phase compiler (Frontend, IR, Backend). As seen in `org.evochora.compiler`, this isolates parsing (`frontend`), intermediate representation (`ir`), and machine code generation (`backend`). Using registries like `DirectiveHandlerRegistry` and `EmissionRegistry` allows to extend the language features without modifying the core compiler pipeline.
+2.  **Extensibility:** To manage the growing complexity of the language, the implementation of a multi-phase compiler (Frontend, IR, Backend) is needed. As seen in `org.evochora.compiler`, this isolates parsing (`frontend`), intermediate representation (`ir`), and machine code generation (`backend`). Using registries like `DirectiveHandlerRegistry` and `EmissionRegistry` allows to extend the language features without modifying the core compiler pipeline.
 
 ---
 
@@ -73,4 +73,4 @@ Evochora’s architecture is not complex for the sake of complexity. It is **pur
 * Distributed Services are required to handle massive I/O throughput.
 
 **You don't need to understand the whole stack to contribute.**
-We invite you to contribute to the parts that interest you — whether it's optimizing the VM, writing new analysis plugins, or designing new EvoASM organisms — without needing to understand the entire infrastructure stack.
+You are invited to contribute to the parts that interest you — whether it's optimizing the VM, writing new analysis plugins, or designing new EvoASM organisms — without needing to understand the entire infrastructure stack.
