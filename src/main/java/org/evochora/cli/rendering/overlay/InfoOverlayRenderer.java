@@ -40,10 +40,10 @@ public class InfoOverlayRenderer implements IOverlayRenderer {
     private static final Color TEXT_SECONDARY = new Color(136, 136, 136); // #888888
     private static final Color TEXT_ALIVE = new Color(74, 154, 106); // #4a9a6a (organism green)
 
-    private static final double MARGIN_RATIO = 0.015;      // Margin = 1.5% of image height
-    private static final double FONT_SIZE_RATIO = 0.0225;  // Font size = 2.25% of image height
-    private static final int MIN_FONT_SIZE = 18;
-    private static final int MAX_FONT_SIZE = 72;
+    private static final double MARGIN_RATIO = 0.015;      // Margin = 1.5% of image width
+    private static final double FONT_SIZE_RATIO = 0.022;   // Font size = 2.2% of image WIDTH (not height!)
+    private static final int MIN_FONT_SIZE = 10;           // Targets ~1/4 width overlay
+    private static final int MAX_FONT_SIZE = 48;
 
     // Font settings
     private static final String[] FONT_FAMILIES = {"Roboto Mono", "Consolas", "Liberation Mono", "Monospaced"};
@@ -143,10 +143,10 @@ public class InfoOverlayRenderer implements IOverlayRenderer {
         int imgWidth = image.getWidth();
         int imgHeight = image.getHeight();
 
-        // Calculate sizes relative to image dimensions
+        // Calculate sizes relative to image WIDTH (so overlay is always ~1/4 of width)
         int fontSize = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE,
-            (int) (imgHeight * FONT_SIZE_RATIO)));
-        int margin = Math.max(5, (int) (imgHeight * MARGIN_RATIO));
+            (int) (imgWidth * FONT_SIZE_RATIO)));
+        int margin = Math.max(5, (int) (imgWidth * MARGIN_RATIO));
         int paddingX = fontSize;
         int paddingY = fontSize / 2;
         int lineSpacing = fontSize / 4;

@@ -4,9 +4,7 @@ import java.awt.image.BufferedImage;
 import java.util.List;
 
 import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TickDelta;
-import org.evochora.datapipeline.api.delta.ChunkCorruptedException;
 import org.evochora.runtime.model.EnvironmentProperties;
 
 /**
@@ -78,22 +76,36 @@ public interface IVideoFrameRenderer {
     int[] renderDelta(TickDelta delta);
 
     /**
-     * Renders a specific tick from a chunk using delta decompression.
+     * Applies snapshot state WITHOUT rendering.
      * <p>
-     * This method handles delta decompression internally, using accumulated
-     * deltas as shortcuts for efficiency. Use this for sampling (rendering
-     * every Nth tick) instead of iterating through all deltas manually.
-     * <p>
-     * For sequential rendering of all ticks (sampling-interval=1), use
-     * {@link #renderSnapshot(TickData)} and {@link #renderDelta(TickDelta)}
-     * directly for better performance.
+     * Used for sampling mode optimization where multiple deltas need to be
+     * applied before rendering. Call {@link #renderCurrentState()} after
+     * applying all deltas to produce the frame.
      *
-     * @param chunk The chunk containing the target tick.
-     * @param tickNumber The tick number to render.
-     * @return The pixel buffer of the rendered frame.
-     * @throws ChunkCorruptedException if the chunk is corrupt or tick not found.
+     * @param snapshot The snapshot tick data containing full environment state.
      */
-    int[] renderTick(TickDataChunk chunk, long tickNumber) throws ChunkCorruptedException;
+    void applySnapshotState(TickData snapshot);
+
+    /**
+     * Applies delta state WITHOUT rendering.
+     * <p>
+     * Used for sampling mode optimization where multiple deltas need to be
+     * applied before rendering. Call {@link #renderCurrentState()} after
+     * applying all deltas to produce the frame.
+     *
+     * @param delta The delta containing only changed cells.
+     */
+    void applyDeltaState(TickDelta delta);
+
+    /**
+     * Renders the current internal state to pixels.
+     * <p>
+     * Call after {@link #applySnapshotState(TickData)} and/or
+     * {@link #applyDeltaState(TickDelta)} to produce the frame.
+     *
+     * @return The pixel buffer of the rendered frame.
+     */
+    int[] renderCurrentState();
 
     /**
      * Returns the underlying BufferedImage for overlay rendering.

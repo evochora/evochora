@@ -204,26 +204,77 @@ public class VideoRenderEngine {
                 }
             }
         } else {
-            // ==== SAMPLING MODE (uses renderTick with delta decompression) ====
-            // Only render ticks that match the sampling interval
+            // ==== SAMPLING MODE (optimized: use accumulated deltas as shortcuts) ====
             long chunkFirstTick = chunk.getFirstTick();
             long chunkLastTick = chunk.getLastTick();
 
-            // Find first sample tick in this chunk
-            long firstSampleTick = ((Math.max(chunkFirstTick, effectiveStartTick) + samplingInterval - 1)
-                    / samplingInterval) * samplingInterval;
+            // Check if this chunk contains any sample ticks we need
+            long rangeStart = Math.max(chunkFirstTick, effectiveStartTick);
+            long rangeEnd = Math.min(chunkLastTick, effectiveEndTick);
+            long firstSampleInRange = ((rangeStart + samplingInterval - 1) / samplingInterval) * samplingInterval;
 
-            for (long tick = firstSampleTick; tick <= Math.min(chunkLastTick, effectiveEndTick); tick += samplingInterval) {
-                try {
-                    int[] pixelData = renderer.renderTick(chunk, tick);
-                    convertToBgra(pixelData, bgraBuffer);
-                    ByteBuffer buffer = ByteBuffer.wrap(bgraBuffer);
-                    buffer.order(ByteOrder.LITTLE_ENDIAN);
-                    channel.write(buffer);
-                    framesWritten++;
-                } catch (org.evochora.datapipeline.api.delta.ChunkCorruptedException e) {
-                    System.err.println("Warning: Failed to render tick " + tick + ": " + e.getMessage());
+            if (firstSampleInRange > rangeEnd) {
+                // No sample ticks in this chunk - SKIP entirely
+                return framesWritten;
+            }
+
+            // This chunk has sample ticks - process it using optimized state-only methods
+            TickData snapshot = chunk.getSnapshot();
+            long snapshotTick = snapshot.getTickNumber();
+
+            // Check if snapshot tick itself is a sample tick
+            if (snapshotTick >= effectiveStartTick && snapshotTick <= effectiveEndTick
+                    && snapshotTick % samplingInterval == 0) {
+                int[] pixelData = renderer.renderSnapshot(snapshot);
+                convertToBgra(pixelData, bgraBuffer);
+                ByteBuffer buffer = ByteBuffer.wrap(bgraBuffer);
+                buffer.order(ByteOrder.LITTLE_ENDIAN);
+                channel.write(buffer);
+                framesWritten++;
+            }
+
+            // Process sample ticks in this chunk using accumulated delta shortcuts
+            List<TickDelta> deltas = chunk.getDeltasList();
+            long currentSampleTick = firstSampleInRange;
+
+            // Skip if snapshot was already the sample tick
+            if (currentSampleTick == snapshotTick) {
+                currentSampleTick += samplingInterval;
+            }
+
+            while (currentSampleTick <= rangeEnd) {
+                // Reset state from snapshot (state-only, no rendering!)
+                renderer.applySnapshotState(snapshot);
+
+                // Find the best starting point: latest accumulated delta <= currentSampleTick
+                int startIdx = 0;
+                for (int i = 0; i < deltas.size(); i++) {
+                    TickDelta d = deltas.get(i);
+                    if (d.getTickNumber() > currentSampleTick) break;
+                    if (d.getDeltaType() == org.evochora.datapipeline.api.contracts.DeltaType.ACCUMULATED) {
+                        startIdx = i;
+                    }
                 }
+
+                // Apply deltas from startIdx to currentSampleTick (state-only, no rendering!)
+                for (int i = startIdx; i < deltas.size(); i++) {
+                    TickDelta delta = deltas.get(i);
+                    long deltaTick = delta.getTickNumber();
+                    if (deltaTick > currentSampleTick) break;
+
+                    renderer.applyDeltaState(delta);
+                }
+
+                // Now render once and write the frame
+                int[] pixelData = renderer.renderCurrentState();
+                convertToBgra(pixelData, bgraBuffer);
+                ByteBuffer buffer = ByteBuffer.wrap(bgraBuffer);
+                buffer.order(ByteOrder.LITTLE_ENDIAN);
+                channel.write(buffer);
+                framesWritten++;
+
+                // Move to next sample tick
+                currentSampleTick += samplingInterval;
             }
         }
 
@@ -262,21 +313,69 @@ public class VideoRenderEngine {
                 }
             }
         } else {
-            // ==== SAMPLING MODE (uses renderTick with delta decompression) ====
+            // ==== SAMPLING MODE (optimized: use accumulated deltas as shortcuts) ====
             long chunkFirstTick = chunk.getFirstTick();
             long chunkLastTick = chunk.getLastTick();
 
-            // Find first sample tick in this chunk
-            long firstSampleTick = ((Math.max(chunkFirstTick, effectiveStartTick) + samplingInterval - 1)
-                    / samplingInterval) * samplingInterval;
+            // Check if this chunk contains any sample ticks we need
+            long rangeStart = Math.max(chunkFirstTick, effectiveStartTick);
+            long rangeEnd = Math.min(chunkLastTick, effectiveEndTick);
+            long firstSampleInRange = ((rangeStart + samplingInterval - 1) / samplingInterval) * samplingInterval;
 
-            for (long tick = firstSampleTick; tick <= Math.min(chunkLastTick, effectiveEndTick); tick += samplingInterval) {
-                try {
-                    int[] pixelData = renderer.renderTick(chunk, tick);
-                    frames.add(new RenderedFrame(convertToBgraNew(pixelData)));
-                } catch (org.evochora.datapipeline.api.delta.ChunkCorruptedException e) {
-                    System.err.println("Warning: Failed to render tick " + tick + ": " + e.getMessage());
+            if (firstSampleInRange > rangeEnd) {
+                // No sample ticks in this chunk - SKIP entirely
+                return new RenderedChunk(frames);
+            }
+
+            // This chunk has sample ticks - process it using optimized state-only methods
+            TickData snapshot = chunk.getSnapshot();
+            long snapshotTick = snapshot.getTickNumber();
+
+            // Check if snapshot tick itself is a sample tick
+            if (snapshotTick >= effectiveStartTick && snapshotTick <= effectiveEndTick
+                    && snapshotTick % samplingInterval == 0) {
+                int[] pixelData = renderer.renderSnapshot(snapshot);
+                frames.add(new RenderedFrame(convertToBgraNew(pixelData)));
+            }
+
+            // Process sample ticks in this chunk using accumulated delta shortcuts
+            List<TickDelta> deltas = chunk.getDeltasList();
+            long currentSampleTick = firstSampleInRange;
+
+            // Skip if snapshot was already the sample tick
+            if (currentSampleTick == snapshotTick) {
+                currentSampleTick += samplingInterval;
+            }
+
+            while (currentSampleTick <= rangeEnd) {
+                // Reset state from snapshot (state-only, no rendering!)
+                renderer.applySnapshotState(snapshot);
+
+                // Find the best starting point: latest accumulated delta <= currentSampleTick
+                int startIdx = 0;
+                for (int i = 0; i < deltas.size(); i++) {
+                    TickDelta d = deltas.get(i);
+                    if (d.getTickNumber() > currentSampleTick) break;
+                    if (d.getDeltaType() == org.evochora.datapipeline.api.contracts.DeltaType.ACCUMULATED) {
+                        startIdx = i;
+                    }
                 }
+
+                // Apply deltas from startIdx to currentSampleTick (state-only, no rendering!)
+                for (int i = startIdx; i < deltas.size(); i++) {
+                    TickDelta delta = deltas.get(i);
+                    long deltaTick = delta.getTickNumber();
+                    if (deltaTick > currentSampleTick) break;
+
+                    renderer.applyDeltaState(delta);
+                }
+
+                // Now render once and store the frame
+                int[] pixelData = renderer.renderCurrentState();
+                frames.add(new RenderedFrame(convertToBgraNew(pixelData)));
+
+                // Move to next sample tick
+                currentSampleTick += samplingInterval;
             }
         }
 
@@ -560,6 +659,40 @@ public class VideoRenderEngine {
                 for (StoragePath batchPath : allBatchPaths) {
                     if (shutdownRequested.get()) break;
 
+                    // OPTIMIZATION: Skip batch files that don't contain any sample ticks
+                    // Parse tick range from filename (e.g., "batch_0_99.pb")
+                    if (options.samplingInterval > 1) {
+                        String filename = batchPath.asString();
+                        int batchIdx = filename.lastIndexOf("/batch_");
+                        if (batchIdx >= 0) {
+                            String batchName = filename.substring(batchIdx + 7);
+                            int firstUnderscore = batchName.indexOf('_');
+                            int dotPbIdx = batchName.indexOf(".pb");
+                            if (firstUnderscore > 0 && dotPbIdx > firstUnderscore) {
+                                try {
+                                    long batchStartTick = Long.parseLong(batchName.substring(0, firstUnderscore));
+                                    long batchEndTick = Long.parseLong(batchName.substring(firstUnderscore + 1, dotPbIdx));
+
+                                    // Check if batch overlaps with effective range
+                                    long rangeStart = Math.max(batchStartTick, effectiveStartTick);
+                                    long rangeEnd = Math.min(batchEndTick, effectiveEndTick);
+
+                                    if (rangeStart > rangeEnd) {
+                                        continue; // Batch outside our range - skip entirely
+                                    }
+
+                                    // Check if batch contains any sample ticks
+                                    long firstSampleInRange = ((rangeStart + options.samplingInterval - 1) / options.samplingInterval) * options.samplingInterval;
+                                    if (firstSampleInRange > rangeEnd) {
+                                        continue; // No sample ticks in this batch - skip loading!
+                                    }
+                                } catch (NumberFormatException e) {
+                                    // Can't parse, load anyway
+                                }
+                            }
+                        }
+                    }
+
                     List<TickDataChunk> chunks = storage.readChunkBatch(batchPath);
 
                     for (TickDataChunk chunk : chunks) {
@@ -644,6 +777,40 @@ public class VideoRenderEngine {
 
                 for (StoragePath batchPath : allBatchPaths) {
                     if (shutdownRequested.get()) break;
+
+                    // OPTIMIZATION: Skip batch files that don't contain any sample ticks
+                    // Parse tick range from filename (e.g., "batch_0_99.pb")
+                    if (options.samplingInterval > 1) {
+                        String filename = batchPath.asString();
+                        int batchIdx = filename.lastIndexOf("/batch_");
+                        if (batchIdx >= 0) {
+                            String batchName = filename.substring(batchIdx + 7);
+                            int firstUnderscore = batchName.indexOf('_');
+                            int dotPbIdx = batchName.indexOf(".pb");
+                            if (firstUnderscore > 0 && dotPbIdx > firstUnderscore) {
+                                try {
+                                    long batchStartTick = Long.parseLong(batchName.substring(0, firstUnderscore));
+                                    long batchEndTick = Long.parseLong(batchName.substring(firstUnderscore + 1, dotPbIdx));
+
+                                    // Check if batch overlaps with effective range
+                                    long rangeStart = Math.max(batchStartTick, effectiveStartTick);
+                                    long rangeEnd = Math.min(batchEndTick, effectiveEndTick);
+
+                                    if (rangeStart > rangeEnd) {
+                                        continue; // Batch outside our range - skip entirely
+                                    }
+
+                                    // Check if batch contains any sample ticks
+                                    long firstSampleInRange = ((rangeStart + options.samplingInterval - 1) / options.samplingInterval) * options.samplingInterval;
+                                    if (firstSampleInRange > rangeEnd) {
+                                        continue; // No sample ticks in this batch - skip loading!
+                                    }
+                                } catch (NumberFormatException e) {
+                                    // Can't parse, load anyway
+                                }
+                            }
+                        }
+                    }
 
                     List<TickDataChunk> chunks = storage.readChunkBatch(batchPath);
 

@@ -6,10 +6,7 @@ import java.util.List;
 import java.util.concurrent.Callable;
 
 import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TickDelta;
-import org.evochora.datapipeline.api.delta.ChunkCorruptedException;
-import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.runtime.model.EnvironmentProperties;
 
 import picocli.CommandLine.Mixin;
@@ -64,12 +61,6 @@ public abstract class AbstractFrameRenderer implements IVideoFrameRenderer, Call
     protected byte[] bgraBuffer;
 
     /**
-     * Delta decoder for decompressing ticks from chunks.
-     * Used by {@link #renderTick(TickDataChunk, long)} for sampling.
-     */
-    private DeltaCodec.Decoder decoder;
-
-    /**
      * Initializes the renderer with environment properties.
      * <p>
      * Subclasses that need additional initialization should override this method
@@ -80,7 +71,6 @@ public abstract class AbstractFrameRenderer implements IVideoFrameRenderer, Call
     @Override
     public void init(EnvironmentProperties envProps) {
         this.envProps = envProps;
-        this.decoder = new DeltaCodec.Decoder(envProps);
     }
 
     /**
@@ -129,21 +119,45 @@ public abstract class AbstractFrameRenderer implements IVideoFrameRenderer, Call
     }
 
     /**
-     * Renders a specific tick from a chunk using delta decompression.
+     * Applies snapshot state without rendering.
      * <p>
-     * Internally uses {@link DeltaCodec.Decoder} which leverages accumulated
-     * deltas as shortcuts for efficiency. The decompressed tick is then
-     * rendered via {@link #renderSnapshot(TickData)}.
+     * Default implementation calls {@link #doRenderSnapshot(TickData)} for backwards
+     * compatibility. Subclasses should override for optimized sampling mode.
      *
-     * @param chunk The chunk containing the target tick.
-     * @param tickNumber The tick number to render.
-     * @return The pixel buffer of the rendered frame (with overlays applied).
-     * @throws ChunkCorruptedException if the chunk is corrupt or tick not found.
+     * @param snapshot The snapshot tick data.
      */
     @Override
-    public final int[] renderTick(TickDataChunk chunk, long tickNumber) throws ChunkCorruptedException {
-        TickData fullTick = decoder.decompressTick(chunk, tickNumber);
-        return renderSnapshot(fullTick);
+    public void applySnapshotState(TickData snapshot) {
+        // Default: just render (includes state update)
+        doRenderSnapshot(snapshot);
+    }
+
+    /**
+     * Applies delta state without rendering.
+     * <p>
+     * Default implementation calls {@link #doRenderDelta(TickDelta)} for backwards
+     * compatibility. Subclasses should override for optimized sampling mode.
+     *
+     * @param delta The delta data.
+     */
+    @Override
+    public void applyDeltaState(TickDelta delta) {
+        // Default: just render (includes state update)
+        doRenderDelta(delta);
+    }
+
+    /**
+     * Renders the current internal state.
+     * <p>
+     * Default implementation returns the frame buffer directly.
+     * Subclasses should override if state needs to be converted to pixels.
+     *
+     * @return The pixel buffer.
+     */
+    @Override
+    public int[] renderCurrentState() {
+        // Default: return current frame (assumes doRender* already drew it)
+        return ((java.awt.image.DataBufferInt) getFrame().getRaster().getDataBuffer()).getData();
     }
 
     /**

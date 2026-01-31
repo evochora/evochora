@@ -2,7 +2,6 @@ package org.evochora.cli.rendering.frame;
 
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.runtime.Config;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
