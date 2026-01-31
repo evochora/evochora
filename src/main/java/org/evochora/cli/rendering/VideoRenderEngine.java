@@ -10,11 +10,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.evochora.cli.CliResourceFactory;
+import org.evochora.datapipeline.api.contracts.DeltaType;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
@@ -26,17 +29,14 @@ import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.evochora.runtime.model.EnvironmentProperties;
 
 import com.typesafe.config.Config;
+import com.typesafe.config.ConfigException;
 import com.typesafe.config.ConfigFactory;
 
 /**
  * Video rendering engine that orchestrates the rendering pipeline.
  * <p>
- * This class contains the core rendering logic, handling config loading,
- * storage access, ffmpeg process management, and single/multi-threaded
- * rendering loops.
- * <p>
- * The logic is extracted 1:1 from RenderVideoCommand to ensure all
- * performance optimizations are preserved.
+ * Handles config loading, storage access, ffmpeg process management,
+ * and single/multi-threaded rendering loops with optimized sampling support.
  */
 public class VideoRenderEngine {
 
@@ -45,886 +45,98 @@ public class VideoRenderEngine {
     private final VideoRenderOptions options;
     private final IVideoFrameRenderer frameRenderer;
 
-    /**
-     * Represents a rendered chunk with all its frames ready to be written.
-     */
-    private static class RenderedChunk {
-        final List<RenderedFrame> frames;
-
-        RenderedChunk(List<RenderedFrame> frames) {
-            this.frames = frames;
-        }
-    }
-
-    /**
-     * Represents a single rendered frame ready to be written to ffmpeg.
-     */
-    private static class RenderedFrame {
-        final byte[] frameData;
-
-        RenderedFrame(byte[] frameData) {
-            this.frameData = frameData;
-        }
-    }
-
-    /**
-     * Creates a new video render engine.
-     *
-     * @param options The video rendering options.
-     * @param frameRenderer The frame renderer to use.
-     */
     public VideoRenderEngine(VideoRenderOptions options, IVideoFrameRenderer frameRenderer) {
         this.options = options;
         this.frameRenderer = frameRenderer;
     }
 
     /**
-     * Formats milliseconds into a human-readable time string.
-     */
-    private String formatTime(long milliseconds) {
-        if (milliseconds < 0) return "?";
-        long seconds = milliseconds / 1000;
-        long hours = seconds / 3600;
-        long minutes = (seconds % 3600) / 60;
-        long secs = seconds % 60;
-        if (hours > 0) {
-            return String.format("%d:%02d:%02d", hours, minutes, secs);
-        } else {
-            return String.format("%d:%02d", minutes, secs);
-        }
-    }
-
-    /**
-     * Converts pixel data (RGB int array) to BGRA byte array.
-     * <p>
-     * Writes into the provided buffer to avoid per-frame allocation.
-     *
-     * @param pixelData Source RGB pixel data.
-     * @param buffer Target BGRA buffer (must be pixelData.length * 4 bytes).
-     */
-    private void convertToBgra(int[] pixelData, byte[] buffer) {
-        int bufferIndex = 0;
-        for (int rgb : pixelData) {
-            buffer[bufferIndex++] = (byte) (rgb & 0xFF);
-            buffer[bufferIndex++] = (byte) ((rgb >> 8) & 0xFF);
-            buffer[bufferIndex++] = (byte) ((rgb >> 16) & 0xFF);
-            buffer[bufferIndex++] = (byte) 255;
-        }
-    }
-
-    /**
-     * Converts pixel data to a new BGRA byte array.
-     * <p>
-     * Used in multi-threaded rendering where frames must be stored.
-     * Single-threaded rendering uses {@link #convertToBgra(int[], byte[])} instead.
-     *
-     * @param pixelData Source RGB pixel data.
-     * @return New BGRA byte array.
-     */
-    private byte[] convertToBgraNew(int[] pixelData) {
-        byte[] buffer = new byte[pixelData.length * 4];
-        convertToBgra(pixelData, buffer);
-        return buffer;
-    }
-
-    /**
-     * Loads overlay renderers by name via reflection.
-     *
-     * @param names List of overlay names (e.g., "info")
-     * @return List of instantiated overlay renderers
-     */
-    private List<IOverlayRenderer> loadOverlays(List<String> names) {
-        List<IOverlayRenderer> overlays = new ArrayList<>();
-        if (names == null || names.isEmpty()) {
-            return overlays;
-        }
-
-        for (String name : names) {
-            String className = "org.evochora.cli.rendering.overlay."
-                + capitalize(name) + "OverlayRenderer";
-            try {
-                Class<?> clazz = Class.forName(className);
-                IOverlayRenderer overlay = (IOverlayRenderer) clazz.getDeclaredConstructor().newInstance();
-                overlays.add(overlay);
-            } catch (Exception e) {
-                System.err.println("Warning: Failed to load overlay '" + name + "': " + e.getMessage());
-            }
-        }
-        return overlays;
-    }
-
-    private String capitalize(String s) {
-        if (s == null || s.isEmpty()) return s;
-        return s.substring(0, 1).toUpperCase() + s.substring(1).toLowerCase();
-    }
-
-    /**
-     * Renders a single chunk and writes frames directly to the channel.
-     * Used for single-threaded rendering to avoid memory accumulation.
-     * <p>
-     * For samplingInterval=1: Uses incremental rendering (renderSnapshot + renderDelta).
-     * For samplingInterval>1: Uses renderTick() with delta decompression (only renders needed ticks).
-     *
-     * @return number of frames written
-     */
-    private long renderAndWriteChunkDirect(TickDataChunk chunk,
-                                            IVideoFrameRenderer renderer,
-                                            WritableByteChannel channel,
-                                            long effectiveStartTick, long effectiveEndTick,
-                                            int samplingInterval) throws java.io.IOException {
-        long framesWritten = 0;
-        byte[] bgraBuffer = renderer.getBgraBuffer();
-
-        if (samplingInterval == 1) {
-            // ==== INCREMENTAL RENDERING (fastest path) ====
-            // Render snapshot
-            TickData snapshot = chunk.getSnapshot();
-            long snapshotTick = snapshot.getTickNumber();
-            int[] pixelData = renderer.renderSnapshot(snapshot);
-
-            if (snapshotTick >= effectiveStartTick && snapshotTick <= effectiveEndTick) {
-                convertToBgra(pixelData, bgraBuffer);
-                ByteBuffer buffer = ByteBuffer.wrap(bgraBuffer);
-                buffer.order(ByteOrder.LITTLE_ENDIAN);
-                channel.write(buffer);
-                framesWritten++;
-            }
-
-            // Render deltas incrementally
-            for (TickDelta delta : chunk.getDeltasList()) {
-                long deltaTick = delta.getTickNumber();
-                pixelData = renderer.renderDelta(delta);
-
-                if (deltaTick >= effectiveStartTick && deltaTick <= effectiveEndTick) {
-                    convertToBgra(pixelData, bgraBuffer);
-                    ByteBuffer buffer = ByteBuffer.wrap(bgraBuffer);
-                    buffer.order(ByteOrder.LITTLE_ENDIAN);
-                    channel.write(buffer);
-                    framesWritten++;
-                }
-            }
-        } else {
-            // ==== SAMPLING MODE (optimized: use accumulated deltas as shortcuts) ====
-            long chunkFirstTick = chunk.getFirstTick();
-            long chunkLastTick = chunk.getLastTick();
-
-            // Check if this chunk contains any sample ticks we need
-            long rangeStart = Math.max(chunkFirstTick, effectiveStartTick);
-            long rangeEnd = Math.min(chunkLastTick, effectiveEndTick);
-            long firstSampleInRange = ((rangeStart + samplingInterval - 1) / samplingInterval) * samplingInterval;
-
-            if (firstSampleInRange > rangeEnd) {
-                // No sample ticks in this chunk - SKIP entirely
-                return framesWritten;
-            }
-
-            // This chunk has sample ticks - process it using optimized state-only methods
-            TickData snapshot = chunk.getSnapshot();
-            long snapshotTick = snapshot.getTickNumber();
-
-            // Check if snapshot tick itself is a sample tick
-            if (snapshotTick >= effectiveStartTick && snapshotTick <= effectiveEndTick
-                    && snapshotTick % samplingInterval == 0) {
-                int[] pixelData = renderer.renderSnapshot(snapshot);
-                convertToBgra(pixelData, bgraBuffer);
-                ByteBuffer buffer = ByteBuffer.wrap(bgraBuffer);
-                buffer.order(ByteOrder.LITTLE_ENDIAN);
-                channel.write(buffer);
-                framesWritten++;
-            }
-
-            // Process sample ticks in this chunk using accumulated delta shortcuts
-            List<TickDelta> deltas = chunk.getDeltasList();
-            long currentSampleTick = firstSampleInRange;
-
-            // Skip if snapshot was already the sample tick
-            if (currentSampleTick == snapshotTick) {
-                currentSampleTick += samplingInterval;
-            }
-
-            while (currentSampleTick <= rangeEnd) {
-                // Reset state from snapshot (state-only, no rendering!)
-                renderer.applySnapshotState(snapshot);
-
-                // Find the best starting point: latest accumulated delta <= currentSampleTick
-                int startIdx = 0;
-                for (int i = 0; i < deltas.size(); i++) {
-                    TickDelta d = deltas.get(i);
-                    if (d.getTickNumber() > currentSampleTick) break;
-                    if (d.getDeltaType() == org.evochora.datapipeline.api.contracts.DeltaType.ACCUMULATED) {
-                        startIdx = i;
-                    }
-                }
-
-                // Apply deltas from startIdx to currentSampleTick (state-only, no rendering!)
-                for (int i = startIdx; i < deltas.size(); i++) {
-                    TickDelta delta = deltas.get(i);
-                    long deltaTick = delta.getTickNumber();
-                    if (deltaTick > currentSampleTick) break;
-
-                    renderer.applyDeltaState(delta);
-                }
-
-                // Now render once and write the frame
-                int[] pixelData = renderer.renderCurrentState();
-                convertToBgra(pixelData, bgraBuffer);
-                ByteBuffer buffer = ByteBuffer.wrap(bgraBuffer);
-                buffer.order(ByteOrder.LITTLE_ENDIAN);
-                channel.write(buffer);
-                framesWritten++;
-
-                // Move to next sample tick
-                currentSampleTick += samplingInterval;
-            }
-        }
-
-        return framesWritten;
-    }
-
-    /**
-     * Renders a single chunk and returns all frames.
-     * Used for multi-threaded rendering where frames need to be buffered.
-     * <p>
-     * For samplingInterval=1: Uses incremental rendering (renderSnapshot + renderDelta).
-     * For samplingInterval>1: Uses renderTick() with delta decompression (only renders needed ticks).
-     */
-    private RenderedChunk renderChunk(TickDataChunk chunk, long chunkIndex,
-                                       IVideoFrameRenderer renderer,
-                                       long effectiveStartTick, long effectiveEndTick,
-                                       int samplingInterval) {
-        List<RenderedFrame> frames = new ArrayList<>();
-
-        if (samplingInterval == 1) {
-            // ==== INCREMENTAL RENDERING (fastest path) ====
-            TickData snapshot = chunk.getSnapshot();
-            long snapshotTick = snapshot.getTickNumber();
-            int[] pixelData = renderer.renderSnapshot(snapshot);
-
-            if (snapshotTick >= effectiveStartTick && snapshotTick <= effectiveEndTick) {
-                frames.add(new RenderedFrame(convertToBgraNew(pixelData)));
-            }
-
-            for (TickDelta delta : chunk.getDeltasList()) {
-                long deltaTick = delta.getTickNumber();
-                pixelData = renderer.renderDelta(delta);
-
-                if (deltaTick >= effectiveStartTick && deltaTick <= effectiveEndTick) {
-                    frames.add(new RenderedFrame(convertToBgraNew(pixelData)));
-                }
-            }
-        } else {
-            // ==== SAMPLING MODE (optimized: use accumulated deltas as shortcuts) ====
-            long chunkFirstTick = chunk.getFirstTick();
-            long chunkLastTick = chunk.getLastTick();
-
-            // Check if this chunk contains any sample ticks we need
-            long rangeStart = Math.max(chunkFirstTick, effectiveStartTick);
-            long rangeEnd = Math.min(chunkLastTick, effectiveEndTick);
-            long firstSampleInRange = ((rangeStart + samplingInterval - 1) / samplingInterval) * samplingInterval;
-
-            if (firstSampleInRange > rangeEnd) {
-                // No sample ticks in this chunk - SKIP entirely
-                return new RenderedChunk(frames);
-            }
-
-            // This chunk has sample ticks - process it using optimized state-only methods
-            TickData snapshot = chunk.getSnapshot();
-            long snapshotTick = snapshot.getTickNumber();
-
-            // Check if snapshot tick itself is a sample tick
-            if (snapshotTick >= effectiveStartTick && snapshotTick <= effectiveEndTick
-                    && snapshotTick % samplingInterval == 0) {
-                int[] pixelData = renderer.renderSnapshot(snapshot);
-                frames.add(new RenderedFrame(convertToBgraNew(pixelData)));
-            }
-
-            // Process sample ticks in this chunk using accumulated delta shortcuts
-            List<TickDelta> deltas = chunk.getDeltasList();
-            long currentSampleTick = firstSampleInRange;
-
-            // Skip if snapshot was already the sample tick
-            if (currentSampleTick == snapshotTick) {
-                currentSampleTick += samplingInterval;
-            }
-
-            while (currentSampleTick <= rangeEnd) {
-                // Reset state from snapshot (state-only, no rendering!)
-                renderer.applySnapshotState(snapshot);
-
-                // Find the best starting point: latest accumulated delta <= currentSampleTick
-                int startIdx = 0;
-                for (int i = 0; i < deltas.size(); i++) {
-                    TickDelta d = deltas.get(i);
-                    if (d.getTickNumber() > currentSampleTick) break;
-                    if (d.getDeltaType() == org.evochora.datapipeline.api.contracts.DeltaType.ACCUMULATED) {
-                        startIdx = i;
-                    }
-                }
-
-                // Apply deltas from startIdx to currentSampleTick (state-only, no rendering!)
-                for (int i = startIdx; i < deltas.size(); i++) {
-                    TickDelta delta = deltas.get(i);
-                    long deltaTick = delta.getTickNumber();
-                    if (deltaTick > currentSampleTick) break;
-
-                    renderer.applyDeltaState(delta);
-                }
-
-                // Now render once and store the frame
-                int[] pixelData = renderer.renderCurrentState();
-                frames.add(new RenderedFrame(convertToBgraNew(pixelData)));
-
-                // Move to next sample tick
-                currentSampleTick += samplingInterval;
-            }
-        }
-
-        return new RenderedChunk(frames);
-    }
-
-    /**
      * Executes the video rendering pipeline.
-     * <p>
-     * This method is a 1:1 copy of the original RenderVideoCommand.call() logic,
-     * with variable references changed from this.xyz to options.xyz.
      *
      * @return Exit code (0 for success, non-zero for failure).
-     * @throws Exception if rendering fails.
      */
     public Integer execute() throws Exception {
-        // Normalize output file path
-        File outputFile = options.outputFile;
-        String outputPath = outputFile.getPath();
-        if (outputPath.startsWith("~/") || outputPath.equals("~")) {
-            String homeDir = System.getProperty("user.home");
-            outputPath = outputPath.replaceFirst("^~", homeDir);
-            outputFile = new File(outputPath);
-        } else if (!outputFile.isAbsolute()) {
-            outputFile = outputFile.getAbsoluteFile();
-        }
+        // Load configuration
+        Config config = loadConfig();
+        if (config == null) return 1;
 
-        // Load config
-        Config config;
-        try {
-            if (options.configFile != null) {
-                if (!options.configFile.exists()) {
-                    System.err.println("Configuration file not found: " + options.configFile.getAbsolutePath());
-                    return 1;
-                }
-                System.out.println("Using configuration file: " + options.configFile.getAbsolutePath());
-                config = ConfigFactory.systemProperties()
-                    .withFallback(ConfigFactory.systemEnvironment())
-                    .withFallback(ConfigFactory.parseFile(options.configFile))
-                    .withFallback(ConfigFactory.load())
-                    .resolve();
-            } else {
-                final File defaultConfFile = new File(CONFIG_FILE_NAME);
-                if (defaultConfFile.exists()) {
-                    System.out.println("Using configuration file: " + defaultConfFile.getAbsolutePath());
-                    config = ConfigFactory.systemProperties()
-                        .withFallback(ConfigFactory.systemEnvironment())
-                        .withFallback(ConfigFactory.parseFile(defaultConfFile))
-                        .withFallback(ConfigFactory.load())
-                        .resolve();
-                } else {
-                    System.out.println("Warning: No 'evochora.conf' found. Using defaults.");
-                    config = ConfigFactory.systemProperties()
-                        .withFallback(ConfigFactory.systemEnvironment())
-                        .withFallback(ConfigFactory.load())
-                        .resolve();
-                }
-            }
-        } catch (com.typesafe.config.ConfigException e) {
-            System.err.println("Failed to load configuration: " + e.getMessage());
-            return 1;
-        }
+        // Initialize storage
+        IBatchStorageRead storage = initializeStorage(config);
+        if (storage == null) return 1;
 
-        String storageConfigPath = "pipeline.resources." + options.storageName;
-        if (!config.hasPath(storageConfigPath)) {
-            System.err.println("Storage resource '" + options.storageName + "' not configured.");
-            return 1;
-        }
-        Config storageConfig = config.getConfig(storageConfigPath);
+        // Resolve run ID
+        String targetRunId = resolveRunId(storage);
+        if (targetRunId == null) return 1;
 
-        IBatchStorageRead storage = CliResourceFactory.create("cli-video-renderer", IBatchStorageRead.class, storageConfig);
-        System.out.println("Using storage: " + options.storageName + " (" + storage.getClass().getSimpleName() + ")");
+        // Load metadata and initialize renderer
+        EnvironmentProperties envProps = loadMetadataAndInit(storage, targetRunId);
+        if (envProps == null) return 1;
 
-        String targetRunId = options.runId;
-        if (targetRunId == null) {
-            System.out.println("No run-id specified, discovering latest run...");
-            List<String> runIds = storage.listRunIds(java.time.Instant.EPOCH);
-            if (runIds.isEmpty()) {
-                System.err.println("No simulation runs found.");
-                return 1;
-            }
-            targetRunId = runIds.get(runIds.size() - 1);
-            System.out.println("Found latest run: " + targetRunId);
-        }
+        // Scan batch files and determine tick range
+        BatchScanResult scanResult = scanBatchFiles(storage, targetRunId);
 
-        System.out.println("Reading metadata...");
-        java.util.Optional<StoragePath> metadataPathOpt = storage.findMetadataPath(targetRunId);
-        if (metadataPathOpt.isEmpty()) {
-            System.err.println("Metadata not found for run: " + targetRunId);
-            return 1;
-        }
+        // Calculate effective tick range
+        long effectiveStartTick = options.startTick != null ? options.startTick : 0;
+        long effectiveEndTick = options.endTick != null ? options.endTick : Long.MAX_VALUE;
+        long totalFrames = calculateTotalFrames(scanResult, effectiveStartTick, effectiveEndTick);
 
-        SimulationMetadata metadata = storage.readMessage(metadataPathOpt.get(), SimulationMetadata.parser());
-        EnvironmentProperties envProps = new EnvironmentProperties(
-            MetadataConfigHelper.getEnvironmentShape(metadata),
-            MetadataConfigHelper.isEnvironmentToroidal(metadata)
-        );
+        // Resolve output file and format
+        File outputFile = resolveOutputFile();
+        String format = resolveFormat(outputFile);
 
-        // Initialize renderer with environment properties
-        frameRenderer.init(envProps);
+        // Start ffmpeg
+        Process ffmpeg = startFfmpeg(outputFile, format);
+        if (ffmpeg == null) return 1;
 
-        // Load and set overlay renderers on the renderer
-        // Overlays are applied automatically during renderSnapshot/renderDelta
-        frameRenderer.setOverlays(loadOverlays(options.overlayNames));
+        // Start ffmpeg output reader
+        AtomicBoolean ffmpegDied = new AtomicBoolean(false);
+        AtomicReference<String> lastFfmpegOutput = new AtomicReference<>("");
+        Thread outputReader = startFfmpegOutputReader(ffmpeg, ffmpegDied, lastFfmpegOutput);
 
         int width = frameRenderer.getImageWidth();
         int height = frameRenderer.getImageHeight();
-
-        long effectiveStartTick = options.startTick != null ? options.startTick : 0;
-        long effectiveEndTick = options.endTick != null ? options.endTick : Long.MAX_VALUE;
-
-        // Determine output format
-        String format = options.format;
-        outputPath = outputFile.getAbsolutePath();
-        String outPathLower = outputPath.toLowerCase();
-        String formatLower = format.toLowerCase();
-        String currentExtension = "";
-        int lastDot = outPathLower.lastIndexOf('.');
-        if (lastDot > 0 && lastDot < outPathLower.length() - 1) {
-            currentExtension = outPathLower.substring(lastDot + 1);
-        }
-        if (!currentExtension.equals(formatLower)) {
-            format = formatLower;
-            if (lastDot > 0) {
-                outputPath = outputPath.substring(0, lastDot) + "." + format;
-            } else {
-                outputPath = outputPath + "." + format;
-            }
-            outputFile = new File(outputPath);
-        } else {
-            format = currentExtension;
-        }
-
-        // Build ffmpeg command
-        java.util.List<String> ffmpegArgs = new java.util.ArrayList<>();
-        ffmpegArgs.add("ffmpeg");
-        ffmpegArgs.add("-y");
-        ffmpegArgs.add("-f"); ffmpegArgs.add("rawvideo");
-        ffmpegArgs.add("-vcodec"); ffmpegArgs.add("rawvideo");
-        ffmpegArgs.add("-s"); ffmpegArgs.add(width + "x" + height);
-        ffmpegArgs.add("-pix_fmt"); ffmpegArgs.add("bgra");
-        ffmpegArgs.add("-r"); ffmpegArgs.add(String.valueOf(options.fps));
-        ffmpegArgs.add("-i"); ffmpegArgs.add("-");
-
-        switch (format.toLowerCase()) {
-            case "mp4":
-                ffmpegArgs.add("-c:v"); ffmpegArgs.add("libx264");
-                ffmpegArgs.add("-preset"); ffmpegArgs.add(options.preset);
-                ffmpegArgs.add("-crf"); ffmpegArgs.add("18");
-                ffmpegArgs.add("-movflags"); ffmpegArgs.add("+frag_keyframe+empty_moov");
-                break;
-            case "webm":
-                ffmpegArgs.add("-c:v"); ffmpegArgs.add("libvpx-vp9");
-                ffmpegArgs.add("-crf"); ffmpegArgs.add("10");
-                ffmpegArgs.add("-b:v"); ffmpegArgs.add("0");
-                break;
-            default:
-                ffmpegArgs.add("-c:v"); ffmpegArgs.add("libx264");
-                ffmpegArgs.add("-preset"); ffmpegArgs.add(options.preset);
-                break;
-        }
-        ffmpegArgs.add("-pix_fmt"); ffmpegArgs.add("yuv420p");
-
-        ffmpegArgs.add(outputFile.getAbsolutePath());
-
-        ProcessBuilder pb = new ProcessBuilder(ffmpegArgs);
-        pb.redirectErrorStream(true);
-
-        Process ffmpeg;
-        try {
-            ffmpeg = pb.start();
-        } catch (Exception e) {
-            System.err.println("Failed to start ffmpeg: " + e.getMessage());
-            return 1;
-        }
-
-        // FFmpeg output reader
-        final Process finalFfmpeg = ffmpeg;
-        final boolean showDebugOutput = options.verbose;
-        AtomicBoolean ffmpegDied = new AtomicBoolean(false);
-        java.util.concurrent.atomic.AtomicReference<String> lastFfmpegOutput = new java.util.concurrent.atomic.AtomicReference<>("");
-        Thread outputReader = new Thread(() -> {
-            try (java.io.InputStream stream = finalFfmpeg.getInputStream()) {
-                byte[] buffer = new byte[1024];
-                int bytesRead;
-                StringBuilder outputBuffer = new StringBuilder();
-                while ((bytesRead = stream.read(buffer)) != -1) {
-                    String output = new String(buffer, 0, bytesRead);
-                    if (showDebugOutput) {
-                        System.err.print("[ffmpeg] " + output);
-                    }
-                    outputBuffer.append(output);
-                    if (outputBuffer.length() > 2000) {
-                        outputBuffer.delete(0, outputBuffer.length() - 2000);
-                    }
-                    lastFfmpegOutput.set(outputBuffer.toString());
-                }
-            } catch (Exception e) {
-                if (!finalFfmpeg.isAlive()) {
-                    ffmpegDied.set(true);
-                }
-            }
-        }, "ffmpeg-output-reader");
-        outputReader.setDaemon(true);
-        outputReader.start();
-
-        // Scan batch files
-        System.out.print("Scanning batch files... ");
-        long minTick = Long.MAX_VALUE;
-        long maxTick = -1;
-        List<StoragePath> allBatchPaths = new ArrayList<>();
-        String continuationToken = null;
-        do {
-            BatchFileListResult scanResult = storage.listBatchFiles(targetRunId + "/raw/", continuationToken, 1000);
-            for (StoragePath path : scanResult.getFilenames()) {
-                allBatchPaths.add(path);
-                String filename = path.asString();
-                int batchIdx = filename.lastIndexOf("/batch_");
-                if (batchIdx >= 0) {
-                    String batchName = filename.substring(batchIdx + 7);
-                    int firstUnderscore = batchName.indexOf('_');
-                    int dotPbIdx = batchName.indexOf(".pb");
-                    if (firstUnderscore > 0 && dotPbIdx > firstUnderscore) {
-                        try {
-                            long batchStartTick = Long.parseLong(batchName.substring(0, firstUnderscore));
-                            long batchEndTick = Long.parseLong(batchName.substring(firstUnderscore + 1, dotPbIdx));
-                            if (batchStartTick < minTick) minTick = batchStartTick;
-                            if (batchEndTick > maxTick) maxTick = batchEndTick;
-                        } catch (NumberFormatException e) {
-                            // Skip
-                        }
-                    }
-                }
-            }
-            continuationToken = scanResult.getNextContinuationToken();
-        } while (continuationToken != null);
-        System.out.println(String.format("%d files found, tick range: %d-%d",
-            allBatchPaths.size(), minTick < Long.MAX_VALUE ? minTick : 0, maxTick));
-
-        // Calculate total frames
-        long totalFrames = 0;
-        if (maxTick >= 0) {
-            long actualMinTick = Math.max(minTick < Long.MAX_VALUE ? minTick : 0, effectiveStartTick);
-            long actualMaxTick = Math.min(maxTick, effectiveEndTick);
-            if (actualMaxTick >= actualMinTick) {
-                long firstRenderableTick = ((actualMinTick / options.samplingInterval) * options.samplingInterval);
-                if (firstRenderableTick < actualMinTick) {
-                    firstRenderableTick += options.samplingInterval;
-                }
-                if (firstRenderableTick <= actualMaxTick) {
-                    totalFrames = ((actualMaxTick - firstRenderableTick) / options.samplingInterval) + 1;
-                }
-            }
-        }
-
         System.out.println(String.format("Video: %dx%d, %d frames, %d fps", width, height, totalFrames, options.fps));
         System.out.println(String.format("Rendering: %d thread(s), incremental (delta-optimized)", options.threadCount));
 
-        final AtomicBoolean shutdownRequested = new AtomicBoolean(false);
+        // Render
+        AtomicBoolean shutdownRequested = new AtomicBoolean(false);
         Thread shutdownHook = null;
-        final File finalOutputFile = outputFile;
 
         try (OutputStream ffmpegInput = ffmpeg.getOutputStream();
              WritableByteChannel channel = Channels.newChannel(ffmpegInput)) {
 
             AtomicLong framesWritten = new AtomicLong(0);
             long startTime = System.currentTimeMillis();
-            long lastProgressUpdate = startTime;
 
             if (options.threadCount == 1) {
-                // ============================================================
-                // SINGLE-THREADED: Direct rendering and writing (no buffering)
-                // ============================================================
-
-                shutdownHook = new Thread(() -> {
-                    System.out.println("\n\nShutdown requested...");
-                    shutdownRequested.set(true);
-                }, "video-shutdown-hook");
+                shutdownHook = createShutdownHook(shutdownRequested, null);
                 Runtime.getRuntime().addShutdownHook(shutdownHook);
 
-                for (StoragePath batchPath : allBatchPaths) {
-                    if (shutdownRequested.get()) break;
-
-                    // OPTIMIZATION: Skip batch files that don't contain any sample ticks
-                    // Parse tick range from filename (e.g., "batch_0_99.pb")
-                    if (options.samplingInterval > 1) {
-                        String filename = batchPath.asString();
-                        int batchIdx = filename.lastIndexOf("/batch_");
-                        if (batchIdx >= 0) {
-                            String batchName = filename.substring(batchIdx + 7);
-                            int firstUnderscore = batchName.indexOf('_');
-                            int dotPbIdx = batchName.indexOf(".pb");
-                            if (firstUnderscore > 0 && dotPbIdx > firstUnderscore) {
-                                try {
-                                    long batchStartTick = Long.parseLong(batchName.substring(0, firstUnderscore));
-                                    long batchEndTick = Long.parseLong(batchName.substring(firstUnderscore + 1, dotPbIdx));
-
-                                    // Check if batch overlaps with effective range
-                                    long rangeStart = Math.max(batchStartTick, effectiveStartTick);
-                                    long rangeEnd = Math.min(batchEndTick, effectiveEndTick);
-
-                                    if (rangeStart > rangeEnd) {
-                                        continue; // Batch outside our range - skip entirely
-                                    }
-
-                                    // Check if batch contains any sample ticks
-                                    long firstSampleInRange = ((rangeStart + options.samplingInterval - 1) / options.samplingInterval) * options.samplingInterval;
-                                    if (firstSampleInRange > rangeEnd) {
-                                        continue; // No sample ticks in this batch - skip loading!
-                                    }
-                                } catch (NumberFormatException e) {
-                                    // Can't parse, load anyway
-                                }
-                            }
-                        }
-                    }
-
-                    List<TickDataChunk> chunks = storage.readChunkBatch(batchPath);
-
-                    for (TickDataChunk chunk : chunks) {
-                        if (shutdownRequested.get()) break;
-
-                        // Check if chunk overlaps with our tick range
-                        if (chunk.getLastTick() < effectiveStartTick || chunk.getFirstTick() > effectiveEndTick) {
-                            continue;
-                        }
-
-                        // Check if ffmpeg is still alive
-                        if (!ffmpeg.isAlive() || ffmpegDied.get()) {
-                            System.err.println("\nffmpeg died unexpectedly");
-                            return 1;
-                        }
-
-                        // Render and write directly
-                        long written = renderAndWriteChunkDirect(chunk, frameRenderer, channel,
-                            effectiveStartTick, effectiveEndTick, options.samplingInterval);
-                        framesWritten.addAndGet(written);
-
-                        // Update progress
-                        long currentTime = System.currentTimeMillis();
-                        if (currentTime - lastProgressUpdate >= 500) {
-                            lastProgressUpdate = currentTime;
-                            long totalWritten = framesWritten.get();
-                            long elapsed = currentTime - startTime;
-                            double fpsRendered = totalWritten > 0 ? (totalWritten * 1000.0) / elapsed : 0;
-                            long remaining = totalFrames > 0 && fpsRendered > 0 ?
-                                (long) (((totalFrames - totalWritten) * 1000.0) / fpsRendered) : 0;
-
-                            if (totalFrames > 0) {
-                                int percentage = (int) ((totalWritten * 100) / totalFrames);
-                                int barWidth = 40;
-                                int filled = (int) ((totalWritten * barWidth) / totalFrames);
-                                StringBuilder bar = new StringBuilder("[");
-                                for (int i = 0; i < barWidth; i++) {
-                                    bar.append(i < filled ? "=" : " ");
-                                }
-                                bar.append("]");
-                                System.out.print(String.format("\r%s %d%% | Frame %d/%d | %.1f fps | Elapsed: %s | ETA: %s",
-                                    bar, percentage, totalWritten, totalFrames, fpsRendered, formatTime(elapsed), formatTime(remaining)));
-                            } else {
-                                System.out.print(String.format("\rFrame %d | %.1f fps | Elapsed: %s",
-                                    totalWritten, fpsRendered, formatTime(elapsed)));
-                            }
-                            System.out.flush();
-                        }
-                    }
-                }
+                renderSingleThreaded(storage, scanResult.batchPaths, channel,
+                    effectiveStartTick, effectiveEndTick, framesWritten,
+                    totalFrames, startTime, shutdownRequested, ffmpeg, ffmpegDied);
             } else {
-                // ============================================================
-                // MULTI-THREADED: Batch-parallel rendering
-                // Process chunks in batches of threadCount, render parallel, write in order
-                // ============================================================
-
                 ExecutorService executor = Executors.newFixedThreadPool(options.threadCount);
-
-                // Create renderer pool (one per thread)
-                // Each thread needs its own renderer (not thread-safe)
-                List<IVideoFrameRenderer> renderers = new ArrayList<>();
-                for (int i = 0; i < options.threadCount; i++) {
-                    renderers.add(frameRenderer.createThreadInstance());
-                }
-
-                final ExecutorService finalExecutor = executor;
-                shutdownHook = new Thread(() -> {
-                    System.out.println("\n\nShutdown requested...");
-                    shutdownRequested.set(true);
-                    finalExecutor.shutdownNow();
-                }, "video-shutdown-hook");
+                shutdownHook = createShutdownHook(shutdownRequested, executor);
                 Runtime.getRuntime().addShutdownHook(shutdownHook);
 
-                // Pipeline: submit chunks, write results in order as they complete
-                // Keeps at most threadCount chunks in memory
-                @SuppressWarnings("unchecked")
-                java.util.concurrent.Future<RenderedChunk>[] pendingFutures = new java.util.concurrent.Future[options.threadCount];
-                int head = 0;  // Next slot to write
-                int tail = 0;  // Next slot to submit
-                int inFlight = 0;
-                long globalChunkIndex = 0;
-
-                for (StoragePath batchPath : allBatchPaths) {
-                    if (shutdownRequested.get()) break;
-
-                    // OPTIMIZATION: Skip batch files that don't contain any sample ticks
-                    // Parse tick range from filename (e.g., "batch_0_99.pb")
-                    if (options.samplingInterval > 1) {
-                        String filename = batchPath.asString();
-                        int batchIdx = filename.lastIndexOf("/batch_");
-                        if (batchIdx >= 0) {
-                            String batchName = filename.substring(batchIdx + 7);
-                            int firstUnderscore = batchName.indexOf('_');
-                            int dotPbIdx = batchName.indexOf(".pb");
-                            if (firstUnderscore > 0 && dotPbIdx > firstUnderscore) {
-                                try {
-                                    long batchStartTick = Long.parseLong(batchName.substring(0, firstUnderscore));
-                                    long batchEndTick = Long.parseLong(batchName.substring(firstUnderscore + 1, dotPbIdx));
-
-                                    // Check if batch overlaps with effective range
-                                    long rangeStart = Math.max(batchStartTick, effectiveStartTick);
-                                    long rangeEnd = Math.min(batchEndTick, effectiveEndTick);
-
-                                    if (rangeStart > rangeEnd) {
-                                        continue; // Batch outside our range - skip entirely
-                                    }
-
-                                    // Check if batch contains any sample ticks
-                                    long firstSampleInRange = ((rangeStart + options.samplingInterval - 1) / options.samplingInterval) * options.samplingInterval;
-                                    if (firstSampleInRange > rangeEnd) {
-                                        continue; // No sample ticks in this batch - skip loading!
-                                    }
-                                } catch (NumberFormatException e) {
-                                    // Can't parse, load anyway
-                                }
-                            }
-                        }
-                    }
-
-                    List<TickDataChunk> chunks = storage.readChunkBatch(batchPath);
-
-                    for (TickDataChunk chunk : chunks) {
-                        if (shutdownRequested.get()) break;
-
-                        // Check if chunk overlaps with our tick range
-                        if (chunk.getLastTick() < effectiveStartTick || chunk.getFirstTick() > effectiveEndTick) {
-                            continue;
-                        }
-
-                        // If pipeline is full, wait for oldest chunk and write it
-                        if (inFlight >= options.threadCount) {
-                            if (!ffmpeg.isAlive() || ffmpegDied.get()) {
-                                System.err.println("\nffmpeg died");
-                                executor.shutdownNow();
-                                return 1;
-                            }
-
-                            RenderedChunk rendered = pendingFutures[head].get();
-                            for (RenderedFrame frame : rendered.frames) {
-                                ByteBuffer buffer = ByteBuffer.wrap(frame.frameData);
-                                buffer.order(ByteOrder.LITTLE_ENDIAN);
-                                channel.write(buffer);
-                                framesWritten.incrementAndGet();
-                            }
-                            head = (head + 1) % options.threadCount;
-                            inFlight--;
-                        }
-
-                        // Submit new chunk
-                        final TickDataChunk chunkToRender = chunk;
-                        final IVideoFrameRenderer renderer = renderers.get(tail % renderers.size());
-                        final long chunkIdx = globalChunkIndex++;
-
-                        pendingFutures[tail] = executor.submit(() ->
-                            renderChunk(chunkToRender, chunkIdx, renderer,
-                                effectiveStartTick, effectiveEndTick, options.samplingInterval));
-                        tail = (tail + 1) % options.threadCount;
-                        inFlight++;
-
-                        // Update progress
-                        long currentTime = System.currentTimeMillis();
-                        if (currentTime - lastProgressUpdate >= 500) {
-                            lastProgressUpdate = currentTime;
-                            long totalWritten = framesWritten.get();
-                            long elapsed = currentTime - startTime;
-                            double fpsRendered = totalWritten > 0 ? (totalWritten * 1000.0) / elapsed : 0;
-                            long remaining = totalFrames > 0 && fpsRendered > 0 ?
-                                (long) (((totalFrames - totalWritten) * 1000.0) / fpsRendered) : 0;
-
-                            if (totalFrames > 0) {
-                                int percentage = (int) ((totalWritten * 100) / totalFrames);
-                                int barWidth = 40;
-                                int filled = (int) ((totalWritten * barWidth) / totalFrames);
-                                StringBuilder bar = new StringBuilder("[");
-                                for (int i = 0; i < barWidth; i++) {
-                                    bar.append(i < filled ? "=" : " ");
-                                }
-                                bar.append("]");
-                                System.out.print(String.format("\r%s %d%% | Frame %d/%d | %.1f fps | Elapsed: %s | ETA: %s",
-                                    bar, percentage, totalWritten, totalFrames, fpsRendered, formatTime(elapsed), formatTime(remaining)));
-                            } else {
-                                System.out.print(String.format("\rFrame %d | %.1f fps | Elapsed: %s",
-                                    totalWritten, fpsRendered, formatTime(elapsed)));
-                            }
-                            System.out.flush();
-                        }
-                    }
-                }
-
-                // Write remaining chunks in pipeline
-                while (inFlight > 0 && !shutdownRequested.get()) {
-                    if (!ffmpeg.isAlive() || ffmpegDied.get()) {
-                        System.err.println("\nffmpeg died");
-                        executor.shutdownNow();
-                        return 1;
-                    }
-
-                    RenderedChunk rendered = pendingFutures[head].get();
-                    for (RenderedFrame frame : rendered.frames) {
-                        ByteBuffer buffer = ByteBuffer.wrap(frame.frameData);
-                        buffer.order(ByteOrder.LITTLE_ENDIAN);
-                        channel.write(buffer);
-                        framesWritten.incrementAndGet();
-                    }
-                    head = (head + 1) % options.threadCount;
-                    inFlight--;
-                }
+                renderMultiThreaded(storage, scanResult.batchPaths, channel, executor,
+                    effectiveStartTick, effectiveEndTick, framesWritten,
+                    totalFrames, startTime, shutdownRequested, ffmpeg, ffmpegDied);
 
                 executor.shutdown();
                 executor.awaitTermination(Long.MAX_VALUE, TimeUnit.NANOSECONDS);
             }
 
-            // Remove shutdown hook
-            if (shutdownHook != null) {
-                try {
-                    Runtime.getRuntime().removeShutdownHook(shutdownHook);
-                } catch (IllegalStateException e) {
-                    // Already shutting down
-                }
-            }
-
+            removeShutdownHook(shutdownHook);
             System.out.println("\nFinished rendering. Closing...");
 
         } catch (Exception e) {
-            if (shutdownHook != null) {
-                try {
-                    Runtime.getRuntime().removeShutdownHook(shutdownHook);
-                } catch (IllegalStateException ignored) {}
-            }
+            removeShutdownHook(shutdownHook);
             throw e;
         }
 
+        // Wait for ffmpeg to finish
         try {
             outputReader.join(1000);
         } catch (InterruptedException e) {
@@ -933,12 +145,646 @@ public class VideoRenderEngine {
 
         int exitCode = ffmpeg.waitFor();
         if (exitCode == 0) {
-            System.out.println("Video created: " + finalOutputFile.getAbsolutePath());
+            System.out.println("Video created: " + outputFile.getAbsolutePath());
+            return 0;
         } else {
             System.err.println("ffmpeg failed with exit code " + exitCode);
             return 1;
         }
+    }
 
-        return 0;
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Chunk rendering (unified logic for both single/multi-threaded)
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Processes a chunk and renders frames at sample tick intervals.
+     * Returns rendered frames as byte arrays.
+     */
+    private List<byte[]> renderChunkFrames(TickDataChunk chunk, IVideoFrameRenderer renderer,
+                                           long effectiveStartTick, long effectiveEndTick,
+                                           int samplingInterval) {
+        List<byte[]> frames = new ArrayList<>();
+
+        if (samplingInterval == 1) {
+            // Incremental rendering - every tick
+            renderChunkIncremental(chunk, renderer, effectiveStartTick, effectiveEndTick, frames);
+        } else {
+            // Sampling mode - skip to sample ticks using accumulated deltas
+            renderChunkSampled(chunk, renderer, effectiveStartTick, effectiveEndTick, samplingInterval, frames);
+        }
+
+        return frames;
+    }
+
+    private void renderChunkIncremental(TickDataChunk chunk, IVideoFrameRenderer renderer,
+                                        long effectiveStartTick, long effectiveEndTick,
+                                        List<byte[]> frames) {
+        // Render snapshot
+        TickData snapshot = chunk.getSnapshot();
+        long snapshotTick = snapshot.getTickNumber();
+        int[] pixelData = renderer.renderSnapshot(snapshot);
+
+        if (snapshotTick >= effectiveStartTick && snapshotTick <= effectiveEndTick) {
+            frames.add(convertToBgra(pixelData));
+        }
+
+        // Render deltas
+        for (TickDelta delta : chunk.getDeltasList()) {
+            long deltaTick = delta.getTickNumber();
+            pixelData = renderer.renderDelta(delta);
+
+            if (deltaTick >= effectiveStartTick && deltaTick <= effectiveEndTick) {
+                frames.add(convertToBgra(pixelData));
+            }
+        }
+    }
+
+    private void renderChunkSampled(TickDataChunk chunk, IVideoFrameRenderer renderer,
+                                    long effectiveStartTick, long effectiveEndTick,
+                                    int samplingInterval, List<byte[]> frames) {
+        long chunkFirstTick = chunk.getFirstTick();
+        long chunkLastTick = chunk.getLastTick();
+
+        // Calculate sample tick range within this chunk
+        long rangeStart = Math.max(chunkFirstTick, effectiveStartTick);
+        long rangeEnd = Math.min(chunkLastTick, effectiveEndTick);
+        long firstSampleInRange = ceilToMultiple(rangeStart, samplingInterval);
+
+        if (firstSampleInRange > rangeEnd) {
+            return; // No sample ticks in this chunk
+        }
+
+        TickData snapshot = chunk.getSnapshot();
+        long snapshotTick = snapshot.getTickNumber();
+
+        // Check if snapshot is a sample tick
+        if (snapshotTick >= effectiveStartTick && snapshotTick <= effectiveEndTick
+                && snapshotTick % samplingInterval == 0) {
+            int[] pixelData = renderer.renderSnapshot(snapshot);
+            frames.add(convertToBgra(pixelData));
+        }
+
+        // Process remaining sample ticks
+        List<TickDelta> deltas = chunk.getDeltasList();
+        long currentSampleTick = (firstSampleInRange == snapshotTick)
+            ? firstSampleInRange + samplingInterval
+            : firstSampleInRange;
+
+        while (currentSampleTick <= rangeEnd) {
+            // Reset state from snapshot
+            renderer.applySnapshotState(snapshot);
+
+            // Find best starting point (latest accumulated delta <= currentSampleTick)
+            int startIdx = findAccumulatedDeltaIndex(deltas, currentSampleTick);
+
+            // Apply deltas up to current sample tick
+            for (int i = startIdx; i < deltas.size(); i++) {
+                TickDelta delta = deltas.get(i);
+                if (delta.getTickNumber() > currentSampleTick) break;
+                renderer.applyDeltaState(delta);
+            }
+
+            // Render and store
+            int[] pixelData = renderer.renderCurrentState();
+            frames.add(convertToBgra(pixelData));
+
+            currentSampleTick += samplingInterval;
+        }
+    }
+
+    private int findAccumulatedDeltaIndex(List<TickDelta> deltas, long targetTick) {
+        int startIdx = 0;
+        for (int i = 0; i < deltas.size(); i++) {
+            TickDelta d = deltas.get(i);
+            if (d.getTickNumber() > targetTick) break;
+            if (d.getDeltaType() == DeltaType.ACCUMULATED) {
+                startIdx = i;
+            }
+        }
+        return startIdx;
+    }
+
+    private long ceilToMultiple(long value, int multiple) {
+        return ((value + multiple - 1) / multiple) * multiple;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Batch file filtering (unified logic)
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Checks if a batch file should be processed based on tick range and sampling interval.
+     * Returns true if the batch contains sample ticks within the effective range.
+     */
+    private boolean shouldProcessBatch(StoragePath batchPath, long effectiveStartTick,
+                                       long effectiveEndTick, int samplingInterval) {
+        if (samplingInterval == 1) {
+            return true; // Process all batches when not sampling
+        }
+
+        // Parse tick range from filename (e.g., "batch_0_99.pb")
+        String filename = batchPath.asString();
+        int batchIdx = filename.lastIndexOf("/batch_");
+        if (batchIdx < 0) return true;
+
+        String batchName = filename.substring(batchIdx + 7);
+        int firstUnderscore = batchName.indexOf('_');
+        int dotPbIdx = batchName.indexOf(".pb");
+        if (firstUnderscore <= 0 || dotPbIdx <= firstUnderscore) return true;
+
+        try {
+            long batchStartTick = Long.parseLong(batchName.substring(0, firstUnderscore));
+            long batchEndTick = Long.parseLong(batchName.substring(firstUnderscore + 1, dotPbIdx));
+
+            // Check if batch overlaps with effective range
+            long rangeStart = Math.max(batchStartTick, effectiveStartTick);
+            long rangeEnd = Math.min(batchEndTick, effectiveEndTick);
+            if (rangeStart > rangeEnd) return false;
+
+            // Check if batch contains any sample ticks
+            long firstSampleInRange = ceilToMultiple(rangeStart, samplingInterval);
+            return firstSampleInRange <= rangeEnd;
+
+        } catch (NumberFormatException e) {
+            return true; // Can't parse, process anyway
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Single-threaded rendering
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    private void renderSingleThreaded(IBatchStorageRead storage, List<StoragePath> batchPaths,
+                                      WritableByteChannel channel, long effectiveStartTick,
+                                      long effectiveEndTick, AtomicLong framesWritten,
+                                      long totalFrames, long startTime,
+                                      AtomicBoolean shutdownRequested,
+                                      Process ffmpeg, AtomicBoolean ffmpegDied) throws Exception {
+        byte[] bgraBuffer = frameRenderer.getBgraBuffer();
+        long lastProgressUpdate = startTime;
+
+        for (StoragePath batchPath : batchPaths) {
+            if (shutdownRequested.get()) break;
+            if (!shouldProcessBatch(batchPath, effectiveStartTick, effectiveEndTick, options.samplingInterval)) {
+                continue;
+            }
+
+            List<TickDataChunk> chunks = storage.readChunkBatch(batchPath);
+
+            for (TickDataChunk chunk : chunks) {
+                if (shutdownRequested.get()) break;
+                if (chunk.getLastTick() < effectiveStartTick || chunk.getFirstTick() > effectiveEndTick) {
+                    continue;
+                }
+                if (!ffmpeg.isAlive() || ffmpegDied.get()) {
+                    System.err.println("\nffmpeg died unexpectedly");
+                    throw new RuntimeException("ffmpeg died");
+                }
+
+                // Render and write frames directly (avoid storing in list)
+                List<byte[]> frames = renderChunkFrames(chunk, frameRenderer,
+                    effectiveStartTick, effectiveEndTick, options.samplingInterval);
+
+                for (byte[] frameData : frames) {
+                    ByteBuffer buffer = ByteBuffer.wrap(frameData);
+                    buffer.order(ByteOrder.LITTLE_ENDIAN);
+                    channel.write(buffer);
+                    framesWritten.incrementAndGet();
+                }
+
+                lastProgressUpdate = updateProgress(framesWritten.get(), totalFrames, startTime, lastProgressUpdate);
+            }
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Multi-threaded rendering
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    private void renderMultiThreaded(IBatchStorageRead storage, List<StoragePath> batchPaths,
+                                     WritableByteChannel channel, ExecutorService executor,
+                                     long effectiveStartTick, long effectiveEndTick,
+                                     AtomicLong framesWritten, long totalFrames, long startTime,
+                                     AtomicBoolean shutdownRequested,
+                                     Process ffmpeg, AtomicBoolean ffmpegDied) throws Exception {
+        // Create renderer pool (one per thread)
+        List<IVideoFrameRenderer> renderers = new ArrayList<>();
+        for (int i = 0; i < options.threadCount; i++) {
+            renderers.add(frameRenderer.createThreadInstance());
+        }
+
+        // Pipeline: submit chunks, write results in order as they complete
+        @SuppressWarnings("unchecked")
+        Future<List<byte[]>>[] pendingFutures = new Future[options.threadCount];
+        int head = 0;  // Next slot to write
+        int tail = 0;  // Next slot to submit
+        int inFlight = 0;
+        long lastProgressUpdate = startTime;
+
+        for (StoragePath batchPath : batchPaths) {
+            if (shutdownRequested.get()) break;
+            if (!shouldProcessBatch(batchPath, effectiveStartTick, effectiveEndTick, options.samplingInterval)) {
+                continue;
+            }
+
+            List<TickDataChunk> chunks = storage.readChunkBatch(batchPath);
+
+            for (TickDataChunk chunk : chunks) {
+                if (shutdownRequested.get()) break;
+                if (chunk.getLastTick() < effectiveStartTick || chunk.getFirstTick() > effectiveEndTick) {
+                    continue;
+                }
+
+                // If pipeline is full, wait for oldest chunk and write it
+                if (inFlight >= options.threadCount) {
+                    if (!ffmpeg.isAlive() || ffmpegDied.get()) {
+                        System.err.println("\nffmpeg died");
+                        executor.shutdownNow();
+                        throw new RuntimeException("ffmpeg died");
+                    }
+
+                    writeCompletedFrames(pendingFutures[head].get(), channel, framesWritten);
+                    head = (head + 1) % options.threadCount;
+                    inFlight--;
+                }
+
+                // Submit new chunk
+                final TickDataChunk chunkToRender = chunk;
+                final IVideoFrameRenderer renderer = renderers.get(tail % renderers.size());
+                final long effStart = effectiveStartTick;
+                final long effEnd = effectiveEndTick;
+                final int sampling = options.samplingInterval;
+
+                pendingFutures[tail] = executor.submit(() ->
+                    renderChunkFrames(chunkToRender, renderer, effStart, effEnd, sampling));
+                tail = (tail + 1) % options.threadCount;
+                inFlight++;
+
+                lastProgressUpdate = updateProgress(framesWritten.get(), totalFrames, startTime, lastProgressUpdate);
+            }
+        }
+
+        // Write remaining chunks in pipeline
+        while (inFlight > 0 && !shutdownRequested.get()) {
+            if (!ffmpeg.isAlive() || ffmpegDied.get()) {
+                System.err.println("\nffmpeg died");
+                executor.shutdownNow();
+                throw new RuntimeException("ffmpeg died");
+            }
+
+            writeCompletedFrames(pendingFutures[head].get(), channel, framesWritten);
+            head = (head + 1) % options.threadCount;
+            inFlight--;
+        }
+    }
+
+    private void writeCompletedFrames(List<byte[]> frames, WritableByteChannel channel,
+                                      AtomicLong framesWritten) throws Exception {
+        for (byte[] frameData : frames) {
+            ByteBuffer buffer = ByteBuffer.wrap(frameData);
+            buffer.order(ByteOrder.LITTLE_ENDIAN);
+            channel.write(buffer);
+            framesWritten.incrementAndGet();
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Progress reporting
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    private long updateProgress(long totalWritten, long totalFrames, long startTime, long lastUpdate) {
+        long currentTime = System.currentTimeMillis();
+        if (currentTime - lastUpdate < 500) return lastUpdate;
+
+        long elapsed = currentTime - startTime;
+        double fps = totalWritten > 0 ? (totalWritten * 1000.0) / elapsed : 0;
+        long remaining = totalFrames > 0 && fps > 0
+            ? (long) (((totalFrames - totalWritten) * 1000.0) / fps) : 0;
+
+        if (totalFrames > 0) {
+            int pct = (int) ((totalWritten * 100) / totalFrames);
+            int barWidth = 40;
+            int filled = (int) ((totalWritten * barWidth) / totalFrames);
+            StringBuilder bar = new StringBuilder("[");
+            for (int i = 0; i < barWidth; i++) {
+                bar.append(i < filled ? "=" : " ");
+            }
+            bar.append("]");
+            System.out.print(String.format("\r%s %d%% | Frame %d/%d | %.1f fps | Elapsed: %s | ETA: %s",
+                bar, pct, totalWritten, totalFrames, fps, formatTime(elapsed), formatTime(remaining)));
+        } else {
+            System.out.print(String.format("\rFrame %d | %.1f fps | Elapsed: %s",
+                totalWritten, fps, formatTime(elapsed)));
+        }
+        System.out.flush();
+
+        return currentTime;
+    }
+
+    private String formatTime(long ms) {
+        if (ms < 0) return "?";
+        long sec = ms / 1000;
+        long h = sec / 3600;
+        long m = (sec % 3600) / 60;
+        long s = sec % 60;
+        return h > 0 ? String.format("%d:%02d:%02d", h, m, s) : String.format("%d:%02d", m, s);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Pixel format conversion
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    private byte[] convertToBgra(int[] pixelData) {
+        byte[] buffer = new byte[pixelData.length * 4];
+        int idx = 0;
+        for (int rgb : pixelData) {
+            buffer[idx++] = (byte) (rgb & 0xFF);          // B
+            buffer[idx++] = (byte) ((rgb >> 8) & 0xFF);   // G
+            buffer[idx++] = (byte) ((rgb >> 16) & 0xFF);  // R
+            buffer[idx++] = (byte) 255;                    // A
+        }
+        return buffer;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Initialization helpers
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    private Config loadConfig() {
+        try {
+            if (options.configFile != null) {
+                if (!options.configFile.exists()) {
+                    System.err.println("Configuration file not found: " + options.configFile.getAbsolutePath());
+                    return null;
+                }
+                System.out.println("Using configuration file: " + options.configFile.getAbsolutePath());
+                return ConfigFactory.systemProperties()
+                    .withFallback(ConfigFactory.systemEnvironment())
+                    .withFallback(ConfigFactory.parseFile(options.configFile))
+                    .withFallback(ConfigFactory.load())
+                    .resolve();
+            }
+
+            File defaultConf = new File(CONFIG_FILE_NAME);
+            if (defaultConf.exists()) {
+                System.out.println("Using configuration file: " + defaultConf.getAbsolutePath());
+                return ConfigFactory.systemProperties()
+                    .withFallback(ConfigFactory.systemEnvironment())
+                    .withFallback(ConfigFactory.parseFile(defaultConf))
+                    .withFallback(ConfigFactory.load())
+                    .resolve();
+            }
+
+            System.out.println("Warning: No 'evochora.conf' found. Using defaults.");
+            return ConfigFactory.systemProperties()
+                .withFallback(ConfigFactory.systemEnvironment())
+                .withFallback(ConfigFactory.load())
+                .resolve();
+
+        } catch (ConfigException e) {
+            System.err.println("Failed to load configuration: " + e.getMessage());
+            return null;
+        }
+    }
+
+    private IBatchStorageRead initializeStorage(Config config) {
+        String path = "pipeline.resources." + options.storageName;
+        if (!config.hasPath(path)) {
+            System.err.println("Storage resource '" + options.storageName + "' not configured.");
+            return null;
+        }
+        IBatchStorageRead storage = CliResourceFactory.create("cli-video-renderer",
+            IBatchStorageRead.class, config.getConfig(path));
+        System.out.println("Using storage: " + options.storageName + " (" + storage.getClass().getSimpleName() + ")");
+        return storage;
+    }
+
+    private String resolveRunId(IBatchStorageRead storage) throws java.io.IOException {
+        if (options.runId != null) return options.runId;
+
+        System.out.println("No run-id specified, discovering latest run...");
+        List<String> runIds = storage.listRunIds(java.time.Instant.EPOCH);
+        if (runIds.isEmpty()) {
+            System.err.println("No simulation runs found.");
+            return null;
+        }
+        String runId = runIds.get(runIds.size() - 1);
+        System.out.println("Found latest run: " + runId);
+        return runId;
+    }
+
+    private EnvironmentProperties loadMetadataAndInit(IBatchStorageRead storage, String runId)
+            throws java.io.IOException {
+        System.out.println("Reading metadata...");
+        java.util.Optional<StoragePath> metaPath = storage.findMetadataPath(runId);
+        if (metaPath.isEmpty()) {
+            System.err.println("Metadata not found for run: " + runId);
+            return null;
+        }
+
+        SimulationMetadata metadata = storage.readMessage(metaPath.get(), SimulationMetadata.parser());
+        EnvironmentProperties envProps = new EnvironmentProperties(
+            MetadataConfigHelper.getEnvironmentShape(metadata),
+            MetadataConfigHelper.isEnvironmentToroidal(metadata));
+
+        frameRenderer.init(envProps);
+        frameRenderer.setOverlays(loadOverlays(options.overlayNames));
+
+        return envProps;
+    }
+
+    private List<IOverlayRenderer> loadOverlays(List<String> names) {
+        List<IOverlayRenderer> overlays = new ArrayList<>();
+        if (names == null || names.isEmpty()) return overlays;
+
+        for (String name : names) {
+            String className = "org.evochora.cli.rendering.overlay."
+                + name.substring(0, 1).toUpperCase() + name.substring(1).toLowerCase()
+                + "OverlayRenderer";
+            try {
+                Class<?> clazz = Class.forName(className);
+                overlays.add((IOverlayRenderer) clazz.getDeclaredConstructor().newInstance());
+            } catch (Exception e) {
+                System.err.println("Warning: Failed to load overlay '" + name + "': " + e.getMessage());
+            }
+        }
+        return overlays;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Batch scanning
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    private static class BatchScanResult {
+        final List<StoragePath> batchPaths;
+        final long minTick;
+        final long maxTick;
+
+        BatchScanResult(List<StoragePath> batchPaths, long minTick, long maxTick) {
+            this.batchPaths = batchPaths;
+            this.minTick = minTick;
+            this.maxTick = maxTick;
+        }
+    }
+
+    private BatchScanResult scanBatchFiles(IBatchStorageRead storage, String runId)
+            throws java.io.IOException {
+        System.out.print("Scanning batch files... ");
+
+        List<StoragePath> paths = new ArrayList<>();
+        long minTick = Long.MAX_VALUE;
+        long maxTick = -1;
+
+        String token = null;
+        do {
+            BatchFileListResult result = storage.listBatchFiles(runId + "/raw/", token, 1000);
+            for (StoragePath path : result.getFilenames()) {
+                paths.add(path);
+
+                // Parse tick range from filename
+                String filename = path.asString();
+                int batchIdx = filename.lastIndexOf("/batch_");
+                if (batchIdx >= 0) {
+                    String batchName = filename.substring(batchIdx + 7);
+                    int underscore = batchName.indexOf('_');
+                    int dot = batchName.indexOf(".pb");
+                    if (underscore > 0 && dot > underscore) {
+                        try {
+                            long start = Long.parseLong(batchName.substring(0, underscore));
+                            long end = Long.parseLong(batchName.substring(underscore + 1, dot));
+                            if (start < minTick) minTick = start;
+                            if (end > maxTick) maxTick = end;
+                        } catch (NumberFormatException ignored) {}
+                    }
+                }
+            }
+            token = result.getNextContinuationToken();
+        } while (token != null);
+
+        System.out.println(String.format("%d files found, tick range: %d-%d",
+            paths.size(), minTick < Long.MAX_VALUE ? minTick : 0, maxTick));
+
+        return new BatchScanResult(paths, minTick, maxTick);
+    }
+
+    private long calculateTotalFrames(BatchScanResult scan, long effectiveStart, long effectiveEnd) {
+        if (scan.maxTick < 0) return 0;
+
+        long actualMin = Math.max(scan.minTick < Long.MAX_VALUE ? scan.minTick : 0, effectiveStart);
+        long actualMax = Math.min(scan.maxTick, effectiveEnd);
+        if (actualMax < actualMin) return 0;
+
+        long firstRenderable = ceilToMultiple(actualMin, options.samplingInterval);
+        if (firstRenderable > actualMax) return 0;
+
+        return ((actualMax - firstRenderable) / options.samplingInterval) + 1;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // FFmpeg management
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    private File resolveOutputFile() {
+        File file = options.outputFile;
+        String path = file.getPath();
+
+        if (path.startsWith("~/") || path.equals("~")) {
+            path = path.replaceFirst("^~", System.getProperty("user.home"));
+            return new File(path);
+        }
+        return file.isAbsolute() ? file : file.getAbsoluteFile();
+    }
+
+    private String resolveFormat(File outputFile) {
+        String path = outputFile.getAbsolutePath().toLowerCase();
+        String format = options.format.toLowerCase();
+
+        int lastDot = path.lastIndexOf('.');
+        String ext = lastDot > 0 ? path.substring(lastDot + 1) : "";
+
+        return ext.equals(format) ? ext : format;
+    }
+
+    private Process startFfmpeg(File outputFile, String format) {
+        int width = frameRenderer.getImageWidth();
+        int height = frameRenderer.getImageHeight();
+
+        List<String> args = new ArrayList<>();
+        args.add("ffmpeg");
+        args.add("-y");
+        args.add("-f"); args.add("rawvideo");
+        args.add("-vcodec"); args.add("rawvideo");
+        args.add("-s"); args.add(width + "x" + height);
+        args.add("-pix_fmt"); args.add("bgra");
+        args.add("-r"); args.add(String.valueOf(options.fps));
+        args.add("-i"); args.add("-");
+
+        switch (format) {
+            case "mp4":
+                args.add("-c:v"); args.add("libx264");
+                args.add("-preset"); args.add(options.preset);
+                args.add("-crf"); args.add("18");
+                args.add("-movflags"); args.add("+frag_keyframe+empty_moov");
+                break;
+            case "webm":
+                args.add("-c:v"); args.add("libvpx-vp9");
+                args.add("-crf"); args.add("10");
+                args.add("-b:v"); args.add("0");
+                break;
+            default:
+                args.add("-c:v"); args.add("libx264");
+                args.add("-preset"); args.add(options.preset);
+                break;
+        }
+        args.add("-pix_fmt"); args.add("yuv420p");
+        args.add(outputFile.getAbsolutePath());
+
+        try {
+            ProcessBuilder pb = new ProcessBuilder(args);
+            pb.redirectErrorStream(true);
+            return pb.start();
+        } catch (Exception e) {
+            System.err.println("Failed to start ffmpeg: " + e.getMessage());
+            return null;
+        }
+    }
+
+    private Thread startFfmpegOutputReader(Process ffmpeg, AtomicBoolean ffmpegDied,
+                                           AtomicReference<String> lastOutput) {
+        Thread reader = new Thread(() -> {
+            try (java.io.InputStream stream = ffmpeg.getInputStream()) {
+                byte[] buffer = new byte[1024];
+                StringBuilder output = new StringBuilder();
+                int bytesRead;
+                while ((bytesRead = stream.read(buffer)) != -1) {
+                    String s = new String(buffer, 0, bytesRead);
+                    if (options.verbose) System.err.print("[ffmpeg] " + s);
+                    output.append(s);
+                    if (output.length() > 2000) output.delete(0, output.length() - 2000);
+                    lastOutput.set(output.toString());
+                }
+            } catch (Exception e) {
+                if (!ffmpeg.isAlive()) ffmpegDied.set(true);
+            }
+        }, "ffmpeg-output-reader");
+        reader.setDaemon(true);
+        reader.start();
+        return reader;
+    }
+
+    private Thread createShutdownHook(AtomicBoolean shutdownRequested, ExecutorService executor) {
+        return new Thread(() -> {
+            System.out.println("\n\nShutdown requested...");
+            shutdownRequested.set(true);
+            if (executor != null) executor.shutdownNow();
+        }, "video-shutdown-hook");
+    }
+
+    private void removeShutdownHook(Thread hook) {
+        if (hook == null) return;
+        try {
+            Runtime.getRuntime().removeShutdownHook(hook);
+        } catch (IllegalStateException ignored) {}
     }
 }

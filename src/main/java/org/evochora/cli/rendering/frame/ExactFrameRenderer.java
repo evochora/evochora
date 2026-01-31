@@ -3,7 +3,6 @@ package org.evochora.cli.rendering.frame;
 import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferInt;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -29,6 +28,10 @@ import picocli.CommandLine.Option;
  * detailed organism markers including direction triangles for instruction
  * pointers and squares for data pointers.
  * <p>
+ * <strong>Performance:</strong> Supports optimized sampling mode via
+ * {@link #applySnapshotState}/{@link #applyDeltaState} for efficient
+ * rendering with --sampling-interval > 1.
+ * <p>
  * <strong>CLI Usage:</strong>
  * <pre>
  *   evochora video exact --scale 4 --overlay info -o video.mkv
@@ -45,35 +48,42 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
             defaultValue = "4")
     private int scale;
 
-    // Initialized after CLI parsing via init()
-    private int imageWidth;
-    private int imageHeight;
-    private int worldWidth;
-    private int worldHeight;
-    private BufferedImage frame;
-    private int[] frameBuffer;
-    private int[] strides;
-    private int[] cellColors;
-    private int[] coordBuffer;  // Reusable buffer for coordinate conversion
-    private List<OrganismPosition> previousOrganismPositions;
-    private boolean initialized = false;
+    // Colors (RGB with full alpha for TYPE_INT_RGB)
+    private static final int COLOR_EMPTY = 0x000000;
+    private static final int COLOR_CODE = 0x3c5078;
+    private static final int COLOR_DATA = 0x32323c;
+    private static final int COLOR_STRUCTURE = 0xff7878;
+    private static final int COLOR_ENERGY = 0xffe664;
+    private static final int COLOR_LABEL = 0xa0a0a8;
+    private static final int COLOR_DEAD = 0x555555;
 
-    // Colors with full alpha (0xFF) for ARGB format
-    private static final int COLOR_EMPTY_BG = 0xFF000000;
-    private static final int COLOR_CODE_BG = 0xFF3c5078;
-    private static final int COLOR_DATA_BG = 0xFF32323c;
-    private static final int COLOR_STRUCTURE_BG = 0xFFff7878;
-    private static final int COLOR_ENERGY_BG = 0xFFffe664;
-    private static final int COLOR_LABEL_BG = 0xFFa0a0a8;
-    private static final int COLOR_DEAD = 0xFF555555;
-
-    private static final Color[] ORGANISM_COLOR_PALETTE = {
+    private static final Color[] ORGANISM_PALETTE = {
         Color.decode("#32cd32"), Color.decode("#1e90ff"), Color.decode("#dc143c"),
         Color.decode("#ffd700"), Color.decode("#ffa500"), Color.decode("#9370db"),
         Color.decode("#00ffff")
     };
 
+    // Dimensions (initialized in init())
+    private int imageWidth;
+    private int imageHeight;
+    private int worldWidth;
+    private int worldHeight;
+
+    // Frame buffer
+    private BufferedImage frame;
+    private int[] frameBuffer;
+
+    // Persistent cell state
+    private int[] cellColors;
+
+    // Lazy organism access for sampling mode
+    private TickData lastSnapshot;
+    private TickDelta lastDelta;
+
+    // Organism color cache
     private final Map<Integer, Color> organismColorMap = new HashMap<>();
+
+    private boolean initialized = false;
 
     /**
      * Default constructor for PicoCLI instantiation.
@@ -82,14 +92,6 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
         // Options populated by PicoCLI
     }
 
-    /**
-     * Initializes the renderer with environment properties.
-     * <p>
-     * Must be called after PicoCLI has parsed options and before rendering.
-     *
-     * @param envProps Environment properties (world shape, topology).
-     * @throws IllegalArgumentException if scale is less than 1.
-     */
     @Override
     public void init(EnvironmentProperties envProps) {
         if (scale < 1) {
@@ -105,92 +107,268 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
         this.frame = new BufferedImage(imageWidth, imageHeight, BufferedImage.TYPE_INT_RGB);
         this.frameBuffer = ((DataBufferInt) frame.getRaster().getDataBuffer()).getData();
 
-        // Calculate strides for coordinate to flatIndex conversion
-        int[] shape = envProps.getWorldShape();
-        this.strides = new int[shape.length];
-        int stride = 1;
-        for (int i = shape.length - 1; i >= 0; i--) {
-            strides[i] = stride;
-            stride *= shape[i];
-        }
+        // Persistent cell color state
+        int worldSize = worldWidth * worldHeight;
+        this.cellColors = new int[worldSize];
+        Arrays.fill(cellColors, COLOR_EMPTY);
 
-        // Initialize cell colors array
-        this.cellColors = new int[stride];
-        Arrays.fill(cellColors, COLOR_EMPTY_BG);
-
-        // Reusable buffer for coordinate conversion (avoids allocation per cell)
-        this.coordBuffer = new int[shape.length];
-
-        this.previousOrganismPositions = new ArrayList<>();
+        this.lastSnapshot = null;
+        this.lastDelta = null;
         this.initialized = true;
     }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Core rendering API
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    @Override
+    protected int[] doRenderSnapshot(TickData snapshot) {
+        applySnapshotState(snapshot);
+        return renderCurrentState();
+    }
+
+    @Override
+    protected int[] doRenderDelta(TickDelta delta) {
+        applyDeltaState(delta);
+        return renderCurrentState();
+    }
+
+    @Override
+    public void applySnapshotState(TickData snapshot) {
+        ensureInitialized();
+
+        // Reset all cells to empty
+        Arrays.fill(cellColors, COLOR_EMPTY);
+
+        // Update cell colors from snapshot
+        CellDataColumns columns = snapshot.getCellColumns();
+        int cellCount = columns.getFlatIndicesCount();
+        for (int i = 0; i < cellCount; i++) {
+            int flatIndex = columns.getFlatIndices(i);
+            cellColors[flatIndex] = getCellColor(columns.getMoleculeData(i));
+        }
+
+        this.lastSnapshot = snapshot;
+        this.lastDelta = null;
+    }
+
+    @Override
+    public void applyDeltaState(TickDelta delta) {
+        ensureInitialized();
+
+        // Update only changed cells
+        CellDataColumns changed = delta.getChangedCells();
+        int changedCount = changed.getFlatIndicesCount();
+        for (int i = 0; i < changedCount; i++) {
+            int flatIndex = changed.getFlatIndices(i);
+            cellColors[flatIndex] = getCellColor(changed.getMoleculeData(i));
+        }
+
+        this.lastDelta = delta;
+    }
+
+    @Override
+    public int[] renderCurrentState() {
+        ensureInitialized();
+
+        // Draw all cells from persistent state
+        renderAllCells();
+
+        // Draw organisms from most recent tick data
+        renderOrganisms(getOrganismsLazy());
+
+        return frameBuffer;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Cell rendering
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Renders all cells from the persistent cellColors state.
+     */
+    private void renderAllCells() {
+        for (int wy = 0; wy < worldHeight; wy++) {
+            for (int wx = 0; wx < worldWidth; wx++) {
+                int flatIndex = wx * worldHeight + wy;  // Row-major
+                drawCell(wx, wy, cellColors[flatIndex]);
+            }
+        }
+    }
+
+    private void drawCell(int cellX, int cellY, int color) {
+        int startX = cellX * scale;
+        int startY = cellY * scale;
+        for (int y = 0; y < scale; y++) {
+            int rowStart = (startY + y) * imageWidth + startX;
+            Arrays.fill(frameBuffer, rowStart, rowStart + scale, color);
+        }
+    }
+
+    private int getCellColor(int moleculeInt) {
+        int moleculeType = moleculeInt & Config.TYPE_MASK;
+        if (moleculeType == Config.TYPE_CODE) return COLOR_CODE;
+        if (moleculeType == Config.TYPE_DATA) return COLOR_DATA;
+        if (moleculeType == Config.TYPE_ENERGY) return COLOR_ENERGY;
+        if (moleculeType == Config.TYPE_STRUCTURE) return COLOR_STRUCTURE;
+        if (moleculeType == Config.TYPE_LABEL) return COLOR_LABEL;
+        return COLOR_EMPTY;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Organism rendering
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    private List<OrganismState> getOrganismsLazy() {
+        if (lastDelta != null) {
+            return lastDelta.getOrganismsList();
+        } else if (lastSnapshot != null) {
+            return lastSnapshot.getOrganismsList();
+        }
+        return List.of();
+    }
+
+    private void renderOrganisms(List<OrganismState> organisms) {
+        for (OrganismState org : organisms) {
+            int ipX = org.getIp().getComponents(0);
+            int ipY = org.getIp().getComponents(1);
+
+            if (org.getIsDead()) {
+                drawSquareMarker(ipX, ipY, COLOR_DEAD, 4);
+            } else {
+                Color orgColor = getOrganismColor(org.getOrganismId());
+                int color = orgColor.getRGB() & 0xFFFFFF;
+
+                // Draw data pointers as squares
+                for (Vector dp : org.getDataPointersList()) {
+                    drawSquareMarker(dp.getComponents(0), dp.getComponents(1), color, 4);
+                }
+
+                // Draw IP as directional triangle
+                int dvX = org.getDv().getComponents(0);
+                int dvY = org.getDv().getComponents(1);
+                drawTriangle(ipX, ipY, color, 4, dvX, dvY);
+            }
+        }
+    }
+
+    private Color getOrganismColor(int organismId) {
+        return organismColorMap.computeIfAbsent(organismId, id -> {
+            int idx = (id - 1) % ORGANISM_PALETTE.length;
+            return ORGANISM_PALETTE[idx < 0 ? 0 : idx];
+        });
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Shape drawing
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    private void drawSquareMarker(int cellX, int cellY, int color, int sizeInCells) {
+        int half = sizeInCells / 2;
+        int startX = (cellX - half) * scale;
+        int startY = (cellY - half) * scale;
+        int pixelSize = sizeInCells * scale;
+
+        for (int y = 0; y < pixelSize; y++) {
+            int py = startY + y;
+            if (py < 0 || py >= imageHeight) continue;
+
+            int rowStart = py * imageWidth;
+            int lineStart = Math.max(0, startX);
+            int lineEnd = Math.min(imageWidth, startX + pixelSize);
+
+            if (lineStart < lineEnd) {
+                Arrays.fill(frameBuffer, rowStart + lineStart, rowStart + lineEnd, color);
+            }
+        }
+    }
+
+    private void drawTriangle(int cellX, int cellY, int color, int sizeInCells, int dvX, int dvY) {
+        int centerX = cellX * scale + scale / 2;
+        int centerY = cellY * scale + scale / 2;
+        int halfSize = (sizeInCells * scale) / 2;
+
+        // If no direction, draw circle instead
+        if (dvX == 0 && dvY == 0) {
+            drawCircle(centerX, centerY, halfSize, color);
+            return;
+        }
+
+        double length = Math.sqrt(dvX * dvX + dvY * dvY);
+        double dirX = dvX / length;
+        double dirY = dvY / length;
+
+        int tipX = (int) (centerX + dirX * halfSize);
+        int tipY = (int) (centerY + dirY * halfSize);
+        int base1X = (int) (centerX - dirX * halfSize - dirY * halfSize);
+        int base1Y = (int) (centerY - dirY * halfSize + dirX * halfSize);
+        int base2X = (int) (centerX - dirX * halfSize + dirY * halfSize);
+        int base2Y = (int) (centerY - dirY * halfSize - dirX * halfSize);
+
+        fillTriangle(tipX, tipY, base1X, base1Y, base2X, base2Y, color);
+    }
+
+    private void drawCircle(int centerX, int centerY, int radius, int color) {
+        int startX = Math.max(0, centerX - radius);
+        int startY = Math.max(0, centerY - radius);
+        int endX = Math.min(imageWidth - 1, centerX + radius);
+        int endY = Math.min(imageHeight - 1, centerY + radius);
+        int radiusSq = radius * radius;
+
+        for (int y = startY; y <= endY; y++) {
+            for (int x = startX; x <= endX; x++) {
+                int dx = x - centerX;
+                int dy = y - centerY;
+                if (dx * dx + dy * dy <= radiusSq) {
+                    frameBuffer[y * imageWidth + x] = color;
+                }
+            }
+        }
+    }
+
+    private void fillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, int color) {
+        // Sort vertices by Y coordinate
+        if (y1 > y2) { int t = x1; x1 = x2; x2 = t; t = y1; y1 = y2; y2 = t; }
+        if (y2 > y3) { int t = x2; x2 = x3; x3 = t; t = y2; y2 = y3; y3 = t; }
+        if (y1 > y2) { int t = x1; x1 = x2; x2 = t; t = y1; y1 = y2; y2 = t; }
+
+        int minY = Math.max(0, y1);
+        int maxY = Math.min(imageHeight - 1, y3);
+
+        for (int y = minY; y <= maxY; y++) {
+            int[] xCoords = new int[3];
+            int count = 0;
+
+            // Find X intersections with triangle edges
+            if (y1 != y2 && y >= Math.min(y1, y2) && y <= Math.max(y1, y2)) {
+                xCoords[count++] = x1 + (x2 - x1) * (y - y1) / (y2 - y1);
+            }
+            if (y2 != y3 && y >= Math.min(y2, y3) && y <= Math.max(y2, y3)) {
+                xCoords[count++] = x2 + (x3 - x2) * (y - y2) / (y3 - y2);
+            }
+            if (y1 != y3 && y >= Math.min(y1, y3) && y <= Math.max(y1, y3)) {
+                xCoords[count++] = x1 + (x3 - x1) * (y - y1) / (y3 - y1);
+            }
+
+            if (count >= 2) {
+                Arrays.sort(xCoords, 0, count);
+                int lineStart = Math.max(0, xCoords[0]);
+                int lineEnd = Math.min(imageWidth - 1, xCoords[count - 1]);
+                if (lineStart <= lineEnd) {
+                    Arrays.fill(frameBuffer, y * imageWidth + lineStart, y * imageWidth + lineEnd + 1, color);
+                }
+            }
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Utilities
+    // ─────────────────────────────────────────────────────────────────────────────
 
     private void ensureInitialized() {
         if (!initialized) {
             throw new IllegalStateException("Renderer not initialized. Call init(EnvironmentProperties) first.");
         }
-    }
-
-    private int coordinatesToFlatIndex(int[] coords) {
-        int flatIndex = 0;
-        for (int i = 0; i < coords.length; i++) {
-            flatIndex += coords[i] * strides[i];
-        }
-        return flatIndex;
-    }
-
-    @Override
-    protected int[] doRenderSnapshot(TickData snapshot) {
-        ensureInitialized();
-
-        Arrays.fill(cellColors, COLOR_EMPTY_BG);
-        Arrays.fill(frameBuffer, COLOR_EMPTY_BG);
-        previousOrganismPositions.clear();
-
-        CellDataColumns columns = snapshot.getCellColumns();
-        int cellCount = columns.getFlatIndicesCount();
-
-        for (int i = 0; i < cellCount; i++) {
-            int flatIndex = columns.getFlatIndices(i);
-            int moleculeInt = columns.getMoleculeData(i);
-            int color = getCellColor(moleculeInt);
-            cellColors[flatIndex] = color;
-            envProps.flatIndexToCoordinates(flatIndex, coordBuffer);
-            drawCell(coordBuffer[0], coordBuffer[1], color);
-        }
-
-        drawOrganismsAndTrack(snapshot.getOrganismsList());
-        return frameBuffer;
-    }
-
-    @Override
-    protected int[] doRenderDelta(TickDelta delta) {
-        ensureInitialized();
-
-        // Clear previous organism positions
-        for (OrganismPosition pos : previousOrganismPositions) {
-            int color = cellColors[pos.flatIndex];
-            envProps.flatIndexToCoordinates(pos.flatIndex, coordBuffer);
-            drawCell(coordBuffer[0], coordBuffer[1], color);
-            clearOrganismArea(pos);
-        }
-        previousOrganismPositions.clear();
-
-        // Apply changed cells
-        CellDataColumns changed = delta.getChangedCells();
-        int changedCount = changed.getFlatIndicesCount();
-
-        for (int i = 0; i < changedCount; i++) {
-            int flatIndex = changed.getFlatIndices(i);
-            int moleculeInt = changed.getMoleculeData(i);
-            int color = getCellColor(moleculeInt);
-            cellColors[flatIndex] = color;
-            envProps.flatIndexToCoordinates(flatIndex, coordBuffer);
-            drawCell(coordBuffer[0], coordBuffer[1], color);
-        }
-
-        drawOrganismsAndTrack(delta.getOrganismsList());
-        return frameBuffer;
     }
 
     @Override
@@ -209,211 +387,5 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
     public int getImageHeight() {
         ensureInitialized();
         return imageHeight;
-    }
-
-    private void drawOrganismsAndTrack(List<OrganismState> organisms) {
-        for (OrganismState org : organisms) {
-            int ipX = org.getIp().getComponents(0);
-            int ipY = org.getIp().getComponents(1);
-            int ipFlatIndex = coordinatesToFlatIndex(new int[]{ipX, ipY});
-            previousOrganismPositions.add(new OrganismPosition(ipFlatIndex, ipX, ipY));
-
-            if (org.getIsDead()) {
-                drawLargeMarker(ipX, ipY, COLOR_DEAD, 4);
-            } else {
-                Color orgColor = getOrganismColor(org.getOrganismId());
-                int opaqueColor = orgColor.getRGB() | 0xFF000000;
-
-                for (Vector dp : org.getDataPointersList()) {
-                    int dpX = dp.getComponents(0);
-                    int dpY = dp.getComponents(1);
-                    int dpFlatIndex = coordinatesToFlatIndex(new int[]{dpX, dpY});
-                    previousOrganismPositions.add(new OrganismPosition(dpFlatIndex, dpX, dpY));
-                    drawLargeMarker(dpX, dpY, opaqueColor, 4);
-                }
-
-                int[] dv = new int[]{org.getDv().getComponents(0), org.getDv().getComponents(1)};
-                drawTriangle(ipX, ipY, opaqueColor, 4, dv);
-            }
-        }
-    }
-
-    private void clearOrganismArea(OrganismPosition pos) {
-        int markerSize = 4;
-        int offset = markerSize / 2;
-
-        for (int dy = -offset; dy <= offset; dy++) {
-            for (int dx = -offset; dx <= offset; dx++) {
-                int cellX = pos.x + dx;
-                int cellY = pos.y + dy;
-
-                if (cellX < 0 || cellX >= worldWidth || cellY < 0 || cellY >= worldHeight) {
-                    continue;
-                }
-
-                int flatIndex = coordinatesToFlatIndex(new int[]{cellX, cellY});
-                int color = cellColors[flatIndex];
-                drawCell(cellX, cellY, color);
-            }
-        }
-    }
-
-    private void drawCell(int cellX, int cellY, int color) {
-        int startX = cellX * scale;
-        int startY = cellY * scale;
-        for (int y = 0; y < scale; y++) {
-            int startIndex = (startY + y) * imageWidth + startX;
-            Arrays.fill(frameBuffer, startIndex, startIndex + scale, color);
-        }
-    }
-
-    private void drawLargeMarker(int cellX, int cellY, int color, int sizeInCells) {
-        int offset = sizeInCells / 2;
-        int startX = (cellX - offset) * scale;
-        int startY = (cellY - offset) * scale;
-        int markerSizePixels = sizeInCells * scale;
-
-        for (int y = 0; y < markerSizePixels; y++) {
-            int pixelY = startY + y;
-            if (pixelY < 0 || pixelY >= imageHeight) continue;
-
-            int startIndex = pixelY * imageWidth + startX;
-            int endIndex = startIndex + markerSizePixels;
-
-            if (startX < 0) {
-                startIndex = pixelY * imageWidth;
-                endIndex = Math.min(endIndex, pixelY * imageWidth + imageWidth);
-            } else if (endIndex > (pixelY + 1) * imageWidth) {
-                endIndex = (pixelY + 1) * imageWidth;
-            }
-
-            if (startIndex < endIndex && startIndex >= 0 && endIndex <= frameBuffer.length) {
-                Arrays.fill(frameBuffer, startIndex, endIndex, color);
-            }
-        }
-    }
-
-    private int getCellColor(int moleculeInt) {
-        int moleculeType = moleculeInt & Config.TYPE_MASK;
-
-        if (moleculeType == Config.TYPE_CODE) {
-            return COLOR_CODE_BG;
-        } else if (moleculeType == Config.TYPE_DATA) {
-            return COLOR_DATA_BG;
-        } else if (moleculeType == Config.TYPE_ENERGY) {
-            return COLOR_ENERGY_BG;
-        } else if (moleculeType == Config.TYPE_STRUCTURE) {
-            return COLOR_STRUCTURE_BG;
-        } else if (moleculeType == Config.TYPE_LABEL) {
-            return COLOR_LABEL_BG;
-        } else {
-            return COLOR_EMPTY_BG;
-        }
-    }
-
-    private Color getOrganismColor(int organismId) {
-        return organismColorMap.computeIfAbsent(organismId, id -> {
-            int paletteIndex = (id - 1) % ORGANISM_COLOR_PALETTE.length;
-            if (paletteIndex < 0) paletteIndex = 0;
-            return ORGANISM_COLOR_PALETTE[paletteIndex];
-        });
-    }
-
-    private void drawTriangle(int cellX, int cellY, int color, int sizeInCells, int[] dv) {
-        int centerX = cellX * scale + (scale / 2);
-        int centerY = cellY * scale + (scale / 2);
-        int halfSize = (sizeInCells * scale) / 2;
-
-        if (dv != null && dv.length >= 2 && (dv[0] != 0 || dv[1] != 0)) {
-            double length = Math.sqrt(dv[0] * dv[0] + dv[1] * dv[1]);
-            if (length > 0) {
-                double dirX = dv[0] / length;
-                double dirY = dv[1] / length;
-
-                int tipX = (int)(centerX + dirX * halfSize);
-                int tipY = (int)(centerY + dirY * halfSize);
-                int base1X = (int)(centerX - dirX * halfSize + (-dirY) * halfSize);
-                int base1Y = (int)(centerY - dirY * halfSize + dirX * halfSize);
-                int base2X = (int)(centerX - dirX * halfSize - (-dirY) * halfSize);
-                int base2Y = (int)(centerY - dirY * halfSize - dirX * halfSize);
-
-                drawFilledTriangle(tipX, tipY, base1X, base1Y, base2X, base2Y, color);
-            } else {
-                drawCircle(centerX, centerY, halfSize, color);
-            }
-        } else {
-            drawCircle(centerX, centerY, halfSize, color);
-        }
-    }
-
-    private void drawCircle(int centerX, int centerY, int radius, int color) {
-        int startX = Math.max(0, centerX - radius);
-        int startY = Math.max(0, centerY - radius);
-        int endX = Math.min(imageWidth - 1, centerX + radius);
-        int endY = Math.min(imageHeight - 1, centerY + radius);
-
-        int radiusSquared = radius * radius;
-        for (int y = startY; y <= endY; y++) {
-            for (int x = startX; x <= endX; x++) {
-                int dx = x - centerX;
-                int dy = y - centerY;
-                if (dx * dx + dy * dy <= radiusSquared) {
-                    frameBuffer[y * imageWidth + x] = color;
-                }
-            }
-        }
-    }
-
-    private void drawFilledTriangle(int x1, int y1, int x2, int y2, int x3, int y3, int color) {
-        int[] xs = {x1, x2, x3};
-        int[] ys = {y1, y2, y3};
-
-        if (ys[0] > ys[1]) { int t = xs[0]; xs[0] = xs[1]; xs[1] = t; t = ys[0]; ys[0] = ys[1]; ys[1] = t; }
-        if (ys[1] > ys[2]) { int t = xs[1]; xs[1] = xs[2]; xs[2] = t; t = ys[1]; ys[1] = ys[2]; ys[2] = t; }
-        if (ys[0] > ys[1]) { int t = xs[0]; xs[0] = xs[1]; xs[1] = t; t = ys[0]; ys[0] = ys[1]; ys[1] = t; }
-
-        int v1x = xs[0], v1y = ys[0];
-        int v2x = xs[1], v2y = ys[1];
-        int v3x = xs[2], v3y = ys[2];
-
-        int minY = Math.max(0, v1y);
-        int maxY = Math.min(imageHeight - 1, v3y);
-
-        for (int y = minY; y <= maxY; y++) {
-            int[] xCoords = new int[3];
-            int count = 0;
-
-            if (v1y != v2y && y >= Math.min(v1y, v2y) && y <= Math.max(v1y, v2y)) {
-                xCoords[count++] = v1x + (v2x - v1x) * (y - v1y) / (v2y - v1y);
-            }
-            if (v2y != v3y && y >= Math.min(v2y, v3y) && y <= Math.max(v2y, v3y)) {
-                xCoords[count++] = v2x + (v3x - v2x) * (y - v2y) / (v3y - v2y);
-            }
-            if (v1y != v3y && y >= Math.min(v1y, v3y) && y <= Math.max(v1y, v3y)) {
-                xCoords[count++] = v1x + (v3x - v1x) * (y - v1y) / (v3y - v1y);
-            }
-
-            if (count >= 2) {
-                Arrays.sort(xCoords, 0, count);
-                int lineStartX = Math.max(0, xCoords[0]);
-                int lineEndX = Math.min(imageWidth - 1, xCoords[count - 1]);
-
-                if (lineStartX <= lineEndX) {
-                    Arrays.fill(frameBuffer, y * imageWidth + lineStartX, y * imageWidth + lineEndX + 1, color);
-                }
-            }
-        }
-    }
-
-    private static class OrganismPosition {
-        final int flatIndex;
-        final int x;
-        final int y;
-
-        OrganismPosition(int flatIndex, int x, int y) {
-            this.flatIndex = flatIndex;
-            this.x = x;
-            this.y = y;
-        }
     }
 }
