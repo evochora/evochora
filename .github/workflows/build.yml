@@ -6,11 +6,17 @@ on:
     tags: [ 'v*' ]
   pull_request:
     branches: [ "main" ]
+  release:
+    # Trigger when a draft release is published via GitHub UI
+    # This creates a tag, but doesn't fire 'push' event
+    types: [ published ]
 
 jobs:
   test:
     name: Build & Test
     runs-on: ${{ matrix.os }}
+    # Skip redundant test run for release events - the tag was already tested on main
+    if: github.event_name != 'release'
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
@@ -60,44 +66,72 @@ jobs:
     name: Build, Package & Release
     needs: test
     runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    # Run on: push to main, push of v* tag, OR release published (with v* tag)
+    if: |
+      always() &&
+      (needs.test.result == 'success' || needs.test.result == 'skipped') &&
+      github.event_name != 'pull_request' &&
+      (
+        github.ref == 'refs/heads/main' ||
+        startsWith(github.ref, 'refs/tags/v') ||
+        (github.event_name == 'release' && startsWith(github.event.release.tag_name, 'v'))
+      )
     permissions:
       contents: write
       packages: write
     steps:
+      - name: Determine version tag
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            # Release event: tag comes from the release object
+            echo "tag=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+            echo "is_release=true" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            # Tag push: extract tag name from ref
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            echo "is_release=true" >> $GITHUB_OUTPUT
+          else
+            # Main branch push: use 'latest'
+            echo "tag=latest" >> $GITHUB_OUTPUT
+            echo "is_release=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          # For release events, checkout the tag explicitly
+          ref: ${{ steps.version.outputs.tag }}
+
       - name: Set up JDK 21 and Gradle Cache
         uses: actions/setup-java@v4
         with:
           java-version: '21'
           distribution: 'temurin'
           cache: 'gradle'
-      - name: Extract metadata for tags
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=ref,event=tag
+
       - name: Build Distribution Archives with Gradle
-        run: ./gradlew distZip distTar --no-daemon -PRELEASE_TAG=${{ steps.meta.outputs.version }}
+        run: ./gradlew distZip distTar --no-daemon -PRELEASE_TAG=${{ steps.version.outputs.tag }}
+
       - name: Upload Distribution Artifact
         uses: actions/upload-artifact@v4
         with:
           name: evochora-distribution
           path: build/distributions/
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.repository_owner }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -105,22 +139,22 @@ jobs:
           file: ./infrastructure/docker/evochora-node/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: ghcr.io/${{ github.repository }}:${{ steps.version.outputs.tag }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.version.outputs.tag }}
           build-args: |
-            RELEASE_TAG=${{ steps.meta.outputs.version }}
+            RELEASE_TAG=${{ steps.version.outputs.tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Create or Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          # This pulls the git tag and uses it as the release name
-          tag_name: ${{ steps.meta.outputs.version }}
-          # If the tag is 'latest', mark it as a pre-release to distinguish from versioned tags
-          prerelease: ${{ steps.meta.outputs.version == 'latest' }}
-          # Overwrite any existing assets for the 'latest' tag
-          # For versioned tags, this will fail if the release already exists, which is safe.
+          tag_name: ${{ steps.version.outputs.tag }}
+          # 'latest' is a pre-release, versioned tags are full releases
+          prerelease: ${{ steps.version.outputs.tag == 'latest' }}
           files: |
             build/distributions/*.zip
             build/distributions/*.tar.gz
