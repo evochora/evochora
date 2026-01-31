@@ -152,6 +152,9 @@ public class SymbolTable {
                         if (sym.type() == Symbol.Type.PROCEDURE && Boolean.TRUE.equals(isProcedureExported(sym.name()))) {
                             return Optional.of(sym);
                         }
+                        if (sym.type() == Symbol.Type.LABEL && Boolean.TRUE.equals(isLabelExported(sym.name()))) {
+                            return Optional.of(sym);
+                        }
                         return Optional.empty();
                     }
                 }
@@ -190,6 +193,7 @@ public class SymbolTable {
     }
 
     private final Map<String, Boolean> procExportedByFileAndName = new HashMap<>();
+    private final Map<String, Boolean> labelExportedByFileAndName = new HashMap<>();
 
     /**
      * Registers metadata for a procedure, such as whether it is exported.
@@ -200,9 +204,28 @@ public class SymbolTable {
         String key = procName.fileName() + "|" + procName.text().toUpperCase();
         procExportedByFileAndName.put(key, exported);
     }
+
     private Boolean isProcedureExported(Token procName) {
         String key = procName.fileName() + "|" + procName.text().toUpperCase();
         return procExportedByFileAndName.get(key);
+    }
+
+    /**
+     * Registers metadata for a label, such as whether it is exported.
+     * Exported labels can be referenced from other files via qualified names
+     * (e.g., ALIAS.LABEL_NAME after using .REQUIRE "file" AS ALIAS).
+     *
+     * @param labelName The name token of the label.
+     * @param exported True if the label is exported, false otherwise.
+     */
+    public void registerLabelMeta(Token labelName, boolean exported) {
+        String key = labelName.fileName() + "|" + labelName.text().toUpperCase();
+        labelExportedByFileAndName.put(key, exported);
+    }
+
+    private Boolean isLabelExported(Token labelName) {
+        String key = labelName.fileName() + "|" + labelName.text().toUpperCase();
+        return labelExportedByFileAndName.get(key);
     }
     
     /**

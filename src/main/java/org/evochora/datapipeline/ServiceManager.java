@@ -16,6 +16,7 @@ import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
+import org.evochora.compiler.api.CompilationException;
 import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
@@ -532,6 +533,13 @@ public class ServiceManager implements IMonitorable {
                     log.error("Failed to start service '{}': Insufficient memory. Increase heap size with -Xmx16g or reduce world size.", name);
                     return;
                 }
+            }
+
+            // Check if this is a compilation error (CompilationException contains formatted error messages)
+            if (cause instanceof CompilationException) {
+                log.error("Compilation failed for service '{}':\n{}", name, cause.getMessage());
+                // Don't throw - just log and return. Service remains in stopped state.
+                return;
             }
 
             // Check if this is a configuration error (IllegalArgumentException or NegativeArraySizeException)

@@ -168,14 +168,9 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             return;
         }
 
-        Object valueToStore;
-        // Energy costs and gains are now handled by the thermodynamic policy in VirtualMachine
-        if (s.type() == Config.TYPE_ENERGY) {
-            int energyToTake = Math.min(s.toScalarValue(), organism.getMaxEnergy() - organism.getEr());
-            valueToStore = new Molecule(Config.TYPE_ENERGY, energyToTake).toInt();
-        } else {
-            valueToStore = s.toInt();
-        }
+        // Store the actual value read from the environment.
+        // Energy gains for the organism are handled separately by the thermodynamic policy.
+        Object valueToStore = s.toInt();
 
         if (targetReg != -1) {
             writeOperand(targetReg, valueToStore);

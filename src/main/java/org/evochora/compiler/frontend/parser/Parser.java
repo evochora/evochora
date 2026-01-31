@@ -143,8 +143,13 @@ public class Parser implements ParsingContext {
     private AstNode statement() {
         if (check(TokenType.IDENTIFIER) && checkNext(TokenType.COLON)) {
             Token labelToken = advance();
-            advance();
-            return new LabelNode(labelToken, declaration());
+            advance(); // consume ':'
+            boolean exported = false;
+            if (check(TokenType.IDENTIFIER) && "EXPORT".equalsIgnoreCase(peek().text())) {
+                advance(); // consume 'EXPORT'
+                exported = true;
+            }
+            return new LabelNode(labelToken, declaration(), exported);
         }
         return instructionStatement();
     }

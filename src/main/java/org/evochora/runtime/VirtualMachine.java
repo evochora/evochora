@@ -52,13 +52,9 @@ public class VirtualMachine {
 
         if (Config.STRICT_TYPING) {
             if (molecule.type() != Config.TYPE_CODE && !molecule.isEmpty()) {
-                // LABEL molecules: skip like NOP (no error)
-                if (molecule.type() == Config.TYPE_LABEL) {
-                    int nopOpcodeId = Instruction.getInstructionIdByName("NOP");
-                    return new org.evochora.runtime.isa.instructions.NopInstruction(organism, nopOpcodeId);
-                }
-                organism.instructionFailed("Illegal cell type (not CODE) at IP");
-                return new org.evochora.runtime.isa.instructions.NopInstruction(organism, molecule.toInt());
+                // Non-CODE molecules: treat as NOP (will be skipped by skipNopCells)
+                int nopOpcodeId = Instruction.getInstructionIdByName("NOP");
+                return new org.evochora.runtime.isa.instructions.NopInstruction(organism, nopOpcodeId);
             }
         }
 

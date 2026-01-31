@@ -575,7 +575,9 @@ public class Organism {
     }
 
     /**
-     * Advances the IP past any NOP/LABEL/empty cells at the current position.
+     * Advances the IP past any non-CODE cells (or NOP) at the current position.
+     * Only real CODE instructions (non-NOP) stop the skip. DATA, ENERGY, STRUCTURE,
+     * LABEL, empty cells, and NOP are all skipped over.
      * This is used both after instruction execution (instant-skip) and by conditional
      * instructions to find the next real instruction to skip.
      *
@@ -588,8 +590,7 @@ public class Organism {
 
         for (int skips = 0; skips < maxSkips && !isDead; skips++) {
             Molecule m = environment.getMolecule(ip);
-            if (!m.isEmpty() && m.type() != Config.TYPE_LABEL
-                    && !(m.type() == Config.TYPE_CODE && m.value() == nopOpcodeId)) {
+            if (m.type() == Config.TYPE_CODE && m.value() != nopOpcodeId) {
                 return;
             }
             advanceIpBy(1, environment);
@@ -599,8 +600,8 @@ public class Organism {
 
     /**
      * Skips the next real instruction following the currently executing one.
-     * NOP, LABEL, and empty cells are not considered real instructions and are
-     * skipped over to find the actual instruction to skip.
+     * Only CODE molecules (non-NOP) are considered real instructions; all other
+     * molecule types are skipped over to find the actual instruction to skip.
      *
      * @param environment The simulation environment.
      */

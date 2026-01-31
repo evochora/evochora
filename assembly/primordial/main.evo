@@ -14,16 +14,16 @@
 # ----------------------------
 # Constants
 # ----------------------------
-.DEFINE REPRODUCTION_CONTINUE_THRESHOLD DATA:50000
-.DEFINE ENTROPY_REPRODUCTION_CONTINUE_THRESHOLD DATA:4000
+.DEFINE REPRODUCTION_CONTINUE_THRESHOLD DATA:100000
+.DEFINE ENTROPY_REPRODUCTION_CONTINUE_THRESHOLD DATA:5000
 
 # ----------------------------
 # STRUCTURE Shell (50x31)
 # ----------------------------
-.PLACE STRUCTURE:100 -1..80|-1
-.PLACE STRUCTURE:100 -1..80|41
-.PLACE STRUCTURE:100 -1|0..40
-.PLACE STRUCTURE:100 80|0..40
+.PLACE STRUCTURE:100 -1..70|-1
+.PLACE STRUCTURE:100 -1..70|44
+.PLACE STRUCTURE:100 -1|0..43
+.PLACE STRUCTURE:100 70|0..43
 
 # ----------------------------
 # Init
@@ -31,26 +31,16 @@
 .ORG 0|0
 INIT: NOP^4
   DPLS
-  SETI %INI DATA:0; NOP^4
-
-LOCALSTATE_MOVE: NOP                          
-  GTI %INI DATA:14
-    JMPI LOCALSTATE_WRITE; NOP^4
-
-  GTI %INI DATA:14                     # Redundanz
-    JMPI LOCALSTATE_WRITE; NOP^4
-
-  INCR %INI; NOP^4
-  SEKI 0|1; NOP^4
-  JMPI LOCALSTATE_MOVE; NOP^12; JMPI LOCALSTATE_MOVE
+  SKJI REPRODUCE.CONTINUE_STATE; NOP^4
+  JMPI LOCALSTATE_WRITE; NOP^12; JMPI LOCALSTATE_WRITE
 
 .ORG 0|1
 LOCALSTATE_WRITE: NOP^4
   SETI %INI DATA:0; NOP^4
-  PPKI %INI 0|1; NOP^4
+  PPKI %INI 1|0; NOP^4
   SEKI 1|0; NOP^4;
   SETI %INI DATA:-1; NOP^4
-  PPKI %INI 0|1; NOP^4
+  PPKI %INI 1|0; NOP^4
   SKLS; NOP^4
   JMPI MAIN_LOOP; NOP^8; JMPI MAIN_LOOP
 
@@ -91,7 +81,7 @@ JMPI MAIN_LOOP; NOP^12; JMPI MAIN_LOOP
 # ----------------------------
 # Energy search
 # ----------------------------
-.ORG 0|4
+.ORG 0|5
 .INCLUDE "lib/energy.evo"
 .REQUIRE "lib/energy.evo" AS ENERGY
   
@@ -99,12 +89,12 @@ JMPI MAIN_LOOP; NOP^12; JMPI MAIN_LOOP
 # ----------------------------
 # Reproduction (mock)
 # ----------------------------
-.ORG 0|15
+.ORG 0|17
 .INCLUDE "lib/reproduce.evo"
 .REQUIRE "lib/reproduce.evo" AS REPRODUCE
 
 # ----------------------------
 # Safety jump back (redundant für Mutations-Robustheit)
 # ----------------------------
-.ORG 0|40
+.ORG 0|43
 JMPI MAIN_LOOP; NOP^54; JMPI MAIN_LOOP

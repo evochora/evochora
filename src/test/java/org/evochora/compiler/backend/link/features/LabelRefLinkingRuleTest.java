@@ -4,6 +4,9 @@ import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.frontend.lexer.Token;
+import org.evochora.compiler.frontend.lexer.TokenType;
+import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.ir.IrImm;
 import org.evochora.compiler.ir.IrInstruction;
@@ -156,6 +159,92 @@ class LabelRefLinkingRuleTest {
         IrInstruction result = rule.apply(input, context, layout);
 
         // Then: The IrLabelRef is NOT converted (stays as-is for error handling later)
+        assertThat(result.operands().get(0)).isInstanceOf(IrLabelRef.class);
+    }
+
+    @Test
+    void resolvesExportedLabelViaQualifiedName() {
+        // Given: A symbol table with an exported label in "lib.s" and an alias in "main.s"
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+
+        // Define the label in lib.s
+        Token labelToken = new Token(TokenType.IDENTIFIER, "TARGET", null, 1, 0, "lib.s");
+        symbolTable.define(new Symbol(labelToken, Symbol.Type.LABEL));
+        symbolTable.registerLabelMeta(labelToken, true); // exported
+
+        // Register the alias: in main.s, LIB -> lib.s
+        symbolTable.registerRequireAlias("main.s", "LIB", "lib.s");
+
+        // Create rule with this symbol table
+        LabelRefLinkingRule ruleWithExport = new LabelRefLinkingRule(symbolTable);
+
+        // Given: A layout with "TARGET" label
+        layout = new LayoutResult(
+                Map.of(10, new int[]{5, 5}),
+                Map.of("5|5", 10),
+                Map.of("TARGET", 10),
+                Collections.emptyMap(),
+                Collections.emptyMap()
+        );
+
+        // And: An instruction referencing "LIB.TARGET" from main.s
+        SourceInfo mainSource = new SourceInfo("main.s", 1, 0);
+        IrInstruction input = new IrInstruction(
+                "JMPI",
+                List.of(new IrLabelRef("LIB.TARGET")),
+                mainSource
+        );
+
+        // When: The rule is applied
+        IrInstruction result = ruleWithExport.apply(input, context, layout);
+
+        // Then: The qualified label is resolved to the hash of "TARGET"
+        assertThat(result.operands()).hasSize(1);
+        assertThat(result.operands().get(0)).isInstanceOf(IrImm.class);
+
+        long expectedHash = "TARGET".hashCode() & 0x7FFFF;
+        long actualHash = ((IrImm) result.operands().get(0)).value();
+        assertThat(actualHash).isEqualTo(expectedHash);
+    }
+
+    @Test
+    void doesNotResolveNonExportedLabelViaQualifiedName() {
+        // Given: A symbol table with a NON-exported label in "lib.s"
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+
+        // Define the label in lib.s (NOT exported)
+        Token labelToken = new Token(TokenType.IDENTIFIER, "PRIVATE", null, 1, 0, "lib.s");
+        symbolTable.define(new Symbol(labelToken, Symbol.Type.LABEL));
+        symbolTable.registerLabelMeta(labelToken, false); // NOT exported
+
+        // Register the alias
+        symbolTable.registerRequireAlias("main.s", "LIB", "lib.s");
+
+        LabelRefLinkingRule ruleWithNonExport = new LabelRefLinkingRule(symbolTable);
+
+        // Layout contains the label
+        layout = new LayoutResult(
+                Map.of(10, new int[]{5, 5}),
+                Map.of("5|5", 10),
+                Map.of("PRIVATE", 10),
+                Collections.emptyMap(),
+                Collections.emptyMap()
+        );
+
+        // Instruction referencing "LIB.PRIVATE" from main.s
+        SourceInfo mainSource = new SourceInfo("main.s", 1, 0);
+        IrInstruction input = new IrInstruction(
+                "JMPI",
+                List.of(new IrLabelRef("LIB.PRIVATE")),
+                mainSource
+        );
+
+        // When: The rule is applied
+        IrInstruction result = ruleWithNonExport.apply(input, context, layout);
+
+        // Then: The label is NOT resolved (stays as IrLabelRef) because it's not exported
         assertThat(result.operands().get(0)).isInstanceOf(IrLabelRef.class);
     }
 }

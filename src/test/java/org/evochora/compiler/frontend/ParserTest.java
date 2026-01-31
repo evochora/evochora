@@ -6,6 +6,8 @@ import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.parser.ast.*;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.parser.features.label.LabelNode;
+import org.evochora.runtime.isa.Instruction;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -22,6 +24,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * These are unit tests and do not require external resources.
  */
 public class ParserTest {
+
+    @BeforeAll
+    static void initInstructions() {
+        Instruction.init();
+    }
 
     /**
      * Verifies that the parser correctly builds an {@link InstructionNode} for a simple instruction
@@ -120,5 +127,91 @@ public class ParserTest {
         assertThat(vector.components()).hasSize(2);
         assertThat(vector.components().get(0).value()).isEqualTo(10);
         assertThat(vector.components().get(1).value()).isEqualTo(-20);
+    }
+
+    /**
+     * Verifies that the parser correctly handles an exported label (e.g., "L1: EXPORT NOP").
+     * The exported flag should be true and the statement should be parsed correctly.
+     * This is a unit test for the parser.
+     */
+    @Test
+    @Tag("unit")
+    void testParserExportedLabel() {
+        // Arrange
+        String source = "L1: EXPORT NOP";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics);
+        List<Token> tokens = lexer.scanTokens();
+        Parser parser = new Parser(tokens, diagnostics, Path.of(""));
+
+        // Act
+        List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(ast).hasSize(1);
+        assertThat(ast.get(0)).isInstanceOf(LabelNode.class);
+
+        LabelNode labelNode = (LabelNode) ast.get(0);
+        assertThat(labelNode.labelToken().text()).isEqualTo("L1");
+        assertThat(labelNode.exported()).isTrue();
+        assertThat(labelNode.statement()).isInstanceOf(InstructionNode.class);
+
+        InstructionNode nopNode = (InstructionNode) labelNode.statement();
+        assertThat(nopNode.opcode().text()).isEqualTo("NOP");
+    }
+
+    /**
+     * Verifies that a non-exported label has the exported flag set to false.
+     * This is a unit test for the parser.
+     */
+    @Test
+    @Tag("unit")
+    void testParserNonExportedLabel() {
+        // Arrange
+        String source = "L1: NOP";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics);
+        List<Token> tokens = lexer.scanTokens();
+        Parser parser = new Parser(tokens, diagnostics, Path.of(""));
+
+        // Act
+        List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        LabelNode labelNode = (LabelNode) ast.get(0);
+        assertThat(labelNode.exported()).isFalse();
+    }
+
+    /**
+     * Verifies that an exported label followed by a statement on the next line
+     * correctly includes that statement as the label's statement.
+     * This is a unit test for the parser.
+     */
+    @Test
+    @Tag("unit")
+    void testParserExportedLabelWithStatementOnNextLine() {
+        // Arrange
+        String source = "L1: EXPORT\nNOP";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics);
+        List<Token> tokens = lexer.scanTokens();
+        Parser parser = new Parser(tokens, diagnostics, Path.of(""));
+
+        // Act
+        List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
+
+        // Assert - the NOP becomes the statement of the label
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(ast).hasSize(1);
+
+        LabelNode labelNode = (LabelNode) ast.get(0);
+        assertThat(labelNode.labelToken().text()).isEqualTo("L1");
+        assertThat(labelNode.exported()).isTrue();
+        assertThat(labelNode.statement()).isInstanceOf(InstructionNode.class);
+
+        InstructionNode nopNode = (InstructionNode) labelNode.statement();
+        assertThat(nopNode.opcode().text()).isEqualTo("NOP");
     }
 }
