@@ -599,4 +599,70 @@ public class VMLocationInstructionTest {
         assertThat(org.getLr(0)).isEqualTo(new int[]{1, 2}); // Should remain unchanged
         assertThat(org.getLr(1)).isEqualTo(new int[]{0, 0}); // Should remain cleared
     }
+
+    // --- SKJ* (Seek Jump) Tests ---
+
+    /**
+     * Tests that SKJI sets the active DP to the label position.
+     */
+    @Test
+    @Tag("unit")
+    void testSkjiSetsActiveDp() {
+        Environment env = sim.getEnvironment();
+        int labelHash = 12345 & Config.VALUE_MASK;
+        int[] labelPos = new int[]{5, 5};
+
+        // Place a label at target position
+        env.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), labelPos);
+
+        // Place SKJI instruction
+        placeInstruction(org, "SKJI", labelHash);
+        sim.tick();
+
+        assertThat(org.getActiveDp()).isEqualTo(labelPos);
+        assertThat(org.isInstructionFailed()).isFalse();
+    }
+
+    /**
+     * Tests that SKJI fails when no matching label exists.
+     */
+    @Test
+    @Tag("unit")
+    void testSkjiFailsWhenNoLabel() {
+        int nonExistentHash = 99999 & Config.VALUE_MASK;
+        int[] originalDp = org.getActiveDp().clone();
+
+        placeInstruction(org, "SKJI", nonExistentHash);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("No matching label found");
+        assertThat(org.getActiveDp()).isEqualTo(originalDp);
+    }
+
+    /**
+     * Tests SKJR (register variant) and SKJS (stack variant).
+     */
+    @Test
+    @Tag("unit")
+    void testSkjrAndSkjsVariants() {
+        Environment env = sim.getEnvironment();
+        int labelHash = 54321 & Config.VALUE_MASK;
+        int[] labelPos = new int[]{7, 7};
+
+        env.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), labelPos);
+
+        // Test SKJR: hash from register
+        org.setDr(0, new Molecule(Config.TYPE_DATA, labelHash).toInt());
+        placeInstruction(org, "SKJR", 0);
+        sim.tick();
+        assertThat(org.getActiveDp()).isEqualTo(labelPos);
+
+        // Reset DP and test SKJS: hash from stack
+        org.setActiveDp(new int[]{0, 0});
+        org.getDataStack().push(new Molecule(Config.TYPE_DATA, labelHash).toInt());
+        placeInstruction(org, "SKJS");
+        sim.tick();
+        assertThat(org.getActiveDp()).isEqualTo(labelPos);
+    }
 }
