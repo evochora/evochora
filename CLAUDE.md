@@ -46,6 +46,8 @@ Evochora is an artificial life simulator for research into digital evolution. It
    - Services extend `AbstractService` with constructor: `(String serviceName, Map<String, List<IResource>> resources, Config options)`
    - Resources abstract I/O (IQueueResource, IStorageResource, IDatabaseResource, ITopicResource)
    - Supports dual-mode deployment: in-process (InMemoryBlockingQueue, H2/SQLite) and cloud (message buses, PostgreSQL, S3)
+   - All services expect SimulationEngine must have the capability to operate as a competing consumers
+   - All created artifacts must be created atomically to make sure resume functionality can always start from final artifacts
 
 4. **Node** (`src/main/java/org/evochora/node/`)
    - Orchestrates processes via topological sort of dependencies
@@ -95,6 +97,18 @@ Evochora is an artificial life simulator for research into digital evolution. It
 **Documentation:**
 - Complete JavaDoc required for all non-private members
 - Include: purpose, @param, @return, @throws, thread safety
+
+## Change Management
+
+**Before Proposing Solutions:**
+- Verify the solution is fundamentally possible given system constraints
+- For architectural changes: confirm the approach solves the problem without creating new ones
+- For performance claims (heap, CPU, latency): verify with evidence or explicitly state uncertainty
+
+**Before Implementing Changes:**
+- Interface changes: analyze full impact (all implementations, all call sites, all tests)
+- Multi-file changes: present plan and get explicit approval before writing code
+- Never silently rewrite working code - explain what and why first
 
 ## Architectural Review
 
