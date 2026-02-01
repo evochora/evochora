@@ -108,9 +108,9 @@ public class MinimapAggregator {
             final int x = flatIndex / worldHeight;
             final int y = flatIndex % worldHeight;
 
-            // Map to minimap coordinates
-            final int mx = Math.min(x / scaleX, minimapWidth - 1);
-            final int my = Math.min(y / scaleY, minimapHeight - 1);
+            // Map to minimap coordinates (toroidal wrapping for edge overflow)
+            final int mx = (x / scaleX) % minimapWidth;
+            final int my = (y / scaleY) % minimapHeight;
             final int mIdx = my * minimapWidth + mx;
 
             // Determine cell type (with EMPTY detection)
@@ -123,7 +123,7 @@ public class MinimapAggregator {
         // Add background (empty) cells to the count with reduced weight
         // Each minimap pixel represents approximately scaleX * scaleY environment cells
         // Cells not in the data are truly empty background
-        // Empty cells count at 2.5% weight to avoid always winning in sparse areas
+        // Empty cells count at 4% weight to avoid always winning in sparse areas
         final int cellsPerBlock = scaleX * scaleY;
         for (int i = 0; i < minimapSize; i++) {
             int totalCounted = 0;
@@ -134,7 +134,7 @@ public class MinimapAggregator {
             // Add missing cells as EMPTY with 6.25% weight
             final int backgroundCells = cellsPerBlock - totalCounted;
             if (backgroundCells > 0) {
-                final int weightedEmpty = backgroundCells / 40;  // 2.5% weight
+                final int weightedEmpty = backgroundCells / 25;  // 4% weight
                 counts[baseIdx + TYPE_EMPTY] += (short) Math.min(weightedEmpty, Short.MAX_VALUE);
             }
         }

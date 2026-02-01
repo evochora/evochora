@@ -174,8 +174,16 @@ export class AppController {
                 this.renderer.updateWorldShape(this.state.worldShape);
             }
             if (Array.isArray(metadata?.programs)) {
+                // Attach environment info to each artifact for toroidal coordinate calculations
+                const envInfo = metadata?.environment;
                 for (const program of metadata.programs) {
                     if (program && program.programId && program.sources) {
+                        if (envInfo) {
+                            program.envProps = {
+                                worldShape: envInfo.shape ? Array.from(envInfo.shape) : null,
+                                toroidal: envInfo.toroidal ? Array.from(envInfo.toroidal) : null
+                            };
+                        }
                         this.programArtifactCache.set(program.programId, program);
                     }
                 }
@@ -540,10 +548,17 @@ export class AppController {
                     this.renderer.updateWorldShape(this.state.worldShape);
                 }
 
-                // Cache program artifacts
+                // Cache program artifacts with environment info for toroidal calculations
                 if (Array.isArray(metadata.programs)) {
+                    const envInfo = metadata?.environment;
                     for (const program of metadata.programs) {
                         if (program && program.programId && program.sources) {
+                            if (envInfo) {
+                                program.envProps = {
+                                    worldShape: envInfo.shape ? Array.from(envInfo.shape) : null,
+                                    toroidal: envInfo.toroidal ? Array.from(envInfo.toroidal) : null
+                                };
+                            }
                             this.programArtifactCache.set(program.programId, program);
                         }
                     }

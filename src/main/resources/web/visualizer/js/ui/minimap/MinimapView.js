@@ -280,6 +280,7 @@ export class MinimapView {
         if (this.lastMinimapData && this.worldShape) {
             this.renderer.render(this.lastMinimapData);
             this._renderOrganismOverlay();
+            this.renderer.cacheBackground();
             if (this.viewportBounds) {
                 this.renderer.drawViewportRect(this.viewportBounds, this.worldShape);
             }

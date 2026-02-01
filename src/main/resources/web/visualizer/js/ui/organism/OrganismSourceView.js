@@ -19,7 +19,7 @@ export class OrganismSourceView {
         this.selectedFile = null;
         this.annotator = new SourceAnnotator();
         this.lastAnnotatedLine = null; // Track annotated line to restore it
-        
+
         // Cache references to active DOM elements
         this.dom = {
             section: rootElement.querySelector('[data-section="source"]'),
@@ -541,6 +541,11 @@ export class OrganismSourceView {
      * It translates the absolute IP into a relative program coordinate, then uses the
      * artifact's source maps to find the corresponding line.
      *
+     * <p>This method handles toroidal grids correctly by wrapping the relative coordinates
+     * when they exceed half the grid size. This ensures that an organism crossing a grid
+     * boundary (e.g., from x=99 to x=0 on a 100-wide grid) produces the correct relative
+     * offset (+1) instead of the naive difference (-99).</p>
+     *
      * @param {object} organismState - The organism's dynamic state, containing the `ip`.
      * @param {object} staticInfo - The organism's static info, containing the `initialPosition`.
      * @returns {{fileName: string, lineNumber: number, linearAddress?: number}|{error: string}|null} The location object, an error object, or null.
@@ -548,45 +553,24 @@ export class OrganismSourceView {
      */
     calculateActiveLocation(organismState, staticInfo) {
         if (!organismState || !staticInfo || !this.artifact) return null;
-        
+
         const ip = organismState.ip;
-        const startPos = staticInfo.initialPosition;
-        
+        let startPos = staticInfo.initialPosition;
+
+        // Handle nested vector format (e.g., { components: [x, y] })
+        if (startPos && startPos.components && Array.isArray(startPos.components)) {
+            startPos = startPos.components;
+        }
+
         if (!Array.isArray(ip) || ip.length < 2 || !Array.isArray(startPos) || startPos.length < 2) {
-            // Correctly use the vector from staticInfo if available
-            if(staticInfo.initialPosition && staticInfo.initialPosition.components) {
-                 const relX = ip[0] - staticInfo.initialPosition.components[0];
-                 const relY = ip[1] - staticInfo.initialPosition.components[1];
-                 const coordKey = `${relX}|${relY}`;
-                 if (!this.artifact.relativeCoordToLinearAddress) {
-                     return { error: "Missing address mapping in artifact" };
-                 }
-                 const linearAddress = this.artifact.relativeCoordToLinearAddress[coordKey];
-                 if (linearAddress === undefined) {
-                     return { error: `IP ${ip[0]}|${ip[1]} not mapped to a source line` };
-                 }
-                 if (!this.artifact.sourceMap) {
-                     return { error: "Missing source map in artifact" };
-                 }
-                 let sourceInfo = this.artifact.sourceMap.find(sm => sm.linearAddress === linearAddress);
-                 if (!sourceInfo) {
-                     return { error: `Address ${linearAddress} has no source info` };
-                 }
-                 if (sourceInfo.sourceInfo) {
-                    sourceInfo = sourceInfo.sourceInfo;
-                 }
-                 return {
-                     fileName: sourceInfo.fileName,
-                     lineNumber: sourceInfo.lineNumber,
-                     linearAddress: linearAddress
-                 };
-            }
             return { error: "Invalid IP or Start Position data" };
         }
 
-        const relX = ip[0] - startPos[0];
-        const relY = ip[1] - startPos[1];
-        
+        // Calculate relative coordinates with toroidal wrapping
+        const relCoords = this.calculateToroidalRelativeCoords(ip, startPos);
+        const relX = relCoords[0];
+        const relY = relCoords[1];
+
         // Deterministic key generation (must match Java backend)
         const coordKey = `${relX}|${relY}`;
         
@@ -623,7 +607,57 @@ export class OrganismSourceView {
             linearAddress: linearAddress
         };
     }
-    
+
+    /**
+     * Calculates relative coordinates with toroidal wrapping.
+     *
+     * <p>When an organism crosses a grid boundary in a toroidal world, the naive difference
+     * between IP and start position can be misleading. For example, if an organism starts
+     * at x=99 on a 100-wide grid and moves right to x=0, the naive difference is -99,
+     * but the actual relative offset is +1.</p>
+     *
+     * <p>This method uses the shorter path around the torus: if the naive difference
+     * exceeds half the grid size, it wraps around.</p>
+     *
+     * @param {number[]} ip - The current instruction pointer [x, y].
+     * @param {number[]} startPos - The organism's initial position [x, y].
+     * @returns {number[]} The relative coordinates [relX, relY] with toroidal wrapping applied.
+     * @private
+     */
+    calculateToroidalRelativeCoords(ip, startPos) {
+        let relX = ip[0] - startPos[0];
+        let relY = ip[1] - startPos[1];
+
+        // Get environment properties from artifact (attached during caching in AppController)
+        const envProps = this.artifact?.envProps;
+        const worldShape = envProps?.worldShape;
+        const toroidal = envProps?.toroidal;
+
+        if (worldShape && toroidal) {
+            // Wrap X coordinate if toroidal in X dimension
+            if (toroidal[0] && worldShape[0] > 0) {
+                const width = worldShape[0];
+                // Normalize to [0, width) first, then shift to [-width/2, width/2)
+                relX = ((relX % width) + width) % width;
+                if (relX > width / 2) {
+                    relX -= width;
+                }
+            }
+
+            // Wrap Y coordinate if toroidal in Y dimension
+            if (toroidal[1] && worldShape[1] > 0) {
+                const height = worldShape[1];
+                // Normalize to [0, height) first, then shift to [-height/2, height/2)
+                relY = ((relY % height) + height) % height;
+                if (relY > height / 2) {
+                    relY -= height;
+                }
+            }
+        }
+
+        return [relX, relY];
+    }
+
     /**
      * Finds the longest common prefix (up to the last slash) of an array of file paths.
      * Used to shorten file paths displayed in the dropdown.
