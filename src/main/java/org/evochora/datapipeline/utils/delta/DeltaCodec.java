@@ -102,6 +102,9 @@ public final class DeltaCodec {
         private final List<DeltaCapture> currentDeltas = new ArrayList<>();
         private final BitSet accumulatedSinceSnapshot;
         private int samplesSinceSnapshot = 0;
+
+        // Reusable builder to avoid repeated allocations
+        private final CellDataColumns.Builder cellColumnsBuilder = CellDataColumns.newBuilder();
         
         /**
          * Creates a new Encoder for a new simulation.
@@ -295,31 +298,31 @@ public final class DeltaCodec {
         }
         
         private CellDataColumns extractAllCells(Environment env) {
-            CellDataColumns.Builder builder = CellDataColumns.newBuilder();
-            
+            cellColumnsBuilder.clear();
+
             env.forEachOccupiedIndex(flatIndex -> {
-                builder.addFlatIndices(flatIndex);
-                builder.addMoleculeData(env.getMoleculeInt(flatIndex));
-                builder.addOwnerIds(env.getOwnerIdByIndex(flatIndex));
+                cellColumnsBuilder.addFlatIndices(flatIndex);
+                cellColumnsBuilder.addMoleculeData(env.getMoleculeInt(flatIndex));
+                cellColumnsBuilder.addOwnerIds(env.getOwnerIdByIndex(flatIndex));
             });
-            
-            return builder.build();
+
+            return cellColumnsBuilder.build();
         }
-        
+
         private CellDataColumns extractCellsFromBitSet(Environment env, BitSet changedIndices) {
-            CellDataColumns.Builder builder = CellDataColumns.newBuilder();
-            
+            cellColumnsBuilder.clear();
+
             // Iterate over set bits
-            for (int flatIndex = changedIndices.nextSetBit(0); 
-                 flatIndex >= 0; 
+            for (int flatIndex = changedIndices.nextSetBit(0);
+                 flatIndex >= 0;
                  flatIndex = changedIndices.nextSetBit(flatIndex + 1)) {
-                
-                builder.addFlatIndices(flatIndex);
-                builder.addMoleculeData(env.getMoleculeInt(flatIndex));
-                builder.addOwnerIds(env.getOwnerIdByIndex(flatIndex));
+
+                cellColumnsBuilder.addFlatIndices(flatIndex);
+                cellColumnsBuilder.addMoleculeData(env.getMoleculeInt(flatIndex));
+                cellColumnsBuilder.addOwnerIds(env.getOwnerIdByIndex(flatIndex));
             }
-            
-            return builder.build();
+
+            return cellColumnsBuilder.build();
         }
     }
     
