@@ -17,6 +17,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import org.evochora.compiler.api.CompilationException;
+import org.evochora.datapipeline.resume.ResumeException;
 import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
@@ -542,9 +543,17 @@ public class ServiceManager implements IMonitorable {
                 return;
             }
 
-            // Check if this is a configuration error (IllegalArgumentException or NegativeArraySizeException)
+            // Check if this is a configuration error (IllegalArgumentException, ResumeException, or NegativeArraySizeException)
             if (cause instanceof IllegalArgumentException) {
                 String errorMsg = "Configuration error for service '" + name + "': " + cause.getMessage();
+                log.error(errorMsg);
+                // Don't throw - just log and return. Service remains in stopped state.
+                return;
+            }
+
+            // ResumeException indicates invalid run-id or missing checkpoint data
+            if (cause instanceof ResumeException) {
+                String errorMsg = "Resume failed for service '" + name + "': " + cause.getMessage();
                 log.error(errorMsg);
                 // Don't throw - just log and return. Service remains in stopped state.
                 return;

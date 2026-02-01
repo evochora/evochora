@@ -83,6 +83,14 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     private long lastTickCount = 0;
     private double ticksPerSecond = 0.0;
 
+    // Reusable Protobuf builders for organism state extraction (avoids allocations per organism)
+    private final OrganismState.Builder organismStateBuilder = OrganismState.newBuilder();
+    private final Vector.Builder vectorBuilder = Vector.newBuilder();
+    private final org.evochora.datapipeline.api.contracts.RegisterValue.Builder registerValueBuilder =
+            org.evochora.datapipeline.api.contracts.RegisterValue.newBuilder();
+    private final org.evochora.datapipeline.api.contracts.ProcFrame.Builder procFrameBuilder =
+            org.evochora.datapipeline.api.contracts.ProcFrame.newBuilder();
+
     // Helper record bundling program path, ID, and artifact for initialization and metadata building
     private record ProgramInfo(String programPath, String programId, ProgramArtifact artifact) {}
 
@@ -206,9 +214,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         log.debug("Initializing from checkpoint (resume mode)");
 
         if (!options.hasPath("resume.runId")) {
-            throw new IllegalStateException(
-                "Configuration 'resume.runId' is required for resume mode. " +
-                "Set pipeline.runId via config (e.g., -Dpipeline.runId=<RUN_ID>)");
+            throw new IllegalArgumentException(
+                "resume.runId is required when resume.enabled=true");
         }
         String runId = options.getString("resume.runId");
 
@@ -260,7 +267,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 checkpoint.snapshot()  // Pass snapshot to prime the encoder
             );
         } catch (IOException e) {
-            throw new IllegalStateException("Failed to load checkpoint: " + e.getMessage(), e);
+            throw new IllegalArgumentException("Failed to load checkpoint: " + e.getMessage(), e);
         }
     }
 
@@ -525,88 +532,87 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     }
 
     private OrganismState extractOrganismState(Organism o) {
-        OrganismState.Builder builder = OrganismState.newBuilder();
-        Vector.Builder vectorBuilder = Vector.newBuilder();
-        org.evochora.datapipeline.api.contracts.RegisterValue.Builder registerBuilder =
-                org.evochora.datapipeline.api.contracts.RegisterValue.newBuilder();
+        organismStateBuilder.clear();
+        vectorBuilder.clear();
+        registerValueBuilder.clear();
 
-        builder.setOrganismId(o.getId());
-        if (o.getParentId() != null) builder.setParentId(o.getParentId());
-        builder.setBirthTick(o.getBirthTick());
-        builder.setProgramId(o.getProgramId());
-        builder.setEnergy(o.getEr());
+        organismStateBuilder.setOrganismId(o.getId());
+        if (o.getParentId() != null) organismStateBuilder.setParentId(o.getParentId());
+        organismStateBuilder.setBirthTick(o.getBirthTick());
+        organismStateBuilder.setProgramId(o.getProgramId());
+        organismStateBuilder.setEnergy(o.getEr());
 
-        builder.setIp(convertVectorReuse(o.getIp(), vectorBuilder));
-        builder.setInitialPosition(convertVectorReuse(o.getInitialPosition(), vectorBuilder));
-        builder.setDv(convertVectorReuse(o.getDv(), vectorBuilder));
+        organismStateBuilder.setIp(convertVectorReuse(o.getIp(), vectorBuilder));
+        organismStateBuilder.setInitialPosition(convertVectorReuse(o.getInitialPosition(), vectorBuilder));
+        organismStateBuilder.setDv(convertVectorReuse(o.getDv(), vectorBuilder));
 
         for (int[] dp : o.getDps()) {
-            builder.addDataPointers(convertVectorReuse(dp, vectorBuilder));
+            organismStateBuilder.addDataPointers(convertVectorReuse(dp, vectorBuilder));
         }
-        builder.setActiveDpIndex(o.getActiveDpIndex());
+        organismStateBuilder.setActiveDpIndex(o.getActiveDpIndex());
 
         for (Object rv : o.getDrs()) {
-            builder.addDataRegisters(convertRegisterValueReuse(rv, registerBuilder, vectorBuilder));
+            organismStateBuilder.addDataRegisters(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
         }
         for (Object rv : o.getPrs()) {
-            builder.addProcedureRegisters(convertRegisterValueReuse(rv, registerBuilder, vectorBuilder));
+            organismStateBuilder.addProcedureRegisters(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
         }
         for (Object rv : o.getFprs()) {
-            builder.addFormalParamRegisters(convertRegisterValueReuse(rv, registerBuilder, vectorBuilder));
+            organismStateBuilder.addFormalParamRegisters(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
         }
         for (Object loc : o.getLrs()) {
-            builder.addLocationRegisters(convertVectorReuse((int[]) loc, vectorBuilder));
+            organismStateBuilder.addLocationRegisters(convertVectorReuse((int[]) loc, vectorBuilder));
         }
         for (Object rv : o.getDataStack()) {
-            builder.addDataStack(convertRegisterValueReuse(rv, registerBuilder, vectorBuilder));
+            organismStateBuilder.addDataStack(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
         }
         for (int[] loc : o.getLocationStack()) {
-            builder.addLocationStack(convertVectorReuse(loc, vectorBuilder));
+            organismStateBuilder.addLocationStack(convertVectorReuse(loc, vectorBuilder));
         }
         for (ProcFrame frame : o.getCallStack()) {
-            builder.addCallStack(convertProcFrameReuse(frame, vectorBuilder, registerBuilder));
+            organismStateBuilder.addCallStack(convertProcFrameReuse(frame));
         }
 
-        builder.setIsDead(o.isDead());
-        builder.setInstructionFailed(o.isInstructionFailed());
-        if (o.getFailureReason() != null) builder.setFailureReason(o.getFailureReason());
+        organismStateBuilder.setIsDead(o.isDead());
+        organismStateBuilder.setInstructionFailed(o.isInstructionFailed());
+        if (o.getFailureReason() != null) organismStateBuilder.setFailureReason(o.getFailureReason());
         if (o.getFailureCallStack() != null) {
             for (ProcFrame frame : o.getFailureCallStack()) {
-                builder.addFailureCallStack(convertProcFrameReuse(frame, vectorBuilder, registerBuilder));
+                organismStateBuilder.addFailureCallStack(convertProcFrameReuse(frame));
             }
         }
 
         // Instruction execution data
         Organism.InstructionExecutionData executionData = o.getLastInstructionExecution();
         if (executionData != null) {
-            builder.setInstructionOpcodeId(executionData.opcodeId());
+            organismStateBuilder.setInstructionOpcodeId(executionData.opcodeId());
             for (Integer arg : executionData.rawArguments()) {
-                builder.addInstructionRawArguments(arg);
+                organismStateBuilder.addInstructionRawArguments(arg);
             }
-            builder.setInstructionEnergyCost(executionData.energyCost());
-            builder.setInstructionEntropyDelta(executionData.entropyDelta());
-            
+            organismStateBuilder.setInstructionEnergyCost(executionData.energyCost());
+            organismStateBuilder.setInstructionEntropyDelta(executionData.entropyDelta());
+
             // Register values before execution (for annotation display)
             if (executionData.registerValuesBefore() != null && !executionData.registerValuesBefore().isEmpty()) {
                 for (java.util.Map.Entry<Integer, Object> entry : executionData.registerValuesBefore().entrySet()) {
                     int registerId = entry.getKey();
                     Object registerValue = entry.getValue();
-                    org.evochora.datapipeline.api.contracts.RegisterValue protoValue = 
-                        convertRegisterValueReuse(registerValue, registerBuilder, vectorBuilder);
-                    builder.putInstructionRegisterValuesBefore(registerId, protoValue);
+                    org.evochora.datapipeline.api.contracts.RegisterValue protoValue =
+                        convertRegisterValueReuse(registerValue, registerValueBuilder, vectorBuilder);
+                    organismStateBuilder.putInstructionRegisterValuesBefore(registerId, protoValue);
                 }
             }
         }
 
         // IP and DV before fetch
-        builder.setIpBeforeFetch(convertVectorReuse(o.getIpBeforeFetch(), vectorBuilder));
-        builder.setDvBeforeFetch(convertVectorReuse(o.getDvBeforeFetch(), vectorBuilder));
+        organismStateBuilder.setIpBeforeFetch(convertVectorReuse(o.getIpBeforeFetch(), vectorBuilder));
+        organismStateBuilder.setDvBeforeFetch(convertVectorReuse(o.getDvBeforeFetch(), vectorBuilder));
 
         // Special registers
-        builder.setEntropyRegister(o.getSr());
-        builder.setMoleculeMarkerRegister(o.getMr());
+        organismStateBuilder.setEntropyRegister(o.getSr());
+        organismStateBuilder.setMoleculeMarkerRegister(o.getMr());
 
-        return builder.build();
+        return organismStateBuilder.build();
     }
     
     /**
@@ -777,28 +783,27 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         return registerBuilder.build();
     }
 
-    private static org.evochora.datapipeline.api.contracts.ProcFrame convertProcFrameReuse(
-            ProcFrame frame, Vector.Builder vectorBuilder, org.evochora.datapipeline.api.contracts.RegisterValue.Builder registerBuilder) {
-        org.evochora.datapipeline.api.contracts.ProcFrame.Builder builder =
-                org.evochora.datapipeline.api.contracts.ProcFrame.newBuilder()
-                        .setProcName(frame.procName)
-                        .setAbsoluteReturnIp(convertVectorReuse(frame.absoluteReturnIp, vectorBuilder))
-                        .setAbsoluteCallIp(convertVectorReuse(frame.absoluteCallIp, vectorBuilder))
-                        .putAllFprBindings(frame.fprBindings);
+    private org.evochora.datapipeline.api.contracts.ProcFrame convertProcFrameReuse(ProcFrame frame) {
+        procFrameBuilder.clear();
+        procFrameBuilder
+                .setProcName(frame.procName)
+                .setAbsoluteReturnIp(convertVectorReuse(frame.absoluteReturnIp, vectorBuilder))
+                .setAbsoluteCallIp(convertVectorReuse(frame.absoluteCallIp, vectorBuilder))
+                .putAllFprBindings(frame.fprBindings);
 
         if (frame.savedPrs != null) {
             for (Object rv : frame.savedPrs) {
-                builder.addSavedPrs(convertRegisterValueReuse(rv, registerBuilder, vectorBuilder));
+                procFrameBuilder.addSavedPrs(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
             }
         }
 
         if (frame.savedFprs != null) {
             for (Object rv : frame.savedFprs) {
-                builder.addSavedFprs(convertRegisterValueReuse(rv, registerBuilder, vectorBuilder));
+                procFrameBuilder.addSavedFprs(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
             }
         }
 
-        return builder.build();
+        return procFrameBuilder.build();
     }
 
     private void placeOrganismCodeAndObjects(Simulation sim, Organism organism, ProgramArtifact artifact, int[] startPosition) {

@@ -106,7 +106,7 @@ class SimulationEngineResumeTest {
             """);
 
         assertThatThrownBy(() -> new SimulationEngine("test-engine", options, resources))
-            .isInstanceOf(IllegalStateException.class)
+            .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("resume.runId");
     }
 
