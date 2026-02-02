@@ -108,7 +108,7 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
             vector = (int[]) operands.get(1).value();
         } else {
             if (operands.size() < 2) { organism.instructionFailed("Invalid operands for POKE/POKI."); return; }
-            valueToWrite = readOperand(operands.get(0).rawSourceId());
+            valueToWrite = operands.get(0).value();
             vector = (int[]) operands.get(1).value();
         }
 
@@ -197,12 +197,12 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         } else if ("PPKI".equals(getName())) {
             if (operands.size() < 2) { organism.instructionFailed("Invalid operands for PPKI."); return; }
             targetReg = operands.get(0).rawSourceId();
-            valueToWrite = readOperand(operands.get(0).rawSourceId()); // Same register for read/write
+            valueToWrite = operands.get(0).value(); // Same register for read/write
             vector = (int[]) operands.get(1).value(); // Read vector from operands
         } else {
             if (operands.size() < 2) { organism.instructionFailed("Invalid operands for PPKR."); return; }
             targetReg = operands.get(0).rawSourceId();
-            valueToWrite = readOperand(operands.get(0).rawSourceId()); // Same register for read/write
+            valueToWrite = operands.get(0).value(); // Same register for read/write
             vector = (int[]) operands.get(1).value();
         }
 

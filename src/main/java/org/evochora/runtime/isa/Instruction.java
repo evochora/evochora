@@ -127,15 +127,6 @@ public abstract class Instruction {
     }
 
     /**
-     * Reads an operand's value from the organism.
-     * @param id The ID of the operand to read.
-     * @return The value of the operand.
-     */
-    protected Object readOperand(int id) {
-        return organism.readOperand(id);
-    }
-
-    /**
      * Writes a value to an operand in the organism.
      * @param id The ID of the operand to write to.
      * @param value The value to write.
@@ -194,7 +185,7 @@ public abstract class Instruction {
                 case REGISTER: {
                     Organism.FetchResult arg = organism.fetchArgument(currentIp, environment);
                     int regId = Molecule.fromInt(arg.value()).toScalarValue();
-                    resolved.add(new Operand(readOperand(regId), regId));
+                    resolved.add(new Operand(organism.readOperand(regId), regId));
                     currentIp = arg.nextIp();
                     break;
                 }
