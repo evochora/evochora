@@ -379,6 +379,43 @@ class InstructionInterceptorTest {
         assertThat(secondInterceptorCalled.get()).isEqualTo(1);
     }
 
+    // ==================== Operand Modification Tests ====================
+
+    @Test
+    void interceptor_operandModification_affectsExecution() {
+        // Setup: Place ADDI instruction (ADD immediate) at organism's IP
+        // ADDI adds an immediate value to a register
+        int addiOpcode = Instruction.getInstructionIdByName("ADDI");
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, addiOpcode), organism.getId(), new int[]{5, 5});
+
+        // Place operands: target register (DR0) and immediate value (100)
+        int dr0Id = 0; // DR0
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, dr0Id), organism.getId(), new int[]{6, 5});
+        environment.setMolecule(new Molecule(Config.TYPE_DATA, 100), organism.getId(), new int[]{7, 5});
+
+        // Set initial value in DR0
+        organism.setDr(0, new Molecule(Config.TYPE_DATA, 50).toInt());
+
+        // Interceptor modifies the immediate operand from 100 to 200
+        simulation.addInstructionInterceptor(new TestInterceptor() {
+            @Override
+            public void intercept(InterceptionContext context) {
+                if (context.getOperands().size() >= 2) {
+                    // Replace second operand (immediate value) with 200
+                    Instruction.Operand modified = new Instruction.Operand(
+                            new Molecule(Config.TYPE_DATA, 200).toInt(), -1);
+                    context.setOperand(1, modified);
+                }
+            }
+        });
+
+        simulation.tick();
+
+        // Verify: DR0 should be 50 + 200 = 250 (not 50 + 100 = 150)
+        int result = Molecule.fromInt((Integer) organism.getDr(0)).toScalarValue();
+        assertThat(result).isEqualTo(250);
+    }
+
     // ==================== Helper Classes ====================
 
     /**

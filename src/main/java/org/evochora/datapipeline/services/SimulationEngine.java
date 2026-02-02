@@ -9,8 +9,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -48,6 +50,7 @@ import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.spi.IInstructionInterceptor;
+import org.evochora.runtime.spi.ISimulationPlugin;
 import org.evochora.runtime.spi.ITickPlugin;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -684,30 +687,27 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     /**
      * Extracts plugin states for all plugins (tick plugins and interceptors).
      * Used by DeltaCodec.Encoder for delta compression.
+     * <p>
+     * Each plugin instance is serialized exactly once, even if it implements
+     * both ITickPlugin and IInstructionInterceptor interfaces.
      */
     private List<PluginState> extractPluginStates() {
-        List<PluginState> states = new ArrayList<>();
-
-        // Extract tick plugin states
+        // Collect unique plugin instances (a plugin may be in both lists if it implements both interfaces)
+        Set<ISimulationPlugin> uniquePlugins = Collections.newSetFromMap(new IdentityHashMap<>());
         for (PluginWithConfig p : tickPlugins) {
-            states.add(PluginState.newBuilder()
-                    .setPluginClass(p.plugin().getClass().getName())
-                    .setStateBlob(ByteString.copyFrom(p.plugin().saveState()))
-                    .build());
+            uniquePlugins.add(p.plugin());
+        }
+        for (InterceptorWithConfig i : instructionInterceptors) {
+            uniquePlugins.add(i.interceptor());
         }
 
-        // Extract interceptor states (interceptors also implement ISerializable via ISimulationPlugin)
-        for (InterceptorWithConfig i : instructionInterceptors) {
-            // Skip if already added as tick plugin (plugin can implement both interfaces)
-            String className = i.interceptor().getClass().getName();
-            boolean alreadyAdded = states.stream()
-                    .anyMatch(s -> s.getPluginClass().equals(className));
-            if (!alreadyAdded) {
-                states.add(PluginState.newBuilder()
-                        .setPluginClass(className)
-                        .setStateBlob(ByteString.copyFrom(i.interceptor().saveState()))
-                        .build());
-            }
+        // Serialize each unique plugin exactly once
+        List<PluginState> states = new ArrayList<>();
+        for (ISimulationPlugin plugin : uniquePlugins) {
+            states.add(PluginState.newBuilder()
+                    .setPluginClass(plugin.getClass().getName())
+                    .setStateBlob(ByteString.copyFrom(plugin.saveState()))
+                    .build());
         }
 
         return states;

@@ -65,8 +65,12 @@ public class InterceptionContext {
      * The organism can be modified (registers, energy, etc.).
      *
      * @return The organism (read-write access)
+     * @throws IllegalStateException if context was not initialized via {@link #reset}
      */
     public Organism getOrganism() {
+        if (organism == null) {
+            throw new IllegalStateException("InterceptionContext not initialized - reset() must be called first");
+        }
         return organism;
     }
 
@@ -74,8 +78,12 @@ public class InterceptionContext {
      * Returns the currently planned instruction.
      *
      * @return The instruction that will be executed
+     * @throws IllegalStateException if context was not initialized via {@link #reset}
      */
     public Instruction getInstruction() {
+        if (instruction == null) {
+            throw new IllegalStateException("InterceptionContext not initialized - reset() must be called first");
+        }
         return instruction;
     }
 
