@@ -107,7 +107,7 @@ public class VectorInstruction extends Instruction {
             return;
         }
         int vecReg = operands.getFirst().rawSourceId();
-        Object vecObj = readOperand(vecReg);
+        Object vecObj = operands.getFirst().value();
         if (!(vecObj instanceof int[] vector)) {
             organism.instructionFailed(getName() + " target must be a vector register.");
             return;
@@ -351,7 +351,7 @@ public class VectorInstruction extends Instruction {
             return;
         }
         int vecReg = operands.get(0).rawSourceId();
-        if (!(readOperand(vecReg) instanceof int[] vector)) {
+        if (!(operands.get(0).value() instanceof int[] vector)) {
             organism.instructionFailed(getName() + " target must be a vector register.");
             return;
         }

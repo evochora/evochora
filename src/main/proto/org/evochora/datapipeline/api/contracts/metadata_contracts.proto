@@ -38,7 +38,7 @@ message SimulationMetadata {
   // Contains ALL config values needed to understand/resume the simulation:
   //   - environment.shape, environment.topology
   //   - organisms[] (initial placements)
-  //   - tickPlugins[] (plugin classes and options)
+  //   - plugins[] (plugin classes and options)
   //   - runtime.organism (max-energy, max-entropy, error-penalty-cost)
   //   - runtime.thermodynamics (energy/entropy policies)
   //   - runtime.label-matching (fuzzy jump strategy)

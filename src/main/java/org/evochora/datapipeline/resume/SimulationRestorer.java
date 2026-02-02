@@ -38,7 +38,9 @@ import org.evochora.runtime.label.ILabelMatchingStrategy;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.spi.IInstructionInterceptor;
 import org.evochora.runtime.spi.IRandomProvider;
+import org.evochora.runtime.spi.ISimulationPlugin;
 import org.evochora.runtime.spi.ITickPlugin;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
 import org.slf4j.Logger;
@@ -80,6 +82,12 @@ public class SimulationRestorer {
     public record PluginWithConfig(ITickPlugin plugin, Config config) {}
 
     /**
+     * Bundles an instruction interceptor with its configuration.
+     * Used for extracting plugin state during simulation.
+     */
+    public record InterceptorWithConfig(IInstructionInterceptor interceptor, Config config) {}
+
+    /**
      * Contains all state needed to resume a simulation in SimulationEngine.
      * <p>
      * This record is produced by {@link #restore} and consumed by SimulationEngine.
@@ -87,6 +95,7 @@ public class SimulationRestorer {
      * @param simulation The restored simulation ready to run
      * @param randomProvider The IRandomProvider with restored RNG state
      * @param tickPlugins The tick plugins with restored state and their configs
+     * @param instructionInterceptors The instruction interceptors with restored state and their configs
      * @param programArtifacts Map of programId to ProgramArtifact
      * @param runId The original simulation run ID
      * @param resumeFromTick The tick number to resume from (first tick to generate)
@@ -97,6 +106,7 @@ public class SimulationRestorer {
         Simulation simulation,
         IRandomProvider randomProvider,
         List<PluginWithConfig> tickPlugins,
+        List<InterceptorWithConfig> instructionInterceptors,
         Map<String, ProgramArtifact> programArtifacts,
         String runId,
         long resumeFromTick,
@@ -195,22 +205,31 @@ public class SimulationRestorer {
         }
         log.debug("Restored {} live organisms", simulation.getOrganisms().size());
 
-        // 11. Restore TickPlugins from config (with their configs for SimulationEngine)
-        List<PluginWithConfig> pluginsWithConfig = restoreTickPlugins(
-            resolvedConfig.getConfigList("tickPlugins"),
+        // 11. Restore plugins from config (with their configs for SimulationEngine)
+        RestoredPlugins restoredPlugins = restorePlugins(
+            resolvedConfig.getConfigList("plugins"),
             pluginStates,
             randomProvider
         );
-        for (PluginWithConfig pwc : pluginsWithConfig) {
+
+        // Register tick plugins with simulation
+        for (PluginWithConfig pwc : restoredPlugins.tickPlugins()) {
             simulation.addTickPlugin(pwc.plugin());
         }
-        log.debug("Restored {} tick plugins", pluginsWithConfig.size());
+        log.debug("Restored {} tick plugins", restoredPlugins.tickPlugins().size());
+
+        // Register instruction interceptors with simulation
+        for (InterceptorWithConfig iwc : restoredPlugins.interceptors()) {
+            simulation.addInstructionInterceptor(iwc.interceptor());
+        }
+        log.debug("Restored {} instruction interceptors", restoredPlugins.interceptors().size());
 
         // 12. Build and return RestoredState
         return new RestoredState(
             simulation,
             randomProvider,
-            pluginsWithConfig,
+            restoredPlugins.tickPlugins(),
+            restoredPlugins.interceptors(),
             programs,
             metadata.getSimulationRunId(),
             checkpoint.getResumeFromTick(),
@@ -550,14 +569,25 @@ public class SimulationRestorer {
     }
 
     /**
-     * Restores tick plugins from config and saved states.
+     * Holds restored plugins separated by type.
+     */
+    private record RestoredPlugins(
+        List<PluginWithConfig> tickPlugins,
+        List<InterceptorWithConfig> interceptors
+    ) {}
+
+    /**
+     * Restores plugins from config and saved states, separating by interface type.
+     * <p>
+     * A plugin can implement both ITickPlugin and IInstructionInterceptor,
+     * in which case it will appear in both lists (with shared instance).
      *
      * @param pluginConfigs List of plugin configurations from resolvedConfigJson
      * @param savedStates List of saved plugin states from snapshot
      * @param randomProvider The random provider for plugin initialization
-     * @return List of restored plugins with their configs
+     * @return RestoredPlugins containing separate lists for each plugin type
      */
-    private static List<PluginWithConfig> restoreTickPlugins(
+    private static RestoredPlugins restorePlugins(
             List<? extends Config> pluginConfigs,
             List<PluginState> savedStates,
             IRandomProvider randomProvider) {
@@ -568,7 +598,8 @@ public class SimulationRestorer {
             stateByClass.put(ps.getPluginClass(), ps.getStateBlob().toByteArray());
         }
 
-        List<PluginWithConfig> plugins = new ArrayList<>();
+        List<PluginWithConfig> tickPlugins = new ArrayList<>();
+        List<InterceptorWithConfig> interceptors = new ArrayList<>();
 
         for (Config pluginConfig : pluginConfigs) {
             String className = pluginConfig.getString("className");
@@ -578,25 +609,38 @@ public class SimulationRestorer {
                     ? pluginConfig.getConfig("options")
                     : ConfigFactory.empty();
 
-                // Instantiate via reflection (same pattern as SimulationEngine)
-                ITickPlugin plugin = (ITickPlugin) Class.forName(className)
+                // Instantiate via reflection - plugin must implement ISimulationPlugin
+                Object plugin = Class.forName(className)
                     .getConstructor(IRandomProvider.class, Config.class)
                     .newInstance(randomProvider, options);
 
-                // Restore saved state if available
-                byte[] savedState = stateByClass.get(className);
-                if (savedState != null && savedState.length > 0) {
-                    plugin.loadState(savedState);
-                    log.debug("Loaded state for plugin {} ({} bytes)", className, savedState.length);
+                // Restore saved state if available (ISimulationPlugin extends ISerializable)
+                if (plugin instanceof ISimulationPlugin simulationPlugin) {
+                    byte[] savedState = stateByClass.get(className);
+                    if (savedState != null && savedState.length > 0) {
+                        simulationPlugin.loadState(savedState);
+                        log.debug("Loaded state for plugin {} ({} bytes)", className, savedState.length);
+                    }
                 }
 
-                plugins.add(new PluginWithConfig(plugin, options));
+                // Classify by interface - a plugin can implement both
+                if (plugin instanceof ITickPlugin tickPlugin) {
+                    tickPlugins.add(new PluginWithConfig(tickPlugin, options));
+                }
+                if (plugin instanceof IInstructionInterceptor interceptor) {
+                    interceptors.add(new InterceptorWithConfig(interceptor, options));
+                }
+
+                // Warn if plugin implements neither interface
+                if (!(plugin instanceof ITickPlugin) && !(plugin instanceof IInstructionInterceptor)) {
+                    log.warn("Plugin {} does not implement ITickPlugin or IInstructionInterceptor", className);
+                }
             } catch (Exception e) {
-                throw new ResumeException("Failed to instantiate tick plugin: " + className, e);
+                throw new ResumeException("Failed to instantiate plugin: " + className, e);
             }
         }
 
-        return plugins;
+        return new RestoredPlugins(tickPlugins, interceptors);
     }
 
     /**

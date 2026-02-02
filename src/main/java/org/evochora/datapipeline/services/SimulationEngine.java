@@ -9,8 +9,10 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -47,6 +49,8 @@ import org.evochora.datapipeline.resume.SnapshotLoader;
 import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
+import org.evochora.runtime.spi.IInstructionInterceptor;
+import org.evochora.runtime.spi.ISimulationPlugin;
 import org.evochora.runtime.spi.ITickPlugin;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -74,6 +78,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     private final Simulation simulation;
     private final IRandomProvider randomProvider;
     private final List<PluginWithConfig> tickPlugins;
+    private final List<InterceptorWithConfig> instructionInterceptors;
     private final long seed;
     private final long startTimeMs;
     private final boolean isResume;
@@ -98,6 +103,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     private final Map<String, ProgramInfo> programInfoByPath = new HashMap<>();
 
     private record PluginWithConfig(ITickPlugin plugin, Config config) {}
+    private record InterceptorWithConfig(IInstructionInterceptor interceptor, Config config) {}
 
     /**
      * Holds the initialized state from either resume or new simulation mode.
@@ -112,6 +118,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         Simulation simulation,
         IRandomProvider randomProvider,
         List<PluginWithConfig> tickPlugins,
+        List<InterceptorWithConfig> instructionInterceptors,
         Map<String, ProgramInfo> programInfo,
         String runId,
         long seed,
@@ -148,6 +155,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         this.simulation = state.simulation();
         this.randomProvider = state.randomProvider();
         this.tickPlugins = state.tickPlugins();
+        this.instructionInterceptors = state.instructionInterceptors();
         this.runId = state.runId();
         this.seed = state.seed();
         this.startTimeMs = state.startTimeMs();
@@ -239,9 +247,13 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             IRandomProvider randomProvider = new SeededRandomProvider(seed);
             SimulationRestorer.RestoredState restored = SimulationRestorer.restore(checkpoint, randomProvider);
 
-            // Convert to internal format
+            // Convert to internal format (SimulationRestorer already separates by type)
             List<PluginWithConfig> plugins = restored.tickPlugins().stream()
                 .map(p -> new PluginWithConfig(p.plugin(), p.config()))
+                .toList();
+
+            List<InterceptorWithConfig> interceptors = restored.instructionInterceptors().stream()
+                .map(i -> new InterceptorWithConfig(i.interceptor(), i.config()))
                 .toList();
 
             Map<String, ProgramInfo> programInfo = new HashMap<>();
@@ -255,6 +267,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 restored.simulation(),
                 randomProvider,
                 plugins,
+                interceptors,
                 programInfo,
                 runId,
                 seed,
@@ -310,7 +323,11 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
         // Create runtime components
         IRandomProvider randomProvider = new SeededRandomProvider(seed);
-        List<PluginWithConfig> plugins = initializeTickPlugins(options.getConfigList("tickPlugins"), randomProvider);
+
+        // Initialize all plugins with automatic type detection
+        List<PluginWithConfig> tickPluginsList = new ArrayList<>();
+        List<InterceptorWithConfig> interceptorsList = new ArrayList<>();
+        initializePlugins(options.getConfigList("plugins"), randomProvider, tickPluginsList, interceptorsList);
 
         Config runtimeConfig = options.hasPath("runtime") ? options.getConfig("runtime") : com.typesafe.config.ConfigFactory.empty();
         ThermodynamicPolicyManager policyManager = new ThermodynamicPolicyManager(
@@ -326,9 +343,14 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         simulation.setRandomProvider(randomProvider);
         simulation.setProgramArtifacts(compiledPrograms);
 
-        // Register tick plugins
-        for (PluginWithConfig pwc : plugins) {
+        // Register tick plugins with simulation
+        for (PluginWithConfig pwc : tickPluginsList) {
             simulation.addTickPlugin(pwc.plugin());
+        }
+
+        // Register instruction interceptors with simulation
+        for (InterceptorWithConfig iwc : interceptorsList) {
+            simulation.addInstructionInterceptor(iwc.interceptor());
         }
 
         // Create and place organisms
@@ -356,7 +378,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             + "-" + UUID.randomUUID().toString();
 
         return new InitializedState(
-            simulation, randomProvider, plugins, programInfo, runId, seed, startTimeMs, -1,
+            simulation, randomProvider, tickPluginsList, interceptorsList, programInfo, runId, seed, startTimeMs, -1,
             readPositiveInt(options, "samplingInterval", 1),
             readInt(options, "accumulatedDeltaInterval", SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL),
             readInt(options, "snapshotInterval", SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL),
@@ -491,17 +513,53 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         return false;
     }
 
-    private List<PluginWithConfig> initializeTickPlugins(List<? extends Config> configs, IRandomProvider random) {
-        return configs.stream().map(config -> {
+    /**
+     * Initializes plugins from configuration with automatic type detection.
+     * <p>
+     * Each plugin is instantiated and then classified based on which interfaces it implements:
+     * <ul>
+     *   <li>ITickPlugin - added to tickPlugins list, executed each tick for environment manipulation</li>
+     *   <li>IInstructionInterceptor - added to interceptors list, intercepts planned instructions</li>
+     * </ul>
+     * A plugin can implement both interfaces and will be registered in both lists.
+     *
+     * @param configs the plugin configurations from "plugins" config key
+     * @param random the random provider for deterministic plugin behavior
+     * @param tickPlugins output list for ITickPlugin instances
+     * @param interceptors output list for IInstructionInterceptor instances
+     */
+    private void initializePlugins(
+            List<? extends Config> configs,
+            IRandomProvider random,
+            List<PluginWithConfig> tickPlugins,
+            List<InterceptorWithConfig> interceptors) {
+
+        for (Config config : configs) {
             try {
-                ITickPlugin plugin = (ITickPlugin) Class.forName(config.getString("className"))
+                String className = config.getString("className");
+                Config pluginOptions = config.getConfig("options");
+
+                Object plugin = Class.forName(className)
                         .getConstructor(IRandomProvider.class, com.typesafe.config.Config.class)
-                        .newInstance(random, config.getConfig("options"));
-                return new PluginWithConfig(plugin, config.getConfig("options"));
+                        .newInstance(random, pluginOptions);
+
+                // A plugin can implement both interfaces
+                if (plugin instanceof ITickPlugin tickPlugin) {
+                    tickPlugins.add(new PluginWithConfig(tickPlugin, pluginOptions));
+                }
+                if (plugin instanceof IInstructionInterceptor interceptor) {
+                    interceptors.add(new InterceptorWithConfig(interceptor, pluginOptions));
+                }
+
+                // Warn if plugin implements neither interface
+                if (!(plugin instanceof ITickPlugin) && !(plugin instanceof IInstructionInterceptor)) {
+                    log.warn("Plugin {} does not implement ITickPlugin or IInstructionInterceptor", className);
+                }
             } catch (ReflectiveOperationException e) {
-                throw new IllegalArgumentException("Failed to instantiate tick plugin: " + config.getString("className"), e);
+                throw new IllegalArgumentException(
+                    "Failed to instantiate plugin: " + config.getString("className"), e);
             }
-        }).toList();
+        }
     }
 
     /**
@@ -627,16 +685,32 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     }
     
     /**
-     * Extracts plugin states for all tick plugins.
+     * Extracts plugin states for all plugins (tick plugins and interceptors).
      * Used by DeltaCodec.Encoder for delta compression.
+     * <p>
+     * Each plugin instance is serialized exactly once, even if it implements
+     * both ITickPlugin and IInstructionInterceptor interfaces.
      */
     private List<PluginState> extractPluginStates() {
-        return tickPlugins.stream()
-                .map(p -> PluginState.newBuilder()
-                        .setPluginClass(p.plugin().getClass().getName())
-                        .setStateBlob(ByteString.copyFrom(p.plugin().saveState()))
-                        .build())
-                .toList();
+        // Collect unique plugin instances (a plugin may be in both lists if it implements both interfaces)
+        Set<ISimulationPlugin> uniquePlugins = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (PluginWithConfig p : tickPlugins) {
+            uniquePlugins.add(p.plugin());
+        }
+        for (InterceptorWithConfig i : instructionInterceptors) {
+            uniquePlugins.add(i.interceptor());
+        }
+
+        // Serialize each unique plugin exactly once
+        List<PluginState> states = new ArrayList<>();
+        for (ISimulationPlugin plugin : uniquePlugins) {
+            states.add(PluginState.newBuilder()
+                    .setPluginClass(plugin.getClass().getName())
+                    .setStateBlob(ByteString.copyFrom(plugin.saveState()))
+                    .build());
+        }
+
+        return states;
     }
 
     private static org.evochora.datapipeline.api.contracts.ProgramArtifact convertProgramArtifact(ProgramArtifact artifact) {

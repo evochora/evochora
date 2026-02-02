@@ -122,7 +122,7 @@ class SimulationEngineIntegrationTest {
                         "initialEnergy", 10000, // Higher energy to avoid early death
                         "placement", Map.of("positions", List.of(5, 5))
                 )),
-                "tickPlugins", Collections.emptyList(),
+                "plugins", Collections.emptyList(),
                 "seed", 12345L,
                 "runtime", runtimeConfig
         ));
@@ -466,7 +466,7 @@ class SimulationEngineIntegrationTest {
     @Test
     void engine_shouldRunWithSolarRadiationStrategy() throws InterruptedException {
         Config strategyConfig = baseConfig.withValue(
-                "tickPlugins",
+                "plugins",
                 ConfigValueFactory.fromAnyRef(List.of(
                         Map.of(
                                 "className", "org.evochora.runtime.worldgen.SolarRadiationCreator",
@@ -507,7 +507,7 @@ class SimulationEngineIntegrationTest {
     @Test
     void engine_shouldRunWithGeyserStrategy() throws InterruptedException {
         Config strategyConfig = baseConfig.withValue(
-                "tickPlugins",
+                "plugins",
                 ConfigValueFactory.fromAnyRef(List.of(
                         Map.of(
                                 "className", "org.evochora.runtime.worldgen.GeyserCreator",
@@ -550,7 +550,7 @@ class SimulationEngineIntegrationTest {
     @Test
     void engine_shouldRunWithMultipleTickPlugins() throws InterruptedException {
         Config strategyConfig = baseConfig.withValue(
-                "tickPlugins",
+                "plugins",
                 ConfigValueFactory.fromAnyRef(List.of(
                         Map.of(
                                 "className", "org.evochora.runtime.worldgen.SolarRadiationCreator",

@@ -259,7 +259,7 @@ class PersistenceServiceBatchNotificationIntegrationTest {
                         }
                       }
                     ]
-                    tickPlugins = []
+                    plugins = []
                   }
                 }
                 

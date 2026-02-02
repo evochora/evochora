@@ -228,7 +228,7 @@ class SimulationToPersistenceIntegrationTest {
                                 "initialEnergy", 10000,
                                 "placement", Map.of("positions", List.of(5, 5))
                             )),
-                            "tickPlugins", Collections.emptyList()
+                            "plugins", Collections.emptyList()
                         )
                     ),
                     "persistence-1", Map.of(
@@ -340,7 +340,7 @@ class SimulationToPersistenceIntegrationTest {
                                 "initialEnergy", 10000,
                                 "placement", Map.of("positions", List.of(5, 5))
                             )),
-                            "tickPlugins", Collections.emptyList()
+                            "plugins", Collections.emptyList()
                         )
                     ),
                     "persistence-1", Map.of(

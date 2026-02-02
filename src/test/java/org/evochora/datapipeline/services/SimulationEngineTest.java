@@ -108,7 +108,7 @@ class SimulationEngineTest {
                         "initialEnergy", 1000,
                         "placement", Map.of("positions", List.of(5, 5))
                 )),
-                "tickPlugins", Collections.emptyList(),
+                "plugins", Collections.emptyList(),
                 "seed", 12345L,
                 "runtime", runtimeConfig
         ));
@@ -121,7 +121,7 @@ class SimulationEngineTest {
         Config emptyConfig = ConfigFactory.parseMap(Map.of(
                 "organisms", Collections.emptyList(),
                 "environment", Map.of("shape", List.of(10, 10), "topology", "TORUS"),
-                "tickPlugins", Collections.emptyList()
+                "plugins", Collections.emptyList()
         ));
         IllegalArgumentException exception = assertThrows(
                 IllegalArgumentException.class,

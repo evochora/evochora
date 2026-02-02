@@ -44,7 +44,7 @@ public final class TestMetadataHelper {
                 "accumulatedDeltaInterval": 100,
                 "snapshotInterval": 10,
                 "chunkInterval": 1,
-                "tickPlugins": [],
+                "plugins": [],
                 "organisms": [],
                 "runtime": {
                     "organism": {
@@ -85,7 +85,7 @@ public final class TestMetadataHelper {
         private int accumulatedDeltaInterval = 100;
         private int snapshotInterval = 10;
         private int chunkInterval = 1;
-        private String tickPluginsJson = "[]";
+        private String pluginsJson = "[]";
         private String organismsJson = "[]";
 
         public Builder width(int width) {
@@ -129,8 +129,8 @@ public final class TestMetadataHelper {
             return this;
         }
 
-        public Builder tickPluginsJson(String json) {
-            this.tickPluginsJson = json;
+        public Builder pluginsJson(String json) {
+            this.pluginsJson = json;
             return this;
         }
 
@@ -151,7 +151,7 @@ public final class TestMetadataHelper {
                     "accumulatedDeltaInterval": %d,
                     "snapshotInterval": %d,
                     "chunkInterval": %d,
-                    "tickPlugins": %s,
+                    "plugins": %s,
                     "organisms": %s,
                     "runtime": {
                         "organism": {
@@ -175,7 +175,7 @@ public final class TestMetadataHelper {
                     }
                 }
                 """, width, height, topology, samplingInterval, accumulatedDeltaInterval,
-                snapshotInterval, chunkInterval, tickPluginsJson, organismsJson);
+                snapshotInterval, chunkInterval, pluginsJson, organismsJson);
         }
     }
 }
