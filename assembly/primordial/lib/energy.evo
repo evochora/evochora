@@ -4,12 +4,12 @@
 .INCLUDE "lib/state.evo"
 .REQUIRE "lib/state.evo" AS STATE
 
-.ORG 0|1
+.ORG 0|2
 # 3 DATA-Felder in der Zeile über HARVEST_START (x=0..2, y=-1 relativ zu HARVEST_START)
 HARVEST_STATE: EXPORT
-.PLACE DATA:1  1|1    # FWD_MASK: rechts (Bitmaske)
-.PLACE DATA:0  2|1    # KIDX: Index 0
-.PLACE DATA:89 3|1    # KLEFT: K0-Periode
+.PLACE DATA:1  1|2    # FWD_MASK: rechts (Bitmaske)
+.PLACE DATA:0  2|2    # KIDX: Index 0
+.PLACE DATA:89 3|2    # KLEFT: K0-Periode
 
 .ORG 0|0
 .PROC HARVEST EXPORT
@@ -23,13 +23,13 @@ HARVEST_STATE: EXPORT
 
   NOP; JMPI HARVEST_START; NOP^53; JMPI HARVEST_START
 
-  .ORG 0|2
+  .ORG 0|4
     HARVEST_START:
       # am Anfang: "in einem Rutsch" laden
       STATIC3_LOAD HARVEST_STATE %FWD_MASK %KIDX %KLEFT; NOP^2
       JMPI HARVEST_RANDOM_DIR; NOP^4; JMPI HARVEST_RANDOM_DIR
 
-    .ORG 0|3
+    .ORG 0|6
     HARVEST_RANDOM_DIR: NOP^2
       # Zufällige Richtung wählen (NACH dem State-Load!)
       SPNR %MASK; NOP^4             # %MASK := passierbare Richtungen (Bitmaske)
@@ -40,7 +40,7 @@ HARVEST_STATE: EXPORT
       V2BR %FWD_MASK %DIR; NOP^4
       JMPI HARVEST_LOOP; NOP^15; JMPI HARVEST_LOOP
 
-    .ORG 0|4
+    .ORG 0|8
     HARVEST_LOOP: NOP^4
       # 1) Umgebung scannen – wenn Energie da, sofort nehmen und zurück
       SNTI %MASK ENERGY:0; NOP^2
@@ -57,13 +57,13 @@ HARVEST_STATE: EXPORT
       PEEK %MASK %VEC; NOP^2
       JMPI HARVEST_SAVE_AND_RETURN; NOP^9; JMPI HARVEST_SAVE_AND_RETURN
 
-    .ORG 0|5
+    .ORG 0|10
     HARVEST_SAVE_AND_RETURN:
       # vor RET: "in einem Rutsch" speichern
       STATIC3_STORE HARVEST_STATE %FWD_MASK %KIDX %KLEFT
       JMPI HARVEST_SAVE_AND_RETURN2; NOP^6; JMPI HARVEST_SAVE_AND_RETURN2
 
-    .ORG 0|6
+    .ORG 0|12
     HARVEST_SAVE_AND_RETURN2: NOP^2
       NOP^4; RET; NOP^4; RET; NOP^3
 
@@ -72,7 +72,7 @@ HARVEST_STATE: EXPORT
       SYNC; NOP^4                    # Setzt DP = IP
       JMPI HARVEST_START; NOP^34; JMPI HARVEST_START
 
-    .ORG 0|7
+    .ORG 0|14
     HARVEST_MOVE: NOP^2
       # 2) Vorwärts passierbar?
       SPNR %MASK; NOP^4
@@ -91,7 +91,7 @@ HARVEST_STATE: EXPORT
         JMPI HARVEST_TURN; NOP^5
       JMPI HARVEST_LOOP; NOP^4; JMPI HARVEST_LOOP
 
-    .ORG 0|8
+    .ORG 0|16
     HARVEST_TURN: NOP^2
       # 90° CW drehen (Achsen 0,1) ohne externe Temp-Register
       RTRI %DIR DATA:0 DATA:1; NOP^4
@@ -107,7 +107,7 @@ HARVEST_STATE: EXPORT
       SETI %KIDX DATA:0; NOP^4
       JMPI HARVEST_PT_LOAD; NOP^2; JMPI HARVEST_PT_LOAD
 
-    .ORG 0|9
+    .ORG 0|18
     HARVEST_PT_LOAD: NOP^4
       # Nächste Prim-Periode auswählen und KLEFT laden
       IFI %KIDX DATA:0
@@ -120,7 +120,7 @@ HARVEST_STATE: EXPORT
       SETI %KLEFT DATA:103; NOP^4
       JMPI HARVEST_LOOP; NOP^13; JMPI HARVEST_LOOP
 
-    .ORG 0|10
+    .ORG 0|20
     HARVEST_PT_K0: NOP^4
       SETI %KLEFT DATA:89; NOP^4
       JMPI HARVEST_LOOP; NOP^4; JMPI HARVEST_LOOP

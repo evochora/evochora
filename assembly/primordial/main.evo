@@ -20,10 +20,10 @@
 # ----------------------------
 # STRUCTURE Shell (50x31)
 # ----------------------------
-.PLACE STRUCTURE:100 -1..70|-1
-.PLACE STRUCTURE:100 -1..70|44
-.PLACE STRUCTURE:100 -1|0..43
-.PLACE STRUCTURE:100 70|0..43
+.PLACE STRUCTURE:100 -1..100|-1
+.PLACE STRUCTURE:100 -1..100|85
+.PLACE STRUCTURE:100 -1|0..84
+.PLACE STRUCTURE:100 100|0..84
 
 # ----------------------------
 # Init
@@ -34,7 +34,7 @@ INIT: NOP^4
   SKJI REPRODUCE.CONTINUE_STATE; NOP^4
   JMPI LOCALSTATE_WRITE; NOP^12; JMPI LOCALSTATE_WRITE
 
-.ORG 0|1
+.ORG 0|2
 LOCALSTATE_WRITE: NOP^4
   SETI %INI DATA:0; NOP^4
   PPKI %INI 1|0; NOP^4
@@ -47,7 +47,7 @@ LOCALSTATE_WRITE: NOP^4
 # ----------------------------
 # Main loop
 # ----------------------------
-.ORG 0|2
+.ORG 0|4
 MAIN_LOOP:
   NRG %ER; NOP^4
   NTR %SR; NOP^4
@@ -61,7 +61,7 @@ MAIN_REPRODUCE: NOP^4
   CALL REPRODUCE.CONTINUE REF %ER; NOP^4
   JMPI MAIN_LOOP_ENERGY_CHECK; NOP^4; JMPI MAIN_LOOP_ENERGY_CHECK
 
-.ORG 0|3
+.ORG 0|6
 MAIN_HARVEST: NOP^4
   CALL ENERGY.HARVEST; NOP^4
   JMPI MAIN_LOOP; NOP^4
@@ -81,7 +81,7 @@ JMPI MAIN_LOOP; NOP^12; JMPI MAIN_LOOP
 # ----------------------------
 # Energy search
 # ----------------------------
-.ORG 0|5
+.ORG 0|8
 .INCLUDE "lib/energy.evo"
 .REQUIRE "lib/energy.evo" AS ENERGY
   
@@ -89,12 +89,12 @@ JMPI MAIN_LOOP; NOP^12; JMPI MAIN_LOOP
 # ----------------------------
 # Reproduction (mock)
 # ----------------------------
-.ORG 0|17
+.ORG 0|31
 .INCLUDE "lib/reproduce.evo"
 .REQUIRE "lib/reproduce.evo" AS REPRODUCE
 
 # ----------------------------
 # Safety jump back (redundant für Mutations-Robustheit)
 # ----------------------------
-.ORG 0|43
+.ORG 0|83
 JMPI MAIN_LOOP; NOP^54; JMPI MAIN_LOOP
