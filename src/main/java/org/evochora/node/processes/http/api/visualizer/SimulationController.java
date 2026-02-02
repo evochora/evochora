@@ -109,7 +109,7 @@ public class SimulationController extends VisualizerBaseController {
                             "shape": [800, 600],
                             "toroidal": [true, true]
                           },
-                          "tickPlugins": [
+                          "plugins": [
                             {
                               "pluginClass": "org.evochora.runtime.worldgen.GeyserCreator",
                               "configJson": "{\\"geyserCount\\": 5, \\"energyPerTick\\": 10}"

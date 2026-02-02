@@ -13,6 +13,8 @@ import org.evochora.runtime.isa.IEnvironmentModifyingInstruction;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.spi.IInstructionInterceptor;
+import org.evochora.runtime.spi.InterceptionContext;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.evochora.runtime.spi.ITickPlugin;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
@@ -40,6 +42,8 @@ public class Simulation {
     public boolean paused = true;
     private final List<Organism> newOrganismsThisTick = new ArrayList<>();
     private final List<ITickPlugin> tickPlugins = new ArrayList<>();
+    private final List<IInstructionInterceptor> instructionInterceptors = new ArrayList<>();
+    private final InterceptionContext interceptContext = new InterceptionContext();  // Reusable, zero allocation
     private int nextOrganismId = 1;
     private IRandomProvider randomProvider;
 
@@ -155,6 +159,24 @@ public class Simulation {
     }
 
     /**
+     * Adds an instruction interceptor to the simulation.
+     * Interceptors are called in the order they are added, during the Plan phase,
+     * after operand resolution but before conflict resolution.
+     * @param interceptor The instruction interceptor to add.
+     */
+    public void addInstructionInterceptor(IInstructionInterceptor interceptor) {
+        this.instructionInterceptors.add(interceptor);
+    }
+
+    /**
+     * Returns the list of instruction interceptors.
+     * @return An unmodifiable view of the instruction interceptors list.
+     */
+    public List<IInstructionInterceptor> getInstructionInterceptors() {
+        return java.util.Collections.unmodifiableList(this.instructionInterceptors);
+    }
+
+    /**
      * Returns the next available unique ID for an organism.
      * @return A unique organism ID.
      */
@@ -198,11 +220,31 @@ public class Simulation {
         }
 
         // PHASE 1: Plan - each organism plans their next instruction
+        // Operands are resolved in vm.plan() for conflict resolution and interception
         List<Instruction> plannedInstructions = new ArrayList<>();
         for (Organism organism : this.organisms) {
             if (organism.isDead()) continue;
 
             Instruction instruction = vm.plan(organism);
+
+            // INSTRUCTION INCEPTION: Allow interceptors to inspect/modify planned instruction
+            // Early-exit when no interceptors registered (zero overhead in common case)
+            if (!instructionInterceptors.isEmpty()) {
+                interceptContext.reset(organism, instruction);
+
+                for (IInstructionInterceptor interceptor : instructionInterceptors) {
+                    try {
+                        interceptor.intercept(interceptContext);
+                    } catch (Exception e) {
+                        LOG.warn("Interceptor '{}' failed for organism {} at tick {}: {}",
+                                interceptor.getClass().getSimpleName(), organism.getId(), currentTick, e.getMessage());
+                    }
+                }
+
+                // Instruction may have been replaced by interceptor
+                instruction = interceptContext.getInstruction();
+            }
+
             instruction.setExecutedInTick(false);
             instruction.setConflictStatus(Instruction.ConflictResolutionStatus.NOT_APPLICABLE);
             plannedInstructions.add(instruction);

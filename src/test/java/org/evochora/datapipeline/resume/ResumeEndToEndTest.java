@@ -299,7 +299,7 @@ class ResumeEndToEndTest {
                 initialEnergy = 10000
                 placement { positions = [10, 10] }
             }]
-            tickPlugins = []
+            plugins = []
             runtime {
                 organism {
                     max-energy = 32767

@@ -1,6 +1,5 @@
 package org.evochora.runtime.isa.instructions;
 
-import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
 
@@ -266,61 +265,58 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
     }
 
 
+    /**
+     * Returns the target coordinates for conflict resolution.
+     * <p>
+     * <b>Caching Behavior:</b> The target coordinate is computed on first call and cached
+     * in {@code this.targetCoordinate}. Subsequent calls return the cached value without
+     * re-reading operands. This is a performance optimization for conflict resolution
+     * which may call this method multiple times.
+     * <p>
+     * <b>Invocation Order Dependency:</b> This method reads from the cached operands
+     * (populated by {@code resolveOperands()} in the Plan phase). If an
+     * {@link org.evochora.runtime.spi.IInstructionInterceptor} modifies operands,
+     * it must do so BEFORE this method is called. The current tick cycle guarantees this:
+     * <ol>
+     *   <li>Plan phase: {@code vm.plan()} calls {@code resolveOperands()}</li>
+     *   <li>Interception: Interceptors may modify operands</li>
+     *   <li>Conflict resolution: {@code resolveConflicts()} calls this method (first call, caches result)</li>
+     *   <li>Execute phase: Instruction executes with final operand values</li>
+     * </ol>
+     * <p>
+     * <b>Warning:</b> Do not call this method before interceptors have run, as operand
+     * modifications after caching will not affect the target coordinate.
+     *
+     * @return List containing the single target coordinate, or empty list if invalid
+     */
     @Override
     public List<int[]> getTargetCoordinates() {
         if (this.targetCoordinate != null) {
             return List.of(this.targetCoordinate);
         }
 
-        try {
-            Environment environment = organism.getSimulation().getEnvironment();
-            String opName = getName();
-            int[] vector = null;
-
-            int[] currentIp = organism.getIpBeforeFetch();
-
-            if (opName.endsWith("S")) {
-                if (organism.getDataStack().size() >= (opName.equals("POKS") || opName.equals("PPKS") ? 2 : 1)) {
-                    Iterator<Object> it = organism.getDataStack().iterator();
-                    if (opName.equals("POKS") || opName.equals("PPKS")) it.next();
-                    Object vecObj = it.next();
-                    if (vecObj instanceof int[]) {
-                        vector = (int[]) vecObj;
-                    }
-                }
-            } else if (opName.endsWith("I")) {
-                int dims = environment.getShape().length;
-                int[] vec = new int[dims];
-                int[] ip = organism.getNextInstructionPosition(currentIp, organism.getDvBeforeFetch(), environment); // CORRECTED
-                for (int i = 0; i < dims; i++) {
-                    Organism.FetchResult res = organism.fetchSignedArgument(ip, environment);
-                    vec[i] = res.value();
-                    ip = res.nextIp();
-                }
-                vector = vec;
-            } else {
-                int[] ip = organism.getNextInstructionPosition(currentIp, organism.getDvBeforeFetch(), environment); // CORRECTED
-                Organism.FetchResult vecRegArg = organism.fetchArgument(ip, environment);
-                int vecRegId = org.evochora.runtime.model.Molecule.fromInt(vecRegArg.value()).toScalarValue();
-                Object vecObj = readOperand(vecRegId);
-                if (vecObj instanceof int[]) {
-                    vector = (int[]) vecObj;
-                }
-            }
-
-        if (vector != null) {
-            // Validate that vector is a unit vector for world interaction
-            if (!organism.isUnitVector(vector)) {
-                return List.of();
-            }
-            
-            this.targetCoordinate = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
-            return List.of(this.targetCoordinate);
-        }
-
-        } catch (Exception e) {
+        // Use operands resolved during Plan phase (resolveOperands is idempotent)
+        Environment environment = organism.getSimulation().getEnvironment();
+        List<Operand> operands = resolveOperands(environment);
+        if (operands.isEmpty()) {
             return List.of();
         }
-        return List.of();
+
+        // Find vector: the last operand that is an int[] (convention for all variants)
+        int[] vector = null;
+        for (int i = operands.size() - 1; i >= 0; i--) {
+            Object value = operands.get(i).value();
+            if (value instanceof int[]) {
+                vector = (int[]) value;
+                break;
+            }
+        }
+
+        if (vector == null || !organism.isUnitVector(vector)) {
+            return List.of();
+        }
+
+        this.targetCoordinate = organism.getTargetCoordinate(organism.getActiveDp(), vector, environment);
+        return List.of(this.targetCoordinate);
     }
 }

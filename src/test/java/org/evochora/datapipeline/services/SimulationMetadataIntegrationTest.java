@@ -329,7 +329,7 @@ class SimulationMetadataIntegrationTest {
                       shape = [100, 100]
                       topology = "TORUS"
                     }
-                    tickPlugins = [
+                    plugins = [
                       {
                         className = "org.evochora.runtime.worldgen.GeyserCreator"
                         options {

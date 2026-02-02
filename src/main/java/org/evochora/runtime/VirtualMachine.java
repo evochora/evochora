@@ -50,22 +50,31 @@ public class VirtualMachine {
         organism.resetTickState();
         Molecule molecule = this.environment.getMolecule(organism.getIp());
 
+        Instruction instruction;
+
         if (Config.STRICT_TYPING) {
             if (molecule.type() != Config.TYPE_CODE && !molecule.isEmpty()) {
                 // Non-CODE molecules: treat as NOP (will be skipped by skipNopCells)
                 int nopOpcodeId = Instruction.getInstructionIdByName("NOP");
-                return new org.evochora.runtime.isa.instructions.NopInstruction(organism, nopOpcodeId);
+                instruction = new org.evochora.runtime.isa.instructions.NopInstruction(organism, nopOpcodeId);
+                instruction.resolveOperands(this.environment);
+                return instruction;
             }
         }
 
         int opcodeId = molecule.value();  // Use value only, not packed int (which includes marker)
         java.util.function.BiFunction<Organism, Environment, Instruction> planner = Instruction.getPlannerById(opcodeId);
         if (planner != null) {
-            return planner.apply(organism, this.environment);
+            instruction = planner.apply(organism, this.environment);
+            // Resolve operands in Plan phase for conflict resolution and interception
+            instruction.resolveOperands(this.environment);
+            return instruction;
         }
 
         organism.instructionFailed("Unknown opcode: " + opcodeId);
-        return new org.evochora.runtime.isa.instructions.NopInstruction(organism, opcodeId);
+        instruction = new org.evochora.runtime.isa.instructions.NopInstruction(organism, opcodeId);
+        instruction.resolveOperands(this.environment);
+        return instruction;
     }
 
     /**

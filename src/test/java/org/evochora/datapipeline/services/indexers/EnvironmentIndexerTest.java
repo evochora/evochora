@@ -180,7 +180,7 @@ class EnvironmentIndexerTest {
                 "accumulatedDeltaInterval": 100,
                 "snapshotInterval": 10,
                 "chunkInterval": 1,
-                "tickPlugins": [],
+                "plugins": [],
                 "organisms": [],
                 "runtime": {
                     "organism": {
@@ -234,7 +234,7 @@ class EnvironmentIndexerTest {
                 "accumulatedDeltaInterval": 100,
                 "snapshotInterval": 10,
                 "chunkInterval": 1,
-                "tickPlugins": [],
+                "plugins": [],
                 "organisms": [],
                 "runtime": {
                     "organism": {
