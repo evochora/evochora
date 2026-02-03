@@ -88,7 +88,7 @@ public class StateInstruction extends Instruction {
         // Operation 16: GMR (get molecule marker register)
         reg(16, Variant.R, "GMR", REGISTER);
         reg(16, Variant.NONE, "GMRS");
-        // Operation 17: CMR (clear markers - reset markers of own molecules to 0)
+        // Operation 17: CMR (clear markers - remove own molecules with matching marker)
         reg(17, Variant.R, "CMR", REGISTER);
         reg(17, Variant.I, "CMRI", IMMEDIATE);
         reg(17, Variant.S, "CMRS", STACK);
@@ -765,11 +765,10 @@ public class StateInstruction extends Instruction {
 
     /**
      * Handles the CMR, CMRI, and CMRS instructions (Clear Markers).
-     * Resets to 0 the marker of all molecules owned by this organism that have a matching marker value.
+     * Removes all molecules owned by this organism that have a matching marker value.
      * <p>
      * This is used during reproduction when a replication attempt is aborted - the partially
-     * replicated molecules need to have their markers cleared so they won't be transferred
-     * during a subsequent FORK operation.
+     * replicated molecules are completely removed from the environment.
      *
      * @param opName      The instruction name (CMR, CMRI, or CMRS)
      * @param operands    The operands containing the marker value to match
@@ -813,7 +812,7 @@ public class StateInstruction extends Instruction {
         // Extract value and mask to valid marker range
         int markerToMatch = source.value() & Config.MARKER_VALUE_MASK;
 
-        // Clear markers of all own molecules with matching marker
+        // Remove all own molecules with matching marker
         environment.clearMarkersFor(organism.getId(), markerToMatch);
     }
 }
