@@ -13,6 +13,8 @@ import org.evochora.runtime.isa.IEnvironmentModifyingInstruction;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.spi.DeathContext;
+import org.evochora.runtime.spi.IDeathHandler;
 import org.evochora.runtime.spi.IInstructionInterceptor;
 import org.evochora.runtime.spi.InterceptionContext;
 import org.evochora.runtime.spi.IRandomProvider;
@@ -43,7 +45,9 @@ public class Simulation {
     private final List<Organism> newOrganismsThisTick = new ArrayList<>();
     private final List<ITickPlugin> tickPlugins = new ArrayList<>();
     private final List<IInstructionInterceptor> instructionInterceptors = new ArrayList<>();
+    private final List<IDeathHandler> deathHandlers = new ArrayList<>();
     private final InterceptionContext interceptContext = new InterceptionContext();  // Reusable, zero allocation
+    private final DeathContext deathContext = new DeathContext();  // Reusable, zero allocation
     private int nextOrganismId = 1;
     private IRandomProvider randomProvider;
 
@@ -177,6 +181,24 @@ public class Simulation {
     }
 
     /**
+     * Adds a death handler to the simulation.
+     * Death handlers are called in the order they are added, when an organism dies,
+     * before ownership is cleared.
+     * @param handler The death handler to add.
+     */
+    public void addDeathHandler(IDeathHandler handler) {
+        this.deathHandlers.add(handler);
+    }
+
+    /**
+     * Returns the list of death handlers.
+     * @return An unmodifiable view of the death handlers list.
+     */
+    public List<IDeathHandler> getDeathHandlers() {
+        return java.util.Collections.unmodifiableList(this.deathHandlers);
+    }
+
+    /**
      * Returns the next available unique ID for an organism.
      * @return A unique organism ID.
      */
@@ -264,8 +286,17 @@ public class Simulation {
                 organism.skipNopCells(environment);
             }
 
-            // Clear ownership if organism died during this tick
+            // Handle organism death: call death handlers, then clear ownership
             if (wasAlive && organism.isDead()) {
+                deathContext.reset(environment, organism.getId());
+                for (IDeathHandler handler : deathHandlers) {
+                    try {
+                        handler.onDeath(deathContext);
+                    } catch (Exception e) {
+                        LOG.warn("Death handler '{}' failed for organism {}: {}",
+                                handler.getClass().getSimpleName(), organism.getId(), e.getMessage());
+                    }
+                }
                 environment.clearOwnershipFor(organism.getId());
             }
 

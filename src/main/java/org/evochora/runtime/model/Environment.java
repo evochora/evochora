@@ -463,6 +463,61 @@ public class Environment implements IEnvironmentReader {
     }
 
     /**
+     * Returns the set of flat indices owned by the specified organism.
+     * <p>
+     * Returns the internal set directly (no copy) for performance.
+     * The returned set should not be modified by callers.
+     * </p>
+     *
+     * @param ownerId The organism ID
+     * @return The set of flat indices, or null if the organism owns no cells
+     */
+    public it.unimi.dsi.fastutil.ints.IntOpenHashSet getCellsOwnedBy(int ownerId) {
+        return cellsByOwner.get(ownerId);
+    }
+
+    /**
+     * Gets the molecule at the specified flat index.
+     * <p>
+     * OPTIMIZATION: Direct array access without coordinate conversion.
+     * </p>
+     *
+     * @param flatIndex The flat index
+     * @return The molecule at the specified index
+     */
+    public Molecule getMoleculeByIndex(int flatIndex) {
+        return Molecule.fromInt(this.grid[flatIndex]);
+    }
+
+    /**
+     * Sets the molecule at the specified flat index.
+     * <p>
+     * OPTIMIZATION: Direct array access without coordinate conversion.
+     * Updates all tracking structures (delta compression, label index, sparse tracking).
+     * </p>
+     *
+     * @param flatIndex The flat index
+     * @param molecule The molecule to set
+     */
+    public void setMoleculeByIndex(int flatIndex, Molecule molecule) {
+        int oldMoleculeInt = this.grid[flatIndex];
+        int newMoleculeInt = molecule.toInt();
+        this.grid[flatIndex] = newMoleculeInt;
+
+        // Track change for delta compression
+        changedSinceLastReset.set(flatIndex);
+
+        // Update label index for fuzzy jump matching
+        int owner = this.ownerGrid[flatIndex];
+        labelIndex.onMoleculeSet(flatIndex, oldMoleculeInt, newMoleculeInt, owner);
+
+        // Update sparse cell tracking if enabled
+        if (Config.ENABLE_SPARSE_CELL_TRACKING && occupiedIndices != null) {
+            updateOccupiedIndices(flatIndex);
+        }
+    }
+
+    /**
      * Transfers ownership of molecules from one organism to another based on marker matching.
      * <p>
      * This method iterates over all occupied cells and transfers ownership from {@code fromOwnerId}

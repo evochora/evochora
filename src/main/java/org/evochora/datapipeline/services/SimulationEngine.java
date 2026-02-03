@@ -49,6 +49,7 @@ import org.evochora.datapipeline.resume.SnapshotLoader;
 import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
+import org.evochora.runtime.spi.IDeathHandler;
 import org.evochora.runtime.spi.IInstructionInterceptor;
 import org.evochora.runtime.spi.ISimulationPlugin;
 import org.evochora.runtime.spi.ITickPlugin;
@@ -79,6 +80,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     private final IRandomProvider randomProvider;
     private final List<PluginWithConfig> tickPlugins;
     private final List<InterceptorWithConfig> instructionInterceptors;
+    private final List<DeathHandlerWithConfig> deathHandlers;
     private final long seed;
     private final long startTimeMs;
     private final boolean isResume;
@@ -104,6 +106,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
     private record PluginWithConfig(ITickPlugin plugin, Config config) {}
     private record InterceptorWithConfig(IInstructionInterceptor interceptor, Config config) {}
+    private record DeathHandlerWithConfig(IDeathHandler handler, Config config) {}
 
     /**
      * Holds the initialized state from either resume or new simulation mode.
@@ -119,6 +122,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         IRandomProvider randomProvider,
         List<PluginWithConfig> tickPlugins,
         List<InterceptorWithConfig> instructionInterceptors,
+        List<DeathHandlerWithConfig> deathHandlers,
         Map<String, ProgramInfo> programInfo,
         String runId,
         long seed,
@@ -156,6 +160,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         this.randomProvider = state.randomProvider();
         this.tickPlugins = state.tickPlugins();
         this.instructionInterceptors = state.instructionInterceptors();
+        this.deathHandlers = state.deathHandlers();
         this.runId = state.runId();
         this.seed = state.seed();
         this.startTimeMs = state.startTimeMs();
@@ -256,6 +261,10 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 .map(i -> new InterceptorWithConfig(i.interceptor(), i.config()))
                 .toList();
 
+            List<DeathHandlerWithConfig> deathHandlersList = restored.deathHandlers().stream()
+                .map(d -> new DeathHandlerWithConfig(d.handler(), d.config()))
+                .toList();
+
             Map<String, ProgramInfo> programInfo = new HashMap<>();
             restored.programArtifacts().forEach((id, artifact) ->
                 programInfo.put(id, new ProgramInfo(id, id, artifact)));
@@ -268,6 +277,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 randomProvider,
                 plugins,
                 interceptors,
+                deathHandlersList,
                 programInfo,
                 runId,
                 seed,
@@ -327,7 +337,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         // Initialize all plugins with automatic type detection
         List<PluginWithConfig> tickPluginsList = new ArrayList<>();
         List<InterceptorWithConfig> interceptorsList = new ArrayList<>();
-        initializePlugins(options.getConfigList("plugins"), randomProvider, tickPluginsList, interceptorsList);
+        List<DeathHandlerWithConfig> deathHandlersList = new ArrayList<>();
+        initializePlugins(options.getConfigList("plugins"), randomProvider, tickPluginsList, interceptorsList, deathHandlersList);
 
         Config runtimeConfig = options.hasPath("runtime") ? options.getConfig("runtime") : com.typesafe.config.ConfigFactory.empty();
         ThermodynamicPolicyManager policyManager = new ThermodynamicPolicyManager(
@@ -351,6 +362,11 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         // Register instruction interceptors with simulation
         for (InterceptorWithConfig iwc : interceptorsList) {
             simulation.addInstructionInterceptor(iwc.interceptor());
+        }
+
+        // Register death handlers with simulation
+        for (DeathHandlerWithConfig dhc : deathHandlersList) {
+            simulation.addDeathHandler(dhc.handler());
         }
 
         // Create and place organisms
@@ -378,7 +394,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             + "-" + UUID.randomUUID().toString();
 
         return new InitializedState(
-            simulation, randomProvider, tickPluginsList, interceptorsList, programInfo, runId, seed, startTimeMs, -1,
+            simulation, randomProvider, tickPluginsList, interceptorsList, deathHandlersList, programInfo, runId, seed, startTimeMs, -1,
             readPositiveInt(options, "samplingInterval", 1),
             readInt(options, "accumulatedDeltaInterval", SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL),
             readInt(options, "snapshotInterval", SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL),
@@ -521,18 +537,20 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      *   <li>ITickPlugin - added to tickPlugins list, executed each tick for environment manipulation</li>
      *   <li>IInstructionInterceptor - added to interceptors list, intercepts planned instructions</li>
      * </ul>
-     * A plugin can implement both interfaces and will be registered in both lists.
+     * A plugin can implement multiple interfaces and will be registered in all applicable lists.
      *
      * @param configs the plugin configurations from "plugins" config key
      * @param random the random provider for deterministic plugin behavior
      * @param tickPlugins output list for ITickPlugin instances
      * @param interceptors output list for IInstructionInterceptor instances
+     * @param deathHandlers output list for IDeathHandler instances
      */
     private void initializePlugins(
             List<? extends Config> configs,
             IRandomProvider random,
             List<PluginWithConfig> tickPlugins,
-            List<InterceptorWithConfig> interceptors) {
+            List<InterceptorWithConfig> interceptors,
+            List<DeathHandlerWithConfig> deathHandlers) {
 
         for (Config config : configs) {
             try {
@@ -543,17 +561,20 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                         .getConstructor(IRandomProvider.class, com.typesafe.config.Config.class)
                         .newInstance(random, pluginOptions);
 
-                // A plugin can implement both interfaces
+                // A plugin can implement multiple interfaces
                 if (plugin instanceof ITickPlugin tickPlugin) {
                     tickPlugins.add(new PluginWithConfig(tickPlugin, pluginOptions));
                 }
                 if (plugin instanceof IInstructionInterceptor interceptor) {
                     interceptors.add(new InterceptorWithConfig(interceptor, pluginOptions));
                 }
+                if (plugin instanceof IDeathHandler deathHandler) {
+                    deathHandlers.add(new DeathHandlerWithConfig(deathHandler, pluginOptions));
+                }
 
-                // Warn if plugin implements neither interface
-                if (!(plugin instanceof ITickPlugin) && !(plugin instanceof IInstructionInterceptor)) {
-                    log.warn("Plugin {} does not implement ITickPlugin or IInstructionInterceptor", className);
+                // Warn if plugin implements no known interface
+                if (!(plugin instanceof ITickPlugin) && !(plugin instanceof IInstructionInterceptor) && !(plugin instanceof IDeathHandler)) {
+                    log.warn("Plugin {} does not implement ITickPlugin, IInstructionInterceptor, or IDeathHandler", className);
                 }
             } catch (ReflectiveOperationException e) {
                 throw new IllegalArgumentException(
@@ -685,20 +706,23 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     }
     
     /**
-     * Extracts plugin states for all plugins (tick plugins and interceptors).
+     * Extracts plugin states for all plugins (tick plugins, interceptors, and death handlers).
      * Used by DeltaCodec.Encoder for delta compression.
      * <p>
      * Each plugin instance is serialized exactly once, even if it implements
-     * both ITickPlugin and IInstructionInterceptor interfaces.
+     * multiple plugin interfaces.
      */
     private List<PluginState> extractPluginStates() {
-        // Collect unique plugin instances (a plugin may be in both lists if it implements both interfaces)
+        // Collect unique plugin instances (a plugin may be in multiple lists if it implements multiple interfaces)
         Set<ISimulationPlugin> uniquePlugins = Collections.newSetFromMap(new IdentityHashMap<>());
         for (PluginWithConfig p : tickPlugins) {
             uniquePlugins.add(p.plugin());
         }
         for (InterceptorWithConfig i : instructionInterceptors) {
             uniquePlugins.add(i.interceptor());
+        }
+        for (DeathHandlerWithConfig d : deathHandlers) {
+            uniquePlugins.add(d.handler());
         }
 
         // Serialize each unique plugin exactly once
