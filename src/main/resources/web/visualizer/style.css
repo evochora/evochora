@@ -1133,7 +1133,8 @@ main.container {
     z-index: 999;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    /* Use flex-start so left+slider stay aligned regardless of panel width */
+    justify-content: flex-start;
     font-size: 12px;
     font-family: 'Roboto Mono', 'Courier New', monospace;
     color: #888;
@@ -1170,6 +1171,8 @@ main.container {
     display: flex;
     align-items: center;
     gap: 8px;
+    /* Push arrow to the right while left+slider stay left-aligned */
+    margin-left: auto;
 }
 
 .minimap-collapsed-right .panel-arrow {
@@ -1201,7 +1204,8 @@ main.container {
 .minimap-panel-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    /* Use flex-start so title+slider stay left-aligned regardless of panel width */
+    justify-content: flex-start;
     padding: 4px 10px;
     border-top: 1px solid #333;
     cursor: pointer;
@@ -1227,6 +1231,8 @@ main.container {
     display: flex;
     align-items: center;
     gap: 8px;
+    /* Push controls to the right while title+slider stay left */
+    margin-left: auto;
 }
 
 /* Zoom slider container (center section) */
@@ -1240,7 +1246,7 @@ main.container {
 
 /* Zoom slider */
 .minimap-zoom-slider {
-    width: 80px;
+    width: 140px;
     height: 4px;
     -webkit-appearance: none;
     appearance: none;

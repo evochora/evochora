@@ -364,11 +364,10 @@ export class MinimapView {
     /**
      * Checks if the minimap is useful (world larger than viewport) and updates UI accordingly.
      * When the world fits entirely in the viewport, the minimap provides no navigation value,
-     * so we hide the expand functionality and show only the world size + zoom button.
+     * so we hide the minimap content and related controls, but keep the header with zoom slider.
      *
-     * IMPORTANT: This does NOT change the `expanded` state, which represents the user's
-     * preference. When the minimap becomes useful again, it will restore to the user's
-     * preferred state (expanded or collapsed).
+     * IMPORTANT: This method only updates visibility of minimap content and buttons,
+     * it does NOT switch between panels to avoid breaking slider drag events.
      * @private
      */
     updateMinimapUsefulness() {
@@ -387,22 +386,40 @@ export class MinimapView {
 
         if (newUseful !== this.minimapUseful) {
             this.minimapUseful = newUseful;
+            this._applyMinimapUsefulness();
+        }
+    }
 
-            // Update UI based on usefulness
-            if (this.expandArrow) {
-                this.expandArrow.style.display = this.minimapUseful ? '' : 'none';
-            }
+    /**
+     * Applies visibility changes based on minimap usefulness.
+     * Only shows/hides minimap content and related buttons, never switches panels.
+     * Uses display:none for all elements since slider is now left-aligned and won't shift.
+     * @private
+     */
+    _applyMinimapUsefulness() {
+        // Update expand arrow visibility (collapsed panel)
+        if (this.expandArrow) {
+            this.expandArrow.style.display = this.minimapUseful ? '' : 'none';
+        }
 
-            // Update cursor style on collapsed panel (not clickable if not useful)
-            if (this.collapsedElement) {
-                this.collapsedElement.style.cursor = this.minimapUseful ? 'pointer' : 'default';
-            }
+        // Update cursor style on collapsed panel (not clickable if not useful)
+        if (this.collapsedElement) {
+            this.collapsedElement.style.cursor = this.minimapUseful ? 'pointer' : 'default';
+        }
 
-            // Re-apply visibility to reflect usefulness change
-            // This will restore to user's preferred state (expanded) if minimap became useful again
-            if (this.visible) {
-                this.show();
-            }
+        // Show/hide organism toggle and collapse buttons FIRST (before content)
+        // so they disappear before the panel shrinks
+        if (this.organismToggleBtn) {
+            this.organismToggleBtn.style.display = this.minimapUseful ? '' : 'none';
+        }
+        if (this.collapseBtn) {
+            this.collapseBtn.style.display = this.minimapUseful ? '' : 'none';
+        }
+
+        // Show/hide minimap content (canvas container) in expanded panel
+        const minimapContent = this.element.querySelector('.minimap-content');
+        if (minimapContent) {
+            minimapContent.style.display = this.minimapUseful ? '' : 'none';
         }
     }
 
@@ -451,6 +468,7 @@ export class MinimapView {
         this.collapsedElement.classList.add('hidden');
         if (this.visible) {
             this.element.classList.remove('hidden');
+            this._applyMinimapUsefulness();
         }
         localStorage.setItem('minimapExpanded', 'true');
     }
@@ -463,24 +481,19 @@ export class MinimapView {
         this.element.classList.add('hidden');
         if (this.visible) {
             this.collapsedElement.classList.remove('hidden');
+            this._applyMinimapUsefulness();
         }
         localStorage.setItem('minimapExpanded', 'false');
     }
 
     /**
      * Shows the minimap (either collapsed tab or expanded panel).
-     * If minimap is not useful, always shows collapsed header only.
+     * Respects the user's expanded preference and applies usefulness visibility.
      */
     show() {
         this.visible = true;
 
-        // If minimap is not useful, always show collapsed (header-only) view
-        if (!this.minimapUseful) {
-            this.element.classList.add('hidden');
-            this.collapsedElement.classList.remove('hidden');
-            return;
-        }
-
+        // Show panel based on user's expanded preference
         if (this.expanded) {
             this.element.classList.remove('hidden');
             this.collapsedElement.classList.add('hidden');
@@ -488,6 +501,9 @@ export class MinimapView {
             this.element.classList.add('hidden');
             this.collapsedElement.classList.remove('hidden');
         }
+
+        // Apply usefulness state (hides/shows content within current panel)
+        this._applyMinimapUsefulness();
     }
 
     /**
