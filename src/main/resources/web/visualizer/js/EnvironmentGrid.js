@@ -658,23 +658,6 @@ export class EnvironmentGrid {
      */
     getViewportBounds() {
         const region = this.getVisibleRegion();
-        const cellSize = this.getCurrentCellSize();
-
-        // DEBUG: Log what the environment actually shows
-        console.log('=== ENVIRONMENT VIEWPORT ===');
-        console.log('Camera (pixels):', { x: this.cameraX, y: this.cameraY });
-        console.log('Viewport size (pixels):', { w: this.viewportWidth, h: this.viewportHeight });
-        console.log('Cell size:', cellSize);
-        console.log('Top-left cell (what you see at screen 0,0):', {
-            x: this.cameraX / cellSize,
-            y: this.cameraY / cellSize
-        });
-        console.log('Bottom-right cell (what you see at screen edge):', {
-            x: (this.cameraX + this.viewportWidth) / cellSize,
-            y: (this.cameraY + this.viewportHeight) / cellSize
-        });
-        console.log('Returned bounds (cells):', region);
-
         return {
             x: region.x1,
             y: region.y1,

@@ -179,18 +179,6 @@ export class MinimapView {
             return;
         }
 
-        // DEBUG: Check if minimap data has offset or different bounds
-        console.log('=== MINIMAP DATA RECEIVED ===');
-        console.log('minimapData dimensions:', { width: minimapData.width, height: minimapData.height });
-        console.log('worldShape:', worldShape);
-        console.log('minimapData has offset?:', {
-            offsetX: minimapData.offsetX,
-            offsetY: minimapData.offsetY,
-            worldWidth: minimapData.worldWidth,
-            worldHeight: minimapData.worldHeight
-        });
-        console.log('Full minimapData keys:', Object.keys(minimapData));
-
         this.worldShape = worldShape;
         this.lastMinimapData = minimapData;
 
