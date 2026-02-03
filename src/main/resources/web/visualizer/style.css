@@ -579,25 +579,36 @@ body {
 }
 
 .cell-tooltip .tooltip-coords {
-    color: #a0e0a0;
-    font-weight: bold;
+    color: #888;
+    display: inline-block;
+    min-width: 70px;
 }
 
 .cell-tooltip .tooltip-type {
-    color: #ffd700;
+    color: #e0e0e0;
 }
 
 .cell-tooltip .tooltip-owner {
-    color: #87ceeb;
+    color: #888;
 }
 
 .cell-tooltip .tooltip-opcode {
-    color: #dda0dd;
+    color: #e0e0e0;
 }
 
 .cell-tooltip .tooltip-separator {
-    color: #666;
+    color: #555;
     margin: 0 4px;
+}
+
+/* Organism info in tooltip */
+.cell-tooltip .tooltip-organism {
+    display: block;
+    margin-top: 2px;
+}
+
+.cell-tooltip .tooltip-org-info {
+    color: #e0e0e0;
 }
 
 button {
@@ -1186,13 +1197,13 @@ main.container {
     /* Width is set dynamically via JavaScript to match expanded panel */
 }
 
-/* Minimap panel header */
+/* Minimap panel header (at bottom, below canvas) */
 .minimap-panel-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     padding: 4px 10px;
-    border-bottom: 1px solid #333;
+    border-top: 1px solid #333;
     cursor: pointer;
 }
 

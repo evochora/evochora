@@ -54,16 +54,16 @@ export class MinimapView {
                 <input type="range" class="minimap-zoom-slider" min="1" max="11" value="1" title="Zoom level">
             </div>
             <div class="minimap-collapsed-right">
-                <button class="minimap-organism-toggle active" title="Toggle organism overlay">Org</button>
                 <span class="panel-arrow minimap-expand-arrow">▲</span>
             </div>
         `;
 
-        // Expanded state - panel
+        // Expanded state - panel (content first, header at bottom)
         this.element = document.createElement('div');
         this.element.id = 'minimap-panel';
         this.element.className = 'footer-panel hidden';
         this.element.innerHTML = `
+            <div class="minimap-content"></div>
             <div class="minimap-panel-header">
                 <div class="minimap-panel-title">
                     <span class="world-size">— × —</span>
@@ -76,7 +76,6 @@ export class MinimapView {
                     <button class="panel-toggle" title="Collapse minimap">▼</button>
                 </div>
             </div>
-            <div class="minimap-content"></div>
         `;
 
         // Canvas for rendering
@@ -89,7 +88,6 @@ export class MinimapView {
         this.zoomSliderCollapsed = this.collapsedElement.querySelector('.minimap-zoom-slider');
         this.collapseBtn = this.element.querySelector('.panel-toggle');
         this.organismToggleBtn = this.element.querySelector('.minimap-organism-toggle');
-        this.organismToggleBtnCollapsed = this.collapsedElement.querySelector('.minimap-organism-toggle');
         this.panelHeader = this.element.querySelector('.minimap-panel-header');
         this.worldSizeExpanded = this.element.querySelector('.world-size');
         this.worldSizeCollapsed = this.collapsedElement.querySelector('.world-size');
@@ -126,7 +124,7 @@ export class MinimapView {
             this.collapse();
         });
 
-        // Zoom slider change handler (shared logic)
+        // Zoom slider change handler
         const handleZoomSliderChange = (e) => {
             const value = parseInt(e.target.value, 10);
             if (value === 11) {
@@ -167,10 +165,6 @@ export class MinimapView {
         this.organismToggleBtn.addEventListener('click', () => {
             this.toggleOrganismOverlay();
         });
-        this.organismToggleBtnCollapsed.addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.toggleOrganismOverlay();
-        });
     }
 
     /**
@@ -184,6 +178,18 @@ export class MinimapView {
         if (!minimapData) {
             return;
         }
+
+        // DEBUG: Check if minimap data has offset or different bounds
+        console.log('=== MINIMAP DATA RECEIVED ===');
+        console.log('minimapData dimensions:', { width: minimapData.width, height: minimapData.height });
+        console.log('worldShape:', worldShape);
+        console.log('minimapData has offset?:', {
+            offsetX: minimapData.offsetX,
+            offsetY: minimapData.offsetY,
+            worldWidth: minimapData.worldWidth,
+            worldHeight: minimapData.worldHeight
+        });
+        console.log('Full minimapData keys:', Object.keys(minimapData));
 
         this.worldShape = worldShape;
         this.lastMinimapData = minimapData;
@@ -308,9 +314,6 @@ export class MinimapView {
         // Update button appearance (both panels)
         if (this.organismToggleBtn) {
             this.organismToggleBtn.classList.toggle('active', enabled);
-        }
-        if (this.organismToggleBtnCollapsed) {
-            this.organismToggleBtnCollapsed.classList.toggle('active', enabled);
         }
 
         // Persist to localStorage
@@ -533,9 +536,6 @@ export class MinimapView {
             this.organismOverlay.setEnabled(false);
             if (this.organismToggleBtn) {
                 this.organismToggleBtn.classList.remove('active');
-            }
-            if (this.organismToggleBtnCollapsed) {
-                this.organismToggleBtnCollapsed.classList.remove('active');
             }
         }
     }

@@ -304,20 +304,6 @@ export class EnvironmentGrid {
     }
 
     /**
-     * Calculates the visible region in grid coordinates based on camera and viewport.
-     * @returns {{x1: number, x2: number, y1: number, y2: number}}
-     * @private
-     */
-    getVisibleRegion() {
-        const cellSize = this.getCurrentCellSize();
-        const x1 = Math.floor(this.cameraX / cellSize);
-        const x2 = Math.ceil((this.cameraX + this.viewportWidth) / cellSize);
-        const y1 = Math.floor(this.cameraY / cellSize);
-        const y2 = Math.ceil((this.cameraY + this.viewportHeight) / cellSize);
-        return { x1, x2, y1, y2 };
-    }
-
-    /**
      * Triggers a debounced request to load data for the current viewport.
      * This is called after camera movements to avoid excessive API calls.
      * @private
@@ -672,6 +658,23 @@ export class EnvironmentGrid {
      */
     getViewportBounds() {
         const region = this.getVisibleRegion();
+        const cellSize = this.getCurrentCellSize();
+
+        // DEBUG: Log what the environment actually shows
+        console.log('=== ENVIRONMENT VIEWPORT ===');
+        console.log('Camera (pixels):', { x: this.cameraX, y: this.cameraY });
+        console.log('Viewport size (pixels):', { w: this.viewportWidth, h: this.viewportHeight });
+        console.log('Cell size:', cellSize);
+        console.log('Top-left cell (what you see at screen 0,0):', {
+            x: this.cameraX / cellSize,
+            y: this.cameraY / cellSize
+        });
+        console.log('Bottom-right cell (what you see at screen edge):', {
+            x: (this.cameraX + this.viewportWidth) / cellSize,
+            y: (this.cameraY + this.viewportHeight) / cellSize
+        });
+        console.log('Returned bounds (cells):', region);
+
         return {
             x: region.x1,
             y: region.y1,
@@ -1034,9 +1037,62 @@ export class EnvironmentGrid {
         if (this.tooltipTimeout) clearTimeout(this.tooltipTimeout);
 
         const cell = this.findCellAt(gridX, gridY);
-        if (cell) {
-            this.tooltipTimeout = setTimeout(() => this.showTooltip(event, cell, gridX, gridY), this.tooltipDelay);
+        const nearbyOrganism = this.findOrganismNear(gridX, gridY);
+
+        // Change cursor when over clickable organism
+        this.container.style.cursor = nearbyOrganism ? 'pointer' : 'default';
+
+        if (cell || nearbyOrganism) {
+            this.tooltipTimeout = setTimeout(() => this.showTooltip(event, cell, gridX, gridY, nearbyOrganism), this.tooltipDelay);
         }
+    }
+
+    /**
+     * Finds an organism (IP or DP) near the given grid coordinates.
+     * Uses a minimum hit radius for small organisms.
+     *
+     * @param {number} gridX - The X coordinate in cells.
+     * @param {number} gridY - The Y coordinate in cells.
+     * @returns {{organism: object, type: string, position: number[]}|null} - The nearby organism or null.
+     * @private
+     */
+    findOrganismNear(gridX, gridY) {
+        if (!this.currentOrganisms || this.currentOrganisms.length === 0) return null;
+
+        const cellSize = this.getCurrentCellSize();
+        // Minimum hit radius in pixels, converted to cells
+        const MIN_HIT_RADIUS_PX = 15;
+        const hitRadiusCells = Math.max(0.5, MIN_HIT_RADIUS_PX / cellSize / 2);
+
+        for (const organism of this.currentOrganisms) {
+            if (!organism) continue;
+
+            // Check IP position
+            if (Array.isArray(organism.ip) && organism.ip.length >= 2) {
+                const ipX = organism.ip[0];
+                const ipY = organism.ip[1];
+                const dist = Math.max(Math.abs(gridX - ipX), Math.abs(gridY - ipY));
+                if (dist <= hitRadiusCells) {
+                    return { organism, type: 'IP', position: [ipX, ipY] };
+                }
+            }
+
+            // Check DP positions
+            if (Array.isArray(organism.dataPointers)) {
+                for (let i = 0; i < organism.dataPointers.length; i++) {
+                    const dp = organism.dataPointers[i];
+                    if (!Array.isArray(dp) || dp.length < 2) continue;
+                    const dpX = dp[0];
+                    const dpY = dp[1];
+                    const dist = Math.max(Math.abs(gridX - dpX), Math.abs(gridY - dpY));
+                    if (dist <= hitRadiusCells) {
+                        return { organism, type: `DP${i}`, position: [dpX, dpY] };
+                    }
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -1105,32 +1161,51 @@ export class EnvironmentGrid {
      * Displays the tooltip with formatted information about a cell.
      *
      * @param {MouseEvent} event - The mouse event, used for positioning.
-     * @param {object} cell - The cell data object.
+     * @param {object} cell - The cell data object (may be null).
      * @param {number} gridX - The cell's X coordinate.
      * @param {number} gridY - The cell's Y coordinate.
+     * @param {{organism: object, type: string, position: number[]}|null} nearbyOrganism - Nearby organism info.
      * @private
      */
-    showTooltip(event, cell, gridX, gridY) {
+    showTooltip(event, cell, gridX, gridY, nearbyOrganism) {
         if (!this.tooltip) return;
 
-        const typeName = this.getTypeName(cell.type);
-        // For unknown opcodes (??), show full ID in tooltip
-        let opcodeInfo = '';
-        if (cell.opcodeName && (cell.ownerId !== 0 || cell.value !== 0)) {
-            if (cell.opcodeName === '??' && cell.opcodeId >= 0) {
-                opcodeInfo = `(Unknown: ${cell.opcodeId})`;
-            } else {
-                opcodeInfo = `(${cell.opcodeName})`;
+        let cellInfo = '';
+        if (cell) {
+            const typeName = this.getTypeName(cell.type);
+            // For unknown opcodes (??), show full ID in tooltip
+            let opcodeInfo = '';
+            if (cell.opcodeName && (cell.ownerId !== 0 || cell.value !== 0)) {
+                if (cell.opcodeName === '??' && cell.opcodeId >= 0) {
+                    opcodeInfo = `(Unknown: ${cell.opcodeId})`;
+                } else {
+                    opcodeInfo = `(${cell.opcodeName})`;
+                }
             }
-        }
-        const markerInfo = cell.marker ? ` M:${cell.marker}` : '';
+            const markerInfo = cell.marker ? ` M:${cell.marker}` : '';
 
-        this.tooltip.innerHTML = `
-            <span class="tooltip-coords">[${gridX}|${gridY}]</span>
-            <span class="tooltip-type">${typeName}:${cell.value}${opcodeInfo}</span>
-            <span class="tooltip-separator">•</span>
-            <span class="tooltip-owner">Owner: ${cell.ownerId || 0}${markerInfo}</span>
-        `;
+            cellInfo = `
+                <span class="tooltip-coords">[${gridX}|${gridY}]</span>
+                <span class="tooltip-type">${typeName}:${cell.value}${opcodeInfo}</span>
+                <span class="tooltip-separator">•</span>
+                <span class="tooltip-owner">Owner: ${cell.ownerId || 0}${markerInfo}</span>
+            `;
+        } else {
+            cellInfo = `<span class="tooltip-coords">[${gridX}|${gridY}]</span>`;
+        }
+
+        let organismInfo = '';
+        if (nearbyOrganism) {
+            const { organism, type, position } = nearbyOrganism;
+            organismInfo = `
+                <div class="tooltip-organism">
+                    <span class="tooltip-coords">[${position[0]}|${position[1]}]</span>
+                    <span class="tooltip-org-info">Org #${organism.organismId} ${type}</span>
+                </div>
+            `;
+        }
+
+        this.tooltip.innerHTML = cellInfo + organismInfo;
 
         const { clientX, clientY } = event;
         const { innerWidth, innerHeight } = window;

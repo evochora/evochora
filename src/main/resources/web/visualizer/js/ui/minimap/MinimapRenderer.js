@@ -81,6 +81,9 @@ export class MinimapRenderer {
      * Draws the viewport rectangle showing the currently visible area.
      * Should be called after render() to overlay the rectangle.
      *
+     * Uses the same floating-point scale calculation as MinimapAggregator.java on the server
+     * to ensure the rect aligns correctly with the minimap background.
+     *
      * @param {{x: number, y: number, width: number, height: number}} viewportBounds - Viewport in world coordinates.
      * @param {number[]} worldShape - World dimensions [width, height].
      */
@@ -91,16 +94,33 @@ export class MinimapRenderer {
 
         const { x, y, width, height } = viewportBounds;
         const [worldWidth, worldHeight] = worldShape;
+        const minimapWidth = this.canvas.width;
+        const minimapHeight = this.canvas.height;
 
-        // Scale factors from world to minimap coordinates
-        const scaleX = this.canvas.width / worldWidth;
-        const scaleY = this.canvas.height / worldHeight;
+        // Use the SAME floating-point scale calculation as MinimapAggregator.java:
+        // scaleX = worldWidth / minimapWidth (float division)
+        // This ensures the entire world maps to the minimap without clipping.
+        const scaleX = worldWidth / minimapWidth;
+        const scaleY = worldHeight / minimapHeight;
 
-        // Calculate rectangle position and size in minimap coordinates
-        const rectX = x * scaleX;
-        const rectY = y * scaleY;
-        const rectW = width * scaleX;
-        const rectH = height * scaleY;
+        // Clamp viewport bounds to world bounds (minimap only shows the world, not margin areas)
+        const clampedX1 = Math.max(0, x);
+        const clampedY1 = Math.max(0, y);
+        const clampedX2 = Math.min(worldWidth, x + width);
+        const clampedY2 = Math.min(worldHeight, y + height);
+
+        // Skip if viewport is entirely outside the world
+        if (clampedX1 >= clampedX2 || clampedY1 >= clampedY2) {
+            return;
+        }
+
+        // Map world coordinates to minimap pixels using float scale (same as server)
+        const rectX = clampedX1 / scaleX;
+        const rectY = clampedY1 / scaleY;
+        const rectX2 = clampedX2 / scaleX;
+        const rectY2 = clampedY2 / scaleY;
+        const rectW = rectX2 - rectX;
+        const rectH = rectY2 - rectY;
 
         // Draw semi-transparent white rectangle with border
         this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';

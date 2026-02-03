@@ -94,9 +94,13 @@ public class MinimapAggregator {
         // counts[pixelIndex * NUM_TYPES + typeIndex] = count of that type
         final short[] counts = new short[minimapSize * NUM_TYPES];
 
-        // Calculate scale factors (minimum 1 to avoid division by zero for small worlds)
-        final int scaleX = Math.max(1, worldWidth / minimapWidth);
-        final int scaleY = Math.max(1, worldHeight / minimapHeight);
+        // Calculate scale factors as floats to ensure the entire world is covered.
+        // Using integer division would cause cells at the edge to wrap around.
+        // E.g., for 800x600 world with 300x225 minimap:
+        //   - Integer: scale=2, covers only 600x450 cells, rest wraps
+        //   - Float: scale=2.67, covers all 800x600 cells correctly
+        final float scaleX = (float) worldWidth / minimapWidth;
+        final float scaleY = (float) worldHeight / minimapHeight;
 
         // Iterate only over occupied cells (sparse iteration)
         final int cellCount = columns.getFlatIndicesCount();
@@ -108,9 +112,10 @@ public class MinimapAggregator {
             final int x = flatIndex / worldHeight;
             final int y = flatIndex % worldHeight;
 
-            // Map to minimap coordinates (toroidal wrapping for edge overflow)
-            final int mx = (x / scaleX) % minimapWidth;
-            final int my = (y / scaleY) % minimapHeight;
+            // Map to minimap coordinates using float scale
+            // Clamp to minimap bounds to handle edge cases (rounding at world edge)
+            final int mx = Math.min((int) (x / scaleX), minimapWidth - 1);
+            final int my = Math.min((int) (y / scaleY), minimapHeight - 1);
             final int mIdx = my * minimapWidth + mx;
 
             // Determine cell type (with EMPTY detection)
@@ -124,7 +129,7 @@ public class MinimapAggregator {
         // Each minimap pixel represents approximately scaleX * scaleY environment cells
         // Cells not in the data are truly empty background
         // Empty cells count at 4% weight to avoid always winning in sparse areas
-        final int cellsPerBlock = scaleX * scaleY;
+        final int cellsPerBlock = (int) (scaleX * scaleY);
         for (int i = 0; i < minimapSize; i++) {
             int totalCounted = 0;
             final int baseIdx = i * NUM_TYPES;
