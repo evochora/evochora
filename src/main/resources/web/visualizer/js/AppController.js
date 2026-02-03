@@ -284,10 +284,17 @@ export class AppController {
     }
 
     /**
-     * Sets the zoom state.
+     * Sets the zoom state, optionally with a specific scale.
      * @param {boolean} isZoomedOut - True for overview, false for detailed view
+     * @param {number|null} [scale=null] - Optional scale to set when switching to zoomed-out
      */
-    async setZoom(isZoomedOut) {
+    async setZoom(isZoomedOut, scale = null) {
+        // If switching to zoomed-out with a specific scale, set it first (without navigation)
+        if (isZoomedOut && scale !== null) {
+            this.renderer.zoomOutScale = Math.max(1, Math.min(4, Math.round(scale)));
+            localStorage.setItem('evochora-zoom-out-scale', String(this.renderer.zoomOutScale));
+        }
+
         if (this.state.isZoomedOut === isZoomedOut) return;
 
         this.state.isZoomedOut = isZoomedOut;
@@ -295,11 +302,23 @@ export class AppController {
         // Persist zoom state
         localStorage.setItem('evochora-zoom-state', isZoomedOut ? 'true' : 'false');
 
-        // Update minimap panel zoom button
-        this.minimapView?.updateZoomButton(isZoomedOut);
+        // Update minimap panel zoom select
+        this.minimapView?.updateZoomButton(isZoomedOut, this.renderer.getZoomOutScale());
 
         // Tell the renderer to update its internal state
         this.renderer.setZoom(isZoomedOut);
+
+        // Force a full re-render of the current tick
+        await this.navigateToTick(this.state.currentTick, true);
+    }
+
+    /**
+     * Sets the zoom-out scale (pixels per cell in zoomed-out mode).
+     * @param {number} scale - The new scale (1-4).
+     */
+    async setZoomOutScale(scale) {
+        this.renderer.setZoomOutScale(scale);
+        this.minimapView?.updateZoomButton(this.state.isZoomedOut, scale);
 
         // Force a full re-render of the current tick
         await this.navigateToTick(this.state.currentTick, true);
@@ -505,17 +524,26 @@ export class AppController {
             // Initialize renderer
             await this.renderer.init();
 
+            // Restore zoom-out scale from localStorage
+            const savedScale = localStorage.getItem('evochora-zoom-out-scale');
+            if (savedScale) {
+                this.renderer.zoomOutScale = parseInt(savedScale, 10) || 1;
+            }
+
             // Create minimap panel (positioned fixed, appended to body)
             this.minimapView = new MinimapView(
                 (worldX, worldY) => {
                     this.renderer.centerOn(worldX, worldY);
                 },
-                (isZoomedOut) => {
-                    this.setZoom(isZoomedOut);
+                (isZoomedOut, scale) => {
+                    this.setZoom(isZoomedOut, scale);
+                },
+                (scale) => {
+                    this.setZoomOutScale(scale);
                 }
             );
             this.minimapView.restoreState(); // Restore expanded/collapsed state
-            this.minimapView.updateZoomButton(this.state.isZoomedOut);
+            this.minimapView.updateZoomButton(this.state.isZoomedOut, this.renderer.getZoomOutScale());
 
             // Abort previous request if it's still running
             if (this.simulationRequestController) {

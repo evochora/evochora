@@ -1218,23 +1218,21 @@ main.container {
     gap: 8px;
 }
 
-/* Zoom button inside panel - matches tick panel buttons */
-.minimap-zoom-btn {
+/* Unified zoom select dropdown */
+.minimap-zoom-select {
     background-color: #3a3a5a;
     border: 1px solid #5a5a7a;
     border-radius: 4px;
     color: #e0e0e0;
     font-family: 'Roboto Mono', 'Courier New', monospace;
     font-size: 11px;
-    padding: 4px 10px;
+    padding: 4px 6px;
     cursor: pointer;
-    transition: background-color 0.15s ease;
-    width: 80px;
+    min-width: 65px;
     text-align: center;
-    white-space: nowrap;
 }
 
-.minimap-zoom-btn:hover {
+.minimap-zoom-select:hover {
     background-color: #4a4a6a;
 }
 

@@ -37,6 +37,7 @@ export class EnvironmentGrid {
         
         // --- Zoom & Rendering Strategy ---
         this.isZoomedOut = false;
+        this.zoomOutScale = 1;  // 1-4 px per cell in zoomed-out mode
         // The detailed renderer is the default strategy
         this.detailedRenderer = new DetailedRendererStrategy(this);
         this.zoomedOutRenderer = new ZoomedOutRendererStrategy(this);
@@ -133,11 +134,23 @@ export class EnvironmentGrid {
 
     /**
      * Toggles the zoom state and switches the active rendering strategy.
+     * Preserves the viewport center position across zoom changes.
      * @param {boolean} isZoomedOut - The new zoom state.
      */
     setZoom(isZoomedOut) {
+        // Calculate viewport center in cell coordinates (before zoom change)
+        const oldCellSize = this.getCurrentCellSize();
+        const centerCellX = (this.cameraX + this.viewportWidth / 2) / oldCellSize;
+        const centerCellY = (this.cameraY + this.viewportHeight / 2) / oldCellSize;
+
+        // Apply zoom state change
         this.isZoomedOut = isZoomedOut;
         this.activeRenderer = this.isZoomedOut ? this.zoomedOutRenderer : this.detailedRenderer;
+
+        // Calculate new camera position to preserve center (after zoom change)
+        const newCellSize = this.getCurrentCellSize();
+        this.cameraX = centerCellX * newCellSize - this.viewportWidth / 2;
+        this.cameraY = centerCellY * newCellSize - this.viewportHeight / 2;
 
         // Clear everything, as all scales and positions are now invalid.
         this.clear();
@@ -156,7 +169,49 @@ export class EnvironmentGrid {
     }
     
     getCurrentCellSize() {
-        return this.isZoomedOut ? 1 : this.config.cellSize;
+        return this.isZoomedOut ? this.zoomOutScale : this.config.cellSize;
+    }
+
+    /**
+     * Sets the zoom-out scale (pixels per cell in zoomed-out mode).
+     * Preserves the viewport center position across scale changes.
+     * @param {number} scale - The new scale (1-4).
+     */
+    setZoomOutScale(scale) {
+        const newScale = Math.max(1, Math.min(4, Math.round(scale)));
+        if (this.zoomOutScale === newScale) return;
+
+        if (this.isZoomedOut) {
+            // Calculate viewport center in cell coordinates (before scale change)
+            const oldScale = this.zoomOutScale;
+            const centerCellX = (this.cameraX + this.viewportWidth / 2) / oldScale;
+            const centerCellY = (this.cameraY + this.viewportHeight / 2) / oldScale;
+
+            // Apply new scale
+            this.zoomOutScale = newScale;
+            localStorage.setItem('evochora-zoom-out-scale', String(newScale));
+
+            // Calculate new camera position to preserve center
+            this.cameraX = centerCellX * newScale - this.viewportWidth / 2;
+            this.cameraY = centerCellY * newScale - this.viewportHeight / 2;
+
+            this.zoomedOutRenderer.clearCache();
+            this.updateGridBackground();
+            this.clampCameraToWorld();
+            this.updateStagePosition();
+        } else {
+            // Not in zoomed-out mode, just store the value
+            this.zoomOutScale = newScale;
+            localStorage.setItem('evochora-zoom-out-scale', String(newScale));
+        }
+    }
+
+    /**
+     * Gets the current zoom-out scale.
+     * @returns {number} The current scale (1-4).
+     */
+    getZoomOutScale() {
+        return this.zoomOutScale;
     }
 
     /**
@@ -386,7 +441,7 @@ export class EnvironmentGrid {
 
     /**
      * Triggers background prefetch based on current mode:
-     * - Zoomed-Out: Full world prefetch
+     * - Zoomed-Out: Capped ring prefetch (max 2000x2000 cells)
      * - Zoomed-In: Ring prefetch (expanding outward from viewport)
      * @param {number} tick - The current tick.
      * @param {string|null} runId - The current run ID.
@@ -395,52 +450,64 @@ export class EnvironmentGrid {
      */
     _triggerPrefetch(tick, runId, viewport) {
         if (this.isZoomedOut) {
-            this._triggerFullWorldPrefetch(tick, runId);
+            // Capped ring prefetch for zoomed-out mode (max 2000x2000 cells)
+            this._triggerCappedRingPrefetch(tick, runId, viewport, 2000);
         } else {
             this._triggerRingPrefetch(tick, runId, viewport, 1);
         }
     }
 
     /**
-     * Triggers a background prefetch of the full world in zoomed-out mode.
-     * Uses requestIdleCallback for low-priority execution.
+     * Triggers a capped ring prefetch for zoomed-out mode.
+     * Expands from viewport but limits total region size.
      * @param {number} tick - The current tick.
      * @param {string|null} runId - The current run ID.
+     * @param {{x1: number, y1: number, x2: number, y2: number}} viewport - Current viewport.
+     * @param {number} maxSize - Maximum width/height in cells.
      * @private
      */
-    _triggerFullWorldPrefetch(tick, runId) {
-        // Skip if already prefetched for this tick
-        if (this._fullWorldPrefetched) return;
-
+    _triggerCappedRingPrefetch(tick, runId, viewport, maxSize) {
         // Skip if a prefetch is already running (let it complete)
         if (this._prefetchAbortController) return;
 
         // Skip if world size unknown
         if (!this.worldWidthCells || !this.worldHeightCells) return;
 
-        const fullRegion = { x1: 0, y1: 0, x2: this.worldWidthCells, y2: this.worldHeightCells };
+        // Calculate viewport center
+        const viewportCenterX = (viewport.x1 + viewport.x2) / 2;
+        const viewportCenterY = (viewport.y1 + viewport.y2) / 2;
 
-        // Skip if full world is already loaded
-        if (this.zoomedOutRenderer.isRegionFullyLoaded(fullRegion)) {
-            this._fullWorldPrefetched = true;
+        // Calculate prefetch region centered on viewport, capped at maxSize
+        const halfWidth = Math.min(maxSize / 2, this.worldWidthCells / 2);
+        const halfHeight = Math.min(maxSize / 2, this.worldHeightCells / 2);
+
+        const expandedRegion = {
+            x1: Math.max(0, Math.floor(viewportCenterX - halfWidth)),
+            y1: Math.max(0, Math.floor(viewportCenterY - halfHeight)),
+            x2: Math.min(this.worldWidthCells, Math.ceil(viewportCenterX + halfWidth)),
+            y2: Math.min(this.worldHeightCells, Math.ceil(viewportCenterY + halfHeight))
+        };
+
+        // Skip if region is already fully loaded
+        if (this.zoomedOutRenderer.isRegionFullyLoaded(expandedRegion)) {
             return;
         }
 
-        // Use requestIdleCallback for low-priority prefetch (0s delay, but doesn't block)
+        // Use requestIdleCallback for low-priority prefetch
         requestIdleCallback(async () => {
-            // Double-check state hasn't changed
-            if (!this.isZoomedOut || this._fullWorldPrefetched) return;
+            // Verify state hasn't changed
+            if (!this.isZoomedOut) return;
             if (this.zoomedOutRenderer._loadedTick !== tick) return;
 
             // Create dedicated abort controller for prefetch
             this._prefetchAbortController = new AbortController();
 
             try {
-                const data = await this.environmentApi.fetchEnvironmentData(tick, fullRegion, {
+                const data = await this.environmentApi.fetchEnvironmentData(tick, expandedRegion, {
                     runId: runId,
                     signal: this._prefetchAbortController.signal,
-                    includeMinimap: false,  // Already have minimap
-                    showLoading: false      // Prefetch should not trigger loading indicator
+                    includeMinimap: false,
+                    showLoading: false  // Prefetch should not trigger loading indicator
                 });
 
                 // Verify we're still in the same state before rendering
@@ -451,8 +518,7 @@ export class EnvironmentGrid {
                 // Render when browser is idle to avoid blocking user interactions
                 requestIdleCallback(() => {
                     if (!this.isZoomedOut || this.zoomedOutRenderer._loadedTick !== tick) return;
-                    this.zoomedOutRenderer.renderCells(data.cells, fullRegion);
-                    this._fullWorldPrefetched = true;
+                    this.zoomedOutRenderer.renderCells(data.cells, expandedRegion);
                 }, { timeout: 100 });
 
             } catch (error) {
@@ -1644,8 +1710,11 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
         // Pre-compute color lookup table (hex -> {r,g,b})
         this._colorCache = new Map();
 
-        // Persistent pixel buffer for the entire world (specific to zoomed-out mode)
+        // Persistent pixel buffer for the current viewport (viewport-based rendering)
         this._pixelBuffer = null;
+
+        // Track the currently rendered region (for viewport-based cache validation)
+        this._renderedRegion = null;
     }
 
     init() {
@@ -1654,11 +1723,28 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
 
     /**
      * Clears the persistent pixel cache and loaded mask.
-     * Overrides base class to also clear the pixel buffer.
+     * Overrides base class to also clear the pixel buffer and rendered region.
      */
     clearCache() {
         super.clearCache();
         this._pixelBuffer = null;
+        this._renderedRegion = null;
+    }
+
+    /**
+     * For viewport-based rendering, a region is only "fully loaded" if it's
+     * completely contained within the currently rendered region.
+     * @param {{x1: number, y1: number, x2: number, y2: number}} viewport
+     * @returns {boolean}
+     */
+    isRegionFullyLoaded(viewport) {
+        if (!this._renderedRegion) return false;
+
+        const r = this._renderedRegion;
+        return viewport.x1 >= r.x1 &&
+               viewport.y1 >= r.y1 &&
+               viewport.x2 <= r.x2 &&
+               viewport.y2 <= r.y2;
     }
 
     clear() {
@@ -1708,84 +1794,89 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
     }
 
     renderCells(cells, region) {
-        const width = this.grid.worldWidthCells;
-        const height = this.grid.worldHeightCells;
-
-        if (width <= 0 || height <= 0) return;
-
-        const pixelCount = width * height;
-
-        // --- Step 1: Get or create persistent pixel buffer ---
-        const needsNewBuffer = !this._pixelBuffer || this._pixelBuffer.length !== pixelCount * 4;
-
-        if (needsNewBuffer) {
-            this._pixelBuffer = new Uint8ClampedArray(pixelCount * 4);
-
-            // Fill new buffer with empty cell background color
-            const emptyColor = this._hexToRgb(this.config.colorEmptyBg);
-            for (let i = 0; i < pixelCount; i++) {
-                const idx = i * 4;
-                this._pixelBuffer[idx] = emptyColor.r;
-                this._pixelBuffer[idx + 1] = emptyColor.g;
-                this._pixelBuffer[idx + 2] = emptyColor.b;
-                this._pixelBuffer[idx + 3] = 255; // Alpha
-            }
-        }
-        // Otherwise: PRESERVE existing buffer - this is the key optimization!
-
-        // --- Step 2: Draw cells into pixel buffer (accumulating, not replacing) ---
-        const typeMapping = this.grid.detailedRenderer.typeMapping;
-        const getColor = (typeId) => this.grid.detailedRenderer.getBackgroundColorForType(typeId);
-        const emptyColor = this._hexToRgb(this.config.colorEmptyBg);
-
-        // First: clear the region we're about to update with empty color
+        const scale = this.grid.zoomOutScale;
         const { x1, y1, x2, y2 } = region;
+
+        // Clamp region to world bounds
+        const worldWidth = this.grid.worldWidthCells;
+        const worldHeight = this.grid.worldHeightCells;
+        if (worldWidth <= 0 || worldHeight <= 0) return;
+
         const clampedX1 = Math.max(0, x1);
         const clampedY1 = Math.max(0, y1);
-        const clampedX2 = Math.min(width, x2);
-        const clampedY2 = Math.min(height, y2);
+        const clampedX2 = Math.min(worldWidth, x2);
+        const clampedY2 = Math.min(worldHeight, y2);
 
-        for (let y = clampedY1; y < clampedY2; y++) {
-            for (let x = clampedX1; x < clampedX2; x++) {
-                const idx = (y * width + x) * 4;
-                this._pixelBuffer[idx] = emptyColor.r;
-                this._pixelBuffer[idx + 1] = emptyColor.g;
-                this._pixelBuffer[idx + 2] = emptyColor.b;
-            }
+        // Viewport-based texture dimensions (region size × scale)
+        const regionWidthCells = clampedX2 - clampedX1;
+        const regionHeightCells = clampedY2 - clampedY1;
+        if (regionWidthCells <= 0 || regionHeightCells <= 0) return;
+
+        const textureWidth = regionWidthCells * scale;
+        const textureHeight = regionHeightCells * scale;
+        const pixelCount = textureWidth * textureHeight;
+
+        // --- Step 1: Create pixel buffer for the current region ---
+        // Note: We always recreate the buffer for the current region (viewport-based)
+        this._pixelBuffer = new Uint8ClampedArray(pixelCount * 4);
+
+        // Fill buffer with empty cell background color
+        const emptyColor = this._hexToRgb(this.config.colorEmptyBg);
+        for (let i = 0; i < pixelCount; i++) {
+            const idx = i * 4;
+            this._pixelBuffer[idx] = emptyColor.r;
+            this._pixelBuffer[idx + 1] = emptyColor.g;
+            this._pixelBuffer[idx + 2] = emptyColor.b;
+            this._pixelBuffer[idx + 3] = 255; // Alpha
         }
 
-        // Then: draw the actual cells
+        // --- Step 2: Draw cells into pixel buffer ---
+        const typeMapping = this.grid.detailedRenderer.typeMapping;
+        const getColor = (typeId) => this.grid.detailedRenderer.getBackgroundColorForType(typeId);
+
         for (let i = 0; i < cells.length; i++) {
             const cell = cells[i];
             const coords = cell.coordinates;
             if (!Array.isArray(coords) || coords.length < 2) continue;
 
-            const x = coords[0];
-            const y = coords[1];
+            const cellX = coords[0];
+            const cellY = coords[1];
 
-            if (x < 0 || x >= width || y < 0 || y >= height) continue;
+            // Skip cells outside the region
+            if (cellX < clampedX1 || cellX >= clampedX2 || cellY < clampedY1 || cellY >= clampedY2) continue;
 
             const typeId = typeMapping[cell.moleculeType] ?? 0;
             const color = this._hexToRgb(getColor(typeId));
 
-            const idx = (y * width + x) * 4;
-            this._pixelBuffer[idx] = color.r;
-            this._pixelBuffer[idx + 1] = color.g;
-            this._pixelBuffer[idx + 2] = color.b;
+            // Position relative to region origin, scaled
+            const localX = (cellX - clampedX1) * scale;
+            const localY = (cellY - clampedY1) * scale;
+
+            // Draw scale×scale pixels for this cell
+            for (let dy = 0; dy < scale; dy++) {
+                for (let dx = 0; dx < scale; dx++) {
+                    const px = localX + dx;
+                    const py = localY + dy;
+                    const idx = (py * textureWidth + px) * 4;
+                    this._pixelBuffer[idx] = color.r;
+                    this._pixelBuffer[idx + 1] = color.g;
+                    this._pixelBuffer[idx + 2] = color.b;
+                }
+            }
         }
 
-        // --- Step 3: Mark region as loaded (base class method) ---
-        this._markRegionLoaded(region);
+        // --- Step 3: Track rendered region for viewport-based cache validation ---
+        this._renderedRegion = { x1: clampedX1, y1: clampedY1, x2: clampedX2, y2: clampedY2 };
 
         // --- Step 4: Create ImageData and upload to Canvas ---
-        if (!this.offscreenCanvas || this.offscreenCanvas.width !== width || this.offscreenCanvas.height !== height) {
+        if (!this.offscreenCanvas || this.offscreenCanvas.width !== textureWidth || this.offscreenCanvas.height !== textureHeight) {
             this.offscreenCanvas = document.createElement('canvas');
-            this.offscreenCanvas.width = width;
-            this.offscreenCanvas.height = height;
+            this.offscreenCanvas.width = textureWidth;
+            this.offscreenCanvas.height = textureHeight;
         }
 
         const ctx = this.offscreenCanvas.getContext('2d');
-        const imageData = new ImageData(this._pixelBuffer, width, height);
+        const imageData = new ImageData(this._pixelBuffer, textureWidth, textureHeight);
         ctx.putImageData(imageData, 0, 0);
 
         // --- Step 5: Create/update PIXI texture from canvas ---
@@ -1801,23 +1892,29 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
         // PIXI v8 uses string scale modes: 'nearest' for pixel-perfect rendering
         const texture = PIXI.Texture.from(this.offscreenCanvas, { scaleMode: 'nearest' });
         this.textureSprite = new PIXI.Sprite(texture);
+
+        // Position sprite at the region's world position (scaled)
+        this.textureSprite.x = clampedX1 * scale;
+        this.textureSprite.y = clampedY1 * scale;
+
         this.grid.cellContainer.addChild(this.textureSprite);
     }
 
     renderOrganisms(organisms) {
         const self = this; // Explicitly capture the 'this' context of the strategy
-        const MARKER_SIZE = 5;
+        const scale = this.grid.zoomOutScale;
+        const MARKER_SIZE = Math.max(5, scale * 3);  // Scale marker size with zoom
 
         // Clear previous organism markers from their containers
         for (const g of this.ipGraphics.values()) this.grid.organismContainer.removeChild(g);
         this.ipGraphics.clear();
         for (const { graphics } of this.dpGraphics.values()) this.grid.organismContainer.removeChild(graphics);
         this.dpGraphics.clear();
-        
+
         // --- IPs ---
         for (const organism of organisms) {
             if (!organism || !Array.isArray(organism.ip) || !Array.isArray(organism.dv)) continue;
-            
+
             const { organismId, ip, dv, energy } = organism;
             let ipGraphics = this.ipGraphics.get(organismId);
             if (!ipGraphics) {
@@ -1834,11 +1931,12 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
             ipGraphics.clear();
 
             const ipColor = this._getOrganismColor(organismId, energy);
-            const centerX = ip[0] + 0.5; // Center of the 1x1 pixel
-            const centerY = ip[1] + 0.5;
+            // Position at cell center, scaled to pixel coordinates
+            const centerX = (ip[0] + 0.5) * scale;
+            const centerY = (ip[1] + 0.5) * scale;
 
             ipGraphics.beginFill(ipColor, 1.0);
-            
+
             const length = Math.sqrt(dv[0] * dv[0] + dv[1] * dv[1]) || 1;
             const dirX = dv[0] / length;
             const dirY = dv[1] / length;
@@ -1855,16 +1953,16 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
             ipGraphics.lineTo(base1X, base1Y);
             ipGraphics.lineTo(base2X, base2Y);
             ipGraphics.lineTo(tipX, tipY);
-            
+
             ipGraphics.endFill();
             this.grid.organismContainer.addChild(ipGraphics);
         }
-        
+
         // --- DPs ---
         const dpPositions = new Map();
         for (const organism of organisms) {
             if (!organism || !Array.isArray(organism.dataPointers)) continue;
-            
+
             organism.dataPointers.forEach((dp) => {
                 if (!Array.isArray(dp) || dp.length < 2) return;
                 const cellKey = `${dp[0]},${dp[1]}`;
@@ -1898,12 +1996,14 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
                 });
             }
             dpEntry.graphics.clear();
-            
+
             const dpCoords = cellKey.split(',').map(Number);
-            const x = dpCoords[0] - Math.floor(MARKER_SIZE / 2);
-            const y = dpCoords[1] - Math.floor(MARKER_SIZE / 2);
+            // Position at cell center, scaled to pixel coordinates
+            const centerX = (dpCoords[0] + 0.5) * scale;
+            const centerY = (dpCoords[1] + 0.5) * scale;
+            const halfSize = MARKER_SIZE / 2;
             dpEntry.graphics.beginFill(orgColor, 0.7);
-            dpEntry.graphics.drawRect(x, y, MARKER_SIZE, MARKER_SIZE);
+            dpEntry.graphics.drawRect(centerX - halfSize, centerY - halfSize, MARKER_SIZE, MARKER_SIZE);
             dpEntry.graphics.endFill();
             this.grid.organismContainer.addChild(dpEntry.graphics);
         }

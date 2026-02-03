@@ -15,10 +15,12 @@ export class MinimapView {
      *
      * @param {function(number, number): void} onNavigate - Callback when user navigates via minimap.
      * @param {function(boolean): void} onZoomToggle - Callback when zoom button is clicked.
+     * @param {function(number): void} onScaleChange - Callback when zoom-out scale is changed.
      */
-    constructor(onNavigate, onZoomToggle) {
+    constructor(onNavigate, onZoomToggle, onScaleChange) {
         this.onNavigate = onNavigate;
         this.onZoomToggle = onZoomToggle;
+        this.onScaleChange = onScaleChange;
         this.worldShape = null;
         this.lastMinimapData = null;
         this.viewportBounds = null;
@@ -40,7 +42,7 @@ export class MinimapView {
      * @private
      */
     createDOM() {
-        // Collapsed state - tab (same width as expanded, with zoom button)
+        // Collapsed state - tab (same width as expanded, with zoom select)
         this.collapsedElement = document.createElement('div');
         this.collapsedElement.id = 'minimap-panel-collapsed';
         this.collapsedElement.className = 'footer-panel-collapsed hidden';
@@ -49,7 +51,13 @@ export class MinimapView {
                 <span class="panel-label world-size">— × —</span>
             </div>
             <div class="minimap-collapsed-right">
-                <button class="minimap-zoom-btn">Zoom In</button>
+                <select class="minimap-zoom-select">
+                    <option value="1">1px</option>
+                    <option value="2">2px</option>
+                    <option value="3">3px</option>
+                    <option value="4">4px</option>
+                    <option value="detail">Detail</option>
+                </select>
                 <span class="panel-arrow minimap-expand-arrow">▲</span>
             </div>
         `;
@@ -65,7 +73,13 @@ export class MinimapView {
                 </div>
                 <div class="minimap-panel-controls">
                     <button class="minimap-organism-toggle active" title="Toggle organism overlay">Org</button>
-                    <button class="minimap-zoom-btn">Zoom In</button>
+                    <select class="minimap-zoom-select">
+                        <option value="1">1px</option>
+                        <option value="2">2px</option>
+                        <option value="3">3px</option>
+                        <option value="4">4px</option>
+                        <option value="detail">Detail</option>
+                    </select>
                     <button class="panel-toggle" title="Collapse minimap">▼</button>
                 </div>
             </div>
@@ -78,8 +92,8 @@ export class MinimapView {
         this.element.querySelector('.minimap-content').appendChild(this.canvas);
 
         // Get references
-        this.zoomBtn = this.element.querySelector('.minimap-zoom-btn');
-        this.zoomBtnCollapsed = this.collapsedElement.querySelector('.minimap-zoom-btn');
+        this.zoomSelect = this.element.querySelector('.minimap-zoom-select');
+        this.zoomSelectCollapsed = this.collapsedElement.querySelector('.minimap-zoom-select');
         this.collapseBtn = this.element.querySelector('.panel-toggle');
         this.organismToggleBtn = this.element.querySelector('.minimap-organism-toggle');
         this.panelHeader = this.element.querySelector('.minimap-panel-header');
@@ -96,17 +110,17 @@ export class MinimapView {
      * @private
      */
     attachEvents() {
-        // Collapsed panel click - expand (except zoom button)
+        // Collapsed panel click - expand (except zoom select)
         this.collapsedElement.addEventListener('click', (e) => {
-            // Don't expand if clicking on zoom button
-            if (e.target.closest('.minimap-zoom-btn')) return;
+            // Don't expand if clicking on zoom select
+            if (e.target.closest('.minimap-zoom-select')) return;
             this.expand();
         });
 
         // Panel header click - collapse
         this.panelHeader.addEventListener('click', (e) => {
-            // Don't collapse if clicking on buttons
-            if (e.target.closest('button')) return;
+            // Don't collapse if clicking on buttons or selects
+            if (e.target.closest('button') || e.target.closest('select')) return;
             this.collapse();
         });
 
@@ -115,19 +129,46 @@ export class MinimapView {
             this.collapse();
         });
 
-        // Zoom button (expanded panel)
-        this.zoomBtn.addEventListener('click', () => {
-            if (this.onZoomToggle) {
-                this.onZoomToggle(!this.isZoomedOut);
+        // Zoom select change handler (shared logic)
+        const handleZoomSelectChange = (e) => {
+            const value = e.target.value;
+            if (value === 'detail') {
+                // Switch to zoomed-in (detail) mode
+                if (this.onZoomToggle) {
+                    this.onZoomToggle(false, null);  // false = zoomed in, null = no scale change
+                }
+            } else {
+                // Set scale and ensure zoomed-out mode
+                const scale = parseInt(value, 10);
+                if (this.isZoomedOut) {
+                    // Already zoomed out, just change scale
+                    if (this.onScaleChange) {
+                        this.onScaleChange(scale);
+                    }
+                } else {
+                    // Switch to zoomed-out mode with specific scale (single navigation)
+                    if (this.onZoomToggle) {
+                        this.onZoomToggle(true, scale);  // true = zoomed out, with scale
+                    }
+                }
             }
+        };
+
+        // Zoom select (expanded panel)
+        this.zoomSelect.addEventListener('change', handleZoomSelectChange);
+
+        // Zoom select (collapsed state)
+        this.zoomSelectCollapsed.addEventListener('change', (e) => {
+            e.stopPropagation(); // Don't trigger expand
+            handleZoomSelectChange(e);
         });
 
-        // Zoom button (collapsed state)
-        this.zoomBtnCollapsed.addEventListener('click', (e) => {
-            e.stopPropagation(); // Don't trigger expand
-            if (this.onZoomToggle) {
-                this.onZoomToggle(!this.isZoomedOut);
-            }
+        // Prevent clicks on zoom select from triggering panel header collapse
+        this.zoomSelect.addEventListener('click', (e) => {
+            e.stopPropagation();
+        });
+        this.zoomSelectCollapsed.addEventListener('click', (e) => {
+            e.stopPropagation();
         });
 
         // Organism overlay toggle button
@@ -296,17 +337,21 @@ export class MinimapView {
     }
 
     /**
-     * Updates both zoom buttons (expanded and collapsed) based on current zoom state.
+     * Updates the zoom select dropdown based on current zoom state and scale.
      * @param {boolean} isZoomedOut - Current zoom state.
+     * @param {number} [currentScale=1] - Current zoom-out scale (1-4).
      */
-    updateZoomButton(isZoomedOut) {
+    updateZoomButton(isZoomedOut, currentScale = 1) {
         this.isZoomedOut = isZoomedOut;
-        const text = isZoomedOut ? 'Zoom In' : 'Zoom Out';
-        if (this.zoomBtn) {
-            this.zoomBtn.textContent = text;
+
+        // Set the correct value in the dropdown
+        const value = isZoomedOut ? String(currentScale) : 'detail';
+
+        if (this.zoomSelect) {
+            this.zoomSelect.value = value;
         }
-        if (this.zoomBtnCollapsed) {
-            this.zoomBtnCollapsed.textContent = text;
+        if (this.zoomSelectCollapsed) {
+            this.zoomSelectCollapsed.value = value;
         }
     }
 
