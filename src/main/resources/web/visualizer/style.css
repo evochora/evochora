@@ -1237,6 +1237,9 @@ main.container {
     border-radius: 2px;
     outline: none;
     cursor: pointer;
+    /* Larger clickable area while keeping visual track thin */
+    padding: 8px 0;
+    background-clip: content-box;
 }
 
 .minimap-zoom-slider::-webkit-slider-thumb {

@@ -1555,38 +1555,40 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
             const ipColor = this._getOrganismColor(organismId, energy);
             const ipCellX = ip[0] * cellSize;
             const ipCellY = ip[1] * cellSize;
+            const cx = ipCellX + cellSize / 2;
+            const cy = ipCellY + cellSize / 2;
 
+            // Triangle size
+            const markerSize = cellSize * 0.6;
+            const half = markerSize;
+
+            // Rectangle same size as triangle (2 * half), centered on cell
+            const rectSize = half * 2;
+            const rectOffset = (rectSize - cellSize) / 2;
+            ipGraphics.lineStyle(1.5, ipColor, 1.0);
             ipGraphics.beginFill(ipColor, 0.2);
-            ipGraphics.drawRect(ipCellX, ipCellY, cellSize, cellSize);
+            ipGraphics.drawRect(ipCellX - rectOffset, ipCellY - rectOffset, rectSize, rectSize);
             ipGraphics.endFill();
 
-            if (dv[0] !== 0 || dv[1] !== 0) {
-                const length = Math.sqrt(dv[0] * dv[0] + dv[1] * dv[1]) || 1;
-                const dirX = dv[0] / length;
-                const dirY = dv[1] / length;
-                const cx = ipCellX + cellSize / 2;
-                const cy = ipCellY + cellSize / 2;
-                const half = cellSize / 2;
-                const tipX = cx + dirX * half;
-                const tipY = cy + dirY * half;
-                const base1X = cx - dirX * half + (-dirY) * half;
-                const base1Y = cy - dirY * half + dirX * half;
-                const base2X = cx - dirX * half - (-dirY) * half;
-                const base2Y = cy - dirY * half - dirX * half;
-                ipGraphics.beginFill(ipColor, 0.8);
-                ipGraphics.moveTo(tipX, tipY);
-                ipGraphics.lineTo(base1X, base1Y);
-                ipGraphics.lineTo(base2X, base2Y);
-                ipGraphics.lineTo(tipX, tipY);
-                ipGraphics.endFill();
-            } else {
-                const cx = ipCellX + cellSize / 2;
-                const cy = ipCellY + cellSize / 2;
-                const radius = cellSize * 0.4;
-                ipGraphics.beginFill(ipColor, 0.8);
-                ipGraphics.circle(cx, cy, radius);
-                ipGraphics.endFill();
-            }
+            // Triangle (filled, no outline)
+            const length = Math.sqrt(dv[0] * dv[0] + dv[1] * dv[1]) || 1;
+            const dirX = dv[0] / length;
+            const dirY = dv[1] / length;
+
+            const tipX = cx + dirX * half;
+            const tipY = cy + dirY * half;
+            const base1X = cx - dirX * half + (-dirY) * half;
+            const base1Y = cy - dirY * half + dirX * half;
+            const base2X = cx - dirX * half - (-dirY) * half;
+            const base2Y = cy - dirY * half - dirX * half;
+
+            ipGraphics.lineStyle(0);
+            ipGraphics.beginFill(ipColor, 1.0);
+            ipGraphics.moveTo(tipX, tipY);
+            ipGraphics.lineTo(base1X, base1Y);
+            ipGraphics.lineTo(base2X, base2Y);
+            ipGraphics.closePath();
+            ipGraphics.endFill();
         }
 
         // Aggregate DPs
@@ -1639,19 +1641,24 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
 
             const { graphics: g, text: label } = dpEntry;
             g.clear();
-            const x = entry.x * cellSize;
-            const y = entry.y * cellSize;
+            // DP marker slightly larger than cell for visibility
+            const dpSize = cellSize + 4;
+            const dpOffset = (dpSize - cellSize) / 2;
+            const x = entry.x * cellSize - dpOffset;
+            const y = entry.y * cellSize - dpOffset;
+
             const borderAlpha = entry.isActive ? 1.0 : 0.8;
             const borderWidth = entry.isActive ? 2.0 : 1.0;
             const fillAlpha = entry.isActive ? 0.45 : 0.15;
             g.lineStyle(borderWidth, entry.color, borderAlpha);
             g.beginFill(entry.color, fillAlpha);
-            g.drawRect(x, y, cellSize, cellSize);
+            g.drawRect(x, y, dpSize, dpSize);
             g.endFill();
             if (label) {
                 label.text = entry.indices.join(",");
                 label.style.fill = entry.color;
-                label.position.set(x + cellSize / 2, y + cellSize / 2);
+                // Center text in the larger DP marker
+                label.position.set(x + dpSize / 2, y + dpSize / 2);
             }
             seenDpKeys.add(cellKey);
         }
@@ -1944,8 +1951,8 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
     renderOrganisms(organisms) {
         const self = this; // Explicitly capture the 'this' context of the strategy
         const scale = this.grid.zoomOutScale;
-        // Marker size: minimum 5px, otherwise 80% of cell size
-        const MARKER_SIZE = Math.max(5, scale * 0.8);
+        // Marker size: always slightly larger than the cell for visibility
+        const MARKER_SIZE = Math.max(6, scale + 3);
 
         // Clear previous organism markers from their containers
         for (const g of this.ipGraphics.values()) this.grid.organismContainer.removeChild(g);
@@ -1977,6 +1984,8 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
             const centerX = (ip[0] + 0.5) * scale;
             const centerY = (ip[1] + 0.5) * scale;
 
+            // Dark outline for contrast against any background
+            ipGraphics.lineStyle(1, 0x000000, 0.5);
             ipGraphics.beginFill(ipColor, 1.0);
 
             const length = Math.sqrt(dv[0] * dv[0] + dv[1] * dv[1]) || 1;
@@ -2044,6 +2053,8 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
             const centerX = (dpCoords[0] + 0.5) * scale;
             const centerY = (dpCoords[1] + 0.5) * scale;
             const halfSize = MARKER_SIZE / 2;
+            // Dark outline for contrast against any background
+            dpEntry.graphics.lineStyle(1, 0x000000, 0.5);
             dpEntry.graphics.beginFill(orgColor, 0.7);
             dpEntry.graphics.drawRect(centerX - halfSize, centerY - halfSize, MARKER_SIZE, MARKER_SIZE);
             dpEntry.graphics.endFill();
