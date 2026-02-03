@@ -42,7 +42,7 @@ export class MinimapView {
      * @private
      */
     createDOM() {
-        // Collapsed state - tab (same width as expanded, with zoom select)
+        // Collapsed state - tab (with zoom slider)
         this.collapsedElement = document.createElement('div');
         this.collapsedElement.id = 'minimap-panel-collapsed';
         this.collapsedElement.className = 'footer-panel-collapsed hidden';
@@ -50,14 +50,11 @@ export class MinimapView {
             <div class="minimap-collapsed-left">
                 <span class="panel-label world-size">— × —</span>
             </div>
+            <div class="minimap-collapsed-center">
+                <input type="range" class="minimap-zoom-slider" min="1" max="11" value="1" title="Zoom level">
+            </div>
             <div class="minimap-collapsed-right">
-                <select class="minimap-zoom-select">
-                    <option value="1">1px</option>
-                    <option value="2">2px</option>
-                    <option value="3">3px</option>
-                    <option value="4">4px</option>
-                    <option value="detail">Detail</option>
-                </select>
+                <button class="minimap-organism-toggle active" title="Toggle organism overlay">Org</button>
                 <span class="panel-arrow minimap-expand-arrow">▲</span>
             </div>
         `;
@@ -71,15 +68,11 @@ export class MinimapView {
                 <div class="minimap-panel-title">
                     <span class="world-size">— × —</span>
                 </div>
+                <div class="minimap-panel-center">
+                    <input type="range" class="minimap-zoom-slider" min="1" max="11" value="1" title="Zoom level">
+                </div>
                 <div class="minimap-panel-controls">
                     <button class="minimap-organism-toggle active" title="Toggle organism overlay">Org</button>
-                    <select class="minimap-zoom-select">
-                        <option value="1">1px</option>
-                        <option value="2">2px</option>
-                        <option value="3">3px</option>
-                        <option value="4">4px</option>
-                        <option value="detail">Detail</option>
-                    </select>
                     <button class="panel-toggle" title="Collapse minimap">▼</button>
                 </div>
             </div>
@@ -92,10 +85,11 @@ export class MinimapView {
         this.element.querySelector('.minimap-content').appendChild(this.canvas);
 
         // Get references
-        this.zoomSelect = this.element.querySelector('.minimap-zoom-select');
-        this.zoomSelectCollapsed = this.collapsedElement.querySelector('.minimap-zoom-select');
+        this.zoomSlider = this.element.querySelector('.minimap-zoom-slider');
+        this.zoomSliderCollapsed = this.collapsedElement.querySelector('.minimap-zoom-slider');
         this.collapseBtn = this.element.querySelector('.panel-toggle');
         this.organismToggleBtn = this.element.querySelector('.minimap-organism-toggle');
+        this.organismToggleBtnCollapsed = this.collapsedElement.querySelector('.minimap-organism-toggle');
         this.panelHeader = this.element.querySelector('.minimap-panel-header');
         this.worldSizeExpanded = this.element.querySelector('.world-size');
         this.worldSizeCollapsed = this.collapsedElement.querySelector('.world-size');
@@ -110,17 +104,20 @@ export class MinimapView {
      * @private
      */
     attachEvents() {
-        // Collapsed panel click - expand (except zoom select)
+        // Collapsed panel click - expand (except interactive elements)
         this.collapsedElement.addEventListener('click', (e) => {
-            // Don't expand if clicking on zoom select
-            if (e.target.closest('.minimap-zoom-select')) return;
+            if (e.target.closest('.minimap-zoom-slider') ||
+                e.target.closest('.minimap-collapsed-center') ||
+                e.target.closest('button')) return;
             this.expand();
         });
 
         // Panel header click - collapse
         this.panelHeader.addEventListener('click', (e) => {
-            // Don't collapse if clicking on buttons or selects
-            if (e.target.closest('button') || e.target.closest('select')) return;
+            // Don't collapse if clicking on interactive elements
+            if (e.target.closest('button') ||
+                e.target.closest('input') ||
+                e.target.closest('.minimap-panel-center')) return;
             this.collapse();
         });
 
@@ -129,50 +126,49 @@ export class MinimapView {
             this.collapse();
         });
 
-        // Zoom select change handler (shared logic)
-        const handleZoomSelectChange = (e) => {
-            const value = e.target.value;
-            if (value === 'detail') {
+        // Zoom slider change handler (shared logic)
+        const handleZoomSliderChange = (e) => {
+            const value = parseInt(e.target.value, 10);
+            if (value === 11) {
                 // Switch to zoomed-in (detail) mode
                 if (this.onZoomToggle) {
-                    this.onZoomToggle(false, null);  // false = zoomed in, null = no scale change
+                    this.onZoomToggle(false, null);
                 }
             } else {
                 // Set scale and ensure zoomed-out mode
-                const scale = parseInt(value, 10);
                 if (this.isZoomedOut) {
-                    // Already zoomed out, just change scale
                     if (this.onScaleChange) {
-                        this.onScaleChange(scale);
+                        this.onScaleChange(value);
                     }
                 } else {
-                    // Switch to zoomed-out mode with specific scale (single navigation)
                     if (this.onZoomToggle) {
-                        this.onZoomToggle(true, scale);  // true = zoomed out, with scale
+                        this.onZoomToggle(true, value);
                     }
                 }
             }
         };
 
-        // Zoom select (expanded panel)
-        this.zoomSelect.addEventListener('change', handleZoomSelectChange);
+        // Zoom slider (expanded panel)
+        this.zoomSlider.addEventListener('input', handleZoomSliderChange);
 
-        // Zoom select (collapsed state)
-        this.zoomSelectCollapsed.addEventListener('change', (e) => {
-            e.stopPropagation(); // Don't trigger expand
-            handleZoomSelectChange(e);
-        });
-
-        // Prevent clicks on zoom select from triggering panel header collapse
-        this.zoomSelect.addEventListener('click', (e) => {
+        // Zoom slider (collapsed state)
+        this.zoomSliderCollapsed.addEventListener('input', (e) => {
             e.stopPropagation();
-        });
-        this.zoomSelectCollapsed.addEventListener('click', (e) => {
-            e.stopPropagation();
+            handleZoomSliderChange(e);
         });
 
-        // Organism overlay toggle button
+        // Prevent slider clicks from triggering panel expand/collapse
+        this.zoomSlider.addEventListener('click', (e) => e.stopPropagation());
+        this.zoomSliderCollapsed.addEventListener('click', (e) => e.stopPropagation());
+        this.zoomSlider.addEventListener('mousedown', (e) => e.stopPropagation());
+        this.zoomSliderCollapsed.addEventListener('mousedown', (e) => e.stopPropagation());
+
+        // Organism overlay toggle buttons (both panels)
         this.organismToggleBtn.addEventListener('click', () => {
+            this.toggleOrganismOverlay();
+        });
+        this.organismToggleBtnCollapsed.addEventListener('click', (e) => {
+            e.stopPropagation();
             this.toggleOrganismOverlay();
         });
     }
@@ -309,9 +305,12 @@ export class MinimapView {
     setOrganismOverlayEnabled(enabled) {
         this.organismOverlay.setEnabled(enabled);
 
-        // Update button appearance
+        // Update button appearance (both panels)
         if (this.organismToggleBtn) {
             this.organismToggleBtn.classList.toggle('active', enabled);
+        }
+        if (this.organismToggleBtnCollapsed) {
+            this.organismToggleBtnCollapsed.classList.toggle('active', enabled);
         }
 
         // Persist to localStorage
@@ -337,21 +336,21 @@ export class MinimapView {
     }
 
     /**
-     * Updates the zoom select dropdown based on current zoom state and scale.
+     * Updates the zoom slider based on current zoom state and scale.
      * @param {boolean} isZoomedOut - Current zoom state.
-     * @param {number} [currentScale=1] - Current zoom-out scale (1-4).
+     * @param {number} [currentScale=1] - Current zoom-out scale (1-10).
      */
     updateZoomButton(isZoomedOut, currentScale = 1) {
         this.isZoomedOut = isZoomedOut;
 
-        // Set the correct value in the dropdown
-        const value = isZoomedOut ? String(currentScale) : 'detail';
+        // Slider value: 1-10 for zoomed out scales, 11 for detail mode
+        const sliderValue = isZoomedOut ? currentScale : 11;
 
-        if (this.zoomSelect) {
-            this.zoomSelect.value = value;
+        if (this.zoomSlider) {
+            this.zoomSlider.value = sliderValue;
         }
-        if (this.zoomSelectCollapsed) {
-            this.zoomSelectCollapsed.value = value;
+        if (this.zoomSliderCollapsed) {
+            this.zoomSliderCollapsed.value = sliderValue;
         }
     }
 
@@ -534,6 +533,9 @@ export class MinimapView {
             this.organismOverlay.setEnabled(false);
             if (this.organismToggleBtn) {
                 this.organismToggleBtn.classList.remove('active');
+            }
+            if (this.organismToggleBtnCollapsed) {
+                this.organismToggleBtnCollapsed.classList.remove('active');
             }
         }
     }

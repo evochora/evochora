@@ -175,10 +175,10 @@ export class EnvironmentGrid {
     /**
      * Sets the zoom-out scale (pixels per cell in zoomed-out mode).
      * Preserves the viewport center position across scale changes.
-     * @param {number} scale - The new scale (1-4).
+     * @param {number} scale - The new scale (1-10).
      */
     setZoomOutScale(scale) {
-        const newScale = Math.max(1, Math.min(4, Math.round(scale)));
+        const newScale = Math.max(1, Math.min(10, Math.round(scale)));
         if (this.zoomOutScale === newScale) return;
 
         if (this.isZoomedOut) {
@@ -518,7 +518,8 @@ export class EnvironmentGrid {
                 // Render when browser is idle to avoid blocking user interactions
                 requestIdleCallback(() => {
                     if (!this.isZoomedOut || this.zoomedOutRenderer._loadedTick !== tick) return;
-                    this.zoomedOutRenderer.renderCells(data.cells, expandedRegion);
+                    // Pass viewport for centering when texture limits require clamping
+                    this.zoomedOutRenderer.renderCells(data.cells, expandedRegion, viewport);
                 }, { timeout: 100 });
 
             } catch (error) {
@@ -1793,7 +1794,13 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
         return cached;
     }
 
-    renderCells(cells, region) {
+    /**
+     * Renders cells into a texture sprite.
+     * @param {Array} cells - Array of cell data to render.
+     * @param {{x1: number, y1: number, x2: number, y2: number}} region - The region to render.
+     * @param {{x1: number, y1: number, x2: number, y2: number}} [viewport] - Optional viewport for centering when clamping is needed.
+     */
+    renderCells(cells, region, viewport) {
         const scale = this.grid.zoomOutScale;
         const { x1, y1, x2, y2 } = region;
 
@@ -1802,10 +1809,44 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
         const worldHeight = this.grid.worldHeightCells;
         if (worldWidth <= 0 || worldHeight <= 0) return;
 
-        const clampedX1 = Math.max(0, x1);
-        const clampedY1 = Math.max(0, y1);
-        const clampedX2 = Math.min(worldWidth, x2);
-        const clampedY2 = Math.min(worldHeight, y2);
+        let clampedX1 = Math.max(0, x1);
+        let clampedY1 = Math.max(0, y1);
+        let clampedX2 = Math.min(worldWidth, x2);
+        let clampedY2 = Math.min(worldHeight, y2);
+
+        // WebGL texture size limit (conservative, works on most GPUs)
+        const MAX_TEXTURE_SIZE = 4096;
+
+        // Limit region size to prevent exceeding WebGL texture limits
+        // Center on viewport if provided, otherwise center on region
+        const maxCellsPerDim = Math.floor(MAX_TEXTURE_SIZE / scale);
+        const regionWidth = clampedX2 - clampedX1;
+        const regionHeight = clampedY2 - clampedY1;
+
+        if (regionWidth > maxCellsPerDim) {
+            // Use viewport center if provided, otherwise use region center
+            const centerX = viewport
+                ? (viewport.x1 + viewport.x2) / 2
+                : (clampedX1 + clampedX2) / 2;
+            clampedX1 = Math.max(0, Math.floor(centerX - maxCellsPerDim / 2));
+            clampedX2 = Math.min(worldWidth, clampedX1 + maxCellsPerDim);
+            // Re-adjust x1 if x2 was clamped to world edge
+            if (clampedX2 - clampedX1 < maxCellsPerDim) {
+                clampedX1 = Math.max(0, clampedX2 - maxCellsPerDim);
+            }
+        }
+        if (regionHeight > maxCellsPerDim) {
+            // Use viewport center if provided, otherwise use region center
+            const centerY = viewport
+                ? (viewport.y1 + viewport.y2) / 2
+                : (clampedY1 + clampedY2) / 2;
+            clampedY1 = Math.max(0, Math.floor(centerY - maxCellsPerDim / 2));
+            clampedY2 = Math.min(worldHeight, clampedY1 + maxCellsPerDim);
+            // Re-adjust y1 if y2 was clamped to world edge
+            if (clampedY2 - clampedY1 < maxCellsPerDim) {
+                clampedY1 = Math.max(0, clampedY2 - maxCellsPerDim);
+            }
+        }
 
         // Viewport-based texture dimensions (region size × scale)
         const regionWidthCells = clampedX2 - clampedX1;
@@ -1903,7 +1944,8 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
     renderOrganisms(organisms) {
         const self = this; // Explicitly capture the 'this' context of the strategy
         const scale = this.grid.zoomOutScale;
-        const MARKER_SIZE = Math.max(5, scale * 3);  // Scale marker size with zoom
+        // Marker size: minimum 5px, otherwise 80% of cell size
+        const MARKER_SIZE = Math.max(5, scale * 0.8);
 
         // Clear previous organism markers from their containers
         for (const g of this.ipGraphics.values()) this.grid.organismContainer.removeChild(g);

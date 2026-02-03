@@ -1218,22 +1218,62 @@ main.container {
     gap: 8px;
 }
 
-/* Unified zoom select dropdown */
-.minimap-zoom-select {
-    background-color: #3a3a5a;
-    border: 1px solid #5a5a7a;
-    border-radius: 4px;
-    color: #e0e0e0;
-    font-family: 'Roboto Mono', 'Courier New', monospace;
-    font-size: 11px;
-    padding: 4px 6px;
-    cursor: pointer;
-    min-width: 65px;
-    text-align: center;
+/* Zoom slider container (center section) */
+.minimap-panel-center,
+.minimap-collapsed-center {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px;
 }
 
-.minimap-zoom-select:hover {
-    background-color: #4a4a6a;
+/* Zoom slider */
+.minimap-zoom-slider {
+    width: 80px;
+    height: 4px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: #3a3a5a;
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+}
+
+.minimap-zoom-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #7a7aaa;
+    cursor: pointer;
+    border: none;
+}
+
+.minimap-zoom-slider::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #7a7aaa;
+    cursor: pointer;
+    border: none;
+}
+
+.minimap-zoom-slider:hover::-webkit-slider-thumb {
+    background: #9a9aca;
+}
+
+.minimap-zoom-slider:hover::-moz-range-thumb {
+    background: #9a9aca;
+}
+
+/* Zoom value display */
+.minimap-zoom-value {
+    font-family: 'Roboto Mono', 'Courier New', monospace;
+    font-size: 11px;
+    color: #a0a0b0;
+    min-width: 40px;
+    text-align: right;
 }
 
 /* Organism overlay toggle button */

@@ -291,7 +291,7 @@ export class AppController {
     async setZoom(isZoomedOut, scale = null) {
         // If switching to zoomed-out with a specific scale, set it first (without navigation)
         if (isZoomedOut && scale !== null) {
-            this.renderer.zoomOutScale = Math.max(1, Math.min(4, Math.round(scale)));
+            this.renderer.zoomOutScale = Math.max(1, Math.min(10, Math.round(scale)));
             localStorage.setItem('evochora-zoom-out-scale', String(this.renderer.zoomOutScale));
         }
 
