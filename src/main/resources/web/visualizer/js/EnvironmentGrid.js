@@ -459,6 +459,18 @@ export class EnvironmentGrid {
         // Skip if world size unknown
         if (!this.worldWidthCells || !this.worldHeightCells) return;
 
+        // Calculate viewport dimensions
+        const viewportWidth = viewport.x2 - viewport.x1;
+        const viewportHeight = viewport.y2 - viewport.y1;
+
+        // Skip prefetch if viewport is already larger than maxSize in ANY dimension.
+        // Prefetch is meant to EXPAND coverage, not shrink it.
+        // If viewport exceeds maxSize, the prefetch region would be smaller and would
+        // overwrite the texture with less data.
+        if (viewportWidth > maxSize || viewportHeight > maxSize) {
+            return;
+        }
+
         // Calculate viewport center
         const viewportCenterX = (viewport.x1 + viewport.x2) / 2;
         const viewportCenterY = (viewport.y1 + viewport.y2) / 2;
@@ -504,6 +516,14 @@ export class EnvironmentGrid {
                 // Render when browser is idle to avoid blocking user interactions
                 requestIdleCallback(() => {
                     if (!this.isZoomedOut || this.zoomedOutRenderer._loadedTick !== tick) return;
+
+                    // IMPORTANT: Re-check if prefetch region would still expand coverage.
+                    // Between fetch and render, the user may have panned and loaded a larger region.
+                    // Without this check, prefetch could overwrite a larger viewport with smaller data.
+                    if (this.zoomedOutRenderer.isRegionFullyLoaded(expandedRegion)) {
+                        return; // Skip - current region already covers this, don't shrink it
+                    }
+
                     // Pass viewport for centering when texture limits require clamping
                     this.zoomedOutRenderer.renderCells(data.cells, expandedRegion, viewport);
                 }, { timeout: 100 });
@@ -576,6 +596,13 @@ export class EnvironmentGrid {
                 // Render when browser is idle to avoid blocking user interactions
                 requestIdleCallback(() => {
                     if (this.isZoomedOut || this.detailedRenderer._loadedTick !== tick) return;
+
+                    // IMPORTANT: Re-check if prefetch region would still expand coverage.
+                    // Between fetch and render, the user may have panned and loaded a different region.
+                    if (this.detailedRenderer.isRegionFullyLoaded(expandedRegion)) {
+                        return; // Skip - current region already covers this
+                    }
+
                     this.detailedRenderer.renderCells(data.cells, expandedRegion);
                 }, { timeout: 100 });
 
@@ -889,6 +916,11 @@ export class EnvironmentGrid {
 
             this.clampCameraToWorld();
             this.updateStagePosition();
+
+            // Notify camera moved (updates minimap viewport rectangle)
+            if (this.onCameraMoved) {
+                this.onCameraMoved();
+            }
 
             this.loadedRegions.clear();
             this.requestViewportLoad();

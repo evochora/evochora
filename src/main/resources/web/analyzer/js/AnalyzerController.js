@@ -30,11 +30,18 @@ import * as MetricCardView from './ui/MetricCardView.js';
     let currentRunId = null;
     let manifest = null;
     let isLoading = false;
-    
+
     /**
      * Initializes the controller and UI components.
      */
 export async function init() {
+        // Check URL for runId parameter (e.g., from AppSwitcher navigation)
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlRunId = urlParams.get('runId');
+        if (urlRunId) {
+            currentRunId = urlRunId;
+        }
+
         // Initialize UI components
         HeaderView.init({
             onRefresh: handleRefresh
@@ -60,7 +67,7 @@ export async function init() {
             const runs = await AnalyticsApi.listRuns();
             
         // Auto-load first (latest) run if available and none selected
-            if (runs.length > 0 && !currentRunId) {
+        if (runs.length > 0 && !currentRunId) {
             // Sort by startTime or runId timestamp (newest first)
             const sorted = [...runs].sort((a, b) => {
                 const scoreA = a.startTime || extractTimestamp(a.runId);
@@ -68,11 +75,13 @@ export async function init() {
                 return scoreB - scoreA;
             });
             currentRunId = sorted[0].runId;
+            updateUrlRunId(currentRunId);
             window.footer?.updateCurrent?.();
             await loadDashboard(currentRunId);
         } else if (currentRunId) {
-                await loadDashboard(currentRunId);
-            }
+            window.footer?.updateCurrent?.();
+            await loadDashboard(currentRunId);
+        }
             
         } catch (error) {
             console.error('[AnalyzerController] Failed to load runs:', error);
@@ -95,10 +104,25 @@ function extractTimestamp(runId) {
      */
     async function handleRunChange(runId) {
         if (!runId || runId === currentRunId) return;
-        
+
         currentRunId = runId;
-    window.footer?.updateCurrent?.();
+        updateUrlRunId(runId);
+        window.footer?.updateCurrent?.();
         await loadDashboard(runId);
+    }
+
+    /**
+     * Updates the URL with the current runId (for AppSwitcher navigation).
+     * Uses replaceState to avoid polluting browser history.
+     */
+    function updateUrlRunId(runId) {
+        const url = new URL(window.location.href);
+        if (runId) {
+            url.searchParams.set('runId', runId);
+        } else {
+            url.searchParams.delete('runId');
+        }
+        window.history.replaceState({}, '', url.toString());
     }
     
     /**
