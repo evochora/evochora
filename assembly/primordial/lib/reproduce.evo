@@ -315,6 +315,7 @@ CONTINUE_STATE: EXPORT
     SCNI %TMP -1|0; NOP^4          # Was liegt westlich?
     IFR %TMP %SHELL                # Ist das die Hülle?
       JMPI CONTINUE_FORK_FINISH; NOP^4 # ... Dann FORKen
+    # Potential endless loop if ENERGY molecule is blocking  
     SEKI -1|0; NOP^4               # Sonst einen Schritt nach Westen
     JMPI CONTINUE_FORK_WEST; NOP^27; JMPI CONTINUE_FORK_WEST
 
