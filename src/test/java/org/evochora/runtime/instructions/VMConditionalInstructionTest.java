@@ -1300,4 +1300,126 @@ public class VMConditionalInstructionTest {
         assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
+
+    // ===== Error State Tests (IFER, INER) =====
+
+    /**
+     * Tests that IFER (If Error) executes the next instruction when the previous instruction failed.
+     * Simulates a prior failure via {@code instructionFailed()}, then verifies IFER treats the
+     * condition as true and does not skip.
+     */
+    @Test
+    @Tag("unit")
+    void testIfer_PreviousFailed_ExecutesNext() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.instructionFailed("simulated failure for test");
+
+        placeInstruction("IFER");
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFER"), environment));
+
+        sim.tick();
+        sim.tick();
+
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+    }
+
+    /**
+     * Tests that IFER (If Error) skips the next instruction when the previous instruction did not fail.
+     * No prior failure is set, so IFER should skip.
+     */
+    @Test
+    @Tag("unit")
+    void testIfer_PreviousSucceeded_SkipsNext() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+
+        placeInstruction("IFER");
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFER"), environment));
+
+        sim.tick();
+        sim.tick();
+
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertNoInstructionFailure();
+    }
+
+    /**
+     * Tests that INER (If No Error) executes the next instruction when the previous instruction did not fail.
+     * No prior failure is set, so INER should execute the next instruction.
+     */
+    @Test
+    @Tag("unit")
+    void testIner_PreviousSucceeded_ExecutesNext() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+
+        placeInstruction("INER");
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INER"), environment));
+
+        sim.tick();
+        sim.tick();
+
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertNoInstructionFailure();
+    }
+
+    /**
+     * Tests that INER (If No Error) skips the next instruction when the previous instruction failed.
+     * Simulates a prior failure via {@code instructionFailed()}, then verifies INER skips.
+     */
+    @Test
+    @Tag("unit")
+    void testIner_PreviousFailed_SkipsNext() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.instructionFailed("simulated failure for test");
+
+        placeInstruction("INER");
+        placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INER"), environment));
+
+        sim.tick();
+        sim.tick();
+
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+    }
+
+    /**
+     * Tests IFER across real tick boundaries using DIVI by zero as the failing instruction,
+     * followed by IFER in the subsequent tick.
+     */
+    @Test
+    @Tag("unit")
+    void testIfer_afterRealFailingDivi_executesNext() {
+        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+
+        // Tick 1: DIVI %DR0 DATA:0 (division by zero → fails)
+        placeInstruction("DIVI", 0, 0);
+        int diviLength = Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("DIVI"), environment);
+
+        // Tick 2: IFER at position after DIVI
+        int[] iferPos = org.getIp();
+        for (int i = 0; i < diviLength; i++) {
+            iferPos = org.getNextInstructionPosition(iferPos, org.getDv(), environment);
+        }
+        int iferOpcode = Instruction.getInstructionIdByName("IFER");
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, iferOpcode), iferPos);
+        int iferLength = Instruction.getInstructionLengthById(iferOpcode, environment);
+
+        // Tick 3: ADDI %DR0 DATA:1 as marker after IFER
+        int[] addiPos = iferPos;
+        for (int i = 0; i < iferLength; i++) {
+            addiPos = org.getNextInstructionPosition(addiPos, org.getDv(), environment);
+        }
+        int addiOpcode = Instruction.getInstructionIdByName("ADDI");
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, addiOpcode), addiPos);
+        int[] arg1Pos = org.getNextInstructionPosition(addiPos, org.getDv(), environment);
+        environment.setMolecule(new Molecule(Config.TYPE_DATA, 0), arg1Pos);
+        int[] arg2Pos = org.getNextInstructionPosition(arg1Pos, org.getDv(), environment);
+        environment.setMolecule(new Molecule(Config.TYPE_DATA, 1), arg2Pos);
+        int[] waitPos = org.getNextInstructionPosition(arg2Pos, org.getDv(), environment);
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), waitPos);
+
+        sim.tick(); // Tick 1: DIVI by zero → fails
+        sim.tick(); // Tick 2: IFER → previousFailed=true → execute next
+        sim.tick(); // Tick 3: ADDI → DR0 = 1
+
+        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+    }
 }

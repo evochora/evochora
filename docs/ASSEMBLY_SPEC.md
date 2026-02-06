@@ -389,6 +389,7 @@ These instructions skip the next instruction if the condition is false.
 * `IFPR %VEC_REG`, `IFPI <Vector>`, `IFPS`: If cell at `DP` + vector is passable (empty or owned by self). The vector must be a unit vector.
 * `IFFR %VEC_REG`, `IFFI <Vector>`, `IFFS`: If cell at `DP` + vector is owned by a foreign organism (ownerId != 0 && ownerId != self.id). The vector must be a unit vector.
 * `IFVR %VEC_REG`, `IFVI <Vector>`, `IFVS`: If cell at `DP` + vector is vacant (has no owner, ownerId == 0). The vector must be a unit vector. Note: "Vacant" refers to ownership status, not whether the cell contains a molecule. A cell can have a molecule and still be vacant.
+* `IFER`: If the previous instruction failed. Takes no operands. The "previous instruction" refers to the instruction executed in the immediately preceding tick, not the preceding instruction in spatial layout.
 
 #### Negated Conditional Instructions
 
@@ -402,6 +403,7 @@ These instructions are the logical opposites of the standard conditional instruc
 * `INPR %VEC_REG`, `INPI <Vector>`, `INPS`: If cell at `DP` + vector is **not** passable (not empty and not owned by self). The vector must be a unit vector.
 * `INFR %VEC_REG`, `INFI <Vector>`, `INFS`: If cell at `DP` + vector is **not** owned by a foreign organism (ownerId == 0 || ownerId == self.id). The vector must be a unit vector.
 * `INVR %VEC_REG`, `INVI <Vector>`, `INVS`: If cell at `DP` + vector is **not** vacant (has an owner, ownerId != 0). The vector must be a unit vector.
+* `INER`: If the previous instruction did **not** fail. Takes no operands. The negated form of `IFER`.
 
 ### World Interaction
 

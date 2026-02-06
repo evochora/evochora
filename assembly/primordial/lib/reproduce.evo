@@ -65,16 +65,16 @@ CONTINUE_STATE: EXPORT
     JMPI CONTINUE_SIDEVEC_DONE; NOP^8; JMPI CONTINUE_SIDEVEC_DONE
 
   .ORG 0|10
-  CONTINUE_SIDEVEC_L: 
+  CONTINUE_SIDEVEC_L: NOP^4
     SETR %SIDEVEC %DIRVEC; NOP^4
     RTRI %SIDEVEC DATA:0 DATA:1; NOP^4
     JMPI CONTINUE_SIDEVEC_DONE; NOP^4; JMPI CONTINUE_SIDEVEC_DONE
 
-  CONTINUE_SIDEVEC_0: 
+  CONTINUE_SIDEVEC_0: NOP^4
     SETV %SIDEVEC 0|0; NOP^4
     JMPI CONTINUE_SIDEVEC_DONE; NOP^4; JMPI CONTINUE_SIDEVEC_DONE
 
-  CONTINUE_SIDEVEC_DONE:
+  CONTINUE_SIDEVEC_DONE: NOP^4
     # Wenn wir eine Koordinate zum fortsetzen haben, dann nach CONTINUE_LOOP, sonst zu Kante laufen
     LRDS %CONTCORD; NOP^4
     PUSV 0|0; NOP^4
@@ -100,7 +100,7 @@ CONTINUE_STATE: EXPORT
 
   .ORG 0|14
   # bis in die linke ecke laufen
-  CONTINUE_CORNERMOVE:
+  CONTINUE_CORNERMOVE: NOP^4
     INPR %DIRVEC                   # Wenn das Molekül nicht passierbar,...
       PEEK %TMP %DIRVEC; NOP^4     # ... dann lösche ich es
     SCAN %TMP %DIRVEC; NOP^4         # Was liegt da vor mir?
@@ -110,20 +110,20 @@ CONTINUE_STATE: EXPORT
     JMPI CONTINUE_CORNERMOVE; NOP^4; JMPI CONTINUE_CORNERMOVE
 
   # In Reporduktionsrichtung drehen und Position merken
-  CONTINUE_CORNERFINISH:
+  CONTINUE_CORNERFINISH: NOP^4
     RTRI %DIRVEC DATA:1 DATA:0; NOP^4 # Nach rechts drehen
     DPLR %CONTCORD; NOP^2           # Continue-Position erreicht -> speichern
     #DPLR %FORKCORD                 # FORK-Position merken
     JMPI CONTINUE_LOOP; NOP^3; JMPI CONTINUE_LOOP
 
   .ORG 0|16
-  CONTINUE_LOOP:
+  CONTINUE_LOOP: NOP^4
     NRG ER; NOP^4                              # ER in %NRG lesen (Cost 1)
     LTI ER REPRODUCTION_PAUSE_THRESHOLD;       # wenn ER < Threshold ...
       JMPI CONTINUE_SAVE_AND_RET; NOP^4        # ... dann State speichern & zurück
 
     # Defensive Prüfung: Ist %CONTCORD gültig (nicht 0|0)?
-    LRDS %CONTCORD
+    LRDS %CONTCORD; NOP^4
     PUSV 0|0
     IFS                                        # If Same (= 0|0)
       JMPI CONTINUE_BORDERMOVE          # → Neu starten
@@ -138,7 +138,7 @@ CONTINUE_STATE: EXPORT
     JMPI CONTINUE_WRITEINIT; NOP^4; JMPI CONTINUE_WRITEINIT
 
   .ORG 0|18
-  CONTINUE_WRITEINIT:
+  CONTINUE_WRITEINIT: NOP^4
     # Schreibvorgang vorbereiten - Defensive Prüfung ZUERST
     IFFR %DIRVEC                   # Ist die erste Zelle FREMD?
       JMPI CONTINUE_PREP_NEXT_REPRODUCTION; NOP^4 # ... dann abbrechen
@@ -169,17 +169,21 @@ CONTINUE_STATE: EXPORT
 
   .ORG 0|20
   # Loop: Nicht passierbares PEEKen, auf Hülle testen, Molekül vor uns auf den DS legen, vorwärts
-  CONTINUE_READLINE:
+  CONTINUE_READLINE: NOP^4
     SCAN %TMP %DIRVEC; NOP^4       # Was liegt da vor mir?
-    IFR %TMP %SHELL                # Ist es meine Hülle?...
-      JMPI CONTINUE_WRITESTART; NOP^4 # ... Dann mit dem Schreiben anfangen
-    INPR %DIRVEC                   # Wenn das Molekül nicht passierbar,...
+    IFR %TMP %SHELL; NOP^4         # Ist es meine Hülle?...
+      JMPI CONTINUE_WRITESTART     # ... Dann mit dem Schreiben anfangen
+    INPR %DIRVEC;                  # Wenn das Molekül nicht passierbar,...
       PEEK %TMP %DIRVEC; NOP^4     # ... dann lösche ich es
     PUSH %TMP; NOP^4               # Molekül auf den DS legen
-    SEEK %DIRVEC; NOP^2            # Laufe vorwärts
-    JMPI CONTINUE_READLINE; NOP^4; JMPI CONTINUE_READLINE
+  CONTINUE_READLINE_SEEK:
+    SEEK %DIRVEC; NOP^4            # Laufe vorwärts
+    INER                           # Wenn erfolgreich...
+      JMPI CONTINUE_READLINE; NOP^4# ... nächste Iteration
+    PEEK %TMP %DIRVEC; NOP^4       # Hindernis entfernen (fremd oder unowned)
+    JMPI CONTINUE_READLINE_SEEK; NOP^4; JMPI CONTINUE_READLINE_SEEK
 
-  CONTINUE_WRITESTART:
+  CONTINUE_WRITESTART: NOP^4
     ADPI DATA:1; NOP^4               # Schreinvorgang einleiten
     RTRI %DIRVEC DATA:0 DATA:1     # Richtung nach außen drehen zum schreiben
     RTRI %DIRVEC DATA:0 DATA:1; NOP^3
@@ -188,101 +192,115 @@ CONTINUE_STATE: EXPORT
   .ORG 0|22
   CONTINUE_WRITELINE: NOP^4     # Schreib Loop
     POP %TMP; NOP^4             # Nächstes Symbol von DS holen
-    IFR %TMP %SHELL                # Kommt als nächstes das Terminator Symbol?
-      JMPI CONTINUE_WRITEFINISH; NOP # Dann Zeilenabschluss
+    IFR %TMP %SHELL; NOP^4      # Kommt als nächstes das Terminator Symbol?
+      JMPI CONTINUE_WRITEFINISH; NOP^4 # Dann Zeilenabschluss
 
     # Defensive Prüfung vor PPKR: Nur bei FREMD abbrechen
-    IFFR %DIRVEC                   # Ist die Zelle FREMD?
+    IFFR %DIRVEC; NOP^4         # Ist die Zelle FREMD?
       JMPI CONTINUE_CLEANUP_STACK; NOP^4 # ... dann abbrechen (Stack enthält noch SHELL + Moleküle)
     JMPI CONTINUE_WRITELINE2; NOP^28; JMPI CONTINUE_WRITELINE2
 
   .ORG 0|24
-  CONTINUE_WRITELINE2:
+  CONTINUE_WRITELINE2: NOP^4
     PPKR %TMP %DIRVEC; NOP^4       # Atomisches Swap (lesen + schreiben)
     SETV %TMP 0|0; NOP^4
     IFR %SIDEVEC %TMP              # Wenn wir nicht an der Seite der Hülle sind, ...
-      JMPI CONTINUE_WRITEFORWARD; NOP^4 # ... dann normale Zeile schreiben
+      JMPI CONTINUE_WRITEFORWARD   # ... dann normale Zeile schreiben
 
     # Hüllen Seite schreiben (auch defensiv)
     IFFR %SIDEVEC                  # Ist die Seitenzelle FREMD?
       JMPI CONTINUE_CLEANUP_STACK; NOP^4 # ... dann abbrechen (Stack enthält noch SHELL + Moleküle)
 
-    INPR %SIDEVEC                  # Wenn das Molekül nicht passierbar,...
+    INPR %SIDEVEC; NOP^4           # Wenn das Molekül nicht passierbar,...
       PEEK %TMP %SIDEVEC; NOP^4    # ... dann lösche ich es
     POKE %SHELL %SIDEVEC; NOP^4
 
-  CONTINUE_WRITEFORWARD:
+  CONTINUE_WRITEFORWARD: NOP^4
     SEEK %DIRVEC; NOP^4            # Vorwärts
-    JMPI CONTINUE_WRITELINE; NOP^4; JMPI CONTINUE_WRITELINE
+    INER; NOP^4                    # Wenn erfolgreich...
+      JMPI CONTINUE_WRITELINE; NOP^4# ... nächstes Molekül
+    IFFR %DIRVEC; NOP^4            # Fremd?
+      JMPI CONTINUE_CLEANUP_STACK; NOP^4 # ... dann abbrechen
+    PEEK %TMP %DIRVEC; NOP^2       # Unowned → entfernen
+    JMPI CONTINUE_WRITEFORWARD; NOP^2; JMPI CONTINUE_WRITEFORWARD
 
   .ORG 0|26 # weiter
-  CONTINUE_WRITEFINISH:            # Hüllenabschluss schreiben, zurück zum Anfang und zur nächsten Zeile
+  CONTINUE_WRITEFINISH: NOP^4      # Hüllenabschluss schreiben, zurück zum Anfang und zur nächsten Zeile
     # Defensive Prüfung vor PEEK
-    IFFR %DIRVEC                   # Ist die Zelle FREMD?
+    IFFR %DIRVEC; NOP^4            # Ist die Zelle FREMD?
       JMPI CONTINUE_PREP_NEXT_REPRODUCTION; NOP^4 # ... dann abbrechen
-    INPR %DIRVEC                   # Wenn das Molekül nicht passierbar,...
+    INPR %DIRVEC; NOP^4            # Wenn das Molekül nicht passierbar,...
       PEEK %TMP %DIRVEC; NOP^4     # ... dann lösche ich es
     SETV %TMP 0|0; NOP^4
-    IFR %SIDEVEC %TMP              # Wenn wir nicht an der Seite der Hülle sind, ...
+    IFR %SIDEVEC %TMP; NOP^4       # Wenn wir nicht an der Seite der Hülle sind, ...
       JMPI CONTINUE_WRITE_FINISH_END; NOP^4 # ... dann normale Zeile schreiben
     # Hüllen Seite schreiben (auch defensiv)
-    IFFR %SIDEVEC                  # Ist die Seitenzelle FREMD?
+    IFFR %SIDEVEC; NOP^4           # Ist die Seitenzelle FREMD?
       JMPI CONTINUE_PREP_NEXT_REPRODUCTION; NOP^4 # ... dann abbrechen
-    INPR %SIDEVEC                  # Wenn das Molekül nicht passierbar,...
+    INPR %SIDEVEC; NOP^4           # Wenn das Molekül nicht passierbar,...
       PEEK %TMP %SIDEVEC; NOP^4    # ... dann lösche ich es
     POKE %SHELL %SIDEVEC; NOP^3
     JMPI CONTINUE_WRITE_FINISH_END; NOP^3; JMPI CONTINUE_WRITE_FINISH_END
 
   .ORG 0|28
-  CONTINUE_WRITE_FINISH_END:
+  CONTINUE_WRITE_FINISH_END: NOP^4
     # Defensive Prüfung vor PEEK und POKE
-    IFFR %DIRVEC                   # Ist die Zelle FREMD?
+    IFFR %DIRVEC; NOP^4            # Ist die Zelle FREMD?
       JMPI CONTINUE_PREP_NEXT_REPRODUCTION; NOP # ... dann abbrechen
-    INPR %DIRVEC                   # Wenn das Molekül nicht passierbar,...
+    INPR %DIRVEC; NOP^4            # Wenn das Molekül nicht passierbar,...
       PEEK %TMP %DIRVEC; NOP^4     # ... dann lösche ich es
     POKE %SHELL %DIRVEC; NOP^4     # Hüllenabschluss der Zeile schreiben
     SETV %TMP 0|0; NOP^4
-    IFR %SIDEVEC %TMP              # Wenn wir nicht an der Seite der Hülle sind, ...
+    IFR %SIDEVEC %TMP; NOP^4       # Wenn wir nicht an der Seite der Hülle sind, ...
       JMPI CONTINUE_WRITEFINISH_NOSIDE; NOP^4 # ... dann normale Zeileabschluss schreiben
     JMPI CONTINUE_WRITEFINISH_CORNER; NOP^4; JMPI CONTINUE_WRITEFINISH_CORNER
 
   .ORG 0|30
   CONTINUE_WRITEFINISH_CORNER:
     # Ecke schreiben
-    SEEK %DIRVEC; NOP^4              # Vorwärts
-    # Defensive Prüfung vor PEEK und POKE
-    IFFR %SIDEVEC                  # Ist die Seitenzelle FREMD?
-      JMPI CONTINUE_PREP_NEXT_REPRODUCTION; NOP^4 # ... dann abbrechen
-    INPR %SIDEVEC                  # Wenn das Molekül nicht passierbar,...
+  CONTINUE_WRITEFINISH_CORNER_SEEK:
+    SEEK %DIRVEC; NOP^4            # Vorwärts
+    INER                           # Wenn erfolgreich...
+      JMPI CONTINUE_WRITEFINISH_CORNER_CONT; NOP^4 # ... weiter
+    IFFR %DIRVEC                   # Fremd?
+      JMPI CONTINUE_PREP_NEXT_REPRODUCTION # ... dann abbrechen
+    PEEK %TMP %DIRVEC; NOP^4       # Unowned → entfernen
+    JMPI CONTINUE_WRITEFINISH_CORNER_SEEK; NOP^2; JMPI CONTINUE_WRITEFINISH_CORNER_SEEK
+  
+  CONTINUE_WRITEFINISH_CORNER_CONT:
+    # Defensive Prüfung vor PEEK und POKE 
+    IFFR %SIDEVEC; NOP^4           # Ist die Seitenzelle FREMD?
+      JMPI CONTINUE_PREP_NEXT_REPRODUCTION; NOP^4 # ... dthen abbrechen
+    INPR %SIDEVEC; NOP^4           # Wenn das Molekül nicht passierbar,...
       PEEK %TMP %SIDEVEC; NOP^4    # ... dann lösche ich es
     POKE %SHELL %SIDEVEC; NOP^4
 
     # Wenn %SIDEVEC links, dann ist alles kopiert und wir können zum FORK
     CRSR %TMP %DIRVEC %SIDEVEC; NOP^4 # X-Produkt ist 1, wenn %SIDEVEC nach rechts zeigt
-    GTI %TMP DATA:0                # Wenn X-Produkt > 0, ...
+    GTI %TMP DATA:0; NOP^4           # Wenn X-Produkt > 0, ...
       JMPI CONTINUE_FORK; NOP^4      # ... dann mit FORK beginnen
     JMPI CONTINUE_WRITEFINISH_NOSIDE; NOP^4; JMPI CONTINUE_WRITEFINISH_NOSIDE
 
   .ORG 0|32
-  CONTINUE_WRITEFINISH_NOSIDE:
+  CONTINUE_WRITEFINISH_NOSIDE: NOP^4
     SETV %SIDEVEC 0|0;NOP^4        # Es ist mindestens eine Zeile geschrieben, wir sind also nicht mehr in der ersten
     SKLR %CONTCORD; NOP^4          # Zurück zum Anfang
 
     # Eine Zeile nach unten - Defensive Prüfung
     RTRI %DIRVEC DATA:1 DATA:0; NOP^4     # Nach rechts drehen
 
-    IFFR %DIRVEC                   # Ist die Zelle FREMD?
+    IFFR %DIRVEC; NOP^4            # Ist die Zelle FREMD?
       JMPI CONTINUE_PREP_NEXT_REPRODUCTION; NOP^4 # ... dthen abbrechen
 
-    INPR %DIRVEC                   # Wenn das Molekül nicht passierbar,...
+    INPR %DIRVEC; NOP^4            # Wenn das Molekül nicht passierbar,...
       PEEK %TMP %DIRVEC; NOP^4     # ... dthen lösche ich es
     SEEK %DIRVEC; NOP^4            # Vorwärts
     JMPI CONTINUE_WRITEFINISH_NOSIDE2; NOP^12; JMPI CONTINUE_WRITEFINISH_NOSIDE2
 
     .ORG 0|34
-    CONTINUE_WRITEFINISH_NOSIDE2:
+    CONTINUE_WRITEFINISH_NOSIDE2: NOP^4
     SCAN %TMP %DIRVEC; NOP^4       # Was ist vor uns (nach unten)?
-    IFR %TMP %SHELL                # Ist das die Hülle?...
+    IFR %TMP %SHELL; NOP^4         # Ist das die Hülle?...
       SETR %SIDEVEC %DIRVEC;NOP^4  # ... Dann sind wir in der Ecke und müssen und das mit %SIDEVEC merken
 
     RTRI %DIRVEC DATA:0 DATA:1;NOP^4 # Nach links drehen -> Reproduktionsrichtung
@@ -296,38 +314,38 @@ CONTINUE_STATE: EXPORT
     JMPI CONTINUE_LOOP; NOP^4; JMPI CONTINUE_LOOP
 
   .ORG 0|36
-  CONTINUE_FORK:
-
-    RTRI %DIRVEC DATA:0 DATA:1; NOP^4     # Richtung nach innen drehen zum schreiben
+  CONTINUE_FORK: NOP^4
+    RTRI %DIRVEC DATA:0 DATA:1; NOP^4 # Richtung nach innen drehen zum schreiben
     RTRI %DIRVEC DATA:0 DATA:1; NOP^4
     SEEK %DIRVEC; NOP^4            # Einen schritt vorwärt um innerhalb der Hülle zu sein
+
   # So lange nach Norden laufen,  bis ich an der Hülle bin
-  CONTINUE_FORK_NORTH:
+  CONTINUE_FORK_NORTH: NOP^4
     SCNI %TMP 0|-1; NOP^4          # Was liegt nördlich?
-    IFR %TMP %SHELL                # Ist das die Hülle?
+    IFR %TMP %SHELL; NOP^4         # Ist das die Hülle?
       JMPI CONTINUE_FORK_WEST; NOP^4 # ... Dann nach Westen laufen
-    INPI 0|-1                      # Wenn nicht passierbar,...
+    INPI 0|-1; NOP^4               # Wenn nicht passierbar,...
       PEKI %TMP 0|-1; NOP^2        # ... dann entfernen
-    SEKI 0|-1                      # Schritt nach Norden
+    SEKI 0|-1; NOP^4               # Schritt nach Norden
     JMPI CONTINUE_FORK_NORTH; NOP^4; JMPI CONTINUE_FORK_NORTH
 
   .ORG 0|38
   # So lange nach Westen laufen, bis ich an der Hülle bin
-  CONTINUE_FORK_WEST:
+  CONTINUE_FORK_WEST: NOP^4
     SCNI %TMP -1|0; NOP^4          # Was liegt westlich?
-    IFR %TMP %SHELL                # Ist das die Hülle?
+    IFR %TMP %SHELL; NOP^4         # Ist das die Hülle?
       JMPI CONTINUE_FORK_FINISH; NOP^4 # ... Dann FORKen
-    INPI -1|0                      # Wenn nicht passierbar,...
+    INPI -1|0; NOP^4               # Wenn nicht passierbar,...
       PEKI %TMP -1|0; NOP^2        # ... dann entfernen
-    SEKI -1|0                      # Schritt nach Westen
+    SEKI -1|0; NOP^4               # Schritt nach Westen
     JMPI CONTINUE_FORK_WEST; NOP^23; JMPI CONTINUE_FORK_WEST
 
   # FORK ausführen
   .ORG 0|40
-  CONTINUE_FORK_FINISH:
+  CONTINUE_FORK_FINISH: NOP^4
     INPI -1|0                      # Wenn nicht passierbar,...
       PEKI %TMP -1|0; NOP^2        # ... dann entfernen
-    SEKI -1|0                      # Schritt nach Westen
+    SEKI -1|0; NOP^4               # Schritt nach Westen
     PUSV 1|0; NOP^4                # Die obere linke Ecke des Kindes liegt im Osten
     PUSI REPRODUCTION_CHILD_INITAL_ENERGY; NOP^2 # Energie für das Kind auf den DS legen
     GDVS; NOP^4                    # Kind bekommt selbe DV Richtung wie Elternorganismus
@@ -337,26 +355,26 @@ CONTINUE_STATE: EXPORT
   .ORG 0|42
   # Stack-Cleanup für Abbrüche während WRITELINE (wo SHELL noch auf dem Stack liegt)
   # Wird aufgerufen von Abbrüchen in CONTINUE_WRITELINE (Zeilen 183-184, 195-196)
-  CONTINUE_CLEANUP_STACK:
+  CONTINUE_CLEANUP_STACK: NOP^4
     POP %TMP;NOP^4                   # Molekül vom DS holen
-    IFR %TMP %SHELL                  # Ist es das SHELL-Terminator-Symbol?
+    IFR %TMP %SHELL; NOP^4           # Ist es das SHELL-Terminator-Symbol?
       JMPI CONTINUE_PREP_NEXT_REPRODUCTION; NOP^4 # Ja -> fertig mit Stack-Cleanup
-    IFR %TMP %SHELL                  # Redundanz
+    IFR %TMP %SHELL; NOP^4           # Redundanz
       JMPI CONTINUE_PREP_NEXT_REPRODUCTION; NOP^4
     JMPI CONTINUE_CLEANUP_STACK; NOP^4; JMPI CONTINUE_CLEANUP_STACK;      # Nein -> weiter poppen
 
   .ORG 0|44
-  CONTINUE_PREP_NEXT_REPRODUCTION:
+  CONTINUE_PREP_NEXT_REPRODUCTION: NOP^4
     # Aufräumen und fertig - ROBUST gegen vorzeitigen Abbruch
     CMRI DATA:1; NOP^4             # Alte Marker löschen, damit abgebrochene Moleküle nicht bei FORK übertragen werden
-    RTRI %DIRVEC DATA:0 DATA:1     # %DIRVEC wieder nach außen drehen
+    RTRI %DIRVEC DATA:0 DATA:1; NOP^4 # %DIRVEC wieder nach außen drehen
     RTRI %DIRVEC DATA:0 DATA:1; NOP^4
 
     # Setze %SIDEVEC auf links für neue Reproduktion
-    SETR %SIDEVEC %DIRVEC          # Kopiere %DIRVEC
+    SETR %SIDEVEC %DIRVEC; NOP^4     # Kopiere %DIRVEC
     RTRI %SIDEVEC DATA:0 DATA:1; NOP^4 # Rotiere 90° CCW = links relativ zu %DIRVEC
 
-    SETI %DIRMASK DATA:0           # Beim nächsten Mal wird eine Richtung neu zufällig gewählt
+    SETI %DIRMASK DATA:0; NOP^4    # Beim nächsten Mal wird eine Richtung neu zufällig gewählt
     CRLR %CONTCORD; NOP^4          # Beim nächsten Mal brauchen wir eine leere Zeilen Koordinate, damit von vorne begonnen wird
     #CRLR %FORKCORD                 # Auch die Koordinate für das FORK muss neu berechnet werden
 
@@ -368,27 +386,27 @@ CONTINUE_STATE: EXPORT
     JMPI CONTINUE_SAVE_AND_RET; NOP^4; JMPI CONTINUE_SAVE_AND_RET
 
   .ORG 0|46
-  CONTINUE_SAVE_AND_RET:
+  CONTINUE_SAVE_AND_RET: NOP^4
     SKLS; NOP^4                                   # alten DP wiederherstellen
 
     SETV %TMP 0|0; NOP^4
-    IFR %SIDEVEC %TMP                             # Für Mittelzeile sind wir fertig
+    IFR %SIDEVEC %TMP; NOP^4                      # Für Mittelzeile sind wir fertig
       JMPI CONTINUE_SIDVEC_STORE_0; NOP^4
 
     CRSR %SIDEVEC %DIRVEC %SIDEVEC; NOP^4         # X-Produkt gibt 1 für rechts und -1 für links
     JMPI CONTINUE_STORE_STATE; NOP^20; JMPI CONTINUE_STORE_STATE
 
   .ORG 0|48
-  CONTINUE_SIDVEC_STORE_0:
+  CONTINUE_SIDVEC_STORE_0: NOP^4
     SETI %SIDEVEC DATA:0; NOP^4                   # Mutations-Puffer
 
-  CONTINUE_STORE_STATE:
+  CONTINUE_STORE_STATE: NOP^4
     SMRI DATA:0; NOP^4                            # Marker zurücksetzen vor Rückkehr
     # vor RET: "in einem Rutsch" speichern
     STATIC2_STORE CONTINUE_STATE %DIRMASK %SIDEVEC; NOP^4
     JMPI CONTINUE_STORE_STATE2; NOP^10; JMPI CONTINUE_STORE_STATE2
 
   .ORG 0|50
-  CONTINUE_STORE_STATE2:
+  CONTINUE_STORE_STATE2: NOP^4
     NOP^8; RET; NOP^20; RET; NOP^4; RET
 .ENDP

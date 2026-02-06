@@ -73,6 +73,7 @@ public class Organism {
     private boolean isDead = false;
     private boolean loggingEnabled = false;
     private boolean instructionFailed = false;
+    private boolean previousInstructionFailed = false;
     private String failureReason = null;
     private Deque<ProcFrame> failureCallStack;
 
@@ -464,6 +465,7 @@ public class Organism {
      * Resets the organism's per-tick state. Called by the VirtualMachine before planning a new instruction.
      */
     public void resetTickState() {
+        this.previousInstructionFailed = this.instructionFailed;
         this.instructionFailed = false;
         this.failureReason = null;
         this.failureCallStack = null;
@@ -930,8 +932,10 @@ public class Organism {
      * @param loggingEnabled true to enable logging, false to disable.
      */
     public void setLoggingEnabled(boolean loggingEnabled) { this.loggingEnabled = loggingEnabled; }
-    /** @return true if the last instruction failed. */
+    /** @return true if the current instruction has failed. */
     public boolean isInstructionFailed() { return instructionFailed; }
+    /** @return true if the previous tick's instruction failed. Used by IFER/INER conditionals. */
+    public boolean wasPreviousInstructionFailed() { return previousInstructionFailed; }
     /** @return The reason for the last instruction failure. */
     public String getFailureReason() { return failureReason; }
     /** @return The logger instance. */
