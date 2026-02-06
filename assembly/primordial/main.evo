@@ -1,15 +1,14 @@
 # main.evo
 # Primordial Organism
-# Main loop with reproduction and energy search
-# STRUCTURE shell around organism
-
+# Main loop with reproduction and energy harvesting
+# Enclosed in a STRUCTURE shell
 
 # ----------------------------
-# Register-Aliase (nur Main-State)
+# Register Aliases (main state only)
 # ----------------------------
-.REG %ER  %DR0   # current energy
-.REG %SR  %DR1   # current entropy
-.REG %INI %DR2
+.REG %ER  %DR0   # Current energy level
+.REG %SR  %DR1   # Current entropy level
+.REG %INI %DR2   # Initialization temp register
 
 # ----------------------------
 # Constants
@@ -18,83 +17,85 @@
 .DEFINE ENTROPY_REPRODUCTION_CONTINUE_THRESHOLD DATA:5000
 
 # ----------------------------
-# STRUCTURE Shell (50x31)
+# STRUCTURE Shell (102x87)
 # ----------------------------
-.PLACE STRUCTURE:100 -1..100|-1
-.PLACE STRUCTURE:100 -1..100|85
-.PLACE STRUCTURE:100 -1|0..84
-.PLACE STRUCTURE:100 100|0..84
+.PLACE STRUCTURE:100 -1..100|-1      # Bottom edge
+.PLACE STRUCTURE:100 -1..100|85      # Top edge
+.PLACE STRUCTURE:100 -1|0..84        # Left edge
+.PLACE STRUCTURE:100 100|0..84       # Right edge
 
-# ----------------------------
-# Init
-# ----------------------------
+# ===========================================================================
+# INITIALIZATION
+# ===========================================================================
 .ORG 0|0
 INIT: NOP^4
-  DPLS
-  SKJI REPRODUCE.CONTINUE_STATE; NOP^4
+  DPLS                                    # Save current DP to location stack
+  SKJI REPRODUCE.CONTINUE_STATE; NOP^4    # Jump DP to reproduction state location
   JMPI LOCALSTATE_WRITE; NOP^12; JMPI LOCALSTATE_WRITE
 
 .ORG 0|2
 LOCALSTATE_WRITE: NOP^4
-  SETI %INI DATA:0; NOP^4
-  PPKI %INI 1|0; NOP^4
-  SEKI 1|0; NOP^4;
-  SETI %INI DATA:-1; NOP^4
-  PPKI %INI 1|0; NOP^4
-  SKLS; NOP^4
+  # Initialize reproduction state with default values
+  SETI %INI DATA:0; NOP^4                 # First value: 0 (DIRMASK)
+  PPKI %INI 1|0; NOP^4                    # Write to state slot 0
+  SEKI 1|0; NOP^4;                        # Move to next slot
+  SETI %INI DATA:-1; NOP^4                # Second value: -1 (SIDEVEC = left)
+  PPKI %INI 1|0; NOP^4                    # Write to state slot 1
+  SKLS; NOP^4                             # Restore original DP
   JMPI MAIN_LOOP; NOP^8; JMPI MAIN_LOOP
 
-# ----------------------------
-# Main loop
-# ----------------------------
+# ===========================================================================
+# MAIN LOOP - Decision between reproduction and energy harvesting
+# ===========================================================================
 .ORG 0|4
 MAIN_LOOP:
-  NRG %ER; NOP^4
-  NTR %SR; NOP^4
-  GTI %ER REPRODUCTION_CONTINUE_THRESHOLD; NOP^4
-    JMPI MAIN_REPRODUCE; NOP^4
-  GTI %SR ENTROPY_REPRODUCTION_CONTINUE_THRESHOLD; NOP^4
-    JMPI MAIN_REPRODUCE; NOP^4
+  NRG %ER; NOP^4                          # Read current energy level
+  NTR %SR; NOP^4                          # Read current entropy level
+
+  # Check if conditions are met for reproduction
+  GTI %ER REPRODUCTION_CONTINUE_THRESHOLD; NOP^4  # Energy above threshold?
+    JMPI MAIN_REPRODUCE; NOP^4            # ...reproduce
+  GTI %SR ENTROPY_REPRODUCTION_CONTINUE_THRESHOLD; NOP^4  # Entropy above threshold?
+    JMPI MAIN_REPRODUCE; NOP^4            # ...reproduce to dissipate entropy
   JMPI MAIN_HARVEST; NOP^4; JMPI MAIN_HARVEST
 
 MAIN_REPRODUCE: NOP^4
-  CALL REPRODUCE.CONTINUE REF %ER; NOP^4
+  CALL REPRODUCE.CONTINUE REF %ER; NOP^4  # Call reproduction procedure
   JMPI MAIN_LOOP_ENERGY_CHECK; NOP^4; JMPI MAIN_LOOP_ENERGY_CHECK
 
 .ORG 0|6
 MAIN_HARVEST: NOP^4
-  CALL ENERGY.HARVEST; NOP^4
+  CALL ENERGY.HARVEST; NOP^4              # Call energy harvesting procedure
   JMPI MAIN_LOOP; NOP^4
 
-# Separater Energy-Check nach Reproduktion
+# Energy check after reproduction - decide whether to continue or harvest
 MAIN_LOOP_ENERGY_CHECK: NOP^4
-  NRG %ER; NOP^4
-  GTI %ER REPRODUCTION_CONTINUE_THRESHOLD
-    JMPI MAIN_LOOP; NOP^4                   # Genug Energie -> weiter reproduzieren
-  GTI %ER REPRODUCTION_CONTINUE_THRESHOLD
-    JMPI MAIN_LOOP; NOP^4                   # Genug Energie -> weiter reproduzieren (Redundanz)
-  JMPI MAIN_HARVEST; NOP^4                  # Wenig Energie -> Energie suchen
+  NRG %ER; NOP^4                          # Read current energy level
+  GTI %ER REPRODUCTION_CONTINUE_THRESHOLD # Enough energy?
+    JMPI MAIN_LOOP; NOP^4                 # ...continue reproducing
+  GTI %ER REPRODUCTION_CONTINUE_THRESHOLD # Redundancy check
+    JMPI MAIN_LOOP; NOP^4                 # ...continue reproducing
+  JMPI MAIN_HARVEST; NOP^4                # Low energy -> harvest
 
-# Redundante Safety-Jumps (falls Code durch Mutation hierher fällt)
+# Redundant safety jumps (in case mutation causes execution to fall through here)
 JMPI MAIN_LOOP; NOP^12; JMPI MAIN_LOOP
 
-# ----------------------------
-# Energy search
-# ----------------------------
+# ===========================================================================
+# ENERGY HARVESTING MODULE
+# ===========================================================================
 .ORG 0|8
 .INCLUDE "lib/energy.evo"
 .REQUIRE "lib/energy.evo" AS ENERGY
-  
 
-# ----------------------------
-# Reproduction (mock)
-# ----------------------------
+# ===========================================================================
+# REPRODUCTION MODULE
+# ===========================================================================
 .ORG 0|31
 .INCLUDE "lib/reproduce.evo"
 .REQUIRE "lib/reproduce.evo" AS REPRODUCE
 
-# ----------------------------
-# Safety jump back (redundant für Mutations-Robustheit)
-# ----------------------------
+# ===========================================================================
+# SAFETY FALLBACK (mutation resistance)
+# ===========================================================================
 .ORG 0|83
 JMPI MAIN_LOOP; NOP^54; JMPI MAIN_LOOP

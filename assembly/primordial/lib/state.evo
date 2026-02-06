@@ -1,66 +1,96 @@
-#lib/state.evo
-# State-Management mit Burst-Load/Store Pattern
+# lib/state.evo
+# State Management with Burst-Load/Store Pattern
+#
+# Provides macros for efficiently loading and storing multiple state values
+# from/to fixed memory locations. Uses the "row-above" convention where state
+# is stored in the row above the procedure's entry point.
 
-# Row-above Burst-Load mit integriertem ENTER/EXIT
-
+# ===========================================================================
+# STATIC2_LOAD - Load 2 state values from row above location
+# ===========================================================================
+# Parameters:
+#   LOC - Label of the state location (uses fuzzy jump)
+#   D0  - Register to receive first value (at x+1)
+#   D1  - Register to receive second value (at x+2)
+#
+# Side effects:
+#   - Temporarily modifies DP (restored before return)
+#   - Uses location stack for DP preservation
+#
 .MACRO STATIC2_LOAD LOC D0 D1
-  DPLS                 # alten DP sichern
-  SKJI LOC
-  #SYNC; NOP^2          # DP := IP (an PROC_START binden)
-  #SEKI -1|0;
-  #SEKI -1|0;
-  SCNI D0 1|0; NOP^2  # Slot 0 (x=0, y=-1)
-  SEKI 1|0; NOP^2
-  SCNI D1 1|0; NOP^2  # Slot 1 (x=1)
-  #SEKI -1|0; NOP^2
-
-  #DPLS; NOP^2          # DP auf LS sichern
-  #SWPL; NOP^2          # Alte DP position nach unten auf den stack swappen
-  SKLS                 # alten DP wiederherstellen
+  DPLS                   # Save current DP to location stack
+  SKJI LOC               # Jump DP to state location (fuzzy match)
+  SCNI D0 1|0; NOP^2     # Scan slot 0 (x+1 relative to LOC)
+  SEKI 1|0; NOP^2        # Move DP east
+  SCNI D1 1|0; NOP^2     # Scan slot 1 (x+2 relative to LOC)
+  SKLS                   # Restore original DP from location stack
 .ENDM
 
+# ===========================================================================
+# STATIC2_STORE - Store 2 state values to row above location
+# ===========================================================================
+# Parameters:
+#   LOC - Label of the state location (uses fuzzy jump)
+#   S0  - Register containing first value (written to x+1)
+#   S1  - Register containing second value (written to x+2)
+#
+# Side effects:
+#   - Temporarily modifies DP (restored before return)
+#   - Uses location stack for DP preservation
+#
 .MACRO STATIC2_STORE LOC S0 S1
-  DPLS; NOP^2          # Caller DP sichern
-  SKJI LOC
-  #SWPL; NOP^2          # PROC_START position im LS nach unten swappen
-  #SKLS; NOP^2          # Active DP nach PROC_START holen
-  PPKI S0 1|0; NOP^2
-  SEKI 1|0; NOP^2
-  PPKI S1 1|0; NOP^2
-  #SEKI -1|0; NOP^2
-  SKLS; NOP^2          # Caller DP wiederherstellen
+  DPLS; NOP^2            # Save caller's DP to location stack
+  SKJI LOC               # Jump DP to state location (fuzzy match)
+  PPKI S0 1|0; NOP^2     # Write slot 0 (atomic swap)
+  SEKI 1|0; NOP^2        # Move DP east
+  PPKI S1 1|0; NOP^2     # Write slot 1 (atomic swap)
+  SKLS; NOP^2            # Restore caller's DP from location stack
 .ENDM
 
-
+# ===========================================================================
+# STATIC3_LOAD - Load 3 state values from row above location
+# ===========================================================================
+# Parameters:
+#   LOC - Label of the state location (uses fuzzy jump)
+#   D0  - Register to receive first value (at x+1)
+#   D1  - Register to receive second value (at x+2)
+#   D2  - Register to receive third value (at x+3)
+#
+# Side effects:
+#   - Temporarily modifies DP (restored before return)
+#   - Uses location stack for DP preservation
+#
 .MACRO STATIC3_LOAD LOC D0 D1 D2
-  DPLS                 # alten DP sichern
-  SKJI LOC
-  #SYNC; NOP^2          # DP := IP (an PROC_START binden)
-  #SEKI -1|0;
-  #SEKI -1|0;
-  SCNI D0 1|0; NOP^2  # Slot 0 (x=0, y=-1)
-  SEKI 1|0; NOP^2
-  SCNI D1 1|0; NOP^2  # Slot 1 (x=1)
-  SEKI 1|0; NOP^2
-  SCNI D2 1|0; NOP^2  # Slot 2 (x=2)
-  #SEKI -1|0; NOP^2
-  #SEKI -1|0; NOP^2     # DP zurück nach x=0
-  #DPLS; NOP^2          # DP auf LS sichern
-  #SWPL; NOP^2          # Alte DP position nach unten auf den stack swappen
-  SKLS                 # alten DP wiederherstellen
+  DPLS                   # Save current DP to location stack
+  SKJI LOC               # Jump DP to state location (fuzzy match)
+  SCNI D0 1|0; NOP^2     # Scan slot 0 (x+1 relative to LOC)
+  SEKI 1|0; NOP^2        # Move DP east
+  SCNI D1 1|0; NOP^2     # Scan slot 1 (x+2 relative to LOC)
+  SEKI 1|0; NOP^2        # Move DP east
+  SCNI D2 1|0; NOP^2     # Scan slot 2 (x+3 relative to LOC)
+  SKLS                   # Restore original DP from location stack
 .ENDM
 
+# ===========================================================================
+# STATIC3_STORE - Store 3 state values to row above location
+# ===========================================================================
+# Parameters:
+#   LOC - Label of the state location (uses fuzzy jump)
+#   S0  - Register containing first value (written to x+1)
+#   S1  - Register containing second value (written to x+2)
+#   S2  - Register containing third value (written to x+3)
+#
+# Side effects:
+#   - Temporarily modifies DP (restored before return)
+#   - Uses location stack for DP preservation
+#
 .MACRO STATIC3_STORE LOC S0 S1 S2
-  DPLS; NOP^2          # Caller DP sichern
-  SKJI LOC
-  #SWPL; NOP^2          # PROC_START position im LS nach unten swappen
-  #SKLS; NOP^2          # Active DP nach PROC_START holen
-  PPKI S0 1|0; NOP^2
-  SEKI 1|0; NOP^2
-  PPKI S1 1|0; NOP^2
-  SEKI 1|0; NOP^2
-  PPKI S2 1|0; NOP^2
-  #SEKI -1|0; NOP^2
-  #SEKI -1|0; NOP^2
-  SKLS                 # Caller DP wiederherstellen
+  DPLS; NOP^2            # Save caller's DP to location stack
+  SKJI LOC               # Jump DP to state location (fuzzy match)
+  PPKI S0 1|0; NOP^2     # Write slot 0 (atomic swap)
+  SEKI 1|0; NOP^2        # Move DP east
+  PPKI S1 1|0; NOP^2     # Write slot 1 (atomic swap)
+  SEKI 1|0; NOP^2        # Move DP east
+  PPKI S2 1|0; NOP^2     # Write slot 2 (atomic swap)
+  SKLS                   # Restore caller's DP from location stack
 .ENDM
