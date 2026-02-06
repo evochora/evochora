@@ -796,6 +796,48 @@ public class H2Database extends AbstractDatabaseResource
             log.debug("H2 database '{}' connection pool closed", getResourceName());
         }
     }
+
+    /**
+     * Performs fast shutdown by executing SHUTDOWN IMMEDIATELY before closing wrappers.
+     * <p>
+     * This overrides the default close() behavior to execute SHUTDOWN IMMEDIATELY first,
+     * which closes all connections without waiting for rollback. This is critical for
+     * large databases (1+ TB) where rollback of uncommitted transactions can take hours.
+     * <p>
+     * <strong>Data Safety:</strong> Uncommitted transactions are discarded, but this is
+     * safe because:
+     * <ul>
+     *   <li>All pipeline writes use idempotent MERGE statements</li>
+     *   <li>Discarded batches will be reprocessed on next startup</li>
+     *   <li>Only in-flight data is lost, not committed data</li>
+     * </ul>
+     * <p>
+     * <strong>Recovery:</strong> H2 MVStore performs automatic recovery on next startup,
+     * rolling back any partially written transactions.
+     */
+    @Override
+    public void close() {
+        // Execute SHUTDOWN IMMEDIATELY first to avoid long rollback on wrapper close
+        if (dataSource != null && !dataSource.isClosed()) {
+            try (Connection conn = dataSource.getConnection();
+                 Statement stmt = conn.createStatement()) {
+                // SHUTDOWN IMMEDIATELY: closes all connections immediately without rollback
+                // This avoids hours-long rollback on large databases during shutdown
+                stmt.execute("SHUTDOWN IMMEDIATELY");
+                log.info("H2 database '{}' shutdown immediately executed", getResourceName());
+            } catch (SQLException e) {
+                if (e.getErrorCode() == 90121) {
+                    log.debug("H2 database '{}' already closed", getResourceName());
+                } else {
+                    log.warn("H2 database '{}' SHUTDOWN IMMEDIATELY failed: {}",
+                        getResourceName(), e.getMessage());
+                }
+            }
+        }
+
+        // Now close wrappers and pool (connections already closed by SHUTDOWN IMMEDIATELY)
+        super.close();
+    }
     
     @Override
     public IDatabaseReader createReader(String runId) throws SQLException {
