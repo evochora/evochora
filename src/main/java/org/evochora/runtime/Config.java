@@ -162,6 +162,14 @@ public final class Config {
     public static final int TYPE_LABEL = (0x04 & ((1 << TYPE_BITS) - 1)) << TYPE_SHIFT;
 
     /**
+     * The type code for a cell representing a label reference (jump operand).
+     * Label references carry the same 19-bit hash as LABEL molecules but are not
+     * indexed by the LabelIndex. This allows mutation systems to distinguish
+     * label operands (bitflip mutation) from regular data (arithmetic mutation).
+     */
+    public static final int TYPE_LABELREF = (0x05 & ((1 << TYPE_BITS) - 1)) << TYPE_SHIFT;
+
+    /**
      * Enables sparse cell tracking for performance optimization in large worlds.
      * When enabled, the Environment maintains a set of occupied cells to avoid
      * iterating through all cells during serialization.

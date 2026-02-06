@@ -30,7 +30,7 @@ import org.evochora.runtime.spi.IRandomProvider;
  * </ul>
  *
  * <h2>Valid Types</h2>
- * CODE, DATA, ENERGY, STRUCTURE, LABEL
+ * CODE, DATA, ENERGY, STRUCTURE, LABEL, LABELREF
  *
  * <h2>Behavior</h2>
  * <ul>
@@ -114,8 +114,9 @@ public class DecayOnDeath implements IDeathHandler {
             case "ENERGY" -> org.evochora.runtime.Config.TYPE_ENERGY;
             case "STRUCTURE" -> org.evochora.runtime.Config.TYPE_STRUCTURE;
             case "LABEL" -> org.evochora.runtime.Config.TYPE_LABEL;
+            case "LABELREF" -> org.evochora.runtime.Config.TYPE_LABELREF;
             default -> throw new IllegalArgumentException(
-                "Unknown molecule type: '" + typeStr + "'. Valid types: CODE, DATA, ENERGY, STRUCTURE, LABEL");
+                "Unknown molecule type: '" + typeStr + "'. Valid types: CODE, DATA, ENERGY, STRUCTURE, LABEL, LABELREF");
         };
 
         return new Molecule(type, value);

@@ -11,6 +11,7 @@ import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.ir.IrImm;
 import org.evochora.compiler.ir.IrInstruction;
 import org.evochora.compiler.ir.IrLabelRef;
+import org.evochora.compiler.ir.IrTypedImm;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -65,13 +66,14 @@ class LabelRefLinkingRuleTest {
         // When: The rule is applied
         IrInstruction result = rule.apply(input, context, layout);
 
-        // Then: The IrLabelRef is converted to IrImm with the correct hash
+        // Then: The IrLabelRef is converted to IrTypedImm("LABELREF", hash)
         assertThat(result.operands()).hasSize(1);
-        assertThat(result.operands().get(0)).isInstanceOf(IrImm.class);
+        assertThat(result.operands().get(0)).isInstanceOf(IrTypedImm.class);
 
+        IrTypedImm typedImm = (IrTypedImm) result.operands().get(0);
+        assertThat(typedImm.typeName()).isEqualTo("LABELREF");
         long expectedHash = "FOO".hashCode() & 0x7FFFF; // 19-bit, always positive
-        long actualHash = ((IrImm) result.operands().get(0)).value();
-        assertThat(actualHash).isEqualTo(expectedHash);
+        assertThat(typedImm.value()).isEqualTo(expectedHash);
     }
 
     @Test
@@ -101,16 +103,18 @@ class LabelRefLinkingRuleTest {
             IrInstruction result = rule.apply(input, context, layout);
 
             // Then: The hash matches the expected formula (19-bit, always positive)
-            long expectedHash = labelName.hashCode() & 0x7FFFF;
-            long actualHash = ((IrImm) result.operands().get(0)).value();
+            assertThat(result.operands().get(0)).isInstanceOf(IrTypedImm.class);
+            IrTypedImm typedImm = (IrTypedImm) result.operands().get(0);
+            assertThat(typedImm.typeName()).isEqualTo("LABELREF");
 
-            assertThat(actualHash)
+            long expectedHash = labelName.hashCode() & 0x7FFFF;
+            assertThat(typedImm.value())
                     .as("Hash for label '%s' should match runtime expectation", labelName)
                     .isEqualTo(expectedHash);
 
             // And: The hash is within the valid range (19 bits, always positive)
-            assertThat(actualHash).isGreaterThanOrEqualTo(0);
-            assertThat(actualHash).isLessThanOrEqualTo(0x7FFFF);
+            assertThat(typedImm.value()).isGreaterThanOrEqualTo(0);
+            assertThat(typedImm.value()).isLessThanOrEqualTo(0x7FFFF);
         }
     }
 
@@ -201,11 +205,12 @@ class LabelRefLinkingRuleTest {
 
         // Then: The qualified label is resolved to the hash of "TARGET"
         assertThat(result.operands()).hasSize(1);
-        assertThat(result.operands().get(0)).isInstanceOf(IrImm.class);
+        assertThat(result.operands().get(0)).isInstanceOf(IrTypedImm.class);
 
+        IrTypedImm typedImm = (IrTypedImm) result.operands().get(0);
+        assertThat(typedImm.typeName()).isEqualTo("LABELREF");
         long expectedHash = "TARGET".hashCode() & 0x7FFFF;
-        long actualHash = ((IrImm) result.operands().get(0)).value();
-        assertThat(actualHash).isEqualTo(expectedHash);
+        assertThat(typedImm.value()).isEqualTo(expectedHash);
     }
 
     @Test
