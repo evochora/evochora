@@ -73,7 +73,13 @@ export async function init() {
             
             // Get pre-configured jsdelivr bundles (for WASM files)
             const JSDELIVR_BUNDLES = duckdbModule.getJsDelivrBundles();
-            const bundle = await duckdbModule.selectBundle(JSDELIVR_BUNDLES);
+
+            // Use MVP bundle (no exception handling) for better Firefox compatibility
+            // The EH bundle uses deprecated WASM exception handling that can crash Firefox
+            let bundle = await duckdbModule.selectBundle(JSDELIVR_BUNDLES);
+            if (JSDELIVR_BUNDLES.mvp) {
+                bundle = JSDELIVR_BUNDLES.mvp;
+            }
             
             // Create worker - need to fetch and create blob URL for CORS
             const workerResponse = await fetch(bundle.mainWorker);
@@ -124,7 +130,7 @@ export async function query(sql) {
 /**
      * Registers a Parquet file blob and queries it with the provided SQL.
      * Used for client-side DuckDB WASM queries on merged Parquet from server.
-     * 
+     *
      * @param {Blob} parquetBlob - Parquet file as Blob
      * @param {string} sql - SQL query with {table} placeholder
      * @returns {Promise<Array<Object>>} Query results
@@ -133,19 +139,28 @@ export async function queryParquetBlob(parquetBlob, sql) {
         if (!initialized) {
             await init();
         }
-        
+
         // Use unique filename to avoid conflicts with parallel queries
         const fileName = `data_${++fileCounter}.parquet`;
-        
-        // Register the blob as a file in DuckDB's virtual filesystem
-        await db.registerFileHandle(fileName, parquetBlob, duckdbModule.DuckDBDataProtocol.BROWSER_FILEREADER, true);
-        
-        // Replace ALL {table} placeholders with the file reference
-        const finalSql = sql.replaceAll('{table}', `'${fileName}'`);
-        
-        const result = await conn.query(finalSql);
-        const rows = result.toArray().map(row => convertBigInts(row.toJSON()));
-        return rows;
+
+        try {
+            // Register the blob as a file in DuckDB's virtual filesystem
+            await db.registerFileHandle(fileName, parquetBlob, duckdbModule.DuckDBDataProtocol.BROWSER_FILEREADER, true);
+
+            // Replace ALL {table} placeholders with the file reference
+            const finalSql = sql.replaceAll('{table}', `'${fileName}'`);
+
+            const result = await conn.query(finalSql);
+            const rows = result.toArray().map(row => convertBigInts(row.toJSON()));
+            return rows;
+        } finally {
+            // Clean up: remove the file from virtual filesystem to prevent memory leaks
+            try {
+                await db.dropFile(fileName);
+            } catch (e) {
+                // Ignore cleanup errors
+            }
+        }
     }
     
     /**

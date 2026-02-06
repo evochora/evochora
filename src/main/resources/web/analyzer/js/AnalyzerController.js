@@ -188,7 +188,7 @@ export async function loadDashboard(runId) {
      */
     async function loadAllMetricsData() {
         const cards = DashboardView.getAllCards();
-        
+
         // Load all metrics in parallel
         const promises = Object.entries(cards).map(([metricId, card]) => {
             return loadMetricData(card).catch(error => {
@@ -201,7 +201,7 @@ export async function loadDashboard(runId) {
                 MetricCardView.showError(card, message);
             });
         });
-        
+
         await Promise.all(promises);
     }
     
