@@ -616,8 +616,8 @@ export class OrganismSourceView {
      * at x=99 on a 100-wide grid and moves right to x=0, the naive difference is -99,
      * but the actual relative offset is +1.</p>
      *
-     * <p>This method uses the shorter path around the torus: if the naive difference
-     * exceeds half the grid size, it wraps around.</p>
+     * <p>This method normalizes the difference to [0, width) to match the layout engine's
+     * coordinate space, which always starts at [0,0] and grows non-negatively.</p>
      *
      * @param {number[]} ip - The current instruction pointer [x, y].
      * @param {number[]} startPos - The organism's initial position [x, y].
@@ -637,21 +637,18 @@ export class OrganismSourceView {
             // Wrap X coordinate if toroidal in X dimension
             if (toroidal[0] && worldShape[0] > 0) {
                 const width = worldShape[0];
-                // Normalize to [0, width) first, then shift to [-width/2, width/2)
+                // Normalize to [0, width) to match the layout engine's non-negative coordinates.
+                // The layout always starts at [0,0] and grows positively, so we must NOT
+                // shift to [-width/2, width/2) as that would produce negative keys that
+                // don't exist in the relativeCoordToLinearAddress map.
                 relX = ((relX % width) + width) % width;
-                if (relX > width / 2) {
-                    relX -= width;
-                }
             }
 
             // Wrap Y coordinate if toroidal in Y dimension
             if (toroidal[1] && worldShape[1] > 0) {
                 const height = worldShape[1];
-                // Normalize to [0, height) first, then shift to [-height/2, height/2)
+                // Normalize to [0, height) to match the layout engine's non-negative coordinates.
                 relY = ((relY % height) + height) % height;
-                if (relY > height / 2) {
-                    relY -= height;
-                }
             }
         }
 

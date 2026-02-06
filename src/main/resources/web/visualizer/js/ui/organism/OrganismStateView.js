@@ -365,11 +365,18 @@ export class OrganismStateView {
                 return null;
             }
 
-            // Calculate relative coordinates from absolute coordinates
-            // absoluteCallIp is the absolute coord of the CALL instruction
+            // Calculate relative coordinates from absolute coordinates with toroidal wrapping.
+            // Must normalize to [0, size) to match the layout engine's non-negative coordinates.
+            const envProps = this.artifact?.envProps;
+            const worldShape = envProps?.worldShape;
+            const toroidal = envProps?.toroidal;
             const relativeCoord = [];
             for (let i = 0; i < absoluteCallIp.length && i < initialPosition.length; i++) {
-                relativeCoord.push(absoluteCallIp[i] - initialPosition[i]);
+                let rel = absoluteCallIp[i] - initialPosition[i];
+                if (worldShape && toroidal && toroidal[i] && worldShape[i] > 0) {
+                    rel = ((rel % worldShape[i]) + worldShape[i]) % worldShape[i];
+                }
+                relativeCoord.push(rel);
             }
 
             // Convert relative coord to string key (e.g., "10|20")

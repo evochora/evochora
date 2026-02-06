@@ -182,9 +182,13 @@ export class AppController {
                 for (const program of metadata.programs) {
                     if (program && program.programId && program.sources) {
                         if (envInfo) {
+                            // Derive per-dimension toroidal flags from topology string.
+                            // Config uses topology="TORUS" (string), not a toroidal array.
+                            const isTorus = envInfo.topology?.toUpperCase() === 'TORUS';
+                            const shape = envInfo.shape ? Array.from(envInfo.shape) : null;
                             program.envProps = {
-                                worldShape: envInfo.shape ? Array.from(envInfo.shape) : null,
-                                toroidal: envInfo.toroidal ? Array.from(envInfo.toroidal) : null
+                                worldShape: shape,
+                                toroidal: shape ? shape.map(() => isTorus) : null
                             };
                         }
                         this.programArtifactCache.set(program.programId, program);
@@ -585,9 +589,11 @@ export class AppController {
                     for (const program of metadata.programs) {
                         if (program && program.programId && program.sources) {
                             if (envInfo) {
+                                const isTorus = envInfo.topology?.toUpperCase() === 'TORUS';
+                                const shape = envInfo.shape ? Array.from(envInfo.shape) : null;
                                 program.envProps = {
-                                    worldShape: envInfo.shape ? Array.from(envInfo.shape) : null,
-                                    toroidal: envInfo.toroidal ? Array.from(envInfo.toroidal) : null
+                                    worldShape: shape,
+                                    toroidal: shape ? shape.map(() => isTorus) : null
                                 };
                             }
                             this.programArtifactCache.set(program.programId, program);
