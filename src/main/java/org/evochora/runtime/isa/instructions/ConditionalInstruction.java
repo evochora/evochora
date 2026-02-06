@@ -94,6 +94,10 @@ public class ConditionalInstruction extends Instruction {
         reg(15, Variant.R, "INVR", REGISTER);
         reg(15, Variant.V, "INVI", VECTOR);  // Note: uses VECTOR operand despite "I" suffix
         reg(15, Variant.S, "INVS", STACK);
+        // Operation 16: IER (If Error - previous instruction failed)
+        reg(16, Variant.NONE, "IFER");
+        // Operation 17: INE (If No Error - previous instruction did not fail)
+        reg(17, Variant.NONE, "INER");
     }
 
     private static void reg(int op, int variant, String name, OperandSource... sources) {
@@ -115,6 +119,14 @@ public class ConditionalInstruction extends Instruction {
         Environment environment = context.getWorld();
         try {
             String opName = getName();
+            if ("IFER".equals(opName) || "INER".equals(opName)) {
+                boolean prevFailed = organism.wasPreviousInstructionFailed();
+                boolean conditionMet = "IFER".equals(opName) ? prevFailed : !prevFailed;
+                if (!conditionMet) {
+                    organism.skipNextInstruction(environment);
+                }
+                return;
+            }
             if (opName.startsWith("IFM") || opName.startsWith("INM")) {
                 List<Operand> operands = resolveOperands(environment);
                 if (organism.isInstructionFailed()) {
