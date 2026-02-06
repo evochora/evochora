@@ -1520,10 +1520,11 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
         }
         background.clear();
         background.rect(0, 0, cellSize, cellSize);
-        background.fill(this.getBackgroundColorForType(cell.type));
+        const isEmpty = cell.type === this.typeMapping['CODE'] && cell.value === 0 && cell.ownerId === 0;
+        background.fill(isEmpty ? this.config.colorEmptyBg : this.getBackgroundColorForType(cell.type));
 
         // Draw text
-        const shouldHaveText = (cell.type === this.config.typeCode && (cell.value !== 0 || cell.ownerId !== 0)) || cell.type !== this.config.typeCode;
+        const shouldHaveText = !isEmpty && ((cell.type === this.config.typeCode && (cell.value !== 0 || cell.ownerId !== 0)) || cell.type !== this.config.typeCode);
         if (shouldHaveText) {
             let label;
             if (cell.type === this.config.typeCode) {
@@ -1987,7 +1988,8 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
             if (cellX < clampedX1 || cellX >= clampedX2 || cellY < clampedY1 || cellY >= clampedY2) continue;
 
             const typeId = typeMapping[cell.moleculeType] ?? 0;
-            const color = this._hexToRgb(getColor(typeId));
+            const isEmpty = typeId === typeMapping['CODE'] && cell.moleculeValue === 0 && cell.ownerId === 0;
+            const color = isEmpty ? emptyColor : this._hexToRgb(getColor(typeId));
 
             // Position relative to region origin, scaled
             const localX = (cellX - clampedX1) * scale;
