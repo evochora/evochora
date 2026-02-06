@@ -55,6 +55,7 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
     private static final int COLOR_STRUCTURE = 0xff7878;
     private static final int COLOR_ENERGY = 0xffe664;
     private static final int COLOR_LABEL = 0xa0a0a8;
+    private static final int COLOR_LABELREF = 0xa0a0a8;
     private static final int COLOR_DEAD = 0x555555;
 
     // Organism colors as int RGB (avoids Color.getRGB() conversion per frame)
@@ -273,6 +274,7 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
         if (moleculeType == Config.TYPE_ENERGY) return COLOR_ENERGY;
         if (moleculeType == Config.TYPE_STRUCTURE) return COLOR_STRUCTURE;
         if (moleculeType == Config.TYPE_LABEL) return COLOR_LABEL;
+        if (moleculeType == Config.TYPE_LABELREF) return COLOR_LABELREF;
         return COLOR_EMPTY;
     }
 

@@ -57,7 +57,7 @@ public class LabelRefLinkingRule implements ILinkingRule {
                     if (rewritten == null) {
                         rewritten = new ArrayList<>(ops);
                     }
-                    rewritten.set(i, new IrImm(labelHash));
+                    rewritten.set(i, new IrTypedImm("LABELREF", labelHash));
                 }
             }
         }
