@@ -247,7 +247,7 @@ export function render(canvas, data, config) {
                     },
                     y: {
                         stacked: true,
-                        // Start with max 100 (all categories visible)
+                        min: 0, // Always start at 0
                         max: isPercentage ? 100 : undefined,
                         title: { display: false },
                         ticks: {

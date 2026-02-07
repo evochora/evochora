@@ -2,9 +2,7 @@ package org.evochora.datapipeline.services.analytics.plugins;
 
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 import org.evochora.datapipeline.api.analytics.AbstractAnalyticsPlugin;
 import org.evochora.datapipeline.api.analytics.ColumnType;
@@ -16,6 +14,9 @@ import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
+
+import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 
 /**
  * Tracks genome diversity metrics over time.
@@ -33,6 +34,9 @@ import org.evochora.datapipeline.api.memory.SimulationParameters;
  * evenness of distribution. H=0 means only one genome exists. Higher values indicate
  * greater diversity.
  * <p>
+ * <strong>Performance:</strong> This plugin is optimized for zero allocation during
+ * steady-state operation. All working collections are pre-allocated and reused.
+ * <p>
  * This plugin is stateful: it tracks all genome hashes ever seen to compute
  * cumulative totals. Memory usage scales with unique genome count.
  */
@@ -46,13 +50,44 @@ public class GenomeDiversityPlugin extends AbstractAnalyticsPlugin {
         .column("dominant_share", ColumnType.DOUBLE)
         .build();
 
+    /** Bytes per entry in LongOpenHashSet (long + overhead). */
+    private static final int BYTES_PER_HASH_SET_ENTRY = 12;
+
+    /** Bytes per entry in Long2IntOpenHashMap for per-tick counts. */
+    private static final int BYTES_PER_TICK_COUNT_ENTRY = 16;
+
+    // ========================================================================
+    // Stateful Data (persists across ticks)
+    // ========================================================================
+
     /** Set of all genome hashes ever observed (for cumulative total). */
-    private Set<Long> allGenomesEverSeen;
+    private LongOpenHashSet allGenomesEverSeen;
+
+    // ========================================================================
+    // Reusable Working Memory (zero allocation per tick)
+    // ========================================================================
+
+    /** Reusable map for per-tick genome counts. Cleared at start of each extractRows call. */
+    private Long2IntOpenHashMap genomeCounts;
+
+    /** Reusable result row. Updated in place each tick. */
+    private Object[] resultRow;
+
+    /** Reusable singleton list wrapping resultRow. */
+    private List<Object[]> resultList;
 
     @Override
     public void initialize(IAnalyticsContext context) {
         super.initialize(context);
-        this.allGenomesEverSeen = new HashSet<>();
+
+        // Stateful data
+        this.allGenomesEverSeen = new LongOpenHashSet();
+
+        // Reusable working memory
+        this.genomeCounts = new Long2IntOpenHashMap();
+        this.genomeCounts.defaultReturnValue(0);
+        this.resultRow = new Object[5];
+        this.resultList = Collections.singletonList(resultRow);
     }
 
     @Override
@@ -62,17 +97,17 @@ public class GenomeDiversityPlugin extends AbstractAnalyticsPlugin {
 
     @Override
     public List<Object[]> extractRows(TickData tick) {
-        // Count organisms per genome hash
-        HashMap<Long, Integer> genomeCounts = new HashMap<>();
+        // Clear reusable collection
+        genomeCounts.clear();
         int totalOrganisms = 0;
 
+        // Count organisms per genome hash (zero allocation)
         for (OrganismState org : tick.getOrganismsList()) {
             long genomeHash = org.getGenomeHash();
-            // Skip organisms without genome hash (should not happen after implementation)
             if (genomeHash == 0L) {
                 continue;
             }
-            genomeCounts.merge(genomeHash, 1, Integer::sum);
+            genomeCounts.addTo(genomeHash, 1);
             totalOrganisms++;
             allGenomesEverSeen.add(genomeHash);
         }
@@ -97,13 +132,14 @@ public class GenomeDiversityPlugin extends AbstractAnalyticsPlugin {
             dominantShare = (double) maxCount / totalOrganisms;
         }
 
-        return Collections.singletonList(new Object[] {
-            tick.getTickNumber(),
-            shannonIndex,
-            totalGenomes,
-            activeGenomes,
-            dominantShare
-        });
+        // Update result row in place (zero allocation)
+        resultRow[0] = tick.getTickNumber();
+        resultRow[1] = shannonIndex;
+        resultRow[2] = totalGenomes;
+        resultRow[3] = activeGenomes;
+        resultRow[4] = dominantShare;
+
+        return resultList;
     }
 
     @Override
@@ -131,16 +167,23 @@ public class GenomeDiversityPlugin extends AbstractAnalyticsPlugin {
 
     @Override
     public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
-        // Estimate: Each unique genome hash is a Long (8 bytes) + HashSet overhead (~40 bytes per entry)
-        // Worst case: every organism that ever lived had a unique genome
-        // More realistic: mutation rate means maybe 10-50% of organisms have new genomes
-        // Use conservative estimate: maxOrganisms * 0.5 unique genomes
+        // Estimate: 50% of all organisms will have unique genomes over simulation lifetime
         long estimatedUniqueGenomes = (long) (params.maxOrganisms() * 0.5);
-        long bytesPerEntry = 48L; // Long + HashSet entry overhead
-        long totalBytes = estimatedUniqueGenomes * bytesPerEntry;
 
-        String explanation = String.format("~%d estimated unique genomes × %d bytes/entry (HashSet<Long>)",
-            estimatedUniqueGenomes, bytesPerEntry);
+        // Stateful data: LongOpenHashSet grows with unique genomes
+        long hashSetBytes = estimatedUniqueGenomes * BYTES_PER_HASH_SET_ENTRY;
+
+        // Reusable working memory: bounded by organisms per tick
+        long genomeCountsBytes = params.maxOrganisms() * BYTES_PER_TICK_COUNT_ENTRY;
+
+        long totalBytes = hashSetBytes + genomeCountsBytes;
+
+        String explanation = String.format(
+            "~%d unique genomes: allGenomesEverSeen=%s, genomeCounts=%s",
+            estimatedUniqueGenomes,
+            SimulationParameters.formatBytes(hashSetBytes),
+            SimulationParameters.formatBytes(genomeCountsBytes)
+        );
 
         return Collections.singletonList(new MemoryEstimate(
             "Plugin: " + metricId,
