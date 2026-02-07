@@ -294,7 +294,7 @@ public class Emitter {
     private Integer encodeOperand(IrOperand op, IInstructionSet isa, SourceInfo ctx) throws CompilationException {
         if (op instanceof IrReg r) {
             int regId = isa.resolveRegisterToken(r.name()).orElseThrow(() -> new RuntimeException(formatSource(ctx, "Unknown register: " + r.name())));
-            return new Molecule(Config.TYPE_DATA, regId).toInt();
+            return new Molecule(Config.TYPE_REGISTER, regId).toInt();
         }
         if (op instanceof IrImm imm) {
             return new Molecule(Config.TYPE_DATA, (int) imm.value()).toInt();

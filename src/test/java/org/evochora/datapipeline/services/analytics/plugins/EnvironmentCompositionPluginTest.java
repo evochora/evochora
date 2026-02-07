@@ -50,7 +50,7 @@ class EnvironmentCompositionPluginTest {
         List<Object[]> rows = plugin.extractRows(tick);
         Object[] row = rows.get(0);
 
-        // Schema: tick, code, data, energy, structure, label, labelref, unknown, empty (9 columns)
+        // Schema: tick, code, data, energy, structure, label, labelref, register, unknown, empty (10 columns)
         assertThat(row[0]).isEqualTo(1L);  // tick
         assertThat(row[1]).isEqualTo(2L);  // code (only CODE with value != 0)
         assertThat(row[2]).isEqualTo(1L);  // data
@@ -58,10 +58,11 @@ class EnvironmentCompositionPluginTest {
         assertThat(row[4]).isEqualTo(1L);  // structure
         assertThat(row[5]).isEqualTo(1L);  // label
         assertThat(row[6]).isEqualTo(0L);  // labelref
-        assertThat(row[7]).isEqualTo(1L);  // unknown (type 99)
-        // empty = totalCells - (code + data + energy + structure + label + labelref + unknown)
+        assertThat(row[7]).isEqualTo(0L);  // register
+        assertThat(row[8]).isEqualTo(1L);  // unknown (type 99)
+        // empty = totalCells - (code + data + energy + structure + label + labelref + register + unknown)
         // Without context, totalCells = 0, so empty = max(0, 0 - 7) = 0
-        assertThat(row[8]).isEqualTo(0L);  // empty
+        assertThat(row[9]).isEqualTo(0L);  // empty
     }
 
     @Test
@@ -84,9 +85,9 @@ class EnvironmentCompositionPluginTest {
         List<Object[]> rows = plugin.extractRows(builder.build());
         Object[] row = rows.get(0);
 
-        // Schema: tick, code, data, energy, structure, label, labelref, unknown, empty (9 columns)
-        assertThat(row).hasSize(9);
+        // Schema: tick, code, data, energy, structure, label, labelref, register, unknown, empty (10 columns)
+        assertThat(row).hasSize(10);
         // Without context (totalCells = 0), empty = max(0, 0 - sum) = 0
-        assertThat(row[8]).isEqualTo(0L);
+        assertThat(row[9]).isEqualTo(0L);
     }
 }

@@ -143,6 +143,7 @@ public record Molecule(int type, int value, int marker) {
             case "STRUCTURE" -> java.util.Optional.of(Config.TYPE_STRUCTURE);
             case "LABEL" -> java.util.Optional.of(Config.TYPE_LABEL);
             case "LABELREF" -> java.util.Optional.of(Config.TYPE_LABELREF);
+            case "REGISTER" -> java.util.Optional.of(Config.TYPE_REGISTER);
             default -> java.util.Optional.empty();
         };
     }

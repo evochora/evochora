@@ -62,6 +62,7 @@ export class AppController {
             typeStructure: 3,
             typeLabel: 4,
             typeLabelRef: 5,
+            typeRegister: 6,
             backgroundColor: '#1a1a28', // Border area visible when scrolling beyond grid
             colorEmptyBg: '#14141e',
             colorCodeBg: '#3c5078',
@@ -70,12 +71,14 @@ export class AppController {
             colorEnergyBg: '#ffe664',
             colorLabelBg: '#a0a0a8', // Light gray for jump target labels
             colorLabelRefBg: '#a0a0a8', // Same background as LABEL
+            colorRegisterBg: '#506080', // Medium blue-gray for register references
             colorCodeText: '#ffffff',
             colorDataText: '#ffffff',
             colorStructureText: '#323232',
             colorEnergyText: '#323232',
             colorLabelText: '#323232', // Dark text on light background
             colorLabelRefText: '#ffffff', // Light text to distinguish from LABEL
+            colorRegisterText: '#ffffff',
             colorText: '#ffffff'
         };
         

@@ -148,7 +148,7 @@ class H2DatabaseReaderInstructionResolutionTest {
         
         // DPLR %LR0 - LOCATION_REGISTER argument
         int dplrOpcode = Instruction.getInstructionIdByName("DPLR") | org.evochora.runtime.Config.TYPE_CODE;
-        int lrArg = new Molecule(org.evochora.runtime.Config.TYPE_DATA, 0).toInt(); // %LR0
+        int lrArg = new Molecule(org.evochora.runtime.Config.TYPE_REGISTER, org.evochora.runtime.isa.Instruction.LR_BASE).toInt(); // %LR0
 
         writeOrganismWithInstructionAndLocationRegisters(1L, 1, dplrOpcode, java.util.List.of(lrArg), 3,
                 new int[][]{{5, 6}, {7, 8}, null, null}); // LR0=[5,6], LR1=[7,8], LR2/LR3=null

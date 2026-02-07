@@ -1274,6 +1274,7 @@ export class EnvironmentGrid {
             case C.typeStructure: return 'STRUCTURE';
             case C.typeLabel: return 'LABEL';
             case C.typeLabelRef: return 'LABELREF';
+            case C.typeRegister: return 'REGISTER';
             default: return 'UNKNOWN';
         }
     }
@@ -1411,7 +1412,7 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
         this.ipGraphics = new Map();
         this.dpGraphics = new Map();
 
-        this.typeMapping = { 'CODE': 0, 'DATA': 1, 'ENERGY': 2, 'STRUCTURE': 3, 'LABEL': 4, 'LABELREF': 5 };
+        this.typeMapping = { 'CODE': 0, 'DATA': 1, 'ENERGY': 2, 'STRUCTURE': 3, 'LABEL': 4, 'LABELREF': 5, 'REGISTER': 6 };
         this.cellFont = {
             fontFamily: 'Monospaced, "Courier New"',
             fontSize: this.config.cellSize * 0.4,
@@ -1775,6 +1776,7 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
             case this.typeMapping['STRUCTURE']: return C.colorStructureBg;
             case this.typeMapping['LABEL']: return C.colorLabelBg;
             case this.typeMapping['LABELREF']: return C.colorLabelRefBg;
+            case this.typeMapping['REGISTER']: return C.colorRegisterBg;
             default: return C.colorEmptyBg;
         }
     }
@@ -1788,6 +1790,7 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
             case this.typeMapping['CODE']: return C.colorCodeText;
             case this.typeMapping['LABEL']: return C.colorLabelText;
             case this.typeMapping['LABELREF']: return C.colorLabelRefText;
+            case this.typeMapping['REGISTER']: return C.colorRegisterText;
             default: return C.colorText;
         }
     }

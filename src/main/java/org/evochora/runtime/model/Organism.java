@@ -1122,25 +1122,27 @@ public class Organism {
     public Deque<ProcFrame> getFailureCallStack() { return this.failureCallStack; }
 
     /**
-     * Reads a value from a register (DR, PR, or FPR) using its full numeric ID.
+     * Reads a value from a register (DR, PR, FPR, or LR) using its full numeric ID.
      *
-     * @param id The full ID of the register (e.g., 5 for DR5, 1002 for PR2).
+     * @param id The full ID of the register (e.g., 5 for DR5, 1002 for PR2, 3001 for LR1).
      * @return The value read from the register.
      */
     public Object readOperand(int id) {
+        if (id >= Instruction.LR_BASE) return getLr(id - Instruction.LR_BASE);
         if (id >= Instruction.FPR_BASE) return getFpr(id - Instruction.FPR_BASE);
         if (id >= Instruction.PR_BASE) return getPr(id - Instruction.PR_BASE);
         return getDr(id);
     }
 
     /**
-     * Writes a value to a register (DR, PR, or FPR) using its full numeric ID.
+     * Writes a value to a register (DR, PR, FPR, or LR) using its full numeric ID.
      *
      * @param id The full ID of the register.
      * @param value The value to write.
      * @return {@code true} if the write was successful.
      */
     public boolean writeOperand(int id, Object value) {
+        if (id >= Instruction.LR_BASE) return setLr(id - Instruction.LR_BASE, (int[]) value);
         if (id >= Instruction.FPR_BASE) return setFpr(id - Instruction.FPR_BASE, value);
         if (id >= Instruction.PR_BASE) return setPr(id - Instruction.PR_BASE, value);
         return setDr(id, value);

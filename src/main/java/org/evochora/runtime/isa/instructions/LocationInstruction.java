@@ -94,6 +94,16 @@ public class LocationInstruction extends Instruction {
         return super.resolveOperands(environment);
     }
 
+    /**
+     * Converts a location register operand's raw source ID to a 0-based LR index.
+     *
+     * @param op The operand containing the LR register ID.
+     * @return The 0-based index into the LR array.
+     */
+    private int toLrIndex(Operand op) {
+        return op.rawSourceId() - Instruction.LR_BASE;
+    }
+
     @Override
     public void execute(ExecutionContext context, ProgramArtifact artifact) {
         Organism org = context.getOrganism();
@@ -135,7 +145,7 @@ public class LocationInstruction extends Instruction {
             }
             case "DPLR": {
                 if (ops.size() != 1) { org.instructionFailed("DPLR expects %LR<Index>"); return; }
-                int lrIdx = ops.get(0).rawSourceId();
+                int lrIdx = toLrIndex(ops.get(0));
                 org.setLr(lrIdx, org.getActiveDp());
                 break;
             }
@@ -145,7 +155,7 @@ public class LocationInstruction extends Instruction {
             }
             case "SKLR": {
                 if (ops.size() != 1) { org.instructionFailed("SKLR expects %LR<Index>"); return; }
-                int lrIdx = ops.get(0).rawSourceId();
+                int lrIdx = toLrIndex(ops.get(0));
                 int[] target = org.getLr(lrIdx);
                 if (target == null) { org.instructionFailed("Invalid LR index"); return; }
                 org.setActiveDp(target);
@@ -159,7 +169,7 @@ public class LocationInstruction extends Instruction {
             }
             case "PUSL": {
                 if (ops.size() != 1) { org.instructionFailed("PUSL expects %LR<Index>"); return; }
-                int lrIdx = ops.get(0).rawSourceId();
+                int lrIdx = toLrIndex(ops.get(0));
                 int[] vec = org.getLr(lrIdx);
                 if (vec == null) { org.instructionFailed("Invalid LR index"); return; }
                 org.getLocationStack().push(vec);
@@ -168,7 +178,7 @@ public class LocationInstruction extends Instruction {
             case "POPL": {
                 if (ops.size() != 1) { org.instructionFailed("POPL expects %LR<Index>"); return; }
                 if (ls.isEmpty()) { org.instructionFailed("POPL on empty LS"); return; }
-                int lrIdx = ops.get(0).rawSourceId();
+                int lrIdx = toLrIndex(ops.get(0));
                 int[] vec = ls.pop();
                 org.setLr(lrIdx, vec);
                 break;
@@ -176,7 +186,7 @@ public class LocationInstruction extends Instruction {
             case "LRDR": {
                 if (ops.size() != 2) { org.instructionFailed("LRDR expects <Dest_Reg>, %LR<Index>"); return; }
                 int destReg = ops.get(0).rawSourceId();
-                int lrIdx = ops.get(1).rawSourceId();
+                int lrIdx = toLrIndex(ops.get(1));
                 int[] vec = org.getLr(lrIdx);
                 if (vec == null) { org.instructionFailed("Invalid LR index"); return; }
                 if (!writeOperand(destReg, vec)) {
@@ -186,7 +196,7 @@ public class LocationInstruction extends Instruction {
             }
             case "LRDS": {
                 if (ops.size() != 1) { org.instructionFailed("LRDS expects %LR<Index>"); return; }
-                int lrIdx = ops.get(0).rawSourceId();
+                int lrIdx = toLrIndex(ops.get(0));
                 int[] vec = org.getLr(lrIdx);
                 if (vec == null) { org.instructionFailed("Invalid LR index"); return; }
                 org.getDataStack().push(vec);
@@ -210,9 +220,9 @@ public class LocationInstruction extends Instruction {
             }
             case "LRLR": {
                 if (ops.size() != 2) { org.instructionFailed("LRLR expects <dest_LR>, <src_LR>"); return; }
-                int destLrIdx = ops.get(0).rawSourceId();
-                int srcLrIdx = ops.get(1).rawSourceId();
-                
+                int destLrIdx = toLrIndex(ops.get(0));
+                int srcLrIdx = toLrIndex(ops.get(1));
+
                 // Validate that both operands are LR registers
                 if (destLrIdx < 0 || destLrIdx >= Config.NUM_LOCATION_REGISTERS) {
                     org.instructionFailed("LRLR: Invalid destination LR index: " + destLrIdx);
@@ -237,7 +247,7 @@ public class LocationInstruction extends Instruction {
             }
             case "CRLR": {
                 if (ops.size() != 1) { org.instructionFailed("CRLR expects <LR>"); return; }
-                int lrIdx = ops.get(0).rawSourceId();
+                int lrIdx = toLrIndex(ops.get(0));
 
                 // Validate that the operand is an LR register
                 if (lrIdx < 0 || lrIdx >= Config.NUM_LOCATION_REGISTERS) {

@@ -155,11 +155,11 @@ public class VMLocationInstructionTest {
         assertThat(org.getLr(1)).isEqualTo(sourceVector);
         
         // Execute LRLR instruction: copy LR1 to LR2
-        int lr1 = new Molecule(Config.TYPE_DATA, 1).toInt();
-        int lr2 = new Molecule(Config.TYPE_DATA, 2).toInt();
+        int lr1 = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + 1).toInt();
+        int lr2 = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + 2).toInt();
         placeInstruction(org, "LRLR", lr2, lr1);
         sim.tick();
-        
+
         // Verify that LR2 now contains the copied vector
         assertThat(org.getLr(2)).isEqualTo(sourceVector);
         
@@ -182,8 +182,8 @@ public class VMLocationInstructionTest {
         org.setLr(0, new int[]{1, 2});
         
         // Test with invalid destination LR index (out of bounds)
-        int invalidDest = new Molecule(Config.TYPE_DATA, Config.NUM_LOCATION_REGISTERS).toInt();
-        int validSrc = new Molecule(Config.TYPE_DATA, 0).toInt();
+        int invalidDest = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + Config.NUM_LOCATION_REGISTERS).toInt();
+        int validSrc = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE).toInt();
         placeInstruction(org, "LRLR", invalidDest, validSrc);
         sim.tick();
         
@@ -195,8 +195,8 @@ public class VMLocationInstructionTest {
         org.resetTickState();
         
         // Test with invalid source LR index
-        int validDest = new Molecule(Config.TYPE_DATA, 1).toInt();
-        int invalidSrc = new Molecule(Config.TYPE_DATA, Config.NUM_LOCATION_REGISTERS).toInt();
+        int validDest = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + 1).toInt();
+        int invalidSrc = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + Config.NUM_LOCATION_REGISTERS).toInt();
         placeInstruction(org, "LRLR", validDest, invalidSrc);
         sim.tick();
         
@@ -240,7 +240,7 @@ public class VMLocationInstructionTest {
         placeInstruction(org, "DPLS");
         sim.tick();
         // PUSL: copy LR0 to LS after DPLR
-        int lr0 = new Molecule(Config.TYPE_DATA, 0).toInt();
+        int lr0 = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE).toInt();
         placeInstruction(org, "DPLR", lr0);
         sim.tick();
         placeInstruction(org, "PUSL", lr0);
@@ -424,11 +424,11 @@ public class VMLocationInstructionTest {
     void testDplrInstruction() {
         int[] dpPosition = {11, 12};
         org.setActiveDp(dpPosition);
-        int lrIndex = new Molecule(Config.TYPE_DATA, 1).toInt();
-        
+        int lrIndex = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + 1).toInt();
+
         placeInstruction(org, "DPLR", lrIndex);
         sim.tick();
-        
+
         assertThat(org.getLr(1)).isEqualTo(dpPosition);
     }
 
@@ -440,8 +440,8 @@ public class VMLocationInstructionTest {
     void testSklrInstruction() {
         int[] lrPosition = {13, 14};
         org.setLr(2, lrPosition);
-        int lrIndex = new Molecule(Config.TYPE_DATA, 2).toInt();
-        
+        int lrIndex = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + 2).toInt();
+
         placeInstruction(org, "SKLR", lrIndex);
         sim.tick();
         
@@ -457,7 +457,7 @@ public class VMLocationInstructionTest {
         int[] lrPosition = {15, 16};
         org.setLr(3, lrPosition);
         Deque<int[]> ls = org.getLocationStack();
-        int lrIndex = new Molecule(Config.TYPE_DATA, 3).toInt();
+        int lrIndex = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + 3).toInt();
         
         placeInstruction(org, "PUSL", lrIndex);
         sim.tick();
@@ -475,8 +475,8 @@ public class VMLocationInstructionTest {
         Deque<int[]> ls = org.getLocationStack();
         int[] location = {17, 18};
         ls.push(location);
-        int lrIndex = new Molecule(Config.TYPE_DATA, 0).toInt();
-        
+        int lrIndex = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE).toInt();
+
         placeInstruction(org, "POPL", lrIndex);
         sim.tick();
         
@@ -492,8 +492,8 @@ public class VMLocationInstructionTest {
     void testLrdsInstruction() {
         int[] lrPosition = {19, 20};
         org.setLr(1, lrPosition);
-        int lrIndex = new Molecule(Config.TYPE_DATA, 1).toInt();
-        
+        int lrIndex = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + 1).toInt();
+
         placeInstruction(org, "LRDS", lrIndex);
         sim.tick();
         
@@ -510,8 +510,8 @@ public class VMLocationInstructionTest {
     void testLrdrInstruction() {
         int[] lrPosition = {21, 22};
         org.setLr(2, lrPosition);
-        int lrIndex = new Molecule(Config.TYPE_DATA, 2).toInt();
-        
+        int lrIndex = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + 2).toInt();
+
         placeInstruction(org, "LRDR", 3, lrIndex); // Copy LR2 to DR3
         sim.tick();
         
@@ -547,10 +547,10 @@ public class VMLocationInstructionTest {
         assertThat(org.getLr(1)).isEqualTo(originalValue);
         
         // Execute CRLR instruction
-        int lr1 = new Molecule(Config.TYPE_DATA, 1).toInt();
+        int lr1 = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + 1).toInt();
         placeInstruction(org, "CRLR", lr1);
         sim.tick();
-        
+
         // Verify LR1 is now [0,0]
         assertThat(org.getLr(1)).isEqualTo(new int[]{0, 0});
         assertThat(org.isInstructionFailed()).isFalse();
@@ -563,10 +563,10 @@ public class VMLocationInstructionTest {
     @Tag("unit")
     void testCrlrInstructionInvalidIndex() {
         // Try to use invalid LR index
-        int invalidLrIndex = new Molecule(Config.TYPE_DATA, 5).toInt(); // LR5 doesn't exist
+        int invalidLrIndex = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + 5).toInt(); // LR5 doesn't exist
         placeInstruction(org, "CRLR", invalidLrIndex);
         sim.tick();
-        
+
         // Should fail
         assertThat(org.isInstructionFailed()).isTrue();
         assertThat(org.getFailureReason()).contains("CRLR: Invalid LR index: 5");
@@ -584,9 +584,9 @@ public class VMLocationInstructionTest {
         org.setLr(2, new int[]{5, 6});
         
         // Clear LR1 and LR2
-        int lr1 = new Molecule(Config.TYPE_DATA, 1).toInt();
-        int lr2 = new Molecule(Config.TYPE_DATA, 2).toInt();
-        
+        int lr1 = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + 1).toInt();
+        int lr2 = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + 2).toInt();
+
         placeInstruction(org, "CRLR", lr1);
         sim.tick();
         assertThat(org.getLr(1)).isEqualTo(new int[]{0, 0});

@@ -115,6 +115,10 @@ public abstract class Instruction {
      * Base address for formal parameter registers.
      */
     public static final int FPR_BASE = 2000;
+    /**
+     * Base address for location registers.
+     */
+    public static final int LR_BASE = 3000;
 
     /**
      * Constructs a new instruction.
@@ -420,7 +424,7 @@ public abstract class Instruction {
             }
             if (u.startsWith("%LR")) {
                 int regNum = Integer.parseInt(u.substring(3));
-                return Optional.of(regNum); // LR-Register haben direkte Indizes 0-3
+                return Optional.of(LR_BASE + regNum);
             }
         } catch (NumberFormatException ignore) {
             // Falls through to empty Optional if, e.g., "%DR" has no number.
