@@ -213,9 +213,9 @@ class MinimapAggregatorUnitTest {
             MinimapResult result = aggregator.aggregate(columns, envProps);
 
             assertThat(result).isNotNull();
-            // All bytes should be 5 (TYPE_EMPTY) since there are no cells
+            // All bytes should be 7 (TYPE_EMPTY) since there are no cells
             for (byte b : result.cellTypes()) {
-                assertThat(b).isEqualTo((byte) 5);
+                assertThat(b).isEqualTo((byte) 7);
             }
         }
 

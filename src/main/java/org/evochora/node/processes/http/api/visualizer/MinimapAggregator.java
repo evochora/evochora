@@ -18,7 +18,9 @@ import org.evochora.runtime.model.EnvironmentProperties;
  *   <li>2 = ENERGY</li>
  *   <li>3 = STRUCTURE</li>
  *   <li>4 = LABEL</li>
- *   <li>5 = EMPTY (CODE with value 0)</li>
+ *   <li>5 = LABELREF</li>
+ *   <li>6 = REGISTER</li>
+ *   <li>7 = EMPTY (CODE with value 0)</li>
  * </ul>
  * <p>
  * <strong>Performance:</strong> For a 4000x3000 environment with 5% occupancy (~600K cells),
@@ -34,21 +36,22 @@ public class MinimapAggregator {
 
     /**
      * Number of cell types tracked for majority voting.
-     * Types 0-4 are standard types, type 5 is EMPTY (CODE with value 0).
+     * Types 0-6 are molecule types (CODE, DATA, ENERGY, STRUCTURE, LABEL, LABELREF, REGISTER),
+     * type 7 is EMPTY (CODE with value 0).
      */
-    private static final int NUM_TYPES = 6;
+    private static final int NUM_TYPES = 8;
 
     /**
      * Type value used for EMPTY cells (CODE with value 0).
      */
-    private static final byte TYPE_EMPTY = 5;
+    private static final byte TYPE_EMPTY = 7;
 
     /**
      * Result of minimap aggregation containing dimensions and cell type data.
      *
      * @param width     Width of the minimap in pixels
      * @param height    Height of the minimap in pixels
-     * @param cellTypes Cell type values (0-5), one byte per pixel in row-major order
+     * @param cellTypes Cell type values (0-7), one byte per pixel in row-major order
      */
     public record MinimapResult(int width, int height, byte[] cellTypes) {}
 
@@ -158,7 +161,7 @@ public class MinimapAggregator {
      * Distinguishes EMPTY (CODE with value 0) from regular CODE.
      *
      * @param moleculeData Raw molecule data from the environment
-     * @return Cell type (0-5)
+     * @return Cell type (0-7)
      */
     private int classifyCellType(final int moleculeData) {
         final int rawType = (moleculeData & Config.TYPE_MASK) >> Config.TYPE_SHIFT;
@@ -171,6 +174,11 @@ public class MinimapAggregator {
             }
         }
 
+        // Guard against unknown types overflowing the counts array
+        if (rawType >= TYPE_EMPTY) {
+            return TYPE_EMPTY;
+        }
+
         return rawType;
     }
 
@@ -180,7 +188,7 @@ public class MinimapAggregator {
      *
      * @param counts Type count array
      * @param pixelIndex Minimap pixel index
-     * @return The most common cell type (0-5)
+     * @return The most common cell type (0-7)
      */
     private byte findMajorityType(final short[] counts, final int pixelIndex) {
         final int baseIdx = pixelIndex * NUM_TYPES;

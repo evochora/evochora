@@ -201,7 +201,19 @@ public final class OrganismStateConverter {
             List<RegisterValueView> fprRegisters,
             List<int[]> locationRegisters) {
         
-        if (registerId >= Instruction.FPR_BASE) {
+        if (registerId >= Instruction.LR_BASE) {
+            // LR register
+            int index = registerId - Instruction.LR_BASE;
+            if (index >= 0 && index < locationRegisters.size()) {
+                int[] vector = locationRegisters.get(index);
+                return RegisterValueView.vector(vector);
+            }
+            throw new IllegalStateException(
+                String.format("LR register ID %d (index %d) is out of bounds. " +
+                    "Valid LR range: %d-%d, but only %d LR registers available.",
+                    registerId, index, Instruction.LR_BASE,
+                    Instruction.LR_BASE + locationRegisters.size() - 1, locationRegisters.size()));
+        } else if (registerId >= Instruction.FPR_BASE) {
             // FPR register
             int index = registerId - Instruction.FPR_BASE;
             if (index >= 0 && index < fprRegisters.size()) {
@@ -210,7 +222,7 @@ public final class OrganismStateConverter {
             throw new IllegalStateException(
                 String.format("FPR register ID %d (index %d) is out of bounds. " +
                     "Valid FPR range: %d-%d, but only %d FPR registers available.",
-                    registerId, index, Instruction.FPR_BASE, 
+                    registerId, index, Instruction.FPR_BASE,
                     Instruction.FPR_BASE + fprRegisters.size() - 1, fprRegisters.size()));
         } else if (registerId >= Instruction.PR_BASE) {
             // PR register
@@ -223,10 +235,6 @@ public final class OrganismStateConverter {
                     "Valid PR range: %d-%d, but only %d PR registers available.",
                     registerId, index, Instruction.PR_BASE,
                     Instruction.PR_BASE + procRegisters.size() - 1, procRegisters.size()));
-        } else if (registerId >= 0 && registerId < locationRegisters.size()) {
-            // LR register (assuming LR indices are 0-3, but we check bounds)
-            int[] vector = locationRegisters.get(registerId);
-            return RegisterValueView.vector(vector);
         } else if (registerId >= 0 && registerId < dataRegisters.size()) {
             // DR register
             return dataRegisters.get(registerId);
@@ -235,14 +243,15 @@ public final class OrganismStateConverter {
         // Invalid register ID (negative or out of all valid ranges)
         throw new IllegalStateException(
             String.format("Invalid register ID %d. " +
-                "Valid ranges: DR=0-%d, LR=0-%d, PR=%d-%d, FPR=%d-%d. " +
-                "Available registers: DR=%d, LR=%d, PR=%d, FPR=%d",
+                "Valid ranges: DR=0-%d, PR=%d-%d, FPR=%d-%d, LR=%d-%d. " +
+                "Available registers: DR=%d, PR=%d, FPR=%d, LR=%d",
                 registerId,
-                dataRegisters.size() - 1, locationRegisters.size() - 1,
+                dataRegisters.size() - 1,
                 Instruction.PR_BASE, Instruction.PR_BASE + procRegisters.size() - 1,
                 Instruction.FPR_BASE, Instruction.FPR_BASE + fprRegisters.size() - 1,
-                dataRegisters.size(), locationRegisters.size(), 
-                procRegisters.size(), fprRegisters.size()));
+                Instruction.LR_BASE, Instruction.LR_BASE + locationRegisters.size() - 1,
+                dataRegisters.size(), procRegisters.size(),
+                fprRegisters.size(), locationRegisters.size()));
     }
     
     /**
@@ -443,7 +452,7 @@ public final class OrganismStateConverter {
                             opcodeId, opcodeName, registerId));
                 }
                 
-                int index = registerId; // LR registers use direct index (0-3)
+                int index = registerId - org.evochora.runtime.isa.Instruction.LR_BASE;
                 if (index < 0 || index >= locationRegisters.size()) {
                     throw new IllegalStateException(
                         String.format("LR register ID %d is out of bounds for instruction %d (%s). " +
@@ -451,12 +460,11 @@ public final class OrganismStateConverter {
                             registerId, opcodeId, opcodeName, locationRegisters.size() - 1, locationRegisters.size()));
                 }
                 
-                // Resolve register value: use value BEFORE execution (null if unavailable)
-                RegisterValueView registerValue = (registerValuesBefore != null)
-                    ? registerValuesBefore.get(registerId)
-                    : null;
-                
-                resolvedArgs.add(InstructionArgumentView.register(registerId, registerValue, registerType));
+                // Resolve register value from locationRegisters using the 0-based index
+                int[] vector = locationRegisters.get(index);
+                RegisterValueView registerValue = RegisterValueView.vector(vector);
+
+                resolvedArgs.add(InstructionArgumentView.register(index, registerValue, registerType));
                 argIndex++;
             } else if (argType == org.evochora.runtime.isa.InstructionArgumentType.LITERAL) {
                 // LITERAL: Decode molecule type and value (shown as IMMEDIATE in view)

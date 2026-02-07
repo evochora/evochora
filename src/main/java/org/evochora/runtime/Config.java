@@ -170,6 +170,13 @@ public final class Config {
     public static final int TYPE_LABELREF = (0x05 & ((1 << TYPE_BITS) - 1)) << TYPE_SHIFT;
 
     /**
+     * The type code for a cell representing a register reference (register operand).
+     * Register references encode register IDs (DR 0-7, PR 1000-1007, FPR 2000-2007, LR 3000-3003)
+     * so that mutation systems can apply bank-aware mutation strategies.
+     */
+    public static final int TYPE_REGISTER = (0x06 & ((1 << TYPE_BITS) - 1)) << TYPE_SHIFT;
+
+    /**
      * Enables sparse cell tracking for performance optimization in large worlds.
      * When enabled, the Environment maintains a set of occupied cells to avoid
      * iterating through all cells during serialization.

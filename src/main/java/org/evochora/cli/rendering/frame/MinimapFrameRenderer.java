@@ -57,10 +57,11 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
     private static final int TYPE_STRUCTURE = 3;
     private static final int TYPE_LABEL = 4;
     private static final int TYPE_LABELREF = 5;
-    private static final int TYPE_EMPTY = 6;
+    private static final int TYPE_REGISTER = 6;
+    private static final int TYPE_EMPTY = 7;
 
-    // Number of non-empty types for aggregation (CODE, DATA, ENERGY, STRUCTURE, LABEL, LABELREF)
-    private static final int NUM_NON_EMPTY_TYPES = 6;
+    // Number of non-empty types for aggregation (CODE, DATA, ENERGY, STRUCTURE, LABEL, LABELREF, REGISTER)
+    private static final int NUM_NON_EMPTY_TYPES = 7;
 
     // Colors matching web minimap (RGB without alpha for TYPE_INT_RGB)
     private static final int[] CELL_COLORS = {
@@ -70,6 +71,7 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
         0xff7878,  // STRUCTURE - red/pink
         0xa0a0a8,  // LABEL - light gray
         0xa0a0a8,  // LABELREF - same as LABEL (distinguished by text color in detailed view)
+        0x506080,  // REGISTER - medium blue-gray
         0x1e1e28   // EMPTY - dark background
     };
 
@@ -511,6 +513,7 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
         if (moleculeType == Config.TYPE_STRUCTURE) return TYPE_STRUCTURE;
         if (moleculeType == Config.TYPE_LABEL) return TYPE_LABEL;
         if (moleculeType == Config.TYPE_LABELREF) return TYPE_LABELREF;
+        if (moleculeType == Config.TYPE_REGISTER) return TYPE_REGISTER;
         return TYPE_EMPTY;
     }
 
