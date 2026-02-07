@@ -27,6 +27,8 @@ public final class OrganismTickSummary {
     public final long birthTick;
     /** The entropy register (SR) value - thermodynamic constraint. */
     public final int entropyRegister;
+    /** The genome hash computed at birth, or 0 if not available. */
+    public final long genomeHash;
 
     /**
      * Creates a new organism tick summary.
@@ -40,6 +42,7 @@ public final class OrganismTickSummary {
      * @param parentId        The parent organism ID (null if no parent).
      * @param birthTick       The tick at which the organism was born.
      * @param entropyRegister The entropy register (SR) value.
+     * @param genomeHash      The genome hash computed at birth.
      */
     public OrganismTickSummary(int organismId,
                                int energy,
@@ -49,7 +52,8 @@ public final class OrganismTickSummary {
                                int activeDpIndex,
                                Integer parentId,
                                long birthTick,
-                               int entropyRegister) {
+                               int entropyRegister,
+                               long genomeHash) {
         this.organismId = organismId;
         this.energy = energy;
         this.ip = ip;
@@ -59,6 +63,7 @@ public final class OrganismTickSummary {
         this.parentId = parentId;
         this.birthTick = birthTick;
         this.entropyRegister = entropyRegister;
+        this.genomeHash = genomeHash;
     }
 }
 

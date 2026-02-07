@@ -73,8 +73,8 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
     // Cached SQL strings (immutable after construction)
     private static final String ORGANISMS_MERGE_SQL =
             "MERGE INTO organisms (" +
-                    "organism_id, parent_id, birth_tick, program_id, initial_position" +
-                    ") KEY (organism_id) VALUES (?, ?, ?, ?, ?)";
+                    "organism_id, parent_id, birth_tick, program_id, initial_position, genome_hash" +
+                    ") KEY (organism_id) VALUES (?, ?, ?, ?, ?, ?)";
 
     private static final String STATES_MERGE_SQL =
             "MERGE INTO organism_states (" +
@@ -101,7 +101,8 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
                             "  parent_id INT NULL," +
                             "  birth_tick BIGINT NOT NULL," +
                             "  program_id TEXT NOT NULL," +
-                            "  initial_position BYTEA NOT NULL" +
+                            "  initial_position BYTEA NOT NULL," +
+                            "  genome_hash BIGINT DEFAULT 0" +
                             ")",
                     "organisms"
             );
@@ -165,6 +166,7 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
                     stmt.setLong(3, org.getBirthTick());
                     stmt.setString(4, org.getProgramId());
                     stmt.setBytes(5, org.getInitialPosition().toByteArray());
+                    stmt.setLong(6, org.getGenomeHash());
                     stmt.addBatch();
                 }
             }
@@ -286,7 +288,7 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
             throws SQLException {
         String sql = """
                 SELECT s.organism_id, s.energy, s.ip, s.dv, s.data_pointers, s.active_dp_index, s.entropy,
-                       o.parent_id, o.birth_tick
+                       o.parent_id, o.birth_tick, o.genome_hash
                 FROM organism_states s
                 LEFT JOIN organisms o ON s.organism_id = o.organism_id
                 WHERE s.tick_number = ?
@@ -316,6 +318,7 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
 
                     // SR is now stored as a separate column for full equivalence
                     int entropyRegister = rs.getInt("entropy");
+                    long genomeHash = rs.getLong("genome_hash");
 
                     result.add(new OrganismTickSummary(
                             organismId,
@@ -326,7 +329,8 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
                             activeDpIndex,
                             parentId,
                             birthTick,
-                            entropyRegister
+                            entropyRegister,
+                            genomeHash
                     ));
                 }
                 return result;

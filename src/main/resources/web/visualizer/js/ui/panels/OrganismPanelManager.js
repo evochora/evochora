@@ -324,10 +324,13 @@ export class OrganismPanelManager {
         const deselectBtn = showDeselect ? 
             `<span class="organism-col organism-col-deselect"><button class="organism-deselect" title="Deselect">✕</button></span>` : '';
         
+        const genomeDisplay = ValueFormatter.formatGenomeHash(org.genomeHash);
+
         return `
-            <div class="organism-list-item ${isSelected ? 'selected' : ''}" 
+            <div class="organism-list-item ${isSelected ? 'selected' : ''}"
                  data-organism-id="${org.id}">
                 <span class="organism-col organism-col-id" style="color: ${org.color}">#${org.id}</span>
+                <span class="organism-col organism-col-genome">${genomeDisplay}</span>
                 <span class="organism-col organism-col-er">ER:${org.energy}</span>
                 <span class="organism-col organism-col-sr">SR:${srDisplay}</span>
                 <span class="organism-col organism-col-ip"><span class="organism-label">IP:</span>${ipDisplay}</span>

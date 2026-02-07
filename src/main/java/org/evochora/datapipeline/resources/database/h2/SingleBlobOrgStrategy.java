@@ -75,7 +75,8 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
                 "  parent_id INT NULL," +
                 "  birth_tick BIGINT NOT NULL," +
                 "  program_id TEXT NOT NULL," +
-                "  initial_position BYTEA NOT NULL" +
+                "  initial_position BYTEA NOT NULL," +
+                "  genome_hash BIGINT DEFAULT 0" +
                 ")",
                 "organisms"
             );
@@ -95,8 +96,8 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
         
         // Cache SQL strings
         this.organismsMergeSql = "MERGE INTO organisms (" +
-                "organism_id, parent_id, birth_tick, program_id, initial_position" +
-                ") KEY (organism_id) VALUES (?, ?, ?, ?, ?)";
+                "organism_id, parent_id, birth_tick, program_id, initial_position, genome_hash" +
+                ") KEY (organism_id) VALUES (?, ?, ?, ?, ?, ?)";
         
         this.statesMergeSql = "MERGE INTO organism_ticks (tick_number, organisms_blob) " +
                 "KEY (tick_number) VALUES (?, ?)";
@@ -138,6 +139,7 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
                 stmt.setLong(3, org.getBirthTick());
                 stmt.setString(4, org.getProgramId());
                 stmt.setBytes(5, org.getInitialPosition().toByteArray());
+                stmt.setLong(6, org.getGenomeHash());
                 stmt.addBatch();
             }
         }
@@ -214,10 +216,11 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
             int organismId = org.getOrganismId();
             StaticInfo staticInfo = staticInfoMap.get(organismId);
             
-            Integer parentId = staticInfo != null ? staticInfo.parentId : 
+            Integer parentId = staticInfo != null ? staticInfo.parentId :
                     (org.hasParentId() ? org.getParentId() : null);
             long birthTick = staticInfo != null ? staticInfo.birthTick : org.getBirthTick();
-            
+            long genomeHash = staticInfo != null ? staticInfo.genomeHash : org.getGenomeHash();
+
             result.add(new OrganismTickSummary(
                 organismId,
                 org.getEnergy(),
@@ -227,7 +230,8 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
                 org.getActiveDpIndex(),
                 parentId,
                 birthTick,
-                org.getEntropyRegister()
+                org.getEntropyRegister(),
+                genomeHash
             ));
         }
         
@@ -314,33 +318,34 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
     }
     
     /**
-     * Reads static organism info (parent_id, birth_tick) for all organisms.
+     * Reads static organism info (parent_id, birth_tick, genome_hash) for all organisms.
      */
     private java.util.Map<Integer, StaticInfo> readAllStaticInfo(Connection conn) throws SQLException {
-        String sql = "SELECT organism_id, parent_id, birth_tick FROM organisms";
-        
+        String sql = "SELECT organism_id, parent_id, birth_tick, genome_hash FROM organisms";
+
         java.util.Map<Integer, StaticInfo> result = new java.util.HashMap<>();
-        
+
         try (PreparedStatement stmt = conn.prepareStatement(sql);
              ResultSet rs = stmt.executeQuery()) {
-            
+
             while (rs.next()) {
                 int organismId = rs.getInt("organism_id");
                 int parentIdRaw = rs.getInt("parent_id");
                 Integer parentId = rs.wasNull() ? null : parentIdRaw;
                 long birthTick = rs.getLong("birth_tick");
-                
-                result.put(organismId, new StaticInfo(parentId, birthTick));
+                long genomeHash = rs.getLong("genome_hash");
+
+                result.put(organismId, new StaticInfo(parentId, birthTick, genomeHash));
             }
         }
-        
+
         return result;
     }
     
     /**
      * Helper record for static organism info.
      */
-    private record StaticInfo(Integer parentId, long birthTick) {}
+    private record StaticInfo(Integer parentId, long birthTick, long genomeHash) {}
     
     /**
      * Converts a Protobuf Vector to int[].

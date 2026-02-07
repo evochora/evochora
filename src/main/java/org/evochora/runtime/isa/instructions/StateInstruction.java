@@ -10,6 +10,7 @@ import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.Variant;
 import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.GenomeHasher;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 
@@ -269,6 +270,14 @@ public class StateInstruction extends Instruction {
             // Transfer ownership of molecules with matching marker to the child
             int parentMr = organism.getMr();
             simulation.getEnvironment().transferOwnership(organism.getId(), child.getId(), parentMr);
+
+            // Compute genome hash for the child based on transferred molecules
+            long genomeHash = GenomeHasher.computeGenomeHash(
+                simulation.getEnvironment(),
+                child.getId(),
+                child.getInitialPosition()
+            );
+            child.setGenomeHash(genomeHash);
         } else {
             organism.instructionFailed("FORK failed due to insufficient energy or invalid parameters.");
         }
@@ -423,6 +432,14 @@ public class StateInstruction extends Instruction {
                 // Transfer ownership of molecules with matching marker to the child
                 int parentMr = organism.getMr();
                 environment.transferOwnership(organism.getId(), child.getId(), parentMr);
+
+                // Compute genome hash for the child based on transferred molecules
+                long genomeHash = GenomeHasher.computeGenomeHash(
+                    environment,
+                    child.getId(),
+                    child.getInitialPosition()
+                );
+                child.setGenomeHash(genomeHash);
             } else {
                 organism.instructionFailed("FRKI failed due to insufficient energy or invalid parameters.");
             }
@@ -455,6 +472,14 @@ public class StateInstruction extends Instruction {
                 // Transfer ownership of molecules with matching marker to the child
                 int parentMr = organism.getMr();
                 environment.transferOwnership(organism.getId(), child.getId(), parentMr);
+
+                // Compute genome hash for the child based on transferred molecules
+                long genomeHash = GenomeHasher.computeGenomeHash(
+                    environment,
+                    child.getId(),
+                    child.getInitialPosition()
+                );
+                child.setGenomeHash(genomeHash);
             } else {
                 organism.instructionFailed("FRKS failed due to insufficient energy or invalid parameters.");
             }

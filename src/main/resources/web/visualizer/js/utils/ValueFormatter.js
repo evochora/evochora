@@ -71,4 +71,29 @@ export class ValueFormatter {
         if (dx === 0 && dy === 1) return '↓';
         return 'x';
     }
+
+    /**
+     * Formats a genome hash (64-bit long) as a 6-character Base62 string.
+     * Base62 uses 0-9, a-z, A-Z for compact, readable representation.
+     *
+     * @param {number|bigint|string} hash - The genome hash value (can be number, bigint, or string)
+     * @returns {string} 6-character Base62 representation, or '------' if hash is null/0
+     */
+    static formatGenomeHash(hash) {
+        if (hash == null || hash === 0 || hash === '0') {
+            return '------';
+        }
+        const chars = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+        let result = '';
+        let n = BigInt(hash);
+        // Handle signed long (Java sends signed, we need unsigned interpretation)
+        if (n < 0n) {
+            n = n + (1n << 64n);
+        }
+        for (let i = 0; i < 6; i++) {
+            result = chars[Number(n % 62n)] + result;
+            n = n / 62n;
+        }
+        return result;
+    }
 }
