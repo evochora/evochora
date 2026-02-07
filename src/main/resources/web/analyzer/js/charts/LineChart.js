@@ -50,6 +50,15 @@ function formatLabel(key) {
         .map(word => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ');
 }
+
+/**
+ * Checks if all values in an array are integers.
+ * @param {Array<number>} values - Array of numbers
+ * @returns {boolean} True if all values are integers
+ */
+function allIntegers(values) {
+    return values.every(v => v == null || Number.isInteger(v));
+}
     
     /**
      * Renders a line chart.
@@ -73,12 +82,18 @@ export function render(canvas, data, config) {
         // Prepare datasets
         const datasets = [];
         let colorIndex = 0;
-        
+
+        // Collect values for integer detection
+        const yValues = [];
+        const y2Values = [];
+
         // Primary Y-axis datasets - convert BigInt to Number
         yKeys.forEach(key => {
+            const values = data.map(row => toNumber(row[key]));
+            yValues.push(...values);
             datasets.push({
                 label: formatLabel(key),
-                data: data.map(row => toNumber(row[key])),
+                data: values,
                 borderColor: getColor(colorIndex),
                 backgroundColor: getColor(colorIndex) + '20',
                 borderWidth: 2,
@@ -90,12 +105,14 @@ export function render(canvas, data, config) {
             });
             colorIndex++;
         });
-        
+
         // Secondary Y-axis datasets - convert BigInt to Number
         y2Keys.forEach(key => {
+            const values = data.map(row => toNumber(row[key]));
+            y2Values.push(...values);
             datasets.push({
                 label: formatLabel(key),
-                data: data.map(row => toNumber(row[key])),
+                data: values,
                 borderColor: getColor(colorIndex),
                 backgroundColor: getColor(colorIndex) + '20',
                 borderWidth: 2,
@@ -108,6 +125,10 @@ export function render(canvas, data, config) {
             });
             colorIndex++;
         });
+
+        // Detect if axes should use integer formatting
+        const yIsInteger = allIntegers(yValues);
+        const y2IsInteger = allIntegers(y2Values);
         
         // Chart configuration
         const chartConfig = {
@@ -178,12 +199,13 @@ export function render(canvas, data, config) {
                         },
                         ticks: {
                             color: '#888',
-                            // Only show integer ticks
                             callback: function(value) {
-                                if (Number.isInteger(value)) {
-                                    return value;
+                                if (yIsInteger) {
+                                    // Integer mode: only show whole numbers
+                                    return Number.isInteger(value) ? value : null;
                                 }
-                                return null;
+                                // Float mode: show with appropriate precision
+                                return value.toFixed(2);
                             }
                         },
                         grid: {
@@ -202,12 +224,13 @@ export function render(canvas, data, config) {
                         },
                         ticks: {
                             color: '#888',
-                            // Only show integer ticks
                             callback: function(value) {
-                                if (Number.isInteger(value)) {
-                                    return value;
+                                if (y2IsInteger) {
+                                    // Integer mode: only show whole numbers
+                                    return Number.isInteger(value) ? value : null;
                                 }
-                                return null;
+                                // Float mode: show with appropriate precision
+                                return value.toFixed(2);
                             }
                         },
                         grid: {
