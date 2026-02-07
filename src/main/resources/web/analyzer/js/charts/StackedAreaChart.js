@@ -32,13 +32,6 @@ function formatLabel(key) {
 }
 
 /**
- * Checks if all values in an array are integers.
- */
-function allIntegers(values) {
-    return values.every(v => v == null || Number.isInteger(v));
-}
-
-/**
  * Creates a legend click handler that adjusts Y-axis max.
  * When all categories visible: max = 100
  * When some hidden: max = undefined (auto-scale)
@@ -62,11 +55,11 @@ function createLegendClickHandler() {
         });
         
         // Adjust Y-axis max
-        if (visibleCount === chart._totalDatasets) {
-            // All visible: fix at 100%
+        if (visibleCount === chart._totalDatasets && !chart._hasExternalBase) {
+            // All visible and no external percentBase: fix at 100%
             chart.options.scales.y.max = 100;
         } else {
-            // Some hidden: auto-scale
+            // Some hidden or external percentBase: auto-scale
             chart.options.scales.y.max = undefined;
         }
         
@@ -117,6 +110,58 @@ function pivotData(data, xKey, groupKey, valueKey) {
     return { pivoted, groups };
 }
 
+/**
+ * Expands JSON column data into wide format for stacked chart.
+ *
+ * Input: [{tick: 1, genome_data: '{"a3Bf2k":42,"other":5}'}, ...]
+ * Output: [{tick: 1, a3Bf2k: 42, other: 5}, ...]
+ *
+ * Groups are collected across all rows so that every row has every group key (defaulting to 0).
+ *
+ * @param {Array<Object>} data - Data with JSON-encoded column
+ * @param {string} xKey - X-axis column (e.g., 'tick')
+ * @param {string} jsonKey - Column containing JSON map (e.g., 'genome_data')
+ * @returns {{expanded: Array<Object>, groups: string[]}} Expanded data and group labels
+ */
+function expandJsonColumn(data, xKey, jsonKey) {
+    // First pass: parse JSON and collect all group keys
+    const groupSet = new Set();
+    const parsed = data.map(row => {
+        const x = toNumber(row[xKey]);
+        const jsonStr = row[jsonKey];
+        let map = {};
+        if (jsonStr && typeof jsonStr === 'string') {
+            try {
+                map = JSON.parse(jsonStr);
+            } catch (e) {
+                // Skip malformed JSON
+            }
+        }
+        for (const key of Object.keys(map)) {
+            groupSet.add(key);
+        }
+        return { x, map };
+    });
+
+    // Sort "other" to end, rest alphabetically
+    const groups = [...groupSet].sort((a, b) => {
+        if (a === 'other') return 1;
+        if (b === 'other') return -1;
+        return a.localeCompare(b);
+    });
+
+    // Second pass: build wide-format rows with all groups present
+    const expanded = parsed.map(({ x, map }) => {
+        const row = { [xKey]: x };
+        for (const group of groups) {
+            row[group] = map[group] || 0;
+        }
+        return row;
+    });
+
+    return { expanded, groups };
+}
+
     /**
      * Renders a stacked area chart.
      *
@@ -137,8 +182,14 @@ export function render(canvas, data, config) {
 
         let labels, yKeys, chartData;
 
-        // Check for groupBy mode (long-format data)
-        if (config.groupBy) {
+        // Check for jsonColumn mode (JSON-encoded map per row)
+        if (config.jsonColumn) {
+            const { expanded, groups } = expandJsonColumn(data, xKey, config.jsonColumn);
+            chartData = expanded;
+            yKeys = groups;
+            labels = expanded.map(row => toNumber(row[xKey]));
+        } else if (config.groupBy) {
+            // Long-format data with groupBy pivoting
             const valueKey = config.y || 'count';
             const { pivoted, groups } = pivotData(data, xKey, config.groupBy, valueKey);
             chartData = pivoted;
@@ -151,19 +202,18 @@ export function render(canvas, data, config) {
             labels = data.map(row => toNumber(row[xKey]));
         }
 
-        // Calculate percentages based on ALL categories (not just visible ones)
-        // Also collect all values for integer detection
-        const allValues = [];
+        // percentBase: columns for percentage denominator (may include non-plotted columns like empty_cells)
+        const percentBaseKeys = isPercentage ? (config.percentBase || yKeys) : yKeys;
+        const hasExternalBase = isPercentage && config.percentBase && config.percentBase.length > yKeys.length;
         const datasets = yKeys.map((key, index) => {
             const values = chartData.map(row => {
                 const val = toNumber(row[key]) || 0;
                 if (isPercentage) {
-                    const sum = yKeys.reduce((acc, k) => acc + (toNumber(row[k]) || 0), 0);
+                    const sum = percentBaseKeys.reduce((acc, k) => acc + (toNumber(row[k]) || 0), 0);
                     return sum === 0 ? 0 : (val / sum) * 100;
                 }
                 return val;
             });
-            allValues.push(...values);
             return {
                 label: config.groupBy ? key : formatLabel(key), // Use raw label for groupBy mode
                 data: values,
@@ -177,9 +227,9 @@ export function render(canvas, data, config) {
             };
         });
 
-        // Detect if Y-axis should use integer formatting
-        const yIsInteger = !isPercentage && allIntegers(allValues);
-        
+        // Y-axis format hint from plugin manifest: "integer" or "decimal"
+        const yFormat = config.yFormat || null;
+
         const chartConfig = {
             type: 'line',
             data: {
@@ -220,11 +270,12 @@ export function render(canvas, data, config) {
                                     label += ': ';
                                 }
                                 if (context.parsed.y !== null) {
-                                    if (yIsInteger) {
+                                    if (isPercentage) {
+                                        label += context.parsed.y.toFixed(1) + '%';
+                                    } else if (yFormat === 'integer') {
                                         label += Math.round(context.parsed.y);
                                     } else {
                                         label += context.parsed.y.toFixed(2);
-                                        if (isPercentage) label += '%';
                                     }
                                 }
                                 return label;
@@ -248,23 +299,21 @@ export function render(canvas, data, config) {
                     y: {
                         stacked: true,
                         min: 0, // Always start at 0
-                        max: isPercentage ? 100 : undefined,
+                        max: (isPercentage && !hasExternalBase) ? 100 : undefined,
                         title: { display: false },
                         ticks: {
                             color: '#888',
-                            callback: function(value) {
-                                if (yIsInteger) {
-                                    // Integer mode: only show whole numbers
-                                    return Number.isInteger(value) ? value : null;
-                                }
-                                // Percentage or float mode
-                                if (isPercentage) {
+                            ...(isPercentage ? {
+                                callback: function(value) {
                                     const max = this.max || 100;
                                     const decimals = max < 10 ? 1 : 0;
                                     return value.toFixed(decimals) + '%';
                                 }
-                                return value.toFixed(1);
-                            }
+                            } : yFormat === 'integer' ? {
+                                callback: function(value) {
+                                    return Number.isInteger(value) ? value : null;
+                                }
+                            } : {})
                         },
                         grid: { color: '#333', drawBorder: false }
                     }
@@ -279,6 +328,7 @@ export function render(canvas, data, config) {
         
         // Store metadata
         chart._isPercentage = isPercentage;
+        chart._hasExternalBase = hasExternalBase;
         chart._totalDatasets = datasets.length;
         
         return chart;
@@ -290,8 +340,30 @@ export function update(chart, data, config) {
 
         let yKeys, chartData;
 
-        // Check for groupBy mode
-        if (config.groupBy) {
+        // Check for jsonColumn mode
+        if (config.jsonColumn) {
+            const { expanded, groups } = expandJsonColumn(data, xKey, config.jsonColumn);
+            chartData = expanded;
+            yKeys = groups;
+            chart.data.labels = expanded.map(row => toNumber(row[xKey]));
+
+            // Rebuild datasets if groups changed
+            if (chart.data.datasets.length !== groups.length) {
+                chart.data.datasets = groups.map((key, index) => ({
+                    label: key,
+                    data: [],
+                    borderColor: getColor(index),
+                    backgroundColor: getColor(index) + '80',
+                    borderWidth: 1,
+                    fill: index === 0 ? 'origin' : '-1',
+                    tension: 0.2,
+                    pointRadius: 0,
+                    pointHoverRadius: 5
+                }));
+                chart._totalDatasets = groups.length;
+            }
+        } else if (config.groupBy) {
+            // Long-format data with groupBy pivoting
             const valueKey = config.y || 'count';
             const { pivoted, groups } = pivotData(data, xKey, config.groupBy, valueKey);
             chartData = pivoted;
@@ -319,12 +391,13 @@ export function update(chart, data, config) {
             chart.data.labels = data.map(row => toNumber(row[xKey]));
         }
 
+        const percentBaseKeys = isPercentage ? (config.percentBase || yKeys) : yKeys;
         yKeys.forEach((key, index) => {
             if (chart.data.datasets[index]) {
                 chart.data.datasets[index].data = chartData.map(row => {
                     const val = toNumber(row[key]) || 0;
                     if (isPercentage) {
-                        const sum = yKeys.reduce((acc, k) => acc + (toNumber(row[k]) || 0), 0);
+                        const sum = percentBaseKeys.reduce((acc, k) => acc + (toNumber(row[k]) || 0), 0);
                         return sum === 0 ? 0 : (val / sum) * 100;
                     }
                     return val;

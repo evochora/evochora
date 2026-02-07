@@ -20,6 +20,20 @@ public class ManifestEntry {
     
     /** Unique metric identifier (e.g., "vital_stats", "population") */
     public String id;
+
+    /**
+     * Storage metric identifier for resolving Parquet file paths.
+     * <p>
+     * When a single plugin produces multiple manifest entries (e.g., a merged genome plugin
+     * producing both a diversity chart and a population chart), all entries share the same
+     * underlying Parquet data stored under the plugin's {@code metricId}.
+     * <p>
+     * The controller uses this field to locate Parquet files: {@code {storageMetricId}/{lod}/...}
+     * <p>
+     * If {@code null}, the controller falls back to using {@link #id} as the storage prefix
+     * (the common case where one plugin = one metric = one manifest entry).
+     */
+    public String storageMetricId;
     
     /** Human-readable name (e.g., "Birth & Death Rates") */
     public String name;

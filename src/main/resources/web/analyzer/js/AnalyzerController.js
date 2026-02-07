@@ -22,8 +22,10 @@ import * as MetricCardView from './ui/MetricCardView.js';
         'vital_stats',          // 2. Birth & Death Rates
         'generation_depth',     // 3. Generation Depth
         'age_distribution',     // 4. Age Distribution
-        'instruction_usage',    // 5. Instruction Usage
-        'environment_composition' // 6. Environment Composition
+        'genome_population',    // 5. Genome Population
+        'genome_diversity',     // 6. Genome Diversity
+        'instruction_usage',    // 7. Instruction Usage
+        'environment_composition' // 8. Environment Composition
     ];
     
     // State

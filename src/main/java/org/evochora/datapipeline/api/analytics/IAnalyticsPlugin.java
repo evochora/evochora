@@ -124,6 +124,22 @@ public interface IAnalyticsPlugin extends IMemoryEstimatable {
      * @return The manifest entry, or null if plugin produces no visible metric
      */
     ManifestEntry getManifestEntry();
+
+    /**
+     * Returns all manifest entries for this plugin.
+     * <p>
+     * Most plugins produce a single manifest entry. Override this method to produce
+     * multiple entries (e.g., a merged plugin that generates multiple charts from
+     * the same underlying data).
+     * <p>
+     * Default implementation wraps {@link #getManifestEntry()} into a singleton list.
+     *
+     * @return List of manifest entries (may be empty, never null)
+     */
+    default List<ManifestEntry> getManifestEntries() {
+        ManifestEntry entry = getManifestEntry();
+        return entry != null ? List.of(entry) : List.of();
+    }
     
     /**
      * Returns the unique metric identifier for this plugin.

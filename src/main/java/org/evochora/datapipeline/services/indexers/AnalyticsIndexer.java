@@ -569,20 +569,19 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
     }
     
     private void writePluginMetadata(String runId, IAnalyticsPlugin plugin) {
-        ManifestEntry entry = plugin.getManifestEntry();
-        if (entry == null) return;
-        
-        try {
-            String json = gson.toJson(entry);
-            analyticsOutput.writeAnalyticsBlob(
-                runId, 
-                entry.id, 
-                null, 
-                "metadata.json", 
-                json.getBytes(StandardCharsets.UTF_8)
-            );
-        } catch (Exception e) {
-            log.warn("Failed to write metadata for plugin {}: {}", plugin.getMetricId(), e.getMessage());
+        for (ManifestEntry entry : plugin.getManifestEntries()) {
+            try {
+                String json = gson.toJson(entry);
+                analyticsOutput.writeAnalyticsBlob(
+                    runId,
+                    entry.id,
+                    null,
+                    "metadata.json",
+                    json.getBytes(StandardCharsets.UTF_8)
+                );
+            } catch (Exception e) {
+                log.warn("Failed to write metadata for plugin {}: {}", plugin.getMetricId(), e.getMessage());
+            }
         }
     }
 
