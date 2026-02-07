@@ -296,9 +296,12 @@ public class AnalyticsController implements IController {
             return;
         }
 
+        // Resolve storage metric ID (may differ from manifest entry ID for merged plugins)
+        String storageMetric = resolveStorageMetric(runId, metric);
+
         // Auto-select LOD if not specified (prefer higher LOD with fewer files)
         if (lod == null || lod.isBlank()) {
-            lod = autoSelectLod(runId, metric);
+            lod = autoSelectLod(runId, storageMetric);
             if (lod == null) {
                 ctx.status(404).result("No data found for metric: " + metric);
                 return;
@@ -307,9 +310,9 @@ public class AnalyticsController implements IController {
 
         try {
             long startTime = System.currentTimeMillis();
-            
+
             // 1. List all Parquet files for this metric/LOD
-            String prefix = metric + "/" + lod + "/";
+            String prefix = storageMetric + "/" + lod + "/";
             List<String> files = storage.listAnalyticsFiles(runId, prefix);
             List<String> parquetFiles = files.stream()
                 .filter(f -> f.endsWith(".parquet"))
@@ -547,19 +550,22 @@ public class AnalyticsController implements IController {
             return;
         }
         
+        // Resolve storage metric ID (may differ from manifest entry ID for merged plugins)
+        String storageMetric = resolveStorageMetric(runId, metric);
+
         // Auto-select LOD if not specified (prefer higher LOD with fewer files for faster loading)
         if (lod == null || lod.isBlank()) {
-            lod = autoSelectLod(runId, metric);
+            lod = autoSelectLod(runId, storageMetric);
             if (lod == null) {
                 lod = "lod0"; // Fallback
             }
         }
-        
+
         try {
             long startTime = System.currentTimeMillis();
-            
+
             // 1. List all Parquet files for this metric/LOD
-            String prefix = metric + "/" + lod + "/";
+            String prefix = storageMetric + "/" + lod + "/";
             List<String> files = storage.listAnalyticsFiles(runId, prefix);
             List<String> parquetFiles = files.stream()
                 .filter(f -> f.endsWith(".parquet"))
@@ -834,4 +840,28 @@ public class AnalyticsController implements IController {
         }
     }
 
+    /**
+     * Resolves the storage metric ID for a given manifest entry ID.
+     * <p>
+     * When a single plugin produces multiple manifest entries, they share the same
+     * underlying Parquet data stored under a common {@code storageMetricId}. This
+     * method reads the entry's {@code metadata.json} and returns the storage metric ID
+     * if set, otherwise falls back to using the entry ID directly.
+     *
+     * @param runId  The run identifier
+     * @param metric The manifest entry ID (e.g., "genome_diversity")
+     * @return The storage metric ID for locating Parquet files (e.g., "genome")
+     */
+    private String resolveStorageMetric(String runId, String metric) {
+        try (InputStream in = storage.openAnalyticsInputStream(runId, metric + "/metadata.json")) {
+            String json = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+            ManifestEntry entry = gson.fromJson(json, ManifestEntry.class);
+            if (entry != null && entry.storageMetricId != null && !entry.storageMetricId.isBlank()) {
+                return entry.storageMetricId;
+            }
+        } catch (Exception e) {
+            // No metadata or parse error - use metric as-is
+        }
+        return metric;
+    }
 }

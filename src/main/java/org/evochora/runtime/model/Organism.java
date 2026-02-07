@@ -63,6 +63,7 @@ public class Organism {
     private int er;
     private int sr; // Entropy Register
     private int mr; // Molecule Marker Register
+    private long genomeHash = 0L; // Genome hash computed at birth
     private final List<Object> drs;
     private final List<Object> prs;
     private final List<Object> fprs;
@@ -222,6 +223,7 @@ public class Organism {
         this.er = b.er;
         this.sr = b.sr;
         this.mr = b.mr;
+        this.genomeHash = b.genomeHash;
 
         // Deep copy data pointers
         this.dps = new ArrayList<>(b.dps.size());
@@ -296,6 +298,7 @@ public class Organism {
         private int er = 0;
         private int sr = 0;
         private int mr = 0;
+        private long genomeHash = 0L;
         private List<int[]> dps = new ArrayList<>();
         private int activeDpIndex = 0;
         private List<Object> drs = new ArrayList<>();
@@ -354,6 +357,12 @@ public class Organism {
         /** Sets the molecule marker register value. */
         public RestoreBuilder marker(int mr) {
             this.mr = mr;
+            return this;
+        }
+
+        /** Sets the genome hash. */
+        public RestoreBuilder genomeHash(long genomeHash) {
+            this.genomeHash = genomeHash;
             return this;
         }
 
@@ -920,6 +929,17 @@ public class Organism {
      */
     public void setMr(int value) {
         this.mr = value & Config.MARKER_VALUE_MASK;
+    }
+
+    /** @return The genome hash computed at birth, or 0L if not set. */
+    public long getGenomeHash() { return genomeHash; }
+
+    /**
+     * Sets the genome hash. Called by FORK instruction and SimulationEngine after placing molecules.
+     * @param hash The computed genome hash.
+     */
+    public void setGenomeHash(long hash) {
+        this.genomeHash = hash;
     }
 
     /** @return A copy of the list of Data Registers (DRs). */

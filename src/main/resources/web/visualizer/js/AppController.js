@@ -920,7 +920,8 @@ export class AppController {
                 dataPointers: organism.dataPointers,
                 activeDpIndex: organism.activeDpIndex,
                 parentId: organism.parentId,
-                birthTick: organism.birthTick
+                birthTick: organism.birthTick,
+                genomeHash: organism.genomeHash
             };
         }).filter(Boolean);
         

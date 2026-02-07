@@ -333,6 +333,13 @@ body {
     font-weight: bold;
 }
 
+.organism-col-genome {
+    width: 55px;
+    font-family: monospace;
+    font-size: 0.85em;
+    color: #888;
+}
+
 .organism-col-er {
     width: 70px;
     color: #888;

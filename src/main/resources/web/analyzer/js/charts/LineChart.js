@@ -50,7 +50,7 @@ function formatLabel(key) {
         .map(word => word.charAt(0).toUpperCase() + word.slice(1))
         .join(' ');
 }
-    
+
     /**
      * Renders a line chart.
      * 
@@ -73,12 +73,13 @@ export function render(canvas, data, config) {
         // Prepare datasets
         const datasets = [];
         let colorIndex = 0;
-        
+
         // Primary Y-axis datasets - convert BigInt to Number
         yKeys.forEach(key => {
+            const values = data.map(row => toNumber(row[key]));
             datasets.push({
                 label: formatLabel(key),
-                data: data.map(row => toNumber(row[key])),
+                data: values,
                 borderColor: getColor(colorIndex),
                 backgroundColor: getColor(colorIndex) + '20',
                 borderWidth: 2,
@@ -90,12 +91,13 @@ export function render(canvas, data, config) {
             });
             colorIndex++;
         });
-        
+
         // Secondary Y-axis datasets - convert BigInt to Number
         y2Keys.forEach(key => {
+            const values = data.map(row => toNumber(row[key]));
             datasets.push({
                 label: formatLabel(key),
-                data: data.map(row => toNumber(row[key])),
+                data: values,
                 borderColor: getColor(colorIndex),
                 backgroundColor: getColor(colorIndex) + '20',
                 borderWidth: 2,
@@ -108,7 +110,11 @@ export function render(canvas, data, config) {
             });
             colorIndex++;
         });
-        
+
+        // Y-axis format hints from plugin manifest: "integer" or "decimal"
+        const yFormat = config.yFormat || null;
+        const y2Format = config.y2Format || null;
+
         // Chart configuration
         const chartConfig = {
             type: 'line',
@@ -147,6 +153,22 @@ export function render(canvas, data, config) {
                         callbacks: {
                             title: function(items) {
                                 return `Tick ${items[0].label}`;
+                            },
+                            label: function(context) {
+                                let label = context.dataset.label || '';
+                                if (label) label += ': ';
+                                if (context.parsed.y == null) return label;
+                                const format = context.dataset.yAxisID === 'y2' ? y2Format : yFormat;
+                                if (format === 'percent') {
+                                    label += context.parsed.y.toFixed(1) + '%';
+                                } else if (format === 'integer') {
+                                    label += Math.round(context.parsed.y);
+                                } else if (format === 'decimal') {
+                                    label += context.parsed.y.toFixed(2);
+                                } else {
+                                    label += context.parsed.y.toLocaleString();
+                                }
+                                return label;
                             }
                         }
                     }
@@ -178,13 +200,15 @@ export function render(canvas, data, config) {
                         },
                         ticks: {
                             color: '#888',
-                            // Only show integer ticks
-                            callback: function(value) {
-                                if (Number.isInteger(value)) {
-                                    return value;
+                            ...(yFormat === 'integer' ? {
+                                callback: function(value) {
+                                    return Number.isInteger(value) ? value : null;
                                 }
-                                return null;
-                            }
+                            } : yFormat === 'decimal' ? {
+                                callback: function(value) {
+                                    return value.toFixed(2);
+                                }
+                            } : {})
                         },
                         grid: {
                             color: '#333',
@@ -202,13 +226,19 @@ export function render(canvas, data, config) {
                         },
                         ticks: {
                             color: '#888',
-                            // Only show integer ticks
-                            callback: function(value) {
-                                if (Number.isInteger(value)) {
-                                    return value;
+                            ...(y2Format === 'integer' ? {
+                                callback: function(value) {
+                                    return Number.isInteger(value) ? value : null;
                                 }
-                                return null;
-                            }
+                            } : y2Format === 'decimal' ? {
+                                callback: function(value) {
+                                    return value.toFixed(2);
+                                }
+                            } : y2Format === 'percent' ? {
+                                callback: function(value) {
+                                    return Number.isInteger(value) ? value + '%' : null;
+                                }
+                            } : {})
                         },
                         grid: {
                             drawOnChartArea: false

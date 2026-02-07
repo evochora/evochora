@@ -55,6 +55,7 @@ import org.evochora.runtime.spi.ISimulationPlugin;
 import org.evochora.runtime.spi.ITickPlugin;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
+import org.evochora.runtime.model.GenomeHasher;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Organism.ProcFrame;
 import org.evochora.runtime.spi.IRandomProvider;
@@ -389,6 +390,14 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             organism.setProgramId(info.programId());
             simulation.addOrganism(organism);
             placeOrganismCodeAndObjects(simulation, organism, info.artifact(), startPosition);
+
+            // Compute genome hash for initial organism after code placement
+            long genomeHash = GenomeHasher.computeGenomeHash(
+                simulation.getEnvironment(),
+                organism.getId(),
+                organism.getInitialPosition()
+            );
+            organism.setGenomeHash(genomeHash);
         }
 
         // Generate run ID
@@ -697,6 +706,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         // Special registers
         organismStateBuilder.setEntropyRegister(o.getSr());
         organismStateBuilder.setMoleculeMarkerRegister(o.getMr());
+        organismStateBuilder.setGenomeHash(o.getGenomeHash());
 
         return organismStateBuilder.build();
     }

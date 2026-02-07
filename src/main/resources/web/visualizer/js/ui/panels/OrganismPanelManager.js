@@ -165,7 +165,7 @@ export class OrganismPanelManager {
 
     /**
      * Checks if an organism matches the current filter.
-     * Matches: exact ID, or any value containing the filter number (ER, IP coords, DP coords).
+     * Matches: ID, genome hash (partial), or numeric values (ER, IP coords, DP coords).
      * @param {object} org - Organism data
      * @returns {boolean} True if organism matches filter
      * @private
@@ -173,31 +173,37 @@ export class OrganismPanelManager {
     matchesFilter(org) {
         if (!this.filterText) return true;
 
-        const filter = this.filterText.trim();
+        const filter = this.filterText.trim().toLowerCase();
         if (!filter) return true;
 
         // Exact ID match
-        if (org.id === filter) return true;
+        if (org.id === filter || org.id === this.filterText.trim()) return true;
+
+        // Genome hash match (partial, case-insensitive)
+        if (org.genomeHash) {
+            const genomeLabel = ValueFormatter.formatGenomeHash(org.genomeHash).toLowerCase();
+            if (genomeLabel.includes(filter)) return true;
+        }
 
         // Try to parse as number for value matching
         const filterNum = parseInt(filter, 10);
-        if (isNaN(filterNum)) return false;
+        if (!isNaN(filterNum)) {
+            // Match ER (energy)
+            if (org.energy === filterNum) return true;
 
-        // Match ER (energy)
-        if (org.energy === filterNum) return true;
+            // Match entropy register
+            if (org.entropyRegister === filterNum) return true;
 
-        // Match entropy register
-        if (org.entropyRegister === filterNum) return true;
+            // Match IP coordinates
+            if (org.ip && Array.isArray(org.ip)) {
+                if (org.ip.includes(filterNum)) return true;
+            }
 
-        // Match IP coordinates
-        if (org.ip && Array.isArray(org.ip)) {
-            if (org.ip.includes(filterNum)) return true;
-        }
-
-        // Match DP coordinates
-        if (org.dataPointers && Array.isArray(org.dataPointers)) {
-            for (const dp of org.dataPointers) {
-                if (dp && Array.isArray(dp) && dp.includes(filterNum)) return true;
+            // Match DP coordinates
+            if (org.dataPointers && Array.isArray(org.dataPointers)) {
+                for (const dp of org.dataPointers) {
+                    if (dp && Array.isArray(dp) && dp.includes(filterNum)) return true;
+                }
             }
         }
 
@@ -324,10 +330,13 @@ export class OrganismPanelManager {
         const deselectBtn = showDeselect ? 
             `<span class="organism-col organism-col-deselect"><button class="organism-deselect" title="Deselect">✕</button></span>` : '';
         
+        const genomeDisplay = ValueFormatter.formatGenomeHash(org.genomeHash);
+
         return `
-            <div class="organism-list-item ${isSelected ? 'selected' : ''}" 
+            <div class="organism-list-item ${isSelected ? 'selected' : ''}"
                  data-organism-id="${org.id}">
                 <span class="organism-col organism-col-id" style="color: ${org.color}">#${org.id}</span>
+                <span class="organism-col organism-col-genome">${genomeDisplay}</span>
                 <span class="organism-col organism-col-er">ER:${org.energy}</span>
                 <span class="organism-col organism-col-sr">SR:${srDisplay}</span>
                 <span class="organism-col organism-col-ip"><span class="organism-label">IP:</span>${ipDisplay}</span>

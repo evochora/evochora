@@ -221,8 +221,9 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
         entry.visualization.type = "stacked-area-chart";
         entry.visualization.config = new HashMap<>();
         entry.visualization.config.put("x", "tick");
-        entry.visualization.config.put("y", List.of("code_cells", "data_cells", "energy_cells", "structure_cells", "label_cells", "labelref_cells", "register_cells", "unknown_cells", "empty_cells"));
+        entry.visualization.config.put("y", List.of("code_cells", "data_cells", "energy_cells", "structure_cells", "label_cells", "labelref_cells", "register_cells", "unknown_cells"));
         entry.visualization.config.put("yAxisMode", "percent");
+        entry.visualization.config.put("percentBase", List.of("code_cells", "data_cells", "energy_cells", "structure_cells", "label_cells", "labelref_cells", "register_cells", "unknown_cells", "empty_cells"));
 
         return entry;
     }
