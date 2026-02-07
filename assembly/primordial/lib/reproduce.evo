@@ -180,21 +180,26 @@ CONTINUE_STATE: EXPORT
 
   # ===========================================================================
   # READ LINE - Read molecules from source and push to stack
+  # Only own molecules are copied; foreign/unowned are removed and replaced with CODE:0
   # ===========================================================================
   .ORG 0|20
-  # Loop: PEEK non-passable, test for shell, push molecule to DS, move forward
   CONTINUE_READLINE: NOP^4
     SCAN %TMP %DIRVEC; NOP^4                  # Scan cell ahead
-    IFR %TMP %SHELL; NOP^4                    # Is it our shell?
-      JMPI CONTINUE_WRITESTART                # ...start writing phase
-    INPR %DIRVEC;                             # If molecule not passable...
-      PEEK %TMP %DIRVEC; NOP^4                # ...consume it
-    PUSH %TMP; NOP^4                          # Push molecule to data stack
+    IFR %TMP %SHELL                           # Is it our shell?
+      JMPI CONTINUE_WRITESTART; NOP^4         # ...start writing phase
+    IFMR %DIRVEC                              # Is cell owned by us?
+      JMPI CONTINUE_READLINE_PUSH; NOP^4      # ...yes, copy the molecule
+    # Not our cell (unowned or foreign) - remove and replace with empty
+    INPR %DIRVEC                              # If not passable...
+      PEEK %TMP %DIRVEC; NOP^4                # ...remove it
+    SETI %TMP CODE:0; NOP^4                   # Replace with CODE:0
+  CONTINUE_READLINE_PUSH:
+    PUSH %TMP; NOP^4                          # Push molecule (own) or CODE:0 (foreign/unowned)
   CONTINUE_READLINE_SEEK:
-    SEEK %DIRVEC; NOP^4                       # Move forward
+    SEEK %DIRVEC                              # Move forward
     INER                                      # If SEEK succeeded...
       JMPI CONTINUE_READLINE; NOP^4           # ...continue reading
-    # SEEK failed - remove obstacle (foreign or unowned) and retry
+    # SEEK failed - remove obstacle and retry (don't copy, just clear path)
     PEEK %TMP %DIRVEC; NOP^4                  # Remove blocking molecule
     JMPI CONTINUE_READLINE_SEEK; NOP^4; JMPI CONTINUE_READLINE_SEEK
 

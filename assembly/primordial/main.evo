@@ -19,10 +19,10 @@
 # ----------------------------
 # STRUCTURE Shell (102x87)
 # ----------------------------
-.PLACE STRUCTURE:100 -1..100|-1      # Bottom edge
-.PLACE STRUCTURE:100 -1..100|85      # Top edge
+.PLACE STRUCTURE:100 -1..110|-1      # Bottom edge
+.PLACE STRUCTURE:100 -1..110|85      # Top edge
 .PLACE STRUCTURE:100 -1|0..84        # Left edge
-.PLACE STRUCTURE:100 100|0..84       # Right edge
+.PLACE STRUCTURE:100 110|0..84       # Right edge
 
 # ===========================================================================
 # INITIALIZATION

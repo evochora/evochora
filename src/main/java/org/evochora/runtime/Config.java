@@ -54,7 +54,7 @@ public final class Config {
     /**
      * The maximum depth of the data stack.
      */
-    public static final int DS_MAX_DEPTH = 128;
+    public static final int DS_MAX_DEPTH = 1024;
 
     /**
      * The maximum depth of the call stack, preventing infinite recursion.
@@ -79,7 +79,7 @@ public final class Config {
     /**
      * The maximum depth of the location stack.
      */
-    public static final int LOCATION_STACK_MAX_DEPTH = 64;
+    public static final int LOCATION_STACK_MAX_DEPTH = 128;
 
 
     /**
