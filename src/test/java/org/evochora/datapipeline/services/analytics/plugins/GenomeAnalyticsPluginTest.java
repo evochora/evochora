@@ -160,7 +160,8 @@ class GenomeAnalyticsPluginTest {
 
     @Test
     void testExtractRows_OrganismsWithoutGenomeHash_Ignored() {
-        TickData.Builder builder = TickData.newBuilder().setTickNumber(100);
+        TickData.Builder builder = TickData.newBuilder().setTickNumber(100)
+            .setTotalUniqueGenomes(1);
         builder.addOrganisms(OrganismState.newBuilder().setOrganismId(1).setGenomeHash(0L).build());
         builder.addOrganisms(OrganismState.newBuilder().setOrganismId(2).setGenomeHash(111L).build());
 
@@ -178,20 +179,23 @@ class GenomeAnalyticsPluginTest {
     }
 
     @Test
-    void testExtractRows_TotalGenomes_CumulativeAcrossTicks() {
-        // First tick: genomes A and B
-        TickData tick1 = createTickWithGenomes(100, 111L, 222L);
-        plugin.extractRows(tick1);
+    void testExtractRows_TotalGenomes_ReadsFromTickData() {
+        // totalUniqueGenomes is now provided by the pipeline (tracked in Simulation),
+        // not computed cumulatively by the plugin.
+        TickData tick = TickData.newBuilder()
+            .setTickNumber(100)
+            .setTotalUniqueGenomes(5)
+            .addOrganisms(OrganismState.newBuilder().setOrganismId(1).setGenomeHash(111L).build())
+            .addOrganisms(OrganismState.newBuilder().setOrganismId(2).setGenomeHash(222L).build())
+            .build();
 
-        // Second tick: genomes B and C (A is gone, C is new)
-        TickData tick2 = createTickWithGenomes(200, 222L, 333L);
-        List<Object[]> rows = plugin.extractRows(tick2);
+        List<Object[]> rows = plugin.extractRows(tick);
 
         assertThat(rows).hasSize(1);
         Object[] row = rows.get(0);
 
-        assertThat(row[2]).isEqualTo(3); // total_genomes: A, B, C (cumulative)
-        assertThat(row[3]).isEqualTo(2); // active_genomes: B, C (current tick)
+        assertThat(row[2]).isEqualTo(5); // total_genomes: reads from TickData field
+        assertThat(row[3]).isEqualTo(2); // active_genomes: computed from organisms in tick
     }
 
     // ========================================================================
@@ -364,13 +368,19 @@ class GenomeAnalyticsPluginTest {
         TickData.Builder builder = TickData.newBuilder()
             .setTickNumber(tickNum);
 
+        java.util.Set<Long> uniqueHashes = new java.util.HashSet<>();
         int id = 1;
         for (Long hash : genomeHashes) {
             builder.addOrganisms(OrganismState.newBuilder()
                 .setOrganismId(id++)
                 .setGenomeHash(hash)
                 .build());
+            if (hash != 0L) {
+                uniqueHashes.add(hash);
+            }
         }
+
+        builder.setTotalUniqueGenomes(uniqueHashes.size());
         return builder.build();
     }
 }

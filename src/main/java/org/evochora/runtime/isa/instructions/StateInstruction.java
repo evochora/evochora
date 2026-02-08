@@ -278,6 +278,7 @@ public class StateInstruction extends Instruction {
                 child.getInitialPosition()
             );
             child.setGenomeHash(genomeHash);
+            simulation.registerGenomeHash(genomeHash);
         } else {
             organism.instructionFailed("FORK failed due to insufficient energy or invalid parameters.");
         }
@@ -440,6 +441,7 @@ public class StateInstruction extends Instruction {
                     child.getInitialPosition()
                 );
                 child.setGenomeHash(genomeHash);
+                simulation.registerGenomeHash(genomeHash);
             } else {
                 organism.instructionFailed("FRKI failed due to insufficient energy or invalid parameters.");
             }
@@ -480,6 +482,7 @@ public class StateInstruction extends Instruction {
                     child.getInitialPosition()
                 );
                 child.setGenomeHash(genomeHash);
+                simulation.registerGenomeHash(genomeHash);
             } else {
                 organism.instructionFailed("FRKS failed due to insufficient energy or invalid parameters.");
             }

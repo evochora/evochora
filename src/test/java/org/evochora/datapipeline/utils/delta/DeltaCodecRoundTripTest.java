@@ -16,6 +16,8 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Optional;
 
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -180,11 +182,13 @@ class DeltaCodecRoundTripTest {
                 0, env,
                 List.of(OrganismState.newBuilder().setOrganismId(1).setEnergy(100).build()),
                 1,
+                0L,
+                new LongOpenHashSet(),
                 ByteString.copyFromUtf8("rng-0"),
                 List.of());
         env.resetChangeTracking();
         assertFalse(chunk0.isPresent());
-        
+
         // Tick 1: 2 organisms (completes chunk)
         env.setMolecule(Molecule.fromInt(11), new int[]{1, 0});
         Optional<TickDataChunk> chunk = encoder.captureTick(
@@ -194,6 +198,8 @@ class DeltaCodecRoundTripTest {
                         OrganismState.newBuilder().setOrganismId(2).setEnergy(50).build()
                 ),
                 2,
+                0L,
+                new LongOpenHashSet(),
                 ByteString.copyFromUtf8("rng-1"),
                 List.of());
         env.resetChangeTracking();
@@ -290,6 +296,8 @@ class DeltaCodecRoundTripTest {
                 env,
                 List.of(OrganismState.newBuilder().setOrganismId(1).setEnergy(100).build()),
                 1,
+                0L,
+                new LongOpenHashSet(),
                 ByteString.copyFromUtf8("rng-" + tick),
                 List.of(PluginState.newBuilder().setPluginClass("TestPlugin").build())
         );

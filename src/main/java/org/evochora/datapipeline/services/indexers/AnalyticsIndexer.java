@@ -433,6 +433,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
                 // Note: CellColumns is empty - plugins that need it should declare needsEnvironmentData()
                 .addAllOrganisms(delta.getOrganismsList())
                 .setTotalOrganismsCreated(delta.getTotalOrganismsCreated())
+                .setTotalUniqueGenomes(delta.getTotalUniqueGenomes())
                 .setRngState(delta.getRngState())
                 .addAllPluginStates(delta.getPluginStatesList())
                 .build();

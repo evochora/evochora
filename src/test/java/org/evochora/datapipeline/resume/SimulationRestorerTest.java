@@ -200,6 +200,78 @@ class SimulationRestorerTest {
         assertThat(simulation.getEnvironment().getOwnerId(5, 10)).isEqualTo(7);
     }
 
+    // ==================== Genome Hash Restoration ====================
+
+    @Test
+    void restore_GenomeHashes_RestoredFromSnapshot() {
+        SimulationMetadata metadata = createMinimalMetadata();
+
+        TickData snapshot = TickData.newBuilder()
+            .setSimulationRunId(TEST_RUN_ID)
+            .setTickNumber(1000)
+            .setCaptureTimeMs(System.currentTimeMillis())
+            .setTotalOrganismsCreated(100)
+            .setTotalUniqueGenomes(3)
+            .addAllGenomeHashesEverSeen(111L)
+            .addAllGenomeHashesEverSeen(222L)
+            .addAllGenomeHashesEverSeen(333L)
+            .setCellColumns(CellDataColumns.newBuilder().build())
+            .addOrganisms(createOrganismState(1, 500))
+            .build();
+
+        ResumeCheckpoint checkpoint = new ResumeCheckpoint(metadata, snapshot);
+        SimulationRestorer.RestoredState state = SimulationRestorer.restore(checkpoint, randomProvider);
+        Simulation simulation = state.simulation();
+
+        assertThat(simulation.getTotalUniqueGenomesCount()).isEqualTo(3);
+        assertThat(simulation.getAllGenomesEverSeen()).containsExactlyInAnyOrder(111L, 222L, 333L);
+    }
+
+    @Test
+    void restore_OldSimulation_FallsBackToLivingOrganisms() {
+        SimulationMetadata metadata = createMinimalMetadata();
+
+        // Old simulation without genome hash fields (defaults to empty list)
+        OrganismState org1 = OrganismState.newBuilder()
+            .setOrganismId(1)
+            .setBirthTick(0)
+            .setEnergy(500)
+            .setGenomeHash(111L)
+            .setIp(createVector(10, 10))
+            .setDv(createVector(1, 0))
+            .setIsDead(false)
+            .build();
+
+        OrganismState org2 = OrganismState.newBuilder()
+            .setOrganismId(2)
+            .setBirthTick(0)
+            .setEnergy(300)
+            .setGenomeHash(222L)
+            .setIp(createVector(20, 20))
+            .setDv(createVector(0, 1))
+            .setIsDead(false)
+            .build();
+
+        TickData snapshot = TickData.newBuilder()
+            .setSimulationRunId(TEST_RUN_ID)
+            .setTickNumber(1000)
+            .setCaptureTimeMs(System.currentTimeMillis())
+            .setTotalOrganismsCreated(50)
+            // No genome hash fields set (old simulation format)
+            .setCellColumns(CellDataColumns.newBuilder().build())
+            .addOrganisms(org1)
+            .addOrganisms(org2)
+            .build();
+
+        ResumeCheckpoint checkpoint = new ResumeCheckpoint(metadata, snapshot);
+        SimulationRestorer.RestoredState state = SimulationRestorer.restore(checkpoint, randomProvider);
+        Simulation simulation = state.simulation();
+
+        // Fallback: reconstructed from living organisms
+        assertThat(simulation.getTotalUniqueGenomesCount()).isEqualTo(2);
+        assertThat(simulation.getAllGenomesEverSeen()).containsExactlyInAnyOrder(111L, 222L);
+    }
+
     // ==================== Helper Methods ====================
 
     private SimulationMetadata createMinimalMetadata() {

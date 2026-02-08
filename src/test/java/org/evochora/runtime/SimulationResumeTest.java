@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.Map;
 
 import org.evochora.runtime.isa.Instruction;
+
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
@@ -16,7 +18,7 @@ import org.junit.jupiter.api.Test;
 import com.typesafe.config.ConfigFactory;
 
 /**
- * Unit tests for {@link Simulation#forResume(Environment, long, long, ThermodynamicPolicyManager, com.typesafe.config.Config)}.
+ * Unit tests for {@link Simulation#forResume(Environment, long, long, LongOpenHashSet, ThermodynamicPolicyManager, com.typesafe.config.Config)}.
  * <p>
  * Tests the factory method used for resuming simulations from checkpoints.
  */
@@ -67,6 +69,7 @@ class SimulationResumeTest {
             environment,
             5000L,      // currentTick
             100L,       // totalOrganismsCreated
+            new LongOpenHashSet(),
             policyManager,
             organismConfig
         );
@@ -81,6 +84,7 @@ class SimulationResumeTest {
             environment,
             1000L,
             50L,        // totalOrganismsCreated
+            new LongOpenHashSet(),
             policyManager,
             organismConfig
         );
@@ -101,6 +105,7 @@ class SimulationResumeTest {
             environment,
             0L,
             0L,
+            new LongOpenHashSet(),
             policyManager,
             organismConfig
         );
@@ -115,6 +120,7 @@ class SimulationResumeTest {
             environment,
             0L,
             0L,
+            new LongOpenHashSet(),
             policyManager,
             organismConfig
         );
@@ -129,6 +135,7 @@ class SimulationResumeTest {
             environment,
             0L,
             0L,
+            new LongOpenHashSet(),
             policyManager,
             organismConfig
         );
@@ -143,6 +150,7 @@ class SimulationResumeTest {
             environment,
             1000L,
             50L,
+            new LongOpenHashSet(),
             policyManager,
             organismConfig
         );
@@ -157,6 +165,7 @@ class SimulationResumeTest {
             environment,
             1000L,
             50L,
+            new LongOpenHashSet(),
             policyManager,
             organismConfig
         );
@@ -173,6 +182,7 @@ class SimulationResumeTest {
             environment,
             1000L,
             50L,
+            new LongOpenHashSet(),
             policyManager,
             organismConfig
         );
@@ -197,6 +207,7 @@ class SimulationResumeTest {
             environment,
             1000L,
             50L,  // 50 organisms were created in original run
+            new LongOpenHashSet(),
             policyManager,
             organismConfig
         );
@@ -215,6 +226,7 @@ class SimulationResumeTest {
             environment,
             1000L,
             100L,
+            new LongOpenHashSet(),
             policyManager,
             organismConfig
         );
@@ -236,6 +248,7 @@ class SimulationResumeTest {
             environment,
             0L,
             0L,  // No organisms created yet
+            new LongOpenHashSet(),
             policyManager,
             organismConfig
         );
@@ -252,11 +265,48 @@ class SimulationResumeTest {
             environment,
             1_000_000_000L,  // 1 billion ticks
             1_000_000L,      // 1 million organisms
+            new LongOpenHashSet(),
             policyManager,
             organismConfig
         );
 
         assertThat(sim.getCurrentTick()).isEqualTo(1_000_000_000L);
         assertThat(sim.getTotalOrganismsCreatedCount()).isEqualTo(1_000_000);
+    }
+
+    @Test
+    @Tag("unit")
+    void testForResume_RestoresGenomeHashes() {
+        LongOpenHashSet genomeHashes = new LongOpenHashSet();
+        genomeHashes.add(111L);
+        genomeHashes.add(222L);
+        genomeHashes.add(333L);
+
+        Simulation sim = Simulation.forResume(
+            environment,
+            1000L,
+            50L,
+            genomeHashes,
+            policyManager,
+            organismConfig
+        );
+
+        assertThat(sim.getTotalUniqueGenomesCount()).isEqualTo(3);
+        assertThat(sim.getAllGenomesEverSeen()).containsExactlyInAnyOrder(111L, 222L, 333L);
+    }
+
+    @Test
+    @Tag("unit")
+    void testForResume_NullGenomeHashes_StartsEmpty() {
+        Simulation sim = Simulation.forResume(
+            environment,
+            1000L,
+            50L,
+            null,
+            policyManager,
+            organismConfig
+        );
+
+        assertThat(sim.getTotalUniqueGenomesCount()).isEqualTo(0);
     }
 }

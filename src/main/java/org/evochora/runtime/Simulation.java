@@ -25,6 +25,8 @@ import org.slf4j.LoggerFactory;
 
 import com.typesafe.config.Config;
 
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+
 /**
  * Manages the core simulation loop, including organism lifecycle, instruction execution,
  * and environment interaction. It orchestrates the simulation tick by tick, handling
@@ -49,6 +51,7 @@ public class Simulation {
     private final InterceptionContext interceptContext = new InterceptionContext();  // Reusable, zero allocation
     private final DeathContext deathContext = new DeathContext();  // Reusable, zero allocation
     private int nextOrganismId = 1;
+    private final LongOpenHashSet allGenomesEverSeen = new LongOpenHashSet();
     private IRandomProvider randomProvider;
 
     private Map<String, ProgramArtifact> programArtifacts = new HashMap<>();
@@ -96,6 +99,8 @@ public class Simulation {
      * @param currentTick The tick number to resume from
      * @param totalOrganismsCreated Total number of organisms created in the original run
      *                              (used to calculate next organism ID)
+     * @param allGenomesEverSeen Set of all genome hashes ever observed (for cumulative tracking).
+     *                           May be {@code null} or empty for new simulations or old checkpoints.
      * @param policyManager Thermodynamic policy manager (from Metadata config)
      * @param organismConfig Organism configuration (from Metadata config)
      * @return Simulation ready for organism addition and resumption
@@ -104,12 +109,16 @@ public class Simulation {
             Environment environment,
             long currentTick,
             long totalOrganismsCreated,
+            LongOpenHashSet allGenomesEverSeen,
             ThermodynamicPolicyManager policyManager,
             Config organismConfig) {
 
         Simulation sim = new Simulation(environment, policyManager, organismConfig);
         sim.currentTick = currentTick;
         sim.nextOrganismId = (int) totalOrganismsCreated + 1;
+        if (allGenomesEverSeen != null && !allGenomesEverSeen.isEmpty()) {
+            sim.allGenomesEverSeen.addAll(allGenomesEverSeen);
+        }
         return sim;
     }
 
@@ -213,6 +222,39 @@ public class Simulation {
      */
     public int getTotalOrganismsCreatedCount() {
         return nextOrganismId - 1;
+    }
+
+    /**
+     * Registers a genome hash as having been observed in this simulation.
+     * Called from SimulationEngine (initial placement) and StateInstruction (FORK/FRKI/FRKS).
+     *
+     * @param hash The genome hash to register. Zero hashes are ignored.
+     */
+    public void registerGenomeHash(long hash) {
+        if (hash != 0L) {
+            allGenomesEverSeen.add(hash);
+        }
+    }
+
+    /**
+     * Returns the total count of unique genomes ever observed in this simulation.
+     *
+     * @return The count of unique genome hashes.
+     */
+    public int getTotalUniqueGenomesCount() {
+        return allGenomesEverSeen.size();
+    }
+
+    /**
+     * Returns the set of all genome hashes ever observed.
+     * Used for snapshot serialization during data pipeline capture.
+     * <p>
+     * Returns the internal set directly (no copy) since Simulation is single-threaded.
+     *
+     * @return The set of all genome hashes ever seen.
+     */
+    public LongOpenHashSet getAllGenomesEverSeen() {
+        return allGenomesEverSeen;
     }
 
     /**
