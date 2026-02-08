@@ -4,7 +4,7 @@ import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferInt;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -59,7 +59,7 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
     private static final int COLOR_REGISTER = 0x506080;
     private static final int COLOR_DEAD = 0x555555;
 
-    // Organism colors as int RGB (avoids Color.getRGB() conversion per frame)
+    // Organism palette — keep in sync with MinimapFrameRenderer and AppController.ORGANISM_PALETTE
     private static final int[] ORGANISM_PALETTE = {
         0x32cd32, 0x1e90ff, 0xdc143c, 0xffd700, 0xffa500, 0x9370db, 0x00ffff
     };
@@ -84,8 +84,8 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
     private TickData lastSnapshot;
     private TickDelta lastDelta;
 
-    // Organism color cache (maps organismId -> RGB int)
-    private final Map<Integer, Integer> organismColorMap = new HashMap<>();
+    // Genome hash → palette color (insertion-order assignment)
+    private final Map<Long, Integer> genomeHashColorMap = new LinkedHashMap<>();
 
     // Previous organism positions for cleanup during incremental rendering
     private List<OrganismPosition> previousOrganismPositions = new ArrayList<>();
@@ -269,6 +269,7 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
     }
 
     private int getCellColor(int moleculeInt) {
+        if (moleculeInt == 0) return COLOR_EMPTY;
         int moleculeType = moleculeInt & Config.TYPE_MASK;
         if (moleculeType == Config.TYPE_CODE) return COLOR_CODE;
         if (moleculeType == Config.TYPE_DATA) return COLOR_DATA;
@@ -325,7 +326,7 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
             if (org.getIsDead()) {
                 drawSquareMarker(ipX, ipY, COLOR_DEAD, ORGANISM_MARKER_SIZE);
             } else {
-                int color = getOrganismColor(org.getOrganismId());
+                int color = getGenomeHashColor(org.getGenomeHash());
 
                 for (Vector dp : org.getDataPointersList()) {
                     int dpX = dp.getComponents(0);
@@ -365,11 +366,15 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
         }
     }
 
-    private int getOrganismColor(int organismId) {
-        return organismColorMap.computeIfAbsent(organismId, id -> {
-            int idx = (id - 1) % ORGANISM_PALETTE.length;
-            return ORGANISM_PALETTE[idx < 0 ? 0 : idx];
-        });
+    /**
+     * Returns the palette color for a genome hash, assigning colors in insertion order.
+     *
+     * @param genomeHash The genome hash of the organism.
+     * @return RGB color from the organism palette.
+     */
+    private int getGenomeHashColor(long genomeHash) {
+        return ORGANISM_PALETTE[genomeHashColorMap
+                .computeIfAbsent(genomeHash, k -> genomeHashColorMap.size() % ORGANISM_PALETTE.length)];
     }
 
     // ─────────────────────────────────────────────────────────────────────────────

@@ -49,6 +49,10 @@ export class EnvironmentGrid {
         this.currentTick = 0;
         this.currentRunId = null;
         this.currentOrganisms = [];
+        this._selectedOrganismId = null;
+        this._selectionRing = new PIXI.Graphics();
+        this._selectionAnimBound = null;
+        this._selectionAnimStart = 0;
         this.cellData = new Map(); // key: "x,y" -> {type,value,ownerId,opcodeName}
         this._rawCells = null;      // Raw cells from API (for async cellData building)
         this._cellDataReady = false; // Flag: true when cellData map is fully built
@@ -118,6 +122,7 @@ export class EnvironmentGrid {
         this.container.appendChild(canvas);
 
         this.app.stage.addChild(this.gridBackground, this.cellContainer, this.textContainer, this.organismContainer);
+        this.organismContainer.addChild(this._selectionRing);
 
         this.detailedRenderer.init();
         this.zoomedOutRenderer.init();
@@ -713,6 +718,73 @@ export class EnvironmentGrid {
     }
 
     /**
+     * Sets or clears the selected organism, starting/stopping the pulse ring animation.
+     * @param {string|null} organismId - The selected organism ID, or null to deselect
+     */
+    setSelectedOrganism(organismId) {
+        this._selectedOrganismId = organismId;
+
+        if (organismId) {
+            if (!this._selectionAnimBound) {
+                this._selectionAnimStart = performance.now();
+                this._selectionAnimBound = this._animateSelectionRing.bind(this);
+                this.app.ticker.add(this._selectionAnimBound);
+            } else {
+                this._selectionAnimStart = performance.now();
+            }
+        } else {
+            if (this._selectionAnimBound) {
+                this.app.ticker.remove(this._selectionAnimBound);
+                this._selectionAnimBound = null;
+            }
+            this._selectionRing.clear();
+        }
+    }
+
+    /**
+     * PIXI ticker callback that draws pulsing selection rings at the selected organism's
+     * IP and DP positions. The ring expands from small to large radius while fading out.
+     * @private
+     */
+    _animateSelectionRing() {
+        this._selectionRing.clear();
+
+        if (!this._selectedOrganismId || !this.currentOrganisms) return;
+
+        const org = this.currentOrganisms.find(
+            o => String(o.organismId) === this._selectedOrganismId
+        );
+        if (!org || !Array.isArray(org.ip)) return;
+
+        const elapsed = performance.now() - this._selectionAnimStart;
+        const phase = (elapsed % 1500) / 1500;
+
+        const scale = this.isZoomedOut ? this.zoomOutScale : this.config.cellSize;
+        const minRadius = Math.max(scale * 0.8, 6);
+        const maxRadius = Math.max(scale * 3.5, 20);
+        const radius = minRadius + (maxRadius - minRadius) * phase;
+        const alpha = 1.0 - phase;
+
+        const positions = [];
+        positions.push([(org.ip[0] + 0.5) * scale, (org.ip[1] + 0.5) * scale]);
+
+        if (org.dataPointers && Array.isArray(org.dataPointers)) {
+            for (const dp of org.dataPointers) {
+                if (Array.isArray(dp) && dp.length >= 2) {
+                    positions.push([(dp[0] + 0.5) * scale, (dp[1] + 0.5) * scale]);
+                }
+            }
+        }
+
+        for (const [px, py] of positions) {
+            this._selectionRing.lineStyle(2, 0xffffff, alpha);
+            this._selectionRing.beginFill(0xffffff, 0.12 * alpha);
+            this._selectionRing.drawCircle(px, py, radius);
+            this._selectionRing.endFill();
+        }
+    }
+
+    /**
      * Sets up event listeners for camera panning (left-mouse drag) and future clicks.
      * @private
      */
@@ -1280,11 +1352,11 @@ export class EnvironmentGrid {
     }
 
     _getOrganismColor(organismId, energy, genomeHash) {
-        if (!this._organismPalette) {
-            this._organismPalette = [
-                0x32cd32, 0x1e90ff, 0xdc143c, 0xffd700,
-                0xffa500, 0x9370db, 0x00ffff
-            ];
+        const palette = this.config.organismPalette;
+
+        // Selected organism is always white
+        if (this.controller && String(organismId) === this.controller.state.selectedOrganismId) {
+            return 0xffffff;
         }
 
         // If energy <= 0, fall back to a dimmed grayish color to indicate death
@@ -1294,11 +1366,11 @@ export class EnvironmentGrid {
 
         let idx;
         if (this.controller && this.controller.state.colorMode === 'genome') {
-            idx = this.controller._genomeHashToPaletteIndex(genomeHash, this._organismPalette.length);
+            idx = this.controller._genomeHashToPaletteIndex(genomeHash, palette.length);
         } else {
-            idx = (organismId - 1) % this._organismPalette.length;
+            idx = (organismId - 1) % palette.length;
         }
-        return this._organismPalette[idx];
+        return palette[idx];
     }
 }
 

@@ -18,6 +18,9 @@ import { TickPanelManager } from './ui/panels/TickPanelManager.js';
  * @class AppController
  */
 export class AppController {
+    /** Organism palette (hex) — keep in sync with ExactFrameRenderer and MinimapFrameRenderer. */
+    static ORGANISM_PALETTE = ['#32cd32', '#1e90ff', '#dc143c', '#ffd700', '#ffa500', '#9370db', '#00ffff'];
+
     /**
      * Initializes the AppController, creating instances of all APIs, views, and
      * setting up the initial state and event listeners.
@@ -81,7 +84,8 @@ export class AppController {
             colorLabelText: '#323232', // Dark text on light background
             colorLabelRefText: '#ffffff', // Light text to distinguish from LABEL
             colorRegisterText: '#ffffff',
-            colorText: '#ffffff'
+            colorText: '#ffffff',
+            organismPalette: AppController.ORGANISM_PALETTE.map(hex => parseInt(hex.slice(1), 16))
         };
         
         // Components
@@ -147,10 +151,13 @@ export class AppController {
             this.state.runId = trimmed;
             this.state.currentTick = 0;
             this.state.selectedOrganismId = null;
+            this.renderer?.setSelectedOrganism(null);
+            this.minimapView?.setSelectedOrganism(null);
             this.state.previousTick = null;
             this.state.previousOrganisms = null;
             this.state.previousOrganismDetails = null;
             this.genomeHashColorMap.clear();
+            this.minimapView?.organismOverlay?.clearSpriteCache();
             this.state.maxTick = null;
             this.state.organisms = [];
             this.programArtifactCache.clear();
@@ -251,6 +258,15 @@ export class AppController {
 
         // Update organism list selection in panel
         this.updateOrganismListSelection();
+
+        // Re-render organism markers so selected organism turns white
+        if (this.renderer && this.renderer.currentOrganisms) {
+            this.renderer.renderOrganisms(this.renderer.currentOrganisms);
+        }
+
+        // Update pulse animations on environment grid and minimap
+        this.renderer?.setSelectedOrganism(this.state.selectedOrganismId);
+        this.minimapView?.setSelectedOrganism(this.state.selectedOrganismId);
 
         if (this.state.selectedOrganismId) {
             // An organism is selected - load its details
@@ -825,8 +841,12 @@ export class AppController {
             this.renderer.renderOrganisms(organisms);
             this.updateOrganismPanel(organisms, isForwardStep);
 
-            // Update minimap organism overlay
-            this.minimapView?.updateOrganisms(organisms);
+            // Update minimap organism overlay (always genome-hash colored)
+            this.minimapView?.updateOrganisms(organisms, (genomeHash) => {
+                const palette = AppController.ORGANISM_PALETTE;
+                const idx = this._genomeHashToPaletteIndex(genomeHash, palette.length);
+                return palette[idx];
+            });
             
             // Reload organism details if one is selected
             if (this.state.selectedOrganismId) {
@@ -841,6 +861,8 @@ export class AppController {
                         this.state.selectedOrganismId = null;
                         this.clearOrganismDetails();
                         this.updateOrganismListSelection();
+                        this.renderer?.setSelectedOrganism(null);
+                        this.minimapView?.setSelectedOrganism(null);
                     }
                 }
             }
@@ -949,11 +971,7 @@ export class AppController {
      * @private
      */
     getOrganismColor(organismId, energy, genomeHash) {
-        // Same palette as EnvironmentGrid._getOrganismColor
-        const organismColorPalette = [
-            '#32cd32', '#1e90ff', '#dc143c', '#ffd700',
-            '#ffa500', '#9370db', '#00ffff'
-        ];
+        const palette = AppController.ORGANISM_PALETTE;
 
         if (typeof organismId !== 'number' || organismId < 1) {
             return '#ffffff'; // Default white for invalid IDs
@@ -966,11 +984,11 @@ export class AppController {
 
         let paletteIndex;
         if (this.state.colorMode === 'genome') {
-            paletteIndex = this._genomeHashToPaletteIndex(genomeHash, organismColorPalette.length);
+            paletteIndex = this._genomeHashToPaletteIndex(genomeHash, palette.length);
         } else {
-            paletteIndex = (organismId - 1) % organismColorPalette.length;
+            paletteIndex = (organismId - 1) % palette.length;
         }
-        return organismColorPalette[paletteIndex];
+        return palette[paletteIndex];
     }
 
     /**

@@ -33,6 +33,9 @@ export class MinimapView {
         this.renderer = new MinimapRenderer(this.canvas);
         this.organismOverlay = new MinimapOrganismOverlay();
         this.currentOrganisms = null; // Cached for re-rendering
+        this.selectedOrganismId = null; // Selected organism ID for highlight
+        this._selectionAnimationId = null; // requestAnimationFrame ID
+        this._selectionAnimationStart = 0;
         this.navigator = null; // Initialized when worldShape is set
         this.attachEvents();
     }
@@ -230,8 +233,9 @@ export class MinimapView {
     updateViewport(bounds) {
         this.viewportBounds = bounds;
 
-        if (this.lastMinimapData && this.worldShape) {
+        if (!this._selectionAnimationId && this.lastMinimapData && this.worldShape) {
             // Restore cached background and redraw only viewport rect (fast path)
+            // When selection animation is active, the animation loop handles drawing.
             this.renderer.restoreBackground();
             this.renderer.drawViewportRect(bounds, this.worldShape);
         }
@@ -244,10 +248,12 @@ export class MinimapView {
      * Updates the organism overlay with new organism data.
      * Should be called when organisms are loaded for the current tick.
      *
-     * @param {Array} organisms - Array of organism objects with ip and dataPointers
+     * @param {Array} organisms - Array of organism objects with ip, dataPointers, genomeHash
+     * @param {function(string): string} [colorResolver] - Maps genomeHash to hex color
      */
-    updateOrganisms(organisms) {
+    updateOrganisms(organisms, colorResolver) {
         this.currentOrganisms = organisms;
+        this.colorResolver = colorResolver || null;
 
         // Re-render if we have minimap data (overlay draws on top of environment)
         if (this.lastMinimapData && this.worldShape) {
@@ -282,7 +288,81 @@ export class MinimapView {
             height: this.canvas.height
         };
 
-        this.organismOverlay.render(ctx, this.currentOrganisms, this.worldShape, canvasSize);
+        this.organismOverlay.render(ctx, this.currentOrganisms, this.worldShape, canvasSize, this.colorResolver);
+    }
+
+    /**
+     * Updates the selected organism ID and starts/stops the pulse animation.
+     * @param {string|null} organismId - The selected organism ID, or null to clear
+     */
+    setSelectedOrganism(organismId) {
+        this.selectedOrganismId = organismId;
+
+        if (organismId) {
+            this._startSelectionAnimation();
+        } else {
+            this._stopSelectionAnimation();
+            // Restore clean state (no selection ring)
+            if (this.lastMinimapData && this.worldShape) {
+                this.renderer.restoreBackground();
+                if (this.viewportBounds) {
+                    this.renderer.drawViewportRect(this.viewportBounds, this.worldShape);
+                }
+            }
+        }
+    }
+
+    /**
+     * Starts the pulsing selection ring animation loop.
+     * @private
+     */
+    _startSelectionAnimation() {
+        if (this._selectionAnimationId) return;
+        this._selectionAnimationStart = performance.now();
+
+        const animate = () => {
+            this._selectionAnimationId = requestAnimationFrame(animate);
+
+            if (!this.lastMinimapData || !this.worldShape) return;
+
+            const elapsed = performance.now() - this._selectionAnimationStart;
+            const phase = (elapsed % 1500) / 1500;
+
+            // Restore cached background (environment + organisms)
+            this.renderer.restoreBackground();
+
+            // Draw pulsing selection ring
+            if (this.selectedOrganismId && this.currentOrganisms) {
+                const selectedOrg = this.currentOrganisms.find(
+                    o => String(o.organismId) === this.selectedOrganismId
+                );
+                if (selectedOrg) {
+                    const ctx = this.canvas.getContext('2d');
+                    const canvasSize = { width: this.canvas.width, height: this.canvas.height };
+                    this.organismOverlay.renderSelection(
+                        ctx, selectedOrg, this.worldShape, canvasSize, phase
+                    );
+                }
+            }
+
+            // Draw viewport rectangle on top
+            if (this.viewportBounds) {
+                this.renderer.drawViewportRect(this.viewportBounds, this.worldShape);
+            }
+        };
+
+        animate();
+    }
+
+    /**
+     * Stops the pulsing selection ring animation loop.
+     * @private
+     */
+    _stopSelectionAnimation() {
+        if (this._selectionAnimationId) {
+            cancelAnimationFrame(this._selectionAnimationId);
+            this._selectionAnimationId = null;
+        }
     }
 
     /**

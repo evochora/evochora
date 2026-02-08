@@ -2,7 +2,11 @@ package org.evochora.cli.rendering.frame;
 
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferInt;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.evochora.cli.rendering.AbstractFrameRenderer;
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
@@ -77,10 +81,24 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
 
     // Glow configuration (matching web minimap)
     // Sprite sizes for density levels (scaled by output resolution)
-    private static final int[] BASE_GLOW_SIZES = {7, 10, 16, 22};
+    private static final int[] BASE_GLOW_SIZES = {6, 10, 14, 18};
     private static final int[] DENSITY_THRESHOLDS = {3, 10, 30};
-    private static final int GLOW_COLOR = 0x4a9a6a;  // Muted green
+    private static final int BASE_CORE_SIZE = 3;  // Solid center size (matching frontend coreSize)
     private static final int BASE_OUTPUT_WIDTH = 400;  // Reference width for glow scaling
+
+    /**
+     * Organism palette — keep in sync with ExactFrameRenderer and AppController.ORGANISM_PALETTE.
+     * Colors are assigned in insertion order: first genome hash seen gets green, second gets blue, etc.
+     */
+    private static final int[] ORGANISM_PALETTE = {
+        0x32cd32,  // Green
+        0x1e90ff,  // Blue
+        0xdc143c,  // Red
+        0xffd700,  // Gold
+        0xffa500,  // Orange
+        0x9370db,  // Purple
+        0x00ffff   // Cyan
+    };
 
     // Dimensions (initialized in init())
     private int worldWidth;
@@ -92,9 +110,10 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
     private BufferedImage frame;
     private int[] frameBuffer;
 
-    // Glow sprites (scaled for output resolution)
-    private int[][] glowSprites;
+    // Glow sprites (scaled for output resolution), cached per color
+    private final Map<Integer, int[][]> glowSpriteCache = new HashMap<>();
     private int[] glowSizes;
+    private int coreSize;
 
     // Persistent cell state using generation numbers (O(1) reset instead of O(worldSize) fill)
     private int[] cellTypes;        // [flatIndex] = type (valid only if generation matches)
@@ -108,6 +127,9 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
     // Lazy organism access (only deserialize when rendering, not when applying state)
     private TickData lastSnapshot;
     private TickDelta lastDelta;
+
+    // Genome hash → palette index (insertion order, persists across frames for color consistency)
+    private final Map<Long, Integer> genomeHashColorMap = new LinkedHashMap<>();
 
     // Reusable density buffer for glow rendering (avoids allocation per frame)
     private int[] glowDensity;
@@ -143,7 +165,8 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
         for (int i = 0; i < BASE_GLOW_SIZES.length; i++) {
             this.glowSizes[i] = Math.max(2, (int) (BASE_GLOW_SIZES[i] * glowScale));
         }
-        initGlowSprites();
+        this.coreSize = Math.max(1, (int) (BASE_CORE_SIZE * glowScale));
+        this.glowSpriteCache.clear();
 
         // Persistent state arrays
         int worldSize = worldWidth * worldHeight;
@@ -366,33 +389,59 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
         return List.of();
     }
 
+    /**
+     * Renders organism glow effects, colored by genome hash.
+     * Organisms with the same genome hash share a color and are density-aggregated together.
+     * Different genome hash groups are rendered as separate overlapping layers.
+     */
     private void renderOrganismGlows(List<OrganismState> organisms) {
-        // Clear reusable density buffer (O(outputSize) but unavoidable)
-        java.util.Arrays.fill(glowDensity, 0);
-
-        // Count organism pointers per pixel (with optional coordinate quantization)
-        int totalPixels = glowDensity.length;
-        for (OrganismState org : organisms) {
+        // Group living organisms by genome hash
+        final Map<Long, List<OrganismState>> groups = new LinkedHashMap<>();
+        for (final OrganismState org : organisms) {
             if (org.getIsDead()) continue;
-
-            // IP position
-            addGlowDensity(org.getIp().getComponents(0), org.getIp().getComponents(1), totalPixels);
-
-            // DP positions
-            for (Vector dp : org.getDataPointersList()) {
-                addGlowDensity(dp.getComponents(0), dp.getComponents(1), totalPixels);
-            }
+            groups.computeIfAbsent(org.getGenomeHash(), k -> new ArrayList<>()).add(org);
         }
 
-        // Render glows only where density > 0
-        for (int my = 0; my < outputHeight; my++) {
-            for (int mx = 0; mx < outputWidth; mx++) {
-                int count = glowDensity[my * outputWidth + mx];
-                if (count > 0) {
-                    blitGlowSprite(mx, my, selectSpriteIndex(count));
+        final int totalPixels = glowDensity.length;
+
+        // Render each genome hash group with its own color
+        for (final var entry : groups.entrySet()) {
+            final long genomeHash = entry.getKey();
+            final List<OrganismState> group = entry.getValue();
+            final int color = getGenomeHashColor(genomeHash);
+            final int[][] sprites = getOrCreateGlowSprites(color);
+
+            // Build density for this group
+            java.util.Arrays.fill(glowDensity, 0);
+            for (final OrganismState org : group) {
+                addGlowDensity(org.getIp().getComponents(0), org.getIp().getComponents(1), totalPixels);
+                for (final Vector dp : org.getDataPointersList()) {
+                    addGlowDensity(dp.getComponents(0), dp.getComponents(1), totalPixels);
+                }
+            }
+
+            // Render glows for this group
+            for (int my = 0; my < outputHeight; my++) {
+                for (int mx = 0; mx < outputWidth; mx++) {
+                    final int count = glowDensity[my * outputWidth + mx];
+                    if (count > 0) {
+                        blitGlowSprite(mx, my, selectSpriteIndex(count), sprites);
+                    }
                 }
             }
         }
+    }
+
+    /**
+     * Returns the palette color for a genome hash, using insertion-order assignment.
+     * The first genome hash seen gets green, the second blue, etc.
+     *
+     * @param genomeHash The organism's genome hash.
+     * @return RGB color from {@link #ORGANISM_PALETTE}.
+     */
+    private int getGenomeHashColor(long genomeHash) {
+        return ORGANISM_PALETTE[genomeHashColorMap
+                .computeIfAbsent(genomeHash, k -> genomeHashColorMap.size() % ORGANISM_PALETTE.length)];
     }
 
     /**
@@ -413,24 +462,41 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
     // Glow sprite rendering
     // ─────────────────────────────────────────────────────────────────────────────
 
-    private void initGlowSprites() {
-        glowSprites = new int[glowSizes.length][];
-        for (int i = 0; i < glowSizes.length; i++) {
-            glowSprites[i] = createGlowSprite(glowSizes[i]);
-        }
+    /**
+     * Returns (or lazily creates) glow sprites for a given RGB color.
+     *
+     * @param color RGB color (0xRRGGBB).
+     * @return Array of glow sprites for each density level.
+     */
+    private int[][] getOrCreateGlowSprites(int color) {
+        return glowSpriteCache.computeIfAbsent(color, c -> {
+            final int[][] sprites = new int[glowSizes.length][];
+            for (int i = 0; i < glowSizes.length; i++) {
+                sprites[i] = createGlowSprite(glowSizes[i], c);
+            }
+            return sprites;
+        });
     }
 
-    private int[] createGlowSprite(int size) {
+    /**
+     * Creates a single glow sprite with the given size and color.
+     * Matches the frontend MinimapOrganismOverlay rendering style:
+     * solid core + radial gradient (0.6 → 0.3 → 0 alpha).
+     *
+     * @param size  Total sprite size in pixels.
+     * @param color RGB color (0xRRGGBB).
+     * @return Pixel array with ARGB values.
+     */
+    private int[] createGlowSprite(int size, int color) {
         int[] pixels = new int[size * size];
         float center = size / 2.0f;
-        float maxRadius = center;
+        float glowRadius = center;
+        float coreRadius = coreSize / 2.0f;
 
-        int r = (GLOW_COLOR >> 16) & 0xFF;
-        int g = (GLOW_COLOR >> 8) & 0xFF;
-        int b = GLOW_COLOR & 0xFF;
+        int r = (color >> 16) & 0xFF;
+        int g = (color >> 8) & 0xFF;
+        int b = color & 0xFF;
 
-        // Smooth radial gradient from center (bright) to edge (transparent)
-        // Using Gaussian-like falloff: e^(-k*t²) for smooth continuous fade
         for (int y = 0; y < size; y++) {
             for (int x = 0; x < size; x++) {
                 float dx = x - center + 0.5f;
@@ -438,12 +504,21 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
                 float dist = (float) Math.sqrt(dx * dx + dy * dy);
 
                 int alpha;
-                if (dist <= maxRadius) {
-                    // t goes from 0 (center) to 1 (edge)
-                    float t = dist / maxRadius;
-                    // Gaussian-like: smooth falloff, bright in center, fades continuously
-                    float falloff = (float) Math.exp(-3.5 * t * t);
-                    alpha = (int) (200 * falloff);  // 78% max at center
+                if (dist <= coreRadius) {
+                    // Solid core (fully opaque)
+                    alpha = 255;
+                } else if (dist <= glowRadius) {
+                    // Radial gradient matching frontend: 0.6 → 0.3 → 0
+                    float t = (dist - coreRadius) / (glowRadius - coreRadius);
+                    float a;
+                    if (t <= 0.5f) {
+                        // 0.6 → 0.3
+                        a = 0.6f - t * 0.6f;
+                    } else {
+                        // 0.3 → 0
+                        a = 0.3f - (t - 0.5f) * 0.6f;
+                    }
+                    alpha = Math.max(0, (int) (a * 255));
                 } else {
                     alpha = 0;
                 }
@@ -462,8 +537,8 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
         return glowSizes.length - 1;
     }
 
-    private void blitGlowSprite(int centerX, int centerY, int spriteIndex) {
-        int[] sprite = glowSprites[spriteIndex];
+    private void blitGlowSprite(int centerX, int centerY, int spriteIndex, int[][] sprites) {
+        int[] sprite = sprites[spriteIndex];
         int size = glowSizes[spriteIndex];
         int half = size / 2;
         int startX = centerX - half;
