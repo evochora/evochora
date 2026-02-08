@@ -59,7 +59,7 @@ public class ExactFrameRenderer extends AbstractFrameRenderer {
     private static final int COLOR_REGISTER = 0x506080;
     private static final int COLOR_DEAD = 0x555555;
 
-    // Organism colors as int RGB (avoids Color.getRGB() conversion per frame)
+    // Organism palette — keep in sync with MinimapFrameRenderer and AppController.ORGANISM_PALETTE
     private static final int[] ORGANISM_PALETTE = {
         0x32cd32, 0x1e90ff, 0xdc143c, 0xffd700, 0xffa500, 0x9370db, 0x00ffff
     };

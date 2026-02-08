@@ -18,7 +18,7 @@ import { TickPanelManager } from './ui/panels/TickPanelManager.js';
  * @class AppController
  */
 export class AppController {
-    /** Organism color palette (hex strings). Single source of truth for all components. */
+    /** Organism palette (hex) — keep in sync with ExactFrameRenderer and MinimapFrameRenderer. */
     static ORGANISM_PALETTE = ['#32cd32', '#1e90ff', '#dc143c', '#ffd700', '#ffa500', '#9370db', '#00ffff'];
 
     /**
