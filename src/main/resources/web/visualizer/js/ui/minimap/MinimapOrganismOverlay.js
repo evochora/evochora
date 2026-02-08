@@ -1,8 +1,7 @@
 /**
- * Renders organism positions as a glow overlay on the minimap.
- * Shows IP and DP positions with density-based glow size.
- *
- * Designed for easy integration/removal - all organism rendering logic is isolated here.
+ * Renders organism positions as colored glow overlays on the minimap,
+ * grouped by genome hash. Organisms with the same genome hash share a color
+ * and are density-aggregated together.
  *
  * @class MinimapOrganismOverlay
  */
@@ -10,10 +9,12 @@ export class MinimapOrganismOverlay {
 
     /** Default configuration */
     static DEFAULT_CONFIG = {
-        color: '#4a9a6a',           // Muted green - visible but not aggressive
         coreSize: 3,                // Solid center size in pixels
         glowSizes: [6, 10, 14, 18], // Glow sprite sizes for density thresholds
         densityThresholds: [3, 10, 30], // count <= 3, <= 10, <= 30, > 30
+        selectionMinRadius: 3,      // Pulse ring start radius
+        selectionMaxRadius: 14,     // Pulse ring end radius
+        selectionStrokeWidth: 2,    // Pulse ring stroke width
         enabled: true
     };
 
@@ -24,19 +25,23 @@ export class MinimapOrganismOverlay {
     constructor(config = {}) {
         this.config = { ...MinimapOrganismOverlay.DEFAULT_CONFIG, ...config };
         this.enabled = this.config.enabled;
-        this.glowSprites = null;
-
-        this._initSprites();
+        this.spriteCache = new Map(); // hex color → glow sprite array
     }
 
     /**
-     * Pre-renders glow sprites for each density level.
-     * Called once at initialization for performance.
+     * Returns (or lazily creates) glow sprites for a given color.
+     * @param {string} hexColor - Hex color string (e.g., '#32cd32')
+     * @returns {Array<OffscreenCanvas|HTMLCanvasElement>}
      * @private
      */
-    _initSprites() {
-        const { color, coreSize, glowSizes } = this.config;
-        this.glowSprites = glowSizes.map(size => this._createGlowSprite(size, coreSize, color));
+    _getOrCreateSprites(hexColor) {
+        if (this.spriteCache.has(hexColor)) {
+            return this.spriteCache.get(hexColor);
+        }
+        const { coreSize, glowSizes } = this.config;
+        const sprites = glowSizes.map(size => this._createGlowSprite(size, coreSize, hexColor));
+        this.spriteCache.set(hexColor, sprites);
+        return sprites;
     }
 
     /**
@@ -48,7 +53,6 @@ export class MinimapOrganismOverlay {
      * @private
      */
     _createGlowSprite(size, coreSize, color) {
-        // Use OffscreenCanvas if available, fallback to regular canvas
         const canvas = typeof OffscreenCanvas !== 'undefined'
             ? new OffscreenCanvas(size, size)
             : document.createElement('canvas');
@@ -63,7 +67,6 @@ export class MinimapOrganismOverlay {
         const glowRadius = size / 2;
         const coreRadius = coreSize / 2;
 
-        // Parse color to RGB for gradient
         const rgb = this._parseColor(color);
 
         // Draw glow (radial gradient)
@@ -99,31 +102,39 @@ export class MinimapOrganismOverlay {
 
     /**
      * Selects the appropriate glow sprite based on density count.
+     * @param {Array} sprites - Glow sprite array for this color
      * @param {number} count - Number of organisms at this position
      * @returns {OffscreenCanvas|HTMLCanvasElement}
      * @private
      */
-    _selectSprite(count) {
+    _selectSprite(sprites, count) {
         const { densityThresholds } = this.config;
 
         for (let i = 0; i < densityThresholds.length; i++) {
             if (count <= densityThresholds[i]) {
-                return this.glowSprites[i];
+                return sprites[i];
             }
         }
-        return this.glowSprites[this.glowSprites.length - 1];
+        return sprites[sprites.length - 1];
     }
 
     /**
-     * Extracts all relevant positions (IP + DPs) from organisms.
+     * Groups organisms by genome hash and extracts positions per group.
      * @param {Array} organisms - Array of organism objects
-     * @returns {Array<[number, number]>} Array of [x, y] positions
+     * @returns {Map<string, Array<[number, number]>>} genomeHash key → positions
      * @private
      */
-    _extractPositions(organisms) {
-        const positions = [];
+    _groupByGenomeHash(organisms) {
+        const groups = new Map();
 
         for (const org of organisms) {
+            const key = String(org.genomeHash || 0);
+
+            if (!groups.has(key)) {
+                groups.set(key, []);
+            }
+            const positions = groups.get(key);
+
             // IP position
             if (org.ip && Array.isArray(org.ip) && org.ip.length >= 2) {
                 positions.push([org.ip[0], org.ip[1]]);
@@ -139,7 +150,7 @@ export class MinimapOrganismOverlay {
             }
         }
 
-        return positions;
+        return groups;
     }
 
     /**
@@ -160,7 +171,6 @@ export class MinimapOrganismOverlay {
             const mx = Math.floor(wx / worldWidth * gridWidth);
             const my = Math.floor(wy / worldHeight * gridHeight);
 
-            // Bounds check
             if (mx >= 0 && mx < gridWidth && my >= 0 && my < gridHeight) {
                 density[my * gridWidth + mx]++;
             }
@@ -170,15 +180,16 @@ export class MinimapOrganismOverlay {
     }
 
     /**
-     * Renders organism overlay onto the provided canvas context.
-     * Call this AFTER rendering the environment minimap.
+     * Renders organism overlay onto the provided canvas context, colored by genome hash.
+     * Each genome hash group is rendered separately with its own color and density.
      *
      * @param {CanvasRenderingContext2D} ctx - Canvas context to draw on
-     * @param {Array} organisms - Array of organism objects with ip and dataPointers
+     * @param {Array} organisms - Array of organism objects with ip, dataPointers, genomeHash
      * @param {number[]} worldShape - World dimensions [width, height]
      * @param {{width: number, height: number}} canvasSize - Minimap canvas dimensions
+     * @param {function(string): string} colorResolver - Maps genomeHash string to hex color
      */
-    render(ctx, organisms, worldShape, canvasSize) {
+    render(ctx, organisms, worldShape, canvasSize, colorResolver) {
         if (!this.enabled || !organisms || organisms.length === 0) {
             return;
         }
@@ -189,28 +200,82 @@ export class MinimapOrganismOverlay {
 
         const { width: canvasWidth, height: canvasHeight } = canvasSize;
 
-        // Step 1: Extract all positions (IP + DPs)
-        const positions = this._extractPositions(organisms);
+        // Group organisms by genome hash
+        const groups = this._groupByGenomeHash(organisms);
 
-        if (positions.length === 0) {
+        // Render each genome hash group with its own color
+        for (const [hashKey, positions] of groups) {
+            if (positions.length === 0) continue;
+
+            const hexColor = colorResolver ? colorResolver(hashKey) : '#4a9a6a';
+            const sprites = this._getOrCreateSprites(hexColor);
+            const density = this._calculateDensity(positions, worldShape, canvasWidth, canvasHeight);
+
+            for (let y = 0; y < canvasHeight; y++) {
+                for (let x = 0; x < canvasWidth; x++) {
+                    const count = density[y * canvasWidth + x];
+                    if (count === 0) continue;
+
+                    const sprite = this._selectSprite(sprites, count);
+                    const drawX = x - sprite.width / 2 + 0.5;
+                    const drawY = y - sprite.height / 2 + 0.5;
+
+                    ctx.drawImage(sprite, drawX, drawY);
+                }
+            }
+        }
+    }
+
+    /**
+     * Renders a pulsing white selection ring at the IP and DP positions of the selected organism.
+     * The ring expands from min to max radius while fading out, then repeats.
+     *
+     * @param {CanvasRenderingContext2D} ctx - Canvas context to draw on
+     * @param {object} organism - The selected organism object with ip, dataPointers
+     * @param {number[]} worldShape - World dimensions [width, height]
+     * @param {{width: number, height: number}} canvasSize - Minimap canvas dimensions
+     * @param {number} phase - Animation phase (0 to 1, where 0 = start, 1 = fully expanded)
+     */
+    renderSelection(ctx, organism, worldShape, canvasSize, phase) {
+        if (!organism || !worldShape || worldShape.length < 2) {
             return;
         }
 
-        // Step 2: Calculate density grid
-        const density = this._calculateDensity(positions, worldShape, canvasWidth, canvasHeight);
+        const { width: canvasWidth, height: canvasHeight } = canvasSize;
+        const worldWidth = worldShape[0];
+        const worldHeight = worldShape[1];
+        const { selectionMinRadius, selectionMaxRadius, selectionStrokeWidth } = this.config;
 
-        // Step 3: Render sprites at each position with organisms
-        for (let y = 0; y < canvasHeight; y++) {
-            for (let x = 0; x < canvasWidth; x++) {
-                const count = density[y * canvasWidth + x];
-                if (count === 0) continue;
+        const radius = selectionMinRadius + (selectionMaxRadius - selectionMinRadius) * phase;
+        const alpha = 1.0 - phase;
 
-                const sprite = this._selectSprite(count);
-                const drawX = x - sprite.width / 2 + 0.5;  // +0.5 to center on pixel
-                const drawY = y - sprite.height / 2 + 0.5;
+        const positions = [];
 
-                ctx.drawImage(sprite, drawX, drawY);
+        // IP position
+        if (organism.ip && Array.isArray(organism.ip) && organism.ip.length >= 2) {
+            positions.push([organism.ip[0], organism.ip[1]]);
+        }
+
+        // DP positions
+        if (organism.dataPointers && Array.isArray(organism.dataPointers)) {
+            for (const dp of organism.dataPointers) {
+                if (dp && Array.isArray(dp) && dp.length >= 2) {
+                    positions.push([dp[0], dp[1]]);
+                }
             }
+        }
+
+        for (const [wx, wy] of positions) {
+            const mx = Math.floor(wx / worldWidth * canvasWidth) + 0.5;
+            const my = Math.floor(wy / worldHeight * canvasHeight) + 0.5;
+
+            ctx.beginPath();
+            ctx.arc(mx, my, radius, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255, 255, 255, ${0.15 * alpha})`;
+            ctx.fill();
+            ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+            ctx.lineWidth = selectionStrokeWidth;
+            ctx.stroke();
         }
     }
 
@@ -231,18 +296,16 @@ export class MinimapOrganismOverlay {
     }
 
     /**
-     * Updates the overlay color and regenerates sprites.
-     * @param {string} color - New hex color
+     * Clears the sprite cache (call when palette/colors change, e.g. run switch).
      */
-    setColor(color) {
-        this.config.color = color;
-        this._initSprites();
+    clearSpriteCache() {
+        this.spriteCache.clear();
     }
 
     /**
      * Cleans up resources.
      */
     destroy() {
-        this.glowSprites = null;
+        this.spriteCache.clear();
     }
 }

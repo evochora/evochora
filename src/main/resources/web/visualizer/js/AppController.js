@@ -147,10 +147,13 @@ export class AppController {
             this.state.runId = trimmed;
             this.state.currentTick = 0;
             this.state.selectedOrganismId = null;
+            this.renderer?.setSelectedOrganism(null);
+            this.minimapView?.setSelectedOrganism(null);
             this.state.previousTick = null;
             this.state.previousOrganisms = null;
             this.state.previousOrganismDetails = null;
             this.genomeHashColorMap.clear();
+            this.minimapView?.organismOverlay?.clearSpriteCache();
             this.state.maxTick = null;
             this.state.organisms = [];
             this.programArtifactCache.clear();
@@ -251,6 +254,15 @@ export class AppController {
 
         // Update organism list selection in panel
         this.updateOrganismListSelection();
+
+        // Re-render organism markers so selected organism turns white
+        if (this.renderer && this.renderer.currentOrganisms) {
+            this.renderer.renderOrganisms(this.renderer.currentOrganisms);
+        }
+
+        // Update pulse animations on environment grid and minimap
+        this.renderer?.setSelectedOrganism(this.state.selectedOrganismId);
+        this.minimapView?.setSelectedOrganism(this.state.selectedOrganismId);
 
         if (this.state.selectedOrganismId) {
             // An organism is selected - load its details
@@ -825,8 +837,12 @@ export class AppController {
             this.renderer.renderOrganisms(organisms);
             this.updateOrganismPanel(organisms, isForwardStep);
 
-            // Update minimap organism overlay
-            this.minimapView?.updateOrganisms(organisms);
+            // Update minimap organism overlay (always genome-hash colored)
+            this.minimapView?.updateOrganisms(organisms, (genomeHash) => {
+                const palette = ['#32cd32', '#1e90ff', '#dc143c', '#ffd700', '#ffa500', '#9370db', '#00ffff'];
+                const idx = this._genomeHashToPaletteIndex(genomeHash, palette.length);
+                return palette[idx];
+            });
             
             // Reload organism details if one is selected
             if (this.state.selectedOrganismId) {
@@ -841,6 +857,8 @@ export class AppController {
                         this.state.selectedOrganismId = null;
                         this.clearOrganismDetails();
                         this.updateOrganismListSelection();
+                        this.renderer?.setSelectedOrganism(null);
+                        this.minimapView?.setSelectedOrganism(null);
                     }
                 }
             }
