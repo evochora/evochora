@@ -1331,6 +1331,36 @@ main.container {
     background-color: #2a4a3a;
 }
 
+/* Color mode toggle button (organism panel) */
+.color-mode-toggle {
+    background-color: #2a2a4a;
+    border: 1px solid #4a4a6a;
+    border-radius: 4px;
+    color: #808090;
+    font-family: 'Roboto Mono', 'Courier New', monospace;
+    font-size: 11px;
+    padding: 4px 8px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    min-width: 28px;
+    text-align: center;
+}
+
+.color-mode-toggle:hover {
+    background-color: #3a3a5a;
+    color: #a0a0b0;
+}
+
+.color-mode-toggle.active {
+    background-color: #1a2a3a;
+    border-color: #4a7aaa;
+    color: #5a9aff;
+}
+
+.color-mode-toggle.active:hover {
+    background-color: #2a3a4a;
+}
+
 /* Minimap content */
 .minimap-content {
     padding: 6px;

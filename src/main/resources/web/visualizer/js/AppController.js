@@ -49,8 +49,10 @@ export class AppController {
             isZoomedOut: initialZoom, // Zoom state (persisted)
             organisms: [], // Current organisms for the tick
             metadata: null, // Simulation metadata (includes organism config)
+            colorMode: localStorage.getItem('evochora-color-mode') || 'id', // 'id' or 'genome'
         };
         this.programArtifactCache = new Map(); // Cache for program artifacts
+        this.genomeHashColorMap = new Map(); // genomeHash → palette index (insertion order)
         
         // Config for renderer
         const defaultConfig = {
@@ -148,6 +150,7 @@ export class AppController {
             this.state.previousTick = null;
             this.state.previousOrganisms = null;
             this.state.previousOrganismDetails = null;
+            this.genomeHashColorMap.clear();
             this.state.maxTick = null;
             this.state.organisms = [];
             this.programArtifactCache.clear();
@@ -376,6 +379,13 @@ export class AppController {
             onTickClick: (tick) => this.navigateToTick(tick),
             onParentClick: (parentId) => this.selectOrganism(parentId)
         });
+
+        // Color mode toggle (ID vs Genome Hash)
+        const colorModeToggle = document.getElementById('color-mode-toggle');
+        if (colorModeToggle) {
+            colorModeToggle.addEventListener('click', () => this.toggleColorMode());
+            this._updateColorModeButton();
+        }
     }
     
     /**
@@ -914,7 +924,7 @@ export class AppController {
                 id: String(organism.organismId),
                 energy: organism.energy || 0,
                 entropyRegister: organism.entropyRegister || 0,
-                color: this.getOrganismColor(organism.organismId, organism.energy),
+                color: this.getOrganismColor(organism.organismId, organism.energy, organism.genomeHash),
                 ip: organism.ip,
                 dv: organism.dv,
                 dataPointers: organism.dataPointers,
@@ -938,24 +948,73 @@ export class AppController {
      * @returns {string} A hex color string (e.g., "#32cd32").
      * @private
      */
-    getOrganismColor(organismId, energy) {
+    getOrganismColor(organismId, energy, genomeHash) {
         // Same palette as EnvironmentGrid._getOrganismColor
         const organismColorPalette = [
             '#32cd32', '#1e90ff', '#dc143c', '#ffd700',
             '#ffa500', '#9370db', '#00ffff'
         ];
-        
+
         if (typeof organismId !== 'number' || organismId < 1) {
             return '#ffffff'; // Default white for invalid IDs
         }
-        
+
         // If energy <= 0, return dimmed grayish color to indicate death
         if (typeof energy === 'number' && energy <= 0) {
             return '#555555';
         }
-        
-        const paletteIndex = (organismId - 1) % organismColorPalette.length;
+
+        let paletteIndex;
+        if (this.state.colorMode === 'genome') {
+            paletteIndex = this._genomeHashToPaletteIndex(genomeHash, organismColorPalette.length);
+        } else {
+            paletteIndex = (organismId - 1) % organismColorPalette.length;
+        }
         return organismColorPalette[paletteIndex];
+    }
+
+    /**
+     * Returns a palette index for a genome hash, assigning colors in order of first appearance.
+     * First hash seen → 0 (green), second → 1 (blue), etc. Wraps around palette length.
+     * @param {number|bigint} genomeHash - The genome hash value.
+     * @param {number} paletteLength - The number of colors in the palette.
+     * @returns {number} Palette index (0 to paletteLength-1).
+     * @private
+     */
+    _genomeHashToPaletteIndex(genomeHash, paletteLength) {
+        if (genomeHash == null || genomeHash === 0 || genomeHash === '0') {
+            return 0;
+        }
+        const key = String(genomeHash);
+        if (!this.genomeHashColorMap.has(key)) {
+            this.genomeHashColorMap.set(key, this.genomeHashColorMap.size % paletteLength);
+        }
+        return this.genomeHashColorMap.get(key);
+    }
+
+    /**
+     * Toggles the organism coloring mode between ID-based and genome-hash-based.
+     */
+    async toggleColorMode() {
+        this.state.colorMode = this.state.colorMode === 'id' ? 'genome' : 'id';
+        localStorage.setItem('evochora-color-mode', this.state.colorMode);
+        this._updateColorModeButton();
+        await this.navigateToTick(this.state.currentTick, true);
+    }
+
+    /**
+     * Updates the color mode toggle button appearance.
+     * @private
+     */
+    _updateColorModeButton() {
+        const btn = document.getElementById('color-mode-toggle');
+        if (!btn) return;
+        const isGenome = this.state.colorMode === 'genome';
+        btn.textContent = isGenome ? 'GH' : 'ID';
+        btn.title = isGenome
+            ? 'Color by: Genome Hash (click to switch to ID)'
+            : 'Color by: Organism ID (click to switch to Genome)';
+        btn.classList.toggle('active', isGenome);
     }
 
     /**

@@ -92,8 +92,8 @@ export class OrganismPanelManager {
         // Click on header title area to toggle list
         if (this.panelHeader) {
             this.panelHeader.addEventListener('click', (e) => {
-                // Don't toggle if clicking the collapse button itself
-                if (e.target.closest('.panel-toggle')) return;
+                // Don't toggle if clicking a control button
+                if (e.target.closest('.organism-panel-controls')) return;
                 this.setListCollapsed(!this.isListCollapsed());
             });
         }
