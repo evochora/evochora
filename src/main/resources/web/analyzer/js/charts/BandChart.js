@@ -144,7 +144,10 @@ export function render(canvas, data, config) {
                             maxTicksLimit: 10,
                             callback: function(value) {
                                 const label = this.getLabelForValue(value);
-                                return formatTickValue(label);
+                                const firstLabel = this.getLabelForValue(this.min);
+                                const lastLabel = this.getLabelForValue(this.max);
+                                const range = Number(lastLabel) - Number(firstLabel);
+                                return formatTickValue(label, range);
                             }
                         },
                         grid: { color: '#333', drawBorder: false }

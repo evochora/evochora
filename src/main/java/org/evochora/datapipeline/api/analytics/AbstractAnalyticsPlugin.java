@@ -62,6 +62,9 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
     
     /** Number of LOD levels to generate. Default is 1 (lod0). */
     protected int lodLevels = 1;
+
+    /** Maximum data points the frontend should load at once. Null means frontend default. */
+    protected Integer maxDataPoints = null;
     
     /**
      * {@inheritDoc}
@@ -72,6 +75,7 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
      *   <li>{@code samplingInterval} - Optional, default 1</li>
      *   <li>{@code lodFactor} - Optional, default 10</li>
      *   <li>{@code lodLevels} - Optional, default 1</li>
+     *   <li>{@code maxDataPoints} - Optional, default null (frontend decides)</li>
      * </ul>
      * Subclasses can override to read additional config, but must call {@code super.configure(config)}.
      */
@@ -87,6 +91,9 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
         }
         if (config.hasPath("lodLevels")) {
             this.lodLevels = config.getInt("lodLevels");
+        }
+        if (config.hasPath("maxDataPoints")) {
+            this.maxDataPoints = config.getInt("maxDataPoints");
         }
     }
 
@@ -172,6 +179,33 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
         return "lod" + level;
     }
     
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Applies common configuration (e.g., {@code maxDataPoints}) to all entries
+     * returned by {@link #getManifestEntry()} or overridden {@code getManifestEntries()}.
+     */
+    @Override
+    public java.util.List<ManifestEntry> getManifestEntries() {
+        ManifestEntry entry = getManifestEntry();
+        if (entry == null) {
+            return java.util.List.of();
+        }
+        applyCommonConfig(entry);
+        return java.util.List.of(entry);
+    }
+
+    /**
+     * Applies common configuration fields to a manifest entry.
+     *
+     * @param entry The manifest entry to configure
+     */
+    protected void applyCommonConfig(ManifestEntry entry) {
+        if (maxDataPoints != null) {
+            entry.maxDataPoints = maxDataPoints;
+        }
+    }
+
     // Abstract methods that subclasses MUST implement:
     // - getSchema()
     // - extractRows(TickData)

@@ -35,6 +35,15 @@ import * as MetricCardView from './ui/MetricCardView.js';
     /** @type {Object<string, AbortController>} Active abort controllers per metric ID */
     const abortControllers = {};
 
+    /** Hard cap on data points loaded per chart */
+    const HARD_CAP = 5000;
+
+    /**
+     * Per-metric window state for tick-range scrolling.
+     * @type {Object<string, {tickMin: number, tickMax: number, viewFrom: number, viewTo: number, effectiveLimit: number, isParquet: boolean}>}
+     */
+    const windowState = {};
+
     /**
      * Initializes the controller and UI components.
      */
@@ -175,11 +184,12 @@ export async function loadDashboard(runId) {
             // Create metric cards
             DashboardView.createCards(manifest.metrics);
 
-            // Register LOD change handlers
+            // Register LOD change and scroll handlers
             const cards = DashboardView.getAllCards();
             for (const [metricId, card] of Object.entries(cards)) {
                 MetricCardView.setOnLodChange(card, (lod) => {
                     card.selectedLod = lod;
+                    card._lodSwitching = true;
                     MetricCardView.setActiveLod(card, lod);
                     loadMetricData(card).catch(error => {
                         if (error.name !== 'AbortError') {
@@ -189,6 +199,14 @@ export async function loadDashboard(runId) {
                             }
                             console.error(`[AnalyzerController] Failed to load metric ${metricId}:`, error);
                             MetricCardView.showError(card, message);
+                        }
+                    });
+                });
+
+                MetricCardView.setOnScroll(card, (scrollRatio) => {
+                    handleScroll(card, scrollRatio).catch(error => {
+                        if (error.name !== 'AbortError') {
+                            console.error(`[AnalyzerController] Scroll error for ${metricId}:`, error);
                         }
                     });
                 });
@@ -230,9 +248,31 @@ export async function loadDashboard(runId) {
     }
     
     /**
-     * Loads data for a single metric card.
-     * Uses client-side DuckDB WASM for queries on merged Parquet from server.
-     * 
+     * Calculates the effective data point limit for a card.
+     * Uses the plugin's maxDataPoints if set, otherwise falls back to pixel-based heuristic.
+     *
+     * @param {Object} card - Card instance
+     * @returns {number}
+     */
+    function calculateEffectiveLimit(card) {
+        if (card.metric.maxDataPoints) {
+            return Math.min(HARD_CAP, card.metric.maxDataPoints);
+        }
+        const canvas = card.element.querySelector('canvas');
+        const chartWidth = canvas ? canvas.clientWidth : 800;
+        return Math.min(HARD_CAP, Math.max(100, Math.floor(chartWidth / 2)));
+    }
+
+    /** Assumed average rows per Parquet file for estimation. */
+    const ROWS_PER_FILE_ESTIMATE = 10;
+
+    /**
+     * Loads data for a single metric card with windowed tick-range support.
+     * <p>
+     * Two-phase approach for fast loading:
+     * 1. Lightweight /tick-range pre-check (~1ms) determines if windowing is needed.
+     * 2. Data request uses tickFrom/tickTo so the server only merges the needed files.
+     *
      * @param {Object} card - MetricCard instance
      */
     async function loadMetricData(card) {
@@ -249,31 +289,83 @@ export async function loadDashboard(runId) {
         MetricCardView.showLoading(card);
 
         try {
-            // Check if metric has a generated query (new stateless plugins)
             const hasGeneratedQuery = metric.generatedQuery && metric.generatedQuery.trim();
             const selectedLod = card.selectedLod || null;
+            const isParquet = !!hasGeneratedQuery;
 
+            // Preserve tick position on LOD switch
+            const prevState = windowState[metricId];
+            const keepPosition = card._lodSwitching && prevState;
+            delete card._lodSwitching;
+
+            const effectiveLimit = calculateEffectiveLimit(card);
+
+            // Phase 1: Lightweight tick-range pre-check
+            const rangeInfo = await AnalyticsApi.fetchTickRange(metricId, currentRunId, selectedLod);
+            const tickMin = rangeInfo.tickMin;
+            const tickMax = rangeInfo.tickMax;
+            const resolvedLod = rangeInfo.lod || selectedLod;
+            const estimatedRows = rangeInfo.fileCount * ROWS_PER_FILE_ESTIMATE;
+            const needsWindowing = estimatedRows > effectiveLimit && tickMin != null && tickMax != null;
+
+            // Calculate view window if windowing is needed
+            let viewFrom = null;
+            let viewTo = null;
+            if (needsWindowing) {
+                const totalRange = tickMax - tickMin;
+                const viewRange = Math.max(1, Math.round(totalRange * (effectiveLimit / estimatedRows)));
+
+                if (keepPosition && prevState && prevState.viewFrom != null) {
+                    viewFrom = Math.max(tickMin, Math.min(prevState.viewFrom, tickMax - viewRange));
+                    viewTo = viewFrom + viewRange;
+                } else {
+                    // Default: latest data (rightmost)
+                    viewTo = tickMax;
+                    viewFrom = tickMax - viewRange;
+                }
+            }
+
+            // Phase 2: Fetch data with or without tick range limits
             let data;
-            let resolvedLod = selectedLod;
 
-            if (hasGeneratedQuery) {
-                // Client-side DuckDB WASM query on merged Parquet from server
-                const { blob: parquetBlob, metadata } = await AnalyticsApi.fetchParquetBlob(
-                    metricId, currentRunId, selectedLod, controller.signal
+            if (isParquet) {
+                // Fetch Parquet blob — server only merges files in the tick window
+                const { blob: parquetBlob } = await AnalyticsApi.fetchParquetBlob(
+                    metricId, currentRunId, resolvedLod, controller.signal, viewFrom, viewTo
                 );
 
-                if (metadata.lod && metadata.lod !== 'unknown') {
-                    resolvedLod = metadata.lod;
+                const blobKey = `${metricId}_${resolvedLod || 'auto'}`;
+                await DuckDBClient.registerParquetBlob(blobKey, parquetBlob);
+
+                data = await DuckDBClient.queryRegisteredBlob(blobKey, metric.generatedQuery);
+
+                if (needsWindowing) {
+                    windowState[metricId] = {
+                        tickMin, tickMax, viewFrom, viewTo, effectiveLimit,
+                        isParquet: true, blobKey, estimatedRows
+                    };
+                    MetricCardView.showScrollbar(card, windowState[metricId]);
+                } else {
+                    delete windowState[metricId];
+                    MetricCardView.hideScrollbar(card);
                 }
 
-                data = await DuckDBClient.queryParquetBlob(parquetBlob, metric.generatedQuery);
             } else {
-                // Server-side query (for plugins without generatedQuery)
-                const result = await AnalyticsApi.queryData(currentRunId, metricId, selectedLod, controller.signal);
+                // JSON path — server-side query with tick range
+                const result = await AnalyticsApi.queryData(
+                    currentRunId, metricId, resolvedLod, controller.signal, viewFrom, viewTo
+                );
                 data = result.data;
 
-                if (result.lod) {
-                    resolvedLod = result.lod;
+                if (needsWindowing) {
+                    windowState[metricId] = {
+                        tickMin, tickMax, viewFrom, viewTo, effectiveLimit,
+                        isParquet: false
+                    };
+                    MetricCardView.showScrollbar(card, windowState[metricId]);
+                } else {
+                    delete windowState[metricId];
+                    MetricCardView.hideScrollbar(card);
                 }
             }
 
@@ -287,14 +379,12 @@ export async function loadDashboard(runId) {
                 return;
             }
 
-            // Render chart
             MetricCardView.renderChart(card, data);
 
         } catch (error) {
             if (error.name === 'AbortError') {
-                throw error; // Re-throw so callers can handle
+                throw error;
             }
-            // Handle "no data yet" as a non-error state
             if (error.code === 'NO_DATA') {
                 MetricCardView.showNoData(card);
                 return;
@@ -302,7 +392,73 @@ export async function loadDashboard(runId) {
             console.error(`[Analytics] Error loading metric ${metricId}:`, error);
             throw error;
         } finally {
-            // Clean up controller if it's still the current one
+            if (abortControllers[metricId] === controller) {
+                delete abortControllers[metricId];
+            }
+        }
+    }
+
+    /**
+     * Handles scroll events for a metric card.
+     * Recomputes the view window from the scroll ratio and reloads data.
+     *
+     * @param {Object} card - Card instance
+     * @param {number} scrollRatio - 0.0 (start) to 1.0 (end)
+     */
+    async function handleScroll(card, scrollRatio) {
+        const metricId = card.metric.id;
+        const state = windowState[metricId];
+        if (!state) return;
+
+        const totalRange = state.tickMax - state.tickMin;
+        const viewRange = state.viewTo - state.viewFrom;
+        const maxOffset = totalRange - viewRange;
+
+        const viewFrom = state.tickMin + Math.round(scrollRatio * maxOffset);
+        const viewTo = viewFrom + viewRange;
+
+        // Update state
+        state.viewFrom = viewFrom;
+        state.viewTo = viewTo;
+
+        // Abort any in-flight request
+        if (abortControllers[metricId]) {
+            abortControllers[metricId].abort();
+        }
+        const controller = new AbortController();
+        abortControllers[metricId] = controller;
+
+        try {
+            MetricCardView.showLoading(card);
+            let data;
+            const selectedLod = card.selectedLod || null;
+
+            if (state.isParquet) {
+                // Re-fetch windowed blob from server and re-register
+                const { blob: parquetBlob } = await AnalyticsApi.fetchParquetBlob(
+                    metricId, currentRunId, selectedLod, controller.signal, viewFrom, viewTo
+                );
+                await DuckDBClient.registerParquetBlob(state.blobKey, parquetBlob);
+                data = await DuckDBClient.queryRegisteredBlob(state.blobKey, card.metric.generatedQuery);
+            } else {
+                // Server-side query with tick range
+                const result = await AnalyticsApi.queryData(
+                    currentRunId, metricId, selectedLod, controller.signal, viewFrom, viewTo
+                );
+                data = result.data;
+            }
+
+            if (data.length === 0) {
+                MetricCardView.showNoData(card);
+                return;
+            }
+
+            MetricCardView.renderChart(card, data);
+
+        } catch (error) {
+            if (error.name === 'AbortError') return;
+            console.error(`[Analytics] Scroll error for ${metricId}:`, error);
+        } finally {
             if (abortControllers[metricId] === controller) {
                 delete abortControllers[metricId];
             }

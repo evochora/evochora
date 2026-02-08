@@ -103,6 +103,7 @@ public class AnalyticsController implements IController {
     public void registerRoutes(Javalin app, String basePath) {
         app.get(basePath + "/runs", this::listRuns);
         app.get(basePath + "/manifest", this::getManifest);
+        app.get(basePath + "/tick-range", this::getTickRange);
         app.get(basePath + "/data", this::queryData);
         // Merged Parquet streaming for client-side DuckDB WASM queries
         app.get(basePath + "/parquet", this::getParquet);
@@ -215,6 +216,91 @@ public class AnalyticsController implements IController {
     public record RunInfo(String runId, Long startTime) {}
 
     /**
+     * Returns tick range and file count for a metric without reading file contents.
+     * <p>
+     * Route: GET /tick-range?runId=...&amp;metric=...&amp;lod=...
+     * <p>
+     * This lightweight endpoint only scans filenames to determine the tick range and
+     * file count. No Parquet files are opened or merged, making it near-instant (~1ms).
+     * The frontend uses this to decide whether tick-range windowing is needed before
+     * making the heavier /data or /parquet requests.
+     *
+     * @param ctx Javalin request context
+     */
+    @OpenApi(
+        path = "tick-range",
+        methods = {HttpMethod.GET},
+        summary = "Get tick range metadata",
+        description = "Returns the tick range and file count for a metric/LOD combination. "
+            + "Only scans filenames - no file I/O. Near-instant response (~1ms).",
+        tags = {"analyzer / analytics"},
+        queryParams = {
+            @OpenApiParam(name = "metric", description = "Metric identifier", required = true),
+            @OpenApiParam(name = "runId", description = "Run ID (optional, defaults to latest)", required = false),
+            @OpenApiParam(name = "lod", description = "LOD level (optional, auto-selects if omitted)", required = false)
+        },
+        responses = {
+            @OpenApiResponse(
+                status = "200",
+                description = "Tick range and file count",
+                content = @OpenApiContent(
+                    mimeType = "application/json",
+                    example = """
+                        {"tickMin": 0, "tickMax": 999900, "fileCount": 150, "lod": "lod1"}
+                        """
+                )
+            ),
+            @OpenApiResponse(status = "400", description = "Missing metric parameter"),
+            @OpenApiResponse(status = "404", description = "No data found")
+        }
+    )
+    private void getTickRange(Context ctx) {
+        String metric = ctx.queryParam("metric");
+        String lod = ctx.queryParam("lod");
+
+        if (metric == null || metric.isBlank()) {
+            ctx.status(400).result("Missing metric parameter");
+            return;
+        }
+
+        String runId;
+        try {
+            runId = resolveRunId(ctx);
+        } catch (IllegalStateException e) {
+            ctx.status(404).result("No simulation runs available");
+            return;
+        }
+
+        String storageMetric = resolveStorageMetric(runId, metric);
+
+        if (lod == null || lod.isBlank()) {
+            lod = autoSelectLod(runId, storageMetric);
+            if (lod == null) {
+                ctx.status(404).result("No data found for metric: " + metric);
+                return;
+            }
+        }
+
+        try {
+            String prefix = storageMetric + "/" + lod + "/";
+            long[] tickRange = storage.getAnalyticsTickRange(runId, prefix);
+            List<String> files = storage.listAnalyticsFiles(runId, prefix);
+            long fileCount = files.stream().filter(f -> f.endsWith(".parquet")).count();
+
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("tickMin", tickRange != null ? tickRange[0] : null);
+            result.put("tickMax", tickRange != null ? tickRange[1] : null);
+            result.put("fileCount", fileCount);
+            result.put("lod", lod);
+
+            ctx.json(result);
+        } catch (Exception e) {
+            log.error("Failed to get tick range for {}/{}", metric, lod, e);
+            ctx.status(500).result("Failed to get tick range: " + e.getMessage());
+        }
+    }
+
+    /**
      * Queries analytics data and returns aggregated JSON.
      * <p>
      * Route: GET /data?runId=...&amp;metric=...&amp;lod=...
@@ -281,12 +367,14 @@ public class AnalyticsController implements IController {
     private void queryData(Context ctx) {
         String metric = ctx.queryParam("metric");
         String lod = ctx.queryParam("lod");
+        Long tickFrom = parseLongParam(ctx, "tickFrom");
+        Long tickTo = parseLongParam(ctx, "tickTo");
 
         if (metric == null || metric.isBlank()) {
             ctx.status(400).result("Missing metric parameter");
             return;
         }
-        
+
         // Resolve runId (optional - defaults to latest)
         String runId;
         try {
@@ -311,14 +399,23 @@ public class AnalyticsController implements IController {
         try {
             long startTime = System.currentTimeMillis();
 
-            // 1. List all Parquet files for this metric/LOD
             String prefix = storageMetric + "/" + lod + "/";
-            List<String> files = storage.listAnalyticsFiles(runId, prefix);
+
+            // Determine total tick range from filenames (cheap, no file I/O)
+            long[] tickRange = storage.getAnalyticsTickRange(runId, prefix);
+            if (tickRange != null) {
+                ctx.header("X-Tick-Min", String.valueOf(tickRange[0]));
+                ctx.header("X-Tick-Max", String.valueOf(tickRange[1]));
+            }
+
+            // 1. List Parquet files, optionally filtered by tick range
+            List<String> files = storage.listAnalyticsFiles(runId, prefix, tickFrom, tickTo);
             List<String> parquetFiles = files.stream()
                 .filter(f -> f.endsWith(".parquet"))
                 .toList();
 
             if (parquetFiles.isEmpty()) {
+                ctx.header("X-LOD-Level", lod);
                 ctx.json(List.of()); // Empty array
                 return;
             }
@@ -326,14 +423,14 @@ public class AnalyticsController implements IController {
             // 2. Copy files from storage to temp directory (storage-agnostic)
             Path tempDir = Files.createTempDirectory("analytics-query-");
             List<Path> tempFiles = new ArrayList<>();
-            
+
             try {
                 for (String file : parquetFiles) {
                     Path tempFile = tempDir.resolve(file.replace("/", "_"));
                     try (InputStream in = storage.openAnalyticsInputStream(runId, file);
                          OutputStream out = Files.newOutputStream(tempFile)) {
                         long bytesWritten = in.transferTo(out);
-                        
+
                         // Skip empty files (incomplete from previous shutdown)
                         if (bytesWritten == 0) {
                             log.debug("Skipping empty Parquet file: {}", file);
@@ -344,14 +441,14 @@ public class AnalyticsController implements IController {
                     tempFiles.add(tempFile);
                 }
 
-                // 3. Query with DuckDB
-                List<Map<String, Object>> result = queryParquetFiles(tempFiles);
+                // 3. Query with DuckDB (with optional tick range precision filter)
+                List<Map<String, Object>> result = queryParquetFiles(tempFiles, tickFrom, tickTo);
 
                 long duration = System.currentTimeMillis() - startTime;
                 log.debug("Query {}/{}/{}: {} files, {} rows in {}ms",
                     runId, metric, lod, parquetFiles.size(), result.size(), duration);
 
-                // 4. Return JSON with LOD metadata
+                // 4. Return JSON with metadata
                 ctx.header("X-LOD-Level", lod);
                 ctx.json(result);
 
@@ -419,7 +516,7 @@ public class AnalyticsController implements IController {
     /**
      * Executes a DuckDB query on multiple Parquet files.
      */
-    private List<Map<String, Object>> queryParquetFiles(List<Path> files) throws Exception {
+    private List<Map<String, Object>> queryParquetFiles(List<Path> files, Long tickFrom, Long tickTo) throws Exception {
         if (!duckDbDriverLoaded) {
             throw new IllegalStateException("DuckDB driver not available");
         }
@@ -432,11 +529,14 @@ public class AnalyticsController implements IController {
             fileList.append("'").append(path).append("'");
         }
 
+        // Build optional WHERE clause for tick range precision filtering
+        String whereClause = buildTickWhereClause(tickFrom, tickTo);
+
         // union_by_name=true allows merging Parquet files with different schemas
         // (e.g., old files without avg_entropy, new files with it)
         String sql = String.format(
-            "SELECT * FROM read_parquet([%s], union_by_name=true) ORDER BY tick",
-            fileList
+            "SELECT * FROM read_parquet([%s], union_by_name=true)%s ORDER BY tick",
+            fileList, whereClause
         );
 
         List<Map<String, Object>> result = new ArrayList<>();
@@ -536,6 +636,8 @@ public class AnalyticsController implements IController {
     private void getParquet(Context ctx) {
         String metric = ctx.queryParam("metric");
         String lod = ctx.queryParam("lod");
+        Long tickFrom = parseLongParam(ctx, "tickFrom");
+        Long tickTo = parseLongParam(ctx, "tickTo");
 
         if (metric == null || metric.isBlank()) {
             ctx.status(400).result("Missing metric parameter");
@@ -550,7 +652,7 @@ public class AnalyticsController implements IController {
             ctx.status(404).result("No simulation runs available");
             return;
         }
-        
+
         // Resolve storage metric ID (may differ from manifest entry ID for merged plugins)
         String storageMetric = resolveStorageMetric(runId, metric);
 
@@ -565,9 +667,17 @@ public class AnalyticsController implements IController {
         try {
             long startTime = System.currentTimeMillis();
 
-            // 1. List all Parquet files for this metric/LOD
             String prefix = storageMetric + "/" + lod + "/";
-            List<String> files = storage.listAnalyticsFiles(runId, prefix);
+
+            // Determine total tick range from filenames (cheap, no file I/O)
+            long[] tickRange = storage.getAnalyticsTickRange(runId, prefix);
+            if (tickRange != null) {
+                ctx.header("X-Tick-Min", String.valueOf(tickRange[0]));
+                ctx.header("X-Tick-Max", String.valueOf(tickRange[1]));
+            }
+
+            // 1. List Parquet files, optionally filtered by tick range
+            List<String> files = storage.listAnalyticsFiles(runId, prefix, tickFrom, tickTo);
             List<String> parquetFiles = files.stream()
                 .filter(f -> f.endsWith(".parquet"))
                 .toList();
@@ -610,9 +720,9 @@ public class AnalyticsController implements IController {
                     return;
                 }
 
-                // 3. Merge Parquet files using DuckDB
+                // 3. Merge Parquet files using DuckDB (with optional tick range filter)
                 mergedFile = tempDir.resolve("merged.parquet");
-                mergeParquetFiles(tempFiles, mergedFile);
+                mergeParquetFiles(tempFiles, mergedFile, tickFrom, tickTo);
                 
                 // 3a. Validate merged file is readable (catches race conditions with incomplete writes)
                 long rowCount = validateParquetFile(mergedFile);
@@ -673,7 +783,7 @@ public class AnalyticsController implements IController {
      * @param outputFile Output merged Parquet file
      * @throws Exception if merge fails
      */
-    private void mergeParquetFiles(List<Path> inputFiles, Path outputFile) throws Exception {
+    private void mergeParquetFiles(List<Path> inputFiles, Path outputFile, Long tickFrom, Long tickTo) throws Exception {
         if (!duckDbDriverLoaded) {
             throw new IllegalStateException("DuckDB driver not available");
         }
@@ -686,12 +796,13 @@ public class AnalyticsController implements IController {
             fileList.append("'").append(path).append("'");
         }
 
+        String whereClause = buildTickWhereClause(tickFrom, tickTo);
         String outputPath = outputFile.toAbsolutePath().toString().replace("\\", "/");
         // union_by_name=true allows merging Parquet files with different schemas
         // (e.g., old files without avg_entropy, new files with it)
         String sql = String.format(
-            "COPY (SELECT * FROM read_parquet([%s], union_by_name=true) ORDER BY tick) TO '%s' (FORMAT PARQUET, CODEC 'ZSTD')",
-            fileList, outputPath
+            "COPY (SELECT * FROM read_parquet([%s], union_by_name=true)%s ORDER BY tick) TO '%s' (FORMAT PARQUET, CODEC 'ZSTD')",
+            fileList, whereClause, outputPath
         );
 
         try (Connection conn = DriverManager.getConnection("jdbc:duckdb:");
@@ -724,6 +835,38 @@ public class AnalyticsController implements IController {
             }
             return 0;
         }
+    }
+
+    /**
+     * Parses an optional Long query parameter.
+     *
+     * @return The parsed value, or null if absent or unparseable.
+     */
+    private static Long parseLongParam(Context ctx, String name) {
+        String value = ctx.queryParam(name);
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /**
+     * Builds a SQL WHERE clause for tick range filtering.
+     *
+     * @return The WHERE clause (e.g. " WHERE tick >= 100 AND tick <= 999"), or empty string if no bounds.
+     */
+    private static String buildTickWhereClause(Long tickFrom, Long tickTo) {
+        if (tickFrom == null && tickTo == null) {
+            return "";
+        }
+        List<String> conditions = new ArrayList<>();
+        if (tickFrom != null) conditions.add("tick >= " + tickFrom);
+        if (tickTo != null) conditions.add("tick <= " + tickTo);
+        return " WHERE " + String.join(" AND ", conditions);
     }
 
     /**

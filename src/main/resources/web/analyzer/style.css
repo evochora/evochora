@@ -278,6 +278,58 @@ main.container {
     padding: 12px;
 }
 
+/* --- Metric Card Scrollbar --- */
+.metric-card-scrollbar-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.metric-card-scrollbar-label {
+    font-size: 10px;
+    font-family: 'Courier New', monospace;
+    color: #888;
+    white-space: nowrap;
+    min-width: 3.5em;
+    text-align: center;
+}
+
+.metric-card-scrollbar-container {
+    flex: 1;
+    min-width: 0;
+    height: 12px;
+    overflow-x: scroll;
+    overflow-y: hidden;
+    background-color: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 3px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--button-bg) var(--bg-tertiary);
+}
+
+.metric-card-scrollbar-container::-webkit-scrollbar {
+    height: 10px;
+}
+
+.metric-card-scrollbar-container::-webkit-scrollbar-track {
+    background: var(--bg-tertiary);
+    border-radius: 3px;
+}
+
+.metric-card-scrollbar-container::-webkit-scrollbar-thumb {
+    background-color: var(--button-bg);
+    border-radius: 3px;
+}
+
+.metric-card-scrollbar-container::-webkit-scrollbar-thumb:hover {
+    background-color: var(--button-hover);
+}
+
+.metric-card-scrollbar-inner {
+    height: 1px;
+}
+
 .metric-card-message-overlay {
     display: none;
     position: absolute;

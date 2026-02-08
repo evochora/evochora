@@ -163,6 +163,69 @@ export async function queryParquetBlob(parquetBlob, sql) {
         }
     }
     
+    /** @type {Map<string, string>} Persistently registered blobs: metricKey -> fileName */
+    const registeredBlobs = new Map();
+
+    /**
+     * Registers a Parquet blob persistently for repeated queries.
+     * If a blob is already registered for the same key, it is replaced.
+     *
+     * @param {string} metricKey - Unique key (e.g. "population_lod0")
+     * @param {Blob} parquetBlob - The Parquet blob
+     * @returns {Promise<string>} The registered filename handle
+     */
+export async function registerParquetBlob(metricKey, parquetBlob) {
+        if (!initialized) {
+            await init();
+        }
+
+        // Drop previously registered blob for same key
+        const existing = registeredBlobs.get(metricKey);
+        if (existing) {
+            try { await db.dropFile(existing); } catch (e) { /* ignore */ }
+        }
+
+        const fileName = `persistent_${metricKey}_${++fileCounter}.parquet`;
+        await db.registerFileHandle(fileName, parquetBlob, duckdbModule.DuckDBDataProtocol.BROWSER_FILEREADER, true);
+        registeredBlobs.set(metricKey, fileName);
+        return fileName;
+    }
+
+    /**
+     * Queries a previously registered Parquet blob.
+     *
+     * @param {string} metricKey - The key used in registerParquetBlob
+     * @param {string} sql - SQL with {table} placeholder
+     * @returns {Promise<Array<Object>>} Query results
+     */
+export async function queryRegisteredBlob(metricKey, sql) {
+        if (!initialized) {
+            await init();
+        }
+
+        const fileName = registeredBlobs.get(metricKey);
+        if (!fileName) {
+            throw new Error(`No registered blob for key: ${metricKey}`);
+        }
+
+        const finalSql = sql.replaceAll('{table}', `'${fileName}'`);
+        const result = await conn.query(finalSql);
+        return result.toArray().map(row => convertBigInts(row.toJSON()));
+    }
+
+    /**
+     * Drops a previously registered Parquet blob.
+     *
+     * @param {string} metricKey - The key used in registerParquetBlob
+     */
+export async function dropRegisteredBlob(metricKey) {
+        const fileName = registeredBlobs.get(metricKey);
+        if (fileName) {
+            try { await db.dropFile(fileName); } catch (e) { /* ignore */ }
+            registeredBlobs.delete(metricKey);
+        }
+    }
+
     /**
      * Closes the DuckDB connection and cleans up.
      */

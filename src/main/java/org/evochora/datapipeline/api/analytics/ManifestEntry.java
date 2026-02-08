@@ -81,6 +81,18 @@ public class ManifestEntry {
     public java.util.List<String> outputColumns;
     
     /**
+     * Maximum number of data points the frontend should load at once (optional).
+     * <p>
+     * When set, overrides the default pixel-based limit ({@code chartPixelWidth / 2}).
+     * Useful for chart types like bar charts where each data point needs more horizontal
+     * space, or for metrics with expensive server-side merges where a smaller window
+     * reduces load time.
+     * <p>
+     * If {@code null}, the frontend uses {@code min(5000, chartPixelWidth / 2)}.
+     */
+    public Integer maxDataPoints;
+
+    /**
      * Path to custom visualizer JavaScript (optional).
      * <p>
      * If set, the frontend loads this script for custom rendering.
