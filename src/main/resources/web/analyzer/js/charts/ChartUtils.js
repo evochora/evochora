@@ -8,43 +8,51 @@
 
 /**
  * Formats large tick values with k/M suffixes for readability.
+ * Adapts precision to the visible range so that labels remain distinguishable.
  *
- * Examples:
+ * Examples (wide range):
  *   500 → "500"
  *   1500 → "1.5k"
- *   150000 → "150k"
  *   1500000 → "1.5M"
- *   10000000 → "10M"
+ *
+ * Examples (narrow range, e.g. 7.40M–7.45M):
+ *   7400000 → "7.400M"
+ *   7450000 → "7.450M"
  *
  * @param {number} value - The tick value to format
+ * @param {number} [range] - The visible axis range (max - min). Used to pick precision.
  * @returns {string} Formatted string with appropriate suffix
  */
-export function formatTickValue(value) {
+export function formatTickValue(value, range) {
     if (value === null || value === undefined) return '';
 
     const absValue = Math.abs(value);
 
     if (absValue >= 1_000_000) {
-        // Millions
         const millions = value / 1_000_000;
-        return millions % 1 === 0 ? `${millions}M` : `${millions.toFixed(1)}M`;
+        const decimals = range != null ? precisionForRange(range, 1_000_000) : (millions % 1 === 0 ? 0 : 1);
+        return millions.toFixed(decimals) + 'M';
     } else if (absValue >= 1_000) {
-        // Thousands
         const thousands = value / 1_000;
-        return thousands % 1 === 0 ? `${thousands}k` : `${thousands.toFixed(1)}k`;
+        const decimals = range != null ? precisionForRange(range, 1_000) : (thousands % 1 === 0 ? 0 : 1);
+        return thousands.toFixed(decimals) + 'k';
     }
 
     return String(value);
 }
 
 /**
- * Creates a tick callback function for Chart.js X-axis.
- * Formats large numbers with k/M suffixes.
+ * Computes the number of decimal places needed so that tick labels
+ * are distinguishable given the visible range and the divisor (1e6 or 1e3).
  *
- * @returns {function} Callback function for Chart.js ticks.callback
+ * @param {number} range - Visible axis range (max - min)
+ * @param {number} divisor - 1_000_000 for M, 1_000 for k
+ * @returns {number} Number of decimals (0–3)
  */
-export function createTickFormatter() {
-    return function(value) {
-        return formatTickValue(value);
-    };
+function precisionForRange(range, divisor) {
+    const scaledRange = range / divisor;
+    if (scaledRange >= 10) return 0;
+    if (scaledRange >= 1)  return 1;
+    if (scaledRange >= 0.1) return 2;
+    return 3;
 }

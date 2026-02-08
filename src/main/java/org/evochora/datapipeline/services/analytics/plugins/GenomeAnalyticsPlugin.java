@@ -356,7 +356,11 @@ public class GenomeAnalyticsPlugin extends AbstractAnalyticsPlugin {
      */
     @Override
     public List<ManifestEntry> getManifestEntries() {
-        return List.of(buildDiversityManifest(), buildPopulationManifest());
+        ManifestEntry diversity = buildDiversityManifest();
+        ManifestEntry population = buildPopulationManifest();
+        applyCommonConfig(diversity);
+        applyCommonConfig(population);
+        return List.of(diversity, population);
     }
 
     /**

@@ -460,6 +460,109 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
     }
 
     @Override
+    public List<String> listAnalyticsFiles(String runId, String prefix, Long tickFrom, Long tickTo) throws IOException {
+        if (tickFrom == null && tickTo == null) {
+            return listAnalyticsFiles(runId, prefix);
+        }
+
+        File analyticsRoot = getAnalyticsRoot(runId);
+        if (!analyticsRoot.exists() || !analyticsRoot.isDirectory()) {
+            return Collections.emptyList();
+        }
+
+        String searchPrefix = (prefix == null) ? "" : prefix;
+        Path rootPath = analyticsRoot.toPath();
+
+        try (Stream<Path> stream = Files.walk(rootPath)) {
+            return stream
+                .filter(Files::isRegularFile)
+                .map(p -> rootPath.relativize(p))
+                .map(Path::toString)
+                .map(s -> s.replace(File.separatorChar, '/'))
+                .filter(path -> path.startsWith(searchPrefix))
+                .filter(path -> !path.endsWith(".tmp"))
+                .filter(path -> {
+                    String filename = path.substring(path.lastIndexOf('/') + 1);
+                    long[] range = parseAnalyticsParquetTickRange(filename);
+                    if (range == null) {
+                        return true; // Non-batch files (metadata.json etc.) always included
+                    }
+                    // Include if file tick range overlaps with [tickFrom, tickTo]
+                    if (tickFrom != null && range[1] < tickFrom) return false;
+                    if (tickTo != null && range[0] > tickTo) return false;
+                    return true;
+                })
+                .sorted()
+                .collect(Collectors.toList());
+        }
+    }
+
+    @Override
+    public long[] getAnalyticsTickRange(String runId, String prefix) throws IOException {
+        File analyticsRoot = getAnalyticsRoot(runId);
+        if (!analyticsRoot.exists() || !analyticsRoot.isDirectory()) {
+            return null;
+        }
+
+        String searchPrefix = (prefix == null) ? "" : prefix;
+        Path rootPath = analyticsRoot.toPath();
+
+        long minTick = Long.MAX_VALUE;
+        long maxTick = Long.MIN_VALUE;
+        boolean found = false;
+
+        try (Stream<Path> stream = Files.walk(rootPath)) {
+            List<String> paths = stream
+                .filter(Files::isRegularFile)
+                .map(p -> rootPath.relativize(p))
+                .map(Path::toString)
+                .map(s -> s.replace(File.separatorChar, '/'))
+                .filter(path -> path.startsWith(searchPrefix))
+                .filter(path -> !path.endsWith(".tmp"))
+                .toList();
+
+            for (String path : paths) {
+                String filename = path.substring(path.lastIndexOf('/') + 1);
+                long[] range = parseAnalyticsParquetTickRange(filename);
+                if (range != null) {
+                    if (range[0] < minTick) minTick = range[0];
+                    if (range[1] > maxTick) maxTick = range[1];
+                    found = true;
+                }
+            }
+        }
+
+        return found ? new long[]{minTick, maxTick} : null;
+    }
+
+    /**
+     * Parses start and end ticks from an analytics Parquet batch filename.
+     * <p>
+     * Pattern: {@code batch_00000000000000000000_00000000000000000099.parquet}
+     *
+     * @param filename Just the filename (no path)
+     * @return {@code long[2] = {startTick, endTick}}, or null if not a batch parquet file
+     */
+    static long[] parseAnalyticsParquetTickRange(String filename) {
+        if (!filename.startsWith("batch_") || !filename.endsWith(".parquet")) {
+            return null;
+        }
+        try {
+            int firstUnder = 6; // after "batch_"
+            int secondUnder = filename.indexOf('_', firstUnder);
+            int dotParquet = filename.indexOf(".parquet");
+            if (secondUnder < 0 || dotParquet < 0 || secondUnder >= dotParquet) {
+                return null;
+            }
+            long start = Long.parseLong(filename.substring(firstUnder, secondUnder));
+            long end = Long.parseLong(filename.substring(secondUnder + 1, dotParquet));
+            return new long[]{start, end};
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    @Override
     public List<String> listAnalyticsRunIds() throws IOException {
         if (!rootDirectory.exists() || !rootDirectory.isDirectory()) {
             return Collections.emptyList();

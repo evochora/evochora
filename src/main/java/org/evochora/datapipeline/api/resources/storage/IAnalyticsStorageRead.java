@@ -38,6 +38,33 @@ public interface IAnalyticsStorageRead extends IResource, IMonitorable {
     List<String> listAnalyticsFiles(String runId, String prefix) throws IOException;
 
     /**
+     * Lists analytics artifacts matching a prefix, filtered by tick range.
+     * <p>
+     * Only includes batch Parquet files whose tick range overlaps with
+     * {@code [tickFrom, tickTo]}. Non-batch files (e.g. metadata.json) are always included.
+     *
+     * @param runId    The simulation run ID
+     * @param prefix   Path prefix (e.g. "population/lod0/")
+     * @param tickFrom Minimum tick (inclusive), or null for no lower bound
+     * @param tickTo   Maximum tick (inclusive), or null for no upper bound
+     * @return Filtered list of relative paths.
+     * @throws IOException If storage access fails.
+     */
+    List<String> listAnalyticsFiles(String runId, String prefix, Long tickFrom, Long tickTo) throws IOException;
+
+    /**
+     * Returns the total tick range across all Parquet batch files matching a prefix.
+     * <p>
+     * Determines the range purely from filenames (no file content I/O).
+     *
+     * @param runId  The simulation run ID
+     * @param prefix Path prefix (e.g. "population/lod0/")
+     * @return {@code long[2] = {minTick, maxTick}}, or null if no batch files found
+     * @throws IOException If storage access fails.
+     */
+    long[] getAnalyticsTickRange(String runId, String prefix) throws IOException;
+
+    /**
      * Lists all simulation run IDs that have analytics data.
      * <p>
      * Only returns runs that have an analytics subdirectory with content.

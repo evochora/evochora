@@ -278,7 +278,10 @@ export function render(canvas, data, config) {
                             callback: function(value, index) {
                                 // For bar charts, value is index - get actual label
                                 const label = this.getLabelForValue(value);
-                                return formatTickValue(label);
+                                const firstLabel = this.getLabelForValue(this.min);
+                                const lastLabel = this.getLabelForValue(this.max);
+                                const range = Number(lastLabel) - Number(firstLabel);
+                                return formatTickValue(label, range);
                             }
                         },
                         grid: { color: '#333', drawBorder: false }
