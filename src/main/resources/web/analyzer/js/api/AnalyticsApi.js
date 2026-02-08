@@ -45,22 +45,22 @@ export async function getManifest(runId) {
     }
     
     /**
-     * Queries analytics data from the server (legacy server-side mode).
+     * Queries analytics data from the server.
      * Server aggregates all Parquet files and returns JSON.
-     * 
+     * Used by metrics without a generated query (server-side aggregation).
+     *
      * @param {string} runId - Simulation run ID
      * @param {string} metric - Metric identifier (e.g., 'population')
      * @param {string} [lod] - Optional LOD level. If not specified, server auto-selects.
-     * @returns {Promise<Array<Object>>} Array of data rows
+     * @returns {Promise<{data: Array<Object>, lod: string}>} Data rows and resolved LOD level
      * @throws {Error} With code 'NO_DATA' if metric has no data yet
-     * @deprecated Use fetchParquetBlob() + DuckDBClient for client-side queries
      */
-export async function queryData(runId, metric, lod = null) {
+export async function queryData(runId, metric, lod = null, signal = null) {
         let url = `/data?runId=${encodeURIComponent(runId)}&metric=${encodeURIComponent(metric)}`;
         if (lod) {
             url += `&lod=${encodeURIComponent(lod)}`;
         }
-        const response = await fetch(`${BASE_PATH}${url}`);
+        const response = await fetch(`${BASE_PATH}${url}`, signal ? { signal } : undefined);
         if (!response.ok) {
             if (response.status === 404) {
                 const error = new Error('No data available yet');
@@ -70,7 +70,9 @@ export async function queryData(runId, metric, lod = null) {
             const text = await response.text();
             throw new Error(`API Error ${response.status}: ${text || response.statusText}`);
         }
-        return await response.json();
+        const data = await response.json();
+        const resolvedLod = response.headers.get('X-LOD-Level') || null;
+        return { data, lod: resolvedLod };
     }
     
     /**
@@ -83,7 +85,7 @@ export async function queryData(runId, metric, lod = null) {
      * @returns {Promise<{blob: Blob, metadata: {lod: string, fileCount: number, rowCount: number, processTimeMs: number}}>}
      * @throws {Error} With code 'NO_DATA' if metric has no data yet
      */
-export async function fetchParquetBlob(metric, runId = null, lod = null) {
+export async function fetchParquetBlob(metric, runId = null, lod = null, signal = null) {
         let url = `${BASE_PATH}/parquet?metric=${encodeURIComponent(metric)}`;
         if (lod) {
             url += `&lod=${encodeURIComponent(lod)}`;
@@ -91,8 +93,8 @@ export async function fetchParquetBlob(metric, runId = null, lod = null) {
         if (runId) {
             url += `&runId=${encodeURIComponent(runId)}`;
         }
-        
-        const response = await fetch(url);
+
+        const response = await fetch(url, signal ? { signal } : undefined);
         if (!response.ok) {
             if (response.status === 404) {
                 const error = new Error('No data available yet');

@@ -348,10 +348,11 @@ public class AnalyticsController implements IController {
                 List<Map<String, Object>> result = queryParquetFiles(tempFiles);
 
                 long duration = System.currentTimeMillis() - startTime;
-                log.debug("Query {}/{}/{}: {} files, {} rows in {}ms", 
+                log.debug("Query {}/{}/{}: {} files, {} rows in {}ms",
                     runId, metric, lod, parquetFiles.size(), result.size(), duration);
 
-                // 4. Return JSON
+                // 4. Return JSON with LOD metadata
+                ctx.header("X-LOD-Level", lod);
                 ctx.json(result);
 
             } finally {

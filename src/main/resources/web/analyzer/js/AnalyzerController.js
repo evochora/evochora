@@ -32,6 +32,8 @@ import * as MetricCardView from './ui/MetricCardView.js';
     let currentRunId = null;
     let manifest = null;
     let isLoading = false;
+    /** @type {Object<string, AbortController>} Active abort controllers per metric ID */
+    const abortControllers = {};
 
     /**
      * Initializes the controller and UI components.
@@ -172,7 +174,26 @@ export async function loadDashboard(runId) {
             
             // Create metric cards
             DashboardView.createCards(manifest.metrics);
-            
+
+            // Register LOD change handlers
+            const cards = DashboardView.getAllCards();
+            for (const [metricId, card] of Object.entries(cards)) {
+                MetricCardView.setOnLodChange(card, (lod) => {
+                    card.selectedLod = lod;
+                    MetricCardView.setActiveLod(card, lod);
+                    loadMetricData(card).catch(error => {
+                        if (error.name !== 'AbortError') {
+                            let message = error.message || 'Failed to load data';
+                            if (message.includes('Binder Error') || message.includes('Parser Error')) {
+                                message = 'Query error - data may be incomplete';
+                            }
+                            console.error(`[AnalyzerController] Failed to load metric ${metricId}:`, error);
+                            MetricCardView.showError(card, message);
+                        }
+                    });
+                });
+            }
+
             // Load data for all metrics
             await loadAllMetricsData();
             
@@ -194,6 +215,7 @@ export async function loadDashboard(runId) {
         // Load all metrics in parallel
         const promises = Object.entries(cards).map(([metricId, card]) => {
             return loadMetricData(card).catch(error => {
+                if (error.name === 'AbortError') return; // LOD switch interrupted this load
                 // Extract user-friendly error message (hide technical details)
                 let message = error.message || 'Failed to load data';
                 if (message.includes('Binder Error') || message.includes('Parser Error')) {
@@ -214,45 +236,76 @@ export async function loadDashboard(runId) {
      * @param {Object} card - MetricCard instance
      */
     async function loadMetricData(card) {
-        MetricCardView.showLoading(card);
-        
         const metric = card.metric;
-        
+        const metricId = metric.id;
+
+        // Abort any in-flight request for this metric
+        if (abortControllers[metricId]) {
+            abortControllers[metricId].abort();
+        }
+        const controller = new AbortController();
+        abortControllers[metricId] = controller;
+
+        MetricCardView.showLoading(card);
+
         try {
-            const startTime = performance.now();
-            
             // Check if metric has a generated query (new stateless plugins)
             const hasGeneratedQuery = metric.generatedQuery && metric.generatedQuery.trim();
-            
+            const selectedLod = card.selectedLod || null;
+
             let data;
+            let resolvedLod = selectedLod;
+
             if (hasGeneratedQuery) {
-                // New architecture: Client-side DuckDB WASM
-                // 1. Fetch merged Parquet blob from server (auto-selects LOD)
-                const { blob: parquetBlob, metadata } = await AnalyticsApi.fetchParquetBlob(metric.id, currentRunId);
-                
-                // 2. Query locally with DuckDB WASM using the generated SQL
+                // Client-side DuckDB WASM query on merged Parquet from server
+                const { blob: parquetBlob, metadata } = await AnalyticsApi.fetchParquetBlob(
+                    metricId, currentRunId, selectedLod, controller.signal
+                );
+
+                if (metadata.lod && metadata.lod !== 'unknown') {
+                    resolvedLod = metadata.lod;
+                }
+
                 data = await DuckDBClient.queryParquetBlob(parquetBlob, metric.generatedQuery);
             } else {
-                // Legacy: Server-side query (for plugins without generatedQuery)
-                data = await AnalyticsApi.queryData(currentRunId, metric.id);
+                // Server-side query (for plugins without generatedQuery)
+                const result = await AnalyticsApi.queryData(currentRunId, metricId, selectedLod, controller.signal);
+                data = result.data;
+
+                if (result.lod) {
+                    resolvedLod = result.lod;
+                }
             }
-            
+
+            // Highlight the active LOD chip
+            if (resolvedLod) {
+                MetricCardView.setActiveLod(card, resolvedLod);
+            }
+
             if (data.length === 0) {
                 MetricCardView.showNoData(card);
                 return;
             }
-            
+
             // Render chart
             MetricCardView.renderChart(card, data);
-            
+
         } catch (error) {
+            if (error.name === 'AbortError') {
+                throw error; // Re-throw so callers can handle
+            }
             // Handle "no data yet" as a non-error state
             if (error.code === 'NO_DATA') {
                 MetricCardView.showNoData(card);
                 return;
             }
-            console.error(`[Analytics] Error loading metric ${metric.id}:`, error);
+            console.error(`[Analytics] Error loading metric ${metricId}:`, error);
             throw error;
+        } finally {
+            // Clean up controller if it's still the current one
+            if (abortControllers[metricId] === controller) {
+                delete abortControllers[metricId];
+            }
         }
     }
     

@@ -208,6 +208,8 @@ main.container {
     justify-content: space-between;
     align-items: flex-start;
     margin-bottom: 12px;
+    position: relative;
+    z-index: 11;
 }
 
 .metric-card-title {
@@ -233,6 +235,36 @@ main.container {
     min-width: 80px;
     padding: 4px 8px;
     font-size: 0.8em;
+}
+
+/* --- LOD Chip Buttons --- */
+.lod-chip {
+    padding: 2px 6px;
+    font-size: 0.7em;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+    line-height: 1;
+}
+
+.lod-chip:hover {
+    border-color: var(--border-hover);
+    color: var(--text-secondary);
+}
+
+.lod-chip.active {
+    background-color: var(--button-bg);
+    border-color: var(--accent-blue);
+    color: var(--text-primary);
+}
+
+.lod-chip:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
 }
 
 /* --- Metric Card Chart Container --- */

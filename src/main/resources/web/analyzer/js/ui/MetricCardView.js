@@ -41,15 +41,35 @@ export function create(metric) {
     // Header
     const header = document.createElement('div');
     header.className = 'metric-card-header';
-    header.innerHTML = `
-        <div class="metric-card-title-group">
-            <h3 class="metric-card-title">${metric.name}</h3>
-            <p class="metric-card-description">${metric.description || ''}</p>
-        </div>
-        <div class="metric-card-controls">
-            <!-- Controls can be added here if needed -->
-        </div>
+
+    const titleGroup = document.createElement('div');
+    titleGroup.className = 'metric-card-title-group';
+    titleGroup.innerHTML = `
+        <h3 class="metric-card-title">${metric.name}</h3>
+        <p class="metric-card-description">${metric.description || ''}</p>
     `;
+
+    const controls = document.createElement('div');
+    controls.className = 'metric-card-controls';
+
+    // LOD chip buttons from manifest dataSources
+    const lodLevels = metric.dataSources ? Object.keys(metric.dataSources).sort() : [];
+    lodLevels.forEach(lod => {
+        const chip = document.createElement('button');
+        chip.className = 'lod-chip';
+        chip.dataset.lod = lod;
+        chip.textContent = lod.replace('lod', 'L');
+        chip.addEventListener('click', () => {
+            const card = cards[metric.id];
+            if (card && card.onLodChange) {
+                card.onLodChange(lod);
+            }
+        });
+        controls.appendChild(chip);
+    });
+
+    header.appendChild(titleGroup);
+    header.appendChild(controls);
     
     // Chart container
     const chartContainer = document.createElement('div');
@@ -128,6 +148,32 @@ export function showLoading(card) {
 export function showError(card, message) {
     if (card) {
         showMessage(card, `Error: ${message}`, true);
+    }
+}
+
+/**
+ * Sets the active LOD level on a card's chip buttons.
+ *
+ * @param {Object} card - Card instance
+ * @param {string} lod - LOD level to activate (e.g., 'lod0')
+ */
+export function setActiveLod(card, lod) {
+    if (!card || !card.element) return;
+    const chips = card.element.querySelectorAll('.lod-chip');
+    chips.forEach(chip => {
+        chip.classList.toggle('active', chip.dataset.lod === lod);
+    });
+}
+
+/**
+ * Registers a callback for LOD level changes on a card.
+ *
+ * @param {Object} card - Card instance
+ * @param {function(string): void} callback - Called with the selected LOD level
+ */
+export function setOnLodChange(card, callback) {
+    if (card) {
+        card.onLodChange = callback;
     }
 }
 
