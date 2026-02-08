@@ -12,6 +12,8 @@ import org.evochora.datapipeline.api.delta.ChunkCorruptedException;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
 
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
@@ -174,6 +176,8 @@ public final class DeltaCodec {
          * @param env environment (for cell extraction)
          * @param organisms current organism states
          * @param totalOrganismsCreated total organisms created since simulation start
+         * @param totalUniqueGenomes total unique genomes ever observed
+         * @param allGenomesEverSeen set of all genome hashes ever seen (stored in snapshots only)
          * @param rngState RNG state bytes
          * @param pluginStates energy strategy states
          * @return Optional containing a complete chunk, or empty if chunk not yet complete
@@ -183,35 +187,42 @@ public final class DeltaCodec {
                 Environment env,
                 List<OrganismState> organisms,
                 long totalOrganismsCreated,
+                long totalUniqueGenomes,
+                LongOpenHashSet allGenomesEverSeen,
                 ByteString rngState,
                 List<PluginState> pluginStates) {
-            
+
             // Get changes since last sample
             BitSet changedSinceLastSample = env.getChangedIndices();
-            
+
             // Accumulate changes for accumulated deltas
             accumulatedSinceSnapshot.or(changedSinceLastSample);
-            
+
             // Determine tick type
             boolean isSnapshot = (samplesSinceSnapshot == 0);
             boolean isAccumulated = !isSnapshot && (samplesSinceSnapshot % accumulatedDeltaInterval == 0);
-            
+
             long captureTimeMs = System.currentTimeMillis();
-            
+
             if (isSnapshot) {
                 // Full snapshot - extract all cells
                 CellDataColumns allCells = extractAllCells(env);
-                currentSnapshot = TickData.newBuilder()
+                TickData.Builder snapshotBuilder = TickData.newBuilder()
                         .setSimulationRunId(runId)
                         .setTickNumber(tick)
                         .setCaptureTimeMs(captureTimeMs)
                         .setCellColumns(allCells)
                         .addAllOrganisms(organisms)
                         .setTotalOrganismsCreated(totalOrganismsCreated)
+                        .setTotalUniqueGenomes(totalUniqueGenomes)
                         .setRngState(rngState)
-                        .addAllPluginStates(pluginStates)
-                        .build();
-                
+                        .addAllPluginStates(pluginStates);
+                // Store genome hash set in snapshots for resume
+                for (long hash : allGenomesEverSeen) {
+                    snapshotBuilder.addAllGenomeHashesEverSeen(hash);
+                }
+                currentSnapshot = snapshotBuilder.build();
+
                 accumulatedSinceSnapshot.clear();
             } else if (isAccumulated) {
                 // Accumulated delta - all changes since last snapshot
@@ -221,6 +232,7 @@ public final class DeltaCodec {
                 DeltaCapture delta = captureDelta(
                         tick, captureTimeMs, DeltaType.ACCUMULATED,
                         changedCells, organisms, totalOrganismsCreated,
+                        totalUniqueGenomes,
                         ByteString.EMPTY, List.of());  // No RNG/plugin state for accumulated
                 currentDeltas.add(delta);
             } else {
@@ -229,6 +241,7 @@ public final class DeltaCodec {
                 DeltaCapture delta = captureDelta(
                         tick, captureTimeMs, DeltaType.INCREMENTAL,
                         changedCells, organisms, totalOrganismsCreated,
+                        totalUniqueGenomes,
                         ByteString.EMPTY, List.of());  // No RNG/strategy for incremental
                 currentDeltas.add(delta);
             }
@@ -442,10 +455,11 @@ public final class DeltaCodec {
                         .setCellColumns(state.toCellDataColumns())
                         .addAllOrganisms(delta.getOrganismsList())
                         .setTotalOrganismsCreated(delta.getTotalOrganismsCreated())
+                        .setTotalUniqueGenomes(delta.getTotalUniqueGenomes())
                         .setRngState(delta.getRngState())
                         .addAllPluginStates(delta.getPluginStatesList())
                         .build();
-                
+
                 result.add(reconstructed);
             }
             
@@ -523,6 +537,7 @@ public final class DeltaCodec {
                     .setCellColumns(state.toCellDataColumns())
                     .addAllOrganisms(targetDelta.getOrganismsList())
                     .setTotalOrganismsCreated(targetDelta.getTotalOrganismsCreated())
+                    .setTotalUniqueGenomes(targetDelta.getTotalUniqueGenomes())
                     .setRngState(targetDelta.getRngState())
                     .addAllPluginStates(targetDelta.getPluginStatesList())
                     .build();
@@ -670,6 +685,7 @@ public final class DeltaCodec {
      * @param changedCells cell data for changed cells
      * @param organisms current organism states
      * @param totalOrganismsCreated total organisms created since simulation start
+     * @param totalUniqueGenomes total unique genomes ever observed
      * @param rngState RNG state bytes (empty for INCREMENTAL)
      * @param pluginStates strategy states (empty for INCREMENTAL)
      * @return the constructed TickDelta protobuf message
@@ -681,13 +697,14 @@ public final class DeltaCodec {
             CellDataColumns changedCells,
             List<OrganismState> organisms,
             long totalOrganismsCreated,
+            long totalUniqueGenomes,
             ByteString rngState,
             List<PluginState> pluginStates) {
-        
+
         if (deltaType == DeltaType.DELTA_TYPE_UNSPECIFIED) {
             throw new IllegalArgumentException("deltaType must be INCREMENTAL or ACCUMULATED");
         }
-        
+
         return TickDelta.newBuilder()
                 .setTickNumber(tickNumber)
                 .setCaptureTimeMs(captureTimeMs)
@@ -695,6 +712,7 @@ public final class DeltaCodec {
                 .setChangedCells(changedCells != null ? changedCells : CellDataColumns.getDefaultInstance())
                 .addAllOrganisms(organisms != null ? organisms : List.of())
                 .setTotalOrganismsCreated(totalOrganismsCreated)
+                .setTotalUniqueGenomes(totalUniqueGenomes)
                 .setRngState(rngState != null ? rngState : ByteString.EMPTY)
                 .addAllPluginStates(pluginStates != null ? pluginStates : List.of())
                 .build();
@@ -747,6 +765,7 @@ public final class DeltaCodec {
      * @param changedCells cell data for changed cells
      * @param organisms current organism states
      * @param totalOrganismsCreated total organisms created since simulation start
+     * @param totalUniqueGenomes total unique genomes ever observed
      * @param rngState RNG state bytes
      * @param pluginStates strategy states
      * @return a DeltaCapture containing the constructed TickDelta
@@ -758,14 +777,16 @@ public final class DeltaCodec {
             CellDataColumns changedCells,
             List<OrganismState> organisms,
             long totalOrganismsCreated,
+            long totalUniqueGenomes,
             ByteString rngState,
             List<PluginState> pluginStates) {
-        
+
         TickDelta delta = createDelta(
                 tickNumber, captureTimeMs, deltaType,
                 changedCells, organisms, totalOrganismsCreated,
+                totalUniqueGenomes,
                 rngState, pluginStates);
-        
+
         return new DeltaCapture(tickNumber, captureTimeMs, delta);
     }
     

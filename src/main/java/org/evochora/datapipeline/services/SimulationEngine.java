@@ -398,6 +398,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 organism.getInitialPosition()
             );
             organism.setGenomeHash(genomeHash);
+            simulation.registerGenomeHash(genomeHash);
         }
 
         // Generate run ID
@@ -534,6 +535,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 simulation.getEnvironment(),
                 organismStates,
                 simulation.getTotalOrganismsCreatedCount(),
+                simulation.getTotalUniqueGenomesCount(),
+                simulation.getAllGenomesEverSeen(),
                 rngState,
                 pluginStates);
 

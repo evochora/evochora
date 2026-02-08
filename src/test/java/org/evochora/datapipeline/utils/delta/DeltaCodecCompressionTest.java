@@ -36,7 +36,7 @@ class DeltaCodecCompressionTest {
         
         TickDelta delta = DeltaCodec.createDelta(
                 100L, 1000L, DeltaType.INCREMENTAL,
-                cells, organisms, 5L,
+                cells, organisms, 5L, 0L,
                 ByteString.EMPTY, List.of());
         
         assertEquals(100L, delta.getTickNumber());
@@ -59,7 +59,7 @@ class DeltaCodecCompressionTest {
 
         TickDelta delta = DeltaCodec.createDelta(
                 500L, 5000L, DeltaType.ACCUMULATED,
-                cells, List.of(), 10L,
+                cells, List.of(), 10L, 0L,
                 rngState, plugins);
 
         assertEquals(500L, delta.getTickNumber());
@@ -74,7 +74,7 @@ class DeltaCodecCompressionTest {
         assertThrows(IllegalArgumentException.class, () ->
                 DeltaCodec.createDelta(
                         0L, 0L, DeltaType.DELTA_TYPE_UNSPECIFIED,
-                        CellDataColumns.getDefaultInstance(), List.of(), 0L,
+                        CellDataColumns.getDefaultInstance(), List.of(), 0L, 0L,
                         ByteString.EMPTY, List.of()));
     }
     
@@ -83,7 +83,7 @@ class DeltaCodecCompressionTest {
         // Null parameters should be converted to defaults
         TickDelta delta = DeltaCodec.createDelta(
                 100L, 1000L, DeltaType.INCREMENTAL,
-                null, null, 0L, null, null);
+                null, null, 0L, 0L, null, null);
         
         assertEquals(100L, delta.getTickNumber());
         assertEquals(0, delta.getChangedCells().getFlatIndicesCount());
@@ -154,7 +154,7 @@ class DeltaCodecCompressionTest {
         
         DeltaCapture capture = DeltaCodec.captureDelta(
                 100L, 1000L, DeltaType.INCREMENTAL,
-                cells, List.of(), 0L,
+                cells, List.of(), 0L, 0L,
                 ByteString.EMPTY, List.of());
         
         assertEquals(100L, capture.tickNumber());
@@ -181,7 +181,7 @@ class DeltaCodecCompressionTest {
     private DeltaCapture createDeltaCapture(long tickNumber, DeltaType type) {
         TickDelta delta = DeltaCodec.createDelta(
                 tickNumber, tickNumber * 10, type,
-                CellDataColumns.getDefaultInstance(), List.of(), 0L,
+                CellDataColumns.getDefaultInstance(), List.of(), 0L, 0L,
                 ByteString.EMPTY, List.of());
         return new DeltaCapture(tickNumber, tickNumber * 10, delta);
     }

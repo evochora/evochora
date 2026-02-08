@@ -14,6 +14,8 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 import java.util.Optional;
 
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -369,6 +371,8 @@ class DeltaCodecEncoderTest {
                 env,
                 List.of(OrganismState.newBuilder().setOrganismId(1).setEnergy(100).build()),
                 1,
+                0L,
+                new LongOpenHashSet(),
                 ByteString.copyFromUtf8("rng-" + tick),
                 List.of(PluginState.newBuilder().setPluginClass("TestPlugin").build())
         );

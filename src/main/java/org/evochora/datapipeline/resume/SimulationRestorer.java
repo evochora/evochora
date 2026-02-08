@@ -51,6 +51,8 @@ import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+
 /**
  * Converts a ResumeCheckpoint into a running Simulation.
  * <p>
@@ -180,14 +182,33 @@ public class SimulationRestorer {
         List<OrganismState> organismStates = snapshot.getOrganismsList();
         List<PluginState> pluginStates = snapshot.getPluginStatesList();
 
-        log.debug("Resume state: currentTick={}, totalOrganismsCreated={}, organisms={}",
-            currentTick, totalOrganismsCreated, organismStates.size());
+        // 7. Restore genome hash set from snapshot (with backwards-compatible fallback)
+        LongOpenHashSet allGenomesEverSeen = new LongOpenHashSet();
+        List<Long> savedHashes = snapshot.getAllGenomeHashesEverSeenList();
+        if (!savedHashes.isEmpty()) {
+            for (long hash : savedHashes) {
+                allGenomesEverSeen.add(hash);
+            }
+        } else {
+            // Backwards compatibility: old simulations have no saved genome set.
+            // Reconstruct from living organisms' genome hashes (loses extinct genomes).
+            for (OrganismState org : organismStates) {
+                long hash = org.getGenomeHash();
+                if (hash != 0L) {
+                    allGenomesEverSeen.add(hash);
+                }
+            }
+        }
 
-        // 7. Create Simulation using forResume()
+        log.debug("Resume state: currentTick={}, totalOrganismsCreated={}, totalUniqueGenomes={}, organisms={}",
+            currentTick, totalOrganismsCreated, allGenomesEverSeen.size(), organismStates.size());
+
+        // 8. Create Simulation using forResume()
         Simulation simulation = Simulation.forResume(
             environment,
             currentTick,
             totalOrganismsCreated,
+            allGenomesEverSeen,
             policyManager,
             organismConfig
         );

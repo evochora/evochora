@@ -49,6 +49,18 @@ message TickData {
   // Used by analytics to derive death counts (TotalBorn - Alive = TotalDead).
   // Source: SimulationEngine.totalOrganismsCreated
   int64 total_organisms_created = 8;
+
+  // Total number of unique genomes ever observed in this simulation run.
+  // This is a monotonic counter tracking genome diversity over time.
+  // Source: Simulation.getTotalUniqueGenomesCount()
+  int64 total_unique_genomes = 9;
+
+  // Complete set of all genome hashes ever observed (for checkpoint/resume).
+  // Only meaningful in snapshots (not stored in TickDelta).
+  // On resume from old simulations where this is empty, the set is
+  // reconstructed from living organisms' genome hashes (losing extinct genomes).
+  // Source: Simulation.getAllGenomesEverSeen()
+  repeated int64 all_genome_hashes_ever_seen = 10 [packed=true];
 }
 
 // Represents the serialized state of a tick plugin
@@ -483,6 +495,9 @@ message TickDelta {
   // Plugin states for checkpoint/resume (ACCUMULATED deltas only)
   // Empty for INCREMENTAL deltas.
   repeated PluginState plugin_states = 8;
+
+  // Total unique genomes ever observed (monotonic counter for analytics)
+  int64 total_unique_genomes = 9;
 }
 
 // Self-contained chunk of tick data for pipeline transmission.

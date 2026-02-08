@@ -21,7 +21,6 @@ import com.typesafe.config.Config;
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 
 /**
@@ -40,7 +39,7 @@ import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
  * <ul>
  *   <li>{@code tick} - Simulation tick number</li>
  *   <li>{@code shannon_index} - Shannon diversity index (H = -&Sigma;(p&iota; &times; ln(p&iota;)))</li>
- *   <li>{@code total_genomes} - Cumulative count of unique genomes ever observed</li>
+ *   <li>{@code total_genomes} - Cumulative count of unique genomes ever observed (from pipeline)</li>
  *   <li>{@code active_genomes} - Count of genomes with at least one living organism</li>
  *   <li>{@code dominant_share} - Population share of the most common genome (0.0-1.0)</li>
  *   <li>{@code genome_data} - JSON map of genome label to count (e.g., {@code {"a3Bf2k":42,"other":5}})</li>
@@ -54,8 +53,8 @@ import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
  * <strong>Performance:</strong> This plugin outputs exactly 1 row per tick. All working collections
  * are pre-allocated and reused for zero allocation during steady-state operation.
  * <p>
- * This plugin is stateful: it tracks cumulative genome populations and all genomes ever seen.
- * Memory usage scales with unique genome count.
+ * This plugin is stateful: it tracks cumulative genome populations for top-N ranking.
+ * The total unique genome count is provided by the pipeline via {@code TickData.totalUniqueGenomes}.
  */
 public class GenomeAnalyticsPlugin extends AbstractAnalyticsPlugin {
 
@@ -71,9 +70,6 @@ public class GenomeAnalyticsPlugin extends AbstractAnalyticsPlugin {
     /** Base62 characters for genome label encoding. */
     private static final String BASE62_CHARS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
-    /** Bytes per entry in LongOpenHashSet (long + overhead). */
-    private static final int BYTES_PER_HASH_SET_ENTRY = 12;
-
     /** Bytes per entry in Long2LongOpenHashMap (key + value + overhead). */
     private static final int BYTES_PER_CUMULATIVE_ENTRY = 24;
 
@@ -86,9 +82,6 @@ public class GenomeAnalyticsPlugin extends AbstractAnalyticsPlugin {
     // ========================================================================
     // Stateful Data (persists across ticks)
     // ========================================================================
-
-    /** Set of all genome hashes ever observed (for cumulative total). */
-    private LongOpenHashSet allGenomesEverSeen;
 
     /** Cumulative population per genome (for consistent ranking). */
     private Long2LongOpenHashMap cumulativePopulation;
@@ -137,7 +130,6 @@ public class GenomeAnalyticsPlugin extends AbstractAnalyticsPlugin {
         super.initialize(context);
 
         // Stateful data
-        this.allGenomesEverSeen = new LongOpenHashSet();
         this.cumulativePopulation = new Long2LongOpenHashMap();
         this.cumulativePopulation.defaultReturnValue(0L);
         this.trackedGenomeSet = new LongOpenHashSet(topN);
@@ -177,13 +169,8 @@ public class GenomeAnalyticsPlugin extends AbstractAnalyticsPlugin {
 
         // ---- Phase 2: Diversity metrics ----
 
-        // Update cumulative set
-        for (LongIterator it = genomeCounts.keySet().iterator(); it.hasNext(); ) {
-            allGenomesEverSeen.add(it.nextLong());
-        }
-
         int activeGenomes = genomeCounts.size();
-        int totalGenomes = allGenomesEverSeen.size();
+        int totalGenomes = (int) tick.getTotalUniqueGenomes();
 
         // Shannon index and dominant share
         double shannonIndex = 0.0;
@@ -421,18 +408,16 @@ public class GenomeAnalyticsPlugin extends AbstractAnalyticsPlugin {
     public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
         long estimatedUniqueGenomes = (long) (params.maxOrganisms() * 0.5);
 
-        long hashSetBytes = estimatedUniqueGenomes * BYTES_PER_HASH_SET_ENTRY;
         long cumulativeBytes = estimatedUniqueGenomes * BYTES_PER_CUMULATIVE_ENTRY;
         long labelCacheBytes = estimatedUniqueGenomes * BYTES_PER_LABEL_CACHE_ENTRY;
         long sortBufferBytes = estimatedUniqueGenomes * 16L;
         long genomeCountsBytes = estimatedUniqueGenomes * 12L;
 
-        long totalBytes = hashSetBytes + cumulativeBytes + labelCacheBytes + sortBufferBytes + genomeCountsBytes;
+        long totalBytes = cumulativeBytes + labelCacheBytes + sortBufferBytes + genomeCountsBytes;
 
         String explanation = String.format(
-            "~%d unique genomes: allGenomesEverSeen=%s, cumulativePopulation=%s, labelCache=%s, sortBuffer=%s, genomeCounts=%s",
+            "~%d unique genomes: cumulativePopulation=%s, labelCache=%s, sortBuffer=%s, genomeCounts=%s",
             estimatedUniqueGenomes,
-            SimulationParameters.formatBytes(hashSetBytes),
             SimulationParameters.formatBytes(cumulativeBytes),
             SimulationParameters.formatBytes(labelCacheBytes),
             SimulationParameters.formatBytes(sortBufferBytes),
