@@ -260,8 +260,8 @@ public class Organism {
         this.maxEnergy = orgConfig.getInt("max-energy");
         this.maxEntropy = orgConfig.getInt("max-entropy");
 
-        // Initial position equals current IP at restore time
-        this.initialPosition = Arrays.copyOf(b.ip, b.ip.length);
+        // Preserve original birth position from checkpoint data
+        this.initialPosition = Arrays.copyOf(b.initialPosition, b.initialPosition.length);
 
         // Initialize random from simulation's random provider
         IRandomProvider baseProvider = simulation.getRandomProvider();
@@ -309,6 +309,7 @@ public class Organism {
         private Deque<int[]> locationStack = new ArrayDeque<>();
         private Deque<ProcFrame> callStack = new ArrayDeque<>();
         private boolean isDead = false;
+        private int[] initialPosition;
         private boolean instructionFailed = false;
         private String failureReason = null;
         private Deque<ProcFrame> failureCallStack = null;
@@ -357,6 +358,12 @@ public class Organism {
         /** Sets the molecule marker register value. */
         public RestoreBuilder marker(int mr) {
             this.mr = mr;
+            return this;
+        }
+
+        /** Sets the original initial position (birth position) of the organism. */
+        public RestoreBuilder initialPosition(int[] initialPosition) {
+            this.initialPosition = initialPosition;
             return this;
         }
 
@@ -459,6 +466,9 @@ public class Organism {
             }
             if (ip.length != dv.length) {
                 throw new IllegalStateException("IP and DV must have same dimensions");
+            }
+            if (initialPosition == null || initialPosition.length == 0) {
+                throw new IllegalStateException("Initial position must be set for restore");
             }
             if (er < 0) {
                 throw new IllegalStateException("Energy cannot be negative: " + er);

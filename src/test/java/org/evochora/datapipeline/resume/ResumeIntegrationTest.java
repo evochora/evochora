@@ -357,6 +357,7 @@ class ResumeIntegrationTest {
             .setBirthTick(1)
             .setIp(createVector(10, 10))
             .setDv(createVector(1, 0))
+            .setInitialPosition(createVector(5, 5))
             .build();
     }
 

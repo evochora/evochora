@@ -214,6 +214,7 @@ class SimulationEngineResumeTest {
             .setEnergy(energy)
             .setIp(Vector.newBuilder().addComponents(10).addComponents(10).build())
             .setDv(Vector.newBuilder().addComponents(1).addComponents(0).build())
+            .setInitialPosition(Vector.newBuilder().addComponents(5).addComponents(5).build())
             .setIsDead(false)
             .build();
     }

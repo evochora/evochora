@@ -88,6 +88,7 @@ class SimulationRestorerTest {
             .setEnergy(1000)
             .setIp(createVector(25, 30))
             .setDv(createVector(1, 0))
+            .setInitialPosition(createVector(20, 25))
             .setEntropyRegister(50)
             .setMoleculeMarkerRegister(3)
             .addDataPointers(createVector(10, 10))
@@ -239,6 +240,7 @@ class SimulationRestorerTest {
             .setGenomeHash(111L)
             .setIp(createVector(10, 10))
             .setDv(createVector(1, 0))
+            .setInitialPosition(createVector(5, 5))
             .setIsDead(false)
             .build();
 
@@ -249,6 +251,7 @@ class SimulationRestorerTest {
             .setGenomeHash(222L)
             .setIp(createVector(20, 20))
             .setDv(createVector(0, 1))
+            .setInitialPosition(createVector(15, 15))
             .setIsDead(false)
             .build();
 
@@ -342,6 +345,7 @@ class SimulationRestorerTest {
             .setEnergy(energy)
             .setIp(createVector(10, 10))
             .setDv(createVector(1, 0))
+            .setInitialPosition(createVector(5, 5))
             .setIsDead(false)
             .build();
     }

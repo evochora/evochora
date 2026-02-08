@@ -48,6 +48,7 @@ class OrganismRestoreBuilderTest {
         Organism org = Organism.restore(42, 1000L)
             .ip(new int[]{10, 20})
             .dv(new int[]{1, 0})
+            .initialPosition(new int[]{5, 5})
             .build(simulation);
 
         assertThat(org.getId()).isEqualTo(42);
@@ -93,6 +94,7 @@ class OrganismRestoreBuilderTest {
             .programId("test-program")
             .ip(new int[]{25, 30})
             .dv(new int[]{0, 1})
+            .initialPosition(new int[]{20, 25})
             .energy(500)
             .entropy(100)
             .marker(7)
@@ -195,6 +197,7 @@ class OrganismRestoreBuilderTest {
             Organism.restore(1, 0L)
                 .ip(new int[]{0, 0})
                 .dv(new int[]{1, 0})
+                .initialPosition(new int[]{0, 0})
                 .energy(-10)
                 .build(simulation)
         )
@@ -209,6 +212,7 @@ class OrganismRestoreBuilderTest {
             Organism.restore(1, 0L)
                 .ip(new int[]{0, 0})
                 .dv(new int[]{1, 0})
+                .initialPosition(new int[]{0, 0})
                 .entropy(-5)
                 .build(simulation)
         )
@@ -225,6 +229,7 @@ class OrganismRestoreBuilderTest {
         Organism org = Organism.restore(1, 0L)
             .ip(originalIp)
             .dv(new int[]{1, 0})
+            .initialPosition(new int[]{10, 20})
             .build(simulation);
 
         // Modify original array
@@ -244,6 +249,7 @@ class OrganismRestoreBuilderTest {
         Organism org = Organism.restore(1, 0L)
             .ip(new int[]{0, 0})
             .dv(new int[]{1, 0})
+            .initialPosition(new int[]{0, 0})
             .dataPointers(originalDps)
             .build(simulation);
 
@@ -258,13 +264,16 @@ class OrganismRestoreBuilderTest {
 
     @Test
     @Tag("unit")
-    void testRestoreBuilder_InitialPositionEqualsIp() {
+    void testRestoreBuilder_InitialPositionPreserved() {
         Organism org = Organism.restore(1, 0L)
             .ip(new int[]{42, 43})
             .dv(new int[]{1, 0})
+            .initialPosition(new int[]{10, 20})
             .build(simulation);
 
-        assertThat(org.getInitialPosition()).isEqualTo(new int[]{42, 43});
+        // initialPosition should be the birth position, NOT the current IP
+        assertThat(org.getInitialPosition()).isEqualTo(new int[]{10, 20});
+        assertThat(org.getIp()).isEqualTo(new int[]{42, 43});
     }
 
     @Test
@@ -273,6 +282,7 @@ class OrganismRestoreBuilderTest {
         Organism org = Organism.restore(1, 0L)
             .ip(new int[]{0, 0})
             .dv(new int[]{1, 0})
+            .initialPosition(new int[]{0, 0})
             .build(simulation);
 
         // Random should be initialized (not null)
@@ -285,6 +295,7 @@ class OrganismRestoreBuilderTest {
         Organism org = Organism.restore(1, 0L)
             .ip(new int[]{0, 0})
             .dv(new int[]{1, 0})
+            .initialPosition(new int[]{0, 0})
             .build(simulation);
 
         // Max energy comes from simulation config
@@ -314,6 +325,7 @@ class OrganismRestoreBuilderTest {
             .programId(original.getProgramId())
             .ip(original.getIp())
             .dv(original.getDv())
+            .initialPosition(original.getInitialPosition())
             .energy(original.getEr())
             .entropy(original.getSr())
             .marker(original.getMr())

@@ -191,6 +191,7 @@ class SimulationResumeTest {
         Organism org = Organism.restore(25, 500L)
             .ip(new int[]{10, 10})
             .dv(new int[]{1, 0})
+            .initialPosition(new int[]{5, 5})
             .energy(100)
             .build(sim);
 
