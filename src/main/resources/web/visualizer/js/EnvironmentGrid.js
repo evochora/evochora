@@ -1352,12 +1352,7 @@ export class EnvironmentGrid {
     }
 
     _getOrganismColor(organismId, energy, genomeHash) {
-        if (!this._organismPalette) {
-            this._organismPalette = [
-                0x32cd32, 0x1e90ff, 0xdc143c, 0xffd700,
-                0xffa500, 0x9370db, 0x00ffff
-            ];
-        }
+        const palette = this.config.organismPalette;
 
         // Selected organism is always white
         if (this.controller && String(organismId) === this.controller.state.selectedOrganismId) {
@@ -1371,11 +1366,11 @@ export class EnvironmentGrid {
 
         let idx;
         if (this.controller && this.controller.state.colorMode === 'genome') {
-            idx = this.controller._genomeHashToPaletteIndex(genomeHash, this._organismPalette.length);
+            idx = this.controller._genomeHashToPaletteIndex(genomeHash, palette.length);
         } else {
-            idx = (organismId - 1) % this._organismPalette.length;
+            idx = (organismId - 1) % palette.length;
         }
-        return this._organismPalette[idx];
+        return palette[idx];
     }
 }
 

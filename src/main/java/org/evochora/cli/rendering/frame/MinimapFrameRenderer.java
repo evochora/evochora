@@ -440,9 +440,6 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
      * @return RGB color from {@link #ORGANISM_PALETTE}.
      */
     private int getGenomeHashColor(long genomeHash) {
-        if (genomeHash == 0) {
-            return ORGANISM_PALETTE[0];
-        }
         return ORGANISM_PALETTE[genomeHashColorMap
                 .computeIfAbsent(genomeHash, k -> genomeHashColorMap.size() % ORGANISM_PALETTE.length)];
     }

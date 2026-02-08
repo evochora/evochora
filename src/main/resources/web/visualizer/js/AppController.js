@@ -18,6 +18,9 @@ import { TickPanelManager } from './ui/panels/TickPanelManager.js';
  * @class AppController
  */
 export class AppController {
+    /** Organism color palette (hex strings). Single source of truth for all components. */
+    static ORGANISM_PALETTE = ['#32cd32', '#1e90ff', '#dc143c', '#ffd700', '#ffa500', '#9370db', '#00ffff'];
+
     /**
      * Initializes the AppController, creating instances of all APIs, views, and
      * setting up the initial state and event listeners.
@@ -81,7 +84,8 @@ export class AppController {
             colorLabelText: '#323232', // Dark text on light background
             colorLabelRefText: '#ffffff', // Light text to distinguish from LABEL
             colorRegisterText: '#ffffff',
-            colorText: '#ffffff'
+            colorText: '#ffffff',
+            organismPalette: AppController.ORGANISM_PALETTE.map(hex => parseInt(hex.slice(1), 16))
         };
         
         // Components
@@ -839,7 +843,7 @@ export class AppController {
 
             // Update minimap organism overlay (always genome-hash colored)
             this.minimapView?.updateOrganisms(organisms, (genomeHash) => {
-                const palette = ['#32cd32', '#1e90ff', '#dc143c', '#ffd700', '#ffa500', '#9370db', '#00ffff'];
+                const palette = AppController.ORGANISM_PALETTE;
                 const idx = this._genomeHashToPaletteIndex(genomeHash, palette.length);
                 return palette[idx];
             });
@@ -967,11 +971,7 @@ export class AppController {
      * @private
      */
     getOrganismColor(organismId, energy, genomeHash) {
-        // Same palette as EnvironmentGrid._getOrganismColor
-        const organismColorPalette = [
-            '#32cd32', '#1e90ff', '#dc143c', '#ffd700',
-            '#ffa500', '#9370db', '#00ffff'
-        ];
+        const palette = AppController.ORGANISM_PALETTE;
 
         if (typeof organismId !== 'number' || organismId < 1) {
             return '#ffffff'; // Default white for invalid IDs
@@ -984,11 +984,11 @@ export class AppController {
 
         let paletteIndex;
         if (this.state.colorMode === 'genome') {
-            paletteIndex = this._genomeHashToPaletteIndex(genomeHash, organismColorPalette.length);
+            paletteIndex = this._genomeHashToPaletteIndex(genomeHash, palette.length);
         } else {
-            paletteIndex = (organismId - 1) % organismColorPalette.length;
+            paletteIndex = (organismId - 1) % palette.length;
         }
-        return organismColorPalette[paletteIndex];
+        return palette[paletteIndex];
     }
 
     /**
