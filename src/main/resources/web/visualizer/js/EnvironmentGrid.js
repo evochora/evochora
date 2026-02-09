@@ -76,6 +76,8 @@ export class EnvironmentGrid {
         this.cameraStartY = 0;
         this.viewportLoadTimeout = null;
         this._stageUpdatePending = false; // RAF throttle flag for stage position updates
+        this._lastClickPos = null;       // "x,y" string for organism click cycling
+        this._clickCycleIndex = 0;       // Current index in organism cycle list
 
         // --- Virtual Scrollbar Elements ---
         this.vScrollTrack = document.getElementById('scrollbar-track-v');
@@ -707,6 +709,10 @@ export class EnvironmentGrid {
             this.currentOrganisms = [];
             return;
         }
+        // Reset cycle state only on actual data change (new tick), not on re-render from selection
+        if (organismsForTick !== this.currentOrganisms) {
+            this._lastClickPos = null;
+        }
         this.currentOrganisms = organismsForTick;
 
         if (loadingManager) loadingManager.incrementTasks();
@@ -1124,33 +1130,34 @@ export class EnvironmentGrid {
         if (this.tooltipTimeout) clearTimeout(this.tooltipTimeout);
 
         const cell = this.findCellAt(gridX, gridY);
-        const nearbyOrganism = this.findOrganismNear(gridX, gridY);
+        const nearbyOrganisms = this.findAllOrganismsNear(gridX, gridY);
 
         // Change cursor when over clickable organism
-        this.container.style.cursor = nearbyOrganism ? 'pointer' : 'default';
+        this.container.style.cursor = nearbyOrganisms.length > 0 ? 'pointer' : 'default';
 
-        if (cell || nearbyOrganism) {
-            this.tooltipTimeout = setTimeout(() => this.showTooltip(event, cell, gridX, gridY, nearbyOrganism), this.tooltipDelay);
+        if (cell || nearbyOrganisms.length > 0) {
+            this.tooltipTimeout = setTimeout(() => this.showTooltip(event, cell, gridX, gridY, nearbyOrganisms), this.tooltipDelay);
         }
     }
 
     /**
-     * Finds an organism (IP or DP) near the given grid coordinates.
+     * Finds all organisms (IP or DP) near the given grid coordinates.
      * Uses a minimum hit radius for small organisms.
      *
      * @param {number} gridX - The X coordinate in cells.
      * @param {number} gridY - The Y coordinate in cells.
-     * @returns {{organism: object, type: string, position: number[]}|null} - The nearby organism or null.
+     * @returns {Array<{organism: object, type: string, position: number[]}>} All nearby organisms (empty if none).
      * @private
      */
-    findOrganismNear(gridX, gridY) {
-        if (!this.currentOrganisms || this.currentOrganisms.length === 0) return null;
+    findAllOrganismsNear(gridX, gridY) {
+        if (!this.currentOrganisms || this.currentOrganisms.length === 0) return [];
 
         const cellSize = this.getCurrentCellSize();
         // Minimum hit radius in pixels, converted to cells
         const MIN_HIT_RADIUS_PX = 15;
         const hitRadiusCells = Math.max(0.5, MIN_HIT_RADIUS_PX / cellSize / 2);
 
+        const results = [];
         for (const organism of this.currentOrganisms) {
             if (!organism) continue;
 
@@ -1160,7 +1167,7 @@ export class EnvironmentGrid {
                 const ipY = organism.ip[1];
                 const dist = Math.max(Math.abs(gridX - ipX), Math.abs(gridY - ipY));
                 if (dist <= hitRadiusCells) {
-                    return { organism, type: 'IP', position: [ipX, ipY] };
+                    results.push({ organism, type: 'IP', position: [ipX, ipY] });
                 }
             }
 
@@ -1173,13 +1180,36 @@ export class EnvironmentGrid {
                     const dpY = dp[1];
                     const dist = Math.max(Math.abs(gridX - dpX), Math.abs(gridY - dpY));
                     if (dist <= hitRadiusCells) {
-                        return { organism, type: `DP${i}`, position: [dpX, dpY] };
+                        results.push({ organism, type: `DP${i}`, position: [dpX, dpY] });
                     }
                 }
             }
         }
 
-        return null;
+        return results;
+    }
+
+    /**
+     * Handles organism selection at a grid position with cycling support.
+     * Repeated clicks at the same position cycle through all organisms there.
+     *
+     * @param {number} gridX - The X coordinate in cells.
+     * @param {number} gridY - The Y coordinate in cells.
+     */
+    cycleOrganismAtPosition(gridX, gridY) {
+        const allMatches = this.findAllOrganismsNear(gridX, gridY);
+        // Deduplicate by organismId
+        const unique = [...new Map(allMatches.map(m => [m.organism.organismId, m.organism])).values()];
+        if (unique.length === 0) return;
+
+        const posKey = `${gridX},${gridY}`;
+        if (this._lastClickPos === posKey && unique.length > 1) {
+            this._clickCycleIndex = (this._clickCycleIndex + 1) % unique.length;
+        } else {
+            this._lastClickPos = posKey;
+            this._clickCycleIndex = 0;
+        }
+        this.controller.selectOrganism(unique[this._clickCycleIndex].organismId);
     }
 
     /**
@@ -1251,10 +1281,10 @@ export class EnvironmentGrid {
      * @param {object} cell - The cell data object (may be null).
      * @param {number} gridX - The cell's X coordinate.
      * @param {number} gridY - The cell's Y coordinate.
-     * @param {{organism: object, type: string, position: number[]}|null} nearbyOrganism - Nearby organism info.
+     * @param {Array<{organism: object, type: string, position: number[]}>} nearbyOrganisms - Nearby organisms.
      * @private
      */
-    showTooltip(event, cell, gridX, gridY, nearbyOrganism) {
+    showTooltip(event, cell, gridX, gridY, nearbyOrganisms) {
         if (!this.tooltip) return;
 
         let cellInfo = '';
@@ -1282,9 +1312,9 @@ export class EnvironmentGrid {
         }
 
         let organismInfo = '';
-        if (nearbyOrganism) {
-            const { organism, type, position } = nearbyOrganism;
-            organismInfo = `
+        for (const entry of nearbyOrganisms) {
+            const { organism, type, position } = entry;
+            organismInfo += `
                 <div class="tooltip-organism">
                     <span class="tooltip-coords">[${position[0]}|${position[1]}]</span>
                     <span class="tooltip-org-info">Org #${organism.organismId} ${type}</span>
@@ -1702,7 +1732,10 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
                 graphics.buttonMode = true;
                 graphics.on('click', (event) => {
                     event.stopPropagation();
-                    self.grid.controller.selectOrganism(organism.organismId);
+                    const current = self.grid.currentOrganisms?.find(o => o.organismId === organism.organismId);
+                    if (current && Array.isArray(current.ip)) {
+                        self.grid.cycleOrganismAtPosition(current.ip[0], current.ip[1]);
+                    }
                 });
             }
             return graphics;
@@ -1769,7 +1802,7 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
                     entry = { indices: [], isActive: false, color: orgColor, x: dp[0], y: dp[1], prominentOrganism: org };
                     aggregatedDps.set(cellKey, entry);
                 }
-                entry.indices.push(idx);
+                if (!entry.indices.includes(idx)) entry.indices.push(idx);
                 if (idx === orgActiveIndex) {
                     entry.isActive = true;
                     entry.color = orgColor;
@@ -1795,11 +1828,8 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
                 graphics.buttonMode = true;
                 graphics.on('click', (event) => {
                     event.stopPropagation();
-                    // On click, select the most "prominent" organism for this DP
-                    const currentEntry = aggregatedDps.get(cellKey);
-                    if (currentEntry && currentEntry.prominentOrganism) {
-                        self.grid.controller.selectOrganism(currentEntry.prominentOrganism.organismId);
-                    }
+                    const [cx, cy] = cellKey.split(',').map(Number);
+                    self.grid.cycleOrganismAtPosition(cx, cy);
                 });
             }
 
@@ -2143,7 +2173,10 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
                 ipGraphics.buttonMode = true;
                 ipGraphics.on('click', (event) => {
                     event.stopPropagation();
-                    self.grid.controller.selectOrganism(organismId);
+                    const current = self.grid.currentOrganisms?.find(o => o.organismId === organismId);
+                    if (current && Array.isArray(current.ip)) {
+                        self.grid.cycleOrganismAtPosition(current.ip[0], current.ip[1]);
+                    }
                 });
             }
             ipGraphics.clear();
@@ -2208,11 +2241,8 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
                 dpEntry.graphics.buttonMode = true;
                 dpEntry.graphics.on('click', (event) => {
                     event.stopPropagation();
-                    // Re-fetch the list of organisms at this position to select the prominent one
-                    const currentOrganisms = dpPositions.get(cellKey);
-                    if (currentOrganisms && currentOrganisms.length > 0) {
-                        self.grid.controller.selectOrganism(currentOrganisms[0].organismId);
-                    }
+                    const [cx, cy] = cellKey.split(',').map(Number);
+                    self.grid.cycleOrganismAtPosition(cx, cy);
                 });
             }
             dpEntry.graphics.clear();
