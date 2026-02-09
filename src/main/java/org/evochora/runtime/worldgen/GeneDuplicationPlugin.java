@@ -5,6 +5,7 @@ import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.GenomeHasher;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.spi.IRandomProvider;
@@ -69,6 +70,10 @@ public class GeneDuplicationPlugin implements ITickPlugin {
         int maxDv;
         /** Any flat index on this scan line, for coordinate reconstruction. */
         int sampleFlatIndex;
+        /** Start of the largest NOP run (DV coordinate), or -1 if none found. */
+        int bestNopStart;
+        /** Length of the largest NOP run, or 0 if none found. */
+        int bestNopLength;
 
         /**
          * Resets this info for a new scan line.
@@ -80,6 +85,8 @@ public class GeneDuplicationPlugin implements ITickPlugin {
             this.minDv = dvCoord;
             this.maxDv = dvCoord;
             this.sampleFlatIndex = flatIndex;
+            this.bestNopStart = -1;
+            this.bestNopLength = 0;
         }
 
         /**
@@ -228,60 +235,32 @@ public class GeneDuplicationPlugin implements ITickPlugin {
         int selectedLabelPerpKey = labelState[0];
         int selectedLabelDvCoord = labelState[1];
 
-        // --- Step 3: Random scan line + NOP area search ---
-        int scanLineCount = scanLineMap.size();
-        int targetIdx = random.nextInt(scanLineCount);
-
-        // Iterate to the target index (Int2ObjectOpenHashMap values iteration)
-        ScanLineInfo targetLine = null;
-        int idx = 0;
+        // --- Step 3: Scan ALL scan lines for NOP areas ---
+        int candidateCount = 0;
         for (ScanLineInfo line : scanLineMap.values()) {
-            if (idx == targetIdx) {
-                targetLine = line;
-                break;
-            }
-            idx++;
-        }
-
-        // Reconstruct base coordinates from sampleFlatIndex
-        env.properties.flatIndexToCoordinates(targetLine.sampleFlatIndex, coordBuffer);
-
-        // Find the largest NOP run on this scan line
-        int nopRunStart = -1;
-        int nopRunLength = 0;
-        int bestNopStart = -1;
-        int bestNopLength = 0;
-
-        for (int dvPos = targetLine.minDv; dvPos <= targetLine.maxDv; dvPos++) {
-            coordBuffer[dvDimFinal] = dvPos;
-            int flatIdx = computeFlatIndex(coordBuffer);
-            int moleculeInt = env.getMoleculeInt(flatIdx);
-
-            if (moleculeInt == 0) {
-                // Empty cell (CODE:0, marker:0)
-                if (nopRunStart == -1) {
-                    nopRunStart = dvPos;
-                }
-                nopRunLength++;
-            } else {
-                if (nopRunLength > bestNopLength) {
-                    bestNopStart = nopRunStart;
-                    bestNopLength = nopRunLength;
-                }
-                nopRunLength = 0;
-                nopRunStart = -1;
+            env.properties.flatIndexToCoordinates(line.sampleFlatIndex, coordBuffer);
+            findBestNopRun(line, env, dvDimFinal);
+            if (line.bestNopLength >= minNopSize) {
+                candidateCount++;
             }
         }
-        // Final check at end of line
-        if (nopRunLength > bestNopLength) {
-            bestNopStart = nopRunStart;
-            bestNopLength = nopRunLength;
+
+        if (candidateCount == 0) {
+            LOG.debug("Organism {} selected for duplication: {} labels, no scan line with NOP >= {} — skipping",
+                    childId, labelCount, minNopSize);
+            return;
         }
 
-        if (bestNopLength < minNopSize) {
-            LOG.debug("Organism {} selected for duplication: {} labels, bestNopLength={} < minNopSize={} — skipping",
-                    childId, labelCount, bestNopLength, minNopSize);
-            return; // no sufficiently large NOP area
+        // Pick a random candidate via reservoir sampling (zero allocation)
+        ScanLineInfo targetLine = null;
+        int seen = 0;
+        for (ScanLineInfo line : scanLineMap.values()) {
+            if (line.bestNopLength >= minNopSize) {
+                seen++;
+                if (random.nextInt(seen) == 0) {
+                    targetLine = line;
+                }
+            }
         }
 
         // --- Step 4: Copy length ---
@@ -290,7 +269,7 @@ public class GeneDuplicationPlugin implements ITickPlugin {
             return; // should not happen, defensive
         }
         int availableSource = labelLine.maxDv - selectedLabelDvCoord + 1;
-        int copyLength = Math.min(availableSource, bestNopLength);
+        int copyLength = Math.min(availableSource, targetLine.bestNopLength);
 
         if (copyLength <= 0) {
             return;
@@ -303,7 +282,7 @@ public class GeneDuplicationPlugin implements ITickPlugin {
 
         // Build target position from target scan line
         env.properties.flatIndexToCoordinates(targetLine.sampleFlatIndex, targetPos);
-        targetPos[dvDimFinal] = bestNopStart;
+        targetPos[dvDimFinal] = targetLine.bestNopStart;
 
         int dvStep = dv[dvDimFinal];
 
@@ -331,8 +310,12 @@ public class GeneDuplicationPlugin implements ITickPlugin {
             }
         }
 
+        // Recompute genome hash after duplication (hash was set at FORK before this plugin ran)
+        long newHash = GenomeHasher.computeGenomeHash(env, childId, child.getInitialPosition());
+        child.setGenomeHash(newHash);
+
         LOG.debug("Organism {} gene duplication: copied {} molecules from label at dvCoord={} to NOP area at dvCoord={}",
-                childId, copyLength, selectedLabelDvCoord, bestNopStart);
+                childId, copyLength, selectedLabelDvCoord, targetLine.bestNopStart);
     }
 
     /**
@@ -409,6 +392,53 @@ public class GeneDuplicationPlugin implements ITickPlugin {
             index += coord[i] * strides[i];
         }
         return index;
+    }
+
+    /**
+     * Acquires a ScanLineInfo from the pool, or creates a new one if the pool is exhausted.
+     * After warmup (first few ticks), this method never allocates.
+     *
+     * @return A reusable ScanLineInfo instance.
+     */
+    /**
+     * Scans a scan line for the largest contiguous run of empty cells (CODE:0, marker:0).
+     * Results are stored in the ScanLineInfo's bestNopStart/bestNopLength fields.
+     * Uses the shared coordBuffer (caller must have initialized it via flatIndexToCoordinates
+     * with the scan line's sampleFlatIndex before calling).
+     *
+     * @param line The scan line to scan.
+     * @param env The simulation environment.
+     * @param dvDim The DV dimension index.
+     */
+    private void findBestNopRun(ScanLineInfo line, Environment env, int dvDim) {
+        int nopRunStart = -1;
+        int nopRunLength = 0;
+        line.bestNopStart = -1;
+        line.bestNopLength = 0;
+
+        for (int dvPos = line.minDv; dvPos <= line.maxDv; dvPos++) {
+            coordBuffer[dvDim] = dvPos;
+            int flatIdx = computeFlatIndex(coordBuffer);
+            int moleculeInt = env.getMoleculeInt(flatIdx);
+
+            if (moleculeInt == 0) {
+                if (nopRunStart == -1) {
+                    nopRunStart = dvPos;
+                }
+                nopRunLength++;
+            } else {
+                if (nopRunLength > line.bestNopLength) {
+                    line.bestNopStart = nopRunStart;
+                    line.bestNopLength = nopRunLength;
+                }
+                nopRunLength = 0;
+                nopRunStart = -1;
+            }
+        }
+        if (nopRunLength > line.bestNopLength) {
+            line.bestNopStart = nopRunStart;
+            line.bestNopLength = nopRunLength;
+        }
     }
 
     /**
