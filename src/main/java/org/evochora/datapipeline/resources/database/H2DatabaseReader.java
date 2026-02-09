@@ -4,6 +4,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
@@ -13,6 +14,7 @@ import org.evochora.datapipeline.api.resources.database.OrganismNotFoundExceptio
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 import org.evochora.datapipeline.api.resources.database.dto.InstructionView;
 import org.evochora.datapipeline.api.resources.database.dto.InstructionsView;
+import org.evochora.datapipeline.api.resources.database.dto.LineageEntry;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismRuntimeView;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismStaticInfo;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
@@ -329,12 +331,49 @@ public class H2DatabaseReader implements IDatabaseReader {
                 byte[] initialPosBytes = rs.getBytes("initial_position");
                 int[] initialPos = OrganismStateConverter.decodeVector(initialPosBytes);
 
-                return new OrganismStaticInfo(parentId, birthTick, programId, initialPos);
+                List<LineageEntry> lineage = readLineage(organismId);
+                return new OrganismStaticInfo(parentId, birthTick, programId, initialPos, lineage);
             }
         }
     }
 
-    
+    /**
+     * Reads the ancestry chain for an organism via recursive CTE.
+     * Returns direct parent first, oldest ancestor last. Empty list for initial organisms.
+     *
+     * @param organismId The organism to trace ancestry for.
+     * @return Ancestry chain (never null).
+     * @throws SQLException if database query fails.
+     */
+    private List<LineageEntry> readLineage(int organismId) throws SQLException {
+        String sql = """
+            WITH RECURSIVE ancestors(org_id, depth) AS (
+                SELECT parent_id, 1
+                FROM organisms WHERE organism_id = ?
+                UNION ALL
+                SELECT o.parent_id, a.depth + 1
+                FROM ancestors a
+                JOIN organisms o ON o.organism_id = a.org_id
+                WHERE o.parent_id IS NOT NULL AND a.depth < 100
+            )
+            SELECT o.organism_id, o.genome_hash
+            FROM ancestors a
+            JOIN organisms o ON o.organism_id = a.org_id
+            ORDER BY a.depth ASC
+            """;
+
+        List<LineageEntry> lineage = new ArrayList<>();
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.setInt(1, organismId);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    lineage.add(new LineageEntry(rs.getInt("organism_id"), rs.getLong("genome_hash")));
+                }
+            }
+        }
+        return lineage;
+    }
+
     @Override
     public void close() {
         if (closed) return;

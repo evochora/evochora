@@ -101,7 +101,7 @@ class OrganismControllerUnitTest {
                     Collections.emptyList(), false, null, Collections.emptyList(),
                     instructions, 0, 0);
 
-            OrganismStaticInfo staticInfo = new OrganismStaticInfo(null, 0L, "prog-1", new int[]{0, 0});
+            OrganismStaticInfo staticInfo = new OrganismStaticInfo(null, 0L, "prog-1", new int[]{0, 0}, List.of());
             OrganismTickDetails details = new OrganismTickDetails(1, 1L, staticInfo, runtimeView);
 
             when(mockDatabase.createReader(any())).thenReturn(mockReader);

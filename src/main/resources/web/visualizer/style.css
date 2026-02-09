@@ -742,6 +742,40 @@ main.container {
     cursor: not-allowed;
 }
 
+/* Lineage chain */
+.lineage-chain {
+    white-space: nowrap;
+}
+
+.lineage-ancestor {
+    cursor: pointer;
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    transition: opacity 0.2s;
+}
+
+.lineage-ancestor:hover {
+    opacity: 0.7;
+}
+
+.lineage-ancestor-dead {
+    opacity: 0.45;
+}
+
+.lineage-separator {
+    color: #555;
+    margin: 0 1px;
+}
+
+.lineage-overflow {
+    color: #666;
+    font-style: italic;
+}
+
+.lineage-none {
+    color: #666;
+}
+
 .clickable-tick {
     color: #4a9eff;
     cursor: pointer;
