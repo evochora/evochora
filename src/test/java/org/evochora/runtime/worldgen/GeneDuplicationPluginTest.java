@@ -1,6 +1,5 @@
 package org.evochora.runtime.worldgen;
 
-import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
@@ -26,7 +25,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 class GeneDuplicationPluginTest {
 
     private Environment environment;
-    private Simulation simulation;
 
     /** The child organism that was just born. */
     private Organism child;
@@ -59,13 +57,13 @@ class GeneDuplicationPluginTest {
                 "error-penalty-cost", 10
         ));
 
-        simulation = new Simulation(environment, policyManager, organismConfig);
+        Simulation simulation = new Simulation(environment, policyManager, organismConfig);
 
         // Create parent organism (born at tick 0, no parent)
         Organism parent = Organism.create(simulation, new int[]{0, 0}, 10000, null);
         simulation.addOrganism(parent);
 
-        // Create child organism born at tick 9 (so plugin at tick 10 will see it)
+        // Create child organism
         child = Organism.restore(2, 9)
                 .parentId(parent.getId())
                 .ip(new int[]{0, 0})
@@ -93,50 +91,13 @@ class GeneDuplicationPluginTest {
     }
 
     /**
-     * Places a row of STRUCTURE molecules owned by the child (simulating an empty row with shell).
-     */
-    private void placeStructureRow(int y, int x1, int x2) {
-        environment.setMolecule(new Molecule(Config.TYPE_STRUCTURE, 100), child.getId(), new int[]{x1, y});
-        environment.setMolecule(new Molecule(Config.TYPE_STRUCTURE, 100), child.getId(), new int[]{x2, y});
-    }
-
-    /**
      * Places an empty row owned by the child (CODE:0 cells with ownership).
      * This simulates an empty code row between structure edges.
      */
     private void placeEmptyOwnedRow(int y, int fromX, int toX) {
         for (int x = fromX; x <= toX; x++) {
-            // setMolecule with CODE:0 and owner
             environment.setMolecule(new Molecule(Config.TYPE_CODE, 0), child.getId(), new int[]{x, y});
         }
-    }
-
-    /**
-     * Creates a simulation at the given tick.
-     */
-    private Simulation createSimulationAtTick(long tick) {
-        String thermoConfigStr = """
-            default {
-              className = "org.evochora.runtime.thermodynamics.impl.UniversalThermodynamicPolicy"
-              options {
-                base-energy = 1
-                base-entropy = 1
-              }
-            }
-            overrides {
-              instructions {}
-              families {}
-            }
-            """;
-        ThermodynamicPolicyManager policyManager = new ThermodynamicPolicyManager(
-                ConfigFactory.parseString(thermoConfigStr));
-        com.typesafe.config.Config organismConfig = ConfigFactory.parseMap(Map.of(
-                "max-energy", 32767,
-                "max-entropy", 8191,
-                "error-penalty-cost", 10
-        ));
-
-        return Simulation.forResume(environment, tick, 10, null, policyManager, organismConfig);
     }
 
     @Test
@@ -148,10 +109,9 @@ class GeneDuplicationPluginTest {
         // Second scan line: entirely empty (another NOP target option)
         placeEmptyOwnedRow(4, 0, 14);
 
-        // Call duplicate() directly to bypass newborn detection
         IRandomProvider rng = new SeededRandomProvider(42L);
         GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 3);
-        plugin.duplicate(child, environment);
+        plugin.onBirth(child, environment);
 
         // Verify that some non-empty molecules were copied to an NOP area
         // (either y=2 x=8..14 or y=4 x=0..14)
@@ -172,28 +132,6 @@ class GeneDuplicationPluginTest {
     }
 
     @Test
-    void skipsOrganismNotBornLastTick() {
-        placeCodeRow(2, 0, 14, 5);
-        placeEmptyOwnedRow(4, 0, 14);
-
-        // Simulation at tick 20, but child was born at tick 9 - not last tick
-        Simulation sim = createSimulationAtTick(20);
-        sim.addOrganism(child);
-
-        IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 3);
-        plugin.execute(sim);
-
-        // Empty row should remain empty
-        for (int x = 0; x <= 14; x++) {
-            Molecule mol = environment.getMolecule(x, 4);
-            // Cells should still be CODE:0 (the ones we placed)
-            assertThat(mol.type()).isEqualTo(Config.TYPE_CODE);
-            assertThat(mol.value()).isEqualTo(0);
-        }
-    }
-
-    @Test
     void skipsOrganismWithNoLabels() {
         // Code row WITHOUT any labels
         for (int x = 0; x <= 14; x++) {
@@ -201,12 +139,9 @@ class GeneDuplicationPluginTest {
         }
         placeEmptyOwnedRow(4, 0, 14);
 
-        Simulation sim = createSimulationAtTick(10);
-        sim.addOrganism(child);
-
         IRandomProvider rng = new SeededRandomProvider(42L);
         GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 3);
-        plugin.execute(sim);
+        plugin.onBirth(child, environment);
 
         // Empty row should remain empty
         for (int x = 0; x <= 14; x++) {
@@ -228,12 +163,9 @@ class GeneDuplicationPluginTest {
             }
         }
 
-        Simulation sim = createSimulationAtTick(10);
-        sim.addOrganism(child);
-
         IRandomProvider rng = new SeededRandomProvider(42L);
         GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 5); // minNopSize=5
-        plugin.execute(sim);
+        plugin.onBirth(child, environment);
 
         // The two empty cells should still be empty
         assertThat(environment.getMolecule(7, 4).isEmpty()).isTrue();
@@ -245,12 +177,9 @@ class GeneDuplicationPluginTest {
         placeCodeRow(2, 0, 14, 5);
         placeEmptyOwnedRow(4, 0, 14);
 
-        Simulation sim = createSimulationAtTick(10);
-        sim.addOrganism(child);
-
         IRandomProvider rng = new SeededRandomProvider(42L);
         GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 0.0, 3); // rate=0
-        plugin.execute(sim);
+        plugin.onBirth(child, environment);
 
         // Empty row should remain empty
         for (int x = 0; x <= 14; x++) {
@@ -265,12 +194,9 @@ class GeneDuplicationPluginTest {
         placeCodeRow(2, 0, 14, 0);
         placeEmptyOwnedRow(4, 0, 14);
 
-        Simulation sim = createSimulationAtTick(10);
-        sim.addOrganism(child);
-
         IRandomProvider rng = new SeededRandomProvider(123L);
         GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 3);
-        plugin.execute(sim);
+        plugin.onBirth(child, environment);
 
         // All non-empty cells should have child as owner
         for (int y = 0; y < 20; y++) {
@@ -298,12 +224,9 @@ class GeneDuplicationPluginTest {
         // Large empty row (20 cells) - much bigger than source
         placeEmptyOwnedRow(4, 0, 19);
 
-        Simulation sim = createSimulationAtTick(10);
-        sim.addOrganism(child);
-
         IRandomProvider rng = new SeededRandomProvider(42L);
         GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 2);
-        plugin.execute(sim);
+        plugin.onBirth(child, environment);
 
         // Count non-empty cells copied to y=4
         int copiedCount = 0;
@@ -326,32 +249,5 @@ class GeneDuplicationPluginTest {
 
         // loadState should not throw
         plugin.loadState(new byte[0]);
-    }
-
-    @Test
-    void skipsOrganismWithNoParent() {
-        // The parent organism (parentId=null) should be skipped
-        placeCodeRow(2, 0, 14, 5);
-        placeEmptyOwnedRow(4, 0, 14);
-
-        // Create simulation at tick 1 (parent born at tick 0 implicitly)
-        Simulation sim = createSimulationAtTick(1);
-        // Only add the parent (no parentId) - make it just born at tick 0
-        Organism parentOnly = Organism.restore(99, 0)
-                .ip(new int[]{0, 0})
-                .dv(new int[]{1, 0})
-                .initialPosition(new int[]{0, 0})
-                .energy(5000)
-                .build(sim);
-        sim.addOrganism(parentOnly);
-
-        IRandomProvider rng = new SeededRandomProvider(42L);
-        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 3);
-        plugin.execute(sim);
-
-        // Should not have duplicated anything (parentId is null)
-        for (int x = 0; x <= 14; x++) {
-            assertThat(environment.getMolecule(x, 4).value()).isEqualTo(0);
-        }
     }
 }

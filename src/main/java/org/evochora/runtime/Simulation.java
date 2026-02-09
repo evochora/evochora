@@ -13,7 +13,9 @@ import org.evochora.runtime.isa.IEnvironmentModifyingInstruction;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.model.GenomeHasher;
 import org.evochora.runtime.spi.DeathContext;
+import org.evochora.runtime.spi.IBirthHandler;
 import org.evochora.runtime.spi.IDeathHandler;
 import org.evochora.runtime.spi.IInstructionInterceptor;
 import org.evochora.runtime.spi.InterceptionContext;
@@ -48,6 +50,7 @@ public class Simulation {
     private final List<ITickPlugin> tickPlugins = new ArrayList<>();
     private final List<IInstructionInterceptor> instructionInterceptors = new ArrayList<>();
     private final List<IDeathHandler> deathHandlers = new ArrayList<>();
+    private final List<IBirthHandler> birthHandlers = new ArrayList<>();
     private final InterceptionContext interceptContext = new InterceptionContext();  // Reusable, zero allocation
     private final DeathContext deathContext = new DeathContext();  // Reusable, zero allocation
     private int nextOrganismId = 1;
@@ -208,6 +211,24 @@ public class Simulation {
     }
 
     /**
+     * Adds a birth handler to the simulation.
+     * Birth handlers are called in the order they are added, once per newborn organism,
+     * in the synchronous post-Execute phase before genome hash computation.
+     * @param handler The birth handler to add.
+     */
+    public void addBirthHandler(IBirthHandler handler) {
+        this.birthHandlers.add(handler);
+    }
+
+    /**
+     * Returns the list of birth handlers.
+     * @return An unmodifiable view of the birth handlers list.
+     */
+    public List<IBirthHandler> getBirthHandlers() {
+        return java.util.Collections.unmodifiableList(this.birthHandlers);
+    }
+
+    /**
      * Returns the next available unique ID for an organism.
      * @return A unique organism ID.
      */
@@ -226,7 +247,7 @@ public class Simulation {
 
     /**
      * Registers a genome hash as having been observed in this simulation.
-     * Called from SimulationEngine (initial placement) and StateInstruction (FORK/FRKI/FRKS).
+     * Called from SimulationEngine (initial placement) and the post-Execute birth phase in tick().
      *
      * @param hash The genome hash to register. Zero hashes are ignored.
      */
@@ -359,6 +380,22 @@ public class Simulation {
                         organism.getDataStack(),
                         organism.getCallStack());
             }
+        }
+
+        // Post-Execute: birth handlers + genome hash for newborns
+        for (Organism newborn : newOrganismsThisTick) {
+            for (IBirthHandler handler : birthHandlers) {
+                try {
+                    handler.onBirth(newborn, environment);
+                } catch (Exception e) {
+                    LOG.warn("Birth handler '{}' failed for organism {}: {}",
+                            handler.getClass().getSimpleName(), newborn.getId(), e.getMessage());
+                }
+            }
+            long hash = GenomeHasher.computeGenomeHash(
+                    environment, newborn.getId(), newborn.getInitialPosition());
+            newborn.setGenomeHash(hash);
+            registerGenomeHash(hash);
         }
 
         this.organisms.addAll(newOrganismsThisTick);

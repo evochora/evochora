@@ -3,13 +3,11 @@ package org.evochora.runtime.worldgen;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import org.evochora.runtime.Config;
-import org.evochora.runtime.Simulation;
 import org.evochora.runtime.model.Environment;
-import org.evochora.runtime.model.GenomeHasher;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.spi.IBirthHandler;
 import org.evochora.runtime.spi.IRandomProvider;
-import org.evochora.runtime.spi.ITickPlugin;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,9 +15,9 @@ import java.util.ArrayList;
 import java.util.Random;
 
 /**
- * Gene duplication tick plugin inspired by Ohno's (1970) model of evolution through gene duplication.
+ * Gene duplication birth handler inspired by Ohno's (1970) model of evolution through gene duplication.
  * <p>
- * For each newborn organism (born in the previous tick), with configurable probability, this plugin
+ * Called once per newborn organism in the post-Execute phase of each tick. With configurable probability,
  * copies a code block starting at a randomly selected LABEL into an empty (CODE:0) region within the
  * organism's body. The duplicated block is immediately neutral (redundant) but provides raw material
  * for later divergence through point mutation.
@@ -34,12 +32,12 @@ import java.util.Random;
  * for flat index calculation minimize GC pressure. The owned-cell iteration is O(n) where n is
  * typically 1000-3000, running at most a few times per tick.
  * <p>
- * <strong>Thread Safety:</strong> Not thread-safe. Designed for sequential execution within the
- * simulation tick loop.
+ * <strong>Thread Safety:</strong> Not thread-safe. Runs in the sequential post-Execute phase of
+ * {@code Simulation.tick()}.
  *
- * @see org.evochora.runtime.spi.ITickPlugin
+ * @see org.evochora.runtime.spi.IBirthHandler
  */
-public class GeneDuplicationPlugin implements ITickPlugin {
+public class GeneDuplicationPlugin implements IBirthHandler {
 
     private static final Logger LOG = LoggerFactory.getLogger(GeneDuplicationPlugin.class);
 
@@ -126,29 +124,11 @@ public class GeneDuplicationPlugin implements ITickPlugin {
     }
 
     @Override
-    public void execute(Simulation simulation) {
-        long currentTick = simulation.getCurrentTick();
-        Environment environment = simulation.getEnvironment();
-
-        int newborns = 0;
-        int selected = 0;
-        for (Organism organism : simulation.getOrganisms()) {
-            if (organism.isDead()) {
-                continue;
-            }
-            if (organism.getParentId() == null) {
-                continue;
-            }
-            if (organism.getBirthTick() != currentTick - 1) {
-                continue;
-            }
-            newborns++;
-            if (random.nextDouble() >= duplicationRate) {
-                continue;
-            }
-            selected++;
-            duplicate(organism, environment);
+    public void onBirth(Organism child, Environment environment) {
+        if (random.nextDouble() >= duplicationRate) {
+            return;
         }
+        duplicate(child, environment);
     }
 
     /**
@@ -309,10 +289,6 @@ public class GeneDuplicationPlugin implements ITickPlugin {
                 targetPos[dvDimFinal] += shape[dvDimFinal];
             }
         }
-
-        // Recompute genome hash after duplication (hash was set at FORK before this plugin ran)
-        long newHash = GenomeHasher.computeGenomeHash(env, childId, child.getInitialPosition());
-        child.setGenomeHash(newHash);
 
         LOG.debug("Organism {} gene duplication: copied {} molecules from label at dvCoord={} to NOP area at dvCoord={}",
                 childId, copyLength, selectedLabelDvCoord, targetLine.bestNopStart);

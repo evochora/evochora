@@ -49,6 +49,7 @@ import org.evochora.datapipeline.resume.SnapshotLoader;
 import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
+import org.evochora.runtime.spi.IBirthHandler;
 import org.evochora.runtime.spi.IDeathHandler;
 import org.evochora.runtime.spi.IInstructionInterceptor;
 import org.evochora.runtime.spi.ISimulationPlugin;
@@ -83,6 +84,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     private final List<PluginWithConfig> tickPlugins;
     private final List<InterceptorWithConfig> instructionInterceptors;
     private final List<DeathHandlerWithConfig> deathHandlers;
+    private final List<BirthHandlerWithConfig> birthHandlers;
     private final long seed;
     private final long startTimeMs;
     private final boolean isResume;
@@ -109,6 +111,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     private record PluginWithConfig(ITickPlugin plugin, Config config) {}
     private record InterceptorWithConfig(IInstructionInterceptor interceptor, Config config) {}
     private record DeathHandlerWithConfig(IDeathHandler handler, Config config) {}
+    private record BirthHandlerWithConfig(IBirthHandler handler, Config config) {}
 
     /**
      * Holds the initialized state from either resume or new simulation mode.
@@ -125,6 +128,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         List<PluginWithConfig> tickPlugins,
         List<InterceptorWithConfig> instructionInterceptors,
         List<DeathHandlerWithConfig> deathHandlers,
+        List<BirthHandlerWithConfig> birthHandlers,
         Map<String, ProgramInfo> programInfo,
         String runId,
         long seed,
@@ -164,6 +168,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         this.tickPlugins = state.tickPlugins();
         this.instructionInterceptors = state.instructionInterceptors();
         this.deathHandlers = state.deathHandlers();
+        this.birthHandlers = state.birthHandlers();
         this.runId = state.runId();
         this.seed = state.seed();
         this.startTimeMs = state.startTimeMs();
@@ -268,6 +273,10 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 .map(d -> new DeathHandlerWithConfig(d.handler(), d.config()))
                 .toList();
 
+            List<BirthHandlerWithConfig> birthHandlersList = restored.birthHandlers().stream()
+                .map(b -> new BirthHandlerWithConfig(b.handler(), b.config()))
+                .toList();
+
             Map<String, ProgramInfo> programInfo = new HashMap<>();
             restored.programArtifacts().forEach((id, artifact) ->
                 programInfo.put(id, new ProgramInfo(id, id, artifact)));
@@ -281,6 +290,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 plugins,
                 interceptors,
                 deathHandlersList,
+                birthHandlersList,
                 programInfo,
                 runId,
                 seed,
@@ -341,7 +351,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         List<PluginWithConfig> tickPluginsList = new ArrayList<>();
         List<InterceptorWithConfig> interceptorsList = new ArrayList<>();
         List<DeathHandlerWithConfig> deathHandlersList = new ArrayList<>();
-        initializePlugins(options.getConfigList("plugins"), randomProvider, tickPluginsList, interceptorsList, deathHandlersList);
+        List<BirthHandlerWithConfig> birthHandlersList = new ArrayList<>();
+        initializePlugins(options.getConfigList("plugins"), randomProvider, tickPluginsList, interceptorsList, deathHandlersList, birthHandlersList);
 
         Config runtimeConfig = options.hasPath("runtime") ? options.getConfig("runtime") : com.typesafe.config.ConfigFactory.empty();
         ThermodynamicPolicyManager policyManager = new ThermodynamicPolicyManager(
@@ -370,6 +381,11 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         // Register death handlers with simulation
         for (DeathHandlerWithConfig dhc : deathHandlersList) {
             simulation.addDeathHandler(dhc.handler());
+        }
+
+        // Register birth handlers with simulation
+        for (BirthHandlerWithConfig bhc : birthHandlersList) {
+            simulation.addBirthHandler(bhc.handler());
         }
 
         // Create and place organisms
@@ -406,7 +422,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             + "-" + UUID.randomUUID().toString();
 
         return new InitializedState(
-            simulation, randomProvider, tickPluginsList, interceptorsList, deathHandlersList, programInfo, runId, seed, startTimeMs, -1,
+            simulation, randomProvider, tickPluginsList, interceptorsList, deathHandlersList, birthHandlersList, programInfo, runId, seed, startTimeMs, -1,
             readPositiveInt(options, "samplingInterval", 1),
             readInt(options, "accumulatedDeltaInterval", SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL),
             readInt(options, "snapshotInterval", SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL),
@@ -563,13 +579,15 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      * @param tickPlugins output list for ITickPlugin instances
      * @param interceptors output list for IInstructionInterceptor instances
      * @param deathHandlers output list for IDeathHandler instances
+     * @param birthHandlers output list for IBirthHandler instances
      */
     private void initializePlugins(
             List<? extends Config> configs,
             IRandomProvider random,
             List<PluginWithConfig> tickPlugins,
             List<InterceptorWithConfig> interceptors,
-            List<DeathHandlerWithConfig> deathHandlers) {
+            List<DeathHandlerWithConfig> deathHandlers,
+            List<BirthHandlerWithConfig> birthHandlers) {
 
         for (Config config : configs) {
             try {
@@ -590,10 +608,14 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 if (plugin instanceof IDeathHandler deathHandler) {
                     deathHandlers.add(new DeathHandlerWithConfig(deathHandler, pluginOptions));
                 }
+                if (plugin instanceof IBirthHandler birthHandler) {
+                    birthHandlers.add(new BirthHandlerWithConfig(birthHandler, pluginOptions));
+                }
 
                 // Warn if plugin implements no known interface
-                if (!(plugin instanceof ITickPlugin) && !(plugin instanceof IInstructionInterceptor) && !(plugin instanceof IDeathHandler)) {
-                    log.warn("Plugin {} does not implement ITickPlugin, IInstructionInterceptor, or IDeathHandler", className);
+                if (!(plugin instanceof ITickPlugin) && !(plugin instanceof IInstructionInterceptor)
+                        && !(plugin instanceof IDeathHandler) && !(plugin instanceof IBirthHandler)) {
+                    log.warn("Plugin {} does not implement ITickPlugin, IInstructionInterceptor, IDeathHandler, or IBirthHandler", className);
                 }
             } catch (ReflectiveOperationException e) {
                 throw new IllegalArgumentException(
@@ -726,7 +748,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     }
     
     /**
-     * Extracts plugin states for all plugins (tick plugins, interceptors, and death handlers).
+     * Extracts plugin states for all plugins (tick plugins, interceptors, death handlers, and birth handlers).
      * Used by DeltaCodec.Encoder for delta compression.
      * <p>
      * Each plugin instance is serialized exactly once, even if it implements
@@ -743,6 +765,9 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         }
         for (DeathHandlerWithConfig d : deathHandlers) {
             uniquePlugins.add(d.handler());
+        }
+        for (BirthHandlerWithConfig b : birthHandlers) {
+            uniquePlugins.add(b.handler());
         }
 
         // Serialize each unique plugin exactly once
