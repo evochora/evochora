@@ -141,6 +141,21 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         TickData resumeSnapshot
     ) {}
 
+    /**
+     * Initialize a SimulationEngine configured to either start a new simulation or resume from a checkpoint.
+     *
+     * This constructor sets up instruction state, output queues, common runtime configuration (metrics and yield
+     * intervals, pause ticks), and then performs mode-specific initialization based on the `resume.enabled` option.
+     * It applies the resulting InitializedState (simulation instance, random provider, plugin/interceptor/death/birth
+     * handler lists, program info, run identifiers, seed, start time, initial tick, and sampling/interval values)
+     * and constructs the delta chunk encoder, providing a resume snapshot when present so sampling resumes
+     * deterministically from a checkpoint.
+     *
+     * @param name      service name for this engine instance
+     * @param options   configuration used to control runtime behavior (includes resume settings, intervals,
+     *                  plugin and organism configuration, and other simulation options)
+     * @param resources resource map containing required framework resources (tick/metadata queues, storage, etc.)
+     */
     public SimulationEngine(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
 
@@ -226,10 +241,16 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     }
 
     /**
-     * Initializes simulation state from a checkpoint for resume mode.
-     * <p>
-     * All simulation-affecting configuration is read from the metadata's resolvedConfigJson
-     * to ensure deterministic continuation of the original simulation.
+     * Create an InitializedState by restoring simulation state from a previously saved checkpoint.
+     *
+     * <p>All simulation-affecting configuration is taken from the checkpoint's metadata (the
+     * metadata's resolvedConfigJson) so the resumed run continues deterministically from the
+     * original simulation's configuration and scheduling parameters.
+     *
+     * @param options configuration for the engine run; must contain `resume.runId` identifying the stored run
+     * @return an InitializedState containing the restored Simulation, RNG provider, plugin/interceptor/death/birth handler lists,
+     *         program artifacts, run identifiers and seeds, sampling/interval parameters, and the resume snapshot used to prime the encoder
+     * @throws IllegalArgumentException if `resume.runId` is missing or if the checkpoint cannot be loaded or parsed
      */
     private InitializedState initializeFromCheckpoint(Config options) {
         log.debug("Initializing from checkpoint (resume mode)");
@@ -308,7 +329,22 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     }
 
     /**
-     * Initializes a new simulation from configuration.
+     * Create and prepare a new simulation runtime from the provided configuration.
+     *
+     * Constructs environment and simulation state, compiles and registers program artifacts,
+     * initializes the random provider and plugins (tick plugins, instruction interceptors,
+     * death and birth handlers), places organisms and their code/initial objects into the world,
+     * computes initial genome hashes, and generates a run identifier. The returned
+     * InitializedState contains the simulation instance, RNG, plugin/handler lists, program info,
+     * runId, seed, start time, initialTick = -1, configured sampling/interval values, and a null
+     * resume snapshot.
+     *
+     * @param options configuration containing keys such as "organisms", "environment", "plugins",
+     *                "runtime", "seed", and sampling/interval settings used to create the simulation
+     * @return an InitializedState populated for a brand-new run (no resume snapshot)
+     * @throws IllegalArgumentException if no organisms are configured, if a program file cannot be read
+     *                                  or compiled, or if an organism placement does not match the
+     *                                  environment dimensions (or other invalid configuration)
      */
     private InitializedState initializeNewSimulation(Config options) {
         long startTimeMs = System.currentTimeMillis();
@@ -565,22 +601,21 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     }
 
     /**
-     * Initializes plugins from configuration with automatic type detection.
-     * <p>
-     * Each plugin is instantiated and then classified based on which interfaces it implements:
-     * <ul>
-     *   <li>ITickPlugin - added to tickPlugins list, executed each tick for environment manipulation</li>
-     *   <li>IInstructionInterceptor - added to interceptors list, intercepts planned instructions</li>
-     * </ul>
-     * A plugin can implement multiple interfaces and will be registered in all applicable lists.
-     *
-     * @param configs the plugin configurations from "plugins" config key
-     * @param random the random provider for deterministic plugin behavior
-     * @param tickPlugins output list for ITickPlugin instances
-     * @param interceptors output list for IInstructionInterceptor instances
-     * @param deathHandlers output list for IDeathHandler instances
-     * @param birthHandlers output list for IBirthHandler instances
-     */
+         * Instantiate and register plugins declared in configuration by detecting and assigning them
+         * to the appropriate handler lists based on the interfaces they implement.
+         *
+         * <p>Each configured plugin class is constructed with an {@link IRandomProvider} and its
+         * specific options. If the plugin implements multiple known interfaces, it is added to each
+         * corresponding output list.
+         *
+         * @param configs       list of plugin configs (each must contain `className` and `options`)
+         * @param random        random provider passed to each plugin constructor
+         * @param tickPlugins   output list to receive instantiated {@link ITickPlugin} wrappers
+         * @param interceptors  output list to receive instantiated {@link IInstructionInterceptor} wrappers
+         * @param deathHandlers output list to receive instantiated {@link IDeathHandler} wrappers
+         * @param birthHandlers output list to receive instantiated {@link IBirthHandler} wrappers
+         * @throws IllegalArgumentException if a plugin class cannot be instantiated via reflection
+         */
     private void initializePlugins(
             List<? extends Config> configs,
             IRandomProvider random,
@@ -737,8 +772,9 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     }
     
     /**
-     * Extracts organism states for all living organisms.
-     * Used by DeltaCodec.Encoder for delta compression.
+     * Collects the runtime state for every organism that is currently alive.
+     *
+     * @return a list of {@link OrganismState} objects representing the state of all living organisms
      */
     private List<OrganismState> extractOrganismStates() {
         return simulation.getOrganisms().stream()
@@ -748,11 +784,11 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     }
     
     /**
-     * Extracts plugin states for all plugins (tick plugins, interceptors, death handlers, and birth handlers).
-     * Used by DeltaCodec.Encoder for delta compression.
-     * <p>
-     * Each plugin instance is serialized exactly once, even if it implements
-     * multiple plugin interfaces.
+     * Produce a list of serialized states for all simulation plugins (tick plugins, instruction interceptors, death handlers, and birth handlers).
+     *
+     * Each plugin instance is represented once even if it implements multiple plugin interfaces; the result is suitable for use by the DeltaCodec.Encoder.
+     *
+     * @return a list of PluginState messages, one entry per unique plugin containing the plugin class name and its serialized state
      */
     private List<PluginState> extractPluginStates() {
         // Collect unique plugin instances (a plugin may be in multiple lists if it implements multiple interfaces)

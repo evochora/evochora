@@ -247,6 +247,12 @@ public class StateInstruction extends Instruction {
         }
     }
 
+    /**
+     * Attempts to create a child organism at the target coordinate using the provided delta vector, energy transfer, and child DV; on success the child is initialized, added to the simulation, and marker ownership is transferred, otherwise the parent records an instruction failure.
+     *
+     * @param operands a list of three operands in order: (1) a unit delta vector int[] specifying the child's position relative to the active DP, (2) an Integer energy value to transfer to the child, and (3) an int[] child DV vector
+     * @param simulation the Simulation instance used to resolve the target coordinate, add the new child organism, and access the environment for marker transfer
+     */
     private void handleFork(List<Operand> operands, Simulation simulation) {
         if (operands.size() != 3) { organism.instructionFailed("Invalid operands for FORK."); return; }
         int[] delta = (int[]) operands.get(0).value();
@@ -400,6 +406,21 @@ public class StateInstruction extends Instruction {
         }
     }
 
+    /**
+     * Execute the extended FORK family (FRKI / FRKS) to spawn a child organism at a neighboring coordinate.
+     *
+     * FRKI expects three operands: a unit vector delta (int[]), an immediate energy scalar (Integer/encoded Molecule),
+     * and a child DV vector (int[]). FRKS reads the same three values from the data stack (top order: childDv, energy, delta).
+     * If the delta is a unit vector and energy > 0 and available from the parent, the parent transfers the energy,
+     * a child organism is created at the target coordinate with the given DV and initial energy, the child's parentId,
+     * birth tick, and programId are set, and molecules matching the parent's marker are transferred to the child.
+     * On invalid operands, insufficient energy, or other parameter errors, the parent is marked as having failed the instruction.
+     *
+     * @param opName the operation name; either "FRKI" (immediate variant) or "FRKS" (stack variant)
+     * @param operands resolved operands for the instruction (immediate/register values or stack-sourced values for FRKS)
+     * @param environment the simulation environment used to compute target coordinates and transfer ownership
+     * @param simulation the simulation instance used to create and register the new child organism
+     */
     private void handleForkExtended(String opName, List<Operand> operands, Environment environment, Simulation simulation) {
         if ("FRKI".equals(opName)) {
             if (operands.size() != 3) { organism.instructionFailed("FRKI expects <Vec>, <Lit>, <Vec>."); return; }

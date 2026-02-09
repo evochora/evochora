@@ -74,10 +74,10 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         int bestNopLength;
 
         /**
-         * Resets this info for a new scan line.
+         * Initialize scan-line bounds, sample index, and NOP-run tracking for a newly started scan line.
          *
-         * @param dvCoord The DV-dimension coordinate of the first cell seen.
-         * @param flatIndex The flat index of the first cell seen.
+         * @param dvCoord    the DV-dimension coordinate of the first cell encountered on the line
+         * @param flatIndex  the flat (row-major) index corresponding to that first cell
          */
         void reset(int dvCoord, int flatIndex) {
             this.minDv = dvCoord;
@@ -99,10 +99,12 @@ public class GeneDuplicationPlugin implements IBirthHandler {
     }
 
     /**
-     * Creates a gene duplication plugin.
+     * Initialize the plugin with a randomness source and configuration.
      *
-     * @param randomProvider Source of randomness.
-     * @param config Configuration containing duplicationRate and minNopSize.
+     * @param randomProvider source of randomness used for selection and sampling
+     * @param config configuration containing the keys:
+     *               - "duplicationRate": probability (0.0–1.0) of performing duplication on a newborn
+     *               - "minNopSize": minimum length of a contiguous NOP (empty) region required as a duplication target
      */
     public GeneDuplicationPlugin(IRandomProvider randomProvider, com.typesafe.config.Config config) {
         this.random = randomProvider.asJavaRandom();
@@ -123,6 +125,15 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         this.minNopSize = minNopSize;
     }
 
+    /**
+     * Possibly duplicates a gene block into a newborn organism with probability configured by this plugin.
+     *
+     * <p>If the random draw meets the configured duplication probability, performs the duplication operation
+     * for the provided child within the given environment.</p>
+     *
+     * @param child the newborn organism that may receive duplicated genetic material
+     * @param environment the environment providing world state and accessors required to perform duplication
+     */
     @Override
     public void onBirth(Organism child, Environment environment) {
         if (random.nextDouble() >= duplicationRate) {
@@ -132,14 +143,12 @@ public class GeneDuplicationPlugin implements IBirthHandler {
     }
 
     /**
-     * Performs gene duplication for a single newborn organism.
-     * <p>
-     * Groups owned cells by scan line, selects a random LABEL via reservoir sampling,
-     * finds the largest NOP area on a random scan line, and copies the code block
-     * starting at the label into the NOP area.
+     * Copies a code block from a LABEL owned by the newborn into an available NOP region on one of
+     * the newborn's scan lines, performing a single gene-duplication operation when a suitable
+     * source label and target NOP run exist.
      *
-     * @param child The newborn organism.
-     * @param env The simulation environment.
+     * @param child the newborn organism whose code may be duplicated
+     * @param env the simulation environment used to read and modify world state
      */
     void duplicate(Organism child, Environment env) {
         int childId = child.getId();
@@ -310,10 +319,13 @@ public class GeneDuplicationPlugin implements IBirthHandler {
     }
 
     /**
-     * Computes row-major strides from the world shape.
+     * Compute row-major strides and store them in the instance `strides` array.
      *
-     * @param shape The world shape array.
-     * @param dims Number of dimensions.
+     * The computed strides map multi-dimensional coordinates to flat indices for a
+     * row-major layout: stride[i] is the product of shape[i+1]..shape[dims-1].
+     *
+     * @param shape the length of each dimension (must have at least `dims` entries)
+     * @param dims  the number of dimensions to compute strides for
      */
     private void computeStrides(int[] shape, int dims) {
         strides[dims - 1] = 1;
@@ -323,11 +335,12 @@ public class GeneDuplicationPlugin implements IBirthHandler {
     }
 
     /**
-     * Computes strides for the perpendicular key calculation, excluding the DV dimension.
+     * Initialize the perpStrides array so each index (except the DV dimension) holds the multiplier
+     * used to compute a unique perpendicular key across all dimensions except `dvDim`.
      *
-     * @param shape The world shape array.
-     * @param dims Number of dimensions.
-     * @param dvDim The DV dimension index.
+     * @param shape the length of each world dimension
+     * @param dims the number of dimensions in `shape`
+     * @param dvDim the index of the DV dimension to exclude (its stride is set to 0)
      */
     private void computePerpStrides(int[] shape, int dims, int dvDim) {
         int stride = 1;
@@ -342,11 +355,12 @@ public class GeneDuplicationPlugin implements IBirthHandler {
     }
 
     /**
-     * Computes a unique perpendicular key from coordinates, excluding the DV dimension.
+     * Compute a unique integer key for the coordinates projected onto the subspace
+     * excluding the DV dimension.
      *
-     * @param coord The coordinate array.
-     * @param dvDim The DV dimension index to exclude.
-     * @return A unique integer key for the perpendicular coordinate combination.
+     * @param coord the coordinate array
+     * @param dvDim the DV dimension index (ignored by this method; perpStrides already encodes the exclusion)
+     * @return an integer key representing the perpendicular coordinates (all dimensions except `dvDim`)
      */
     private int computePerpKey(int[] coord, int dvDim) {
         int key = 0;
@@ -357,10 +371,10 @@ public class GeneDuplicationPlugin implements IBirthHandler {
     }
 
     /**
-     * Computes a flat index from coordinates using pre-computed strides.
+     * Convert multi-dimensional coordinates to a flat (row-major) index using precomputed strides.
      *
-     * @param coord The coordinate array.
-     * @return The flat index.
+     * @param coord the coordinate vector for each dimension
+     * @return the flat array index corresponding to the given coordinates
      */
     private int computeFlatIndex(int[] coord) {
         int index = 0;
@@ -377,14 +391,18 @@ public class GeneDuplicationPlugin implements IBirthHandler {
      * @return A reusable ScanLineInfo instance.
      */
     /**
-     * Scans a scan line for the largest contiguous run of empty cells (CODE:0, marker:0).
-     * Results are stored in the ScanLineInfo's bestNopStart/bestNopLength fields.
-     * Uses the shared coordBuffer (caller must have initialized it via flatIndexToCoordinates
-     * with the scan line's sampleFlatIndex before calling).
+     * Finds the largest contiguous run of empty cells (molecule code 0) along the scan line's DV range
+     * and stores its start and length in the provided ScanLineInfo.
      *
-     * @param line The scan line to scan.
-     * @param env The simulation environment.
-     * @param dvDim The DV dimension index.
+     * The search covers DV coordinates from line.minDv to line.maxDv inclusive. Caller must have
+     * populated coordBuffer with the perpendicular coordinates for this scan line (for example by
+     * converting line.sampleFlatIndex to coordinates) before calling; this method will overwrite the
+     * value at index dvDim as it iterates.
+     *
+     * @param line  the ScanLineInfo whose DV bounds will be scanned and whose bestNopStart/bestNopLength
+     *              fields will be updated with the largest empty run found
+     * @param env   the environment used to read molecules by flat index
+     * @param dvDim the index of the DV dimension within coordBuffer that this method will advance
      */
     private void findBestNopRun(ScanLineInfo line, Environment env, int dvDim) {
         int nopRunStart = -1;
@@ -433,11 +451,21 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         return info;
     }
 
+    /**
+     * Provide the plugin's persisted state for snapshotting.
+     *
+     * @return an empty byte array because this plugin maintains no persistent state
+     */
     @Override
     public byte[] saveState() {
         return new byte[0];
     }
 
+    /**
+     * Restore plugin state from a previously saved byte array; this plugin is stateless so the input is ignored.
+     *
+     * @param state the saved state previously returned by {@code saveState()}, ignored by this implementation
+     */
     @Override
     public void loadState(byte[] state) {
         // Stateless plugin - nothing to restore

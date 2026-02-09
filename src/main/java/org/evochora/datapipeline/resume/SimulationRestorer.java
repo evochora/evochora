@@ -634,15 +634,15 @@ public class SimulationRestorer {
     ) {}
 
     /**
-     * Restores plugins from config and saved states, separating by interface type.
-     * <p>
-     * A plugin can implement multiple interfaces (ITickPlugin, IInstructionInterceptor, IDeathHandler),
-     * in which case it will appear in multiple lists (with shared instance).
+     * Restores and instantiates plugins from configuration and saved plugin states, grouping them by supported runtime interface.
      *
-     * @param pluginConfigs List of plugin configurations from resolvedConfigJson
-     * @param savedStates List of saved plugin states from snapshot
-     * @param randomProvider The random provider for plugin initialization
-     * @return RestoredPlugins containing separate lists for each plugin type
+     * <p>A plugin instance that implements multiple interfaces (ITickPlugin, IInstructionInterceptor, IDeathHandler, or IBirthHandler)
+     * will be placed into each corresponding list (the same instance may appear in multiple lists).</p>
+     *
+     * @param pluginConfigs list of plugin configuration objects; each config must contain a `className` and may contain an `options` object
+     * @param savedStates list of saved plugin states (class name -> serialized state blob) used to restore plugin state if available
+     * @param randomProvider RNG supplier passed to plugin constructors
+     * @return a RestoredPlugins record containing separate lists of restored plugins for tick plugins, instruction interceptors, death handlers, and birth handlers
      */
     private static RestoredPlugins restorePlugins(
             List<? extends Config> pluginConfigs,

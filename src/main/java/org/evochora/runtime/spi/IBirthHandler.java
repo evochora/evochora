@@ -32,11 +32,14 @@ import org.evochora.runtime.model.Organism;
 public interface IBirthHandler extends ISimulationPlugin {
 
     /**
-     * Called once for each newborn organism, after ownership transfer and before
-     * genome hash computation.
-     *
-     * @param child The newly born organism.
-     * @param environment The simulation environment (full read/write access).
-     */
+ * Handle a newborn organism immediately after transfer of ownership and before its genome hash is computed.
+ *
+ * <p>Invoked once per newborn during the sequential post-Execute phase; implementations may modify the child's
+ * body or owned cells. Any changes made here will be reflected in the final genome hash. The provided
+ * Environment grants full read/write access to inspect or mutate simulation state related to the child.</p>
+ *
+ * @param child the newly born organism
+ * @param environment the simulation environment with full read/write access
+ */
     void onBirth(Organism child, Environment environment);
 }

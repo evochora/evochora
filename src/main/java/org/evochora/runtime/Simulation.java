@@ -203,8 +203,9 @@ public class Simulation {
     }
 
     /**
-     * Returns the list of death handlers.
-     * @return An unmodifiable view of the death handlers list.
+     * Get the registered death handlers.
+     *
+     * @return an unmodifiable view of the registered death handlers.
      */
     public List<IDeathHandler> getDeathHandlers() {
         return java.util.Collections.unmodifiableList(this.deathHandlers);
@@ -221,8 +222,9 @@ public class Simulation {
     }
 
     /**
-     * Returns the list of birth handlers.
-     * @return An unmodifiable view of the birth handlers list.
+     * Get the registered birth handlers invoked for each newborn during the post-execute birth phase.
+     *
+     * @return an unmodifiable list of registered {@link IBirthHandler} instances in registration order
      */
     public List<IBirthHandler> getBirthHandlers() {
         return java.util.Collections.unmodifiableList(this.birthHandlers);
@@ -287,9 +289,22 @@ public class Simulation {
     }
 
     /**
-     * Executes a single simulation tick. During a tick, tick plugins are executed first,
-     * then each organism plans an instruction, conflicts are resolved, and the winning
-     * instructions are executed.
+     * Advance the simulation by one tick, performing plugin hooks, instruction planning,
+     * conflict resolution, execution, and lifecycle handling.
+     *
+     * <p>Phases performed in order:
+     * <ol>
+     *   <li>Execute registered tick plugins.</li>
+     *   <li>Plan: each alive organism plans an instruction; registered instruction
+     *       interceptors may observe or replace planned instructions.</li>
+     *   <li>Resolve conflicts between environment-modifying instructions deterministically.</li>
+     *   <li>Execute winning instructions and advance organisms past no-op cells.</li>
+     *   <li>Handle organism deaths by invoking death handlers and clearing environment ownership.</li>
+     *   <li>Post-execute birth phase: invoke birth handlers for newborns, compute and assign
+     *       genome hashes, register observed genomes, and add newborns to the population.</li>
+     * </ol>
+     *
+     * The simulation's tick counter is incremented after completing these phases.
      */
     public void tick() {
         newOrganismsThisTick.clear();
