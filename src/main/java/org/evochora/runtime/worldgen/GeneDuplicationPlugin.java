@@ -1,7 +1,8 @@
 package org.evochora.runtime.worldgen;
 
-import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
+import java.util.ArrayList;
+import java.util.Random;
+
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
@@ -11,8 +12,8 @@ import org.evochora.runtime.spi.IRandomProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.Random;
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 
 /**
  * Gene duplication birth handler inspired by Ohno's (1970) model of evolution through gene duplication.
@@ -108,6 +109,12 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         this.random = randomProvider.asJavaRandom();
         this.duplicationRate = config.getDouble("duplicationRate");
         this.minNopSize = config.getInt("minNopSize");
+        if (duplicationRate < 0.0 || duplicationRate > 1.0) {
+            throw new IllegalArgumentException("duplicationRate must be in [0.0, 1.0], got: " + duplicationRate);
+        }
+        if (minNopSize < 1) {
+            throw new IllegalArgumentException("minNopSize must be positive, got: " + minNopSize);
+        }
     }
 
     /**
@@ -123,6 +130,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         this.minNopSize = minNopSize;
     }
 
+    /** {@inheritDoc} */
     @Override
     public void onBirth(Organism child, Environment environment) {
         if (random.nextDouble() >= duplicationRate) {
@@ -371,12 +379,6 @@ public class GeneDuplicationPlugin implements IBirthHandler {
     }
 
     /**
-     * Acquires a ScanLineInfo from the pool, or creates a new one if the pool is exhausted.
-     * After warmup (first few ticks), this method never allocates.
-     *
-     * @return A reusable ScanLineInfo instance.
-     */
-    /**
      * Scans a scan line for the largest contiguous run of empty cells (CODE:0, marker:0).
      * Results are stored in the ScanLineInfo's bestNopStart/bestNopLength fields.
      * Uses the shared coordBuffer (caller must have initialized it via flatIndexToCoordinates
@@ -433,11 +435,13 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         return info;
     }
 
+    /** {@inheritDoc} */
     @Override
     public byte[] saveState() {
         return new byte[0];
     }
 
+    /** {@inheritDoc} */
     @Override
     public void loadState(byte[] state) {
         // Stateless plugin - nothing to restore
