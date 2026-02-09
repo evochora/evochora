@@ -247,6 +247,13 @@ public class StateInstruction extends Instruction {
         }
     }
 
+    /**
+     * Handles the FORK instruction: spawns a child organism at a neighboring cell.
+     * Transfers energy from parent to child and copies marker-matching molecule ownership.
+     *
+     * @param operands Three operands: unit delta vector, energy scalar, child DV vector.
+     * @param simulation The simulation for coordinate resolution and organism registration.
+     */
     private void handleFork(List<Operand> operands, Simulation simulation) {
         if (operands.size() != 3) { organism.instructionFailed("Invalid operands for FORK."); return; }
         int[] delta = (int[]) operands.get(0).value();
@@ -400,6 +407,17 @@ public class StateInstruction extends Instruction {
         }
     }
 
+    /**
+     * Handles the extended FORK variants (FRKI / FRKS).
+     * FRKI takes immediate operands; FRKS pops delta, energy, and child DV from the data stack.
+     * Otherwise identical to {@link #handleFork}: validates the delta as a unit vector,
+     * transfers energy, creates a child organism, and transfers marker-matching ownership.
+     *
+     * @param opName "FRKI" (immediate) or "FRKS" (stack).
+     * @param operands Resolved operands for the instruction.
+     * @param environment The simulation environment for coordinate resolution.
+     * @param simulation The simulation for organism registration.
+     */
     private void handleForkExtended(String opName, List<Operand> operands, Environment environment, Simulation simulation) {
         if ("FRKI".equals(opName)) {
             if (operands.size() != 3) { organism.instructionFailed("FRKI expects <Vec>, <Lit>, <Vec>."); return; }

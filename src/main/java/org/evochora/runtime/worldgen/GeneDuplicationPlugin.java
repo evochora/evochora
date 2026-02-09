@@ -108,6 +108,12 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         this.random = randomProvider.asJavaRandom();
         this.duplicationRate = config.getDouble("duplicationRate");
         this.minNopSize = config.getInt("minNopSize");
+        if (duplicationRate < 0.0 || duplicationRate > 1.0) {
+            throw new IllegalArgumentException("duplicationRate must be in [0.0, 1.0], got: " + duplicationRate);
+        }
+        if (minNopSize < 1) {
+            throw new IllegalArgumentException("minNopSize must be positive, got: " + minNopSize);
+        }
     }
 
     /**
@@ -123,6 +129,7 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         this.minNopSize = minNopSize;
     }
 
+    /** {@inheritDoc} */
     @Override
     public void onBirth(Organism child, Environment environment) {
         if (random.nextDouble() >= duplicationRate) {
@@ -371,12 +378,6 @@ public class GeneDuplicationPlugin implements IBirthHandler {
     }
 
     /**
-     * Acquires a ScanLineInfo from the pool, or creates a new one if the pool is exhausted.
-     * After warmup (first few ticks), this method never allocates.
-     *
-     * @return A reusable ScanLineInfo instance.
-     */
-    /**
      * Scans a scan line for the largest contiguous run of empty cells (CODE:0, marker:0).
      * Results are stored in the ScanLineInfo's bestNopStart/bestNopLength fields.
      * Uses the shared coordBuffer (caller must have initialized it via flatIndexToCoordinates
@@ -433,11 +434,13 @@ public class GeneDuplicationPlugin implements IBirthHandler {
         return info;
     }
 
+    /** {@inheritDoc} */
     @Override
     public byte[] saveState() {
         return new byte[0];
     }
 
+    /** {@inheritDoc} */
     @Override
     public void loadState(byte[] state) {
         // Stateless plugin - nothing to restore
