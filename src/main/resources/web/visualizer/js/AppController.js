@@ -834,7 +834,7 @@ export class AppController {
             this.minimapView?.updateOrganisms(organisms, (genomeHash) => {
                 const palette = AppController.ORGANISM_PALETTE;
                 const idx = this._genomeHashToPaletteIndex(genomeHash, palette.length);
-                return palette[idx];
+                return idx === null ? '#808080' : palette[idx];
             });
             
             // Reload organism details if one is selected
@@ -974,6 +974,7 @@ export class AppController {
         let paletteIndex;
         if (this.state.colorMode === 'genome') {
             paletteIndex = this._genomeHashToPaletteIndex(genomeHash, palette.length);
+            if (paletteIndex === null) return '#808080';
         } else {
             paletteIndex = (organismId - 1) % palette.length;
         }
@@ -985,12 +986,12 @@ export class AppController {
      * First hash seen → 0 (green), second → 1 (blue), etc. Wraps around palette length.
      * @param {number|bigint} genomeHash - The genome hash value.
      * @param {number} paletteLength - The number of colors in the palette.
-     * @returns {number} Palette index (0 to paletteLength-1).
+     * @returns {number|null} Palette index (0 to paletteLength-1), or null if no genome hash.
      * @private
      */
     _genomeHashToPaletteIndex(genomeHash, paletteLength) {
         if (genomeHash == null || genomeHash === 0 || genomeHash === '0') {
-            return 0;
+            return null;
         }
         const key = String(genomeHash);
         if (!this.genomeHashColorMap.has(key)) {
@@ -1034,7 +1035,7 @@ export class AppController {
             let color;
             if (this.state.colorMode === 'genome') {
                 const idx = this._genomeHashToPaletteIndex(entry.genomeHash, palette.length);
-                color = palette[idx];
+                color = idx === null ? '#808080' : palette[idx];
             } else {
                 color = palette[(id - 1) % palette.length];
             }

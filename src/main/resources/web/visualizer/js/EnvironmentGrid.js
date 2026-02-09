@@ -1367,6 +1367,7 @@ export class EnvironmentGrid {
         let idx;
         if (this.controller && this.controller.state.colorMode === 'genome') {
             idx = this.controller._genomeHashToPaletteIndex(genomeHash, palette.length);
+            if (idx === null) return 0x808080;
         } else {
             idx = (organismId - 1) % palette.length;
         }
