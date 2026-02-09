@@ -38,6 +38,7 @@ import org.evochora.runtime.label.ILabelMatchingStrategy;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.spi.IBirthHandler;
 import org.evochora.runtime.spi.IDeathHandler;
 import org.evochora.runtime.spi.IInstructionInterceptor;
 import org.evochora.runtime.spi.IRandomProvider;
@@ -97,6 +98,12 @@ public class SimulationRestorer {
     public record DeathHandlerWithConfig(IDeathHandler handler, Config config) {}
 
     /**
+     * Bundles a birth handler with its configuration.
+     * Used for extracting plugin state during simulation.
+     */
+    public record BirthHandlerWithConfig(IBirthHandler handler, Config config) {}
+
+    /**
      * Contains all state needed to resume a simulation in SimulationEngine.
      * <p>
      * This record is produced by {@link #restore} and consumed by SimulationEngine.
@@ -106,6 +113,7 @@ public class SimulationRestorer {
      * @param tickPlugins The tick plugins with restored state and their configs
      * @param instructionInterceptors The instruction interceptors with restored state and their configs
      * @param deathHandlers The death handlers with restored state and their configs
+     * @param birthHandlers The birth handlers with restored state and their configs
      * @param programArtifacts Map of programId to ProgramArtifact
      * @param runId The original simulation run ID
      * @param resumeFromTick The tick number to resume from (first tick to generate)
@@ -118,6 +126,7 @@ public class SimulationRestorer {
         List<PluginWithConfig> tickPlugins,
         List<InterceptorWithConfig> instructionInterceptors,
         List<DeathHandlerWithConfig> deathHandlers,
+        List<BirthHandlerWithConfig> birthHandlers,
         Map<String, ProgramArtifact> programArtifacts,
         String runId,
         long resumeFromTick,
@@ -260,6 +269,12 @@ public class SimulationRestorer {
         }
         log.debug("Restored {} death handlers", restoredPlugins.deathHandlers().size());
 
+        // Register birth handlers with simulation
+        for (BirthHandlerWithConfig bhc : restoredPlugins.birthHandlers()) {
+            simulation.addBirthHandler(bhc.handler());
+        }
+        log.debug("Restored {} birth handlers", restoredPlugins.birthHandlers().size());
+
         // 12. Build and return RestoredState
         return new RestoredState(
             simulation,
@@ -267,6 +282,7 @@ public class SimulationRestorer {
             restoredPlugins.tickPlugins(),
             restoredPlugins.interceptors(),
             restoredPlugins.deathHandlers(),
+            restoredPlugins.birthHandlers(),
             programs,
             metadata.getSimulationRunId(),
             checkpoint.getResumeFromTick(),
@@ -613,7 +629,8 @@ public class SimulationRestorer {
     private record RestoredPlugins(
         List<PluginWithConfig> tickPlugins,
         List<InterceptorWithConfig> interceptors,
-        List<DeathHandlerWithConfig> deathHandlers
+        List<DeathHandlerWithConfig> deathHandlers,
+        List<BirthHandlerWithConfig> birthHandlers
     ) {}
 
     /**
@@ -641,6 +658,7 @@ public class SimulationRestorer {
         List<PluginWithConfig> tickPlugins = new ArrayList<>();
         List<InterceptorWithConfig> interceptors = new ArrayList<>();
         List<DeathHandlerWithConfig> deathHandlers = new ArrayList<>();
+        List<BirthHandlerWithConfig> birthHandlers = new ArrayList<>();
 
         for (Config pluginConfig : pluginConfigs) {
             String className = pluginConfig.getString("className");
@@ -674,17 +692,21 @@ public class SimulationRestorer {
                 if (plugin instanceof IDeathHandler deathHandler) {
                     deathHandlers.add(new DeathHandlerWithConfig(deathHandler, options));
                 }
+                if (plugin instanceof IBirthHandler birthHandler) {
+                    birthHandlers.add(new BirthHandlerWithConfig(birthHandler, options));
+                }
 
                 // Warn if plugin implements no known interface
-                if (!(plugin instanceof ITickPlugin) && !(plugin instanceof IInstructionInterceptor) && !(plugin instanceof IDeathHandler)) {
-                    log.warn("Plugin {} does not implement ITickPlugin, IInstructionInterceptor, or IDeathHandler", className);
+                if (!(plugin instanceof ITickPlugin) && !(plugin instanceof IInstructionInterceptor)
+                        && !(plugin instanceof IDeathHandler) && !(plugin instanceof IBirthHandler)) {
+                    log.warn("Plugin {} does not implement ITickPlugin, IInstructionInterceptor, IDeathHandler, or IBirthHandler", className);
                 }
             } catch (Exception e) {
                 throw new ResumeException("Failed to instantiate plugin: " + className, e);
             }
         }
 
-        return new RestoredPlugins(tickPlugins, interceptors, deathHandlers);
+        return new RestoredPlugins(tickPlugins, interceptors, deathHandlers, birthHandlers);
     }
 
     /**
