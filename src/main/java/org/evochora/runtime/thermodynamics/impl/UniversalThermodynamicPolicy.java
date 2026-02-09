@@ -37,10 +37,19 @@ import java.util.Optional;
  * }
  * write-rules: {
  *   ENERGY: { ... }
- *   CODE: { ... }
+ *   CODE: {
+ *     energy = 5, entropy = -50          # Default for all CODE values
+ *     values: {
+ *       "0": { energy = 1, entropy = -50 }  # Override for CODE:0 (NOP)
+ *     }
+ *   }
  *   DATA: { ... }
  * }
  * </pre>
+ * <p>
+ * Each type rule supports an optional {@code values} sub-block for value-specific overrides.
+ * When a molecule is evaluated, the policy first checks for a matching value override; if none
+ * is found, it falls back to the type-level default rule.
  */
 public class UniversalThermodynamicPolicy implements IThermodynamicPolicy {
 
@@ -106,6 +115,36 @@ public class UniversalThermodynamicPolicy implements IThermodynamicPolicy {
         }
     }
 
+    /**
+     * Groups a default {@link Rule} with optional value-specific overrides.
+     * Resolution checks for a value-specific rule first, then falls back to the type default.
+     */
+    private static class TypeRule {
+        final Rule defaultRule;
+        final Map<Integer, Rule> valueOverrides;
+
+        TypeRule(Rule defaultRule, Map<Integer, Rule> valueOverrides) {
+            this.defaultRule = defaultRule;
+            this.valueOverrides = valueOverrides;
+        }
+
+        /**
+         * Resolves the applicable rule for a molecule, checking value overrides first.
+         *
+         * @param molecule The molecule to resolve a rule for.
+         * @return The most specific matching rule.
+         */
+        Rule resolve(Molecule molecule) {
+            if (valueOverrides != null) {
+                Rule override = valueOverrides.get(molecule.toScalarValue());
+                if (override != null) {
+                    return override;
+                }
+            }
+            return defaultRule;
+        }
+    }
+
     private enum Ownership { OWN, FOREIGN, UNOWNED }
 
     // Base values (always added)
@@ -113,10 +152,10 @@ public class UniversalThermodynamicPolicy implements IThermodynamicPolicy {
     private int baseEntropy = 0;
 
     // Read rules (applied when targetInfo is present)
-    private final Map<Ownership, Map<Integer, Rule>> readRules = new EnumMap<>(Ownership.class);
+    private final Map<Ownership, Map<Integer, TypeRule>> readRules = new EnumMap<>(Ownership.class);
 
     // Write rules (applied when a molecule is being written)
-    private final Map<Integer, Rule> writeRules = new HashMap<>();
+    private final Map<Integer, TypeRule> writeRules = new HashMap<>();
 
     @Override
     public void initialize(Config options) {
@@ -132,15 +171,16 @@ public class UniversalThermodynamicPolicy implements IThermodynamicPolicy {
                 if (!readRulesConfig.hasPath(ownerKey)) continue;
 
                 Config ownerConfig = readRulesConfig.getConfig(ownerKey);
-                Map<Integer, Rule> typeRules = new HashMap<>();
+                Map<Integer, TypeRule> typeRules = new HashMap<>();
 
                 for (String typeName : ownerConfig.root().keySet()) {
+                    Config typeConfig = ownerConfig.getConfig(typeName);
                     if ("_default".equalsIgnoreCase(typeName)) {
-                        typeRules.put(DEFAULT_TYPE_KEY, new Rule(ownerConfig.getConfig(typeName)));
+                        typeRules.put(DEFAULT_TYPE_KEY, parseTypeRule(typeConfig));
                     } else {
                         Optional<Integer> typeConstant = Molecule.getTypeConstantByName(typeName);
                         if (typeConstant.isPresent()) {
-                            typeRules.put(typeConstant.get(), new Rule(ownerConfig.getConfig(typeName)));
+                            typeRules.put(typeConstant.get(), parseTypeRule(typeConfig));
                         } else {
                             LOG.warn("Unknown molecule type '{}' in UniversalThermodynamicPolicy read-rules for '{}' will be ignored.", typeName, ownerKey);
                         }
@@ -154,14 +194,13 @@ public class UniversalThermodynamicPolicy implements IThermodynamicPolicy {
         if (options.hasPath("write-rules")) {
             Config writeRulesConfig = options.getConfig("write-rules");
             for (String key : writeRulesConfig.root().keySet()) {
+                Config typeConfig = writeRulesConfig.getConfig(key);
                 if ("_default".equalsIgnoreCase(key)) {
-                    Config typeConfig = writeRulesConfig.getConfig(key);
-                    writeRules.put(DEFAULT_TYPE_KEY, new Rule(typeConfig));
+                    writeRules.put(DEFAULT_TYPE_KEY, parseTypeRule(typeConfig));
                 } else {
                     Optional<Integer> typeConstant = Molecule.getTypeConstantByName(key);
                     if (typeConstant.isPresent()) {
-                        Config typeConfig = writeRulesConfig.getConfig(key);
-                        writeRules.put(typeConstant.get(), new Rule(typeConfig));
+                        writeRules.put(typeConstant.get(), parseTypeRule(typeConfig));
                     } else {
                         LOG.warn("Unknown molecule type '{}' in UniversalThermodynamicPolicy write-rules will be ignored.", key);
                     }
@@ -194,15 +233,15 @@ public class UniversalThermodynamicPolicy implements IThermodynamicPolicy {
                 ownership = Ownership.FOREIGN;
             }
 
-            Map<Integer, Rule> typeRules = readRules.get(ownership);
+            Map<Integer, TypeRule> typeRules = readRules.get(ownership);
             if (typeRules != null) {
-                Rule rule = typeRules.get(target.molecule().type());
-                if (rule == null) {
-                    rule = typeRules.get(DEFAULT_TYPE_KEY);
+                TypeRule typeRule = typeRules.get(target.molecule().type());
+                if (typeRule == null) {
+                    typeRule = typeRules.get(DEFAULT_TYPE_KEY);
                 }
-                
-                if (rule != null) {
-                    total += rule.calculateEnergy(target.molecule());
+
+                if (typeRule != null) {
+                    total += typeRule.resolve(target.molecule()).calculateEnergy(target.molecule());
                 }
             }
         }
@@ -215,7 +254,7 @@ public class UniversalThermodynamicPolicy implements IThermodynamicPolicy {
             // so POKE will always succeed - we should charge the cost even if target appears occupied.
             String instructionName = context.instruction().getName();
             boolean isPPK = "PPKR".equals(instructionName) || "PPKI".equals(instructionName) || "PPKS".equals(instructionName);
-            
+
             if (!isPPK && context.targetInfo().isPresent()) {
                 var target = context.targetInfo().get();
                 if (!target.molecule().isEmpty()) {
@@ -224,13 +263,13 @@ public class UniversalThermodynamicPolicy implements IThermodynamicPolicy {
                 }
             }
 
-            Rule rule = writeRules.get(toWrite.type());
-            if (rule == null) {
-                rule = writeRules.get(DEFAULT_TYPE_KEY);
+            TypeRule typeRule = writeRules.get(toWrite.type());
+            if (typeRule == null) {
+                typeRule = writeRules.get(DEFAULT_TYPE_KEY);
             }
-            
-            if (rule != null) {
-                total += rule.calculateEnergy(toWrite);
+
+            if (typeRule != null) {
+                total += typeRule.resolve(toWrite).calculateEnergy(toWrite);
             }
         }
 
@@ -261,15 +300,15 @@ public class UniversalThermodynamicPolicy implements IThermodynamicPolicy {
                 ownership = Ownership.FOREIGN;
             }
 
-            Map<Integer, Rule> typeRules = readRules.get(ownership);
+            Map<Integer, TypeRule> typeRules = readRules.get(ownership);
             if (typeRules != null) {
-                Rule rule = typeRules.get(target.molecule().type());
-                if (rule == null) {
-                    rule = typeRules.get(DEFAULT_TYPE_KEY);
+                TypeRule typeRule = typeRules.get(target.molecule().type());
+                if (typeRule == null) {
+                    typeRule = typeRules.get(DEFAULT_TYPE_KEY);
                 }
-                
-                if (rule != null) {
-                    total += rule.calculateEntropy(target.molecule());
+
+                if (typeRule != null) {
+                    total += typeRule.resolve(target.molecule()).calculateEntropy(target.molecule());
                 }
             }
         }
@@ -277,19 +316,52 @@ public class UniversalThermodynamicPolicy implements IThermodynamicPolicy {
         // Apply write-rules if a molecule is being written
         Molecule toWrite = getMoleculeToWrite(context.resolvedOperands());
         if (toWrite != null && !writeRules.isEmpty()) {
-            Rule rule = writeRules.get(toWrite.type());
-            if (rule == null) {
-                rule = writeRules.get(DEFAULT_TYPE_KEY);
+            TypeRule typeRule = writeRules.get(toWrite.type());
+            if (typeRule == null) {
+                typeRule = writeRules.get(DEFAULT_TYPE_KEY);
             }
-            
-            if (rule != null) {
-                total += rule.calculateEntropy(toWrite);
+
+            if (typeRule != null) {
+                total += typeRule.resolve(toWrite).calculateEntropy(toWrite);
             }
         }
 
         return total;
     }
     
+    /**
+     * Parses a type-level rule from config, including optional value-specific overrides.
+     * <p>
+     * The config may contain a {@code values} sub-block with integer keys mapping to
+     * value-specific rules. Example:
+     * <pre>
+     * CODE: {
+     *   energy = 5, entropy = -50
+     *   values: { "0": { energy = 1, entropy = -50 } }
+     * }
+     * </pre>
+     *
+     * @param config The config block for this type.
+     * @return A TypeRule containing the default rule and any value overrides.
+     */
+    private TypeRule parseTypeRule(Config config) {
+        Rule defaultRule = new Rule(config);
+        Map<Integer, Rule> valueOverrides = null;
+        if (config.hasPath("values")) {
+            Config valuesConfig = config.getConfig("values");
+            valueOverrides = new HashMap<>();
+            for (String valueKey : valuesConfig.root().keySet()) {
+                try {
+                    int value = Integer.parseInt(valueKey);
+                    valueOverrides.put(value, new Rule(valuesConfig.getConfig(valueKey)));
+                } catch (NumberFormatException e) {
+                    LOG.warn("Non-integer value key '{}' in UniversalThermodynamicPolicy values block will be ignored.", valueKey);
+                }
+            }
+        }
+        return new TypeRule(defaultRule, valueOverrides);
+    }
+
     /**
      * Extracts the molecule to be written from the resolved operands.
      * For POKE/POKI/POKS and PPK* instructions, the first operand contains the molecule to write.
