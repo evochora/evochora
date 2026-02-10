@@ -16,6 +16,14 @@ import java.util.List;
  * its absolute position in the environment. It includes all molecule types except DATA,
  * which can be modified by the organism at runtime.
  * <p>
+ * LABEL and LABELREF values are normalized before hashing: all values are XOR-ed with
+ * the value of the LABEL molecule at the smallest relative position (the "anchor label"). This
+ * makes the hash invariant to uniform label namespace rewriting (as performed by
+ * {@link org.evochora.runtime.worldgen.LabelRewritePlugin}) while still detecting
+ * individual mutations to label or labelref values. The normalization is correct because
+ * {@code (A ^ M) ^ (B ^ M) = A ^ B} — a uniform XOR mask cancels out in pairwise
+ * differences.
+ * <p>
  * The hash is computed using SHA-256 over sorted (relative position, molecule value) pairs,
  * with the first 8 bytes converted to a long for compact storage.
  */
@@ -23,6 +31,19 @@ public final class GenomeHasher {
 
     private GenomeHasher() {
         // Utility class - no instantiation
+    }
+
+    /**
+     * Compares two entries by their relative position (first {@code dims} elements) in lexicographic order.
+     *
+     * @return {@code true} if {@code a} is lexicographically before {@code b}.
+     */
+    private static boolean lexicographicallySmaller(long[] a, long[] b, int dims) {
+        for (int d = 0; d < dims; d++) {
+            if (a[d] < b[d]) return true;
+            if (a[d] > b[d]) return false;
+        }
+        return false;
     }
 
     /**
@@ -51,6 +72,12 @@ public final class GenomeHasher {
         boolean isToroidal = environment.getProperties().isToroidal();
         List<long[]> genomeMolecules = new ArrayList<>();
 
+        // Track anchor label: the LABEL at the smallest RELATIVE position (lexicographic).
+        // Using relative position instead of flat index ensures the same anchor is chosen
+        // regardless of absolute placement in toroidal worlds.
+        int anchorLabelValue = -1;
+        int anchorEntryIndex = -1;
+
         // Collect all non-DATA molecules with their relative positions
         for (int flatIndex : ownedCells) {
             int moleculeInt = environment.getMoleculeInt(flatIndex);
@@ -76,11 +103,38 @@ public final class GenomeHasher {
                     } else if (diff < -worldSize / 2) {
                         diff += worldSize;
                     }
+                    // For even world sizes, ±worldSize/2 are equidistant.
+                    // Canonicalize to positive so the hash is independent of wrapping direction.
+                    if (worldSize % 2 == 0 && diff == -(worldSize / 2)) {
+                        diff = worldSize / 2;
+                    }
                 }
                 entry[d] = diff;
             }
             entry[dims] = moleculeInt;
             genomeMolecules.add(entry);
+
+            // Track anchor label (smallest relative position among LABELs)
+            if (type == Config.TYPE_LABEL) {
+                if (anchorEntryIndex == -1 || lexicographicallySmaller(entry, genomeMolecules.get(anchorEntryIndex), dims)) {
+                    anchorEntryIndex = genomeMolecules.size() - 1;
+                    anchorLabelValue = moleculeInt & Config.VALUE_MASK;
+                }
+            }
+        }
+
+        // Normalize LABEL/LABELREF values by XOR-ing with the anchor label value.
+        // This makes the hash invariant to uniform namespace rewriting (birth XOR mask)
+        // while still detecting individual mutations.
+        if (anchorLabelValue != -1) {
+            for (long[] entry : genomeMolecules) {
+                int moleculeInt = (int) entry[dims];
+                int type = moleculeInt & Config.TYPE_MASK;
+                if (type == Config.TYPE_LABEL || type == Config.TYPE_LABELREF) {
+                    int normalizedValue = (moleculeInt & Config.VALUE_MASK) ^ anchorLabelValue;
+                    entry[dims] = (moleculeInt & ~Config.VALUE_MASK) | normalizedValue;
+                }
+            }
         }
 
         if (genomeMolecules.isEmpty()) {
