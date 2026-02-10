@@ -206,6 +206,65 @@ class GenomeHasherTest {
     }
 
     @Test
+    void testSameGenomeWithDifferentLabelNamespace_sameHash() {
+        // Organism A: LABEL=100, LABELREF=105, CODE=42
+        env.setMolecule(new Molecule(Config.TYPE_CODE, 42, 0), ORGANISM_ID, new int[]{5, 5});
+        env.setMolecule(new Molecule(Config.TYPE_LABEL, 100, 0), ORGANISM_ID, new int[]{5, 6});
+        env.setMolecule(new Molecule(Config.TYPE_LABELREF, 105, 0), ORGANISM_ID, new int[]{5, 7});
+        long hashA = GenomeHasher.computeGenomeHash(env, ORGANISM_ID, INITIAL_POSITION);
+
+        // Organism B: same genome but XOR-rewritten with mask=0x1234
+        int mask = 0x1234;
+        env = new Environment(new int[]{20, 20}, false);
+        env.setMolecule(new Molecule(Config.TYPE_CODE, 42, 0), ORGANISM_ID, new int[]{5, 5});
+        env.setMolecule(new Molecule(Config.TYPE_LABEL, 100 ^ mask, 0), ORGANISM_ID, new int[]{5, 6});
+        env.setMolecule(new Molecule(Config.TYPE_LABELREF, 105 ^ mask, 0), ORGANISM_ID, new int[]{5, 7});
+        long hashB = GenomeHasher.computeGenomeHash(env, ORGANISM_ID, INITIAL_POSITION);
+
+        assertThat(hashA).as("Same genome with different label namespace should have identical hash")
+                .isEqualTo(hashB);
+    }
+
+    @Test
+    void testMutatedLabelRef_differentHash() {
+        // Original: LABEL=100, LABELREF=105
+        env.setMolecule(new Molecule(Config.TYPE_LABEL, 100, 0), ORGANISM_ID, new int[]{5, 5});
+        env.setMolecule(new Molecule(Config.TYPE_LABELREF, 105, 0), ORGANISM_ID, new int[]{5, 6});
+        long hashOriginal = GenomeHasher.computeGenomeHash(env, ORGANISM_ID, INITIAL_POSITION);
+
+        // Mutated: LABEL=100, LABELREF=999 (individual mutation, not uniform XOR)
+        env = new Environment(new int[]{20, 20}, false);
+        env.setMolecule(new Molecule(Config.TYPE_LABEL, 100, 0), ORGANISM_ID, new int[]{5, 5});
+        env.setMolecule(new Molecule(Config.TYPE_LABELREF, 999, 0), ORGANISM_ID, new int[]{5, 6});
+        long hashMutated = GenomeHasher.computeGenomeHash(env, ORGANISM_ID, INITIAL_POSITION);
+
+        assertThat(hashOriginal).as("Mutated LABELREF should produce different hash")
+                .isNotEqualTo(hashMutated);
+    }
+
+    @Test
+    void testMultipleMasksProduceSameHash() {
+        // Same genome with three different XOR masks should all produce the same hash
+        int label1 = 500;
+        int label2 = 700;
+        int labelRef = 510;
+
+        long[] hashes = new long[3];
+        int[] masks = {0, 0x3A7F, 0x7FFFF};
+
+        for (int i = 0; i < masks.length; i++) {
+            env = new Environment(new int[]{20, 20}, false);
+            env.setMolecule(new Molecule(Config.TYPE_LABEL, label1 ^ masks[i], 0), ORGANISM_ID, new int[]{5, 5});
+            env.setMolecule(new Molecule(Config.TYPE_LABEL, label2 ^ masks[i], 0), ORGANISM_ID, new int[]{5, 6});
+            env.setMolecule(new Molecule(Config.TYPE_LABELREF, labelRef ^ masks[i], 0), ORGANISM_ID, new int[]{5, 7});
+            hashes[i] = GenomeHasher.computeGenomeHash(env, ORGANISM_ID, INITIAL_POSITION);
+        }
+
+        assertThat(hashes[0]).isEqualTo(hashes[1]);
+        assertThat(hashes[1]).isEqualTo(hashes[2]);
+    }
+
+    @Test
     void testOnlyOwnedMoleculesIncluded() {
         Molecule codeMol = new Molecule(Config.TYPE_CODE, 10, 0);
 

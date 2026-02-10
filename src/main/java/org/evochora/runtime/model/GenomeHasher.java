@@ -16,6 +16,14 @@ import java.util.List;
  * its absolute position in the environment. It includes all molecule types except DATA,
  * which can be modified by the organism at runtime.
  * <p>
+ * LABEL and LABELREF values are normalized before hashing: all values are XOR-ed with
+ * the value of the LABEL molecule at the smallest flat index (the "anchor label"). This
+ * makes the hash invariant to uniform label namespace rewriting (as performed by
+ * {@link org.evochora.runtime.worldgen.LabelRewritePlugin}) while still detecting
+ * individual mutations to label or labelref values. The normalization is correct because
+ * {@code (A ^ M) ^ (B ^ M) = A ^ B} — a uniform XOR mask cancels out in pairwise
+ * differences.
+ * <p>
  * The hash is computed using SHA-256 over sorted (relative position, molecule value) pairs,
  * with the first 8 bytes converted to a long for compact storage.
  */
@@ -51,6 +59,11 @@ public final class GenomeHasher {
         boolean isToroidal = environment.getProperties().isToroidal();
         List<long[]> genomeMolecules = new ArrayList<>();
 
+        // Track anchor label: the LABEL with the smallest flat index, used to normalize
+        // LABEL/LABELREF values so that uniform XOR rewriting does not change the hash.
+        int anchorLabelValue = -1;
+        int anchorFlatIndex = Integer.MAX_VALUE;
+
         // Collect all non-DATA molecules with their relative positions
         for (int flatIndex : ownedCells) {
             int moleculeInt = environment.getMoleculeInt(flatIndex);
@@ -59,6 +72,12 @@ public final class GenomeHasher {
             // Skip DATA molecules - they can be modified by the organism at runtime
             if (type == Config.TYPE_DATA) {
                 continue;
+            }
+
+            // Track anchor label (smallest flat index among LABELs)
+            if (type == Config.TYPE_LABEL && flatIndex < anchorFlatIndex) {
+                anchorFlatIndex = flatIndex;
+                anchorLabelValue = moleculeInt & Config.VALUE_MASK;
             }
 
             int[] absCoord = environment.getCoordinateFromIndex(flatIndex);
@@ -81,6 +100,20 @@ public final class GenomeHasher {
             }
             entry[dims] = moleculeInt;
             genomeMolecules.add(entry);
+        }
+
+        // Normalize LABEL/LABELREF values by XOR-ing with the anchor label value.
+        // This makes the hash invariant to uniform namespace rewriting (birth XOR mask)
+        // while still detecting individual mutations.
+        if (anchorLabelValue != -1) {
+            for (long[] entry : genomeMolecules) {
+                int moleculeInt = (int) entry[dims];
+                int type = moleculeInt & Config.TYPE_MASK;
+                if (type == Config.TYPE_LABEL || type == Config.TYPE_LABELREF) {
+                    int normalizedValue = (moleculeInt & Config.VALUE_MASK) ^ anchorLabelValue;
+                    entry[dims] = (moleculeInt & ~Config.VALUE_MASK) | normalizedValue;
+                }
+            }
         }
 
         if (genomeMolecules.isEmpty()) {
