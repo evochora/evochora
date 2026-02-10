@@ -242,9 +242,9 @@ class GeneDeletionPluginTest {
         }
 
         // With exponent=2: hash_A weight per label = 3^2=9, total=27; hash_B weight = 1^2=1, total=1
-        // Expected ratio: ~27:1. Hash A should be selected much more often.
+        // Expected ratio: ~27:1. Threshold *10 catches linear-vs-quadratic regression (ratio 9:1 would fail).
         assertThat(hashACount).as("Duplicate labels should be selected much more often")
-                .isGreaterThan(hashBCount * 5);
+                .isGreaterThan(hashBCount * 10);
     }
 
     @Test
