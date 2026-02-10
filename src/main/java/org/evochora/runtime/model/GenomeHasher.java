@@ -17,7 +17,7 @@ import java.util.List;
  * which can be modified by the organism at runtime.
  * <p>
  * LABEL and LABELREF values are normalized before hashing: all values are XOR-ed with
- * the value of the LABEL molecule at the smallest flat index (the "anchor label"). This
+ * the value of the LABEL molecule at the smallest relative position (the "anchor label"). This
  * makes the hash invariant to uniform label namespace rewriting (as performed by
  * {@link org.evochora.runtime.worldgen.LabelRewritePlugin}) while still detecting
  * individual mutations to label or labelref values. The normalization is correct because
@@ -31,6 +31,19 @@ public final class GenomeHasher {
 
     private GenomeHasher() {
         // Utility class - no instantiation
+    }
+
+    /**
+     * Compares two entries by their relative position (first {@code dims} elements) in lexicographic order.
+     *
+     * @return {@code true} if {@code a} is lexicographically before {@code b}.
+     */
+    private static boolean lexicographicallySmaller(long[] a, long[] b, int dims) {
+        for (int d = 0; d < dims; d++) {
+            if (a[d] < b[d]) return true;
+            if (a[d] > b[d]) return false;
+        }
+        return false;
     }
 
     /**
@@ -59,10 +72,11 @@ public final class GenomeHasher {
         boolean isToroidal = environment.getProperties().isToroidal();
         List<long[]> genomeMolecules = new ArrayList<>();
 
-        // Track anchor label: the LABEL with the smallest flat index, used to normalize
-        // LABEL/LABELREF values so that uniform XOR rewriting does not change the hash.
+        // Track anchor label: the LABEL at the smallest RELATIVE position (lexicographic).
+        // Using relative position instead of flat index ensures the same anchor is chosen
+        // regardless of absolute placement in toroidal worlds.
         int anchorLabelValue = -1;
-        int anchorFlatIndex = Integer.MAX_VALUE;
+        int anchorEntryIndex = -1;
 
         // Collect all non-DATA molecules with their relative positions
         for (int flatIndex : ownedCells) {
@@ -72,12 +86,6 @@ public final class GenomeHasher {
             // Skip DATA molecules - they can be modified by the organism at runtime
             if (type == Config.TYPE_DATA) {
                 continue;
-            }
-
-            // Track anchor label (smallest flat index among LABELs)
-            if (type == Config.TYPE_LABEL && flatIndex < anchorFlatIndex) {
-                anchorFlatIndex = flatIndex;
-                anchorLabelValue = moleculeInt & Config.VALUE_MASK;
             }
 
             int[] absCoord = environment.getCoordinateFromIndex(flatIndex);
@@ -95,11 +103,24 @@ public final class GenomeHasher {
                     } else if (diff < -worldSize / 2) {
                         diff += worldSize;
                     }
+                    // For even world sizes, ±worldSize/2 are equidistant.
+                    // Canonicalize to positive so the hash is independent of wrapping direction.
+                    if (worldSize % 2 == 0 && diff == -(worldSize / 2)) {
+                        diff = worldSize / 2;
+                    }
                 }
                 entry[d] = diff;
             }
             entry[dims] = moleculeInt;
             genomeMolecules.add(entry);
+
+            // Track anchor label (smallest relative position among LABELs)
+            if (type == Config.TYPE_LABEL) {
+                if (anchorEntryIndex == -1 || lexicographicallySmaller(entry, genomeMolecules.get(anchorEntryIndex), dims)) {
+                    anchorEntryIndex = genomeMolecules.size() - 1;
+                    anchorLabelValue = moleculeInt & Config.VALUE_MASK;
+                }
+            }
         }
 
         // Normalize LABEL/LABELREF values by XOR-ing with the anchor label value.
