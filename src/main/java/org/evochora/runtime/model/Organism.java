@@ -616,7 +616,32 @@ public class Organism {
             }
             advanceIpBy(1, environment);
         }
+        recoverFromStall();
         instructionFailed("Max skips exceeded (" + maxSkips + ")");
+    }
+
+    /**
+     * Recovers the instruction pointer after a stall (max-skip exceeded).
+     * <p>
+     * If the call stack is non-empty, pops the top frame and restores the IP
+     * to the frame's return address, also restoring procedure registers (PRs)
+     * to the caller's saved state — matching the RET instruction's semantics.
+     * <p>
+     * If the call stack is empty, falls back to the organism's initial position
+     * (birth position), creating a genome-loop that re-executes from the start.
+     * <p>
+     * This mechanism smooths the fitness landscape: organisms that occasionally
+     * escape their code region can recover and continue useful execution, with
+     * the error penalty on each recovery providing proportional selection pressure.
+     */
+    private void recoverFromStall() {
+        if (!callStack.isEmpty()) {
+            ProcFrame frame = callStack.pop();
+            restorePrs(frame.savedPrs);
+            setIp(frame.absoluteReturnIp);
+        } else {
+            setIp(Arrays.copyOf(initialPosition, initialPosition.length));
+        }
     }
 
     /**

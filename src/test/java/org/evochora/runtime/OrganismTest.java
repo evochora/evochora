@@ -316,4 +316,153 @@ public class OrganismTest {
         assertThat(environment.getMolecule(cell1).value()).isEqualTo(42);
         assertThat(environment.getMolecule(cell1).type()).isEqualTo(Config.TYPE_DATA);
     }
+
+    // ==================== Stall Recovery Tests ====================
+
+    /**
+     * Verifies that when skipNopCells exceeds max-skips with an empty call stack,
+     * the IP recovers to the organism's initial position (birth position).
+     */
+    @Test
+    @Tag("unit")
+    void testMaxSkipRecoveryToInitialPosition() {
+        int[] initialPos = new int[]{50, 50};
+        Organism org = Organism.create(sim, initialPos, 100, sim.getLogger());
+        sim.addOrganism(org);
+
+        // Move IP away from initial position into empty space
+        org.setIp(new int[]{80, 50});
+
+        org.skipNopCells(environment);
+
+        assertThat(org.getIp()).isEqualTo(initialPos);
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("Max skips exceeded");
+    }
+
+    /**
+     * Verifies that when skipNopCells exceeds max-skips with a non-empty call stack,
+     * the top frame is popped and the IP is set to the frame's return address.
+     */
+    @Test
+    @Tag("unit")
+    void testMaxSkipRecoveryUnwindsCallStack() {
+        int[] initialPos = new int[]{50, 50};
+        Organism org = Organism.create(sim, initialPos, 100, sim.getLogger());
+        sim.addOrganism(org);
+
+        int[] returnAddr = new int[]{60, 50};
+        Object[] savedPrs = org.getPrs().toArray(new Object[0]);
+        Object[] savedFprs = org.getFprs().toArray(new Object[0]);
+        org.getCallStack().push(new Organism.ProcFrame(
+                "PROC", returnAddr, new int[]{55, 50},
+                savedPrs, savedFprs, java.util.Collections.emptyMap()));
+
+        // Move IP into empty space
+        org.setIp(new int[]{80, 50});
+
+        org.skipNopCells(environment);
+
+        assertThat(org.getIp()).isEqualTo(returnAddr);
+        assertThat(org.getCallStack()).isEmpty();
+        assertThat(org.isInstructionFailed()).isTrue();
+    }
+
+    /**
+     * Verifies that PRs are restored from the popped call frame during stall recovery,
+     * matching the RET instruction's semantics.
+     */
+    @Test
+    @Tag("unit")
+    void testMaxSkipRecoveryRestoresPrs() {
+        int[] initialPos = new int[]{50, 50};
+        Organism org = Organism.create(sim, initialPos, 100, sim.getLogger());
+        sim.addOrganism(org);
+
+        // Set known PR values and capture snapshot (caller's state)
+        org.setPr(0, 42);
+        org.setPr(1, 99);
+        Object[] callerPrs = org.getPrs().toArray(new Object[0]);
+        Object[] callerFprs = org.getFprs().toArray(new Object[0]);
+
+        // Simulate what a CALL does: push frame with caller's PRs, then change PRs
+        org.getCallStack().push(new Organism.ProcFrame(
+                "PROC", new int[]{60, 50}, new int[]{55, 50},
+                callerPrs, callerFprs, java.util.Collections.emptyMap()));
+        org.setPr(0, 777);
+        org.setPr(1, 888);
+
+        // Move IP into empty space and trigger recovery
+        org.setIp(new int[]{80, 50});
+        org.skipNopCells(environment);
+
+        // PRs should be restored to caller's saved values
+        assertThat(org.getPr(0)).isEqualTo(42);
+        assertThat(org.getPr(1)).isEqualTo(99);
+    }
+
+    /**
+     * Verifies that the error-penalty-cost is applied when max-skip is exceeded.
+     * Uses sim.tick() to exercise the full execution path through Simulation.java
+     * where the post-skip penalty check lives.
+     */
+    @Test
+    @Tag("unit")
+    void testMaxSkipAppliesErrorPenalty() {
+        int startEnergy = 100;
+        Organism org = Organism.create(sim, new int[]{50, 50}, startEnergy, sim.getLogger());
+        sim.addOrganism(org);
+        // Environment is empty (all CODE:0 = NOP), so after NOP execution
+        // the IP advances and skipNopCells will hit max-skip.
+
+        sim.tick();
+
+        // Energy should decrease by: base-energy (1) + error-penalty-cost (10)
+        assertThat(org.getEr()).isEqualTo(startEnergy - 1 - 10);
+        // instructionFailed is still set from max-skip (cleared by resetTickState at next tick)
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("Max skips exceeded");
+    }
+
+    /**
+     * Verifies progressive recovery: with a deep call stack, consecutive max-skip
+     * events unwind one frame per tick, eventually falling back to initial position.
+     */
+    @Test
+    @Tag("unit")
+    void testMaxSkipProgressiveRecovery() {
+        int[] initialPos = new int[]{50, 50};
+        Organism org = Organism.create(sim, initialPos, 100, sim.getLogger());
+        sim.addOrganism(org);
+
+        // Push two frames (frame 2 on top, frame 1 below)
+        int[] returnAddr1 = new int[]{60, 50};
+        int[] returnAddr2 = new int[]{70, 50};
+        Object[] prs = org.getPrs().toArray(new Object[0]);
+        Object[] fprs = org.getFprs().toArray(new Object[0]);
+
+        org.getCallStack().push(new Organism.ProcFrame(
+                "PROC1", returnAddr1, new int[]{55, 50},
+                prs, fprs, java.util.Collections.emptyMap()));
+        org.getCallStack().push(new Organism.ProcFrame(
+                "PROC2", returnAddr2, new int[]{65, 50},
+                prs, fprs, java.util.Collections.emptyMap()));
+
+        // First max-skip: pops PROC2, IP → returnAddr2
+        org.setIp(new int[]{80, 50});
+        org.skipNopCells(environment);
+        assertThat(org.getIp()).isEqualTo(returnAddr2);
+        assertThat(org.getCallStack()).hasSize(1);
+
+        // Second max-skip: pops PROC1, IP → returnAddr1
+        org.resetTickState();
+        org.skipNopCells(environment);
+        assertThat(org.getIp()).isEqualTo(returnAddr1);
+        assertThat(org.getCallStack()).isEmpty();
+
+        // Third max-skip: empty stack, IP → initial position
+        org.resetTickState();
+        org.skipNopCells(environment);
+        assertThat(org.getIp()).isEqualTo(initialPos);
+    }
 }
