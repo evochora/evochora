@@ -3,6 +3,7 @@ package org.evochora.compiler.instructions;
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.CompilerTestBase;
 import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
@@ -42,6 +43,10 @@ class NopInstructionCompilerTest extends CompilerTestBase {
             for (Map.Entry<int[], Integer> entry : artifact.machineCodeLayout().entrySet()) {
                 env.setMolecule(Molecule.fromInt(entry.getValue()), entry.getKey());
             }
+
+            // Place WAIT after NOP to stop instant-skip (NOP alone triggers max-skip recovery)
+            int waitId = Instruction.getInstructionIdByName("WAIT");
+            env.setMolecule(new Molecule(Config.TYPE_CODE, waitId), new int[]{1, 0});
 
             Simulation sim = SimulationTestUtils.createSimulation(env);
             Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());

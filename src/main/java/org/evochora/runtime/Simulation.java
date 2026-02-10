@@ -346,7 +346,15 @@ public class Simulation {
                 vm.execute(instruction);
 
                 // Instant-skip: advance past any NOP/LABEL/empty cells
+                boolean failedInExecution = organism.isInstructionFailed();
                 organism.skipNopCells(environment);
+
+                // Apply error penalty for post-execution failures (e.g., max-skip)
+                // not already penalized inside vm.execute()
+                if (!failedInExecution && organism.isInstructionFailed()) {
+                    int penalty = organismConfig.getInt("error-penalty-cost");
+                    organism.takeEr(penalty);
+                }
             }
 
             // Handle organism death: call death handlers, then clear ownership
