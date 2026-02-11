@@ -20,7 +20,7 @@ import java.util.Map;
 import java.util.Random;
 
 /**
- * Point mutation birth handler that inserts syntactically correct instruction chains
+ * Gene insertion birth handler that inserts syntactically correct instruction chains
  * or mutated labels into NOP (empty) regions of newborn organisms.
  * <p>
  * Called once per newborn organism in the post-Execute phase of each tick. With configurable
@@ -54,9 +54,9 @@ import java.util.Random;
  * @see GeneDuplicationPlugin
  * @see GeneDeletionPlugin
  */
-public class PointMutationPlugin implements IBirthHandler {
+public class GeneInsertionPlugin implements IBirthHandler {
 
-    private static final Logger LOG = LoggerFactory.getLogger(PointMutationPlugin.class);
+    private static final Logger LOG = LoggerFactory.getLogger(GeneInsertionPlugin.class);
 
     /** Maximum label hash value (19-bit unsigned). */
     private static final int LABEL_HASH_BITS = 19;
@@ -207,12 +207,12 @@ public class PointMutationPlugin implements IBirthHandler {
     }
 
     /**
-     * Creates a point mutation plugin from configuration.
+     * Creates a gene insertion plugin from configuration.
      *
      * @param randomProvider Source of randomness.
      * @param config Configuration containing mutationRate and entries.
      */
-    public PointMutationPlugin(IRandomProvider randomProvider, com.typesafe.config.Config config) {
+    public GeneInsertionPlugin(IRandomProvider randomProvider, com.typesafe.config.Config config) {
         this.random = randomProvider.asJavaRandom();
         this.mutationRate = config.getDouble("mutationRate");
         if (mutationRate < 0.0 || mutationRate > 1.0) {
@@ -241,7 +241,7 @@ public class PointMutationPlugin implements IBirthHandler {
      * @param mutationRate Probability of mutation per newborn (0.0 to 1.0).
      * @param entries Pre-built list of mutation entries.
      */
-    PointMutationPlugin(IRandomProvider randomProvider, double mutationRate, List<MutationEntry> entries) {
+    GeneInsertionPlugin(IRandomProvider randomProvider, double mutationRate, List<MutationEntry> entries) {
         this.random = randomProvider.asJavaRandom();
         this.mutationRate = mutationRate;
         this.entries = new ArrayList<>(entries);
@@ -401,7 +401,7 @@ public class PointMutationPlugin implements IBirthHandler {
     }
 
     /**
-     * Performs point mutation for a single newborn organism.
+     * Performs gene insertion for a single newborn organism.
      * <p>
      * Builds scan lines from owned cells (with concurrent label hash reservoir sampling),
      * selects a mutation entry, generates the molecule chain, finds a suitable NOP area
@@ -414,14 +414,14 @@ public class PointMutationPlugin implements IBirthHandler {
         int childId = child.getId();
         IntOpenHashSet owned = env.getCellsOwnedBy(childId);
         if (owned == null || owned.isEmpty()) {
-            LOG.debug("tick={} Organism {} point mutation: no owned cells", child.getBirthTick(), childId);
+            LOG.debug("tick={} Organism {} gene insertion: no owned cells", child.getBirthTick(), childId);
             return;
         }
 
         int[] dv = child.getDv();
         int dvDim = findDvDim(dv);
         if (dvDim == -1) {
-            LOG.debug("tick={} Organism {} point mutation: degenerate DV", child.getBirthTick(), childId);
+            LOG.debug("tick={} Organism {} gene insertion: degenerate DV", child.getBirthTick(), childId);
             return;
         }
 
@@ -438,7 +438,7 @@ public class PointMutationPlugin implements IBirthHandler {
 
         if (entry instanceof InstructionEntry ie) {
             if (!buildInstructionChain(ie, dims)) {
-                LOG.debug("tick={} Organism {} point mutation: chain build failed (missing arg config)", child.getBirthTick(), childId);
+                LOG.debug("tick={} Organism {} gene insertion: chain build failed (missing arg config)", child.getBirthTick(), childId);
                 return;
             }
         } else if (entry instanceof LabelEntry le) {
@@ -450,7 +450,7 @@ public class PointMutationPlugin implements IBirthHandler {
         }
 
         if (!selectNopRun(env, dvDim, chainBuffer.size(), shape[dvDim])) {
-            LOG.debug("tick={} Organism {} point mutation: no NOP area of length {} found", child.getBirthTick(), childId, chainBuffer.size());
+            LOG.debug("tick={} Organism {} gene insertion: no NOP area of length {} found", child.getBirthTick(), childId, chainBuffer.size());
             return;
         }
 
@@ -462,7 +462,7 @@ public class PointMutationPlugin implements IBirthHandler {
         if (LOG.isDebugEnabled()) {
             env.properties.flatIndexToCoordinates(selectedNopScanLine.sampleFlatIndex, coordBuffer);
             coordBuffer[dvDim] = selectedNopDvStart;
-            LOG.debug("tick={} Organism {} point mutation: placed {} molecules at {}",
+            LOG.debug("tick={} Organism {} gene insertion: placed {} molecules at {}",
                     child.getBirthTick(), childId, chainBuffer.size(), Arrays.toString(coordBuffer));
         }
     }

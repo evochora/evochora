@@ -10,7 +10,7 @@ import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
-import org.evochora.runtime.worldgen.PointMutationPlugin.*;
+import org.evochora.runtime.worldgen.GeneInsertionPlugin.*;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -24,14 +24,14 @@ import java.util.Map;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Unit tests for {@link PointMutationPlugin}.
+ * Unit tests for {@link GeneInsertionPlugin}.
  * <p>
  * Tests use realistic genome layouts: boundary CODE molecules owned by the child
  * define scan line extent, with naturally empty (moleculeInt == 0, owner == 0) cells
  * between them providing NOP areas for mutation insertion.
  */
 @Tag("unit")
-class PointMutationPluginTest {
+class GeneInsertionPluginTest {
 
     private Simulation simulation;
     private Environment environment;
@@ -171,7 +171,7 @@ class PointMutationPluginTest {
         createScanLine(LEFT, RIGHT, Y);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        PointMutationPlugin plugin = new PointMutationPlugin(rng, 1.0, List.of(createSetiEntry()));
+        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(createSetiEntry()));
         plugin.mutate(child, environment);
 
         // At least one cell in the NOP gap should now be non-empty
@@ -191,7 +191,7 @@ class PointMutationPluginTest {
         createScanLine(LEFT, RIGHT, Y);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        PointMutationPlugin plugin = new PointMutationPlugin(rng, 1.0, List.of(createSetiEntry()));
+        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(createSetiEntry()));
         plugin.mutate(child, environment);
 
         // Find the inserted chain: a CODE molecule followed by REGISTER and DATA
@@ -220,7 +220,7 @@ class PointMutationPluginTest {
             clearNopGap(LEFT, RIGHT, Y);
 
             IRandomProvider rng = new SeededRandomProvider(seed);
-            PointMutationPlugin plugin = new PointMutationPlugin(rng, 1.0, List.of(createAddrEntry()));
+            GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(createAddrEntry()));
             plugin.mutate(child, environment);
 
             // Find REGISTER molecules
@@ -253,7 +253,7 @@ class PointMutationPluginTest {
             clearNopGap(LEFT, RIGHT, Y);
 
             IRandomProvider rng = new SeededRandomProvider(seed);
-            PointMutationPlugin plugin = new PointMutationPlugin(rng, 1.0, List.of(entry));
+            GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(entry));
             plugin.mutate(child, environment);
 
             for (int x = LEFT + 1; x < RIGHT; x++) {
@@ -284,7 +284,7 @@ class PointMutationPluginTest {
         );
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        PointMutationPlugin plugin = new PointMutationPlugin(rng, 1.0, List.of(entry));
+        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(entry));
         plugin.mutate(child, environment);
 
         // Find the LABELREF molecule
@@ -308,7 +308,7 @@ class PointMutationPluginTest {
         LabelEntry labelEntry = new LabelEntry(1.0, 2);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        PointMutationPlugin plugin = new PointMutationPlugin(rng, 1.0, List.of(labelEntry));
+        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(labelEntry));
         plugin.mutate(child, environment);
 
         // Find inserted LABEL molecule in the NOP gap
@@ -334,7 +334,7 @@ class PointMutationPluginTest {
         LabelEntry labelEntry = new LabelEntry(1.0, 2);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        PointMutationPlugin plugin = new PointMutationPlugin(rng, 1.0, List.of(labelEntry));
+        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(labelEntry));
         plugin.mutate(child, environment);
 
         // A label should be placed despite no existing labels (uses random hash)
@@ -358,7 +358,7 @@ class PointMutationPluginTest {
         }
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        PointMutationPlugin plugin = new PointMutationPlugin(rng, 1.0, List.of(createSetiEntry()));
+        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(createSetiEntry()));
         // Should not throw
         plugin.mutate(child, environment);
 
@@ -373,7 +373,7 @@ class PointMutationPluginTest {
         createScanLine(LEFT, RIGHT, Y);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        PointMutationPlugin plugin = new PointMutationPlugin(rng, 0.0, List.of(createSetiEntry()));
+        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 0.0, List.of(createSetiEntry()));
         plugin.onBirth(child, environment);
 
         // NOP gap should remain empty
@@ -401,7 +401,7 @@ class PointMutationPluginTest {
         );
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        PointMutationPlugin plugin = new PointMutationPlugin(rng, 1.0, List.of(entry));
+        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(entry));
         plugin.mutate(child, environment);
 
         // Find the CODE molecule (opcode), then read the 2 DATA molecules after it (2D environment)
@@ -452,7 +452,7 @@ class PointMutationPluginTest {
             clearNopGap(LEFT, RIGHT, Y);
 
             IRandomProvider rng = new SeededRandomProvider(seed);
-            PointMutationPlugin plugin = new PointMutationPlugin(rng, 1.0, List.of(entry));
+            GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(entry));
             plugin.mutate(child, environment);
 
             for (int x = LEFT + 1; x < RIGHT; x++) {
@@ -472,7 +472,7 @@ class PointMutationPluginTest {
         createScanLine(LEFT, RIGHT, Y);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        PointMutationPlugin plugin = new PointMutationPlugin(rng, 1.0, List.of(createAddrEntry()));
+        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(createAddrEntry()));
         plugin.mutate(child, environment);
 
         // Count non-empty cells in the NOP gap
@@ -489,7 +489,7 @@ class PointMutationPluginTest {
     @Test
     void isStateless() {
         IRandomProvider rng = new SeededRandomProvider(42L);
-        PointMutationPlugin plugin = new PointMutationPlugin(rng, 0.03, List.of(createSetiEntry()));
+        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 0.03, List.of(createSetiEntry()));
 
         byte[] state = plugin.saveState();
         assertThat(state).isEmpty();
@@ -503,7 +503,7 @@ class PointMutationPluginTest {
         int originalHash = 0b1010101010101010101; // 19-bit value
         for (int flips = 0; flips <= 5; flips++) {
             IRandomProvider testRng = new SeededRandomProvider(flips * 17L);
-            PointMutationPlugin testPlugin = new PointMutationPlugin(testRng, 1.0, List.of(
+            GeneInsertionPlugin testPlugin = new GeneInsertionPlugin(testRng, 1.0, List.of(
                     new LabelEntry(1.0, 0)
             ));
             int result = testPlugin.flipBits(originalHash, flips);
@@ -531,7 +531,7 @@ class PointMutationPluginTest {
         );
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        PointMutationPlugin plugin = new PointMutationPlugin(rng, 1.0, List.of(entry));
+        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(entry));
         plugin.mutate(child, environment);
 
         // A LABELREF should be placed with a random hash
@@ -559,7 +559,7 @@ class PointMutationPluginTest {
         placeCode(29, Y);
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        PointMutationPlugin plugin = new PointMutationPlugin(rng, 1.0, List.of(createSetiEntry()));
+        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(createSetiEntry()));
         plugin.mutate(child, environment);
 
         // External space must remain empty
@@ -598,7 +598,7 @@ class PointMutationPluginTest {
         environment.setMolecule(new Molecule(Config.TYPE_CODE, 42), negId, new int[]{14, Y});
 
         IRandomProvider rng = new SeededRandomProvider(42L);
-        PointMutationPlugin plugin = new PointMutationPlugin(rng, 1.0, List.of(createSetiEntry()));
+        GeneInsertionPlugin plugin = new GeneInsertionPlugin(rng, 1.0, List.of(createSetiEntry()));
         plugin.mutate(negChild, environment);
 
         // Boundaries must be preserved
