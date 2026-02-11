@@ -517,6 +517,21 @@ public abstract class Instruction {
     public static Integer getInstructionIdByName(String name) { return NAME_TO_ID.get(name.toUpperCase()); }
 
     /**
+     * Gets the operand sources for an instruction by its opcode ID.
+     * <p>
+     * Returns the list of {@link OperandSource} values that define what code-stream
+     * molecules an instruction reads. Used by mutation plugins to generate syntactically
+     * correct instruction chains.
+     *
+     * @param opcodeId The instruction opcode ID (including TYPE_CODE bits).
+     * @return Unmodifiable list of operand sources, or empty list if unknown.
+     */
+    public static List<OperandSource> getOperandSourcesById(int opcodeId) {
+        List<OperandSource> sources = OPERAND_SOURCES.get(opcodeId);
+        return sources != null ? Collections.unmodifiableList(sources) : List.of();
+    }
+
+    /**
      * Gets the planner function for an instruction by its ID.
      * @param id The instruction ID.
      * @return The planner function.

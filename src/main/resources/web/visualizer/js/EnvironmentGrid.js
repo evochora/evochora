@@ -56,6 +56,7 @@ export class EnvironmentGrid {
         this.cellData = new Map(); // key: "x,y" -> {type,value,ownerId,opcodeName}
         this._rawCells = null;      // Raw cells from API (for async cellData building)
         this._cellDataReady = false; // Flag: true when cellData map is fully built
+        this._buildId = 0;          // Monotonic counter to cancel stale async builds
 
         // --- Prefetch Management ---
         this._prefetchAbortController = null;  // Separate controller for background prefetch
@@ -1220,6 +1221,7 @@ export class EnvironmentGrid {
     async _buildCellDataAsync() {
         if (!this._rawCells) return;
 
+        const buildId = ++this._buildId;
         this._cellDataReady = false;
         this.cellData.clear();
 
@@ -1246,6 +1248,9 @@ export class EnvironmentGrid {
 
             // Yield to browser between chunks to keep UI responsive
             await new Promise(resolve => setTimeout(resolve, 0));
+
+            // Abort if a newer build has started during the yield
+            if (this._buildId !== buildId) return;
         }
 
         this._cellDataReady = true;
@@ -1256,22 +1261,16 @@ export class EnvironmentGrid {
      *
      * @param {number} gridX - The grid X coordinate.
      * @param {number} gridY - The grid Y coordinate.
-     * @returns {object|null} The cell data object, null if map not ready, or default for empty cell.
+     * @returns {object|null} The cell data object, or null if not available.
      * @private
      */
     findCellAt(gridX, gridY) {
-        // Return null if cellData map is still being built
         if (!this._cellDataReady) {
             return null;
         }
 
         const key = `${gridX},${gridY}`;
-        return this.cellData.get(key) || {
-            type: 0,
-            value: 0,
-            ownerId: 0,
-            opcodeName: 'NOP'
-        };
+        return this.cellData.get(key) || null;
     }
 
     /**
