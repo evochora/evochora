@@ -417,6 +417,9 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
                 TickData lightTick = createLightweightTickData(runId, delta);
                 processTickForPlugins(lightTick, tasksByPlugin, rowsWrittenPerTask);
             }
+
+            // Yield after each delta to prevent system freezing during heavy chunk processing
+            Thread.yield();
         }
     }
     

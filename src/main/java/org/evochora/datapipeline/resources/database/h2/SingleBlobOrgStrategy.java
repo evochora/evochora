@@ -129,7 +129,7 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
                     continue;  // Already in batch
                 }
                 seenOrganisms.add(organismId);
-                
+
                 stmt.setInt(1, organismId);
                 if (org.hasParentId()) {
                     stmt.setInt(2, org.getParentId());
@@ -142,6 +142,7 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
                 stmt.setLong(6, org.getGenomeHash());
                 stmt.addBatch();
             }
+            Thread.yield();
         }
         
         if (!seenOrganisms.isEmpty()) {
@@ -163,12 +164,13 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
                 log.debug("Tick {} has no organisms - skipping organism_ticks write", tick.getTickNumber());
                 continue;
             }
-            
+
             byte[] blob = serializeOrganisms(tick);
             stmt.setLong(1, tick.getTickNumber());
             stmt.setBytes(2, blob);
             stmt.addBatch();
             writtenCount++;
+            Thread.yield();
         }
         
         if (writtenCount > 0) {

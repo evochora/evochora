@@ -2065,15 +2065,13 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
         // Note: We always recreate the buffer for the current region (viewport-based)
         this._pixelBuffer = new Uint8ClampedArray(pixelCount * 4);
 
+        // Use Uint32Array view for bulk pixel operations (single fill call vs. millions of byte writes)
+        const uint32View = new Uint32Array(this._pixelBuffer.buffer);
+
         // Fill buffer with empty cell background color
         const emptyColor = this._hexToRgb(this.config.colorEmptyBg);
-        for (let i = 0; i < pixelCount; i++) {
-            const idx = i * 4;
-            this._pixelBuffer[idx] = emptyColor.r;
-            this._pixelBuffer[idx + 1] = emptyColor.g;
-            this._pixelBuffer[idx + 2] = emptyColor.b;
-            this._pixelBuffer[idx + 3] = 255; // Alpha
-        }
+        const emptyPixel = (255 << 24) | (emptyColor.b << 16) | (emptyColor.g << 8) | emptyColor.r;
+        uint32View.fill(emptyPixel);
 
         // --- Step 2: Draw cells into pixel buffer ---
         const typeMapping = this.grid.detailedRenderer.typeMapping;
@@ -2092,22 +2090,19 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
 
             const typeId = typeMapping[cell.moleculeType] ?? 0;
             const isEmpty = typeId === typeMapping['CODE'] && cell.moleculeValue === 0 && cell.ownerId === 0;
-            const color = isEmpty ? emptyColor : this._hexToRgb(getColor(typeId));
+            if (isEmpty) continue; // Already filled with empty color
+
+            const color = this._hexToRgb(getColor(typeId));
+            const colorPixel = (255 << 24) | (color.b << 16) | (color.g << 8) | color.r;
 
             // Position relative to region origin, scaled
             const localX = (cellX - clampedX1) * scale;
             const localY = (cellY - clampedY1) * scale;
 
-            // Draw scale×scale pixels for this cell
+            // Draw scale×scale pixels for this cell using bulk row fills
             for (let dy = 0; dy < scale; dy++) {
-                for (let dx = 0; dx < scale; dx++) {
-                    const px = localX + dx;
-                    const py = localY + dy;
-                    const idx = (py * textureWidth + px) * 4;
-                    this._pixelBuffer[idx] = color.r;
-                    this._pixelBuffer[idx + 1] = color.g;
-                    this._pixelBuffer[idx + 2] = color.b;
-                }
+                const rowStart = (localY + dy) * textureWidth + localX;
+                uint32View.fill(colorPixel, rowStart, rowStart + scale);
             }
         }
 

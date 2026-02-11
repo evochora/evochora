@@ -170,6 +170,7 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
                     stmt.addBatch();
                 }
             }
+            Thread.yield();
         }
 
         if (!seenOrganisms.isEmpty()) {
@@ -215,6 +216,7 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
                 stmt.addBatch();
                 writtenCount++;
             }
+            Thread.yield();
         }
 
         if (writtenCount > 0) {

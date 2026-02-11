@@ -75,7 +75,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     private final int snapshotInterval;
     private final int chunkInterval;
     private final int metricsWindowSeconds;
-    private final int yieldInterval;
+
     private final List<Long> pauseTicks;
     private final String runId;
     private final DeltaCodec.Encoder chunkEncoder;
@@ -153,7 +153,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
         // Common configuration (intervals come from InitializedState to support resume from metadata)
         this.metricsWindowSeconds = readInt(options, "metricsWindowSeconds", 1);
-        this.yieldInterval = readInt(options, "yieldInterval", 1);
+
         this.pauseTicks = options.hasPath("pauseTicks") ? options.getLongList("pauseTicks") : Collections.emptyList();
 
         // Mode-specific initialization
@@ -474,9 +474,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             long tick = currentTick.incrementAndGet();
 
             // Yield to other threads/processes to prevent system freezing
-            if (yieldInterval > 0 && tick % yieldInterval == 0) {
-                Thread.yield();
-            }
+            Thread.yield();
 
             if (tick % samplingInterval == 0) {
                 try {

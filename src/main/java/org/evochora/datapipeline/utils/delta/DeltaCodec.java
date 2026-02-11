@@ -461,8 +461,11 @@ public final class DeltaCodec {
                         .build();
 
                 result.add(reconstructed);
+
+                // Yield after each delta to prevent system freezing during full-chunk decompression
+                Thread.yield();
             }
-            
+
             return result;
         }
         

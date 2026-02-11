@@ -160,6 +160,9 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
                     // Process and persist batch
                     processBatch(currentBatch);
                     currentBatch = null;  // Successfully processed
+
+                    // Yield to other threads/processes after batch to prevent system freezing
+                    Thread.yield();
                     
                 } catch (InterruptedException e) {
                     // Keep currentBatch for finally-block (even if partially filled by drainTo)

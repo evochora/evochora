@@ -202,6 +202,10 @@ public class MutableCellState {
                 builder.addMoleculeData(moleculeData[i]);
                 builder.addOwnerIds(ownerIds[i]);
             }
+            // Yield periodically to prevent system freezing during large environment scans
+            if (i % 100_000 == 0 && i > 0) {
+                Thread.yield();
+            }
         }
         return builder.build();
     }
