@@ -10,6 +10,9 @@ import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.spi.IBirthHandler;
 import org.evochora.runtime.spi.IRandomProvider;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 
 /**
@@ -43,6 +46,8 @@ import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
  * @see org.evochora.runtime.label.PreExpandedHammingStrategy
  */
 public class LabelRewritePlugin implements IBirthHandler {
+
+    private static final Logger LOG = LoggerFactory.getLogger(LabelRewritePlugin.class);
 
     /**
      * 19-bit mask matching the compiler's label hash space ({@code hashCode() & 0x7FFFF}).
@@ -83,10 +88,12 @@ public class LabelRewritePlugin implements IBirthHandler {
     public void onBirth(Organism child, Environment environment) {
         IntOpenHashSet owned = environment.getCellsOwnedBy(child.getId());
         if (owned == null || owned.isEmpty()) {
+            LOG.debug("tick={} Organism {} label rewrite: no owned cells", child.getBirthTick(), child.getId());
             return;
         }
 
         int mask = random.nextInt(LABEL_HASH_MASK) + 1; // [1, 0x7FFFF], never zero
+        final int[] rewriteCount = {0};
 
         owned.forEach((IntConsumer) flatIndex -> {
             int moleculeInt = environment.getMoleculeInt(flatIndex);
@@ -97,8 +104,12 @@ public class LabelRewritePlugin implements IBirthHandler {
                 int newValue = oldValue ^ mask;
                 int marker = (moleculeInt & Config.MARKER_MASK) >>> Config.MARKER_SHIFT;
                 environment.setMoleculeByIndex(flatIndex, new Molecule(type, newValue, marker));
+                rewriteCount[0]++;
             }
         });
+
+        LOG.debug("tick={} Organism {} label rewrite: rewrote {} molecules with mask={}",
+                child.getBirthTick(), child.getId(), rewriteCount[0], Integer.toHexString(mask));
     }
 
     /** {@inheritDoc} */

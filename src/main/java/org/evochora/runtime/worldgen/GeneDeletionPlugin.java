@@ -1,5 +1,7 @@
 package org.evochora.runtime.worldgen;
 
+import java.util.Arrays;
+
 import it.unimi.dsi.fastutil.ints.Int2IntOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
@@ -103,6 +105,7 @@ public class GeneDeletionPlugin implements IBirthHandler {
         int childId = child.getId();
         IntOpenHashSet owned = env.getCellsOwnedBy(childId);
         if (owned == null || owned.isEmpty()) {
+            LOG.debug("tick={} Organism {} gene deletion: no owned cells", child.getBirthTick(), childId);
             return;
         }
 
@@ -122,7 +125,7 @@ public class GeneDeletionPlugin implements IBirthHandler {
         });
 
         if (labelFlatIndices.isEmpty()) {
-            LOG.debug("Organism {} selected for deletion but has no labels", childId);
+            LOG.debug("tick={} Organism {} selected for deletion but has no labels", child.getBirthTick(), childId);
             return;
         }
 
@@ -153,7 +156,8 @@ public class GeneDeletionPlugin implements IBirthHandler {
             }
         }
         if (dvDim == -1) {
-            return; // degenerate DV
+            LOG.debug("tick={} Organism {} gene deletion: degenerate DV", child.getBirthTick(), childId);
+            return;
         }
 
         int maxSteps = env.getShape()[dvDim];
@@ -187,8 +191,11 @@ public class GeneDeletionPlugin implements IBirthHandler {
             }
         }
 
-        LOG.debug("Organism {} gene deletion: removed {} molecules from label hash {} at flatIndex={}",
-                childId, deletedCount, labelHashes.getInt(selectedIdx), selectedFlatIndex);
+        if (LOG.isDebugEnabled()) {
+            int[] labelPos = env.properties.flatIndexToCoordinates(selectedFlatIndex);
+            LOG.debug("tick={} Organism {} gene deletion: removed {} molecules from label hash {} at {}",
+                    child.getBirthTick(), childId, deletedCount, labelHashes.getInt(selectedIdx), Arrays.toString(labelPos));
+        }
     }
 
     /** {@inheritDoc} */

@@ -181,48 +181,24 @@ class RowPerChunkStrategyTest {
     }
     
     @Test
-    void testReadChunkContaining_NotFound_NoChunksInTable() throws SQLException {
-        // Given: Strategy with empty table (no chunks at all)
+    void testReadChunkContaining_NotFound() throws SQLException {
+        // Given: Range query returns no matching chunk
         strategy = new RowPerChunkStrategy(ConfigFactory.empty());
         when(mockResultSet.next()).thenReturn(false);
-        
-        // When/Then: Should throw TickNotFoundException when trying to initialize chunk size
-        assertThatThrownBy(() -> strategy.readChunkContaining(mockConnection, 500L))
-            .isInstanceOf(TickNotFoundException.class)
-            .hasMessageContaining("No chunks in environment_chunks table");
-    }
-    
-    @Test
-    void testReadChunkContaining_NotFound_ChunkDoesNotExist() throws SQLException {
-        // Given: Strategy with chunk size initialized but specific chunk not found
-        strategy = new RowPerChunkStrategy(ConfigFactory.empty());
-        
-        // First query (chunk size init) returns chunk_size=100
-        // Second query (actual chunk lookup) returns no result
-        when(mockResultSet.next())
-            .thenReturn(true)   // chunk size query succeeds
-            .thenReturn(false); // chunk lookup fails
-        when(mockResultSet.getLong("chunk_size")).thenReturn(100L);
-        
-        // When/Then: Should throw TickNotFoundException for specific tick
+
+        // When/Then: Should throw TickNotFoundException
         assertThatThrownBy(() -> strategy.readChunkContaining(mockConnection, 500L))
             .isInstanceOf(TickNotFoundException.class)
             .hasMessageContaining("No chunk found containing tick 500");
     }
-    
+
     @Test
     void testReadChunkContaining_EmptyBlob() throws SQLException {
-        // Given: Strategy with empty blob
+        // Given: Range query finds chunk but blob is empty
         strategy = new RowPerChunkStrategy(ConfigFactory.empty());
-        
-        // First query (chunk size init) returns chunk_size=100
-        // Second query (actual chunk lookup) returns empty blob
-        when(mockResultSet.next())
-            .thenReturn(true)   // chunk size query succeeds
-            .thenReturn(true);  // chunk lookup succeeds but blob is empty
-        when(mockResultSet.getLong("chunk_size")).thenReturn(100L);
+        when(mockResultSet.next()).thenReturn(true);
         when(mockResultSet.getBytes("chunk_blob")).thenReturn(new byte[0]);
-        
+
         // When/Then: Should throw TickNotFoundException
         assertThatThrownBy(() -> strategy.readChunkContaining(mockConnection, 500L))
             .isInstanceOf(TickNotFoundException.class)

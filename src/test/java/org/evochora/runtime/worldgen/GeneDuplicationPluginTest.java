@@ -24,6 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Tag("unit")
 class GeneDuplicationPluginTest {
 
+    private Simulation simulation;
     private Environment environment;
 
     /** The child organism that was just born. */
@@ -57,7 +58,7 @@ class GeneDuplicationPluginTest {
                 "error-penalty-cost", 10
         ));
 
-        Simulation simulation = new Simulation(environment, policyManager, organismConfig);
+        simulation = new Simulation(environment, policyManager, organismConfig);
 
         // Create parent organism (born at tick 0, no parent)
         Organism parent = Organism.create(simulation, new int[]{0, 0}, 10000, null);
@@ -237,6 +238,93 @@ class GeneDuplicationPluginTest {
         }
         // Should copy at most 3 molecules (label + 2 code cells)
         assertThat(copiedCount).isLessThanOrEqualTo(3);
+    }
+
+    @Test
+    void duplicatesIntoInteriorNopAreaWhenWrapping() {
+        // Organism wraps around x=0/29 boundary.
+        // y=2: LABEL at x=28, CODE at x=27,29,0,1,2 (source gene wrapping through boundary).
+        // y=4: Empty owned cells at x=27..29,0..3 (NOP target within interior).
+        // External space on y=4: x=4..26 (must remain empty).
+        int id = child.getId();
+        environment.setMolecule(new Molecule(Config.TYPE_LABEL, 12345), id, new int[]{28, 2});
+        for (int x : new int[]{27, 29, 0, 1, 2}) {
+            environment.setMolecule(new Molecule(Config.TYPE_CODE, 42), id, new int[]{x, 2});
+        }
+
+        // Empty owned NOP area wrapping through boundary
+        for (int x : new int[]{27, 28, 29, 0, 1, 2, 3}) {
+            environment.setMolecule(new Molecule(Config.TYPE_CODE, 0), id, new int[]{x, 4});
+        }
+
+        IRandomProvider rng = new SeededRandomProvider(42L);
+        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 3);
+        plugin.onBirth(child, environment);
+
+        // External space on y=4 must remain empty
+        for (int x = 4; x <= 26; x++) {
+            assertThat(environment.getMolecule(x, 4).isEmpty())
+                    .as("External cell (%d,4) should remain empty", x).isTrue();
+        }
+
+        // Some molecules should be copied into the interior NOP area
+        int copiedCount = 0;
+        for (int x : new int[]{27, 28, 29, 0, 1, 2, 3}) {
+            if (!environment.getMolecule(x, 4).isEmpty()) {
+                copiedCount++;
+            }
+        }
+        assertThat(copiedCount).as("Should copy molecules into interior NOP area").isGreaterThan(0);
+    }
+
+    @Test
+    void negativeDvCopiesWithinNopArea() {
+        // Child with DV=(-1, 0).
+        // y=2: LABEL at x=10, CODE at x=7,8,9,11,12. Source extends from label leftward (4 cells).
+        // y=4: Empty owned cells from x=5 to x=15 (NOP target).
+        // Without the negative-DV fix, the copy would overwrite cells to the left of the NOP area.
+        Organism negChild = Organism.restore(3, 9)
+                .parentId(1)
+                .ip(new int[]{0, 0})
+                .dv(new int[]{-1, 0})
+                .initialPosition(new int[]{0, 0})
+                .energy(5000)
+                .build(simulation);
+        simulation.addOrganism(negChild);
+
+        int negId = negChild.getId();
+        environment.setMolecule(new Molecule(Config.TYPE_LABEL, 12345), negId, new int[]{10, 2});
+        for (int x : new int[]{7, 8, 9, 11, 12}) {
+            environment.setMolecule(new Molecule(Config.TYPE_CODE, 42), negId, new int[]{x, 2});
+        }
+
+        // Empty owned NOP area at y=4
+        for (int x = 5; x <= 15; x++) {
+            environment.setMolecule(new Molecule(Config.TYPE_CODE, 0), negId, new int[]{x, 4});
+        }
+
+        IRandomProvider rng = new SeededRandomProvider(42L);
+        GeneDuplicationPlugin plugin = new GeneDuplicationPlugin(rng, 1.0, 3);
+        plugin.onBirth(negChild, environment);
+
+        // External space on y=4 must remain empty
+        for (int x = 0; x < 5; x++) {
+            assertThat(environment.getMolecule(x, 4).isEmpty())
+                    .as("Cell (%d,4) outside NOP area should be empty", x).isTrue();
+        }
+        for (int x = 16; x < 30; x++) {
+            assertThat(environment.getMolecule(x, 4).isEmpty())
+                    .as("Cell (%d,4) outside NOP area should be empty", x).isTrue();
+        }
+
+        // Some molecules should be copied into the NOP area
+        int copiedCount = 0;
+        for (int x = 5; x <= 15; x++) {
+            if (!environment.getMolecule(x, 4).isEmpty()) {
+                copiedCount++;
+            }
+        }
+        assertThat(copiedCount).as("Should copy molecules into NOP area").isGreaterThan(0);
     }
 
     @Test
