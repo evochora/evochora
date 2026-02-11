@@ -8,6 +8,9 @@ import { loadingManager } from './ui/LoadingManager.js';
  * @class EnvironmentGrid
  */
 export class EnvironmentGrid {
+    static MARGIN = 50;
+    static BOTTOM_MARGIN = 90; // Extra space for footer panels
+
     /**
      * @param {HTMLElement} container - The DOM element to contain the PIXI.js canvas.
      * @param {object} config - The application configuration object.
@@ -271,12 +274,12 @@ export class EnvironmentGrid {
         const worldWidthPx = this.worldWidthCells * cellSize;
         const worldHeightPx = this.worldHeightCells * cellSize;
         
-        // Allow 50px margin beyond the grid for visual border
-        const margin = 50;
+        const margin = EnvironmentGrid.MARGIN;
+        const bottomMargin = EnvironmentGrid.BOTTOM_MARGIN;
         const minCameraX = -margin;
         const minCameraY = -margin;
         const maxCameraX = Math.max(0, worldWidthPx - this.viewportWidth + margin);
-        const maxCameraY = Math.max(0, worldHeightPx - this.viewportHeight + margin);
+        const maxCameraY = Math.max(0, worldHeightPx - this.viewportHeight + bottomMargin);
 
         this.cameraX = Math.min(Math.max(this.cameraX, minCameraX), maxCameraX);
         this.cameraY = Math.min(Math.max(this.cameraY, minCameraY), maxCameraY);
@@ -868,9 +871,9 @@ export class EnvironmentGrid {
      */
     setupScrollbarInteraction() {
         if (!this.hScrollThumb || !this.vScrollThumb) return;
-        
-        // Margin for scrolling beyond grid edges (must match clampCameraToWorld)
-        const margin = 50;
+
+        const margin = EnvironmentGrid.MARGIN;
+        const bottomMargin = EnvironmentGrid.BOTTOM_MARGIN;
 
         // --- Horizontal Scrollbar Interaction ---
         this.hScrollThumb.addEventListener('mousedown', (e) => {
@@ -907,7 +910,7 @@ export class EnvironmentGrid {
             const startCameraY = this.cameraY;
             const trackHeight = this.vScrollTrack.clientHeight;
             const worldHeightPx = this.worldHeightCells * this.getCurrentCellSize();
-            const scrollableHeight = worldHeightPx + 2 * margin;
+            const scrollableHeight = worldHeightPx + margin + bottomMargin;
 
             const onMouseMove = (moveEvent) => {
                 const dy = moveEvent.clientY - startY;
@@ -955,7 +958,7 @@ export class EnvironmentGrid {
             const clickY = e.clientY - trackRect.top;
             const trackHeight = this.vScrollTrack.clientHeight;
             const worldHeightPx = this.worldHeightCells * this.getCurrentCellSize();
-            const scrollableHeight = worldHeightPx + 2 * margin;
+            const scrollableHeight = worldHeightPx + margin + bottomMargin;
 
             // Calculate camera position from click position
             this.cameraY = (clickY / trackHeight) * scrollableHeight - margin;
@@ -1029,12 +1032,11 @@ export class EnvironmentGrid {
         const worldWidthPx = this.worldWidthCells * cellSize;
         const worldHeightPx = this.worldHeightCells * cellSize;
         
-        // Margin for scrolling beyond grid edges (must match clampCameraToWorld)
-        const margin = 50;
-        
-        // Total scrollable range including margins
+        const margin = EnvironmentGrid.MARGIN;
+        const bottomMargin = EnvironmentGrid.BOTTOM_MARGIN;
+
         const scrollableWidth = worldWidthPx + 2 * margin;
-        const scrollableHeight = worldHeightPx + 2 * margin;
+        const scrollableHeight = worldHeightPx + margin + bottomMargin;
 
         // --- Horizontal Scrollbar ---
         if (worldWidthPx > this.viewportWidth) {

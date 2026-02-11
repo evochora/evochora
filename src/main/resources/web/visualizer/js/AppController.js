@@ -143,7 +143,8 @@ export class AppController {
         try {
             hideError();
 
-            // Cancel ongoing requests
+            // Stop polling and cancel ongoing requests
+            this._stopMaxTickPolling();
             if (this.simulationRequestController) this.simulationRequestController.abort();
             if (this.organismSummaryRequestController) this.organismSummaryRequestController.abort();
             if (this.organismDetailsRequestController) this.organismDetailsRequestController.abort();
@@ -233,6 +234,7 @@ export class AppController {
             // Load initial tick for new run
             await this.navigateToTick(this.state.currentTick, true);
             window.runSelectorPanel?.updateCurrent?.();
+            this._startMaxTickPolling();
         } catch (error) {
             console.error('Failed to change run:', error);
             showError('Failed to change run: ' + error.message);
@@ -359,15 +361,18 @@ export class AppController {
      * @private
      */
     initPanelManagers() {
-        // Tick panel (navigation buttons, tick input, multiplier, keyboard shortcuts)
+        // Timeline panel (tick input, interactive timeline track, multiplier, keyboard shortcuts)
         this.tickPanelManager = new TickPanelManager({
-            panel: document.getElementById('tick-panel'),
-            prevSmallBtn: document.getElementById('btn-prev-small'),
-            nextSmallBtn: document.getElementById('btn-next-small'),
-            prevLargeBtn: document.getElementById('btn-prev-large'),
-            nextLargeBtn: document.getElementById('btn-next-large'),
+            panel: document.getElementById('timeline-panel'),
             tickInput: document.getElementById('tick-input'),
             tickSuffix: document.getElementById('tick-total-suffix'),
+            prevLargeBtn: document.getElementById('btn-prev-large'),
+            prevSmallBtn: document.getElementById('btn-prev-small'),
+            nextSmallBtn: document.getElementById('btn-next-small'),
+            nextLargeBtn: document.getElementById('btn-next-large'),
+            trackContainer: document.getElementById('timeline-track-container'),
+            trackCanvas: document.getElementById('timeline-track'),
+            tooltip: document.getElementById('timeline-tooltip'),
             multiplierInput: document.getElementById('large-step-multiplier'),
             multiplierWrapper: document.getElementById('multiplier-wrapper'),
             multiplierSuffix: document.getElementById('multiplier-suffix'),
@@ -548,6 +553,7 @@ export class AppController {
             await this.ensureInitialRunId();
 
             // Initialize renderer
+            this._initInProgress = true;
             loadingManager.show('Initializing renderer');
             await this.renderer.init();
 
@@ -663,10 +669,13 @@ export class AppController {
             // Load initial tick, force reload to bypass optimization on first load
             loadingManager.update('Fetching environment', 45);
             await this.navigateToTick(this.state.currentTick, true);
+            this._initInProgress = false;
             loadingManager.hide();
             window.runSelectorPanel?.updateCurrent?.();
+            this._startMaxTickPolling();
 
         } catch (error) {
+            this._initInProgress = false;
             loadingManager.hide();
             // Ignore AbortError, as it's an expected cancellation
             if (error.name === 'AbortError') {
@@ -712,7 +721,28 @@ export class AppController {
             console.debug('Failed to update maxTick:', error);
         }
     }
-    
+
+    /**
+     * Starts periodic polling for maxTick updates (every 5 seconds).
+     * Stops any existing polling first.
+     * @private
+     */
+    _startMaxTickPolling() {
+        this._stopMaxTickPolling();
+        this._maxTickPollTimer = setInterval(() => this.updateMaxTick(), 5000);
+    }
+
+    /**
+     * Stops periodic maxTick polling.
+     * @private
+     */
+    _stopMaxTickPolling() {
+        if (this._maxTickPollTimer) {
+            clearInterval(this._maxTickPollTimer);
+            this._maxTickPollTimer = null;
+        }
+    }
+
     /**
      * Navigates the application to a specific tick.
      * This is the primary method for changing the current time point of the visualization.
@@ -806,8 +836,12 @@ export class AppController {
         this.organismSummaryRequestController = new AbortController();
         const organismSignal = this.organismSummaryRequestController.signal;
 
+        // Track load generation so aborted loads can clean up correctly
+        this._loadGeneration = (this._loadGeneration || 0) + 1;
+        const myGeneration = this._loadGeneration;
+
         // If init() is orchestrating progress, use its percentages; otherwise manage our own
-        const managedExternally = loadingManager.isActive;
+        const managedExternally = loadingManager.isActive && this._initInProgress;
         if (!managedExternally) {
             loadingManager.show('Fetching environment');
         }
@@ -879,13 +913,15 @@ export class AppController {
                 loadingManager.hide();
             }
         } catch (error) {
+            if (error.name === 'AbortError') {
+                // Only hide if no newer load has started (otherwise the new load manages the panel)
+                if (!managedExternally && this._loadGeneration === myGeneration) {
+                    loadingManager.hide();
+                }
+                return;
+            }
             if (!managedExternally) {
                 loadingManager.hide();
-            }
-            // Ignore AbortError, as it's an expected cancellation
-            if (error.name === 'AbortError') {
-                // Request aborted by user navigation - expected
-                return;
             }
             console.error('Failed to load viewport:', error);
             showError('Failed to load viewport: ' + error.message);

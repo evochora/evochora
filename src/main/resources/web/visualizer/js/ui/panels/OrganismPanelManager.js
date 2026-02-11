@@ -428,6 +428,11 @@ export class OrganismPanelManager {
         this.currentOrganisms = organisms;
         this.selectedId = selectedId;
 
+        // Show list container once organisms are available
+        if (organisms.length > 0 && this.listContainer) {
+            this.listContainer.style.display = '';
+        }
+
         // Use filtered rendering
         this.renderFilteredList();
     }

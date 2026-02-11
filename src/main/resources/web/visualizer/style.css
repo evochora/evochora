@@ -132,6 +132,7 @@ body {
     padding: 2px 6px;
     font-size: 10px;
     line-height: 1;
+    outline: none;
 }
 
 .panel-toggle:hover {
@@ -144,35 +145,102 @@ body {
    Tick Panel - Next to logo panel
    ============================================ */
 
-#tick-panel {
-    left: 165px;  /* After logo panel with gap */
-    padding: 4px 10px;
+/* Timeline Panel - bottom center, between minimap and run selector */
+#timeline-panel {
+    left: 355px;
+    right: 275px;
+    padding: 4px 12px;
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 10px;
 }
 
-/* Tick panel buttons - compact style matching minimap panel */
-#tick-panel button {
-    padding: 4px 8px;
-    font-size: 11px;
-}
-
-/* Tick panel inputs - compact style */
-#tick-panel .tick-input-wrapper input[type="number"] {
+/* Timeline tick/multiplier inputs - compact style */
+#timeline-panel .tick-input-wrapper input[type="number"] {
     width: 90px;
     padding: 4px 36px 4px 6px;
     font-size: 11px;
 }
 
-#tick-panel .tick-input-wrapper .tick-total-suffix {
+#timeline-panel .tick-input-wrapper .tick-total-suffix {
     font-size: 11px;
     right: 6px;
 }
 
-#tick-panel .multiplier-wrapper input.tick-input {
+#timeline-panel .multiplier-wrapper input.tick-input {
     width: 50px;
     padding-right: 28px;
+}
+
+/* Timeline navigation buttons */
+.timeline-nav-buttons {
+    display: flex;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.timeline-nav-btn {
+    background: transparent;
+    border: 1px solid transparent;
+    color: #666;
+    cursor: pointer;
+    padding: 2px 4px;
+    font-size: 9px;
+    line-height: 1;
+    border-radius: 3px;
+    transition: color 0.1s, background 0.1s;
+}
+
+.timeline-nav-btn:hover {
+    color: #c0c0c0;
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+.timeline-nav-btn:active {
+    color: #e0e0e0;
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.timeline-nav-btn:focus {
+    outline: none;
+}
+
+/* Timeline track - the interactive canvas area */
+.timeline-track-container {
+    flex: 1;
+    position: relative;
+    height: 24px;
+    cursor: pointer;
+}
+
+.timeline-track-container canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border-radius: 3px;
+}
+
+/* Tooltip above the timeline showing target tick */
+.timeline-tooltip {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    transform: translateX(-50%);
+    background: rgba(25, 25, 35, 0.95);
+    border: 1px solid #444;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 11px;
+    color: #e0e0e0;
+    font-family: 'Roboto Mono', 'Courier New', monospace;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.1s;
+}
+
+.timeline-tooltip.visible {
+    opacity: 1;
 }
 
 /* ============================================
@@ -194,7 +262,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 4px 10px;
+    padding: 3px 10px;
     border-bottom: 1px solid #333;
     cursor: pointer;
 }
@@ -296,6 +364,8 @@ body {
 .organism-list {
     max-height: 200px;
     overflow-y: auto;
+    scrollbar-width: auto; /* Firefox: ensure standard-width scrollbar */
+    scrollbar-color: #3a3a4a #1a1a24; /* Firefox: thumb and track colors */
     overflow-x: hidden;
     padding: 4px 0;
 }
@@ -478,15 +548,18 @@ body {
     position: relative;
 }
 
-/* Loading Panel - centered status panel with progress bar */
+/* Loading Panel - right of logo panel with progress bar */
 #loading-panel {
-    left: 50%;
-    transform: translateX(-50%);
+    left: 185px;
     width: 200px;
-    padding: 4px 12px;
+    padding: 4px 10px;
     display: flex;
     flex-direction: column;
+    justify-content: center;
     gap: 2px;
+    /* Explicit height to match #logo-panel exactly (border-box includes padding + border) */
+    box-sizing: border-box;
+    height: 31px;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.2s ease-in-out;
@@ -1154,10 +1227,10 @@ main.container {
     right: 0;
     top: 0;
     width: 10px;
-    height: calc(100% - 10px); /* Avoid overlapping horizontal scrollbar */
+    height: calc(100% - 46px); /* Avoid overlapping horizontal scrollbar above footer panels */
 }
 .scrollbar-track-h {
-    bottom: 0;
+    bottom: 36px;
     left: 0;
     height: 10px;
     width: calc(100% - 10px); /* Avoid overlapping vertical scrollbar */
@@ -1411,6 +1484,7 @@ main.container {
     cursor: pointer;
     transition: all 0.15s ease;
     min-width: 28px;
+    outline: none;
     text-align: center;
 }
 
