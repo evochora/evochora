@@ -411,6 +411,7 @@ export class EnvironmentGrid {
         await new Promise(resolve => requestAnimationFrame(resolve));
 
         // --- Timing: Render cells ---
+        loadingManager.update('Rendering environment');
         const renderStart = performance.now();
 
         // Delegate rendering to the active strategy
@@ -643,12 +644,7 @@ export class EnvironmentGrid {
      * @private
      */
     renderCellsWithCleanup(cells, region) {
-        if (loadingManager) loadingManager.incrementTasks();
-        try {
-            this.activeRenderer.renderCells(cells, region);
-        } finally {
-            if (loadingManager) loadingManager.decrementTasks();
-        }
+        this.activeRenderer.renderCells(cells, region);
     }
 
     /**
@@ -719,12 +715,7 @@ export class EnvironmentGrid {
         }
         this.currentOrganisms = organismsForTick;
 
-        if (loadingManager) loadingManager.incrementTasks();
-        try {
-            this.activeRenderer.renderOrganisms(organismsForTick);
-        } finally {
-            if (loadingManager) loadingManager.decrementTasks();
-        }
+        this.activeRenderer.renderOrganisms(organismsForTick);
     }
 
     /**

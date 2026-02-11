@@ -8,6 +8,7 @@ import { OrganismSourceView } from './ui/organism/OrganismSourceView.js';
 import { OrganismStateView } from './ui/organism/OrganismStateView.js';
 import { OrganismPanelManager } from './ui/panels/OrganismPanelManager.js';
 import { TickPanelManager } from './ui/panels/TickPanelManager.js';
+import { loadingManager } from './ui/LoadingManager.js';
 
 /**
  * The main application controller. It initializes all components, manages the application state,
@@ -547,6 +548,7 @@ export class AppController {
             await this.ensureInitialRunId();
 
             // Initialize renderer
+            loadingManager.show('Initializing renderer');
             await this.renderer.init();
 
             // Restore zoom-out scale from localStorage
@@ -578,6 +580,7 @@ export class AppController {
             const signal = this.simulationRequestController.signal;
 
             // Load metadata for world shape
+            loadingManager.update('Loading metadata', 15);
             const metadata = await this.simulationApi.fetchMetadata(this.state.runId, { signal });
             if (metadata) {
                 this.state.metadata = metadata; // Store metadata for use by components
@@ -626,6 +629,7 @@ export class AppController {
             }
             
             // Load tick range for maxTick (minimum of environment and organism ranges)
+            loadingManager.update('Loading tick range', 30);
             const [envTickRange, orgTickRange] = await Promise.all([
                 this.environmentApi.fetchTickRange(this.state.runId).catch(() => null),
                 this.organismApi.fetchTickRange(this.state.runId).catch(() => null)
@@ -657,10 +661,13 @@ export class AppController {
             await new Promise(resolve => setTimeout(resolve, 50));
             
             // Load initial tick, force reload to bypass optimization on first load
+            loadingManager.update('Fetching environment', 45);
             await this.navigateToTick(this.state.currentTick, true);
+            loadingManager.hide();
             window.runSelectorPanel?.updateCurrent?.();
-            
+
         } catch (error) {
+            loadingManager.hide();
             // Ignore AbortError, as it's an expected cancellation
             if (error.name === 'AbortError') {
                 // Request aborted by user navigation - expected
@@ -799,6 +806,12 @@ export class AppController {
         this.organismSummaryRequestController = new AbortController();
         const organismSignal = this.organismSummaryRequestController.signal;
 
+        // If init() is orchestrating progress, use its percentages; otherwise manage our own
+        const managedExternally = loadingManager.isActive;
+        if (!managedExternally) {
+            loadingManager.show('Fetching environment');
+        }
+
         try {
             hideError();
 
@@ -822,11 +835,13 @@ export class AppController {
             this.updateMinimapViewport();
 
             // Then load organisms for this tick (no region; filtering happens client-side)
+            loadingManager.update('Loading organisms', managedExternally ? 75 : 66);
             const organisms = await this.organismApi.fetchOrganismsAtTick(
                 this.state.currentTick,
                 this.state.runId,
                 { signal: organismSignal }
             );
+            loadingManager.update('Rendering organisms', 90);
             this.renderer.renderOrganisms(organisms);
             this.updateOrganismPanel(organisms, isForwardStep);
 
@@ -859,7 +874,14 @@ export class AppController {
             // Save current organisms for next comparison
             this.state.previousOrganisms = organisms;
             this.state.previousTick = this.state.currentTick;
+
+            if (!managedExternally) {
+                loadingManager.hide();
+            }
         } catch (error) {
+            if (!managedExternally) {
+                loadingManager.hide();
+            }
             // Ignore AbortError, as it's an expected cancellation
             if (error.name === 'AbortError') {
                 // Request aborted by user navigation - expected
@@ -880,12 +902,20 @@ export class AppController {
      * @private
      */
     async loadEnvironmentForCurrentViewport() {
+        // Skip if init hasn't completed yet — the resize observer can fire during init,
+        // which would trigger a concurrent viewport load without organism data or minimap.
+        if (!this.state.previousOrganisms) return;
+
+        loadingManager.show('Fetching environment');
         try {
             hideError();
             await this.renderer.loadViewport(this.state.currentTick, this.state.runId);
             // Re-render organism markers for the new viewport using cached data
+            loadingManager.update('Rendering organisms', 90);
             this.renderer.renderOrganisms(this.renderer.currentOrganisms || []);
+            loadingManager.hide();
         } catch (error) {
+            loadingManager.hide();
             // Ignore AbortError, as it's an expected cancellation
             if (error.name === 'AbortError') {
                 // Request aborted by user navigation - expected
@@ -1013,7 +1043,7 @@ export class AppController {
             return '<span class="lineage-none">-</span>';
         }
 
-        const maxVisible = 7;
+        const maxVisible = 6;
         const palette = AppController.ORGANISM_PALETTE;
         const aliveIds = new Set(
             (this.organismPanelManager?.currentOrganisms || []).map(o => String(o.id))
