@@ -492,6 +492,7 @@ body {
     pointer-events: none;
     transform-origin: center;
     transform: scaleX(0.3);
+    will-change: transform;
 }
 
 /* When active, animate scale from center */

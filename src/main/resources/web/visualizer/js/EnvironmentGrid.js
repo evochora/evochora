@@ -407,9 +407,12 @@ export class EnvironmentGrid {
         this._rawCells = data.cells;
         this._buildCellDataAsync();  // Non-blocking, runs in background
 
+        // Yield to browser before synchronous rendering to allow CSS animation frames
+        await new Promise(resolve => requestAnimationFrame(resolve));
+
         // --- Timing: Render cells ---
         const renderStart = performance.now();
-        
+
         // Delegate rendering to the active strategy
         this.renderCellsWithCleanup(data.cells, viewport);
         
