@@ -32,23 +32,37 @@
 <div id="logo-panel" class="top-panel">
     <div id="app-switcher-container"></div>
     <div class="logo-container">
-        <span class="logo-text">EVOCHORA<div class="loading-indicator" id="loading-indicator"></div></span>
+        <span class="logo-text">EVOCHORA</span>
     </div>
 </div>
 
-<!-- Tick Panel (next to logo) -->
-<div id="tick-panel" class="top-panel">
-    <button id="btn-prev-large" data-tooltip="">&lt;&lt;</button>
-    <button id="btn-prev-small" data-tooltip="">&lt;</button>
-    <div class="tick-input-wrapper">
+<!-- Timeline Panel (bottom-center) -->
+<div id="timeline-panel" class="footer-panel">
+    <div class="timeline-tick-input tick-input-wrapper">
         <input type="number" id="tick-input" class="tick-input" min="0" value="0" aria-label="Tick">
         <span class="tick-total-suffix" id="tick-total-suffix">/N/A</span>
     </div>
-    <button id="btn-next-small" data-tooltip="">&gt;</button>
-    <button id="btn-next-large" data-tooltip="">&gt;&gt;</button>
-    <div id="multiplier-wrapper" class="tick-input-wrapper multiplier-wrapper" style="display: none;">
+    <div class="timeline-step-input tick-input-wrapper multiplier-wrapper" id="multiplier-wrapper" style="display: none;">
         <input type="number" id="large-step-multiplier" class="tick-input" value="100" min="1">
         <span id="multiplier-suffix" class="tick-total-suffix">x1</span>
+    </div>
+    <div class="timeline-nav-buttons">
+        <button class="timeline-nav-btn" id="btn-prev-large" title="Back ×100 (PgDn)">◀◀</button>
+        <button class="timeline-nav-btn" id="btn-prev-small" title="Previous sample (↓)">◀</button>
+        <button class="timeline-nav-btn" id="btn-next-small" title="Next sample (↑)">▶</button>
+        <button class="timeline-nav-btn" id="btn-next-large" title="Forward ×100 (PgUp)">▶▶</button>
+    </div>
+    <div class="timeline-track-container" id="timeline-track-container">
+        <canvas id="timeline-track" height="24"></canvas>
+        <div class="timeline-tooltip" id="timeline-tooltip"></div>
+    </div>
+</div>
+
+<!-- Loading Panel (top-center) -->
+<div id="loading-panel" class="top-panel">
+    <span class="loading-status-line"><span id="loading-status">Loading</span><span class="loading-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></span>
+    <div class="loading-progress">
+        <div class="loading-progress-bar" id="loading-progress-bar"></div>
     </div>
 </div>
 
@@ -68,7 +82,7 @@
             <button class="panel-toggle" id="organism-list-collapse" title="Collapse/Expand list">▲</button>
         </div>
     </div>
-    <div class="organism-list-container" id="organism-list-container">
+    <div class="organism-list-container" id="organism-list-container" style="display: none;">
         <div class="organism-list" id="organism-list"></div>
     </div>
     <div class="organism-selected-display" id="organism-selected-display"></div>

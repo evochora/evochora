@@ -147,8 +147,15 @@ export class EnvironmentApi {
 
             const mainThreadTotal = (performance.now() - mainThreadStart).toFixed(1);
 
-            // Log timing at debug level
-            // client.workerMs = time spent in worker, client.totalMs = total including message passing
+            // Compact performance log (always visible in console)
+            const s = timing.server;
+            const c = timing.client;
+            const serverTotal = s.totalMs || '?';
+            const serverDetail = `load=${s.loadMs || '?'} db=${s.dbMs || '?'} decomp=${s.decompressMs || '?'} xform=${s.transformMs || '?'} ser=${s.serializeMs || '?'}`;
+            const clientDetail = `fetch=${c.fetchMs} binary=${c.binaryMs} parse=${c.parseMs} xform=${c.transformMs}`;
+            console.log(`[Env] tick=${tick} cells=${meta.cellCount || '?'} size=${meta.sizeKb}KB | server=${serverTotal}ms (${serverDetail}) | client=${mainThreadTotal}ms (${clientDetail})`);
+
+            // Full timing object at debug level
             console.debug(`[Environment API] Tick ${tick}`, {
                 server: timing.server,
                 client: {

@@ -553,6 +553,9 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         batchesProcessed.addAndGet(result.completedMessages().size());
         int totalTicks = result.chunks().stream().mapToInt(TickDataChunk::getTickCount).sum();
         ticksProcessed.addAndGet(totalTicks);
+
+        // Yield to other threads/processes after flush to prevent system freezing
+        Thread.yield();
     }
     
     /**

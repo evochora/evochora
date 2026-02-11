@@ -63,7 +63,7 @@ async function initAppSwitcher() {
         const response = await fetch('../shared/app-switcher/apps.json');
         const apps = await response.json();
 
-        new AppSwitcher({
+        const switcher = new AppSwitcher({
             element: container,
             apps: apps,
             getState: () => ({
@@ -71,6 +71,18 @@ async function initAppSwitcher() {
                 tick: appController?.state?.currentTick
             })
         });
+
+        // Make the entire logo panel trigger the app switcher
+        const logoPanel = document.getElementById('logo-panel');
+        if (logoPanel) {
+            logoPanel.style.cursor = 'pointer';
+            logoPanel.addEventListener('click', (e) => {
+                if (e.target.closest('.app-switcher-button')) return;
+                if (e.target.closest('.app-switcher-overlay')) return;
+                e.stopPropagation();
+                switcher.toggleOverlay();
+            });
+        }
     } catch (error) {
         console.error('Failed to initialize AppSwitcher:', error);
     }

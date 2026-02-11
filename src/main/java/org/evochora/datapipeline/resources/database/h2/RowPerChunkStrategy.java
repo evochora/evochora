@@ -133,6 +133,7 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
                 stmt.setLong(2, lastTick);
                 stmt.setBytes(3, chunkBlob);
                 stmt.addBatch();
+                Thread.yield();
             }
             
             stmt.executeBatch();

@@ -8,6 +8,9 @@ import { loadingManager } from './ui/LoadingManager.js';
  * @class EnvironmentGrid
  */
 export class EnvironmentGrid {
+    static MARGIN = 50;
+    static BOTTOM_MARGIN = 90; // Extra space for footer panels
+
     /**
      * @param {HTMLElement} container - The DOM element to contain the PIXI.js canvas.
      * @param {object} config - The application configuration object.
@@ -271,12 +274,12 @@ export class EnvironmentGrid {
         const worldWidthPx = this.worldWidthCells * cellSize;
         const worldHeightPx = this.worldHeightCells * cellSize;
         
-        // Allow 50px margin beyond the grid for visual border
-        const margin = 50;
+        const margin = EnvironmentGrid.MARGIN;
+        const bottomMargin = EnvironmentGrid.BOTTOM_MARGIN;
         const minCameraX = -margin;
         const minCameraY = -margin;
         const maxCameraX = Math.max(0, worldWidthPx - this.viewportWidth + margin);
-        const maxCameraY = Math.max(0, worldHeightPx - this.viewportHeight + margin);
+        const maxCameraY = Math.max(0, worldHeightPx - this.viewportHeight + bottomMargin);
 
         this.cameraX = Math.min(Math.max(this.cameraX, minCameraX), maxCameraX);
         this.cameraY = Math.min(Math.max(this.cameraY, minCameraY), maxCameraY);
@@ -407,9 +410,13 @@ export class EnvironmentGrid {
         this._rawCells = data.cells;
         this._buildCellDataAsync();  // Non-blocking, runs in background
 
+        // Yield to browser before synchronous rendering to allow CSS animation frames
+        await new Promise(resolve => requestAnimationFrame(resolve));
+
         // --- Timing: Render cells ---
+        loadingManager.update('Rendering environment');
         const renderStart = performance.now();
-        
+
         // Delegate rendering to the active strategy
         this.renderCellsWithCleanup(data.cells, viewport);
         
@@ -640,12 +647,7 @@ export class EnvironmentGrid {
      * @private
      */
     renderCellsWithCleanup(cells, region) {
-        if (loadingManager) loadingManager.incrementTasks();
-        try {
-            this.activeRenderer.renderCells(cells, region);
-        } finally {
-            if (loadingManager) loadingManager.decrementTasks();
-        }
+        this.activeRenderer.renderCells(cells, region);
     }
 
     /**
@@ -716,12 +718,7 @@ export class EnvironmentGrid {
         }
         this.currentOrganisms = organismsForTick;
 
-        if (loadingManager) loadingManager.incrementTasks();
-        try {
-            this.activeRenderer.renderOrganisms(organismsForTick);
-        } finally {
-            if (loadingManager) loadingManager.decrementTasks();
-        }
+        this.activeRenderer.renderOrganisms(organismsForTick);
     }
 
     /**
@@ -874,9 +871,9 @@ export class EnvironmentGrid {
      */
     setupScrollbarInteraction() {
         if (!this.hScrollThumb || !this.vScrollThumb) return;
-        
-        // Margin for scrolling beyond grid edges (must match clampCameraToWorld)
-        const margin = 50;
+
+        const margin = EnvironmentGrid.MARGIN;
+        const bottomMargin = EnvironmentGrid.BOTTOM_MARGIN;
 
         // --- Horizontal Scrollbar Interaction ---
         this.hScrollThumb.addEventListener('mousedown', (e) => {
@@ -913,7 +910,7 @@ export class EnvironmentGrid {
             const startCameraY = this.cameraY;
             const trackHeight = this.vScrollTrack.clientHeight;
             const worldHeightPx = this.worldHeightCells * this.getCurrentCellSize();
-            const scrollableHeight = worldHeightPx + 2 * margin;
+            const scrollableHeight = worldHeightPx + margin + bottomMargin;
 
             const onMouseMove = (moveEvent) => {
                 const dy = moveEvent.clientY - startY;
@@ -961,7 +958,7 @@ export class EnvironmentGrid {
             const clickY = e.clientY - trackRect.top;
             const trackHeight = this.vScrollTrack.clientHeight;
             const worldHeightPx = this.worldHeightCells * this.getCurrentCellSize();
-            const scrollableHeight = worldHeightPx + 2 * margin;
+            const scrollableHeight = worldHeightPx + margin + bottomMargin;
 
             // Calculate camera position from click position
             this.cameraY = (clickY / trackHeight) * scrollableHeight - margin;
@@ -1035,12 +1032,11 @@ export class EnvironmentGrid {
         const worldWidthPx = this.worldWidthCells * cellSize;
         const worldHeightPx = this.worldHeightCells * cellSize;
         
-        // Margin for scrolling beyond grid edges (must match clampCameraToWorld)
-        const margin = 50;
-        
-        // Total scrollable range including margins
+        const margin = EnvironmentGrid.MARGIN;
+        const bottomMargin = EnvironmentGrid.BOTTOM_MARGIN;
+
         const scrollableWidth = worldWidthPx + 2 * margin;
-        const scrollableHeight = worldHeightPx + 2 * margin;
+        const scrollableHeight = worldHeightPx + margin + bottomMargin;
 
         // --- Horizontal Scrollbar ---
         if (worldWidthPx > this.viewportWidth) {
@@ -1225,7 +1221,7 @@ export class EnvironmentGrid {
         this._cellDataReady = false;
         this.cellData.clear();
 
-        const CHUNK_SIZE = 50000;
+        const CHUNK_SIZE = 10000;
         const cells = this._rawCells;
 
         for (let i = 0; i < cells.length; i += CHUNK_SIZE) {
@@ -1456,11 +1452,9 @@ class BaseRendererStrategy {
         const y2 = Math.min(height, viewport.y2);
 
         for (let y = y1; y < y2; y++) {
-            const rowOffset = y * width;
-            for (let x = x1; x < x2; x++) {
-                if (this._loadedMask[rowOffset + x] === 0) {
-                    return false;
-                }
+            const rowStart = y * width + x1;
+            if (this._loadedMask.subarray(rowStart, rowStart + (x2 - x1)).indexOf(0) !== -1) {
+                return false;
             }
         }
         return true;
@@ -1487,10 +1481,8 @@ class BaseRendererStrategy {
         const y2 = Math.min(height, region.y2);
 
         for (let y = y1; y < y2; y++) {
-            const rowOffset = y * width;
-            for (let x = x1; x < x2; x++) {
-                this._loadedMask[rowOffset + x] = 1;
-            }
+            const rowStart = y * width + x1;
+            this._loadedMask.fill(1, rowStart, rowStart + (x2 - x1));
         }
     }
 
@@ -1572,26 +1564,21 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
         }
 
         // Second pass: remove cells in this region that weren't updated
+        // Iterate region coordinates (small) instead of all cellObjects (up to 100K)
         const { x1, x2, y1, y2 } = region;
 
-        for (const [key, entry] of this.cellObjects.entries()) {
-            if (updatedKeys.has(key)) {
-                continue; // touched in this tick for this region
-            }
+        for (let cy = y1; cy < y2; cy++) {
+            for (let cx = x1; cx < x2; cx++) {
+                const key = `${cx},${cy}`;
+                if (updatedKeys.has(key)) continue;
 
-            const parts = key.split(",");
-            if (parts.length !== 2) continue;
-
-            const cx = Number.parseInt(parts[0], 10);
-            const cy = Number.parseInt(parts[1], 10);
-            if (Number.isNaN(cx) || Number.isNaN(cy)) continue;
-
-            if (cx >= x1 && cx < x2 && cy >= y1 && cy < y2) {
-                const { background, text } = entry;
-                if (background) this.grid.cellContainer.removeChild(background);
-                if (text) this.grid.textContainer.removeChild(text);
-                this.cellObjects.delete(key);
-                this._cellAccessTime.delete(key);
+                const entry = this.cellObjects.get(key);
+                if (entry) {
+                    if (entry.background) this.grid.cellContainer.removeChild(entry.background);
+                    if (entry.text) this.grid.textContainer.removeChild(entry.text);
+                    this.cellObjects.delete(key);
+                    this._cellAccessTime.delete(key);
+                }
             }
         }
 
@@ -2065,15 +2052,13 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
         // Note: We always recreate the buffer for the current region (viewport-based)
         this._pixelBuffer = new Uint8ClampedArray(pixelCount * 4);
 
+        // Use Uint32Array view for bulk pixel operations (single fill call vs. millions of byte writes)
+        const uint32View = new Uint32Array(this._pixelBuffer.buffer);
+
         // Fill buffer with empty cell background color
         const emptyColor = this._hexToRgb(this.config.colorEmptyBg);
-        for (let i = 0; i < pixelCount; i++) {
-            const idx = i * 4;
-            this._pixelBuffer[idx] = emptyColor.r;
-            this._pixelBuffer[idx + 1] = emptyColor.g;
-            this._pixelBuffer[idx + 2] = emptyColor.b;
-            this._pixelBuffer[idx + 3] = 255; // Alpha
-        }
+        const emptyPixel = (255 << 24) | (emptyColor.b << 16) | (emptyColor.g << 8) | emptyColor.r;
+        uint32View.fill(emptyPixel);
 
         // --- Step 2: Draw cells into pixel buffer ---
         const typeMapping = this.grid.detailedRenderer.typeMapping;
@@ -2092,22 +2077,19 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
 
             const typeId = typeMapping[cell.moleculeType] ?? 0;
             const isEmpty = typeId === typeMapping['CODE'] && cell.moleculeValue === 0 && cell.ownerId === 0;
-            const color = isEmpty ? emptyColor : this._hexToRgb(getColor(typeId));
+            if (isEmpty) continue; // Already filled with empty color
+
+            const color = this._hexToRgb(getColor(typeId));
+            const colorPixel = (255 << 24) | (color.b << 16) | (color.g << 8) | color.r;
 
             // Position relative to region origin, scaled
             const localX = (cellX - clampedX1) * scale;
             const localY = (cellY - clampedY1) * scale;
 
-            // Draw scale×scale pixels for this cell
+            // Draw scale×scale pixels for this cell using bulk row fills
             for (let dy = 0; dy < scale; dy++) {
-                for (let dx = 0; dx < scale; dx++) {
-                    const px = localX + dx;
-                    const py = localY + dy;
-                    const idx = (py * textureWidth + px) * 4;
-                    this._pixelBuffer[idx] = color.r;
-                    this._pixelBuffer[idx + 1] = color.g;
-                    this._pixelBuffer[idx + 2] = color.b;
-                }
+                const rowStart = (localY + dy) * textureWidth + localX;
+                uint32View.fill(colorPixel, rowStart, rowStart + scale);
             }
         }
 
