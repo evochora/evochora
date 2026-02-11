@@ -72,6 +72,15 @@ export class OrganismPanelManager {
      */
     setMetadata(metadata) {
         this.metadata = metadata;
+        // Cache parsed maxEntropy to avoid re-parsing JSON on every organism row render
+        try {
+            const config = metadata?.resolvedConfigJson
+                ? JSON.parse(metadata.resolvedConfigJson)
+                : null;
+            this._maxEntropy = config?.runtime?.organism?.["max-entropy"] ?? null;
+        } catch (e) {
+            this._maxEntropy = null;
+        }
     }
 
     /**
@@ -286,19 +295,12 @@ export class OrganismPanelManager {
         // Format SR (entropy register) with percentage if max-entropy is available
         const srValue = org.entropyRegister != null ? org.entropyRegister : 0;
         let srDisplay;
-        try {
-            const config = this.metadata?.resolvedConfigJson
-                ? JSON.parse(this.metadata.resolvedConfigJson)
-                : null;
-            const maxEntropy = config?.runtime?.organism?.["max-entropy"];
-            if (maxEntropy != null && maxEntropy > 0) {
-                const srPercent = String(Math.round((srValue / maxEntropy) * 100)).padStart(3);
-                const srValuePadded = String(srValue).padStart(5);
-                srDisplay = `${srPercent}% ${srValuePadded}`;
-            } else {
-                srDisplay = String(srValue);
-            }
-        } catch (e) {
+        const maxEntropy = this._maxEntropy;
+        if (maxEntropy != null && maxEntropy > 0) {
+            const srPercent = String(Math.round((srValue / maxEntropy) * 100)).padStart(3);
+            const srValuePadded = String(srValue).padStart(5);
+            srDisplay = `${srPercent}% ${srValuePadded}`;
+        } else {
             srDisplay = String(srValue);
         }
         

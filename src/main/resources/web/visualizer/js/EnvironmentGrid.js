@@ -1225,7 +1225,7 @@ export class EnvironmentGrid {
         this._cellDataReady = false;
         this.cellData.clear();
 
-        const CHUNK_SIZE = 50000;
+        const CHUNK_SIZE = 10000;
         const cells = this._rawCells;
 
         for (let i = 0; i < cells.length; i += CHUNK_SIZE) {
@@ -1456,11 +1456,9 @@ class BaseRendererStrategy {
         const y2 = Math.min(height, viewport.y2);
 
         for (let y = y1; y < y2; y++) {
-            const rowOffset = y * width;
-            for (let x = x1; x < x2; x++) {
-                if (this._loadedMask[rowOffset + x] === 0) {
-                    return false;
-                }
+            const rowStart = y * width + x1;
+            if (this._loadedMask.subarray(rowStart, rowStart + (x2 - x1)).indexOf(0) !== -1) {
+                return false;
             }
         }
         return true;
@@ -1487,10 +1485,8 @@ class BaseRendererStrategy {
         const y2 = Math.min(height, region.y2);
 
         for (let y = y1; y < y2; y++) {
-            const rowOffset = y * width;
-            for (let x = x1; x < x2; x++) {
-                this._loadedMask[rowOffset + x] = 1;
-            }
+            const rowStart = y * width + x1;
+            this._loadedMask.fill(1, rowStart, rowStart + (x2 - x1));
         }
     }
 
