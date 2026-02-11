@@ -1572,26 +1572,21 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
         }
 
         // Second pass: remove cells in this region that weren't updated
+        // Iterate region coordinates (small) instead of all cellObjects (up to 100K)
         const { x1, x2, y1, y2 } = region;
 
-        for (const [key, entry] of this.cellObjects.entries()) {
-            if (updatedKeys.has(key)) {
-                continue; // touched in this tick for this region
-            }
+        for (let cy = y1; cy < y2; cy++) {
+            for (let cx = x1; cx < x2; cx++) {
+                const key = `${cx},${cy}`;
+                if (updatedKeys.has(key)) continue;
 
-            const parts = key.split(",");
-            if (parts.length !== 2) continue;
-
-            const cx = Number.parseInt(parts[0], 10);
-            const cy = Number.parseInt(parts[1], 10);
-            if (Number.isNaN(cx) || Number.isNaN(cy)) continue;
-
-            if (cx >= x1 && cx < x2 && cy >= y1 && cy < y2) {
-                const { background, text } = entry;
-                if (background) this.grid.cellContainer.removeChild(background);
-                if (text) this.grid.textContainer.removeChild(text);
-                this.cellObjects.delete(key);
-                this._cellAccessTime.delete(key);
+                const entry = this.cellObjects.get(key);
+                if (entry) {
+                    if (entry.background) this.grid.cellContainer.removeChild(entry.background);
+                    if (entry.text) this.grid.textContainer.removeChild(entry.text);
+                    this.cellObjects.delete(key);
+                    this._cellAccessTime.delete(key);
+                }
             }
         }
 
