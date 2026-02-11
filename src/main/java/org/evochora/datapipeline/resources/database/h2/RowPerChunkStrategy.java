@@ -1,7 +1,9 @@
 package org.evochora.datapipeline.resources.database.h2;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -10,12 +12,18 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
 
+import org.evochora.datapipeline.api.contracts.CellDataColumns;
+import org.evochora.datapipeline.api.contracts.DeltaType;
+import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
+import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 import org.evochora.datapipeline.utils.H2SchemaUtil;
 import org.evochora.datapipeline.utils.compression.CompressionCodecFactory;
 import org.evochora.datapipeline.utils.compression.ICompressionCodec;
 
+import com.google.protobuf.CodedInputStream;
+import com.google.protobuf.WireFormat;
 import com.typesafe.config.Config;
 
 /**
@@ -25,6 +33,11 @@ import com.typesafe.config.Config;
  * decompression, maximizing storage savings. Decompression is deferred to the
  * EnvironmentController, which can cache decompressed chunks for efficient
  * sequential access.
+ * <p>
+ * <strong>Read optimization:</strong> When reading chunks, only fields needed for
+ * environment rendering are parsed (CellDataColumns, metadata). Heavy fields like
+ * OrganismState lists, RNG state, and plugin states are skipped at the wire level
+ * using {@link CodedInputStream}, reducing heap allocation and GC pressure.
  * <p>
  * <strong>Storage:</strong> One row per chunk
  * <ul>
@@ -50,13 +63,42 @@ import com.typesafe.config.Config;
  * </ul>
  * <p>
  * <strong>Best For:</strong> Production deployments with delta compression enabled.
- * 
+ *
  * @see IH2EnvStorageStrategy
  * @see AbstractH2EnvStorageStrategy
  * @see org.evochora.datapipeline.utils.delta.DeltaCodec
  */
 public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
-    
+
+    // Proto field numbers for partial parsing (from tickdata_contracts.proto)
+    private static final int CHUNK_SIMULATION_RUN_ID = 1;
+    private static final int CHUNK_FIRST_TICK = 2;
+    private static final int CHUNK_LAST_TICK = 3;
+    private static final int CHUNK_TICK_COUNT = 4;
+    private static final int CHUNK_SNAPSHOT = 5;
+    private static final int CHUNK_DELTAS = 6;
+
+    private static final int TICKDATA_SIMULATION_RUN_ID = 1;
+    private static final int TICKDATA_TICK_NUMBER = 2;
+    private static final int TICKDATA_CAPTURE_TIME_MS = 3;
+    private static final int TICKDATA_ORGANISMS = 4;
+    private static final int TICKDATA_CELL_COLUMNS = 5;
+    private static final int TICKDATA_RNG_STATE = 6;
+    private static final int TICKDATA_PLUGIN_STATES = 7;
+    private static final int TICKDATA_TOTAL_ORGANISMS_CREATED = 8;
+    private static final int TICKDATA_TOTAL_UNIQUE_GENOMES = 9;
+    private static final int TICKDATA_GENOME_HASHES = 10;
+
+    private static final int DELTA_TICK_NUMBER = 1;
+    private static final int DELTA_CAPTURE_TIME_MS = 2;
+    private static final int DELTA_DELTA_TYPE = 3;
+    private static final int DELTA_CHANGED_CELLS = 4;
+    private static final int DELTA_ORGANISMS = 5;
+    private static final int DELTA_TOTAL_ORGANISMS_CREATED = 6;
+    private static final int DELTA_RNG_STATE = 7;
+    private static final int DELTA_PLUGIN_STATES = 8;
+    private static final int DELTA_TOTAL_UNIQUE_GENOMES = 9;
+
     private final ICompressionCodec codec;
     private String mergeSql;
 
@@ -65,7 +107,7 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
      * <p>
      * Note: This compression is for the outer BLOB storage layer. The TickDataChunk
      * itself may already contain compressed delta data internally.
-     * 
+     *
      * @param options Config with optional compression block
      */
     public RowPerChunkStrategy(Config options) {
@@ -73,7 +115,7 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
         this.codec = CompressionCodecFactory.create(options);
         log.debug("RowPerChunkStrategy initialized with compression: {}", codec.getName());
     }
-    
+
     @Override
     public void createTables(Connection conn, int dimensions) throws SQLException {
         try (Statement stmt = conn.createStatement()) {
@@ -89,7 +131,7 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
                 ")",
                 "environment_chunks"
             );
-            
+
             // Index on last_tick for efficient range queries
             H2SchemaUtil.executeDdlIfNotExists(
                 stmt,
@@ -97,50 +139,50 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
                 "idx_env_chunks_last_tick"
             );
         }
-        
+
         // Cache SQL string for MERGE operations
         this.mergeSql = "MERGE INTO environment_chunks (first_tick, last_tick, chunk_blob) " +
                        "KEY (first_tick) VALUES (?, ?, ?)";
-        
+
         log.debug("Environment chunk tables created for {} dimensions", dimensions);
     }
-    
+
     @Override
     public String getMergeSql() {
         return mergeSql;
     }
-    
+
     @Override
     public void writeChunks(Connection conn, List<TickDataChunk> chunks) throws SQLException {
         if (chunks.isEmpty()) {
             return;
         }
-        
+
         try (PreparedStatement stmt = conn.prepareStatement(mergeSql)) {
             for (TickDataChunk chunk : chunks) {
                 // Validate chunk has required fields
                 if (!chunk.hasSnapshot()) {
-                    log.warn("Chunk starting at tick {} has no snapshot - skipping", 
+                    log.warn("Chunk starting at tick {} has no snapshot - skipping",
                              chunk.getSnapshot().getTickNumber());
                     continue;
                 }
-                
+
                 long firstTick = chunk.getSnapshot().getTickNumber();
                 long lastTick = calculateLastTick(chunk);
                 byte[] chunkBlob = serializeChunk(chunk);
-                
+
                 stmt.setLong(1, firstTick);
                 stmt.setLong(2, lastTick);
                 stmt.setBytes(3, chunkBlob);
                 stmt.addBatch();
                 Thread.yield();
             }
-            
+
             stmt.executeBatch();
             log.debug("Wrote {} chunks to environment_chunks table", chunks.size());
         }
     }
-    
+
     /**
      * Calculates the last tick number in the chunk.
      * <p>
@@ -157,7 +199,7 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
         }
         return chunk.getSnapshot().getTickNumber();
     }
-    
+
     /**
      * Serializes the chunk to a compressed BLOB.
      * <p>
@@ -171,13 +213,38 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
             }
             return baos.toByteArray();
         } catch (IOException e) {
-            throw new SQLException("Failed to serialize chunk starting at tick: " + 
+            throw new SQLException("Failed to serialize chunk starting at tick: " +
                                    chunk.getSnapshot().getTickNumber(), e);
         }
     }
 
+    /**
+     * Reads the chunk containing the specified tick, using a streaming partial parser
+     * that skips fields not needed for environment rendering (organisms, RNG state,
+     * plugin states, genome hashes).
+     * <p>
+     * This reduces heap allocation by avoiding creation of OrganismState objects,
+     * which can amount to ~50MB per chunk. The returned TickDataChunk has empty
+     * organism lists but complete CellDataColumns, compatible with
+     * {@link org.evochora.datapipeline.utils.delta.DeltaCodec.Decoder#decompressTick}.
+     */
     @Override
     public TickDataChunk readChunkContaining(Connection conn, long tickNumber)
+            throws SQLException, TickNotFoundException {
+        byte[] blobData = queryChunkBlob(conn, tickNumber);
+        return parseChunkForEnvironment(blobData);
+    }
+
+    /**
+     * Queries the compressed chunk BLOB from the database.
+     *
+     * @param conn Database connection (schema already set)
+     * @param tickNumber Tick number to find
+     * @return The compressed BLOB bytes
+     * @throws SQLException if database read fails
+     * @throws TickNotFoundException if no chunk contains the requested tick
+     */
+    private byte[] queryChunkBlob(Connection conn, long tickNumber)
             throws SQLException, TickNotFoundException {
 
         String sql = "SELECT chunk_blob FROM environment_chunks WHERE first_tick <= ? AND last_tick >= ?";
@@ -196,37 +263,112 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
                     throw new TickNotFoundException("Chunk for tick " + tickNumber + " has empty BLOB");
                 }
 
-                return deserializeChunk(blobData, tickNumber);
+                return blobData;
             }
         }
     }
-    
+
+    // ========================================================================
+    // Streaming partial parser — skips organisms, RNG, plugins, genome hashes
+    // ========================================================================
+
     /**
-     * Deserializes a chunk from compressed BLOB data.
-     * <p>
-     * Auto-detects compression format from magic bytes.
+     * Parses a compressed BLOB using {@link CodedInputStream}, streaming decompression
+     * directly without intermediate byte[] allocation.
      */
-    private TickDataChunk deserializeChunk(byte[] blobData, long tickNumber) throws SQLException {
+    private TickDataChunk parseChunkForEnvironment(byte[] compressedBlob) throws SQLException {
         try {
-            // Auto-detect compression
-            ICompressionCodec detectedCodec = CompressionCodecFactory.detectFromMagicBytes(blobData);
-            
-            // Decompress
-            java.io.ByteArrayInputStream bis = new java.io.ByteArrayInputStream(blobData);
-            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
-            try (java.io.InputStream decompressedStream = detectedCodec.wrapInputStream(bis)) {
-                byte[] buffer = new byte[8192];
-                int bytesRead;
-                while ((bytesRead = decompressedStream.read(buffer)) != -1) {
-                    bos.write(buffer, 0, bytesRead);
-                }
+            ICompressionCodec detectedCodec = CompressionCodecFactory.detectFromMagicBytes(compressedBlob);
+
+            try (InputStream decompressed = detectedCodec.wrapInputStream(new ByteArrayInputStream(compressedBlob))) {
+                CodedInputStream cis = CodedInputStream.newInstance(decompressed);
+                cis.setSizeLimit(Integer.MAX_VALUE);
+                return parseChunk(cis);
             }
-            
-            // Parse Protobuf
-            return TickDataChunk.parseFrom(bos.toByteArray());
-            
         } catch (IOException e) {
-            throw new SQLException("Failed to deserialize chunk containing tick " + tickNumber, e);
+            throw new SQLException("Failed to parse chunk for environment rendering", e);
         }
+    }
+
+    private TickDataChunk parseChunk(CodedInputStream cis) throws IOException {
+        TickDataChunk.Builder builder = TickDataChunk.newBuilder();
+
+        while (true) {
+            int tag = cis.readTag();
+            if (tag == 0) break;
+
+            int fieldNumber = WireFormat.getTagFieldNumber(tag);
+
+            switch (fieldNumber) {
+                case CHUNK_SIMULATION_RUN_ID -> builder.setSimulationRunId(cis.readString());
+                case CHUNK_FIRST_TICK -> builder.setFirstTick(cis.readInt64());
+                case CHUNK_LAST_TICK -> builder.setLastTick(cis.readInt64());
+                case CHUNK_TICK_COUNT -> builder.setTickCount(cis.readInt32());
+                case CHUNK_SNAPSHOT -> {
+                    int length = cis.readRawVarint32();
+                    int oldLimit = cis.pushLimit(length);
+                    builder.setSnapshot(parseTickData(cis));
+                    cis.popLimit(oldLimit);
+                }
+                case CHUNK_DELTAS -> {
+                    int length = cis.readRawVarint32();
+                    int oldLimit = cis.pushLimit(length);
+                    builder.addDeltas(parseTickDelta(cis));
+                    cis.popLimit(oldLimit);
+                }
+                default -> cis.skipField(tag);
+            }
+        }
+
+        return builder.build();
+    }
+
+    private TickData parseTickData(CodedInputStream cis) throws IOException {
+        TickData.Builder builder = TickData.newBuilder();
+
+        while (true) {
+            int tag = cis.readTag();
+            if (tag == 0) break;
+
+            int fieldNumber = WireFormat.getTagFieldNumber(tag);
+
+            switch (fieldNumber) {
+                case TICKDATA_SIMULATION_RUN_ID -> builder.setSimulationRunId(cis.readString());
+                case TICKDATA_TICK_NUMBER -> builder.setTickNumber(cis.readInt64());
+                case TICKDATA_CAPTURE_TIME_MS -> builder.setCaptureTimeMs(cis.readInt64());
+                case TICKDATA_CELL_COLUMNS -> builder.setCellColumns(CellDataColumns.parseFrom(cis.readBytes()));
+                case TICKDATA_TOTAL_ORGANISMS_CREATED -> builder.setTotalOrganismsCreated(cis.readInt64());
+                case TICKDATA_TOTAL_UNIQUE_GENOMES -> builder.setTotalUniqueGenomes(cis.readInt64());
+                case TICKDATA_ORGANISMS, TICKDATA_RNG_STATE,
+                     TICKDATA_PLUGIN_STATES, TICKDATA_GENOME_HASHES -> cis.skipField(tag);
+                default -> cis.skipField(tag);
+            }
+        }
+
+        return builder.build();
+    }
+
+    private TickDelta parseTickDelta(CodedInputStream cis) throws IOException {
+        TickDelta.Builder builder = TickDelta.newBuilder();
+
+        while (true) {
+            int tag = cis.readTag();
+            if (tag == 0) break;
+
+            int fieldNumber = WireFormat.getTagFieldNumber(tag);
+
+            switch (fieldNumber) {
+                case DELTA_TICK_NUMBER -> builder.setTickNumber(cis.readInt64());
+                case DELTA_CAPTURE_TIME_MS -> builder.setCaptureTimeMs(cis.readInt64());
+                case DELTA_DELTA_TYPE -> builder.setDeltaType(DeltaType.forNumber(cis.readEnum()));
+                case DELTA_CHANGED_CELLS -> builder.setChangedCells(CellDataColumns.parseFrom(cis.readBytes()));
+                case DELTA_TOTAL_ORGANISMS_CREATED -> builder.setTotalOrganismsCreated(cis.readInt64());
+                case DELTA_TOTAL_UNIQUE_GENOMES -> builder.setTotalUniqueGenomes(cis.readInt64());
+                case DELTA_ORGANISMS, DELTA_RNG_STATE, DELTA_PLUGIN_STATES -> cis.skipField(tag);
+                default -> cis.skipField(tag);
+            }
+        }
+
+        return builder.build();
     }
 }

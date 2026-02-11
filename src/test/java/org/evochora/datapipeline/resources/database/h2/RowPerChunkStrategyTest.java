@@ -2,6 +2,8 @@ package org.evochora.datapipeline.resources.database.h2;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -9,19 +11,32 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
+import java.util.Optional;
 
+import com.github.luben.zstd.ZstdOutputStream;
+import com.google.protobuf.ByteString;
 import org.evochora.datapipeline.CellStateTestHelper;
+import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.CellState;
+import org.evochora.datapipeline.api.contracts.OrganismState;
+import org.evochora.datapipeline.api.contracts.PluginState;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TickDelta;
+import org.evochora.datapipeline.api.delta.ChunkCorruptedException;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
+import org.evochora.datapipeline.utils.delta.DeltaCodec;
+import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.Molecule;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -29,6 +44,7 @@ import org.mockito.ArgumentCaptor;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 
 /**
  * Unit tests for RowPerChunkStrategy.
@@ -223,8 +239,156 @@ class RowPerChunkStrategyTest {
             .contains("KEY (first_tick)");
     }
     
+    // ========================================================================
+    // Partial parse: organisms stripped, CellDataColumns preserved
+    // ========================================================================
+
+    @Test
+    void readChunkContaining_preservesCellDataColumns() throws SQLException, TickNotFoundException, IOException {
+        strategy = new RowPerChunkStrategy(ConfigFactory.empty());
+        TickDataChunk fullChunk = buildChunkWithOrganisms();
+        mockBlobReturn(compressWithZstd(fullChunk));
+
+        TickDataChunk result = strategy.readChunkContaining(mockConnection, 0);
+
+        assertCellColumnsEqual(
+                fullChunk.getSnapshot().getCellColumns(),
+                result.getSnapshot().getCellColumns());
+
+        assertEquals(fullChunk.getDeltasCount(), result.getDeltasCount());
+        for (int i = 0; i < fullChunk.getDeltasCount(); i++) {
+            assertCellColumnsEqual(
+                    fullChunk.getDeltas(i).getChangedCells(),
+                    result.getDeltas(i).getChangedCells());
+        }
+    }
+
+    @Test
+    void readChunkContaining_stripsOrganismsAndRngAndPlugins() throws SQLException, TickNotFoundException, IOException {
+        strategy = new RowPerChunkStrategy(ConfigFactory.empty());
+        TickDataChunk fullChunk = buildChunkWithOrganisms();
+
+        assertTrue(fullChunk.getSnapshot().getOrganismsCount() > 0,
+                "Full chunk must contain organisms");
+        assertTrue(fullChunk.getSnapshot().getRngState().size() > 0,
+                "Full chunk must contain RNG state");
+
+        mockBlobReturn(compressWithZstd(fullChunk));
+
+        TickDataChunk result = strategy.readChunkContaining(mockConnection, 0);
+
+        assertEquals(0, result.getSnapshot().getOrganismsCount());
+        assertEquals(0, result.getSnapshot().getRngState().size());
+        assertEquals(0, result.getSnapshot().getPluginStatesCount());
+        for (int i = 0; i < result.getDeltasCount(); i++) {
+            assertEquals(0, result.getDeltas(i).getOrganismsCount());
+            assertEquals(0, result.getDeltas(i).getRngState().size());
+            assertEquals(0, result.getDeltas(i).getPluginStatesCount());
+        }
+    }
+
+    @Test
+    void readChunkContaining_preservesMetadata() throws SQLException, TickNotFoundException, IOException {
+        strategy = new RowPerChunkStrategy(ConfigFactory.empty());
+        TickDataChunk fullChunk = buildChunkWithOrganisms();
+        mockBlobReturn(compressWithZstd(fullChunk));
+
+        TickDataChunk result = strategy.readChunkContaining(mockConnection, 0);
+
+        assertEquals(fullChunk.getSimulationRunId(), result.getSimulationRunId());
+        assertEquals(fullChunk.getFirstTick(), result.getFirstTick());
+        assertEquals(fullChunk.getLastTick(), result.getLastTick());
+        assertEquals(fullChunk.getTickCount(), result.getTickCount());
+    }
+
+    @Test
+    void readChunkContaining_compatibleWithDeltaCodecDecoder()
+            throws SQLException, TickNotFoundException, IOException, ChunkCorruptedException {
+        strategy = new RowPerChunkStrategy(ConfigFactory.empty());
+        TickDataChunk fullChunk = buildChunkWithOrganisms();
+        mockBlobReturn(compressWithZstd(fullChunk));
+
+        TickDataChunk result = strategy.readChunkContaining(mockConnection, 0);
+
+        DeltaCodec.Decoder decoder = new DeltaCodec.Decoder(100);
+
+        for (int i = 0; i < fullChunk.getTickCount(); i++) {
+            long tickNumber = (i == 0)
+                    ? fullChunk.getSnapshot().getTickNumber()
+                    : fullChunk.getDeltas(i - 1).getTickNumber();
+
+            TickData fromFull = decoder.decompressTick(fullChunk, tickNumber);
+            TickData fromResult = decoder.decompressTick(result, tickNumber);
+
+            assertCellColumnsEqual(fromFull.getCellColumns(), fromResult.getCellColumns());
+        }
+    }
+
+    // ========================================================================
     // Helper methods
-    
+    // ========================================================================
+
+    private void mockBlobReturn(byte[] blobData) throws SQLException {
+        when(mockResultSet.next()).thenReturn(true);
+        when(mockResultSet.getBytes("chunk_blob")).thenReturn(blobData);
+    }
+
+    private TickDataChunk buildChunkWithOrganisms() {
+        Environment env = new Environment(new int[]{10, 10}, false);
+        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder("test-run", 100, 2, 2, 1);
+
+        env.setMolecule(Molecule.fromInt(100), new int[]{0, 0});
+        env.setMolecule(Molecule.fromInt(200), new int[]{5, 5});
+        captureTickWithOrganisms(encoder, env, 0, 2);
+
+        env.setMolecule(Molecule.fromInt(110), new int[]{1, 0});
+        captureTickWithOrganisms(encoder, env, 1, 3);
+
+        env.setMolecule(Molecule.fromInt(120), new int[]{2, 0});
+        captureTickWithOrganisms(encoder, env, 2, 3);
+
+        env.setMolecule(Molecule.fromInt(130), new int[]{3, 0});
+        Optional<TickDataChunk> chunk = captureTickWithOrganisms(encoder, env, 3, 4);
+
+        assertTrue(chunk.isPresent(), "Chunk must be complete after 4 ticks");
+        return chunk.get();
+    }
+
+    private Optional<TickDataChunk> captureTickWithOrganisms(
+            DeltaCodec.Encoder encoder, Environment env, long tick, int organismCount) {
+        List<OrganismState> organisms = new java.util.ArrayList<>();
+        for (int i = 1; i <= organismCount; i++) {
+            organisms.add(OrganismState.newBuilder()
+                    .setOrganismId(i).setEnergy(100 * i).build());
+        }
+        return encoder.captureTick(tick, env, organisms, organismCount,
+                tick * 10L, new LongOpenHashSet(new long[]{1000L + tick}),
+                ByteString.copyFromUtf8("rng-" + tick),
+                List.of(PluginState.newBuilder().setPluginClass("TestPlugin")
+                        .setStateBlob(ByteString.copyFromUtf8("s-" + tick)).build()));
+    }
+
+    private byte[] compressWithZstd(TickDataChunk chunk) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        try (OutputStream zstd = new ZstdOutputStream(baos)) {
+            chunk.writeTo(zstd);
+        }
+        return baos.toByteArray();
+    }
+
+    private void assertCellColumnsEqual(CellDataColumns expected, CellDataColumns actual) {
+        assertEquals(expected.getFlatIndicesCount(), actual.getFlatIndicesCount(), "Cell count mismatch");
+        for (int i = 0; i < expected.getFlatIndicesCount(); i++) {
+            assertEquals(expected.getFlatIndices(i), actual.getFlatIndices(i));
+            assertEquals(expected.getMoleculeData(i), actual.getMoleculeData(i));
+            assertEquals(expected.getOwnerIds(i), actual.getOwnerIds(i));
+        }
+    }
+
+    // ========================================================================
+    // Legacy helper methods (for mock-based tests above)
+    // ========================================================================
+
     private TickData createSnapshotWithCells(long tickNumber, int cellCount) {
         TickData.Builder builder = TickData.newBuilder().setTickNumber(tickNumber);
         java.util.List<CellState> cells = new java.util.ArrayList<>();
