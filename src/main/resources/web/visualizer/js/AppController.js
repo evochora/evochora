@@ -870,51 +870,36 @@ export class AppController {
             // Request minimap only on tick change (not on panning)
             const needMinimap = this.state.currentTick !== this.lastMinimapTick;
 
-            // Load environment cells (viewport-based), with optional minimap
-            const result = await this.renderer.loadViewport(
+            // Fire both requests simultaneously — organisms are fast, environment is slow
+            const environmentPromise = this.renderer.loadViewport(
                 this.state.currentTick,
                 this.state.runId,
                 needMinimap
             );
-
-            // Update minimap if data received
-            if (result?.minimap && this.state.worldShape) {
-                this.minimapView.update(result.minimap, this.state.worldShape);
-                this.lastMinimapTick = this.state.currentTick;
-            }
-
-            // Update minimap viewport rectangle
-            this.updateMinimapViewport();
-
-            // Then load organisms for this tick (no region; filtering happens client-side)
-            loadingManager.update('Loading organisms', managedExternally ? 75 : 66);
-            const organismResult = await this.organismApi.fetchOrganismsAtTick(
+            const organismPromise = this.organismApi.fetchOrganismsAtTick(
                 this.state.currentTick,
                 this.state.runId,
                 { signal: organismSignal }
             );
+
+            // Process organisms as soon as they arrive (don't wait for environment)
+            const organismResult = await organismPromise;
             const organisms = organismResult.organisms;
             this.state.totalOrganismCount = organismResult.totalOrganismCount;
-            loadingManager.update('Rendering organisms', 90);
             this._applyGenomeLineageTree(organismResult.genomeLineageTree);
-            this.renderer.renderOrganisms(organisms);
             this.updateOrganismPanel(organisms, isForwardStep);
-
-            // Update minimap organism overlay (always genome-hash colored)
             this.minimapView?.updateOrganisms(organisms, (genomeHash) => {
                 return this._genomeHashToLineageHex(genomeHash);
             });
-            
+
             // Reload organism details if one is selected
             if (this.state.selectedOrganismId) {
                 const organismId = parseInt(this.state.selectedOrganismId, 10);
                 if (!isNaN(organismId)) {
-                    // Check if selected organism still exists
                     const stillExists = organisms.some(o => String(o.organismId) === this.state.selectedOrganismId);
                     if (stillExists) {
                         await this.loadOrganismDetails(organismId, isForwardStep);
                     } else {
-                        // Organism died - deselect
                         this.state.selectedOrganismId = null;
                         this.clearOrganismDetails();
                         this.updateOrganismListSelection();
@@ -923,7 +908,17 @@ export class AppController {
                     }
                 }
             }
-            
+
+            // Wait for environment, then render grid + organisms on top
+            loadingManager.update('Loading environment', managedExternally ? 75 : 66);
+            const result = await environmentPromise;
+            if (result?.minimap && this.state.worldShape) {
+                this.minimapView.update(result.minimap, this.state.worldShape);
+                this.lastMinimapTick = this.state.currentTick;
+            }
+            this.updateMinimapViewport();
+            this.renderer.renderOrganisms(organisms);
+
             // Save current organisms for next comparison
             this.state.previousOrganisms = organisms;
             this.state.previousTick = this.state.currentTick;
