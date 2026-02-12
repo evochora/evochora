@@ -62,6 +62,38 @@ public class LineageRendererTest {
     }
 
     @Test
+    void testCustomGlowSize() {
+        // Use a larger world so output pixels are big enough for glow sizes to differ
+        EnvironmentProperties largeEnv = new EnvironmentProperties(new int[]{800, 800}, false);
+
+        LineageRenderer small = new LineageRenderer();
+        new CommandLine(small).parseArgs("--scale", "0.5", "--glow-size", "0.5");
+        small.init(largeEnv);
+
+        LineageRenderer big = new LineageRenderer();
+        new CommandLine(big).parseArgs("--scale", "0.5", "--glow-size", "2.0");
+        big.init(largeEnv);
+
+        // Both should initialize with same image dimensions
+        assertThat(small.getImageWidth()).isEqualTo(big.getImageWidth());
+
+        // Render with a single organism — bigger glow should cover more pixels
+        TickData snapshot = TickData.newBuilder()
+            .setTickNumber(0)
+            .setCellColumns(CellDataColumns.getDefaultInstance())
+            .addOrganisms(createOrganism(1, 400, 400, 42L))
+            .build();
+
+        int[] smallPixels = small.renderSnapshot(snapshot);
+        int[] bigPixels = big.renderSnapshot(snapshot);
+
+        int smallGlowCount = countNonEmpty(smallPixels);
+        int bigGlowCount = countNonEmpty(bigPixels);
+
+        assertThat(bigGlowCount).isGreaterThan(smallGlowCount);
+    }
+
+    @Test
     void testScaleMustBeBetweenZeroAndOne() {
         LineageRenderer renderer = new LineageRenderer();
         new CommandLine(renderer).parseArgs("--scale", "1.5");
@@ -423,6 +455,28 @@ public class LineageRendererTest {
         assertThat(threadInstance.getImageHeight()).isEqualTo(renderer.getImageHeight());
     }
 
+    @Test
+    void testThreadInstances_shareColorState() {
+        LineageRenderer renderer = createRenderer("--scale", "0.5");
+
+        // Render a snapshot with an organism on the main renderer
+        TickData snapshot = TickData.newBuilder()
+            .setTickNumber(0)
+            .setCellColumns(CellDataColumns.getDefaultInstance())
+            .addOrganisms(createOrganism(1, 50, 50, 42L))
+            .build();
+        int[] mainPixels = renderer.renderSnapshot(snapshot);
+
+        // Create a thread instance and render the same snapshot
+        LineageRenderer threadInstance = (LineageRenderer) renderer.createThreadInstance();
+        int[] threadPixels = threadInstance.renderSnapshot(snapshot);
+
+        // Both should produce the same color at the organism center
+        int centerIdx = 25 * 50 + 25;
+        assertThat(mainPixels[centerIdx]).isNotEqualTo(EMPTY_COLOR);
+        assertThat(threadPixels[centerIdx]).isEqualTo(mainPixels[centerIdx]);
+    }
+
     // ========================================================================
     // Helpers
     // ========================================================================
@@ -449,5 +503,13 @@ public class LineageRendererTest {
             builder.addComponents(c);
         }
         return builder.build();
+    }
+
+    private int countNonEmpty(int[] pixels) {
+        int count = 0;
+        for (int px : pixels) {
+            if (px != EMPTY_COLOR) count++;
+        }
+        return count;
     }
 }

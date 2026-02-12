@@ -10,7 +10,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import org.evochora.cli.rendering.AbstractFrameRenderer;
+import org.evochora.cli.rendering.IVideoFrameRenderer;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDelta;
@@ -43,10 +47,12 @@ import picocli.CommandLine.Option;
  * <strong>CLI Usage:</strong>
  * <pre>
  *   evochora video lineage --scale 0.3 --overlay info -o lineage.mkv
- *   evochora video lineage --scale 0.5 --hue-shift 5 -o lineage.mkv
+ *   evochora video lineage --scale 0.5 --hue-shift 5 --glow-size 1.5 -o lineage.mkv
  * </pre>
  * <p>
- * <strong>Thread Safety:</strong> Not thread-safe. Use one renderer per thread.
+ * <strong>Thread Safety:</strong> Color state is shared between thread instances via
+ * {@link #createThreadInstance()} and synchronized internally. Frame buffers and glow
+ * sprites are per-instance (one renderer per thread).
  */
 @Command(name = "lineage", description = "Lineage-colored organism glow rendering over environment background",
          mixinStandardHelpOptions = true)
@@ -61,6 +67,11 @@ public class LineageRenderer extends AbstractFrameRenderer {
             description = "Hue shift per mutation generation in degrees (default: ${DEFAULT-VALUE})",
             defaultValue = "3")
     private float hueShift;
+
+    @Option(names = "--glow-size",
+            description = "Glow size multiplier (default: ${DEFAULT-VALUE})",
+            defaultValue = "1.0")
+    private double glowSize;
 
     @Option(names = "--cluster-grid",
             description = "Organism clustering grid size in world cells (default: ${DEFAULT-VALUE})",
@@ -127,15 +138,11 @@ public class LineageRenderer extends AbstractFrameRenderer {
     private int coreSize;
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // Color state (persistent across frames)
+    // Color state (shared across thread instances)
     // ─────────────────────────────────────────────────────────────────────────────
 
-    /** Genome hash → assigned hue (0-360 degrees). Persistent, never pruned. */
-    private final Map<Long, Float> genomeHueMap = new HashMap<>();
-    /** Organism ID → genome hash (for parent lookup). Pruned to alive organisms. */
-    private final Map<Integer, Long> organismGenomeMap = new LinkedHashMap<>();
-    /** Counter for golden-ratio hue assignment (unrelated lineages). */
-    private int baseHueCounter;
+    /** Shared color state for lineage-aware hue assignment. Thread-safe. */
+    private ColorState colorState;
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Organism rendering state
@@ -178,8 +185,8 @@ public class LineageRenderer extends AbstractFrameRenderer {
         this.frame = new BufferedImage(outputWidth, outputHeight, BufferedImage.TYPE_INT_RGB);
         this.frameBuffer = ((DataBufferInt) frame.getRaster().getDataBuffer()).getData();
 
-        // Scale glow sizes based on output resolution
-        double glowScale = (double) outputWidth / BASE_OUTPUT_WIDTH;
+        // Scale glow sizes based on output resolution and user multiplier
+        double glowScale = (double) outputWidth / BASE_OUTPUT_WIDTH * glowSize;
         this.glowSizes = new int[BASE_GLOW_SIZES.length];
         for (int i = 0; i < BASE_GLOW_SIZES.length; i++) {
             this.glowSizes[i] = Math.max(2, (int) (BASE_GLOW_SIZES[i] * glowScale));
@@ -194,8 +201,8 @@ public class LineageRenderer extends AbstractFrameRenderer {
         int outputSize = outputWidth * outputHeight;
         this.glowDensity = new int[outputSize];
 
-        // Color state
-        this.baseHueCounter = 0;
+        // Color state (fresh on init; overwritten by createThreadInstance for shared state)
+        this.colorState = new ColorState(hueShift);
 
         this.lastSnapshot = null;
         this.lastDelta = null;
@@ -231,7 +238,7 @@ public class LineageRenderer extends AbstractFrameRenderer {
     @Override
     public void applySnapshotState(TickData snapshot) {
         ensureInitialized();
-        processOrganisms(snapshot.getOrganismsList());
+        colorState.processOrganisms(snapshot.getOrganismsList());
         background.processSnapshotCells(snapshot.getCellColumns());
         this.lastSnapshot = snapshot;
         this.lastDelta = null;
@@ -240,7 +247,7 @@ public class LineageRenderer extends AbstractFrameRenderer {
     @Override
     public void applyDeltaState(TickDelta delta) {
         ensureInitialized();
-        processOrganisms(delta.getOrganismsList());
+        colorState.processOrganisms(delta.getOrganismsList());
         background.processDeltaCells(delta.getChangedCells());
         this.lastDelta = delta;
     }
@@ -268,71 +275,27 @@ public class LineageRenderer extends AbstractFrameRenderer {
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // Organism processing and color assignment
+    // Thread instance sharing
     // ─────────────────────────────────────────────────────────────────────────────
 
     /**
-     * Processes the organism list in two passes to ensure parent genome hashes
-     * are available before assigning child colors.
+     * Creates a thread-local renderer instance that shares color state with this renderer.
      * <p>
-     * Pass 1: Build organism ID → genome hash mapping for all organisms.
-     * Pass 2: Assign colors to new genome hashes (parent lookup now works).
+     * The shared {@link ColorState} ensures all thread instances assign the same hue
+     * to the same genome hash. Frame buffers and glow sprites remain per-instance.
      *
-     * @param organisms List of organisms from snapshot or delta.
+     * @return A new renderer instance sharing this renderer's color state.
      */
-    private void processOrganisms(List<OrganismState> organisms) {
-        Set<Integer> aliveIds = new HashSet<>();
-
-        // Pass 1: Record all organism → genome hash mappings
-        for (OrganismState org : organisms) {
-            organismGenomeMap.put(org.getOrganismId(), org.getGenomeHash());
-            if (!org.getIsDead()) {
-                aliveIds.add(org.getOrganismId());
-            }
-        }
-
-        // Pass 2: Assign colors (now parent lookups succeed regardless of list order)
-        for (OrganismState org : organisms) {
-            long genomeHash = org.getGenomeHash();
-            if (genomeHash != 0 && !genomeHueMap.containsKey(genomeHash)) {
-                assignGenomeColor(org);
-            }
-        }
-
-        // Prune dead organisms to prevent unbounded memory growth
-        if (organismGenomeMap.size() > aliveIds.size() * 2) {
-            organismGenomeMap.keySet().retainAll(aliveIds);
-        }
+    @Override
+    public IVideoFrameRenderer createThreadInstance() {
+        LineageRenderer copy = (LineageRenderer) super.createThreadInstance();
+        copy.colorState = this.colorState;
+        return copy;
     }
 
-    /**
-     * Assigns an HSL hue to a genome hash based on lineage.
-     * If the organism has a parent with a known genome hash color, the child's hue
-     * is derived with a small shift. Otherwise, a new base hue is assigned via
-     * the golden ratio sequence.
-     *
-     * @param org The organism whose genome hash needs a color.
-     */
-    private void assignGenomeColor(OrganismState org) {
-        long genomeHash = org.getGenomeHash();
-
-        if (org.hasParentId()) {
-            Long parentGenome = organismGenomeMap.get(org.getParentId());
-            if (parentGenome != null && genomeHueMap.containsKey(parentGenome)) {
-                float parentHue = genomeHueMap.get(parentGenome);
-                // Alternate direction based on genome hash to spread siblings
-                float direction = (genomeHash % 2 == 0) ? 1.0f : -1.0f;
-                float childHue = (parentHue + direction * hueShift + 360.0f) % 360.0f;
-                genomeHueMap.put(genomeHash, childHue);
-                return;
-            }
-        }
-
-        // No known parent lineage — assign from golden ratio sequence
-        float hue = (BASE_HUE_START + baseHueCounter * GOLDEN_ANGLE) % 360.0f;
-        baseHueCounter++;
-        genomeHueMap.put(genomeHash, hue);
-    }
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Organism processing and color assignment
+    // ─────────────────────────────────────────────────────────────────────────────
 
     /**
      * Returns the glow color (packed RGB) for a genome hash.
@@ -342,7 +305,7 @@ public class LineageRenderer extends AbstractFrameRenderer {
      */
     private int getGenomeColor(long genomeHash) {
         if (genomeHash == 0) return 0x808080;
-        Float hue = genomeHueMap.get(genomeHash);
+        Float hue = colorState.genomeHueMap.get(genomeHash);
         if (hue == null) return 0x808080;
         return hslToRgb(hue, GLOW_SATURATION, GLOW_LIGHTNESS);
     }
@@ -615,5 +578,100 @@ public class LineageRenderer extends AbstractFrameRenderer {
     public int getImageHeight() {
         ensureInitialized();
         return outputHeight;
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Thread-safe shared color state
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Holds lineage color assignment state that is shared across thread instances.
+     * <p>
+     * The {@link #processOrganisms} method is synchronized to prevent race conditions
+     * during color assignment (parent lookup + counter increment must be atomic).
+     * The genome hue map uses {@link ConcurrentHashMap} for safe concurrent reads
+     * during rendering.
+     */
+    static class ColorState {
+
+        /** Genome hash → assigned hue (0-360 degrees). Persistent, never pruned. */
+        final ConcurrentHashMap<Long, Float> genomeHueMap = new ConcurrentHashMap<>();
+        /** Organism ID → genome hash (for parent lookup). Pruned to alive organisms. */
+        final ConcurrentHashMap<Integer, Long> organismGenomeMap = new ConcurrentHashMap<>();
+        /** Counter for golden-ratio hue assignment (unrelated lineages). */
+        private final AtomicInteger baseHueCounter = new AtomicInteger(0);
+        /** Hue shift per mutation generation in degrees. */
+        private final float hueShift;
+
+        /**
+         * Creates a new color state with the given hue shift.
+         *
+         * @param hueShift Hue shift per mutation generation in degrees.
+         */
+        ColorState(float hueShift) {
+            this.hueShift = hueShift;
+        }
+
+        /**
+         * Processes the organism list in two passes to ensure parent genome hashes
+         * are available before assigning child colors.
+         * <p>
+         * Synchronized to prevent race conditions when multiple thread instances
+         * process different frames concurrently.
+         *
+         * @param organisms List of organisms from snapshot or delta.
+         */
+        synchronized void processOrganisms(List<OrganismState> organisms) {
+            Set<Integer> aliveIds = new HashSet<>();
+
+            // Pass 1: Record all organism → genome hash mappings
+            for (OrganismState org : organisms) {
+                organismGenomeMap.put(org.getOrganismId(), org.getGenomeHash());
+                if (!org.getIsDead()) {
+                    aliveIds.add(org.getOrganismId());
+                }
+            }
+
+            // Pass 2: Assign colors (now parent lookups succeed regardless of list order)
+            for (OrganismState org : organisms) {
+                long genomeHash = org.getGenomeHash();
+                if (genomeHash != 0 && !genomeHueMap.containsKey(genomeHash)) {
+                    assignGenomeColor(org);
+                }
+            }
+
+            // Prune dead organisms to prevent unbounded memory growth
+            if (organismGenomeMap.size() > aliveIds.size() * 2) {
+                organismGenomeMap.keySet().retainAll(aliveIds);
+            }
+        }
+
+        /**
+         * Assigns an HSL hue to a genome hash based on lineage.
+         * If the organism has a parent with a known genome hash color, the child's hue
+         * is derived with a small shift. Otherwise, a new base hue is assigned via
+         * the golden ratio sequence.
+         *
+         * @param org The organism whose genome hash needs a color.
+         */
+        private void assignGenomeColor(OrganismState org) {
+            long genomeHash = org.getGenomeHash();
+
+            if (org.hasParentId()) {
+                Long parentGenome = organismGenomeMap.get(org.getParentId());
+                if (parentGenome != null && genomeHueMap.containsKey(parentGenome)) {
+                    float parentHue = genomeHueMap.get(parentGenome);
+                    // Alternate direction based on genome hash to spread siblings
+                    float direction = (genomeHash % 2 == 0) ? 1.0f : -1.0f;
+                    float childHue = (parentHue + direction * hueShift + 360.0f) % 360.0f;
+                    genomeHueMap.put(genomeHash, childHue);
+                    return;
+                }
+            }
+
+            // No known parent lineage — assign from golden ratio sequence
+            float hue = (BASE_HUE_START + baseHueCounter.getAndIncrement() * GOLDEN_ANGLE) % 360.0f;
+            genomeHueMap.put(genomeHash, hue);
+        }
     }
 }
