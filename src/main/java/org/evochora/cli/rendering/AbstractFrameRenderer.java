@@ -182,10 +182,13 @@ public abstract class AbstractFrameRenderer implements IVideoFrameRenderer, Call
 
     /**
      * Applies all configured overlays to the current frame.
+     * <p>
+     * Protected so subclasses can apply overlays in {@link #renderCurrentState()}
+     * for sampling mode support.
      *
      * @param snapshot The snapshot data for overlay rendering.
      */
-    private void applyOverlays(TickData snapshot) {
+    protected void applyOverlays(TickData snapshot) {
         for (IOverlayRenderer overlay : overlays) {
             overlay.render(getFrame(), snapshot);
         }
@@ -193,10 +196,13 @@ public abstract class AbstractFrameRenderer implements IVideoFrameRenderer, Call
 
     /**
      * Applies all configured overlays to the current frame.
+     * <p>
+     * Protected so subclasses can apply overlays in {@link #renderCurrentState()}
+     * for sampling mode support.
      *
      * @param delta The delta data for overlay rendering.
      */
-    private void applyOverlays(TickDelta delta) {
+    protected void applyOverlays(TickDelta delta) {
         for (IOverlayRenderer overlay : overlays) {
             overlay.render(getFrame(), delta);
         }

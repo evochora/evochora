@@ -2,6 +2,7 @@ package org.evochora.cli.commands;
 
 import java.util.concurrent.Callable;
 
+import org.evochora.cli.rendering.frame.DensityMapRenderer;
 import org.evochora.cli.rendering.frame.ExactFrameRenderer;
 import org.evochora.cli.rendering.frame.MinimapFrameRenderer;
 
@@ -25,7 +26,8 @@ import picocli.CommandLine.Command;
     + "Defaults to MKV for resilience against interruptions.",
     subcommands = {
         ExactFrameRenderer.class,
-        MinimapFrameRenderer.class
+        MinimapFrameRenderer.class,
+        DensityMapRenderer.class
     })
 public class RenderVideoCommand implements Callable<Integer> {
 

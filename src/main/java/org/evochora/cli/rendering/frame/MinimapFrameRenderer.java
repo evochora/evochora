@@ -582,6 +582,7 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
     }
 
     private int getCellTypeIndex(int moleculeInt) {
+        if (moleculeInt == 0) return TYPE_EMPTY;
         int moleculeType = moleculeInt & Config.TYPE_MASK;
         if (moleculeType == Config.TYPE_CODE) return TYPE_CODE;
         if (moleculeType == Config.TYPE_DATA) return TYPE_DATA;
