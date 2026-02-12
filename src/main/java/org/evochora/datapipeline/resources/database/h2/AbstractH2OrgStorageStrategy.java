@@ -1,5 +1,9 @@
 package org.evochora.datapipeline.resources.database.h2;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.Objects;
 
 import org.evochora.datapipeline.utils.compression.CompressionCodecFactory;
@@ -54,5 +58,16 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
      */
     protected ICompressionCodec getCodec() {
         return codec;
+    }
+
+    @Override
+    public int readTotalOrganismsCreated(Connection conn, long tickNumber) throws SQLException {
+        String sql = "SELECT MAX(organism_id) FROM organisms WHERE birth_tick <= ?";
+        try (PreparedStatement stmt = conn.prepareStatement(sql)) {
+            stmt.setLong(1, tickNumber);
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next() ? rs.getInt(1) : 0;
+            }
+        }
     }
 }

@@ -43,8 +43,11 @@ export class OrganismApi {
 
         const data = await apiClient.fetch(url, fetchOptions);
 
-        // API response shape: { runId, tick, organisms: [...] }
-        return Array.isArray(data.organisms) ? data.organisms : [];
+        // API response shape: { organisms: [...], totalOrganismCount: N }
+        return {
+            organisms: Array.isArray(data.organisms) ? data.organisms : [],
+            totalOrganismCount: data.totalOrganismCount || 0
+        };
     }
 
     /**

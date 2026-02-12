@@ -114,7 +114,20 @@ public interface IH2OrgStorageStrategy {
      * @throws SQLException if database read fails
      */
     TickRange getAvailableTickRange(Connection conn) throws SQLException;
-    
+
+    /**
+     * Reads the total number of organisms created up to (and including) the given tick.
+     * <p>
+     * Uses the sequential nature of organism IDs: MAX(organism_id) WHERE birth_tick &lt;= tickNumber
+     * equals the total count of organisms ever created by that tick.
+     *
+     * @param conn Database connection (schema already set)
+     * @param tickNumber Tick number (inclusive upper bound for birth_tick)
+     * @return Total organisms created, or 0 if no organisms exist
+     * @throws SQLException if database read fails
+     */
+    int readTotalOrganismsCreated(Connection conn, long tickNumber) throws SQLException;
+
     /**
      * Reads a single organism's state at the given tick.
      * <p>

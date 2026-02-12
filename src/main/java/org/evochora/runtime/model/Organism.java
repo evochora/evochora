@@ -479,7 +479,7 @@ public class Organism {
             if (initialPosition == null || initialPosition.length == 0) {
                 throw new IllegalStateException("Initial position must be set for restore");
             }
-            if (er < 0) {
+            if (er < 0 && !isDead) {
                 throw new IllegalStateException("Energy cannot be negative: " + er);
             }
             if (sr < 0) {
@@ -881,12 +881,12 @@ public class Organism {
 
     /**
      * Adds entropy to the organism's Entropy Register (SR).
-     * The value is clamped between 0 and MAX_ORGANISM_ENTROPY.
+     * The value is clamped to a minimum of 0 (cannot go negative).
      *
      * @param amount The amount of entropy to add (can be negative for dissipation).
      */
-    public void addSr(int amount) { 
-        this.sr = Math.max(0, Math.min(this.sr + amount, this.maxEntropy)); 
+    public void addSr(int amount) {
+        this.sr = Math.max(0, this.sr + amount);
     }
 
     /**

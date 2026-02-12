@@ -31,6 +31,15 @@ public interface IOrganismDataReader {
      */
     OrganismTickDetails readOrganismDetails(long tickNumber, int organismId)
             throws SQLException, OrganismNotFoundException;
+
+    /**
+     * Reads the total number of organisms created up to (and including) the given tick.
+     *
+     * @param tickNumber Tick number (inclusive upper bound).
+     * @return Total organisms created by this tick, or 0 if none exist.
+     * @throws SQLException if database read fails.
+     */
+    int readTotalOrganismsCreated(long tickNumber) throws SQLException;
 }
 
 
