@@ -1,6 +1,5 @@
 package org.evochora.cli.rendering.overlay;
 
-import org.evochora.cli.rendering.IOverlayRenderer;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDelta;

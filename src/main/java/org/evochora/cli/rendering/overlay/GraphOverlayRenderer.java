@@ -69,6 +69,9 @@ public class GraphOverlayRenderer implements IOverlayRenderer {
     // Shared across thread instances
     private GraphHistory sharedHistory;
 
+    // Reusable computation buffer
+    private final HashSet<Long> genomeBuffer = new HashSet<>();
+
     // Cached rendering resources
     private int cachedImageHeight;
     private Font cachedFont;
@@ -108,19 +111,19 @@ public class GraphOverlayRenderer implements IOverlayRenderer {
      * @return Array of [aliveCount, genomeCount].
      */
     private int[] countOrganismsAndGenomes(List<OrganismState> organisms) {
+        genomeBuffer.clear();
         int alive = 0;
-        HashSet<Long> genomes = new HashSet<>();
 
         for (OrganismState org : organisms) {
             if (org.getIsDead()) continue;
             alive++;
             long hash = org.getGenomeHash();
             if (hash != 0L) {
-                genomes.add(hash);
+                genomeBuffer.add(hash);
             }
         }
 
-        return new int[]{alive, genomes.size()};
+        return new int[]{alive, genomeBuffer.size()};
     }
 
     private void renderOverlay(BufferedImage image) {
