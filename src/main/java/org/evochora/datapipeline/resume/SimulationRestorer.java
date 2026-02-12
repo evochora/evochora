@@ -234,15 +234,19 @@ public class SimulationRestorer {
         simulation.setProgramArtifacts(programs);
         log.debug("Restored {} program artifacts", programs.size());
 
-        // 10. Restore Organisms
+        // 10. Restore Organisms (including dead organisms awaiting final serialization)
+        int deadCount = 0;
         for (OrganismState state : organismStates) {
-            if (state.getIsDead()) {
-                continue; // Skip dead organisms
-            }
             Organism organism = restoreOrganism(state, simulation);
             simulation.addOrganism(organism);
+            if (state.getIsDead()) {
+                deadCount++;
+            }
         }
-        log.debug("Restored {} live organisms", simulation.getOrganisms().size());
+        log.debug("Restored {} organisms ({} alive, {} dead awaiting serialization)",
+                simulation.getOrganisms().size(),
+                simulation.getOrganisms().size() - deadCount,
+                deadCount);
 
         // 11. Restore plugins from config (with their configs for SimulationEngine)
         RestoredPlugins restoredPlugins = restorePlugins(
@@ -564,6 +568,9 @@ public class SimulationRestorer {
 
         // Status flags
         builder.dead(state.getIsDead());
+        if (state.hasDeathTick()) {
+            builder.deathTick(state.getDeathTick());
+        }
         if (state.getInstructionFailed()) {
             String reason = state.hasFailureReason() ? state.getFailureReason() : "Unknown";
             builder.failed(true, reason);

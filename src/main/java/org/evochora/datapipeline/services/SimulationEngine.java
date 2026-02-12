@@ -520,7 +520,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         // Add SimulationEngine-specific metrics
         metrics.put("current_tick", currentTick.get());
         metrics.put("organisms_alive", organismsSnapshot.stream().filter(o -> !o.isDead()).count());
-        metrics.put("organisms_total", (long) organismsSnapshot.size());
+        metrics.put("organisms_total", (long) simulation.getTotalOrganismsCreatedCount());
         metrics.put("messages_sent", messagesSent.get());
         metrics.put("sampling_interval", samplingInterval);
         metrics.put("ticks_per_second", ticksPerSecond);
@@ -553,6 +553,9 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 simulation.getAllGenomesEverSeen(),
                 rngState,
                 pluginStates);
+
+        // Prune dead organisms after they have been serialized for their final appearance
+        simulation.pruneDeadOrganisms();
 
         if (chunk.isPresent()) {
             tickDataOutput.put(chunk.get());
@@ -730,17 +733,20 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         organismStateBuilder.setEntropyRegister(o.getSr());
         organismStateBuilder.setMoleculeMarkerRegister(o.getMr());
         organismStateBuilder.setGenomeHash(o.getGenomeHash());
+        if (o.getDeathTick() >= 0) {
+            organismStateBuilder.setDeathTick(o.getDeathTick());
+        }
 
         return organismStateBuilder.build();
     }
     
     /**
-     * Extracts organism states for all living organisms.
+     * Extracts organism states for all organisms, including dead organisms awaiting final serialization.
+     * Dead organisms are included once with is_dead=true and death_tick set, then pruned from memory.
      * Used by DeltaCodec.Encoder for delta compression.
      */
     private List<OrganismState> extractOrganismStates() {
         return simulation.getOrganisms().stream()
-                .filter(o -> !o.isDead())
                 .map(this::extractOrganismState)
                 .toList();
     }

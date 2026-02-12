@@ -69,6 +69,7 @@ public class PopulationMetricsPlugin extends AbstractAnalyticsPlugin {
         long totalEntropy = 0;
 
         for (OrganismState org : tick.getOrganismsList()) {
+            if (org.getIsDead()) continue;
             alive++;
             totalEnergy += org.getEnergy();
             totalEntropy += org.getEntropyRegister();

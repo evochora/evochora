@@ -61,6 +61,7 @@ public class GenerationDepthPlugin extends AbstractAnalyticsPlugin {
         int count = 0;
         
         for (OrganismState org : tick.getOrganismsList()) {
+            if (org.getIsDead()) continue;
             int id = org.getOrganismId();
             currentAliveIds.add(id);
             

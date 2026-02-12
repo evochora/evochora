@@ -130,7 +130,7 @@ class SimulationRestorerTest {
     }
 
     @Test
-    void restore_DeadOrganisms_Skipped() {
+    void restore_DeadOrganisms_Restored() {
         SimulationMetadata metadata = createMinimalMetadata();
 
         // Create snapshot with one live and one dead organism
@@ -141,7 +141,9 @@ class SimulationRestorerTest {
             .setEnergy(0)
             .setIp(createVector(0, 0))
             .setDv(createVector(1, 0))
+            .setInitialPosition(createVector(0, 0))
             .setIsDead(true)
+            .setDeathTick(999)
             .build();
 
         TickData snapshot = TickData.newBuilder()
@@ -158,9 +160,12 @@ class SimulationRestorerTest {
         SimulationRestorer.RestoredState state = SimulationRestorer.restore(checkpoint, randomProvider);
         Simulation simulation = state.simulation();
 
-        // Only live organism should be restored
-        assertThat(simulation.getOrganisms()).hasSize(1);
+        // Both organisms should be restored (dead organisms are pruned after serialization, not on restore)
+        assertThat(simulation.getOrganisms()).hasSize(2);
         assertThat(simulation.getOrganisms().get(0).getId()).isEqualTo(1);
+        assertThat(simulation.getOrganisms().get(1).getId()).isEqualTo(2);
+        assertThat(simulation.getOrganisms().get(1).isDead()).isTrue();
+        assertThat(simulation.getOrganisms().get(1).getDeathTick()).isEqualTo(999);
     }
 
     @Test
