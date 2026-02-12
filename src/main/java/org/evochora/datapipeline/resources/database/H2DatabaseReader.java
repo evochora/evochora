@@ -118,6 +118,17 @@ public class H2DatabaseReader implements IDatabaseReader {
         return orgStrategy.readTotalOrganismsCreated(connection, tickNumber);
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Queries the {@code organisms} static table directly (strategy-independent).
+     * Self-referencing rows (child genome equals parent genome, i.e. no mutation) are excluded
+     * by the SQL filter. When multiple organisms share the same genome hash, the first by
+     * {@code organism_id} determines the parent mapping.
+     * <p>
+     * Not thread-safe — each {@link H2DatabaseReader} instance holds a dedicated connection
+     * and must not be shared across threads.
+     */
     @Override
     public Map<Long, Long> readGenomeLineageTree(long tickNumber) throws SQLException {
         ensureNotClosed();

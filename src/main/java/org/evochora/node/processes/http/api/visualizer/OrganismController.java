@@ -15,6 +15,7 @@ import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 import org.evochora.datapipeline.api.resources.database.dto.TickRange;
 
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.evochora.node.processes.http.api.pipeline.dto.ErrorResponseDto;
 import org.evochora.node.processes.http.api.visualizer.dto.OrganismsResponseDto;
@@ -137,7 +138,7 @@ public class OrganismController extends VisualizerBaseController {
             final Map<Long, Long> genomeTree = reader.readGenomeLineageTree(tickNumber);
 
             // Convert Long keys/values to String to preserve 64-bit precision in JSON
-            final Map<String, String> stringTree = new java.util.LinkedHashMap<>(genomeTree.size());
+            final Map<String, String> stringTree = new LinkedHashMap<>(genomeTree.size());
             genomeTree.forEach((k, v) -> stringTree.put(String.valueOf(k), v != null ? String.valueOf(v) : null));
 
             ctx.status(HttpStatus.OK).json(new OrganismsResponseDto(organisms, totalOrganismCount, stringTree));
