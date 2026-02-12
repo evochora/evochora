@@ -969,8 +969,9 @@ public class ServiceManager implements IMonitorable {
                         ? serviceConfig.getDouble("options.estimatedDeltaRatio")
                         : SimulationParameters.DEFAULT_ESTIMATED_DELTA_RATIO;
                     
-                    log.debug("Found SimulationEngine '{}' with environment shape {}, maxOrganisms={}, ticksPerChunk={}", 
+                    log.debug("Found SimulationEngine '{}' with environment shape {}, maxOrganisms={}, samplesPerChunk={}, simulationTicksPerChunk={}",
                         serviceName, Arrays.toString(shape), maxOrganisms,
+                        accumulatedDeltaInterval * snapshotInterval * chunkInterval,
                         samplingInterval * accumulatedDeltaInterval * snapshotInterval * chunkInterval);
                     return new SimulationParameters(
                         shape, totalCells, maxOrganisms,

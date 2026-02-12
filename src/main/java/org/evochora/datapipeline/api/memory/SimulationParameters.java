@@ -243,16 +243,34 @@ public record SimulationParameters(
     // ========================================================================
     
     /**
-     * Calculates the number of sampled ticks per chunk.
+     * Calculates the number of simulation ticks covered by one chunk.
      * <p>
-     * Formula: samplingInterval × accumulatedDeltaInterval × snapshotInterval × chunkInterval
+     * Formula: samplingInterval × samplesPerChunk
      * <p>
-     * With defaults (1 × 5 × 20 × 1 = 100), each chunk contains 100 sampled ticks.
+     * With defaults (1 × 5 × 20 × 1 = 100), each chunk covers 100 simulation ticks.
+     * With samplingInterval=10000: 10000 × 25 = 250,000 simulation ticks per chunk.
      *
-     * @return Number of sampled ticks per chunk.
+     * @return Number of simulation ticks spanned by one chunk.
      */
-    public int ticksPerChunk() {
-        return samplingInterval * accumulatedDeltaInterval * snapshotInterval * chunkInterval;
+    public int simulationTicksPerChunk() {
+        return samplingInterval * samplesPerChunk();
+    }
+
+    /**
+     * Calculates the number of recorded data samples per chunk.
+     * <p>
+     * Formula: accumulatedDeltaInterval × snapshotInterval × chunkInterval
+     * <p>
+     * This is independent of samplingInterval because samplingInterval only controls
+     * how many simulation ticks are skipped between samples, not how many samples
+     * exist in a chunk.
+     * <p>
+     * With defaults (5 × 20 × 1 = 100), each chunk contains 100 samples.
+     *
+     * @return Number of data samples (snapshots + deltas) per chunk.
+     */
+    public int samplesPerChunk() {
+        return accumulatedDeltaInterval * snapshotInterval * chunkInterval;
     }
     
     /**
@@ -278,14 +296,14 @@ public record SimulationParameters(
     /**
      * Calculates the number of incremental deltas per chunk.
      * <p>
-     * Total deltas = ticksPerChunk - snapshots
+     * Total deltas = samplesPerChunk - snapshots
      * Accumulated deltas = accumulatedDeltasPerChunk
      * Incremental = Total - Accumulated
      *
      * @return Number of incremental deltas per chunk.
      */
     public int incrementalDeltasPerChunk() {
-        int totalDeltas = ticksPerChunk() - snapshotsPerChunk();
+        int totalDeltas = samplesPerChunk() - snapshotsPerChunk();
         return totalDeltas - accumulatedDeltasPerChunk();
     }
     
@@ -319,8 +337,8 @@ public record SimulationParameters(
      */
     public long estimateBytesPerChunk() {
         int numSnapshots = snapshotsPerChunk();
-        int numDeltas = ticksPerChunk() - numSnapshots;
-        
+        int numDeltas = samplesPerChunk() - numSnapshots;
+
         return (long) numSnapshots * estimateBytesPerTick()
              + (long) numDeltas * estimateBytesPerDelta();
     }
@@ -334,7 +352,7 @@ public record SimulationParameters(
      * @return Compression ratio (e.g., 10.0 = 10:1 compression).
      */
     public double estimateCompressionRatio() {
-        long uncompressedSize = (long) ticksPerChunk() * estimateBytesPerTick();
+        long uncompressedSize = (long) samplesPerChunk() * estimateBytesPerTick();
         long compressedSize = estimateBytesPerChunk();
         if (compressedSize == 0) return 1.0;
         return (double) uncompressedSize / compressedSize;

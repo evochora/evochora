@@ -1072,18 +1072,18 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         chunkBuilderBytes += params.estimateBytesPerTick();
         
         // Accumulated deltas (worst case: all samples before chunk completion)
-        int maxDeltas = params.ticksPerChunk() - 1;
+        int maxDeltas = params.samplesPerChunk() - 1;
         chunkBuilderBytes += (long) maxDeltas * params.estimateBytesPerDelta();
-        
+
         // BitSet for change tracking: totalCells bits = totalCells / 8 bytes
         long bitSetBytes = (params.totalCells() + 7) / 8;
         chunkBuilderBytes += bitSetBytes;
-        
+
         estimates.add(new MemoryEstimate(
             serviceName + " (Encoder)",
             chunkBuilderBytes,
-            String.format("1 snapshot + %d deltas + BitSet (%d cells), %d ticks/chunk",
-                maxDeltas, params.totalCells(), params.ticksPerChunk()),
+            String.format("1 snapshot + %d deltas + BitSet (%d cells), %d samples/chunk (%d ticks)",
+                maxDeltas, params.totalCells(), params.samplesPerChunk(), params.simulationTicksPerChunk()),
             MemoryEstimate.Category.SERVICE_BATCH
         ));
         

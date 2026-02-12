@@ -522,10 +522,11 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
         long arrayListOverhead = (long) maxBatchSize * 8 + 64;
         totalBytes += arrayListOverhead;
 
-        String explanation = String.format("%d maxBatchSize (chunks) × %s/chunk (%d ticks/chunk, 100%% environment + %d organisms)",
+        String explanation = String.format("%d maxBatchSize (chunks) × %s/chunk (%d samples/chunk, %d ticks, 100%% environment + %d organisms)",
             maxBatchSize,
             SimulationParameters.formatBytes(bytesPerChunk),
-            params.ticksPerChunk(),
+            params.samplesPerChunk(),
+            params.simulationTicksPerChunk(),
             params.maxOrganisms());
 
         return List.of(new MemoryEstimate(

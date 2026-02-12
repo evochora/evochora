@@ -169,10 +169,11 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> implement
         long bytesPerChunk = params.estimateBytesPerChunk();
         long totalBytes = (long) insertBatchSize * bytesPerChunk;
         
-        String explanation = String.format("%d insertBatchSize (chunks) × %s/chunk (%d ticks/chunk)",
+        String explanation = String.format("%d insertBatchSize (chunks) × %s/chunk (%d samples/chunk, %d ticks)",
             insertBatchSize,
             SimulationParameters.formatBytes(bytesPerChunk),
-            params.ticksPerChunk());
+            params.samplesPerChunk(),
+            params.simulationTicksPerChunk());
         
         return List.of(new MemoryEstimate(
             serviceName,

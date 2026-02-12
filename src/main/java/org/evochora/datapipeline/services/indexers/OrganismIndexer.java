@@ -149,10 +149,11 @@ public class OrganismIndexer<ACK> extends AbstractBatchIndexer<ACK> implements I
         long bytesPerChunk = params.estimateBytesPerChunk();
         long totalBytes = (long) insertBatchSize * bytesPerChunk;
         
-        String explanation = String.format("%d insertBatchSize (chunks) × %s/chunk (%d ticks/chunk, %d organisms)",
+        String explanation = String.format("%d insertBatchSize (chunks) × %s/chunk (%d samples/chunk, %d ticks, %d organisms)",
             insertBatchSize,
             SimulationParameters.formatBytes(bytesPerChunk),
-            params.ticksPerChunk(),
+            params.samplesPerChunk(),
+            params.simulationTicksPerChunk(),
             params.maxOrganisms());
         
         return List.of(new MemoryEstimate(
