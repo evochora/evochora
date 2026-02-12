@@ -4,6 +4,7 @@ import java.util.concurrent.Callable;
 
 import org.evochora.cli.rendering.frame.DensityMapRenderer;
 import org.evochora.cli.rendering.frame.ExactFrameRenderer;
+import org.evochora.cli.rendering.frame.LineageRenderer;
 import org.evochora.cli.rendering.frame.MinimapFrameRenderer;
 
 import picocli.CommandLine;
@@ -27,7 +28,8 @@ import picocli.CommandLine.Command;
     subcommands = {
         ExactFrameRenderer.class,
         MinimapFrameRenderer.class,
-        DensityMapRenderer.class
+        DensityMapRenderer.class,
+        LineageRenderer.class
     })
 public class RenderVideoCommand implements Callable<Integer> {
 
