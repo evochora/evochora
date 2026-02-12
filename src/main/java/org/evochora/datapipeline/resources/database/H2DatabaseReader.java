@@ -5,7 +5,9 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
@@ -114,6 +116,45 @@ public class H2DatabaseReader implements IDatabaseReader {
     public int readTotalOrganismsCreated(long tickNumber) throws SQLException {
         ensureNotClosed();
         return orgStrategy.readTotalOrganismsCreated(connection, tickNumber);
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Queries the {@code organisms} static table directly (strategy-independent).
+     * Self-referencing rows (child genome equals parent genome, i.e. no mutation) are excluded
+     * by the SQL filter. When multiple organisms share the same genome hash, the first by
+     * {@code organism_id} determines the parent mapping.
+     * <p>
+     * Not thread-safe — each {@link H2DatabaseReader} instance holds a dedicated connection
+     * and must not be shared across threads.
+     */
+    @Override
+    public Map<Long, Long> readGenomeLineageTree(long tickNumber) throws SQLException {
+        ensureNotClosed();
+
+        String sql = """
+            SELECT c.genome_hash, p.genome_hash AS parent_genome_hash
+            FROM organisms c
+            LEFT JOIN organisms p ON c.parent_id = p.organism_id
+            WHERE c.birth_tick <= ? AND c.genome_hash != 0
+              AND (p.genome_hash IS NULL OR c.genome_hash != p.genome_hash)
+            ORDER BY c.organism_id
+            """;
+
+        Map<Long, Long> tree = new LinkedHashMap<>();
+        try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+            stmt.setLong(1, tickNumber);
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    long genomeHash = rs.getLong("genome_hash");
+                    if (tree.containsKey(genomeHash)) continue;
+                    long parentGenomeHash = rs.getLong("parent_genome_hash");
+                    tree.put(genomeHash, (rs.wasNull() || parentGenomeHash == 0) ? null : parentGenomeHash);
+                }
+            }
+        }
+        return tree;
     }
 
     @Override

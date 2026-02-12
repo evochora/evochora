@@ -1,5 +1,8 @@
 package org.evochora.datapipeline.api.resources.database.dto;
 
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
+import com.fasterxml.jackson.databind.ser.std.ToStringSerializer;
+
 /**
  * Summary view of an organism at a specific tick.
  * <p>
@@ -27,7 +30,8 @@ public final class OrganismTickSummary {
     public final long birthTick;
     /** The entropy register (SR) value - thermodynamic constraint. */
     public final int entropyRegister;
-    /** The genome hash computed at birth, or 0 if not available. */
+    /** The genome hash computed at birth, or 0 if not available. Serialized as string to preserve 64-bit precision in JSON. */
+    @JsonSerialize(using = ToStringSerializer.class)
     public final long genomeHash;
     /** Whether the organism is dead. */
     public final boolean isDead;
