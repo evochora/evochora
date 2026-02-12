@@ -19,11 +19,12 @@ import org.evochora.datapipeline.api.contracts.TickDelta;
 /**
  * Info overlay renderer displaying simulation statistics.
  * <p>
- * Styled to match the web visualizer's design language:
+ * Styled to match the web visualizer's design language using shared constants
+ * from {@link OverlayFonts}:
  * <ul>
  *   <li>Glass morphism background (semi-transparent dark)</li>
  *   <li>Subtle border and rounded corners</li>
- *   <li>Monospace font for number alignment</li>
+ *   <li>Embedded Roboto Mono for number alignment</li>
  *   <li>Positioned at bottom-right corner</li>
  * </ul>
  * <p>
@@ -33,20 +34,7 @@ import org.evochora.datapipeline.api.contracts.TickDelta;
  */
 public class InfoOverlayRenderer implements IOverlayRenderer {
 
-    // Visualizer-consistent colors
-    private static final Color BACKGROUND_COLOR = new Color(25, 25, 35, 217); // rgba(25,25,35,0.85)
-    private static final Color BORDER_COLOR = new Color(51, 51, 51); // #333333
-    private static final Color TEXT_PRIMARY = new Color(224, 224, 224); // #e0e0e0
-    private static final Color TEXT_SECONDARY = new Color(136, 136, 136); // #888888
     private static final Color TEXT_ALIVE = new Color(74, 154, 106); // #4a9a6a (organism green)
-
-    private static final double MARGIN_RATIO = 0.015;      // Margin = 1.5% of image width
-    private static final double FONT_SIZE_RATIO = 0.022;   // Font size = 2.2% of image WIDTH (not height!)
-    private static final int MIN_FONT_SIZE = 10;           // Targets ~1/4 width overlay
-    private static final int MAX_FONT_SIZE = 48;
-
-    // Font settings
-    private static final String[] FONT_FAMILIES = {"Roboto Mono", "Consolas", "Liberation Mono", "Monospaced"};
 
     private final NumberFormat numberFormat;
 
@@ -90,22 +78,6 @@ public class InfoOverlayRenderer implements IOverlayRenderer {
     }
 
     /**
-     * Finds the first available font from the preferred list.
-     *
-     * @param fontSize The desired font size.
-     * @return A monospace font at the specified size.
-     */
-    private Font findAvailableFont(int fontSize) {
-        for (String family : FONT_FAMILIES) {
-            Font f = new Font(family, Font.BOLD, fontSize);
-            if (f.getFamily().equalsIgnoreCase(family) || family.equals("Monospaced")) {
-                return f;
-            }
-        }
-        return new Font(Font.MONOSPACED, Font.BOLD, fontSize);
-    }
-
-    /**
      * Formats a number with appropriate notation.
      * <ul>
      *   <li>Under 1,000,000: Full number with thousands separator (1.234.567)</li>
@@ -142,10 +114,8 @@ public class InfoOverlayRenderer implements IOverlayRenderer {
         int imgWidth = image.getWidth();
         int imgHeight = image.getHeight();
 
-        // Calculate sizes relative to image WIDTH (so overlay is always ~1/4 of width)
-        int fontSize = Math.max(MIN_FONT_SIZE, Math.min(MAX_FONT_SIZE,
-            (int) (imgWidth * FONT_SIZE_RATIO)));
-        int margin = Math.max(5, (int) (imgWidth * MARGIN_RATIO));
+        int fontSize = OverlayFonts.computeFontSize(imgWidth);
+        int margin = OverlayFonts.computeMargin(imgWidth);
         int paddingX = fontSize;
         int paddingY = fontSize / 2;
         int lineSpacing = fontSize / 4;
@@ -155,7 +125,7 @@ public class InfoOverlayRenderer implements IOverlayRenderer {
         // Cache font if image dimensions changed
         if (imgHeight != cachedImageHeight || cachedFont == null) {
             cachedImageHeight = imgHeight;
-            cachedFont = findAvailableFont(fontSize);
+            cachedFont = OverlayFonts.getDataFont(fontSize);
         }
 
         Graphics2D g2d = image.createGraphics();
@@ -179,7 +149,7 @@ public class InfoOverlayRenderer implements IOverlayRenderer {
                          Math.max(fm.stringWidth(aliveLabel), fm.stringWidth(bornLabel)));
         int valueWidth = Math.max(fm.stringWidth(tickValue),
                          Math.max(fm.stringWidth(aliveValue), fm.stringWidth(bornValue)));
-        int gap = fm.stringWidth("    "); // Space between label and value
+        int gap = fm.stringWidth("    ");
 
         int panelWidth = paddingX * 2 + labelWidth + gap + valueWidth;
         int lineHeight = fm.getHeight();
@@ -190,11 +160,11 @@ public class InfoOverlayRenderer implements IOverlayRenderer {
         int panelY = imgHeight - panelHeight - margin;
 
         // Draw background with rounded corners
-        g2d.setColor(BACKGROUND_COLOR);
+        g2d.setColor(OverlayFonts.BACKGROUND);
         g2d.fillRoundRect(panelX, panelY, panelWidth, panelHeight, borderRadius, borderRadius);
 
         // Draw border
-        g2d.setColor(BORDER_COLOR);
+        g2d.setColor(OverlayFonts.BORDER);
         g2d.setStroke(new BasicStroke(borderWidth));
         g2d.drawRoundRect(panelX, panelY, panelWidth, panelHeight, borderRadius, borderRadius);
 
@@ -204,23 +174,23 @@ public class InfoOverlayRenderer implements IOverlayRenderer {
         int textY = panelY + paddingY + fm.getAscent();
 
         // Line 1: Tick
-        g2d.setColor(TEXT_SECONDARY);
+        g2d.setColor(OverlayFonts.TEXT_SECONDARY);
         g2d.drawString(tickLabel, textX, textY);
-        g2d.setColor(TEXT_PRIMARY);
+        g2d.setColor(OverlayFonts.TEXT_PRIMARY);
         g2d.drawString(tickValue, valueX + (valueWidth - fm.stringWidth(tickValue)), textY);
 
         // Line 2: Alive
         textY += lineHeight + lineSpacing;
-        g2d.setColor(TEXT_SECONDARY);
+        g2d.setColor(OverlayFonts.TEXT_SECONDARY);
         g2d.drawString(aliveLabel, textX, textY);
         g2d.setColor(TEXT_ALIVE);
         g2d.drawString(aliveValue, valueX + (valueWidth - fm.stringWidth(aliveValue)), textY);
 
         // Line 3: Born
         textY += lineHeight + lineSpacing;
-        g2d.setColor(TEXT_SECONDARY);
+        g2d.setColor(OverlayFonts.TEXT_SECONDARY);
         g2d.drawString(bornLabel, textX, textY);
-        g2d.setColor(TEXT_PRIMARY);
+        g2d.setColor(OverlayFonts.TEXT_PRIMARY);
         g2d.drawString(bornValue, valueX + (valueWidth - fm.stringWidth(bornValue)), textY);
 
         g2d.dispose();

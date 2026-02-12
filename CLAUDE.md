@@ -89,10 +89,11 @@ Evochora is an artificial life simulator for research into digital evolution. It
 - Shutdown/interrupts: `log.debug()`, re-throw InterruptedException
 - Never log stack traces at WARN/ERROR; framework logs at DEBUG
 
-**Error Handling in Services:**
+**Error Handling:**
 - Transient (recoverable): warn + recordError, continue
 - Fatal (unrecoverable): error + throw exception
 - Normal shutdown: debug + re-throw InterruptedException
+- No fallbacks to hide problematic states or errors, always fail early!
 
 **Documentation:**
 - Complete JavaDoc required for all non-private members
