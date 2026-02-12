@@ -85,6 +85,7 @@ public class InstructionUsagePlugin extends AbstractAnalyticsPlugin {
         int failureCount = 0;
 
         for (var org : tick.getOrganismsList()) {
+            if (org.getIsDead()) continue;
             if (org.hasInstructionOpcodeId()) {
                 String familyName = OPCODE_TO_FAMILY_NAME.get(org.getInstructionOpcodeId());
                 if (familyName != null) {

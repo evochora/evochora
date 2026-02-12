@@ -131,9 +131,9 @@ public class OrganismController extends VisualizerBaseController {
             }
 
             final List<OrganismTickSummary> organisms = reader.readOrganismsAtTick(tickNumber);
+            final int totalOrganismCount = reader.readTotalOrganismsCreated(tickNumber);
 
-            // Return DTO directly (client only uses organisms array)
-            ctx.status(HttpStatus.OK).json(new OrganismsResponseDto(organisms));
+            ctx.status(HttpStatus.OK).json(new OrganismsResponseDto(organisms, totalOrganismCount));
         } catch (RuntimeException e) {
             // Check for schema / connection issues analogous to Environment/SimulationController
             if (e.getCause() instanceof SQLException) {

@@ -159,6 +159,7 @@ public class GenomeAnalyticsPlugin extends AbstractAnalyticsPlugin {
         int totalOrganisms = 0;
 
         for (OrganismState org : tick.getOrganismsList()) {
+            if (org.getIsDead()) continue;
             long hash = org.getGenomeHash();
             if (hash == 0L) {
                 continue;

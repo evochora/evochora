@@ -9,6 +9,7 @@ import org.evochora.datapipeline.api.analytics.ColumnType;
 import org.evochora.datapipeline.api.analytics.ManifestEntry;
 import org.evochora.datapipeline.api.analytics.ParquetSchema;
 import org.evochora.datapipeline.api.analytics.VisualizerSpec;
+import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
 
 /**
@@ -68,10 +69,14 @@ public class VitalStatsPlugin extends AbstractAnalyticsPlugin {
      */
     @Override
     public List<Object[]> extractRows(TickData tick) {
+        int aliveCount = 0;
+        for (OrganismState org : tick.getOrganismsList()) {
+            if (!org.getIsDead()) aliveCount++;
+        }
         return Collections.singletonList(new Object[] {
             tick.getTickNumber(),
             tick.getTotalOrganismsCreated(),
-            tick.getOrganismsList().size()
+            aliveCount
         });
     }
 

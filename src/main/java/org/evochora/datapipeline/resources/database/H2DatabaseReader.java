@@ -111,6 +111,12 @@ public class H2DatabaseReader implements IDatabaseReader {
     }
 
     @Override
+    public int readTotalOrganismsCreated(long tickNumber) throws SQLException {
+        ensureNotClosed();
+        return orgStrategy.readTotalOrganismsCreated(connection, tickNumber);
+    }
+
+    @Override
     public OrganismTickDetails readOrganismDetails(long tickNumber, int organismId)
             throws SQLException, OrganismNotFoundException {
         ensureNotClosed();

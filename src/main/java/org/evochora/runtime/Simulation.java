@@ -465,6 +465,15 @@ public class Simulation {
     public List<Organism> getOrganisms() { return organisms; }
 
     /**
+     * Removes all dead organisms from the organisms list.
+     * Called by SimulationEngine after dead organisms have been serialized
+     * for their final appearance in the data pipeline.
+     */
+    public void pruneDeadOrganisms() {
+        organisms.removeIf(Organism::isDead);
+    }
+
+    /**
      * Returns the simulation environment.
      * @return The environment.
      */

@@ -392,6 +392,14 @@ body {
     background: rgba(74, 158, 255, 0.15);
 }
 
+.organism-list-item.dead {
+    color: #666;
+}
+
+.organism-list-item.dead .death-cause {
+    color: #cc4444;
+}
+
 /* Table-like column layout */
 .organism-col {
     flex-shrink: 0;

@@ -69,9 +69,10 @@ public class AgeDistributionPlugin extends AbstractAnalyticsPlugin {
             });
         }
         
-        // Collect ages
+        // Collect ages (exclude dead organisms)
         List<Integer> ages = new ArrayList<>(organisms.size());
         for (OrganismState org : organisms) {
+            if (org.getIsDead()) continue;
             long birthTick = org.getBirthTick();
             int age = (int) (currentTick - birthTick);
             if (age < 0) age = 0; // Should not happen

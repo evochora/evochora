@@ -334,13 +334,17 @@ export class OrganismPanelManager {
         
         const genomeDisplay = ValueFormatter.formatGenomeHash(org.genomeHash);
 
+        const deadClass = org.isDead ? 'dead' : '';
+        // Determine death cause for highlighting
+        const erDeathCause = org.isDead && org.energy <= 0 ? ' death-cause' : '';
+        const srDeathCause = org.isDead && maxEntropy != null && org.entropyRegister >= maxEntropy ? ' death-cause' : '';
         return `
-            <div class="organism-list-item ${isSelected ? 'selected' : ''}"
+            <div class="organism-list-item ${isSelected ? 'selected' : ''} ${deadClass}"
                  data-organism-id="${org.id}">
-                <span class="organism-col organism-col-id" style="color: ${org.color}">#${org.id}</span>
+                <span class="organism-col organism-col-id" style="color: ${org.isDead ? '#666' : org.color}">#${org.id}</span>
                 <span class="organism-col organism-col-genome">${genomeDisplay}</span>
-                <span class="organism-col organism-col-er">ER:${org.energy}</span>
-                <span class="organism-col organism-col-sr">SR:${srDisplay}</span>
+                <span class="organism-col organism-col-er${erDeathCause}">ER:${org.energy}</span>
+                <span class="organism-col organism-col-sr${srDeathCause}">SR:${srDisplay}</span>
                 <span class="organism-col organism-col-ip"><span class="organism-label">IP:</span>${ipDisplay}</span>
                 <span class="organism-col organism-col-dps"><span class="organism-label">DPs:</span></span>
                 <span class="organism-col organism-col-dp0">${dp0Display}</span>

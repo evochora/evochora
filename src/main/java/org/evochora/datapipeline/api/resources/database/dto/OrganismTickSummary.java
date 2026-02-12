@@ -29,6 +29,10 @@ public final class OrganismTickSummary {
     public final int entropyRegister;
     /** The genome hash computed at birth, or 0 if not available. */
     public final long genomeHash;
+    /** Whether the organism is dead. */
+    public final boolean isDead;
+    /** The tick at which the organism died, or -1 if still alive. */
+    public final long deathTick;
 
     /**
      * Creates a new organism tick summary.
@@ -43,6 +47,8 @@ public final class OrganismTickSummary {
      * @param birthTick       The tick at which the organism was born.
      * @param entropyRegister The entropy register (SR) value.
      * @param genomeHash      The genome hash computed at birth.
+     * @param isDead          Whether the organism is dead.
+     * @param deathTick       The tick at which the organism died (-1 if alive).
      */
     public OrganismTickSummary(int organismId,
                                int energy,
@@ -53,7 +59,9 @@ public final class OrganismTickSummary {
                                Integer parentId,
                                long birthTick,
                                int entropyRegister,
-                               long genomeHash) {
+                               long genomeHash,
+                               boolean isDead,
+                               long deathTick) {
         this.organismId = organismId;
         this.energy = energy;
         this.ip = ip;
@@ -64,7 +72,7 @@ public final class OrganismTickSummary {
         this.birthTick = birthTick;
         this.entropyRegister = entropyRegister;
         this.genomeHash = genomeHash;
+        this.isDead = isDead;
+        this.deathTick = deathTick;
     }
 }
-
-
