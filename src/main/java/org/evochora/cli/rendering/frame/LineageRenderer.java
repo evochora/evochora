@@ -65,7 +65,7 @@ public class LineageRenderer extends AbstractFrameRenderer {
 
     @Option(names = "--hue-shift",
             description = "Hue shift per mutation generation in degrees (default: ${DEFAULT-VALUE})",
-            defaultValue = "3")
+            defaultValue = "25")
     private float hueShift;
 
     @Option(names = "--glow-size",
@@ -86,15 +86,11 @@ public class LineageRenderer extends AbstractFrameRenderer {
     private static final int[] BASE_GLOW_SIZES = {8, 12, 16, 22};
     /** Density thresholds for glow size selection. */
     private static final int[] DENSITY_THRESHOLDS = {3, 10, 30};
-    /** Solid center size reference. */
-    private static final int BASE_CORE_SIZE = 2;
     /** Reference width for glow scaling. */
     private static final int BASE_OUTPUT_WIDTH = 400;
 
-    /** Core opacity (softer than minimap's 255). */
-    private static final int CORE_ALPHA = 180;
-    /** Glow edge opacity at core boundary. */
-    private static final float GLOW_EDGE_ALPHA = 0.30f;
+    /** Peak opacity at glow center. */
+    private static final int PEAK_ALPHA = 180;
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Color constants
@@ -135,7 +131,6 @@ public class LineageRenderer extends AbstractFrameRenderer {
 
     private final Map<Integer, int[][]> glowSpriteCache = new HashMap<>();
     private int[] glowSizes;
-    private int coreSize;
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Color state (shared across thread instances)
@@ -191,7 +186,6 @@ public class LineageRenderer extends AbstractFrameRenderer {
         for (int i = 0; i < BASE_GLOW_SIZES.length; i++) {
             this.glowSizes[i] = Math.max(2, (int) (BASE_GLOW_SIZES[i] * glowScale));
         }
-        this.coreSize = Math.max(1, (int) (BASE_CORE_SIZE * glowScale));
         this.glowSpriteCache.clear();
 
         // Environment background
@@ -410,18 +404,17 @@ public class LineageRenderer extends AbstractFrameRenderer {
 
     /**
      * Creates a single glow sprite with the given size and color.
-     * Uses a softer rendering style than the minimap: semi-transparent core
-     * with smooth quadratic alpha falloff instead of piecewise linear.
+     * Uses a smooth quartic radial falloff {@code (1 - r²)²} from center to edge,
+     * producing a soft bell curve without hard core/edge boundaries.
      *
      * @param size  Total sprite size in pixels.
      * @param color RGB color (0xRRGGBB).
      * @return Pixel array with ARGB values.
      */
-    private int[] createGlowSprite(int size, int color) {
+    private static int[] createGlowSprite(int size, int color) {
         int[] pixels = new int[size * size];
         float center = size / 2.0f;
-        float glowRadius = center;
-        float coreRadius = coreSize / 2.0f;
+        float radius = center;
 
         int r = (color >> 16) & 0xFF;
         int g = (color >> 8) & 0xFF;
@@ -434,16 +427,13 @@ public class LineageRenderer extends AbstractFrameRenderer {
                 float dist = (float) Math.sqrt(dx * dx + dy * dy);
 
                 int alpha;
-                if (dist <= coreRadius) {
-                    // Semi-transparent core (softer than minimap's opaque 255)
-                    alpha = CORE_ALPHA;
-                } else if (dist <= glowRadius) {
-                    // Smooth quadratic falloff (softer than minimap's piecewise linear)
-                    float t = (dist - coreRadius) / (glowRadius - coreRadius);
-                    float a = GLOW_EDGE_ALPHA * (1.0f - t) * (1.0f - t);
-                    alpha = Math.max(0, (int) (a * 255));
-                } else {
+                if (dist >= radius) {
                     alpha = 0;
+                } else {
+                    // Smooth quartic bell: (1 - r²)² — no hard core/edge boundary
+                    float t = dist / radius;
+                    float falloff = 1.0f - t * t;
+                    alpha = (int) (PEAK_ALPHA * falloff * falloff);
                 }
 
                 pixels[y * size + x] = (alpha << 24) | (r << 16) | (g << 8) | b;
