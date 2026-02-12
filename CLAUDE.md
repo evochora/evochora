@@ -110,6 +110,9 @@ Evochora is an artificial life simulator for research into digital evolution. It
 - Multi-file changes: present plan and get explicit approval before writing code
 - Never silently rewrite working code - explain what and why first
 
+**Before taking decision with potentially high influence**
+- Stop and ask the the user for feedback regaring proposed decission
+
 ## Architectural Review
 
 For significant changes, an architecture review agent is available. Key principles enforced:
