@@ -30,7 +30,8 @@
 
 <!--<video src="https://github.com/user-attachments/assets/2dd2163a-6abe-4121-936d-eb46cc314859" loop></video>-->
 <!--<video src="https://github.com/user-attachments/assets/28c329bc-9554-4b10-8d65-049f00eeda86" loop></video>-->
-<video src="https://github.com/evochora/evochora/releases/download/latest/lineage.mp4" loop></video>
+<video src="https://github.com/evochora/evochora/releases/download/latest/lineage.mp4" controls width="100%"></video>
+[<video src="https://github.com/evochora/evochora/releases/download/latest/lineage.mp4" loop></video>](https://github.com/evochora/evochora/releases/download/untagged-25474e8c5990a1cff8c3/lineage.mp4)
 
 
 <br>
