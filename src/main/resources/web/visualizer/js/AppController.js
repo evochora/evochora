@@ -57,11 +57,9 @@ export class AppController {
         };
         this.programArtifactCache = new Map(); // Cache for program artifacts
         // Lineage-based color tracking (genome mode)
-        this._organismToGenome = new Map();   // String(organismId) → String(genomeHash)
-        this._genomeParent = new Map();       // String(genomeHash) → String(parentGenomeHash) or null
+        this._genomeParent = new Map();       // String(genomeHash) → String(parentGenomeHash) | null
         this._genomeColorCache = new Map();   // String(genomeHash) → int 0xRRGGBB
         this._genomeHslCache = new Map();     // String(genomeHash) → [h, s, l]
-        this._rootHueCounter = 0;             // Golden-ratio sequence counter
         
         // Config for renderer
         const defaultConfig = {
@@ -163,11 +161,9 @@ export class AppController {
             this.state.previousTick = null;
             this.state.previousOrganisms = null;
             this.state.previousOrganismDetails = null;
-            this._organismToGenome.clear();
             this._genomeParent.clear();
             this._genomeColorCache.clear();
             this._genomeHslCache.clear();
-            this._rootHueCounter = 0;
             this.minimapView?.organismOverlay?.clearSpriteCache();
             this.state.maxTick = null;
             this.state.organisms = [];
@@ -900,7 +896,7 @@ export class AppController {
             const organisms = organismResult.organisms;
             this.state.totalOrganismCount = organismResult.totalOrganismCount;
             loadingManager.update('Rendering organisms', 90);
-            this._registerOrganismLineage(organisms);
+            this._applyGenomeLineageTree(organismResult.genomeLineageTree);
             this.renderer.renderOrganisms(organisms);
             this.updateOrganismPanel(organisms, isForwardStep);
 
@@ -1057,38 +1053,18 @@ export class AppController {
     }
 
     /**
-     * Registers organism lineage from a tick's organism list.
-     * Builds organism→genome and genome→parentGenome mappings for lineage color derivation.
-     * Must be called before any color lookups for the tick's organisms.
-     * @param {Array} organisms - Array of organism objects with organismId, genomeHash, parentId.
+     * Applies the genome lineage tree from the backend API response.
+     * Replaces the genome→parentGenome map and clears derived color caches.
+     * @param {Object} tree - Map of genomeHash → parentGenomeHash (null for roots), from API response.
      * @private
      */
-    _registerOrganismLineage(organisms) {
-        if (!organisms) return;
-
-        // Pass 1: register all organism → genome mappings so parent lookups succeed
-        for (const org of organisms) {
-            if (!org || typeof org.organismId !== 'number') continue;
-            const genomeHash = org.genomeHash;
-            if (genomeHash == null || genomeHash === 0 || genomeHash === '0') continue;
-            this._organismToGenome.set(String(org.organismId), String(genomeHash));
-        }
-
-        // Pass 2: resolve parent genome hashes for newly seen genomes
-        for (const org of organisms) {
-            if (!org || typeof org.organismId !== 'number') continue;
-            const genomeHash = org.genomeHash;
-            if (genomeHash == null || genomeHash === 0 || genomeHash === '0') continue;
-            const genomeKey = String(genomeHash);
-
-            if (!this._genomeParent.has(genomeKey)) {
-                if (org.parentId != null) {
-                    const parentGenome = this._organismToGenome.get(String(org.parentId));
-                    this._genomeParent.set(genomeKey, parentGenome || null);
-                } else {
-                    this._genomeParent.set(genomeKey, null);
-                }
-            }
+    _applyGenomeLineageTree(tree) {
+        if (!tree) return;
+        this._genomeParent.clear();
+        this._genomeColorCache.clear();
+        this._genomeHslCache.clear();
+        for (const [genomeHash, parentGenomeHash] of Object.entries(tree)) {
+            this._genomeParent.set(String(genomeHash), parentGenomeHash ? String(parentGenomeHash) : null);
         }
     }
 
@@ -1132,7 +1108,7 @@ export class AppController {
 
         const parentGenomeKey = this._genomeParent.get(genomeKey);
 
-        if (parentGenomeKey && parentGenomeKey !== '0') {
+        if (parentGenomeKey && parentGenomeKey !== '0' && parentGenomeKey !== genomeKey) {
             // Ensure parent color is computed first (recursive)
             if (!this._genomeColorCache.has(parentGenomeKey)) {
                 this._computeLineageColor(parentGenomeKey);
@@ -1156,9 +1132,8 @@ export class AppController {
             }
         }
 
-        // Root genome: golden-ratio hue for well-separated starting colors
-        const h = (120.0 + this._rootHueCounter * 137.508) % 360;
-        this._rootHueCounter++;
+        // Root genome: deterministic hue from genome hash (golden-ratio spread)
+        const h = (120.0 + AppController._hashStringToInt(genomeKey) * 137.508) % 360;
         this._genomeHslCache.set(genomeKey, [h, 0.80, 0.50]);
         this._genomeColorCache.set(genomeKey, AppController._hslToRgb(h, 0.80, 0.50));
     }

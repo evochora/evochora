@@ -14,6 +14,8 @@ import org.evochora.datapipeline.api.resources.database.OrganismNotFoundExceptio
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 import org.evochora.datapipeline.api.resources.database.dto.TickRange;
+
+import java.util.Map;
 import org.evochora.node.processes.http.api.pipeline.dto.ErrorResponseDto;
 import org.evochora.node.processes.http.api.visualizer.dto.OrganismsResponseDto;
 import org.slf4j.Logger;
@@ -132,8 +134,13 @@ public class OrganismController extends VisualizerBaseController {
 
             final List<OrganismTickSummary> organisms = reader.readOrganismsAtTick(tickNumber);
             final int totalOrganismCount = reader.readTotalOrganismsCreated(tickNumber);
+            final Map<Long, Long> genomeTree = reader.readGenomeLineageTree(tickNumber);
 
-            ctx.status(HttpStatus.OK).json(new OrganismsResponseDto(organisms, totalOrganismCount));
+            // Convert Long keys/values to String to preserve 64-bit precision in JSON
+            final Map<String, String> stringTree = new java.util.LinkedHashMap<>(genomeTree.size());
+            genomeTree.forEach((k, v) -> stringTree.put(String.valueOf(k), v != null ? String.valueOf(v) : null));
+
+            ctx.status(HttpStatus.OK).json(new OrganismsResponseDto(organisms, totalOrganismCount, stringTree));
         } catch (RuntimeException e) {
             // Check for schema / connection issues analogous to Environment/SimulationController
             if (e.getCause() instanceof SQLException) {

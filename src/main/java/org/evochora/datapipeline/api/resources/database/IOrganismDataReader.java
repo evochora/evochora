@@ -5,6 +5,7 @@ import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 
 import java.sql.SQLException;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Capability interface for reading indexed organism data.
@@ -40,6 +41,18 @@ public interface IOrganismDataReader {
      * @throws SQLException if database read fails.
      */
     int readTotalOrganismsCreated(long tickNumber) throws SQLException;
+
+    /**
+     * Reads the genome lineage tree: a mapping of each genome hash to its parent genome hash.
+     * <p>
+     * Returns all distinct genome→parentGenome pairs for organisms born up to the given tick.
+     * Root genomes (no parent or parent has genomeHash 0) map to {@code null}.
+     *
+     * @param tickNumber Upper bound for organism birth tick (inclusive).
+     * @return Map of genomeHash → parentGenomeHash (null for roots). Never null.
+     * @throws SQLException if database read fails.
+     */
+    Map<Long, Long> readGenomeLineageTree(long tickNumber) throws SQLException;
 }
 
 

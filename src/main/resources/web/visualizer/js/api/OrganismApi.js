@@ -46,7 +46,8 @@ export class OrganismApi {
         // API response shape: { organisms: [...], totalOrganismCount: N }
         return {
             organisms: Array.isArray(data.organisms) ? data.organisms : [],
-            totalOrganismCount: data.totalOrganismCount || 0
+            totalOrganismCount: data.totalOrganismCount || 0,
+            genomeLineageTree: data.genomeLineageTree || {}
         };
     }
 
