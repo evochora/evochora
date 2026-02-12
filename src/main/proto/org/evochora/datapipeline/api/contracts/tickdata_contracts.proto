@@ -254,6 +254,25 @@ message OrganismState {
   // Source: Organism.getDeathTick()
   // Only present for dead organisms included in their final serialization
   optional int64 death_tick = 32;
+
+  // ===== Next Instruction Preview Data =====
+  // Captured by peeking at the molecule at the organism's current IP after execution.
+  // Allows the visualizer to show the next instruction regardless of sampling_interval.
+  // The IP and DV for the next instruction are the organism's current ip/dv fields (3/5).
+
+  // Opcode ID of the next instruction (at current IP after execution)
+  // Source: VirtualMachine.peekNextInstruction()
+  // Only present if the molecule at IP is a valid CODE instruction
+  optional int32 next_instruction_opcode_id = 33;
+
+  // Raw argument values from the environment for the next instruction
+  // Source: VirtualMachine.peekNextInstruction()
+  repeated int32 next_instruction_raw_arguments = 34;
+
+  // Register values relevant to the next instruction (for annotation display)
+  // Maps register ID to RegisterValue (only for registers used as arguments)
+  // Source: VirtualMachine.peekNextInstruction()
+  map<int32, RegisterValue> next_instruction_register_values_before = 35;
 }
 
 // Aggregated runtime state for organism indexing.

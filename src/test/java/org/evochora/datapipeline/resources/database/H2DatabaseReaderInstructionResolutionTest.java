@@ -169,18 +169,18 @@ class H2DatabaseReaderInstructionResolutionTest {
     }
 
     @Test
-    void resolveNextInstruction_whenSamplingIntervalIsOne() throws Exception {
+    void resolveNextInstruction_fromProtobufFields() throws Exception {
         setupDatabase();
-        
+
         int setiOpcode = Instruction.getInstructionIdByName("SETI") | org.evochora.runtime.Config.TYPE_CODE;
         int regArg = new Molecule(org.evochora.runtime.Config.TYPE_DATA, 0).toInt();
-        int immArg1 = new Molecule(org.evochora.runtime.Config.TYPE_DATA, 10).toInt();
-        int immArg2 = new Molecule(org.evochora.runtime.Config.TYPE_DATA, 20).toInt();
+        int immArgLast = new Molecule(org.evochora.runtime.Config.TYPE_DATA, 10).toInt();
+        int immArgNext = new Molecule(org.evochora.runtime.Config.TYPE_DATA, 20).toInt();
 
-        // Write tick 1
-        writeOrganismWithInstruction(1L, 1, setiOpcode, java.util.List.of(regArg, immArg1), 5);
-        // Write tick 2
-        writeOrganismWithInstruction(2L, 1, setiOpcode, java.util.List.of(regArg, immArg2), 5);
+        // Write tick with both last and next instruction protobuf fields
+        writeOrganismWithNextInstruction(1L, 1, setiOpcode,
+                java.util.List.of(regArg, immArgLast), 5,
+                setiOpcode, java.util.List.of(regArg, immArgNext));
 
         try (IDatabaseReader reader = provider.createReader(runId)) {
             OrganismTickDetails details = reader.readOrganismDetails(1L, 1);
@@ -190,24 +190,28 @@ class H2DatabaseReaderInstructionResolutionTest {
             assertThat(details.state.instructions.next).isNotNull();
             assertThat(details.state.instructions.next.opcodeName).isEqualTo("SETI");
             assertThat(details.state.instructions.next.arguments.get(1).value).isEqualTo(20);
+            // Next instruction has no thermodynamic data (zero, not displayed by frontend)
+            assertThat(details.state.instructions.next.energyCost).isZero();
+            assertThat(details.state.instructions.next.entropyDelta).isZero();
         }
     }
 
     @Test
-    void resolveNextInstruction_whenSamplingIntervalNotOne_returnsNull() throws Exception {
+    void resolveNextInstruction_whenNoProtobufFields_returnsNull() throws Exception {
         setupDatabaseWithSamplingInterval(2);
-        
+
         int setiOpcode = Instruction.getInstructionIdByName("SETI") | org.evochora.runtime.Config.TYPE_CODE;
         int regArg = new Molecule(org.evochora.runtime.Config.TYPE_DATA, 0).toInt();
         int immArg = new Molecule(org.evochora.runtime.Config.TYPE_DATA, 10).toInt();
 
+        // Write tick without next instruction protobuf fields
         writeOrganismWithInstruction(1L, 1, setiOpcode, java.util.List.of(regArg, immArg), 5);
 
         try (IDatabaseReader reader = provider.createReader(runId)) {
             OrganismTickDetails details = reader.readOrganismDetails(1L, 1);
 
             assertThat(details.state.instructions.last).isNotNull();
-            assertThat(details.state.instructions.next).isNull(); // sampling_interval != 1
+            assertThat(details.state.instructions.next).isNull();
         }
     }
 
@@ -247,6 +251,50 @@ class H2DatabaseReaderInstructionResolutionTest {
     private void writeOrganismWithInstruction(long tickNumber, int organismId, int opcodeId,
                                              java.util.List<Integer> rawArguments, int energyCost) throws Exception {
         writeOrganismWithInstructionAndLocationRegisters(tickNumber, organismId, opcodeId, rawArguments, energyCost, null);
+    }
+
+    private void writeOrganismWithNextInstruction(long tickNumber, int organismId, int lastOpcodeId,
+                                                    java.util.List<Integer> lastRawArgs, int energyCost,
+                                                    int nextOpcodeId, java.util.List<Integer> nextRawArgs) throws Exception {
+        Object connObj = database.acquireDedicatedConnection();
+        try (Connection conn = (Connection) connObj) {
+            org.evochora.datapipeline.utils.H2SchemaUtil.setSchema(conn, runId);
+
+            OrganismState.Builder orgBuilder = OrganismState.newBuilder()
+                    .setOrganismId(organismId)
+                    .setBirthTick(0)
+                    .setProgramId("prog-" + organismId)
+                    .setInitialPosition(Vector.newBuilder().addComponents(0).addComponents(0).build())
+                    .setEnergy(100)
+                    .setIp(Vector.newBuilder().addComponents(1).addComponents(2).build())
+                    .setDv(Vector.newBuilder().addComponents(0).addComponents(1).build())
+                    .addDataPointers(Vector.newBuilder().addComponents(5).addComponents(5).build())
+                    .setActiveDpIndex(0)
+                    .addDataRegisters(RegisterValue.newBuilder().setScalar(42).build())
+                    .setInstructionOpcodeId(lastOpcodeId)
+                    .setInstructionEnergyCost(energyCost)
+                    .setIpBeforeFetch(Vector.newBuilder().addComponents(1).addComponents(2).build())
+                    .setDvBeforeFetch(Vector.newBuilder().addComponents(0).addComponents(1).build());
+
+            for (Integer arg : lastRawArgs) {
+                orgBuilder.addInstructionRawArguments(arg);
+            }
+
+            // Next instruction preview fields
+            orgBuilder.setNextInstructionOpcodeId(nextOpcodeId);
+            for (Integer arg : nextRawArgs) {
+                orgBuilder.addNextInstructionRawArguments(arg);
+            }
+
+            TickData tick = TickData.newBuilder()
+                    .setTickNumber(tickNumber)
+                    .setSimulationRunId(runId)
+                    .addOrganisms(orgBuilder.build())
+                    .build();
+
+            database.doWriteOrganismStates(conn, java.util.List.of(tick));
+            conn.commit();
+        }
     }
 
     private void writeOrganismWithInstructionAndLocationRegisters(long tickNumber, int organismId, int opcodeId,

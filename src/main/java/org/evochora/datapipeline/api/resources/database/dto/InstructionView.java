@@ -33,12 +33,14 @@ public final class InstructionView {
     /**
      * Total energy cost for executing this instruction.
      * Positive values = energy consumption, negative values = energy gain.
+     * Zero for next instruction previews (not yet executed).
      */
     public final int energyCost;
 
     /**
      * Total entropy delta for executing this instruction.
      * Positive values = entropy generation, negative values = entropy dissipation.
+     * Zero for next instruction previews (not yet executed).
      */
     public final int entropyDelta;
 
@@ -70,8 +72,8 @@ public final class InstructionView {
      * @param opcodeName    Human-readable opcode name (e.g., "SETI", "ADDS")
      * @param arguments     Resolved and formatted arguments
      * @param argumentTypes Argument types as strings (e.g., "REGISTER", "IMMEDIATE")
-     * @param energyCost    Total energy cost for executing this instruction
-     * @param entropyDelta  Total entropy delta for executing this instruction
+     * @param energyCost    Total energy cost for executing this instruction (0 for next instruction previews)
+     * @param entropyDelta  Total entropy delta for executing this instruction (0 for next instruction previews)
      * @param ipBeforeFetch Instruction pointer position before instruction fetch
      * @param dvBeforeFetch Direction vector before instruction fetch
      * @param failed        Whether the instruction execution failed

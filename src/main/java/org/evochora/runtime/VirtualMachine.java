@@ -92,65 +92,9 @@ public class VirtualMachine {
         try {
             // Logic moved from Organism.processTickAction() here
             java.util.List<Integer> rawArgs = organism.getRawArgumentsFromEnvironment(instruction.getLength(this.environment), this.environment);
-            
+
             // Collect register values BEFORE execution (for annotation display)
-            Map<Integer, Object> registerValuesBefore = new HashMap<>();
-            Optional<InstructionSignature> signatureOpt = Instruction.getSignatureById(instruction.getFullOpcodeId());
-            if (signatureOpt.isPresent()) {
-                InstructionSignature signature = signatureOpt.get();
-                java.util.List<InstructionArgumentType> argTypes = signature.argumentTypes();
-                int argIndex = 0;
-                
-                for (InstructionArgumentType argType : argTypes) {
-                    if (argType == InstructionArgumentType.REGISTER) {
-                        if (argIndex < rawArgs.size()) {
-                            int rawArg = rawArgs.get(argIndex);
-                            Molecule molecule = Molecule.fromInt(rawArg);
-                            int registerId = molecule.toScalarValue();
-
-                            // Read register value BEFORE execution (DR/PR/FPR)
-                            Object registerValue = organism.readOperand(registerId);
-                            if (registerValue != null) {
-                                registerValuesBefore.put(registerId, registerValue);
-                            }
-                            // null means invalid register - don't store, frontend shows register name only
-
-                            argIndex++;
-                        }
-                    } else if (argType == InstructionArgumentType.LOCATION_REGISTER) {
-                        if (argIndex < rawArgs.size()) {
-                            int rawArg = rawArgs.get(argIndex);
-                            Molecule molecule = Molecule.fromInt(rawArg);
-                            int registerId = molecule.toScalarValue();
-                            
-                            // Read location register value BEFORE execution (LR - always int[])
-                            // Safely check bounds to avoid failing the instruction during debug data collection
-                            // The instruction's own execute() method will handle validation and specific error messages
-                            if (registerId >= 0 && registerId < Config.NUM_LOCATION_REGISTERS) {
-                                int[] lrValue = organism.getLr(registerId);
-                                if (lrValue != null) {
-                                    registerValuesBefore.put(registerId, lrValue);
-                                } else {
-                                    // LR is null - store empty vector with correct dimensions
-                                    int dims = this.environment.getShape().length;
-                                    registerValuesBefore.put(registerId, new int[dims]);
-                                }
-                            }
-                            
-                            argIndex++;
-                        }
-                    } else if (argType == InstructionArgumentType.VECTOR || 
-                               argType == InstructionArgumentType.LABEL) {
-                        // VECTOR/LABEL are encoded as multiple arguments in rawArgs (one per dimension)
-                        // Skip over all dimension slots to maintain correct argIndex for subsequent arguments
-                        int dims = this.environment.getShape().length;
-                        argIndex += dims;
-                    } else {
-                        // IMMEDIATE, LITERAL - no register arguments
-                        argIndex++;
-                    }
-                }
-            }
+            Map<Integer, Object> registerValuesBefore = collectRegisterValues(organism, instruction.getFullOpcodeId(), rawArgs);
             
             // Track energy and entropy before execution to calculate total changes
             int energyBefore = organism.getEr();
@@ -255,5 +199,113 @@ public class VirtualMachine {
                 }
             }
         }
+    }
+
+    /**
+     * Peeks at the instruction at the organism's current IP without executing it.
+     * Returns the opcode, raw arguments, and current register values that would be
+     * the "before" state for that instruction's execution.
+     *
+     * @param organism The organism whose next instruction to peek at.
+     * @return The instruction data, or {@code null} if the molecule at IP is not a valid instruction.
+     */
+    public Organism.InstructionExecutionData peekNextInstruction(Organism organism) {
+        if (organism.isDead()) {
+            return null;
+        }
+
+        Molecule molecule = this.environment.getMolecule(organism.getIp());
+        if (molecule.isEmpty()) {
+            return null;
+        }
+        if (Config.STRICT_TYPING && molecule.type() != Config.TYPE_CODE) {
+            return null;
+        }
+
+        int opcodeId = molecule.value();
+        if (Instruction.getPlannerById(opcodeId) == null) {
+            return null;
+        }
+
+        int length = Instruction.getInstructionLengthById(opcodeId, this.environment);
+        java.util.List<Integer> rawArgs = organism.getRawArgumentsFromEnvironment(
+                length, this.environment, organism.getIp(), organism.getDv());
+        Map<Integer, Object> registerValues = collectRegisterValues(organism, opcodeId, rawArgs);
+
+        return new Organism.InstructionExecutionData(opcodeId, rawArgs, 0, 0, registerValues);
+    }
+
+    /**
+     * Collects register values for the given instruction's register arguments.
+     * Used both by {@link #execute(Instruction)} (to capture values before execution)
+     * and by {@link #peekNextInstruction(Organism)} (to capture current values as preview).
+     *
+     * @param organism The organism whose registers to read.
+     * @param opcodeId The full opcode ID of the instruction.
+     * @param rawArgs  The raw argument values from the environment.
+     * @return A map from register ID to register value for all register arguments.
+     */
+    private Map<Integer, Object> collectRegisterValues(Organism organism, int opcodeId, java.util.List<Integer> rawArgs) {
+        Map<Integer, Object> registerValues = new HashMap<>();
+        Optional<InstructionSignature> signatureOpt = Instruction.getSignatureById(opcodeId);
+        if (signatureOpt.isEmpty()) {
+            return registerValues;
+        }
+
+        InstructionSignature signature = signatureOpt.get();
+        java.util.List<InstructionArgumentType> argTypes = signature.argumentTypes();
+        int argIndex = 0;
+
+        for (InstructionArgumentType argType : argTypes) {
+            if (argType == InstructionArgumentType.REGISTER) {
+                if (argIndex < rawArgs.size()) {
+                    int rawArg = rawArgs.get(argIndex);
+                    Molecule molecule = Molecule.fromInt(rawArg);
+                    int registerId = molecule.toScalarValue();
+
+                    // Read register value (DR/PR/FPR)
+                    Object registerValue = organism.readOperand(registerId);
+                    if (registerValue != null) {
+                        registerValues.put(registerId, registerValue);
+                    }
+                    // null means invalid register - don't store, frontend shows register name only
+
+                    argIndex++;
+                }
+            } else if (argType == InstructionArgumentType.LOCATION_REGISTER) {
+                if (argIndex < rawArgs.size()) {
+                    int rawArg = rawArgs.get(argIndex);
+                    Molecule molecule = Molecule.fromInt(rawArg);
+                    int registerId = molecule.toScalarValue();
+
+                    // Read location register value (LR - always int[])
+                    // Safely check bounds to avoid failing the instruction during debug data collection
+                    // The instruction's own execute() method will handle validation and specific error messages
+                    if (registerId >= 0 && registerId < Config.NUM_LOCATION_REGISTERS) {
+                        int[] lrValue = organism.getLr(registerId);
+                        if (lrValue != null) {
+                            registerValues.put(registerId, lrValue);
+                        } else {
+                            // LR is null - store empty vector with correct dimensions
+                            int dims = this.environment.getShape().length;
+                            registerValues.put(registerId, new int[dims]);
+                        }
+                    }
+
+                    argIndex++;
+                }
+            } else if (argType == InstructionArgumentType.VECTOR ||
+                       argType == InstructionArgumentType.LABEL) {
+                // VECTOR/LABEL are encoded as multiple arguments in rawArgs (one per dimension)
+                // Skip over all dimension slots to maintain correct argIndex for subsequent arguments
+                int dims = this.environment.getShape().length;
+                argIndex += dims;
+            } else {
+                // IMMEDIATE, LITERAL - no register arguments
+                argIndex++;
+            }
+        }
+
+        return registerValues;
     }
 }

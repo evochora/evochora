@@ -725,6 +725,22 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             }
         }
 
+        // Next instruction preview (peek at molecule at current IP)
+        Organism.InstructionExecutionData nextData = simulation.getVirtualMachine().peekNextInstruction(o);
+        if (nextData != null) {
+            organismStateBuilder.setNextInstructionOpcodeId(nextData.opcodeId());
+            for (Integer arg : nextData.rawArguments()) {
+                organismStateBuilder.addNextInstructionRawArguments(arg);
+            }
+            if (nextData.registerValuesBefore() != null && !nextData.registerValuesBefore().isEmpty()) {
+                for (java.util.Map.Entry<Integer, Object> entry : nextData.registerValuesBefore().entrySet()) {
+                    org.evochora.datapipeline.api.contracts.RegisterValue protoValue =
+                        convertRegisterValueReuse(entry.getValue(), registerValueBuilder, vectorBuilder);
+                    organismStateBuilder.putNextInstructionRegisterValuesBefore(entry.getKey(), protoValue);
+                }
+            }
+        }
+
         // IP and DV before fetch
         organismStateBuilder.setIpBeforeFetch(convertVectorReuse(o.getIpBeforeFetch(), vectorBuilder));
         organismStateBuilder.setDvBeforeFetch(convertVectorReuse(o.getDvBeforeFetch(), vectorBuilder));
