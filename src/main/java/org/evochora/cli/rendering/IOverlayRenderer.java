@@ -36,4 +36,19 @@ public interface IOverlayRenderer {
      * @param delta The delta tick data.
      */
     void render(BufferedImage frame, TickDelta delta);
+
+    /**
+     * Initializes this overlay instance from the original instance.
+     * <p>
+     * Called by {@link AbstractFrameRenderer#createThreadInstance()} after creating
+     * a fresh overlay instance via reflection. Stateful overlays can override this
+     * to share accumulated data structures with the original instance.
+     * <p>
+     * Default implementation does nothing (suitable for stateless overlays).
+     *
+     * @param original The original overlay instance to initialize from.
+     */
+    default void initFromOriginal(IOverlayRenderer original) {
+        // Default: do nothing — stateless overlays need no initialization
+    }
 }
