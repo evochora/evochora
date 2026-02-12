@@ -23,7 +23,7 @@ import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 import org.evochora.datapipeline.resources.database.h2.IH2EnvStorageStrategy;
 import org.evochora.datapipeline.resources.database.h2.IH2OrgStorageStrategy;
-import org.evochora.datapipeline.utils.MetadataConfigHelper;
+
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -193,33 +193,10 @@ public class H2DatabaseReader implements IDatabaseReader {
                     "No organism state for id " + organismId + " at tick " + tickNumber);
         }
         
-        // Convert OrganismState to OrganismRuntimeView using the converter
+        // Convert OrganismState to OrganismRuntimeView (includes both last and next instruction from protobuf)
         OrganismRuntimeView state = convertOrganismStateToRuntimeView(orgState, envDimensions);
 
-        // Resolve "next" instruction from tick+1 if sampling_interval=1
-        InstructionView nextInstruction = null;
-        int samplingInterval = MetadataConfigHelper.getSamplingInterval(metadata);
-        if (samplingInterval == 1) {
-            try {
-                OrganismRuntimeView nextState = readOrganismStateForTick(tickNumber + 1, organismId, envDimensions);
-                if (nextState != null && nextState.instructions != null && nextState.instructions.last != null) {
-                    nextInstruction = nextState.instructions.last;
-                }
-            } catch (OrganismNotFoundException e) {
-                // tick+1 doesn't exist - nextInstruction remains null
-            }
-        }
-
-        // Update state with resolved next instruction
-        InstructionsView instructions = new InstructionsView(state.instructions.last, nextInstruction);
-        OrganismRuntimeView stateWithInstructions = new OrganismRuntimeView(
-                state.energy, state.ip, state.dv, state.dataPointers, state.activeDpIndex,
-                state.dataRegisters, state.procedureRegisters, state.formalParamRegisters,
-                state.locationRegisters, state.dataStack, state.locationStack, state.callStack,
-                state.instructionFailed, state.failureReason, state.failureCallStack,
-                instructions, state.entropyRegister, state.moleculeMarkerRegister);
-
-        return new OrganismTickDetails(organismId, tickNumber, staticInfo, stateWithInstructions);
+        return new OrganismTickDetails(organismId, tickNumber, staticInfo, state);
     }
     
     /**
@@ -318,8 +295,30 @@ public class H2DatabaseReader implements IDatabaseReader {
                     dataRegs, procRegs, fprRegs, locationRegs, envDimensions, registerValuesBefore
             );
         }
-        InstructionsView instructions = new InstructionsView(lastInstruction, null);
-        
+
+        // Resolve next instruction from protobuf preview data
+        InstructionView nextInstruction = null;
+        if (orgState.hasNextInstructionOpcodeId() && envDimensions != null) {
+            java.util.Map<Integer, org.evochora.datapipeline.api.resources.database.dto.RegisterValueView> nextRegValues =
+                    new java.util.HashMap<>();
+            for (var entry : orgState.getNextInstructionRegisterValuesBeforeMap().entrySet()) {
+                nextRegValues.put(entry.getKey(), OrganismStateConverter.convertRegisterValue(entry.getValue()));
+            }
+
+            nextInstruction = OrganismStateConverter.resolveInstructionView(
+                    orgState.getNextInstructionOpcodeId(),
+                    orgState.getNextInstructionRawArgumentsList(),
+                    0,
+                    0,
+                    ip,
+                    dv,
+                    false,
+                    null,
+                    dataRegs, procRegs, fprRegs, locationRegs, envDimensions, nextRegValues
+            );
+        }
+        InstructionsView instructions = new InstructionsView(lastInstruction, nextInstruction);
+
         return new OrganismRuntimeView(
                 energy, ip, dv, dataPointers, activeDpIndex,
                 dataRegs, procRegs, fprRegs, locationRegs,
@@ -330,30 +329,6 @@ public class H2DatabaseReader implements IDatabaseReader {
                 orgState.getEntropyRegister(),
                 orgState.getMoleculeMarkerRegister()
         );
-    }
-
-    /**
-     * Reads organism state for a specific tick (helper for reading tick+1).
-     *
-     * @param tickNumber  Tick number to read
-     * @param organismId  Organism ID
-     * @param envDimensions Environment dimensions for instruction resolution
-     * @return OrganismRuntimeView or null if not found
-     * @throws SQLException if database error occurs
-     * @throws OrganismNotFoundException if organism state not found
-     */
-    private OrganismRuntimeView readOrganismStateForTick(long tickNumber, int organismId, int[] envDimensions)
-            throws SQLException, OrganismNotFoundException {
-        // Read organism state from strategy (BLOB-based for SingleBlobOrgStrategy)
-        org.evochora.datapipeline.api.contracts.OrganismState orgState = 
-                orgStrategy.readSingleOrganismState(connection, tickNumber, organismId);
-        
-        if (orgState == null) {
-            throw new OrganismNotFoundException(
-                    "No organism state for id " + organismId + " at tick " + tickNumber);
-        }
-        
-        return convertOrganismStateToRuntimeView(orgState, envDimensions);
     }
 
     private OrganismStaticInfo readOrganismStaticInfo(int organismId) throws SQLException {

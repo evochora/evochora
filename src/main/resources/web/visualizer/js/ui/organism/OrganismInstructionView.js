@@ -116,30 +116,28 @@ export class OrganismInstructionView {
         // Format arguments
         const argsStr = this.formatArguments(instruction.arguments);
         
-        // Format thermodynamics: ER:-1/SR:+1 format
-        const formatThermodynamics = (energyCost, entropyDelta) => {
+        // Format thermodynamics: only for last (executed) instruction — next instruction has no cost data
+        let thermoHtml = '';
+        if (isLast) {
+            const energyCost = instruction.energyCost || 0;
+            const entropyDelta = instruction.entropyDelta || 0;
             const erStr = energyCost > 0 ? `-${energyCost}` : energyCost < 0 ? `+${Math.abs(energyCost)}` : '0';
             const srStr = entropyDelta > 0 ? `+${entropyDelta}` : entropyDelta < 0 ? `${entropyDelta}` : '0';
-            return `ER:${erStr}/SR:${srStr}`;
-        };
-        
-        const thermoStr = formatThermodynamics(
-            instruction.energyCost || 0,
-            instruction.entropyDelta !== undefined ? instruction.entropyDelta : 0
-        );
-        
+            thermoHtml = `<span class="instruction-energy">ER:${erStr}/SR:${srStr}</span>`;
+        }
+
         // Build instruction line
         const prefix = isLast ? 'Last: ' : 'Next: ';
         let instructionPart = `${prefix}<span class="instruction-position">${posStrPadded}</span> ${instruction.opcodeName}`;
         if (argsStr) {
             instructionPart += ` ${argsStr}`;
         }
-        
+
         const titleAttr = instruction.failed && instruction.failureReason ? ` title="${this.escapeHtml(instruction.failureReason)}"` : '';
         const failedClass = instruction.failed ? ' failed-instruction' : '';
-        
+
         let html = `<div class="instruction-line${failedClass}"${titleAttr}><span class="instruction-content">${instructionPart}</span>`;
-        html += `<span class="instruction-energy">${thermoStr}</span>`;
+        html += thermoHtml;
         html += `</div>`;
         return html;
     }

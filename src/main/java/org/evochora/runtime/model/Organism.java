@@ -517,16 +517,31 @@ public class Organism {
 
     /**
      * Retrieves the raw integer values of an instruction's arguments from the environment.
+     * Uses the organism's {@code ipBeforeFetch} and {@code dvBeforeFetch} as starting position and direction.
      *
      * @param instructionLength The total length of the instruction (opcode + arguments).
      * @param environment The simulation environment.
      * @return A list of raw integer values representing the arguments.
      */
     public List<Integer> getRawArgumentsFromEnvironment(int instructionLength, Environment environment) {
+        return getRawArgumentsFromEnvironment(instructionLength, environment, this.ipBeforeFetch, this.dvBeforeFetch);
+    }
+
+    /**
+     * Retrieves the raw integer values of an instruction's arguments from the environment,
+     * starting from an explicit position and advancing along an explicit direction vector.
+     *
+     * @param instructionLength The total length of the instruction (opcode + arguments).
+     * @param environment The simulation environment.
+     * @param fromIp The starting position (opcode location).
+     * @param withDv The direction vector for advancing to argument slots.
+     * @return A list of raw integer values representing the arguments.
+     */
+    public List<Integer> getRawArgumentsFromEnvironment(int instructionLength, Environment environment, int[] fromIp, int[] withDv) {
         List<Integer> rawArgs = new ArrayList<>();
-        int[] tempIp = Arrays.copyOf(this.ipBeforeFetch, this.ipBeforeFetch.length);
+        int[] tempIp = Arrays.copyOf(fromIp, fromIp.length);
         for (int i = 0; i < instructionLength - 1; i++) {
-            tempIp = getNextInstructionPosition(tempIp, this.dvBeforeFetch, environment);
+            tempIp = getNextInstructionPosition(tempIp, withDv, environment);
             rawArgs.add(environment.getMolecule(tempIp).toInt());
         }
         return rawArgs;
