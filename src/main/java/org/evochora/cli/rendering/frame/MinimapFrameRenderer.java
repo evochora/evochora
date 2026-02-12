@@ -9,12 +9,10 @@ import java.util.List;
 import java.util.Map;
 
 import org.evochora.cli.rendering.AbstractFrameRenderer;
-import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.contracts.Vector;
-import org.evochora.runtime.Config;
 import org.evochora.runtime.model.EnvironmentProperties;
 
 import picocli.CommandLine.Command;
@@ -30,8 +28,7 @@ import picocli.CommandLine.Option;
  *   <li>Density-based glow sizing</li>
  * </ul>
  * <p>
- * <strong>Performance:</strong> Uses generation numbers for O(1) state reset instead of
- * O(worldSize) Arrays.fill. Aggregation counts are built incrementally during cell processing.
+ * Cell background rendering is delegated to {@link EnvironmentBackgroundLayer}.
  * <p>
  * <strong>CLI Usage:</strong>
  * <pre>
@@ -53,31 +50,6 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
             description = "Organism clustering grid size in world cells (default: ${DEFAULT-VALUE})",
             defaultValue = "1")
     private int clusterGrid;
-
-    // Cell type constants (indices into CELL_COLORS)
-    private static final int TYPE_CODE = 0;
-    private static final int TYPE_DATA = 1;
-    private static final int TYPE_ENERGY = 2;
-    private static final int TYPE_STRUCTURE = 3;
-    private static final int TYPE_LABEL = 4;
-    private static final int TYPE_LABELREF = 5;
-    private static final int TYPE_REGISTER = 6;
-    private static final int TYPE_EMPTY = 7;
-
-    // Number of non-empty types for aggregation (CODE, DATA, ENERGY, STRUCTURE, LABEL, LABELREF, REGISTER)
-    private static final int NUM_NON_EMPTY_TYPES = 7;
-
-    // Colors matching web minimap (RGB without alpha for TYPE_INT_RGB)
-    private static final int[] CELL_COLORS = {
-        0x3c5078,  // CODE - blue-gray
-        0x32323c,  // DATA - dark gray
-        0xffe664,  // ENERGY - yellow
-        0xff7878,  // STRUCTURE - red/pink
-        0xa0a0a8,  // LABEL - light gray
-        0xa0a0a8,  // LABELREF - same as LABEL (distinguished by text color in detailed view)
-        0x506080,  // REGISTER - medium blue-gray
-        0x1e1e28   // EMPTY - dark background
-    };
 
     // Glow configuration (matching web minimap)
     // Sprite sizes for density levels (scaled by output resolution)
@@ -115,14 +87,8 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
     private int[] glowSizes;
     private int coreSize;
 
-    // Persistent cell state using generation numbers (O(1) reset instead of O(worldSize) fill)
-    private int[] cellTypes;        // [flatIndex] = type (valid only if generation matches)
-    private int[] cellGenerations;  // [flatIndex] = generation when cell was set
-    private int currentGeneration;  // Incremented on snapshot, invalidates all old values
-
-    // Aggregation counts using generation numbers (O(1) reset instead of O(outputSize) fill)
-    private int[] aggregationCounts;  // [pixel * NUM_NON_EMPTY_TYPES + type] = count
-    private int[] pixelGenerations;   // [pixel] = generation when counts were initialized
+    // Environment background layer (cell aggregation + rendering)
+    private EnvironmentBackgroundLayer background;
 
     // Lazy organism access (only deserialize when rendering, not when applying state)
     private TickData lastSnapshot;
@@ -168,15 +134,10 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
         this.coreSize = Math.max(1, (int) (BASE_CORE_SIZE * glowScale));
         this.glowSpriteCache.clear();
 
-        // Persistent state arrays
-        int worldSize = worldWidth * worldHeight;
-        this.cellTypes = new int[worldSize];
-        this.cellGenerations = new int[worldSize];
-        this.currentGeneration = 0;
+        // Environment background
+        this.background = new EnvironmentBackgroundLayer(worldWidth, worldHeight, outputWidth, outputHeight);
 
         int outputSize = outputWidth * outputHeight;
-        this.aggregationCounts = new int[outputSize * NUM_NON_EMPTY_TYPES];
-        this.pixelGenerations = new int[outputSize];
         this.glowDensity = new int[outputSize];
 
         this.lastSnapshot = null;
@@ -203,25 +164,7 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
     @Override
     public void applySnapshotState(TickData snapshot) {
         ensureInitialized();
-
-        // O(1) reset: increment generation invalidates all old cell values
-        currentGeneration++;
-
-        // Process all cells in snapshot
-        CellDataColumns columns = snapshot.getCellColumns();
-        int cellCount = columns.getFlatIndicesCount();
-        for (int i = 0; i < cellCount; i++) {
-            int flatIndex = columns.getFlatIndices(i);
-            int typeIndex = getCellTypeIndex(columns.getMoleculeData(i));
-
-            cellTypes[flatIndex] = typeIndex;
-            cellGenerations[flatIndex] = currentGeneration;
-
-            if (typeIndex != TYPE_EMPTY) {
-                updateAggregationForNewCell(flatIndex, typeIndex);
-            }
-        }
-
+        background.processSnapshotCells(snapshot.getCellColumns());
         this.lastSnapshot = snapshot;
         this.lastDelta = null;
     }
@@ -229,153 +172,21 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
     @Override
     public void applyDeltaState(TickDelta delta) {
         ensureInitialized();
-
-        // Process only changed cells
-        CellDataColumns changed = delta.getChangedCells();
-        int changedCount = changed.getFlatIndicesCount();
-        for (int i = 0; i < changedCount; i++) {
-            int flatIndex = changed.getFlatIndices(i);
-            int newTypeIndex = getCellTypeIndex(changed.getMoleculeData(i));
-
-            int oldTypeIndex = (cellGenerations[flatIndex] == currentGeneration)
-                ? cellTypes[flatIndex]
-                : TYPE_EMPTY;
-
-            if (oldTypeIndex != newTypeIndex) {
-                updateAggregationForTypeChange(flatIndex, oldTypeIndex, newTypeIndex);
-            }
-
-            cellTypes[flatIndex] = newTypeIndex;
-            cellGenerations[flatIndex] = currentGeneration;
-        }
-
+        background.processDeltaCells(delta.getChangedCells());
         this.lastDelta = delta;
     }
 
     @Override
     public int[] renderCurrentState() {
         ensureInitialized();
-        renderAggregatedCells();
+        background.renderTo(frameBuffer);
         renderOrganismGlows(getOrganismsLazy());
         return frameBuffer;
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // Coordinate mapping (single source of truth)
+    // Organism glow rendering
     // ─────────────────────────────────────────────────────────────────────────────
-
-    /**
-     * Converts a world flat index to output pixel index.
-     * Uses float math for consistent mapping between cells and organisms.
-     */
-    private int worldToPixelIndex(int flatIndex) {
-        // Row-major: flatIndex = x * height + y
-        int wx = flatIndex / worldHeight;
-        int wy = flatIndex % worldHeight;
-        return worldCoordsToPixelIndex(wx, wy);
-    }
-
-    /**
-     * Converts world coordinates to output pixel index.
-     */
-    private int worldCoordsToPixelIndex(int wx, int wy) {
-        int mx = (int) ((double) wx / worldWidth * outputWidth);
-        int my = (int) ((double) wy / worldHeight * outputHeight);
-        // Clamp to valid range (float rounding edge case)
-        if (mx >= outputWidth) mx = outputWidth - 1;
-        if (my >= outputHeight) my = outputHeight - 1;
-        return my * outputWidth + mx;
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Aggregation state management
-    // ─────────────────────────────────────────────────────────────────────────────
-
-    /**
-     * Ensures pixel aggregation counts are initialized for current generation.
-     */
-    private void ensurePixelInitialized(int pixelIdx) {
-        if (pixelGenerations[pixelIdx] != currentGeneration) {
-            int baseIdx = pixelIdx * NUM_NON_EMPTY_TYPES;
-            for (int t = 0; t < NUM_NON_EMPTY_TYPES; t++) {
-                aggregationCounts[baseIdx + t] = 0;
-            }
-            pixelGenerations[pixelIdx] = currentGeneration;
-        }
-    }
-
-    /**
-     * Updates aggregation counts when a new non-empty cell is added.
-     */
-    private void updateAggregationForNewCell(int flatIndex, int typeIndex) {
-        int pixelIdx = worldToPixelIndex(flatIndex);
-        ensurePixelInitialized(pixelIdx);
-        aggregationCounts[pixelIdx * NUM_NON_EMPTY_TYPES + typeIndex]++;
-    }
-
-    /**
-     * Updates aggregation counts when a cell type changes.
-     */
-    private void updateAggregationForTypeChange(int flatIndex, int oldType, int newType) {
-        int pixelIdx = worldToPixelIndex(flatIndex);
-
-        // Decrement old count if was non-empty and pixel is valid
-        if (oldType != TYPE_EMPTY && pixelGenerations[pixelIdx] == currentGeneration) {
-            aggregationCounts[pixelIdx * NUM_NON_EMPTY_TYPES + oldType]--;
-        }
-
-        // Increment new count if non-empty
-        if (newType != TYPE_EMPTY) {
-            ensurePixelInitialized(pixelIdx);
-            aggregationCounts[pixelIdx * NUM_NON_EMPTY_TYPES + newType]++;
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Rendering
-    // ─────────────────────────────────────────────────────────────────────────────
-
-    /**
-     * Renders aggregated cell colors to frame buffer using majority voting.
-     */
-    private void renderAggregatedCells() {
-        int totalPixels = outputWidth * outputHeight;
-        // Approximate cells per pixel for background weighting
-        int cellsPerPixel = (worldWidth / outputWidth) * (worldHeight / outputHeight);
-
-        for (int pixelIdx = 0; pixelIdx < totalPixels; pixelIdx++) {
-            // Untouched pixels are empty
-            if (pixelGenerations[pixelIdx] != currentGeneration) {
-                frameBuffer[pixelIdx] = CELL_COLORS[TYPE_EMPTY];
-                continue;
-            }
-
-            int baseIdx = pixelIdx * NUM_NON_EMPTY_TYPES;
-
-            // Sum non-empty counts
-            int nonEmptyTotal = 0;
-            for (int t = 0; t < NUM_NON_EMPTY_TYPES; t++) {
-                nonEmptyTotal += aggregationCounts[baseIdx + t];
-            }
-
-            // Background weighting (2.5% like server)
-            int backgroundCells = cellsPerPixel - nonEmptyTotal;
-            int weightedEmpty = backgroundCells / 40;
-
-            // Majority vote
-            int maxCount = weightedEmpty;
-            int winningType = TYPE_EMPTY;
-            for (int t = 0; t < NUM_NON_EMPTY_TYPES; t++) {
-                int count = aggregationCounts[baseIdx + t];
-                if (count > maxCount) {
-                    maxCount = count;
-                    winningType = t;
-                }
-            }
-
-            frameBuffer[pixelIdx] = CELL_COLORS[winningType];
-        }
-    }
 
     /**
      * Returns organisms from the most recent tick data (lazy access).
@@ -393,6 +204,8 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
      * Renders organism glow effects, colored by genome hash.
      * Organisms with the same genome hash share a color and are density-aggregated together.
      * Different genome hash groups are rendered as separate overlapping layers.
+     *
+     * @param organisms List of organisms to render.
      */
     private void renderOrganismGlows(List<OrganismState> organisms) {
         // Group living organisms by genome hash
@@ -447,13 +260,17 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
 
     /**
      * Adds glow density for an organism position, applying coordinate quantization if enabled.
+     *
+     * @param wx World x coordinate.
+     * @param wy World y coordinate.
+     * @param totalPixels Total number of output pixels (for bounds checking).
      */
     private void addGlowDensity(int wx, int wy, int totalPixels) {
         if (clusterGrid > 1) {
             wx = (wx / clusterGrid) * clusterGrid;
             wy = (wy / clusterGrid) * clusterGrid;
         }
-        int pixelIdx = worldCoordsToPixelIndex(wx, wy);
+        int pixelIdx = background.worldCoordsToPixelIndex(wx, wy);
         if (pixelIdx >= 0 && pixelIdx < totalPixels) {
             glowDensity[pixelIdx]++;
         }
@@ -579,19 +396,6 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
         if (!initialized) {
             throw new IllegalStateException("Renderer not initialized. Call init(EnvironmentProperties) first.");
         }
-    }
-
-    private int getCellTypeIndex(int moleculeInt) {
-        if (moleculeInt == 0) return TYPE_EMPTY;
-        int moleculeType = moleculeInt & Config.TYPE_MASK;
-        if (moleculeType == Config.TYPE_CODE) return TYPE_CODE;
-        if (moleculeType == Config.TYPE_DATA) return TYPE_DATA;
-        if (moleculeType == Config.TYPE_ENERGY) return TYPE_ENERGY;
-        if (moleculeType == Config.TYPE_STRUCTURE) return TYPE_STRUCTURE;
-        if (moleculeType == Config.TYPE_LABEL) return TYPE_LABEL;
-        if (moleculeType == Config.TYPE_LABELREF) return TYPE_LABELREF;
-        if (moleculeType == Config.TYPE_REGISTER) return TYPE_REGISTER;
-        return TYPE_EMPTY;
     }
 
     @Override

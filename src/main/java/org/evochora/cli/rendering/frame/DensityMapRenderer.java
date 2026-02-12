@@ -6,12 +6,10 @@ import java.util.Arrays;
 import java.util.List;
 
 import org.evochora.cli.rendering.AbstractFrameRenderer;
-import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.contracts.Vector;
-import org.evochora.runtime.Config;
 import org.evochora.runtime.model.EnvironmentProperties;
 
 import picocli.CommandLine.Command;
@@ -24,7 +22,7 @@ import picocli.CommandLine.Option;
  * Renders in two layers:
  * <ol>
  *   <li><strong>Background:</strong> Environment cell types via majority voting
- *       (same as {@link MinimapFrameRenderer})</li>
+ *       (delegated to {@link EnvironmentBackgroundLayer})</li>
  *   <li><strong>Foreground:</strong> Organism density heatmap using Viridis colormap,
  *       alpha-blended over the background</li>
  * </ol>
@@ -60,40 +58,12 @@ public class DensityMapRenderer extends AbstractFrameRenderer {
             defaultValue = "5")
     private int blurRadius;
 
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Cell type constants and colors (identical to MinimapFrameRenderer)
-    // ─────────────────────────────────────────────────────────────────────────────
-
-    private static final int TYPE_CODE = 0;
-    private static final int TYPE_DATA = 1;
-    private static final int TYPE_ENERGY = 2;
-    private static final int TYPE_STRUCTURE = 3;
-    private static final int TYPE_LABEL = 4;
-    private static final int TYPE_LABELREF = 5;
-    private static final int TYPE_REGISTER = 6;
-    private static final int TYPE_EMPTY = 7;
-
-    private static final int NUM_NON_EMPTY_TYPES = 7;
-
-    private static final int[] CELL_COLORS = {
-        0x3c5078,  // CODE
-        0x32323c,  // DATA
-        0xffe664,  // ENERGY
-        0xff7878,  // STRUCTURE
-        0xa0a0a8,  // LABEL
-        0xa0a0a8,  // LABELREF
-        0x506080,  // REGISTER
-        0x1e1e28   // EMPTY
-    };
-
     /**
      * Viridis colormap lookup table (256 entries, RGB packed as int).
      */
     private static final int[] VIRIDIS_LUT = generateViridisLUT();
 
     // Dimensions
-    private int worldWidth;
-    private int worldHeight;
     private int outputWidth;
     private int outputHeight;
 
@@ -101,14 +71,8 @@ public class DensityMapRenderer extends AbstractFrameRenderer {
     private BufferedImage frame;
     private int[] frameBuffer;
 
-    // Cell state (generation-based O(1) reset)
-    private int[] cellTypes;
-    private int[] cellGenerations;
-    private int currentGeneration;
-
-    // Cell aggregation per output pixel
-    private int[] aggregationCounts;  // [pixel * NUM_NON_EMPTY_TYPES + type] = count
-    private int[] pixelGenerations;
+    // Environment background layer (cell aggregation + rendering)
+    private EnvironmentBackgroundLayer background;
 
     // Density state
     private int[] densityGrid;      // raw organism counts per output pixel
@@ -141,8 +105,8 @@ public class DensityMapRenderer extends AbstractFrameRenderer {
         }
 
         super.init(envProps);
-        this.worldWidth = envProps.getWorldShape()[0];
-        this.worldHeight = envProps.getWorldShape()[1];
+        int worldWidth = envProps.getWorldShape()[0];
+        int worldHeight = envProps.getWorldShape()[1];
         this.outputWidth = Math.max(1, (int) (worldWidth * scale));
         this.outputHeight = Math.max(1, (int) (worldHeight * scale));
 
@@ -150,17 +114,11 @@ public class DensityMapRenderer extends AbstractFrameRenderer {
         this.frame = new BufferedImage(outputWidth, outputHeight, BufferedImage.TYPE_INT_RGB);
         this.frameBuffer = ((DataBufferInt) frame.getRaster().getDataBuffer()).getData();
 
-        // Cell state
-        int worldSize = worldWidth * worldHeight;
-        this.cellTypes = new int[worldSize];
-        this.cellGenerations = new int[worldSize];
-        this.currentGeneration = 0;
-
-        int outputSize = outputWidth * outputHeight;
-        this.aggregationCounts = new int[outputSize * NUM_NON_EMPTY_TYPES];
-        this.pixelGenerations = new int[outputSize];
+        // Environment background
+        this.background = new EnvironmentBackgroundLayer(worldWidth, worldHeight, outputWidth, outputHeight);
 
         // Density state
+        int outputSize = outputWidth * outputHeight;
         this.densityGrid = new int[outputSize];
         this.blurredDensity = new int[outputSize];
         this.blurTemp = new int[outputSize];
@@ -200,28 +158,8 @@ public class DensityMapRenderer extends AbstractFrameRenderer {
     @Override
     public void applySnapshotState(TickData snapshot) {
         ensureInitialized();
-
-        // O(1) reset: increment generation invalidates all old cell values
-        currentGeneration++;
-
-        // Process all cells in snapshot
-        CellDataColumns columns = snapshot.getCellColumns();
-        int cellCount = columns.getFlatIndicesCount();
-        for (int i = 0; i < cellCount; i++) {
-            int flatIndex = columns.getFlatIndices(i);
-            int typeIndex = getCellTypeIndex(columns.getMoleculeData(i));
-
-            cellTypes[flatIndex] = typeIndex;
-            cellGenerations[flatIndex] = currentGeneration;
-
-            if (typeIndex != TYPE_EMPTY) {
-                updateAggregationForNewCell(flatIndex, typeIndex);
-            }
-        }
-
-        // Build density grid from organisms
+        background.processSnapshotCells(snapshot.getCellColumns());
         buildDensityGrid(snapshot.getOrganismsList());
-
         this.lastSnapshot = snapshot;
         this.lastDelta = null;
     }
@@ -229,29 +167,8 @@ public class DensityMapRenderer extends AbstractFrameRenderer {
     @Override
     public void applyDeltaState(TickDelta delta) {
         ensureInitialized();
-
-        // Process only changed cells
-        CellDataColumns changed = delta.getChangedCells();
-        int changedCount = changed.getFlatIndicesCount();
-        for (int i = 0; i < changedCount; i++) {
-            int flatIndex = changed.getFlatIndices(i);
-            int newTypeIndex = getCellTypeIndex(changed.getMoleculeData(i));
-
-            int oldTypeIndex = (cellGenerations[flatIndex] == currentGeneration)
-                    ? cellTypes[flatIndex]
-                    : TYPE_EMPTY;
-
-            if (oldTypeIndex != newTypeIndex) {
-                updateAggregationForTypeChange(flatIndex, oldTypeIndex, newTypeIndex);
-            }
-
-            cellTypes[flatIndex] = newTypeIndex;
-            cellGenerations[flatIndex] = currentGeneration;
-        }
-
-        // Build density grid from organisms
+        background.processDeltaCells(delta.getChangedCells());
         buildDensityGrid(delta.getOrganismsList());
-
         this.lastDelta = delta;
     }
 
@@ -260,7 +177,7 @@ public class DensityMapRenderer extends AbstractFrameRenderer {
         ensureInitialized();
 
         // Layer 1: Cell background
-        renderAggregatedCells();
+        background.renderTo(frameBuffer);
 
         // Layer 2: Density heatmap alpha-blended on top
         renderDensityOverlay();
@@ -279,106 +196,6 @@ public class DensityMapRenderer extends AbstractFrameRenderer {
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
-    // Coordinate mapping (identical to MinimapFrameRenderer)
-    // ─────────────────────────────────────────────────────────────────────────────
-
-    /**
-     * Converts a world flat index to output pixel index.
-     */
-    private int worldToPixelIndex(int flatIndex) {
-        int wx = flatIndex / worldHeight;
-        int wy = flatIndex % worldHeight;
-        return worldCoordsToPixelIndex(wx, wy);
-    }
-
-    /**
-     * Converts world coordinates to output pixel index.
-     *
-     * @param wx World x coordinate.
-     * @param wy World y coordinate.
-     * @return Output pixel index (row-major: y * outputWidth + x).
-     */
-    private int worldCoordsToPixelIndex(int wx, int wy) {
-        int mx = (int) ((double) wx / worldWidth * outputWidth);
-        int my = (int) ((double) wy / worldHeight * outputHeight);
-        if (mx >= outputWidth) mx = outputWidth - 1;
-        if (my >= outputHeight) my = outputHeight - 1;
-        return my * outputWidth + mx;
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Cell aggregation state management (from MinimapFrameRenderer)
-    // ─────────────────────────────────────────────────────────────────────────────
-
-    private void ensurePixelInitialized(int pixelIdx) {
-        if (pixelGenerations[pixelIdx] != currentGeneration) {
-            int baseIdx = pixelIdx * NUM_NON_EMPTY_TYPES;
-            for (int t = 0; t < NUM_NON_EMPTY_TYPES; t++) {
-                aggregationCounts[baseIdx + t] = 0;
-            }
-            pixelGenerations[pixelIdx] = currentGeneration;
-        }
-    }
-
-    private void updateAggregationForNewCell(int flatIndex, int typeIndex) {
-        int pixelIdx = worldToPixelIndex(flatIndex);
-        ensurePixelInitialized(pixelIdx);
-        aggregationCounts[pixelIdx * NUM_NON_EMPTY_TYPES + typeIndex]++;
-    }
-
-    private void updateAggregationForTypeChange(int flatIndex, int oldType, int newType) {
-        int pixelIdx = worldToPixelIndex(flatIndex);
-
-        if (oldType != TYPE_EMPTY && pixelGenerations[pixelIdx] == currentGeneration) {
-            aggregationCounts[pixelIdx * NUM_NON_EMPTY_TYPES + oldType]--;
-        }
-
-        if (newType != TYPE_EMPTY) {
-            ensurePixelInitialized(pixelIdx);
-            aggregationCounts[pixelIdx * NUM_NON_EMPTY_TYPES + newType]++;
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────────
-    // Cell rendering (majority voting, from MinimapFrameRenderer)
-    // ─────────────────────────────────────────────────────────────────────────────
-
-    private void renderAggregatedCells() {
-        int totalPixels = outputWidth * outputHeight;
-        int cellsPerPixel = (worldWidth / outputWidth) * (worldHeight / outputHeight);
-
-        for (int pixelIdx = 0; pixelIdx < totalPixels; pixelIdx++) {
-            if (pixelGenerations[pixelIdx] != currentGeneration) {
-                frameBuffer[pixelIdx] = CELL_COLORS[TYPE_EMPTY];
-                continue;
-            }
-
-            int baseIdx = pixelIdx * NUM_NON_EMPTY_TYPES;
-
-            int nonEmptyTotal = 0;
-            for (int t = 0; t < NUM_NON_EMPTY_TYPES; t++) {
-                nonEmptyTotal += aggregationCounts[baseIdx + t];
-            }
-
-            // Background weighting (2.5% like MinimapFrameRenderer)
-            int backgroundCells = cellsPerPixel - nonEmptyTotal;
-            int weightedEmpty = backgroundCells / 40;
-
-            int maxCount = weightedEmpty;
-            int winningType = TYPE_EMPTY;
-            for (int t = 0; t < NUM_NON_EMPTY_TYPES; t++) {
-                int count = aggregationCounts[baseIdx + t];
-                if (count > maxCount) {
-                    maxCount = count;
-                    winningType = t;
-                }
-            }
-
-            frameBuffer[pixelIdx] = CELL_COLORS[winningType];
-        }
-    }
-
-    // ─────────────────────────────────────────────────────────────────────────────
     // Density computation
     // ─────────────────────────────────────────────────────────────────────────────
 
@@ -394,7 +211,7 @@ public class DensityMapRenderer extends AbstractFrameRenderer {
         for (OrganismState org : organisms) {
             if (org.getIsDead()) continue;
 
-            int pixelIdx = worldCoordsToPixelIndex(
+            int pixelIdx = background.worldCoordsToPixelIndex(
                     org.getIp().getComponents(0),
                     org.getIp().getComponents(1));
             if (pixelIdx >= 0 && pixelIdx < totalPixels) {
@@ -403,7 +220,7 @@ public class DensityMapRenderer extends AbstractFrameRenderer {
 
             if (countDps) {
                 for (Vector dp : org.getDataPointersList()) {
-                    int dpIdx = worldCoordsToPixelIndex(
+                    int dpIdx = background.worldCoordsToPixelIndex(
                             dp.getComponents(0),
                             dp.getComponents(1));
                     if (dpIdx >= 0 && dpIdx < totalPixels) {
@@ -579,19 +396,6 @@ public class DensityMapRenderer extends AbstractFrameRenderer {
     // ─────────────────────────────────────────────────────────────────────────────
     // Utilities
     // ─────────────────────────────────────────────────────────────────────────────
-
-    private int getCellTypeIndex(int moleculeInt) {
-        if (moleculeInt == 0) return TYPE_EMPTY;
-        int moleculeType = moleculeInt & Config.TYPE_MASK;
-        if (moleculeType == Config.TYPE_CODE) return TYPE_CODE;
-        if (moleculeType == Config.TYPE_DATA) return TYPE_DATA;
-        if (moleculeType == Config.TYPE_ENERGY) return TYPE_ENERGY;
-        if (moleculeType == Config.TYPE_STRUCTURE) return TYPE_STRUCTURE;
-        if (moleculeType == Config.TYPE_LABEL) return TYPE_LABEL;
-        if (moleculeType == Config.TYPE_LABELREF) return TYPE_LABELREF;
-        if (moleculeType == Config.TYPE_REGISTER) return TYPE_REGISTER;
-        return TYPE_EMPTY;
-    }
 
     private void ensureInitialized() {
         if (!initialized) {
