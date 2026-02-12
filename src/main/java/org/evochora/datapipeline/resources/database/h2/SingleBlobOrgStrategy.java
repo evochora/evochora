@@ -233,7 +233,9 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
                 parentId,
                 birthTick,
                 org.getEntropyRegister(),
-                genomeHash
+                genomeHash,
+                org.getIsDead(),
+                org.hasDeathTick() ? org.getDeathTick() : -1L
             ));
         }
         

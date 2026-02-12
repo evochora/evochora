@@ -1376,7 +1376,7 @@ export class EnvironmentGrid {
         }
     }
 
-    _getOrganismColor(organismId, energy, genomeHash) {
+    _getOrganismColor(organismId, energy, genomeHash, isDead) {
         const palette = this.config.organismPalette;
 
         // Selected organism is always white
@@ -1384,8 +1384,8 @@ export class EnvironmentGrid {
             return 0xffffff;
         }
 
-        // If energy <= 0, fall back to a dimmed grayish color to indicate death
-        if (typeof energy === 'number' && energy <= 0) {
+        // Dead organisms are dimmed gray
+        if (isDead) {
             return 0x555555;
         }
 
@@ -1486,8 +1486,8 @@ class BaseRendererStrategy {
         }
     }
 
-    _getOrganismColor(organismId, energy, genomeHash) {
-        return this.grid._getOrganismColor(organismId, energy, genomeHash);
+    _getOrganismColor(organismId, energy, genomeHash, isDead) {
+        return this.grid._getOrganismColor(organismId, energy, genomeHash, isDead);
     }
 }
 
@@ -1735,7 +1735,7 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
             const ipGraphics = ensureIpGraphics(organism);
             ipGraphics.clear();
 
-            const ipColor = this._getOrganismColor(organismId, energy, organism.genomeHash);
+            const ipColor = this._getOrganismColor(organismId, energy, organism.genomeHash, organism.isDead);
             const ipCellX = ip[0] * cellSize;
             const ipCellY = ip[1] * cellSize;
             const cx = ipCellX + cellSize / 2;
@@ -1778,7 +1778,7 @@ class DetailedRendererStrategy extends BaseRendererStrategy {
         const aggregatedDps = new Map();
         for (const org of organisms) {
             if (!org || !Array.isArray(org.dataPointers)) continue;
-            const orgColor = this._getOrganismColor(org.organismId, org.energy, org.genomeHash);
+            const orgColor = this._getOrganismColor(org.organismId, org.energy, org.genomeHash, org.isDead);
             const orgActiveIndex = typeof org.activeDpIndex === "number" ? org.activeDpIndex : 0;
             org.dataPointers.forEach((dp, idx) => {
                 if (!Array.isArray(dp) || dp.length < 2) return;
@@ -2162,7 +2162,7 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
             }
             ipGraphics.clear();
 
-            const ipColor = this._getOrganismColor(organismId, energy, organism.genomeHash);
+            const ipColor = this._getOrganismColor(organismId, energy, organism.genomeHash, organism.isDead);
             // Position at cell center, scaled to pixel coordinates
             const centerX = (ip[0] + 0.5) * scale;
             const centerY = (ip[1] + 0.5) * scale;
@@ -2211,7 +2211,7 @@ class ZoomedOutRendererStrategy extends BaseRendererStrategy {
              if (organismsAtPos.length === 0) continue;
 
             const prominentOrganism = organismsAtPos[0]; // Simple selection: pick the first one
-            const orgColor = this._getOrganismColor(prominentOrganism.organismId, prominentOrganism.energy, prominentOrganism.genomeHash);
+            const orgColor = this._getOrganismColor(prominentOrganism.organismId, prominentOrganism.energy, prominentOrganism.genomeHash, prominentOrganism.isDead);
 
             let dpEntry = this.dpGraphics.get(cellKey);
             if (!dpEntry) {

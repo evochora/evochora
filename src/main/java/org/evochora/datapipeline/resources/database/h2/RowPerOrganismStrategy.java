@@ -246,7 +246,8 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
                 .addAllFailureCallStack(org.getFailureCallStackList())
                 // Ensure entropy and marker registers are included in the runtime blob
                 .setEntropyRegister(org.getEntropyRegister())
-                .setMoleculeMarkerRegister(org.getMoleculeMarkerRegister());
+                .setMoleculeMarkerRegister(org.getMoleculeMarkerRegister())
+                .setIsDead(org.getIsDead());
 
         // Instruction execution data
         if (org.hasInstructionOpcodeId()) {
@@ -270,6 +271,9 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
         if (org.getInstructionRegisterValuesBeforeCount() > 0) {
             runtimeStateBuilder.putAllInstructionRegisterValuesBefore(org.getInstructionRegisterValuesBeforeMap());
         }
+        if (org.hasDeathTick()) {
+            runtimeStateBuilder.setDeathTick(org.getDeathTick());
+        }
 
         OrganismRuntimeState runtimeState = runtimeStateBuilder.build();
 
@@ -285,12 +289,27 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
         }
     }
 
+    /**
+     * Decompresses a runtime_state_blob into an OrganismRuntimeState.
+     */
+    private OrganismRuntimeState decompressRuntimeState(byte[] blobBytes) throws SQLException {
+        try {
+            ICompressionCodec codec = CompressionCodecFactory.detectFromMagicBytes(blobBytes);
+            try (java.io.ByteArrayInputStream bais = new java.io.ByteArrayInputStream(blobBytes);
+                 java.io.InputStream in = codec.wrapInputStream(bais)) {
+                return OrganismRuntimeState.parseFrom(in);
+            }
+        } catch (Exception e) {
+            throw new SQLException("Failed to decompress runtime_state_blob", e);
+        }
+    }
+
     @Override
     public List<OrganismTickSummary> readOrganismsAtTick(Connection conn, long tickNumber)
             throws SQLException {
         String sql = """
                 SELECT s.organism_id, s.energy, s.ip, s.dv, s.data_pointers, s.active_dp_index, s.entropy,
-                       o.parent_id, o.birth_tick, o.genome_hash
+                       s.runtime_state_blob, o.parent_id, o.birth_tick, o.genome_hash
                 FROM organism_states s
                 LEFT JOIN organisms o ON s.organism_id = o.organism_id
                 WHERE s.tick_number = ?
@@ -322,6 +341,16 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
                     int entropyRegister = rs.getInt("entropy");
                     long genomeHash = rs.getLong("genome_hash");
 
+                    // Extract isDead/deathTick from runtime_state_blob
+                    boolean isDead = false;
+                    long deathTick = -1L;
+                    byte[] runtimeBlob = rs.getBytes("runtime_state_blob");
+                    if (runtimeBlob != null && runtimeBlob.length > 0) {
+                        OrganismRuntimeState runtimeState = decompressRuntimeState(runtimeBlob);
+                        isDead = runtimeState.getIsDead();
+                        deathTick = runtimeState.hasDeathTick() ? runtimeState.getDeathTick() : -1L;
+                    }
+
                     result.add(new OrganismTickSummary(
                             organismId,
                             energy,
@@ -332,7 +361,9 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
                             parentId,
                             birthTick,
                             entropyRegister,
-                            genomeHash
+                            genomeHash,
+                            isDead,
+                            deathTick
                     ));
                 }
                 return result;
@@ -407,16 +438,7 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
         }
 
         // Decode and decompress runtime_state_blob
-        OrganismRuntimeState runtimeState;
-        try {
-            ICompressionCodec codec = CompressionCodecFactory.detectFromMagicBytes(blobBytes);
-            try (java.io.ByteArrayInputStream bais = new java.io.ByteArrayInputStream(blobBytes);
-                 java.io.InputStream in = codec.wrapInputStream(bais)) {
-                runtimeState = OrganismRuntimeState.parseFrom(in);
-            }
-        } catch (Exception e) {
-            throw new SQLException("Failed to decode runtime_state_blob", e);
-        }
+        OrganismRuntimeState runtimeState = decompressRuntimeState(blobBytes);
 
         // Build complete OrganismState
         OrganismState.Builder builder = OrganismState.newBuilder()

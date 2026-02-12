@@ -453,15 +453,29 @@ export class AppController {
                     const birthTick = staticInfo.birthTick;
                     const mrValue = state.moleculeMarkerRegister != null ? state.moleculeMarkerRegister : 0;
 
+                    // Look up isDead/deathTick from already-loaded organism summary data
+                    const summaryOrg = (this.state.organisms || []).find(o => String(o.organismId) === String(organismId));
+                    const isDead = summaryOrg?.isDead || false;
+                    const deathTick = summaryOrg?.deathTick;
+
                     // Birth is clickable (navigates to tick)
                     const birthDisplay = birthTick != null
                         ? `<span class="clickable-tick" data-tick="${birthTick}">${birthTick}</span>`
                         : '-';
 
-                    // Build lineage display (direct parent first, oldest ancestor last)
-                    const lineageDisplay = this._buildLineageDisplay(staticInfo.lineage || [], organismId);
+                    // Show Birth/Death when dead, otherwise just Birth
+                    let birthDeathLabel;
+                    if (isDead && deathTick != null && deathTick >= 0) {
+                        const deathDisplay = `<span class="clickable-tick" data-tick="${deathTick}">${deathTick}</span>`;
+                        birthDeathLabel = `Birth/Death: ${birthDisplay}/${deathDisplay}`;
+                    } else {
+                        birthDeathLabel = `Birth: ${birthDisplay}`;
+                    }
 
-                    infoEl.innerHTML = `<div class="organism-info-line">Birth: ${birthDisplay}  MR: ${mrValue}  Lineage: <span class="lineage-chain">${lineageDisplay}</span></div>`;
+                    // Build lineage display (direct parent first, oldest ancestor last)
+                    const lineageDisplay = this._buildLineageDisplay(staticInfo.lineage || [], organismId, isDead);
+
+                    infoEl.innerHTML = `<div class="organism-info-line">${birthDeathLabel}  MR: ${mrValue}  Lineage: <span class="lineage-chain">${lineageDisplay}</span></div>`;
 
                     // Bind click handlers
                     infoEl.querySelectorAll('.clickable-tick').forEach(el => {
@@ -978,8 +992,8 @@ export class AppController {
         // Store in state for reference
         this.state.organisms = organisms;
         
-        // Calculate organism counts
-        const aliveCount = organisms.length;
+        // Calculate organism counts (exclude dead organisms from alive count)
+        const aliveCount = organisms.filter(o => !o.isDead).length;
         // Estimate total count from highest organism ID
         let totalCount = aliveCount;
         if (aliveCount > 0) {
@@ -1008,7 +1022,9 @@ export class AppController {
                 activeDpIndex: organism.activeDpIndex,
                 parentId: organism.parentId,
                 birthTick: organism.birthTick,
-                genomeHash: organism.genomeHash
+                genomeHash: organism.genomeHash,
+                isDead: organism.isDead || false,
+                deathTick: organism.deathTick
             };
         }).filter(Boolean);
         
@@ -1074,12 +1090,12 @@ export class AppController {
      * @returns {string} HTML string for the lineage chain.
      * @private
      */
-    _buildLineageDisplay(lineage, currentOrganismId) {
+    _buildLineageDisplay(lineage, currentOrganismId, isDead = false) {
         if (!lineage || lineage.length === 0) {
             return '<span class="lineage-none">-</span>';
         }
 
-        const maxVisible = 6;
+        const maxVisible = isDead ? 5 : 6;
         const palette = AppController.ORGANISM_PALETTE;
         const aliveIds = new Set(
             (this.organismPanelManager?.currentOrganisms || []).map(o => String(o.id))

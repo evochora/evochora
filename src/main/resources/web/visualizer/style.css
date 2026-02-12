@@ -392,6 +392,11 @@ body {
     background: rgba(74, 158, 255, 0.15);
 }
 
+.organism-list-item.dead {
+    color: #666;
+    text-decoration: line-through;
+}
+
 /* Table-like column layout */
 .organism-col {
     flex-shrink: 0;
