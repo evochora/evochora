@@ -24,7 +24,6 @@ export class OrganismPanelManager {
      * @param {Function} options.onOrganismSelect - Callback when an organism is selected
      * @param {Function} options.onPositionClick - Callback when a position link is clicked (x, y)
      * @param {Function} options.onTickClick - Callback when a tick link is clicked (tick)
-     * @param {Function} options.onParentClick - Callback when a parent link is clicked (parentId)
      */
     constructor({
         panel,
@@ -38,8 +37,7 @@ export class OrganismPanelManager {
         filterClear,
         onOrganismSelect,
         onPositionClick,
-        onTickClick,
-        onParentClick
+        onTickClick
     }) {
         this.panel = panel;
         this.panelHeader = panelHeader;
@@ -53,7 +51,6 @@ export class OrganismPanelManager {
         this.onOrganismSelect = onOrganismSelect;
         this.onPositionClick = onPositionClick;
         this.onTickClick = onTickClick;
-        this.onParentClick = onParentClick;
 
         // Store current organisms and selection
         this.currentOrganisms = [];
@@ -341,7 +338,7 @@ export class OrganismPanelManager {
         return `
             <div class="organism-list-item ${isSelected ? 'selected' : ''} ${deadClass}"
                  data-organism-id="${org.id}">
-                <span class="organism-col organism-col-id" style="color: ${org.isDead ? '#666' : org.color}">#${org.id}</span>
+                <span class="organism-col organism-col-id" style="color: ${org.color}">#${org.id}</span>
                 <span class="organism-col organism-col-genome">${genomeDisplay}</span>
                 <span class="organism-col organism-col-er${erDeathCause}">ER:${org.energy}</span>
                 <span class="organism-col organism-col-sr${srDeathCause}">SR:${srDisplay}</span>
@@ -364,8 +361,7 @@ export class OrganismPanelManager {
         container.querySelectorAll('.organism-list-item').forEach(item => {
             item.addEventListener('click', (e) => {
                 // Ignore clicks on links or deselect button
-                if (e.target.classList.contains('clickable-position') || 
-                    e.target.classList.contains('clickable-parent') ||
+                if (e.target.classList.contains('clickable-position') ||
                     e.target.classList.contains('clickable-tick') ||
                     e.target.classList.contains('organism-deselect')) {
                     return;
@@ -396,17 +392,6 @@ export class OrganismPanelManager {
                 const y = parseInt(el.dataset.y, 10);
                 if (!isNaN(x) && !isNaN(y) && this.onPositionClick) {
                     this.onPositionClick(x, y);
-                }
-            });
-        });
-        
-        // Parent links
-        container.querySelectorAll('.clickable-parent').forEach(el => {
-            el.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const parentId = el.dataset.parentId;
-                if (parentId && this.onParentClick) {
-                    this.onParentClick(parentId);
                 }
             });
         });

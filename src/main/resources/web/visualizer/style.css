@@ -396,6 +396,11 @@ body {
     color: #666;
 }
 
+.organism-list-item.dead .organism-col-id {
+    text-decoration: line-through;
+    text-decoration-thickness: 2px;
+}
+
 .organism-list-item.dead .death-cause {
     color: #cc4444;
 }
@@ -484,7 +489,6 @@ body {
 
 /* Clickable links in organism list */
 .organism-list-item .clickable-position,
-.organism-list-item .clickable-parent,
 .organism-list-item .clickable-tick {
     color: #4a9eff;
     cursor: pointer;
@@ -493,7 +497,6 @@ body {
 }
 
 .organism-list-item .clickable-position:hover,
-.organism-list-item .clickable-parent:hover,
 .organism-list-item .clickable-tick:hover {
     color: #7cb9ff;
 }
@@ -840,23 +843,6 @@ main.container {
     color: #e0e0e0;
 }
 
-.clickable-parent {
-    color: #4a9eff;
-    cursor: pointer;
-    text-decoration: underline;
-    transition: color 0.2s;
-}
-
-.clickable-parent:hover {
-    color: #6bb3ff;
-}
-
-.parent-dead {
-    color: #666;
-    text-decoration: line-through;
-    cursor: not-allowed;
-}
-
 /* Lineage chain */
 .lineage-chain {
     white-space: nowrap;
@@ -874,7 +860,8 @@ main.container {
 }
 
 .lineage-ancestor-dead {
-    opacity: 0.45;
+    text-decoration: line-through;
+    text-decoration-thickness: 2px;
 }
 
 .lineage-separator {

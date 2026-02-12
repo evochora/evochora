@@ -56,7 +56,12 @@ export class AppController {
             colorMode: localStorage.getItem('evochora-color-mode') || 'id', // 'id' or 'genome'
         };
         this.programArtifactCache = new Map(); // Cache for program artifacts
-        this.genomeHashColorMap = new Map(); // genomeHash → palette index (insertion order)
+        // Lineage-based color tracking (genome mode)
+        this._organismToGenome = new Map();   // String(organismId) → String(genomeHash)
+        this._genomeParent = new Map();       // String(genomeHash) → String(parentGenomeHash) or null
+        this._genomeColorCache = new Map();   // String(genomeHash) → int 0xRRGGBB
+        this._genomeHslCache = new Map();     // String(genomeHash) → [h, s, l]
+        this._rootHueCounter = 0;             // Golden-ratio sequence counter
         
         // Config for renderer
         const defaultConfig = {
@@ -158,7 +163,11 @@ export class AppController {
             this.state.previousTick = null;
             this.state.previousOrganisms = null;
             this.state.previousOrganismDetails = null;
-            this.genomeHashColorMap.clear();
+            this._organismToGenome.clear();
+            this._genomeParent.clear();
+            this._genomeColorCache.clear();
+            this._genomeHslCache.clear();
+            this._rootHueCounter = 0;
             this.minimapView?.organismOverlay?.clearSpriteCache();
             this.state.maxTick = null;
             this.state.organisms = [];
@@ -398,8 +407,7 @@ export class AppController {
             filterClear: document.getElementById('organism-filter-clear'),
             onOrganismSelect: (organismId) => this.selectOrganism(organismId),
             onPositionClick: (x, y) => this.renderer?.centerOn(x, y),
-            onTickClick: (tick) => this.navigateToTick(tick),
-            onParentClick: (parentId) => this.selectOrganism(parentId)
+            onTickClick: (tick) => this.navigateToTick(tick)
         });
 
         // Color mode toggle (ID vs Genome Hash)
@@ -892,14 +900,13 @@ export class AppController {
             const organisms = organismResult.organisms;
             this.state.totalOrganismCount = organismResult.totalOrganismCount;
             loadingManager.update('Rendering organisms', 90);
+            this._registerOrganismLineage(organisms);
             this.renderer.renderOrganisms(organisms);
             this.updateOrganismPanel(organisms, isForwardStep);
 
             // Update minimap organism overlay (always genome-hash colored)
             this.minimapView?.updateOrganisms(organisms, (genomeHash) => {
-                const palette = AppController.ORGANISM_PALETTE;
-                const idx = this._genomeHashToPaletteIndex(genomeHash, palette.length);
-                return idx === null ? '#808080' : palette[idx];
+                return this._genomeHashToLineageHex(genomeHash);
             });
             
             // Reload organism details if one is selected
@@ -1037,39 +1044,167 @@ export class AppController {
      * @private
      */
     getOrganismColor(organismId, genomeHash) {
-        const palette = AppController.ORGANISM_PALETTE;
-
         if (typeof organismId !== 'number' || organismId < 1) {
             return '#ffffff'; // Default white for invalid IDs
         }
 
-        let paletteIndex;
         if (this.state.colorMode === 'genome') {
-            paletteIndex = this._genomeHashToPaletteIndex(genomeHash, palette.length);
-            if (paletteIndex === null) return '#808080';
-        } else {
-            paletteIndex = (organismId - 1) % palette.length;
+            return this._genomeHashToLineageHex(genomeHash);
         }
-        return palette[paletteIndex];
+
+        const palette = AppController.ORGANISM_PALETTE;
+        return palette[(organismId - 1) % palette.length];
     }
 
     /**
-     * Returns a palette index for a genome hash, assigning colors in order of first appearance.
-     * First hash seen → 0 (green), second → 1 (blue), etc. Wraps around palette length.
-     * @param {number|bigint} genomeHash - The genome hash value.
-     * @param {number} paletteLength - The number of colors in the palette.
-     * @returns {number|null} Palette index (0 to paletteLength-1), or null if no genome hash.
+     * Registers organism lineage from a tick's organism list.
+     * Builds organism→genome and genome→parentGenome mappings for lineage color derivation.
+     * Must be called before any color lookups for the tick's organisms.
+     * @param {Array} organisms - Array of organism objects with organismId, genomeHash, parentId.
      * @private
      */
-    _genomeHashToPaletteIndex(genomeHash, paletteLength) {
-        if (genomeHash == null || genomeHash === 0 || genomeHash === '0') {
-            return null;
+    _registerOrganismLineage(organisms) {
+        if (!organisms) return;
+
+        // Pass 1: register all organism → genome mappings so parent lookups succeed
+        for (const org of organisms) {
+            if (!org || typeof org.organismId !== 'number') continue;
+            const genomeHash = org.genomeHash;
+            if (genomeHash == null || genomeHash === 0 || genomeHash === '0') continue;
+            this._organismToGenome.set(String(org.organismId), String(genomeHash));
         }
+
+        // Pass 2: resolve parent genome hashes for newly seen genomes
+        for (const org of organisms) {
+            if (!org || typeof org.organismId !== 'number') continue;
+            const genomeHash = org.genomeHash;
+            if (genomeHash == null || genomeHash === 0 || genomeHash === '0') continue;
+            const genomeKey = String(genomeHash);
+
+            if (!this._genomeParent.has(genomeKey)) {
+                if (org.parentId != null) {
+                    const parentGenome = this._organismToGenome.get(String(org.parentId));
+                    this._genomeParent.set(genomeKey, parentGenome || null);
+                } else {
+                    this._genomeParent.set(genomeKey, null);
+                }
+            }
+        }
+    }
+
+    /**
+     * Returns a lineage-derived color for a genome hash as a packed RGB integer.
+     * Root genomes get hues from a golden-ratio sequence. Derived genomes get a hue
+     * shifted from their parent's, creating visual continuity along lineages.
+     * @param {number|bigint|string} genomeHash - The genome hash value.
+     * @returns {number} Packed RGB integer (0xRRGGBB), or 0x808080 for null/zero.
+     * @private
+     */
+    _genomeHashToLineageColor(genomeHash) {
+        if (genomeHash == null || genomeHash === 0 || genomeHash === '0') return 0x808080;
         const key = String(genomeHash);
-        if (!this.genomeHashColorMap.has(key)) {
-            this.genomeHashColorMap.set(key, this.genomeHashColorMap.size % paletteLength);
+        if (!this._genomeColorCache.has(key)) {
+            this._computeLineageColor(key);
         }
-        return this.genomeHashColorMap.get(key);
+        return this._genomeColorCache.get(key);
+    }
+
+    /**
+     * Returns a lineage-derived color as a CSS hex string (e.g., '#1e90ff').
+     * @param {number|bigint|string} genomeHash - The genome hash value.
+     * @returns {string} Hex color string.
+     * @private
+     */
+    _genomeHashToLineageHex(genomeHash) {
+        const rgb = this._genomeHashToLineageColor(genomeHash);
+        return '#' + rgb.toString(16).padStart(6, '0');
+    }
+
+    /**
+     * Computes and caches the lineage color for a genome hash.
+     * If the genome has a known parent, the color is derived by shifting the parent's hue.
+     * Otherwise, a new root color is assigned via the golden-ratio sequence.
+     * @param {string} genomeKey - String representation of the genome hash.
+     * @private
+     */
+    _computeLineageColor(genomeKey) {
+        if (this._genomeColorCache.has(genomeKey)) return;
+
+        const parentGenomeKey = this._genomeParent.get(genomeKey);
+
+        if (parentGenomeKey && parentGenomeKey !== '0') {
+            // Ensure parent color is computed first (recursive)
+            if (!this._genomeColorCache.has(parentGenomeKey)) {
+                this._computeLineageColor(parentGenomeKey);
+            }
+
+            const parentHsl = this._genomeHslCache.get(parentGenomeKey);
+            if (parentHsl) {
+                const hashBits = AppController._hashStringToInt(genomeKey);
+                // Hue shift: ±25° (noticeable but keeps family resemblance)
+                const direction = (hashBits & 1) ? 1 : -1;
+                const h = (parentHsl[0] + direction * 25 + 360) % 360;
+                // Small S/L perturbation for sibling differentiation
+                const satDelta = ((hashBits >> 1) & 0x3F) / 63 * 0.06 - 0.03;
+                const litDelta = ((hashBits >> 7) & 0x3F) / 63 * 0.06 - 0.03;
+                const s = Math.max(0.65, Math.min(0.95, parentHsl[1] + satDelta));
+                const l = Math.max(0.40, Math.min(0.60, parentHsl[2] + litDelta));
+
+                this._genomeHslCache.set(genomeKey, [h, s, l]);
+                this._genomeColorCache.set(genomeKey, AppController._hslToRgb(h, s, l));
+                return;
+            }
+        }
+
+        // Root genome: golden-ratio hue for well-separated starting colors
+        const h = (120.0 + this._rootHueCounter * 137.508) % 360;
+        this._rootHueCounter++;
+        this._genomeHslCache.set(genomeKey, [h, 0.80, 0.50]);
+        this._genomeColorCache.set(genomeKey, AppController._hslToRgb(h, 0.80, 0.50));
+    }
+
+    /**
+     * Deterministic string hash to a non-negative 32-bit integer.
+     * Used to extract pseudo-random bits from genome hash strings for color perturbation.
+     * @param {string} str - Input string.
+     * @returns {number} Non-negative integer.
+     * @private
+     */
+    static _hashStringToInt(str) {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+        }
+        return Math.abs(hash);
+    }
+
+    /**
+     * Converts HSL color values to a packed RGB integer.
+     * @param {number} h - Hue in degrees (0-360).
+     * @param {number} s - Saturation (0-1).
+     * @param {number} l - Lightness (0-1).
+     * @returns {number} Packed RGB integer (0xRRGGBB).
+     * @private
+     */
+    static _hslToRgb(h, s, l) {
+        const c = (1 - Math.abs(2 * l - 1)) * s;
+        const hPrime = h / 60;
+        const x = c * (1 - Math.abs(hPrime % 2 - 1));
+
+        let r1, g1, b1;
+        if (hPrime < 1) { r1 = c; g1 = x; b1 = 0; }
+        else if (hPrime < 2) { r1 = x; g1 = c; b1 = 0; }
+        else if (hPrime < 3) { r1 = 0; g1 = c; b1 = x; }
+        else if (hPrime < 4) { r1 = 0; g1 = x; b1 = c; }
+        else if (hPrime < 5) { r1 = x; g1 = 0; b1 = c; }
+        else { r1 = c; g1 = 0; b1 = x; }
+
+        const m = l - c / 2;
+        const r = Math.round(Math.max(0, Math.min(255, (r1 + m) * 255)));
+        const g = Math.round(Math.max(0, Math.min(255, (g1 + m) * 255)));
+        const b = Math.round(Math.max(0, Math.min(255, (b1 + m) * 255)));
+
+        return (r << 16) | (g << 8) | b;
     }
 
     /**
@@ -1086,7 +1221,6 @@ export class AppController {
         }
 
         const maxVisible = isDead ? 5 : 6;
-        const palette = AppController.ORGANISM_PALETTE;
         const aliveIds = new Set(
             (this.organismPanelManager?.currentOrganisms || []).map(o => String(o.id))
         );
@@ -1106,9 +1240,9 @@ export class AppController {
             // Color based on current color mode
             let color;
             if (this.state.colorMode === 'genome') {
-                const idx = this._genomeHashToPaletteIndex(entry.genomeHash, palette.length);
-                color = idx === null ? '#808080' : palette[idx];
+                color = this._genomeHashToLineageHex(entry.genomeHash);
             } else {
+                const palette = AppController.ORGANISM_PALETTE;
                 color = palette[(id - 1) % palette.length];
             }
 
