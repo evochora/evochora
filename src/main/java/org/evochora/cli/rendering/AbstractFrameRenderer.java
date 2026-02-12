@@ -267,6 +267,7 @@ public abstract class AbstractFrameRenderer implements IVideoFrameRenderer, Call
             for (IOverlayRenderer overlay : this.overlays) {
                 // Create new instance of the same overlay class
                 IOverlayRenderer overlayInstance = overlay.getClass().getDeclaredConstructor().newInstance();
+                overlayInstance.initFromOriginal(overlay);
                 threadOverlays.add(overlayInstance);
             }
             copy.setOverlays(threadOverlays);
