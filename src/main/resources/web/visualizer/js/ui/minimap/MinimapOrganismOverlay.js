@@ -119,16 +119,17 @@ export class MinimapOrganismOverlay {
     }
 
     /**
-     * Groups organisms by genome hash and extracts positions per group.
+     * Groups organisms by an arbitrary key and extracts positions per group.
      * @param {Array} organisms - Array of organism objects
-     * @returns {Map<string, Array<[number, number]>>} genomeHash key → positions
+     * @param {function(object): string} keyFn - Extracts the grouping key from an organism
+     * @returns {Map<string, Array<[number, number]>>} key → positions
      * @private
      */
-    _groupByGenomeHash(organisms) {
+    _groupOrganisms(organisms, keyFn) {
         const groups = new Map();
 
         for (const org of organisms) {
-            const key = String(org.genomeHash || 0);
+            const key = keyFn(org);
 
             if (!groups.has(key)) {
                 groups.set(key, []);
@@ -187,9 +188,10 @@ export class MinimapOrganismOverlay {
      * @param {Array} organisms - Array of organism objects with ip, dataPointers, genomeHash
      * @param {number[]} worldShape - World dimensions [width, height]
      * @param {{width: number, height: number}} canvasSize - Minimap canvas dimensions
-     * @param {function(string): string} colorResolver - Maps genomeHash string to hex color
+     * @param {function(string): string} colorResolver - Maps group key to hex color
+     * @param {function(object): string} [keyFn] - Extracts the grouping key from an organism (defaults to genomeHash)
      */
-    render(ctx, organisms, worldShape, canvasSize, colorResolver) {
+    render(ctx, organisms, worldShape, canvasSize, colorResolver, keyFn) {
         if (!this.enabled || !organisms || organisms.length === 0) {
             return;
         }
@@ -200,8 +202,9 @@ export class MinimapOrganismOverlay {
 
         const { width: canvasWidth, height: canvasHeight } = canvasSize;
 
-        // Group organisms by genome hash
-        const groups = this._groupByGenomeHash(organisms);
+        // Group organisms by key (default: genome hash)
+        const groupFn = keyFn || (org => String(org.genomeHash || 0));
+        const groups = this._groupOrganisms(organisms, groupFn);
 
         // Render each genome hash group with its own color
         for (const [hashKey, positions] of groups) {

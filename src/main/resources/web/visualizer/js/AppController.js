@@ -888,9 +888,11 @@ export class AppController {
             this.state.totalOrganismCount = organismResult.totalOrganismCount;
             this._applyGenomeLineageTree(organismResult.genomeLineageTree);
             this.updateOrganismPanel(organisms, isForwardStep);
-            this.minimapView?.updateOrganisms(organisms, (genomeHash) => {
-                return this._genomeHashToLineageHex(genomeHash);
-            });
+            this.minimapView?.updateOrganisms(
+                organisms,
+                this._minimapColorResolver(),
+                this._minimapGroupKeyFn()
+            );
 
             // Reload organism details if one is selected
             if (this.state.selectedOrganismId) {
@@ -1233,11 +1235,23 @@ export class AppController {
     /**
      * Toggles the organism coloring mode between ID-based and genome-hash-based.
      */
-    async toggleColorMode() {
+    toggleColorMode() {
         this.state.colorMode = this.state.colorMode === 'id' ? 'genome' : 'id';
         localStorage.setItem('evochora-color-mode', this.state.colorMode);
         this._updateColorModeButton();
-        await this.navigateToTick(this.state.currentTick, true);
+
+        // Re-render organisms with new color mode (no server reload needed)
+        const organisms = this.state.previousOrganisms;
+        if (organisms) {
+            this.updateOrganismPanel(organisms);
+            this.renderer.renderOrganisms(organisms);
+            this.minimapView?.organismOverlay?.clearSpriteCache();
+            this.minimapView?.updateOrganisms(
+                organisms,
+                this._minimapColorResolver(),
+                this._minimapGroupKeyFn()
+            );
+        }
     }
 
     /**
@@ -1253,6 +1267,31 @@ export class AppController {
             ? 'Color by: Genome Hash (click to switch to ID)'
             : 'Color by: Organism ID (click to switch to Genome)';
         btn.classList.toggle('active', isGenome);
+    }
+
+    /**
+     * Returns a color resolver for the minimap organism overlay based on the current color mode.
+     * @returns {function(string): string} Maps group key to hex color
+     * @private
+     */
+    _minimapColorResolver() {
+        if (this.state.colorMode === 'genome') {
+            return (genomeHash) => this._genomeHashToLineageHex(genomeHash);
+        }
+        const palette = AppController.ORGANISM_PALETTE;
+        return (organismId) => palette[(parseInt(organismId, 10) - 1) % palette.length];
+    }
+
+    /**
+     * Returns a grouping key function for the minimap organism overlay based on the current color mode.
+     * @returns {function(object): string} Extracts the grouping key from an organism
+     * @private
+     */
+    _minimapGroupKeyFn() {
+        if (this.state.colorMode === 'genome') {
+            return (org) => String(org.genomeHash || 0);
+        }
+        return (org) => String(org.organismId);
     }
 
     /**

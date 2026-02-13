@@ -249,11 +249,13 @@ export class MinimapView {
      * Should be called when organisms are loaded for the current tick.
      *
      * @param {Array} organisms - Array of organism objects with ip, dataPointers, genomeHash
-     * @param {function(string): string} [colorResolver] - Maps genomeHash to hex color
+     * @param {function(string): string} [colorResolver] - Maps group key to hex color
+     * @param {function(object): string} [keyFn] - Extracts the grouping key from an organism
      */
-    updateOrganisms(organisms, colorResolver) {
+    updateOrganisms(organisms, colorResolver, keyFn) {
         this.currentOrganisms = organisms;
         this.colorResolver = colorResolver || null;
+        this.groupKeyFn = keyFn || null;
 
         // Re-render if we have minimap data (overlay draws on top of environment)
         if (this.lastMinimapData && this.worldShape) {
@@ -288,7 +290,7 @@ export class MinimapView {
             height: this.canvas.height
         };
 
-        this.organismOverlay.render(ctx, this.currentOrganisms, this.worldShape, canvasSize, this.colorResolver);
+        this.organismOverlay.render(ctx, this.currentOrganisms, this.worldShape, canvasSize, this.colorResolver, this.groupKeyFn);
     }
 
     /**
