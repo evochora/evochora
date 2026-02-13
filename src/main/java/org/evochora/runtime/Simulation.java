@@ -354,6 +354,9 @@ public class Simulation {
                 if (!failedInExecution && organism.isInstructionFailed()) {
                     int penalty = organismConfig.getInt("error-penalty-cost");
                     organism.takeEr(penalty);
+                    if (organism.getEr() <= 0) {
+                        organism.kill("Ran out of energy");
+                    }
                 }
             }
 

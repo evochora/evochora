@@ -376,7 +376,7 @@ public class H2DatabaseReader implements IDatabaseReader {
                 SELECT o.parent_id, a.depth + 1
                 FROM ancestors a
                 JOIN organisms o ON o.organism_id = a.org_id
-                WHERE o.parent_id IS NOT NULL AND a.depth < 100
+                WHERE o.parent_id IS NOT NULL
             )
             SELECT o.organism_id, o.genome_hash
             FROM ancestors a

@@ -280,6 +280,43 @@ class GenomeAnalyticsPluginTest {
     }
 
     @Test
+    void testExtractRows_GenomeTurnover_TracksActiveGenomes() {
+        // Tick 1: genomes A(5), B(3), C(2) - all fit in topN=3
+        TickData tick1 = createTickWithGenomes(100,
+            111L, 111L, 111L, 111L, 111L,
+            222L, 222L, 222L,
+            333L, 333L);
+
+        List<Object[]> rows1 = plugin.extractRows(tick1);
+        JsonObject json1 = JsonParser.parseString((String) rows1.get(0)[5]).getAsJsonObject();
+        assertThat(json1.has("other")).isFalse();
+
+        // Simulate many ticks to build up large cumulative counts for A/B/C
+        for (int i = 0; i < 100; i++) {
+            plugin.extractRows(createTickWithGenomes(200 + i,
+                111L, 111L, 111L, 111L, 111L,
+                222L, 222L, 222L,
+                333L, 333L));
+        }
+
+        // Tick N: genomes D(5), E(3), F(2) - complete turnover, A/B/C extinct
+        TickData tickN = createTickWithGenomes(1000,
+            444L, 444L, 444L, 444L, 444L,
+            555L, 555L, 555L,
+            666L, 666L);
+
+        List<Object[]> rows2 = plugin.extractRows(tickN);
+        JsonObject json2 = JsonParser.parseString((String) rows2.get(0)[5]).getAsJsonObject();
+
+        // All 3 new genomes must be tracked, nothing in "other"
+        assertThat(json2.has("other")).as("extinct genomes must not occupy top N slots").isFalse();
+        assertThat(json2.entrySet()).hasSize(3);
+
+        int total = json2.entrySet().stream().mapToInt(e -> e.getValue().getAsInt()).sum();
+        assertThat(total).isEqualTo(10);
+    }
+
+    @Test
     void testExtractRows_ConsistentLabelsAcrossTicks() {
         TickData tick1 = createTickWithGenomes(100,
             111L, 111L, 111L, 111L, 111L);

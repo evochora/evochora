@@ -92,11 +92,6 @@ public class GenomeAnalyticsPlugin extends AbstractAnalyticsPlugin {
     /** Cache for Base62 labels (hash -> label). Uses primitive map to avoid boxing. */
     private Long2ObjectOpenHashMap<String> labelCache;
 
-    /** Threshold for re-sorting: minimum cumulative count in current top N. */
-    private long topNThreshold;
-
-    /** Flag indicating if top N needs recalculation. */
-    private boolean topNDirty;
 
     // ========================================================================
     // Reusable Working Memory (zero allocation per tick)
@@ -134,9 +129,6 @@ public class GenomeAnalyticsPlugin extends AbstractAnalyticsPlugin {
         this.cumulativePopulation.defaultReturnValue(0L);
         this.trackedGenomeSet = new LongOpenHashSet(topN);
         this.labelCache = new Long2ObjectOpenHashMap<>();
-
-        this.topNThreshold = 0;
-        this.topNDirty = true;
 
         // Reusable working memory
         this.genomeCounts = new Long2IntOpenHashMap();
@@ -195,21 +187,13 @@ public class GenomeAnalyticsPlugin extends AbstractAnalyticsPlugin {
         if (genomeCounts.isEmpty()) {
             genomeData = "{}";
         } else {
-            // Update cumulative population and check if re-sort needed
+            // Update cumulative population
             for (var it = genomeCounts.long2IntEntrySet().fastIterator(); it.hasNext(); ) {
                 var entry = it.next();
-                long hash = entry.getLongKey();
-                int tickCount = entry.getIntValue();
-                long newCount = cumulativePopulation.addTo(hash, tickCount) + tickCount;
-
-                if (!trackedGenomeSet.contains(hash) && newCount > topNThreshold) {
-                    topNDirty = true;
-                }
+                cumulativePopulation.addTo(entry.getLongKey(), entry.getIntValue());
             }
 
-            if (topNDirty) {
-                rebuildTopN();
-            }
+            rebuildTopN();
 
             // Build JSON: {"label1":count1,"label2":count2,...,"other":countN}
             jsonBuilder.setLength(0);
@@ -251,17 +235,21 @@ public class GenomeAnalyticsPlugin extends AbstractAnalyticsPlugin {
     }
 
     /**
-     * Rebuilds the top N genome set and updates threshold.
+     * Rebuilds the top N genome set from currently active genomes.
+     * <p>
+     * Only genomes present in {@link #genomeCounts} (alive this tick) are candidates.
+     * Ranking uses cumulative population for chart stability across ticks.
      * Reuses sortBuffer to minimize allocations.
      */
     private void rebuildTopN() {
-        int size = cumulativePopulation.size();
         sortBuffer.clear();
-        sortBuffer.ensureCapacity(size);
+        sortBuffer.ensureCapacity(genomeCounts.size());
 
-        for (var it = cumulativePopulation.long2LongEntrySet().fastIterator(); it.hasNext(); ) {
+        for (var it = genomeCounts.long2IntEntrySet().fastIterator(); it.hasNext(); ) {
             var entry = it.next();
-            sortBuffer.add(new long[] { entry.getLongKey(), entry.getLongValue() });
+            long hash = entry.getLongKey();
+            long cumulative = cumulativePopulation.get(hash);
+            sortBuffer.add(new long[] { hash, cumulative });
         }
 
         sortBuffer.sort((a, b) -> Long.compare(b[1], a[1]));
@@ -271,11 +259,8 @@ public class GenomeAnalyticsPlugin extends AbstractAnalyticsPlugin {
         for (long[] entry : sortBuffer) {
             if (count >= topN) break;
             trackedGenomeSet.add(entry[0]);
-            topNThreshold = entry[1];
             count++;
         }
-
-        topNDirty = false;
     }
 
     /**
