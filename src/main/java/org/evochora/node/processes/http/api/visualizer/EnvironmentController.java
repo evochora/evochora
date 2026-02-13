@@ -467,11 +467,16 @@ public class EnvironmentController extends VisualizerBaseController {
         if (includeMinimap) {
             final var minimapResult = minimapAggregator.aggregate(cellColumns, envProps);
             if (minimapResult != null) {
-                responseBuilder.setMinimap(MinimapData.newBuilder()
+                final var minimapBuilder = MinimapData.newBuilder()
                         .setWidth(minimapResult.width())
                         .setHeight(minimapResult.height())
-                        .setCellTypes(ByteString.copyFrom(minimapResult.cellTypes()))
-                        .build());
+                        .setCellTypes(ByteString.copyFrom(minimapResult.cellTypes()));
+
+                for (final int ownerId : minimapResult.ownerIds()) {
+                    minimapBuilder.addOwnerIds(ownerId);
+                }
+
+                responseBuilder.setMinimap(minimapBuilder.build());
             }
         }
 

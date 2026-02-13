@@ -6,9 +6,20 @@ import { MinimapOrganismOverlay } from './MinimapOrganismOverlay.js';
  * Orchestrates minimap rendering and navigation as a collapsible panel.
  * Creates DOM elements similar to header panels but positioned at the bottom.
  *
+ * The minimap toggle cycles through three overlay modes:
+ * - **Org**: Cell type background + organism dot overlay
+ * - **Own**: Background colored by dominant owner organism (no dots)
+ * - **Off**: Cell type background, no dots
+ *
  * @class MinimapView
  */
 export class MinimapView {
+
+    /** Overlay mode labels for the toggle button. */
+    static OVERLAY_MODES = ['org', 'own', 'off'];
+
+    /** Display labels for each overlay mode. */
+    static MODE_LABELS = { org: 'Org', own: 'Own', off: 'Off' };
 
     /**
      * Creates a new MinimapView.
@@ -37,6 +48,11 @@ export class MinimapView {
         this._selectionAnimationId = null; // requestAnimationFrame ID
         this._selectionAnimationStart = 0;
         this.navigator = null; // Initialized when worldShape is set
+
+        /** @type {'org'|'own'|'off'} */
+        this.overlayMode = 'org';
+        this.ownershipColorResolver = null;
+
         this.attachEvents();
     }
 
@@ -174,7 +190,7 @@ export class MinimapView {
      * Updates the minimap with new data from the server.
      * Should be called when environment data is loaded with minimap flag.
      *
-     * @param {{width: number, height: number, cellTypes: Uint8Array}} minimapData - Minimap data.
+     * @param {{width: number, height: number, cellTypes: Uint8Array, ownerIds: number[]}} minimapData - Minimap data.
      * @param {number[]} worldShape - World dimensions [width, height].
      */
     update(minimapData, worldShape) {
@@ -200,19 +216,8 @@ export class MinimapView {
             this.navigator.updateWorldShape(worldShape);
         }
 
-        // Render minimap
-        this.renderer.render(minimapData);
-
-        // Render organism overlay (if enabled and we have organisms)
-        this._renderOrganismOverlay();
-
-        // Cache background (environment + organisms) for fast viewport updates
-        this.renderer.cacheBackground();
-
-        // Draw viewport rectangle if we have bounds
-        if (this.viewportBounds && worldShape) {
-            this.renderer.drawViewportRect(this.viewportBounds, worldShape);
-        }
+        // Render minimap based on current overlay mode
+        this._renderFullMinimap();
 
         // Sync collapsed panel width with expanded panel
         this.syncPanelWidths();
@@ -259,19 +264,7 @@ export class MinimapView {
 
         // Re-render if we have minimap data (overlay draws on top of environment)
         if (this.lastMinimapData && this.worldShape) {
-            // Re-render environment
-            this.renderer.render(this.lastMinimapData);
-
-            // Render organism overlay
-            this._renderOrganismOverlay();
-
-            // Update cache with new organism positions
-            this.renderer.cacheBackground();
-
-            // Re-draw viewport rectangle
-            if (this.viewportBounds) {
-                this.renderer.drawViewportRect(this.viewportBounds, this.worldShape);
-            }
+            this._renderFullMinimap();
         }
     }
 
@@ -291,6 +284,30 @@ export class MinimapView {
         };
 
         this.organismOverlay.render(ctx, this.currentOrganisms, this.worldShape, canvasSize, this.colorResolver, this.groupKeyFn);
+    }
+
+    /**
+     * Renders the full minimap based on the current overlay mode.
+     * Handles all three modes: 'org' (dots), 'own' (ownership coloring), 'off' (plain).
+     * @private
+     */
+    _renderFullMinimap() {
+        if (!this.lastMinimapData || !this.worldShape) return;
+
+        if (this.overlayMode === 'own' && this.ownershipColorResolver) {
+            this.renderer.renderOwnership(this.lastMinimapData, this.ownershipColorResolver);
+        } else {
+            this.renderer.render(this.lastMinimapData);
+            if (this.overlayMode === 'org') {
+                this._renderOrganismOverlay();
+            }
+        }
+
+        this.renderer.cacheBackground();
+
+        if (this.viewportBounds) {
+            this.renderer.drawViewportRect(this.viewportBounds, this.worldShape);
+        }
     }
 
     /**
@@ -368,44 +385,56 @@ export class MinimapView {
     }
 
     /**
-     * Toggles the organism overlay on/off.
+     * Cycles the overlay mode through: org → own → off → org.
      */
     toggleOrganismOverlay() {
-        this.setOrganismOverlayEnabled(!this.organismOverlay.isEnabled());
+        const modes = MinimapView.OVERLAY_MODES;
+        const nextIndex = (modes.indexOf(this.overlayMode) + 1) % modes.length;
+        this.setOverlayMode(modes[nextIndex]);
     }
 
     /**
-     * Sets whether the organism overlay is visible.
-     * @param {boolean} enabled - True to show organisms, false to hide
+     * Sets the overlay mode ('org', 'own', or 'off').
+     * @param {'org'|'own'|'off'} mode - The overlay mode to set.
      */
-    setOrganismOverlayEnabled(enabled) {
-        this.organismOverlay.setEnabled(enabled);
+    setOverlayMode(mode) {
+        this.overlayMode = mode;
+        this.organismOverlay.setEnabled(mode === 'org');
 
-        // Update button appearance (both panels)
-        if (this.organismToggleBtn) {
-            this.organismToggleBtn.classList.toggle('active', enabled);
-        }
+        // Update button appearance
+        this._updateToggleButton();
 
-        // Persist to localStorage
-        localStorage.setItem('minimapOrganismOverlay', enabled ? 'true' : 'false');
+        // Persist
+        localStorage.setItem('minimapOverlayMode', mode);
 
-        // Re-render to apply change
-        if (this.lastMinimapData && this.worldShape) {
-            this.renderer.render(this.lastMinimapData);
-            this._renderOrganismOverlay();
-            this.renderer.cacheBackground();
-            if (this.viewportBounds) {
-                this.renderer.drawViewportRect(this.viewportBounds, this.worldShape);
-            }
-        }
+        // Re-render
+        this._renderFullMinimap();
     }
 
     /**
-     * Returns whether the organism overlay is currently enabled.
-     * @returns {boolean}
+     * Sets the color resolver function for ownership mode.
+     * @param {function(number): number} resolverFn - Maps ownerId to 0xRRGGBB color.
      */
-    isOrganismOverlayEnabled() {
-        return this.organismOverlay.isEnabled();
+    setOwnershipColorResolver(resolverFn) {
+        this.ownershipColorResolver = resolverFn;
+    }
+
+    /**
+     * Returns the current overlay mode.
+     * @returns {'org'|'own'|'off'}
+     */
+    getOverlayMode() {
+        return this.overlayMode;
+    }
+
+    /**
+     * Updates the toggle button text and active state.
+     * @private
+     */
+    _updateToggleButton() {
+        if (!this.organismToggleBtn) return;
+        this.organismToggleBtn.textContent = MinimapView.MODE_LABELS[this.overlayMode];
+        this.organismToggleBtn.classList.toggle('active', this.overlayMode !== 'off');
     }
 
     /**
@@ -608,7 +637,7 @@ export class MinimapView {
     }
 
     /**
-     * Restores expanded state and organism overlay state from localStorage.
+     * Restores expanded state and overlay mode from localStorage.
      */
     restoreState() {
         const expanded = localStorage.getItem('minimapExpanded');
@@ -616,12 +645,21 @@ export class MinimapView {
             this.expanded = false;
         }
 
-        // Restore organism overlay state (default: enabled)
-        const organismOverlay = localStorage.getItem('minimapOrganismOverlay');
-        if (organismOverlay === 'false') {
-            this.organismOverlay.setEnabled(false);
-            if (this.organismToggleBtn) {
-                this.organismToggleBtn.classList.remove('active');
+        // Restore overlay mode (default: 'org')
+        const savedMode = localStorage.getItem('minimapOverlayMode');
+        if (savedMode && MinimapView.OVERLAY_MODES.includes(savedMode)) {
+            this.overlayMode = savedMode;
+            this.organismOverlay.setEnabled(savedMode === 'org');
+            this._updateToggleButton();
+        } else {
+            // Backward compat: migrate old boolean setting
+            const oldSetting = localStorage.getItem('minimapOrganismOverlay');
+            if (oldSetting !== null) {
+                this.overlayMode = oldSetting === 'false' ? 'off' : 'org';
+                this.organismOverlay.setEnabled(this.overlayMode === 'org');
+                this._updateToggleButton();
+                localStorage.setItem('minimapOverlayMode', this.overlayMode);
+                localStorage.removeItem('minimapOrganismOverlay');
             }
         }
     }

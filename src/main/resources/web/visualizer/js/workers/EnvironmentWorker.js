@@ -51,6 +51,7 @@ message MinimapData {
   int32 width = 1;
   int32 height = 2;
   bytes cell_types = 3;
+  repeated int32 owner_ids = 4 [packed=true];
 }
 `;
 
@@ -179,7 +180,8 @@ async function fetchEnvironmentData(url, requestId) {
             result.minimap = {
                 width: message.minimap.width,
                 height: message.minimap.height,
-                cellTypes: Array.from(new Uint8Array(message.minimap.cellTypes))
+                cellTypes: Array.from(new Uint8Array(message.minimap.cellTypes)),
+                ownerIds: message.minimap.ownerIds || null
             };
         }
 

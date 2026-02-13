@@ -157,6 +157,50 @@ export class MinimapRenderer {
     }
 
     /**
+     * Renders minimap with ownership coloring instead of cell type coloring.
+     * Each pixel is colored by the dominant owner organism at that location.
+     * Unowned pixels (ownerId=0) and pixels where the resolver returns -1
+     * (unknown/dead organism) use the empty/background color.
+     *
+     * @param {{width: number, height: number, ownerIds: number[]}} minimapData - Minimap data with owner IDs.
+     * @param {function(number): number} colorResolverFn - Maps ownerId to 0xRRGGBB color integer, or -1 for unknown.
+     */
+    renderOwnership(minimapData, colorResolverFn) {
+        if (!minimapData || !minimapData.ownerIds) {
+            return;
+        }
+
+        const { width, height, ownerIds } = minimapData;
+        this.lastMinimapData = minimapData;
+
+        if (this.canvas.width !== width || this.canvas.height !== height) {
+            this.canvas.width = width;
+            this.canvas.height = height;
+        }
+
+        const imageData = this.ctx.createImageData(width, height);
+        const pixels = imageData.data;
+        const emptyColor = this.palette.empty;
+
+        for (let i = 0; i < ownerIds.length; i++) {
+            const ownerId = ownerIds[i];
+            let color = emptyColor;
+            if (ownerId > 0) {
+                const resolved = colorResolverFn(ownerId);
+                if (resolved >= 0) color = resolved;
+            }
+
+            const p = i << 2;
+            pixels[p]     = (color >> 16) & 0xFF;
+            pixels[p + 1] = (color >> 8) & 0xFF;
+            pixels[p + 2] = color & 0xFF;
+            pixels[p + 3] = 255;
+        }
+
+        this.ctx.putImageData(imageData, 0, 0);
+    }
+
+    /**
      * Re-renders the last minimap data with the viewport rectangle.
      * Useful when only the viewport position changes (panning).
      *

@@ -168,7 +168,8 @@ export class EnvironmentApi {
                 result.minimap = {
                     width: data.minimap.width,
                     height: data.minimap.height,
-                    cellTypes: new Uint8Array(data.minimap.cellTypes)
+                    cellTypes: new Uint8Array(data.minimap.cellTypes),
+                    ownerIds: data.minimap.ownerIds || null
                 };
             }
 

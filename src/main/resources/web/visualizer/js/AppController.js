@@ -595,6 +595,7 @@ export class AppController {
             );
             this.minimapView.restoreState(); // Restore expanded/collapsed state
             this.minimapView.updateZoomButton(this.state.isZoomedOut, this.renderer.getZoomOutScale());
+            this.minimapView.setOwnershipColorResolver(this._minimapOwnershipColorResolver());
 
             // Abort previous request if it's still running
             if (this.simulationRequestController) {
@@ -888,6 +889,7 @@ export class AppController {
             this.state.totalOrganismCount = organismResult.totalOrganismCount;
             this._applyGenomeLineageTree(organismResult.genomeLineageTree);
             this.updateOrganismPanel(organisms, isForwardStep);
+            this.minimapView?.setOwnershipColorResolver(this._minimapOwnershipColorResolver(organisms));
             this.minimapView?.updateOrganisms(
                 organisms,
                 this._minimapColorResolver(),
@@ -1246,6 +1248,7 @@ export class AppController {
             this.updateOrganismPanel(organisms);
             this.renderer.renderOrganisms(organisms);
             this.minimapView?.organismOverlay?.clearSpriteCache();
+            this.minimapView?.setOwnershipColorResolver(this._minimapOwnershipColorResolver());
             this.minimapView?.updateOrganisms(
                 organisms,
                 this._minimapColorResolver(),
@@ -1292,6 +1295,46 @@ export class AppController {
             return (org) => String(org.genomeHash || 0);
         }
         return (org) => String(org.organismId);
+    }
+
+    /**
+     * Returns a color resolver for minimap ownership mode.
+     * Maps ownerId (int) to 0xRRGGBB (int) based on current color mode.
+     * Only colors cells belonging to living organisms; returns -1 for unknown owners
+     * (renderer uses background color for -1).
+     * @param {Array|null} [organisms=null] - Organisms to build the mapping from. Falls back to previousOrganisms.
+     * @returns {function(number): number}
+     * @private
+     */
+    _minimapOwnershipColorResolver(organisms = null) {
+        const orgs = organisms || this.state.previousOrganisms;
+        const livingIds = new Set();
+        if (orgs) {
+            for (const org of orgs) {
+                livingIds.add(org.organismId);
+            }
+        }
+
+        if (this.state.colorMode === 'genome') {
+            const ownerToGenome = new Map();
+            if (orgs) {
+                for (const org of orgs) {
+                    ownerToGenome.set(org.organismId, org.genomeHash);
+                }
+            }
+            return (ownerId) => {
+                const genomeHash = ownerToGenome.get(ownerId);
+                if (genomeHash != null) {
+                    return this._genomeHashToLineageColor(genomeHash);
+                }
+                return -1;
+            };
+        }
+        const palette = AppController.ORGANISM_PALETTE;
+        return (ownerId) => {
+            if (!livingIds.has(ownerId)) return -1;
+            return parseInt(palette[(ownerId - 1) % palette.length].slice(1), 16);
+        };
     }
 
     /**

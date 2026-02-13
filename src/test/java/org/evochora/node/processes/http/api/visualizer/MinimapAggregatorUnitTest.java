@@ -19,6 +19,7 @@ import org.junit.jupiter.api.Test;
  *   <li>Aspect ratio preservation for various world shapes</li>
  *   <li>Priority-based cell type aggregation</li>
  *   <li>Edge cases (empty worlds, single cells)</li>
+ *   <li>Ownership aggregation (dominant owner per minimap pixel)</li>
  * </ul>
  */
 @Tag("unit")
@@ -47,6 +48,7 @@ class MinimapAggregatorUnitTest {
             assertThat(result).isNotNull();
             assertThat(result.width()).isEqualTo(300);
             assertThat(result.height()).isEqualTo(225); // 300 * 3000/4000 = 225
+            assertThat(result.ownerIds()).hasSize(300 * 225);
         }
 
         @Test
@@ -60,6 +62,7 @@ class MinimapAggregatorUnitTest {
             assertThat(result).isNotNull();
             assertThat(result.width()).isEqualTo(225); // 300 * 3000/4000 = 225
             assertThat(result.height()).isEqualTo(300);
+            assertThat(result.ownerIds()).hasSize(225 * 300);
         }
 
         @Test
@@ -73,6 +76,7 @@ class MinimapAggregatorUnitTest {
             assertThat(result).isNotNull();
             assertThat(result.width()).isEqualTo(300);
             assertThat(result.height()).isEqualTo(300);
+            assertThat(result.ownerIds()).hasSize(300 * 300);
         }
 
         @Test
@@ -86,6 +90,7 @@ class MinimapAggregatorUnitTest {
             assertThat(result).isNotNull();
             assertThat(result.width()).isEqualTo(300);
             assertThat(result.height()).isEqualTo(30);
+            assertThat(result.ownerIds()).hasSize(300 * 30);
         }
     }
 
@@ -242,6 +247,88 @@ class MinimapAggregatorUnitTest {
         }
     }
 
+    @Nested
+    @DisplayName("Ownership Aggregation")
+    class OwnershipTests {
+
+        @Test
+        @DisplayName("Dominant owner wins majority vote for a minimap pixel")
+        void dominantOwner_winsMajorityVote() {
+            var envProps = new EnvironmentProperties(new int[]{600, 600}, false);
+            // 4 cells in same pixel block: 3 owned by org 5, 1 owned by org 3
+            var columns = createColumns(
+                new int[]{100 * 600 + 100, 100 * 600 + 101, 101 * 600 + 100, 101 * 600 + 101},
+                new int[]{packMolecule(0), packMolecule(0), packMolecule(0), packMolecule(0)},
+                new int[]{5, 5, 5, 3}
+            );
+
+            MinimapResult result = aggregator.aggregate(columns, envProps);
+
+            assertThat(result).isNotNull();
+            int minimapIndex = 50 * 300 + 50;
+            assertThat(result.ownerIds()[minimapIndex]).isEqualTo(5);
+        }
+
+        @Test
+        @DisplayName("Unowned cells produce owner 0")
+        void unownedCells_produceZeroOwner() {
+            var envProps = new EnvironmentProperties(new int[]{600, 600}, false);
+            var columns = createColumns(
+                new int[]{0, 1},
+                new int[]{packMolecule(0), packMolecule(0)},
+                new int[]{0, 0}
+            );
+
+            MinimapResult result = aggregator.aggregate(columns, envProps);
+
+            assertThat(result).isNotNull();
+            assertThat(result.ownerIds()[0]).isEqualTo(0);
+        }
+
+        @Test
+        @DisplayName("Empty minimap has all-zero owner IDs")
+        void emptyMinimap_hasAllZeroOwners() {
+            var envProps = new EnvironmentProperties(new int[]{600, 600}, false);
+            var columns = createEmptyColumns();
+
+            MinimapResult result = aggregator.aggregate(columns, envProps);
+
+            assertThat(result).isNotNull();
+            for (int id : result.ownerIds()) {
+                assertThat(id).isEqualTo(0);
+            }
+        }
+
+        @Test
+        @DisplayName("Mixed owned and unowned cells - owned cells determine the owner")
+        void mixedOwnership_ownedCellsWin() {
+            var envProps = new EnvironmentProperties(new int[]{600, 600}, false);
+            // 2 unowned, 2 owned by org 7 - org 7 wins
+            var columns = createColumns(
+                new int[]{0 * 600 + 0, 0 * 600 + 1, 1 * 600 + 0, 1 * 600 + 1},
+                new int[]{packMolecule(0), packMolecule(0), packMolecule(0), packMolecule(0)},
+                new int[]{0, 0, 7, 7}
+            );
+
+            MinimapResult result = aggregator.aggregate(columns, envProps);
+
+            assertThat(result).isNotNull();
+            assertThat(result.ownerIds()[0]).isEqualTo(7);
+        }
+
+        @Test
+        @DisplayName("Owner IDs array has correct size")
+        void ownerIds_hasCorrectSize() {
+            var envProps = new EnvironmentProperties(new int[]{600, 600}, false);
+            var columns = createEmptyColumns();
+
+            MinimapResult result = aggregator.aggregate(columns, envProps);
+
+            assertThat(result).isNotNull();
+            assertThat(result.ownerIds()).hasSize(result.width() * result.height());
+        }
+    }
+
     // Helper methods
 
     private CellDataColumns createEmptyColumns() {
@@ -249,6 +336,11 @@ class MinimapAggregatorUnitTest {
     }
 
     private CellDataColumns createColumns(int[] flatIndices, int[] moleculeData) {
+        int[] zeroOwners = new int[flatIndices.length];
+        return createColumns(flatIndices, moleculeData, zeroOwners);
+    }
+
+    private CellDataColumns createColumns(int[] flatIndices, int[] moleculeData, int[] ownerIds) {
         var builder = CellDataColumns.newBuilder();
         for (int idx : flatIndices) {
             builder.addFlatIndices(idx);
@@ -256,9 +348,8 @@ class MinimapAggregatorUnitTest {
         for (int data : moleculeData) {
             builder.addMoleculeData(data);
         }
-        // Owner IDs not needed for minimap
-        for (int i = 0; i < flatIndices.length; i++) {
-            builder.addOwnerIds(0);
+        for (int id : ownerIds) {
+            builder.addOwnerIds(id);
         }
         return builder.build();
     }

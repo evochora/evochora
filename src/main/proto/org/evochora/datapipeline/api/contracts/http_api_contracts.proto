@@ -55,6 +55,10 @@ message MinimapData {
   // Values: 0=CODE, 1=DATA, 2=ENERGY, 3=STRUCTURE, 4=LABEL, 0=EMPTY
   // Client maps these to colors using the same palette as the main grid.
   bytes cell_types = 3;
+
+  // Dominant owner organism ID per pixel (row-major order, same size as cell_types).
+  // 0 means no owner (unowned or empty). Used for ownership coloring mode.
+  repeated int32 owner_ids = 4 [packed=true];
 }
 
 // A single cell optimized for HTTP response.

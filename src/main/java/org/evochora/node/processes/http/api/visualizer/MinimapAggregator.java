@@ -1,5 +1,8 @@
 package org.evochora.node.processes.http.api.visualizer;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -10,6 +13,7 @@ import org.evochora.runtime.model.EnvironmentProperties;
  * This class is stateless and thread-safe. It performs downsampling of the environment
  * grid into a fixed-size minimap while preserving the aspect ratio. Cell types are
  * aggregated using majority voting - the most common cell type in each block wins.
+ * Owner IDs are aggregated similarly - the most frequent non-zero owner per pixel wins.
  * <p>
  * <strong>Cell Types:</strong>
  * <ul>
@@ -47,13 +51,14 @@ public class MinimapAggregator {
     private static final byte TYPE_EMPTY = 7;
 
     /**
-     * Result of minimap aggregation containing dimensions and cell type data.
+     * Result of minimap aggregation containing dimensions, cell type data, and ownership data.
      *
      * @param width     Width of the minimap in pixels
      * @param height    Height of the minimap in pixels
      * @param cellTypes Cell type values (0-7), one byte per pixel in row-major order
+     * @param ownerIds  Dominant owner organism ID per pixel (0 = unowned), in row-major order
      */
-    public record MinimapResult(int width, int height, byte[] cellTypes) {}
+    public record MinimapResult(int width, int height, byte[] cellTypes, int[] ownerIds) {}
 
     /**
      * Aggregates environment cell data into a minimap.
@@ -61,7 +66,8 @@ public class MinimapAggregator {
      * The minimap dimensions are calculated to fit within {@link #MAX_SIZE} while
      * preserving the environment's aspect ratio. Each minimap pixel represents a
      * block of environment cells, with the cell type determined by majority voting
-     * (the most common type wins).
+     * (the most common type wins). Ownership is aggregated similarly - the most
+     * frequent non-zero owner per pixel wins.
      *
      * @param columns  The cell data in columnar format from {@code TickData.getCellColumns()}
      * @param envProps Environment properties containing world shape
@@ -97,6 +103,10 @@ public class MinimapAggregator {
         // counts[pixelIndex * NUM_TYPES + typeIndex] = count of that type
         final short[] counts = new short[minimapSize * NUM_TYPES];
 
+        // Track owner votes per pixel using composite key: (pixelIndex << 32 | ownerId)
+        // Only non-zero owners participate in voting.
+        final Map<Long, Short> ownerVotes = new HashMap<>();
+
         // Calculate scale factors as floats to ensure the entire world is covered.
         // Using integer division would cause cells at the edge to wrap around.
         // E.g., for 800x600 world with 300x225 minimap:
@@ -107,6 +117,8 @@ public class MinimapAggregator {
 
         // Iterate only over occupied cells (sparse iteration)
         final int cellCount = columns.getFlatIndicesCount();
+        final boolean hasOwners = columns.getOwnerIdsCount() == cellCount;
+
         for (int i = 0; i < cellCount; i++) {
             final int flatIndex = columns.getFlatIndices(i);
             final int moleculeData = columns.getMoleculeData(i);
@@ -126,6 +138,15 @@ public class MinimapAggregator {
 
             // Increment count for this type at this pixel
             counts[mIdx * NUM_TYPES + cellType]++;
+
+            // Track ownership votes (skip unowned cells)
+            if (hasOwners) {
+                final int ownerId = columns.getOwnerIds(i);
+                if (ownerId != 0) {
+                    final long key = ((long) mIdx << 32) | (ownerId & 0xFFFFFFFFL);
+                    ownerVotes.merge(key, (short) 1, (a, b) -> (short) (a + b));
+                }
+            }
         }
 
         // Add background (empty) cells to the count with reduced weight
@@ -147,13 +168,16 @@ public class MinimapAggregator {
             }
         }
 
-        // Build result by selecting majority type for each pixel
+        // Build cell type result by selecting majority type for each pixel
         final byte[] minimap = new byte[minimapSize];
         for (int i = 0; i < minimapSize; i++) {
             minimap[i] = findMajorityType(counts, i);
         }
 
-        return new MinimapResult(minimapWidth, minimapHeight, minimap);
+        // Build ownership result by selecting dominant owner per pixel
+        final int[] ownerIds = resolveOwnerIds(ownerVotes, minimapSize);
+
+        return new MinimapResult(minimapWidth, minimapHeight, minimap, ownerIds);
     }
 
     /**
@@ -204,5 +228,32 @@ public class MinimapAggregator {
         }
 
         return majorityType;
+    }
+
+    /**
+     * Resolves the dominant (most frequent) owner per minimap pixel from the vote map.
+     * Pixels with no ownership votes get owner ID 0 (unowned).
+     *
+     * @param ownerVotes Composite-key map: (pixelIndex &lt;&lt; 32 | ownerId) → vote count
+     * @param minimapSize Total number of minimap pixels
+     * @return Array of dominant owner IDs, one per pixel (0 = unowned)
+     */
+    private int[] resolveOwnerIds(final Map<Long, Short> ownerVotes, final int minimapSize) {
+        final int[] ownerIds = new int[minimapSize];
+        final short[] maxCounts = new short[minimapSize];
+
+        for (final var entry : ownerVotes.entrySet()) {
+            final long key = entry.getKey();
+            final int pixelIndex = (int) (key >>> 32);
+            final int ownerId = (int) key;
+            final short count = entry.getValue();
+
+            if (count > maxCounts[pixelIndex]) {
+                maxCounts[pixelIndex] = count;
+                ownerIds[pixelIndex] = ownerId;
+            }
+        }
+
+        return ownerIds;
     }
 }
