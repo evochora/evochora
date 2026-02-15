@@ -17,6 +17,7 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -64,7 +65,7 @@ class AbstractBatchIndexerTest {
     private AtomicInteger flushCount;
 
     @BeforeEach
-    void setup() {
+    void setup() throws IOException {
         // Create mocks that implement both capability interfaces AND IResource
         // This simulates production where wrappers implement IResource via AbstractResource
         @SuppressWarnings("unchecked")
@@ -76,6 +77,10 @@ class AbstractBatchIndexerTest {
         flushedBatches = new ArrayList<>();
         flushCount = new AtomicInteger(0);
         flushLatch = new CountDownLatch(0);
+
+        // All tests use configured runIds — stub storage validation to pass
+        lenient().when(mockStorage.findMetadataPath(any(String.class)))
+            .thenReturn(Optional.of(StoragePath.of("dummy/raw/metadata.pb")));
     }
     
     @org.junit.jupiter.api.AfterEach

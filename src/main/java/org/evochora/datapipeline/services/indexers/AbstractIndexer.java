@@ -72,6 +72,19 @@ public abstract class AbstractIndexer<T extends Message, ACK> extends AbstractSe
         
         if (configuredRunId != null) {
             log.info("Using configured runId: {}", configuredRunId);
+
+            // Validate that the run actually exists in storage
+            try {
+                if (storage.findMetadataPath(configuredRunId).isEmpty()) {
+                    throw new IllegalArgumentException(
+                        "No simulation data found in storage for configured runId: " + configuredRunId +
+                        ". Verify that the runId is correct.");
+                }
+            } catch (IOException e) {
+                log.warn("Could not validate runId in storage: {}", e.getMessage());
+                // Continue — storage may be temporarily unavailable
+            }
+
             runId = configuredRunId;
         } else {
             log.debug("Discovering runId from storage (timestamp-based, after {})", indexerStartTime);

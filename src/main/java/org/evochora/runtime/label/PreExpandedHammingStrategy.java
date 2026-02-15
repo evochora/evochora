@@ -3,6 +3,7 @@ package org.evochora.runtime.label;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.spi.IRandomProvider;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -76,6 +77,14 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
     private final int tolerance;
     private final int foreignPenalty;
     private final int hammingWeight;
+    private final int selectionSpread;
+
+    /**
+     * Random provider for stochastic label selection.
+     * Must be set via {@link #setRandomProvider} before {@link #findTarget} is called
+     * when {@code selectionSpread > 0}.
+     */
+    private IRandomProvider randomProvider;
 
     /**
      * Maps label value -> set of LabelEntry objects.
@@ -103,6 +112,15 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
     /** Default score weight per Hamming distance. */
     public static final int DEFAULT_HAMMING_WEIGHT = 50;
 
+    /** Default selection spread (0 = deterministic, matching legacy behavior). */
+    public static final int DEFAULT_SELECTION_SPREAD = 0;
+
+    /**
+     * Internal scaling constant for integer weight calculation.
+     * Weights are computed as {@code WEIGHT_PRECISION * selectionSpread / (distance + selectionSpread)}.
+     */
+    private static final int WEIGHT_PRECISION = 10000;
+
     /**
      * Creates a new pre-expanded Hamming strategy with default settings.
      */
@@ -113,7 +131,7 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
     /**
      * Creates a new pre-expanded Hamming strategy from configuration.
      * <p>
-     * Reads "tolerance", "foreignPenalty", and "hammingWeight" from the config,
+     * Reads "tolerance", "foreignPenalty", "hammingWeight", and "selectionSpread" from the config,
      * using defaults if not specified.
      *
      * @param options The configuration options
@@ -122,8 +140,20 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
         this(
             options.hasPath("tolerance") ? options.getInt("tolerance") : DEFAULT_TOLERANCE,
             options.hasPath("foreignPenalty") ? options.getInt("foreignPenalty") : DEFAULT_FOREIGN_PENALTY,
-            options.hasPath("hammingWeight") ? options.getInt("hammingWeight") : DEFAULT_HAMMING_WEIGHT
+            options.hasPath("hammingWeight") ? options.getInt("hammingWeight") : DEFAULT_HAMMING_WEIGHT,
+            options.hasPath("selectionSpread") ? options.getInt("selectionSpread") : DEFAULT_SELECTION_SPREAD
         );
+    }
+
+    /**
+     * Creates a new pre-expanded Hamming strategy with specified settings and deterministic selection.
+     *
+     * @param tolerance The Hamming distance tolerance (2 = ~211 neighbors, 3 = ~1351 neighbors)
+     * @param foreignPenalty The score penalty for foreign labels
+     * @param hammingWeight The score weight per Hamming distance
+     */
+    public PreExpandedHammingStrategy(int tolerance, int foreignPenalty, int hammingWeight) {
+        this(tolerance, foreignPenalty, hammingWeight, DEFAULT_SELECTION_SPREAD);
     }
 
     /**
@@ -132,11 +162,16 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
      * @param tolerance The Hamming distance tolerance (2 = ~211 neighbors, 3 = ~1351 neighbors)
      * @param foreignPenalty The score penalty for foreign labels
      * @param hammingWeight The score weight per Hamming distance
+     * @param selectionSpread The selection spread for stochastic label selection among own exact matches.
+     *                        0 = deterministic (closest wins). {@literal >}0 = weighted-random selection where
+     *                        the value is the half-weight distance (requires a random provider via
+     *                        {@link #setRandomProvider}).
      */
-    public PreExpandedHammingStrategy(int tolerance, int foreignPenalty, int hammingWeight) {
+    public PreExpandedHammingStrategy(int tolerance, int foreignPenalty, int hammingWeight, int selectionSpread) {
         this.tolerance = tolerance;
         this.foreignPenalty = foreignPenalty;
         this.hammingWeight = hammingWeight;
+        this.selectionSpread = selectionSpread;
         this.valueToLabels = new Int2ObjectOpenHashMap<>();
         this.indexToEntry = new Int2ObjectOpenHashMap<>();
     }
@@ -152,10 +187,19 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
         int[] shape = environment.getShape();
 
         // === PHASE 1: Early exit - find best own label with Hamming=0 ===
-        // Own exact match always wins, so we can skip full scoring if one exists
+        // Own exact match always wins, so we can skip full scoring if one exists.
+        // When selectionSpread > 0, uses weighted reservoir sampling among own exact matches
+        // to enable "duplication + divergence": after gene duplication, both label copies
+        // get a chance to be jumped to, weighted by inverse distance.
+        if (selectionSpread > 0 && randomProvider == null) {
+            throw new IllegalStateException(
+                "selectionSpread > 0 requires a random provider to be set via setRandomProvider()");
+        }
+
         int bestOwnExactDistance = Integer.MAX_VALUE;
         int bestOwnExactIndex = -1;
         int bestOwnExactOwner = Integer.MAX_VALUE;
+        long totalWeight = 0;
 
         for (LabelEntry entry : candidates) {
             LabelEntryWithValue entryWithValue = indexToEntry.get(entry.flatIndex());
@@ -171,11 +215,25 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
                 int[] labelCoords = environment.getCoordinateFromIndex(entry.flatIndex());
                 int distance = toroidalManhattanDistance(callerCoords, labelCoords, shape);
 
-                if (distance < bestOwnExactDistance ||
-                    (distance == bestOwnExactDistance && entry.owner() < bestOwnExactOwner)) {
-                    bestOwnExactDistance = distance;
-                    bestOwnExactIndex = entry.flatIndex();
-                    bestOwnExactOwner = entry.owner();
+                if (selectionSpread > 0) {
+                    // Weighted reservoir sampling: weight = K * S / (d + S)
+                    // Closer labels have higher weight but distant ones still get a chance.
+                    long weight = (long) WEIGHT_PRECISION * selectionSpread / (distance + selectionSpread);
+                    if (weight < 1) {
+                        weight = 1;
+                    }
+                    totalWeight += weight;
+                    if (randomProvider.nextInt((int) Math.min(totalWeight, Integer.MAX_VALUE)) < weight) {
+                        bestOwnExactIndex = entry.flatIndex();
+                    }
+                } else {
+                    // Deterministic: closest wins, tie-break by owner ID
+                    if (distance < bestOwnExactDistance ||
+                        (distance == bestOwnExactDistance && entry.owner() < bestOwnExactOwner)) {
+                        bestOwnExactDistance = distance;
+                        bestOwnExactIndex = entry.flatIndex();
+                        bestOwnExactOwner = entry.owner();
+                    }
                 }
             }
         }
@@ -343,6 +401,24 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
     @Override
     public int getHammingWeight() {
         return hammingWeight;
+    }
+
+    /**
+     * Gets the selection spread parameter for this strategy.
+     * <p>
+     * The selection spread controls stochastic label selection among own exact matches.
+     * It represents the half-weight distance: the distance at which a label has 50% of
+     * the maximum selection weight.
+     *
+     * @return The selection spread (0 = deterministic, {@literal >}0 = stochastic)
+     */
+    public int getSelectionSpread() {
+        return selectionSpread;
+    }
+
+    @Override
+    public void setRandomProvider(IRandomProvider randomProvider) {
+        this.randomProvider = randomProvider;
     }
 
     /**

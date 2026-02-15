@@ -228,6 +228,7 @@ public class SimulationRestorer {
             log.debug("Loaded RNG state ({} bytes)", rngState.size());
         }
         simulation.setRandomProvider(randomProvider);
+        labelMatchingStrategy.setRandomProvider(randomProvider.deriveFor("labelMatching", 0));
 
         // 9. Restore ProgramArtifacts
         Map<String, ProgramArtifact> programs = restoreProgramArtifacts(metadata);

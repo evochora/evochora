@@ -177,32 +177,38 @@ class DummyIndexerIntegrationTest {
     
     @Test
     void testMetadataReading_PollingBehavior() throws Exception {
-        // Given: Create run ID but don't index metadata yet
+        // Given: Create run ID with metadata in storage but NOT in database yet
+        // This simulates MetadataPersistenceService having written the file but
+        // MetadataIndexer not having indexed it to the DB yet
         String runId = "test-run-" + UUID.randomUUID();
-        
+        SimulationMetadata metadata = createTestMetadata(runId, 10);
+
+        // Write metadata file to storage (so run validation passes)
+        String storageKey = runId + "/raw/metadata.pb";
+        testStorage.writeMessage(storageKey, metadata);
+
         Config config = ConfigFactory.parseString("""
             runId = "%s"
             metadataPollIntervalMs = 100
             metadataMaxPollDurationMs = 5000
             """.formatted(runId));
-        
+
         indexer = createDummyIndexer("test-indexer", config);
-        
-        // When: Start indexer (metadata doesn't exist yet)
+
+        // When: Start indexer (metadata in storage but not in DB)
         indexer.start();
-        
-        // Wait until indexer is running (polling for metadata)
+
+        // Wait until indexer is running (polling for metadata in DB)
         await().atMost(2, TimeUnit.SECONDS)
             .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
-        
-        // Now create and index metadata
-        SimulationMetadata metadata = createTestMetadata(runId, 10);
+
+        // Now index metadata to database
         indexMetadata(runId, metadata);
-        
-        // Then: Should transition to RUNNING now that metadata is available
+
+        // Then: Should continue RUNNING now that metadata is available in DB
         await().atMost(10, TimeUnit.SECONDS)
             .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
-        
+
         assertEquals(IService.State.RUNNING, indexer.getCurrentState());
         assertEquals(0, indexer.getMetrics().get("batches_processed").intValue());
     }
@@ -211,34 +217,33 @@ class DummyIndexerIntegrationTest {
     @ExpectLogs({
         @ExpectLog(level = ERROR,
                    loggerPattern = ".*DummyIndexer.*",
-                   messagePattern = "Indexing timeout for run: test-run-.*"),
+                   messagePattern = "Failed to discover run:.*"),
         @ExpectLog(level = ERROR,
                    loggerPattern = ".*DummyIndexer.*",
                    messagePattern = ".*DummyIndexer.* stopped with ERROR due to RuntimeException")
     })
     void testMetadataReading_Timeout() throws Exception {
-        // Given: Create run ID but never index metadata
+        // Given: Create run ID with no data in storage (simulates wrong runId)
         String runId = "test-run-" + UUID.randomUUID();
-        
-        // Configure short timeout
+
         Config config = ConfigFactory.parseString("""
             runId = "%s"
             metadataPollIntervalMs = 100
             metadataMaxPollDurationMs = 1000
             """.formatted(runId));
-        
+
         indexer = createDummyIndexer("test-indexer", config);
-        
-        // When: Start indexer (metadata never created)
+
+        // When: Start indexer (run doesn't exist in storage)
         indexer.start();
-        
-        // Then: Should timeout and enter ERROR state
+
+        // Then: Should fail fast and enter ERROR state (no 30s timeout)
         await().atMost(5, TimeUnit.SECONDS)
             .until(() -> indexer.getCurrentState() == IService.State.ERROR);
-        
+
         assertEquals(IService.State.ERROR, indexer.getCurrentState(),
-            "Service should enter ERROR state after timeout");
-        
+            "Service should enter ERROR state when configured runId not found in storage");
+
         // Verify no batches processed
         assertEquals(0, indexer.getMetrics().get("batches_processed").intValue());
     }
