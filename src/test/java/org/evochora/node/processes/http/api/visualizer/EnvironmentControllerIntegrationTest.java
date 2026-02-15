@@ -666,6 +666,11 @@ class EnvironmentControllerIntegrationTest {
     }
 
     private void indexMetadata(String runId, SimulationMetadata metadata) throws Exception {
+        // Write metadata file to storage (required for run validation in AbstractIndexer)
+        ResourceContext storageWriteContext = new ResourceContext("test", "storage-port", "storage-write", "test-storage", Map.of("simulationRunId", runId));
+        var storageWriter = (org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite) testStorage.getWrappedResource(storageWriteContext);
+        storageWriter.writeMessage(runId + "/raw/metadata.pb", metadata);
+
         // Write metadata to database
         ResourceContext metaWriteContext = new ResourceContext("test", "metadata-port", "db-meta-write", "test-db", Map.of());
         var metaWriter = testDatabase.getWrappedResource(metaWriteContext);

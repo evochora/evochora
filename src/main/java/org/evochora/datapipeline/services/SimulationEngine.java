@@ -366,6 +366,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         Environment environment = new Environment(envProps, labelMatchingStrategy);
         Simulation simulation = new Simulation(environment, policyManager, organismConfig);
         simulation.setRandomProvider(randomProvider);
+        labelMatchingStrategy.setRandomProvider(randomProvider.deriveFor("labelMatching", 0));
         simulation.setProgramArtifacts(compiledPrograms);
 
         // Register tick plugins with simulation

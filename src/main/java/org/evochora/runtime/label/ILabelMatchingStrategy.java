@@ -1,6 +1,7 @@
 package org.evochora.runtime.label;
 
 import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.spi.IRandomProvider;
 
 import java.util.Collection;
 
@@ -114,4 +115,20 @@ public interface ILabelMatchingStrategy {
      * @return The score weight per Hamming distance (typically 50)
      */
     int getHammingWeight();
+
+    /**
+     * Sets the random provider for stochastic label selection.
+     * <p>
+     * When a strategy supports stochastic selection (e.g., {@code selectionSpread > 0}),
+     * this provider supplies the randomness. The provider should be a derived
+     * sub-stream obtained via {@code IRandomProvider.deriveFor("labelMatching", 0)}.
+     * <p>
+     * The default implementation is a no-op, so strategies that do not support
+     * stochastic selection need not override this method.
+     *
+     * @param randomProvider The random provider for label selection
+     */
+    default void setRandomProvider(IRandomProvider randomProvider) {
+        // No-op by default; strategies that support stochastic selection override this.
+    }
 }

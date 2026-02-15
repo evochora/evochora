@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -14,6 +15,7 @@ import static org.mockito.Mockito.when;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 import org.evochora.datapipeline.api.contracts.MetadataInfo;
@@ -55,7 +57,7 @@ class MetadataIndexerTest {
     private final String testRunId = "test-run-123";
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         // Create mocks that implement both capability interfaces AND IResource
         // This simulates production where wrappers implement IResource via AbstractResource
         mockStorage = mock(IResourceBatchStorageRead.class);
@@ -63,6 +65,10 @@ class MetadataIndexerTest {
         @SuppressWarnings("unchecked")
         IResourceTopicReader<MetadataInfo, Object> topicMock = mock(IResourceTopicReader.class);
         mockTopic = topicMock;
+
+        // All tests use configured runIds — stub storage validation to pass
+        lenient().when(mockStorage.findMetadataPath(any(String.class)))
+            .thenReturn(Optional.of(StoragePath.of("dummy/raw/metadata.pb")));
 
         resources = Map.of(
             "storage", List.of((IResource) mockStorage),

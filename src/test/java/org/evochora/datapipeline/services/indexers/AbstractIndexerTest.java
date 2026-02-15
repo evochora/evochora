@@ -22,7 +22,10 @@ import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.TimeoutException;
+
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
@@ -62,7 +65,37 @@ class AbstractIndexerTest {
     }
 
     @Test
-    void discoverRunId_withConfiguredRunId_returnsConfiguredId() throws InterruptedException, TimeoutException {
+    void discoverRunId_withConfiguredRunId_returnsConfiguredId() throws InterruptedException, TimeoutException, IOException {
+        when(mockStorage.findMetadataPath("test-run-configured"))
+            .thenReturn(Optional.of(StoragePath.of("test-run-configured/raw/metadata.pb")));
+
+        Config config = ConfigFactory.parseString("runId = \"test-run-configured\"");
+        TestIndexer<MetadataInfo, ?> indexer = new TestIndexer<>("test", config, resources);
+
+        String runId = indexer.discoverRunId();
+
+        assertEquals("test-run-configured", runId);
+    }
+
+    @Test
+    void discoverRunId_withConfiguredRunId_throwsWhenRunNotFound() throws IOException {
+        when(mockStorage.findMetadataPath("nonexistent-run"))
+            .thenReturn(Optional.empty());
+
+        Config config = ConfigFactory.parseString("runId = \"nonexistent-run\"");
+        TestIndexer<MetadataInfo, ?> indexer = new TestIndexer<>("test", config, resources);
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, indexer::discoverRunId);
+        assertTrue(ex.getMessage().contains("nonexistent-run"));
+        assertTrue(ex.getMessage().contains("No simulation data found"));
+    }
+
+    @Test
+    @AllowLog(level = LogLevel.WARN, messagePattern = ".*Could not validate runId.*")
+    void discoverRunId_withConfiguredRunId_continuesOnStorageError() throws InterruptedException, TimeoutException, IOException {
+        when(mockStorage.findMetadataPath("test-run-configured"))
+            .thenThrow(new IOException("Storage unavailable"));
+
         Config config = ConfigFactory.parseString("runId = \"test-run-configured\"");
         TestIndexer<MetadataInfo, ?> indexer = new TestIndexer<>("test", config, resources);
 
@@ -109,7 +142,10 @@ class AbstractIndexerTest {
     }
 
     @Test
-    void run_callsIndexRunWithDiscoveredId() {
+    void run_callsIndexRunWithDiscoveredId() throws IOException {
+        when(mockStorage.findMetadataPath("test-run-configured"))
+            .thenReturn(Optional.of(StoragePath.of("test-run-configured/raw/metadata.pb")));
+
         Config config = ConfigFactory.parseString("runId = \"test-run-configured\"");
         TestIndexer<MetadataInfo, ?> indexer = new TestIndexer<>("test", config, resources);
 
