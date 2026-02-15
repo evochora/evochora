@@ -13,6 +13,7 @@ import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Represents a single programmable agent within the simulation.
@@ -22,6 +23,8 @@ import org.slf4j.Logger;
  * with the world, consume resources, and reproduce.
  */
 public class Organism {
+    private static final Logger LOG = LoggerFactory.getLogger(Organism.class);
+
     /**
      * A record to hold information about a fork request.
      * @param childIp The initial IP of the child.
@@ -480,10 +483,12 @@ public class Organism {
                 throw new IllegalStateException("Initial position must be set for restore");
             }
             if (er < 0 && !isDead) {
-                throw new IllegalStateException("Energy cannot be negative: " + er);
+                LOG.warn("Organism {} restored with negative energy {} — will be killed on first tick",
+                        id, er);
             }
             if (sr < 0) {
-                throw new IllegalStateException("Entropy cannot be negative: " + sr);
+                LOG.warn("Organism {} restored with negative entropy {} — state may be corrupted",
+                        id, sr);
             }
             return new Organism(this, simulation);
         }
@@ -1211,10 +1216,20 @@ public class Organism {
      * @return The value read from the register.
      */
     public Object readOperand(int id) {
-        if (id >= Instruction.LR_BASE) return getLr(id - Instruction.LR_BASE);
-        if (id >= Instruction.FPR_BASE) return getFpr(id - Instruction.FPR_BASE);
-        if (id >= Instruction.PR_BASE) return getPr(id - Instruction.PR_BASE);
-        return getDr(id);
+        if (id >= Instruction.LR_BASE && id < Instruction.LR_BASE + Config.NUM_LOCATION_REGISTERS) {
+            return getLr(id - Instruction.LR_BASE);
+        }
+        if (id >= Instruction.FPR_BASE && id < Instruction.FPR_BASE + Config.NUM_FORMAL_PARAM_REGISTERS) {
+            return getFpr(id - Instruction.FPR_BASE);
+        }
+        if (id >= Instruction.PR_BASE && id < Instruction.PR_BASE + Config.NUM_PROC_REGISTERS) {
+            return getPr(id - Instruction.PR_BASE);
+        }
+        if (id >= 0 && id < Config.NUM_DATA_REGISTERS) {
+            return getDr(id);
+        }
+        this.instructionFailed("Invalid register ID: " + id);
+        return null;
     }
 
     /**
@@ -1225,10 +1240,20 @@ public class Organism {
      * @return {@code true} if the write was successful.
      */
     public boolean writeOperand(int id, Object value) {
-        if (id >= Instruction.LR_BASE) return setLr(id - Instruction.LR_BASE, (int[]) value);
-        if (id >= Instruction.FPR_BASE) return setFpr(id - Instruction.FPR_BASE, value);
-        if (id >= Instruction.PR_BASE) return setPr(id - Instruction.PR_BASE, value);
-        return setDr(id, value);
+        if (id >= Instruction.LR_BASE && id < Instruction.LR_BASE + Config.NUM_LOCATION_REGISTERS) {
+            return setLr(id - Instruction.LR_BASE, (int[]) value);
+        }
+        if (id >= Instruction.FPR_BASE && id < Instruction.FPR_BASE + Config.NUM_FORMAL_PARAM_REGISTERS) {
+            return setFpr(id - Instruction.FPR_BASE, value);
+        }
+        if (id >= Instruction.PR_BASE && id < Instruction.PR_BASE + Config.NUM_PROC_REGISTERS) {
+            return setPr(id - Instruction.PR_BASE, value);
+        }
+        if (id >= 0 && id < Config.NUM_DATA_REGISTERS) {
+            return setDr(id, value);
+        }
+        this.instructionFailed("Invalid register ID: " + id);
+        return false;
     }
     
 }

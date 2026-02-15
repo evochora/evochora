@@ -188,7 +188,12 @@ public class VirtualMachine {
             // Apply penalty
             int penalty = this.simulation.getOrganismConfig().getInt("error-penalty-cost");
             organism.takeEr(penalty);
-            
+
+            if (organism.getEr() <= 0) {
+                organism.kill("Ran out of energy");
+                return;
+            }
+
             // Ensure IP advances so we don't get stuck in a loop on the same failing instruction
             if (!organism.shouldSkipIpAdvance()) {
                 try {
