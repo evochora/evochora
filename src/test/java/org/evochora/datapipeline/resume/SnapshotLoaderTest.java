@@ -7,7 +7,6 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 import java.io.IOException;
-import java.util.List;
 import java.util.Optional;
 
 import org.evochora.datapipeline.TestMetadataHelper;
@@ -82,8 +81,8 @@ class SnapshotLoaderTest {
         StoragePath batchPath = StoragePath.of(TEST_RUN_ID + "/raw/000/000/batch_0000000000000001000_0000000000000001099.pb");
         when(storageRead.findLastBatchFile(TEST_RUN_ID + "/raw/")).thenReturn(Optional.of(batchPath));
 
-        TickDataChunk chunk = createChunk(1000, 1099);
-        when(storageRead.readChunkBatch(batchPath)).thenReturn(List.of(chunk));
+        TickData snapshot = createSnapshot(1000);
+        when(storageRead.readLastSnapshot(batchPath)).thenReturn(snapshot);
 
         // Execute
         ResumeCheckpoint checkpoint = loader.loadLatestCheckpoint(TEST_RUN_ID);
@@ -106,10 +105,9 @@ class SnapshotLoaderTest {
         StoragePath batchPath = StoragePath.of(TEST_RUN_ID + "/raw/000/000/batch.pb");
         when(storageRead.findLastBatchFile(TEST_RUN_ID + "/raw/")).thenReturn(Optional.of(batchPath));
 
-        TickDataChunk chunk1 = createChunk(1000, 1099);
-        TickDataChunk chunk2 = createChunk(1100, 1199);
-        TickDataChunk chunk3 = createChunk(1200, 1299);
-        when(storageRead.readChunkBatch(batchPath)).thenReturn(List.of(chunk1, chunk2, chunk3));
+        // readLastSnapshot returns the snapshot from the last chunk in the batch
+        TickData lastSnapshot = createSnapshot(1200);
+        when(storageRead.readLastSnapshot(batchPath)).thenReturn(lastSnapshot);
 
         // Execute
         ResumeCheckpoint checkpoint = loader.loadLatestCheckpoint(TEST_RUN_ID);
@@ -157,10 +155,10 @@ class SnapshotLoaderTest {
         // Batch file exists but is empty
         StoragePath batchPath = StoragePath.of(TEST_RUN_ID + "/raw/batch.pb");
         when(storageRead.findLastBatchFile(TEST_RUN_ID + "/raw/")).thenReturn(Optional.of(batchPath));
-        when(storageRead.readChunkBatch(batchPath)).thenReturn(List.of());
+        when(storageRead.readLastSnapshot(batchPath)).thenThrow(new IOException("Empty batch file: " + batchPath));
 
         assertThatThrownBy(() -> loader.loadLatestCheckpoint(TEST_RUN_ID))
-            .isInstanceOf(ResumeException.class)
+            .isInstanceOf(IOException.class)
             .hasMessageContaining("Empty batch file");
     }
 
@@ -193,20 +191,13 @@ class SnapshotLoaderTest {
             .build();
     }
 
-    private TickDataChunk createChunk(long firstTick, long lastTick) {
-        TickData snapshot = TickData.newBuilder()
-            .setTickNumber(firstTick)
+    private TickData createSnapshot(long tickNumber) {
+        return TickData.newBuilder()
+            .setTickNumber(tickNumber)
             .setSimulationRunId(TEST_RUN_ID)
             .setCaptureTimeMs(System.currentTimeMillis())
             .setCellColumns(CellDataColumns.newBuilder().build())
             .build();
-
-        return TickDataChunk.newBuilder()
-            .setSimulationRunId(TEST_RUN_ID)
-            .setFirstTick(firstTick)
-            .setLastTick(lastTick)
-            .setTickCount((int)(lastTick - firstTick + 1))
-            .setSnapshot(snapshot)
-            .build();
     }
+
 }

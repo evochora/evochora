@@ -7,7 +7,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.UnaryOperator;
 
+import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
@@ -15,6 +17,7 @@ import org.evochora.datapipeline.api.resources.IWrappedResource;
 import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
+import org.evochora.datapipeline.api.resources.storage.ChunkFieldFilter;
 import org.evochora.datapipeline.api.resources.storage.IResourceBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
@@ -113,6 +116,89 @@ public class MonitoredBatchStorageReader implements IResourceBatchStorageRead, I
             recordRead(bytes, latencyNanos);
 
             return result;
+        } catch (IOException e) {
+            readErrors.incrementAndGet();
+            throw e;
+        }
+    }
+
+    @Override
+    public List<TickDataChunk> readChunkBatch(StoragePath path, UnaryOperator<TickDataChunk> chunkTransformer) throws IOException {
+        long startNanos = System.nanoTime();
+        try {
+            List<TickDataChunk> result = delegate.readChunkBatch(path, chunkTransformer);
+
+            // Update cumulative metrics
+            batchesRead.incrementAndGet();
+            long bytes = result.stream().mapToLong(TickDataChunk::getSerializedSize).sum();
+            bytesRead.addAndGet(bytes);
+
+            // Record performance metrics
+            long latencyNanos = System.nanoTime() - startNanos;
+            recordRead(bytes, latencyNanos);
+
+            return result;
+        } catch (IOException e) {
+            readErrors.incrementAndGet();
+            throw e;
+        }
+    }
+
+    @Override
+    public List<TickDataChunk> readChunkBatch(StoragePath path, ChunkFieldFilter filter) throws IOException {
+        long startNanos = System.nanoTime();
+        try {
+            List<TickDataChunk> result = delegate.readChunkBatch(path, filter);
+
+            batchesRead.incrementAndGet();
+            long bytes = result.stream().mapToLong(TickDataChunk::getSerializedSize).sum();
+            bytesRead.addAndGet(bytes);
+
+            long latencyNanos = System.nanoTime() - startNanos;
+            recordRead(bytes, latencyNanos);
+
+            return result;
+        } catch (IOException e) {
+            readErrors.incrementAndGet();
+            throw e;
+        }
+    }
+
+    @Override
+    public List<TickDataChunk> readChunkBatch(StoragePath path, ChunkFieldFilter filter,
+                                              UnaryOperator<TickDataChunk> chunkTransformer) throws IOException {
+        long startNanos = System.nanoTime();
+        try {
+            List<TickDataChunk> result = delegate.readChunkBatch(path, filter, chunkTransformer);
+
+            batchesRead.incrementAndGet();
+            long bytes = result.stream().mapToLong(TickDataChunk::getSerializedSize).sum();
+            bytesRead.addAndGet(bytes);
+
+            long latencyNanos = System.nanoTime() - startNanos;
+            recordRead(bytes, latencyNanos);
+
+            return result;
+        } catch (IOException e) {
+            readErrors.incrementAndGet();
+            throw e;
+        }
+    }
+
+    @Override
+    public TickData readLastSnapshot(StoragePath path) throws IOException {
+        long startNanos = System.nanoTime();
+        try {
+            TickData snapshot = delegate.readLastSnapshot(path);
+
+            batchesRead.incrementAndGet();
+            long bytes = snapshot.getSerializedSize();
+            bytesRead.addAndGet(bytes);
+
+            long latencyNanos = System.nanoTime() - startNanos;
+            recordRead(bytes, latencyNanos);
+
+            return snapshot;
         } catch (IOException e) {
             readErrors.incrementAndGet();
             throw e;

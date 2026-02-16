@@ -2,6 +2,7 @@ package org.evochora.datapipeline.api.resources.storage;
 
 import com.google.protobuf.MessageLite;
 import com.google.protobuf.Parser;
+import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.IResource;
 
@@ -9,6 +10,7 @@ import java.io.IOException;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.UnaryOperator;
 
 /**
  * Read-only interface for storage resources that support batch read operations.
@@ -100,6 +102,101 @@ public interface IBatchStorageRead extends IResource {
      * @throws IllegalArgumentException If path is null
      */
     List<TickDataChunk> readChunkBatch(StoragePath path) throws IOException;
+
+    /**
+     * Reads the snapshot from the last chunk in a batch file, skipping all delta data.
+     * <p>
+     * This method is optimized for resume operations where only the last snapshot is needed.
+     * By skipping delta fields at the wire format level during protobuf parsing, peak memory
+     * usage drops dramatically (e.g., from ~8 GB to ~500 MB for a 4000x3000 environment).
+     * <p>
+     * <strong>Default implementation:</strong> Parses the full batch and extracts the last
+     * snapshot. Concrete storage implementations should override this to skip delta bytes
+     * during parsing for true memory savings.
+     *
+     * @param path The physical storage path (includes compression extension)
+     * @return The snapshot TickData from the last chunk in the batch
+     * @throws IOException              If file doesn't exist, is empty, or read fails
+     * @throws IllegalArgumentException If path is null
+     */
+    default TickData readLastSnapshot(StoragePath path) throws IOException {
+        List<TickDataChunk> chunks = readChunkBatch(path);
+        if (chunks.isEmpty()) {
+            throw new IOException("Empty batch file: " + path);
+        }
+        return chunks.get(chunks.size() - 1).getSnapshot();
+    }
+
+    /**
+     * Reads a chunk batch from storage, applying a transformation to each chunk immediately
+     * after parsing — before the next chunk is parsed.
+     * <p>
+     * This method reduces peak memory usage when indexers only need a subset of each chunk's
+     * data. For example, the OrganismIndexer strips environment cell data (~672 MB per snapshot)
+     * from each chunk during parsing, so only the small organism-only representation (~2 MB)
+     * accumulates in the returned list.
+     * <p>
+     * <strong>Default implementation:</strong> Reads all chunks via {@link #readChunkBatch(StoragePath)},
+     * then applies the transformer. Concrete storage implementations should override this to apply
+     * the transformer during the parse loop for true memory savings.
+     *
+     * @param path             The physical storage path (includes compression extension)
+     * @param chunkTransformer Transformation applied to each chunk immediately after parsing
+     * @return List of transformed tick data chunks in the batch
+     * @throws IOException              If file doesn't exist or read fails
+     * @throws IllegalArgumentException If path or chunkTransformer is null
+     */
+    default List<TickDataChunk> readChunkBatch(StoragePath path, UnaryOperator<TickDataChunk> chunkTransformer) throws IOException {
+        List<TickDataChunk> chunks = readChunkBatch(path);
+        return chunks.stream().map(chunkTransformer).toList();
+    }
+
+    /**
+     * Reads a chunk batch from storage, skipping heavy protobuf fields at the wire level.
+     * <p>
+     * This method reduces peak memory by never allocating Java objects for the skipped fields.
+     * For example, with {@link ChunkFieldFilter#SKIP_ORGANISMS}, organism bytes (~730 MB per
+     * chunk) are discarded directly from the {@link com.google.protobuf.CodedInputStream}
+     * without deserialization.
+     * <p>
+     * <strong>Default implementation:</strong> Ignores the filter and falls back to
+     * {@link #readChunkBatch(StoragePath)}. Concrete storage implementations should override
+     * this with wire-level field skipping for true memory savings.
+     *
+     * @param path   The physical storage path (includes compression extension)
+     * @param filter Controls which fields to skip during parsing
+     * @return List of tick data chunks with filtered fields omitted
+     * @throws IOException              If file doesn't exist or read fails
+     * @throws IllegalArgumentException If path or filter is null
+     */
+    default List<TickDataChunk> readChunkBatch(StoragePath path, ChunkFieldFilter filter) throws IOException {
+        return readChunkBatch(path);
+    }
+
+    /**
+     * Reads a chunk batch from storage, skipping heavy protobuf fields at the wire level
+     * and applying a transformation to each chunk immediately after parsing.
+     * <p>
+     * Combines {@link ChunkFieldFilter} (wire-level skip) with a chunk transformer
+     * (Java-level strip). Use this when an indexer needs both: skip a category of data
+     * entirely at the wire level, then strip additional small fields from the remaining data.
+     * <p>
+     * <strong>Default implementation:</strong> Reads with the filter, then applies the
+     * transformer. Concrete storage implementations should override this to apply the
+     * transformer during the parse loop for true memory savings.
+     *
+     * @param path             The physical storage path (includes compression extension)
+     * @param filter           Controls which fields to skip during parsing
+     * @param chunkTransformer Transformation applied to each chunk immediately after parsing
+     * @return List of transformed tick data chunks with filtered fields omitted
+     * @throws IOException              If file doesn't exist or read fails
+     * @throws IllegalArgumentException If path, filter, or chunkTransformer is null
+     */
+    default List<TickDataChunk> readChunkBatch(StoragePath path, ChunkFieldFilter filter,
+                                               UnaryOperator<TickDataChunk> chunkTransformer) throws IOException {
+        List<TickDataChunk> chunks = readChunkBatch(path, filter);
+        return chunks.stream().map(chunkTransformer).toList();
+    }
 
     /**
      * Reads a single protobuf message from storage at the specified physical path.

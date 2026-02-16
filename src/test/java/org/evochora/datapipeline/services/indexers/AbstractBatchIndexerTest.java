@@ -81,8 +81,22 @@ class AbstractBatchIndexerTest {
         // All tests use configured runIds — stub storage validation to pass
         lenient().when(mockStorage.findMetadataPath(any(String.class)))
             .thenReturn(Optional.of(StoragePath.of("dummy/raw/metadata.pb")));
+
+        // Support multi-arg readChunkBatch: delegate to interface default methods,
+        // which ultimately call the 1-arg version (stubbed per-test).
+        stubReadChunkBatchOverloads();
     }
     
+    @SuppressWarnings("unchecked")
+    private void stubReadChunkBatchOverloads() throws IOException {
+        lenient().when(mockStorage.readChunkBatch(any(StoragePath.class), any(java.util.function.UnaryOperator.class)))
+            .thenCallRealMethod();
+        lenient().when(mockStorage.readChunkBatch(any(StoragePath.class), any(org.evochora.datapipeline.api.resources.storage.ChunkFieldFilter.class)))
+            .thenCallRealMethod();
+        lenient().when(mockStorage.readChunkBatch(any(StoragePath.class), any(org.evochora.datapipeline.api.resources.storage.ChunkFieldFilter.class), any(java.util.function.UnaryOperator.class)))
+            .thenCallRealMethod();
+    }
+
     @org.junit.jupiter.api.AfterEach
     void cleanup() throws Exception {
         // Stop indexer if still running

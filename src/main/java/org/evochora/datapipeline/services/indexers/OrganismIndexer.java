@@ -13,6 +13,7 @@ import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.api.resources.storage.ChunkFieldFilter;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareOrganismDataWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -62,6 +63,17 @@ public class OrganismIndexer<ACK> extends AbstractBatchIndexer<ACK> implements I
     @Override
     protected Set<ComponentType> getOptionalComponents() {
         return EnumSet.of(ComponentType.DLQ);
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Skips cell/environment data at the wire level. The OrganismIndexer only needs organism
+     * states, saving ~550 MB of heap per snapshot.
+     */
+    @Override
+    protected ChunkFieldFilter getChunkFieldFilter() {
+        return ChunkFieldFilter.SKIP_CELLS;
     }
 
     /**
@@ -123,6 +135,45 @@ public class OrganismIndexer<ACK> extends AbstractBatchIndexer<ACK> implements I
                   totalOrganisms, chunks.size(), totalTicks);
     }
 
+    /**
+     * Strips environment cell data from chunks before buffering.
+     * <p>
+     * The OrganismIndexer only needs organism states and tick metadata.
+     * Stripping {@code CellDataColumns} from the snapshot and all deltas
+     * dramatically reduces buffer memory for large environments
+     * (e.g., 4000x3000 = 12M cells: ~672 MB/snapshot → ~0.4 MB organisms-only).
+     */
+    @Override
+    protected TickDataChunk transformChunkForBuffering(TickDataChunk chunk) {
+        // Rebuild snapshot without cell_columns, rng_state, plugin_states
+        TickData originalSnapshot = chunk.getSnapshot();
+        TickData strippedSnapshot = TickData.newBuilder()
+            .setSimulationRunId(originalSnapshot.getSimulationRunId())
+            .setTickNumber(originalSnapshot.getTickNumber())
+            .setCaptureTimeMs(originalSnapshot.getCaptureTimeMs())
+            .addAllOrganisms(originalSnapshot.getOrganismsList())
+            .build();
+
+        // Rebuild deltas without changed_cells, rng_state, plugin_states
+        TickDataChunk.Builder builder = TickDataChunk.newBuilder()
+            .setSimulationRunId(chunk.getSimulationRunId())
+            .setFirstTick(chunk.getFirstTick())
+            .setLastTick(chunk.getLastTick())
+            .setTickCount(chunk.getTickCount())
+            .setSnapshot(strippedSnapshot);
+
+        for (TickDelta delta : chunk.getDeltasList()) {
+            builder.addDeltas(TickDelta.newBuilder()
+                .setTickNumber(delta.getTickNumber())
+                .setCaptureTimeMs(delta.getCaptureTimeMs())
+                .setDeltaType(delta.getDeltaType())
+                .addAllOrganisms(delta.getOrganismsList())
+                .build());
+        }
+
+        return builder.build();
+    }
+
     @Override
     protected void logStarted() {
         log.info("OrganismIndexer started: metadata=[pollInterval={}ms, maxPollDuration={}ms], topicPollTimeout={}ms",
@@ -138,29 +189,34 @@ public class OrganismIndexer<ACK> extends AbstractBatchIndexer<ACK> implements I
      * <p>
      * Estimates memory for the OrganismIndexer chunk buffer at worst-case.
      * <p>
-     * <strong>Calculation:</strong> insertBatchSize (chunks) × bytesPerChunk
-     * <p>
-     * The buffer holds List&lt;TickDataChunk&gt; where each chunk contains organism states
-     * for all ticks within the chunk.
+     * After {@link #transformChunkForBuffering}, buffered chunks contain only organism
+     * states (environment cells are stripped). Each sample holds up to maxOrganisms
+     * organism states.
      */
     @Override
     public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
-        // Each chunk contains organism states for all ticks
-        long bytesPerChunk = params.estimateBytesPerChunk();
-        long totalBytes = (long) insertBatchSize * bytesPerChunk;
-        
-        String explanation = String.format("%d insertBatchSize (chunks) × %s/chunk (%d samples/chunk, %d ticks, %d organisms)",
+        // After stripping, each sample only contains organisms + wrapper overhead
+        long bytesPerSample = params.estimateOrganismBytesPerTick() + SimulationParameters.TICKDATA_WRAPPER_OVERHEAD;
+        long bytesPerChunk = (long) params.samplesPerChunk() * bytesPerSample;
+        long bufferBytes = (long) insertBatchSize * bytesPerChunk;
+
+        String bufferExplanation = String.format(
+            "%d insertBatchSize × %d samples/chunk × %s/sample (organisms-only, cells stripped)",
             insertBatchSize,
-            SimulationParameters.formatBytes(bytesPerChunk),
             params.samplesPerChunk(),
-            params.simulationTicksPerChunk(),
-            params.maxOrganisms());
-        
-        return List.of(new MemoryEstimate(
-            serviceName,
-            totalBytes,
-            explanation,
-            MemoryEstimate.Category.SERVICE_BATCH
-        ));
+            SimulationParameters.formatBytes(bytesPerSample));
+
+        // Transient byte[] held during readChunkBatch: the full compressed batch file
+        // (before wire-level filtering). Uses full chunk estimate, not organisms-only,
+        // because the compressed file contains all fields.
+        long fullChunkBytes = params.estimateBytesPerChunk();
+        String ioExplanation = String.format(
+            "Transient compressed byte[] during batch read ≤ %s (full chunk, upper bound)",
+            SimulationParameters.formatBytes(fullChunkBytes));
+
+        return List.of(
+            new MemoryEstimate(serviceName, bufferBytes, bufferExplanation, MemoryEstimate.Category.SERVICE_BATCH),
+            new MemoryEstimate(serviceName + " (batch read I/O)", fullChunkBytes, ioExplanation, MemoryEstimate.Category.SERVICE_BATCH)
+        );
     }
 }

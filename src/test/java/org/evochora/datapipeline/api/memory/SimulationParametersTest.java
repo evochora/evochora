@@ -48,11 +48,13 @@ class SimulationParametersTest {
     // ========================================================================
 
     @Test
-    void samplesPerChunk_withDefaults_returns100() {
+    void samplesPerChunk_withDefaults() {
         SimulationParameters params = SimulationParameters.of(new int[]{100, 100}, 1000);
 
-        // 5 * 20 * 1 = 100
-        assertEquals(100, params.samplesPerChunk());
+        int expected = SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL
+                     * SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL
+                     * SimulationParameters.DEFAULT_CHUNK_INTERVAL;
+        assertEquals(expected, params.samplesPerChunk());
     }
 
     @Test
@@ -67,11 +69,14 @@ class SimulationParametersTest {
     }
 
     @Test
-    void simulationTicksPerChunk_withDefaults_returns100() {
+    void simulationTicksPerChunk_withDefaults() {
         SimulationParameters params = SimulationParameters.of(new int[]{100, 100}, 1000);
 
-        // 1 * 5 * 20 * 1 = 100
-        assertEquals(100, params.simulationTicksPerChunk());
+        int expected = SimulationParameters.DEFAULT_SAMPLING_INTERVAL
+                     * SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL
+                     * SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL
+                     * SimulationParameters.DEFAULT_CHUNK_INTERVAL;
+        assertEquals(expected, params.simulationTicksPerChunk());
     }
 
     @Test
@@ -110,23 +115,21 @@ class SimulationParametersTest {
 
     @Test
     void accumulatedDeltasPerChunk_calculatesCorrectly() {
-        // With snapshotInterval=20 and chunkInterval=1:
-        // Each snapshot has 19 accumulated deltas (20-1)
         SimulationParameters params = SimulationParameters.of(new int[]{100, 100}, 1000);
 
-        // 1 * (20 - 1) = 19
-        assertEquals(19, params.accumulatedDeltasPerChunk());
+        int expected = SimulationParameters.DEFAULT_CHUNK_INTERVAL
+                     * (SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL - 1);
+        assertEquals(expected, params.accumulatedDeltasPerChunk());
     }
 
     @Test
     void incrementalDeltasPerChunk_calculatesCorrectly() {
         SimulationParameters params = SimulationParameters.of(new int[]{100, 100}, 1000);
 
-        // Samples: 100
-        // Snapshots: 1
-        // Accumulated deltas: 19
-        // Incremental: 100 - 1 - 19 = 80
-        assertEquals(80, params.incrementalDeltasPerChunk());
+        int expected = params.samplesPerChunk()
+                     - params.snapshotsPerChunk()
+                     - params.accumulatedDeltasPerChunk();
+        assertEquals(expected, params.incrementalDeltasPerChunk());
     }
 
     @Test
@@ -197,11 +200,11 @@ class SimulationParametersTest {
         long chunkBytes = params.estimateBytesPerChunk();
         long singleSnapshotBytes = params.estimateBytesPerTick();
 
-        // Chunk should be larger than 1 snapshot (has 100 samples)
+        // Chunk should be larger than 1 snapshot (has multiple samples)
         assertTrue(chunkBytes > singleSnapshotBytes);
 
-        // But much smaller than 100 snapshots (due to compression)
-        long uncompressedBytes = 100L * singleSnapshotBytes;
+        // But much smaller than N snapshots (due to compression)
+        long uncompressedBytes = (long) params.samplesPerChunk() * singleSnapshotBytes;
         assertTrue(chunkBytes < uncompressedBytes);
     }
 
@@ -228,7 +231,7 @@ class SimulationParametersTest {
 
         double ratio = params.estimateCompressionRatio();
 
-        // With 1% change rate and 100 samples/chunk, expect significant compression
+        // With 1% change rate and multiple samples/chunk, expect significant compression
         // Exact ratio depends on organism overhead, but should be > 5x
         assertTrue(ratio > 5.0, "Expected compression ratio > 5.0, got " + ratio);
     }
@@ -257,8 +260,13 @@ class SimulationParametersTest {
         SimulationParameters params = SimulationParameters.of(new int[]{10000, 10000}, 10000);
 
         assertEquals(100_000_000, params.totalCells());
-        assertEquals(100, params.samplesPerChunk());
-        assertEquals(100, params.simulationTicksPerChunk());
+
+        int expectedSamples = SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL
+                            * SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL
+                            * SimulationParameters.DEFAULT_CHUNK_INTERVAL;
+        assertEquals(expectedSamples, params.samplesPerChunk());
+        assertEquals(expectedSamples * SimulationParameters.DEFAULT_SAMPLING_INTERVAL,
+                     params.simulationTicksPerChunk());
 
         // Should not overflow
         long bytesPerTick = params.estimateBytesPerTick();

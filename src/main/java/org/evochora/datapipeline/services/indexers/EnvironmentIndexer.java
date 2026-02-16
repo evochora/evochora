@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.Set;
 
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
+import org.evochora.datapipeline.api.resources.storage.ChunkFieldFilter;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
@@ -83,7 +84,18 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> implement
     protected Set<ComponentType> getOptionalComponents() {
         return EnumSet.of(ComponentType.DLQ);
     }
-    
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Skips organism data at the wire level. The EnvironmentIndexer stores chunks as BLOBs
+     * and never accesses organism fields, saving ~730 MB of heap per chunk.
+     */
+    @Override
+    protected ChunkFieldFilter getChunkFieldFilter() {
+        return ChunkFieldFilter.SKIP_ORGANISMS;
+    }
+
     /**
      * Prepares database tables for environment data storage.
      * <p>
@@ -167,19 +179,23 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> implement
     public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
         // Each chunk contains snapshot + deltas
         long bytesPerChunk = params.estimateBytesPerChunk();
-        long totalBytes = (long) insertBatchSize * bytesPerChunk;
-        
-        String explanation = String.format("%d insertBatchSize (chunks) × %s/chunk (%d samples/chunk, %d ticks)",
+        long bufferBytes = (long) insertBatchSize * bytesPerChunk;
+
+        String bufferExplanation = String.format("%d insertBatchSize (chunks) × %s/chunk (%d samples/chunk, %d ticks)",
             insertBatchSize,
             SimulationParameters.formatBytes(bytesPerChunk),
             params.samplesPerChunk(),
             params.simulationTicksPerChunk());
-        
-        return List.of(new MemoryEstimate(
-            serviceName,
-            totalBytes,
-            explanation,
-            MemoryEstimate.Category.SERVICE_BATCH
-        ));
+
+        // Transient byte[] held during readChunkBatch: the full compressed batch file
+        // loaded into heap by getRaw(). Conservative upper bound: uncompressed chunk size
+        // (actual compressed size is always smaller).
+        String ioExplanation = String.format("Transient compressed byte[] during batch read ≤ %s (upper bound)",
+            SimulationParameters.formatBytes(bytesPerChunk));
+
+        return List.of(
+            new MemoryEstimate(serviceName, bufferBytes, bufferExplanation, MemoryEstimate.Category.SERVICE_BATCH),
+            new MemoryEstimate(serviceName + " (batch read I/O)", bytesPerChunk, ioExplanation, MemoryEstimate.Category.SERVICE_BATCH)
+        );
     }
 }

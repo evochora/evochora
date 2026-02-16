@@ -539,11 +539,11 @@ message TickDelta {
 // - Metadata at top level: PersistenceService can route without parsing content
 // - Snapshot first: Enables seeking to any tick within the chunk
 //
-// TYPICAL CONFIGURATION (100 ticks/chunk):
+// TYPICAL CONFIGURATION (50 ticks/chunk):
 // - 1 snapshot (~10MB)
-// - 19 accumulated deltas (~200KB each, with RNG state)
-// - 80 incremental deltas (~50KB each, no RNG state)
-// - Total uncompressed: ~25MB, compressed with zstd: ~2.5MB
+// - 9 accumulated deltas (~200KB each, with RNG state)
+// - 40 incremental deltas (~50KB each, no RNG state)
+// - Total uncompressed: ~14MB, compressed with zstd: ~1.4MB
 message TickDataChunk {
   // === Metadata (for PersistenceService routing, no content parsing needed) ===
 
