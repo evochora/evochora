@@ -24,7 +24,7 @@ package org.evochora.datapipeline.api.memory;
  * <ul>
  *   <li>{@code samplingInterval}: Ticks between samples (default: 1)</li>
  *   <li>{@code accumulatedDeltaInterval}: Samples between accumulated deltas (default: 5)</li>
- *   <li>{@code snapshotInterval}: Accumulated deltas between snapshots (default: 20)</li>
+ *   <li>{@code snapshotInterval}: Accumulated deltas between snapshots (default: 10)</li>
  *   <li>{@code chunkInterval}: Snapshots per chunk (default: 1)</li>
  *   <li>{@code estimatedDeltaRatio}: Expected change rate per tick (default: 0.01 = 1%)</li>
  * </ul>
@@ -106,10 +106,10 @@ public record SimulationParameters(
     /** Default accumulated delta interval (every 5 samples). */
     public static final int DEFAULT_ACCUMULATED_DELTA_INTERVAL = 5;
     
-    /** Default snapshot interval (every 20 accumulated deltas). */
-    public static final int DEFAULT_SNAPSHOT_INTERVAL = 20;
+    /** Default snapshot interval (every 10 accumulated deltas). */
+    public static final int DEFAULT_SNAPSHOT_INTERVAL = 10;
     
-    /** Default chunk interval (1 snapshot per chunk = 100 ticks/chunk). */
+    /** Default chunk interval (1 snapshot per chunk = 50 ticks/chunk). */
     public static final int DEFAULT_CHUNK_INTERVAL = 1;
     
     /** Default estimated delta ratio (1% of cells change per tick). */
@@ -265,7 +265,7 @@ public record SimulationParameters(
      * how many simulation ticks are skipped between samples, not how many samples
      * exist in a chunk.
      * <p>
-     * With defaults (5 × 20 × 1 = 100), each chunk contains 100 samples.
+     * With defaults (5 × 10 × 1 = 50), each chunk contains 50 samples.
      *
      * @return Number of data samples (snapshots + deltas) per chunk.
      */

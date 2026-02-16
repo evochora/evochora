@@ -17,7 +17,7 @@ import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
  * <strong>Rationale:</strong> Storing chunks instead of individual ticks provides:
  * <ul>
  *   <li>Massive storage reduction (~30-50% compared to storing every tick as snapshot)</li>
- *   <li>Fewer database rows (100 ticks/chunk = 100× fewer rows)</li>
+ *   <li>Fewer database rows (50 ticks/chunk = 50× fewer rows)</li>
  *   <li>Faster MERGE operations (smaller B-tree index)</li>
  * </ul>
  * <p>

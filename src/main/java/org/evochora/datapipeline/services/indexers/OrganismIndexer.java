@@ -13,6 +13,7 @@ import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.api.resources.storage.ChunkFieldFilter;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareOrganismDataWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -62,6 +63,17 @@ public class OrganismIndexer<ACK> extends AbstractBatchIndexer<ACK> implements I
     @Override
     protected Set<ComponentType> getOptionalComponents() {
         return EnumSet.of(ComponentType.DLQ);
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Skips cell/environment data at the wire level. The OrganismIndexer only needs organism
+     * states, saving ~550 MB of heap per snapshot.
+     */
+    @Override
+    protected ChunkFieldFilter getChunkFieldFilter() {
+        return ChunkFieldFilter.SKIP_CELLS;
     }
 
     /**
@@ -186,19 +198,25 @@ public class OrganismIndexer<ACK> extends AbstractBatchIndexer<ACK> implements I
         // After stripping, each sample only contains organisms + wrapper overhead
         long bytesPerSample = params.estimateOrganismBytesPerTick() + SimulationParameters.TICKDATA_WRAPPER_OVERHEAD;
         long bytesPerChunk = (long) params.samplesPerChunk() * bytesPerSample;
-        long totalBytes = (long) insertBatchSize * bytesPerChunk;
+        long bufferBytes = (long) insertBatchSize * bytesPerChunk;
 
-        String explanation = String.format(
+        String bufferExplanation = String.format(
             "%d insertBatchSize × %d samples/chunk × %s/sample (organisms-only, cells stripped)",
             insertBatchSize,
             params.samplesPerChunk(),
             SimulationParameters.formatBytes(bytesPerSample));
 
-        return List.of(new MemoryEstimate(
-            serviceName,
-            totalBytes,
-            explanation,
-            MemoryEstimate.Category.SERVICE_BATCH
-        ));
+        // Transient byte[] held during readChunkBatch: the full compressed batch file
+        // (before wire-level filtering). Uses full chunk estimate, not organisms-only,
+        // because the compressed file contains all fields.
+        long fullChunkBytes = params.estimateBytesPerChunk();
+        String ioExplanation = String.format(
+            "Transient compressed byte[] during batch read ≤ %s (full chunk, upper bound)",
+            SimulationParameters.formatBytes(fullChunkBytes));
+
+        return List.of(
+            new MemoryEstimate(serviceName, bufferBytes, bufferExplanation, MemoryEstimate.Category.SERVICE_BATCH),
+            new MemoryEstimate(serviceName + " (batch read I/O)", fullChunkBytes, ioExplanation, MemoryEstimate.Category.SERVICE_BATCH)
+        );
     }
 }

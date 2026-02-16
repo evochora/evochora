@@ -41,9 +41,9 @@ import com.typesafe.config.Config;
  * <p>
  * <strong>Storage:</strong> One row per chunk
  * <ul>
- *   <li>100 ticks per chunk = 100× fewer rows than per-tick storage</li>
- *   <li>15M ticks = ~150K rows (vs 15M rows with per-tick)</li>
- *   <li>Chunk BLOB: ~5-15MB compressed (snapshot + 99 deltas)</li>
+ *   <li>50 ticks per chunk = 50× fewer rows than per-tick storage</li>
+ *   <li>15M ticks = ~300K rows (vs 15M rows with per-tick)</li>
+ *   <li>Chunk BLOB: ~3-8MB compressed (snapshot + 49 deltas)</li>
  * </ul>
  * <p>
  * <strong>Schema:</strong>

@@ -7,7 +7,6 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 import java.io.IOException;
-import java.util.List;
 import java.util.Optional;
 
 import org.evochora.datapipeline.TestMetadataHelper;
@@ -201,20 +200,4 @@ class SnapshotLoaderTest {
             .build();
     }
 
-    private TickDataChunk createChunk(long firstTick, long lastTick) {
-        TickData snapshot = TickData.newBuilder()
-            .setTickNumber(firstTick)
-            .setSimulationRunId(TEST_RUN_ID)
-            .setCaptureTimeMs(System.currentTimeMillis())
-            .setCellColumns(CellDataColumns.newBuilder().build())
-            .build();
-
-        return TickDataChunk.newBuilder()
-            .setSimulationRunId(TEST_RUN_ID)
-            .setFirstTick(firstTick)
-            .setLastTick(lastTick)
-            .setTickCount((int)(lastTick - firstTick + 1))
-            .setSnapshot(snapshot)
-            .build();
-    }
 }

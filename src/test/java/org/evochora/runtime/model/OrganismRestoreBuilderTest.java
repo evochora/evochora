@@ -12,6 +12,7 @@ import java.util.Map;
 
 import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
+import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.test.utils.SimulationTestUtils;
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 /**
  * Unit tests for {@link Organism.RestoreBuilder}.
@@ -26,6 +28,7 @@ import org.junit.jupiter.api.Test;
  * Tests the builder pattern used for restoring organisms from serialized
  * checkpoint data during simulation resume.
  */
+@ExtendWith(LogWatchExtension.class)
 class OrganismRestoreBuilderTest {
 
     private Environment environment;

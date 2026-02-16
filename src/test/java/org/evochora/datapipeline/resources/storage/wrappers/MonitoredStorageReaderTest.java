@@ -2,6 +2,7 @@ package org.evochora.datapipeline.resources.storage.wrappers;
 
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
+import org.evochora.datapipeline.api.resources.storage.ChunkFieldFilter;
 import org.evochora.datapipeline.api.resources.storage.IResourceBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.contracts.TickData;
@@ -96,6 +97,52 @@ class MonitoredStorageReaderTest {
     //     Map<String, Number> metrics = monitoredReader.getMetrics();
     //     assertEquals(1L, metrics.get("query_errors").longValue());
     // }
+
+    @Test
+    void testFilteredReadDelegatesAndTracksMetrics() throws IOException {
+        TickDataChunk chunk = TickDataChunk.newBuilder()
+            .setSimulationRunId("test-sim")
+            .setFirstTick(100)
+            .setLastTick(100)
+            .setTickCount(1)
+            .setSnapshot(TickData.newBuilder().setTickNumber(100).build())
+            .build();
+        List<TickDataChunk> chunks = List.of(chunk);
+
+        StoragePath testPath = StoragePath.of("batch.pb.zst");
+        when(mockDelegate.readChunkBatch(any(StoragePath.class), any(ChunkFieldFilter.class))).thenReturn(chunks);
+
+        List<TickDataChunk> result = monitoredReader.readChunkBatch(testPath, ChunkFieldFilter.SKIP_ORGANISMS);
+
+        verify(mockDelegate).readChunkBatch(testPath, ChunkFieldFilter.SKIP_ORGANISMS);
+        assertEquals(1, result.size());
+
+        Map<String, Number> metrics = monitoredReader.getMetrics();
+        assertEquals(1L, metrics.get("batches_read").longValue());
+    }
+
+    @Test
+    void testFilteredReadWithTransformerDelegatesAndTracksMetrics() throws IOException {
+        TickDataChunk chunk = TickDataChunk.newBuilder()
+            .setSimulationRunId("test-sim")
+            .setFirstTick(200)
+            .setLastTick(200)
+            .setTickCount(1)
+            .setSnapshot(TickData.newBuilder().setTickNumber(200).build())
+            .build();
+        List<TickDataChunk> chunks = List.of(chunk);
+
+        StoragePath testPath = StoragePath.of("batch.pb.zst");
+        when(mockDelegate.readChunkBatch(any(StoragePath.class), any(ChunkFieldFilter.class), any())).thenReturn(chunks);
+
+        List<TickDataChunk> result = monitoredReader.readChunkBatch(testPath, ChunkFieldFilter.SKIP_CELLS, c -> c);
+
+        verify(mockDelegate).readChunkBatch(eq(testPath), eq(ChunkFieldFilter.SKIP_CELLS), any());
+        assertEquals(1, result.size());
+
+        Map<String, Number> metrics = monitoredReader.getMetrics();
+        assertEquals(1L, metrics.get("batches_read").longValue());
+    }
 
     @Test
     void testReadErrorTracked() throws IOException {

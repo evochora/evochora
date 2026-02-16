@@ -672,7 +672,18 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
             baseExplanation,
             MemoryEstimate.Category.SERVICE_BATCH
         ));
-        
+
+        // Transient byte[] held during readChunkBatch: the full compressed batch file
+        // loaded into heap by getRaw(). Conservative upper bound: uncompressed chunk size.
+        String ioExplanation = String.format("Transient compressed byte[] during batch read ≤ %s (upper bound)",
+            SimulationParameters.formatBytes(bytesPerChunk));
+        estimates.add(new MemoryEstimate(
+            serviceName + " (batch read I/O)",
+            bytesPerChunk,
+            ioExplanation,
+            MemoryEstimate.Category.SERVICE_BATCH
+        ));
+
         // MutableCellState for delta decompression (2 int[] arrays: moleculeData + ownerIds)
         long envTotalCells = params.totalCells();
         long mutableCellStateBytes = envTotalCells * 8L;  // 2 int arrays × 4 bytes = 8 bytes/cell

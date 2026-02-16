@@ -15,6 +15,7 @@ import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.IRetryTracker;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataReader;
 import org.evochora.datapipeline.api.resources.queues.IDeadLetterQueueResource;
+import org.evochora.datapipeline.api.resources.storage.ChunkFieldFilter;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.TopicMessage;
 import org.evochora.datapipeline.services.indexers.components.DlqComponent;
@@ -37,7 +38,7 @@ import com.typesafe.config.Config;
  * <p>
  * <strong>Chunk-based Processing:</strong> After delta compression, data arrives as
  * {@link TickDataChunk} objects. Each chunk is self-contained (starts with a snapshot)
- * and typically contains ~100 ticks. The {@code insertBatchSize} parameter specifies
+ * and typically contains ~50 ticks. The {@code insertBatchSize} parameter specifies
  * the number of chunks to buffer before triggering a flush.
  * <p>
  * <strong>Component System:</strong> Subclasses declare which components to use via
@@ -240,7 +241,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         if (required.contains(ComponentType.BUFFERING)) {
             int insertBatchSize = indexerOptions.hasPath("insertBatchSize")
                 ? indexerOptions.getInt("insertBatchSize")
-                : 5; // Default: 5 chunks per buffer (~500 ticks at 100 ticks/chunk)
+                : 5; // Default: 5 chunks per buffer (~250 ticks at 50 ticks/chunk)
             long flushTimeoutMs = indexerOptions.hasPath("flushTimeoutMs")
                 ? indexerOptions.getLong("flushTimeoutMs")
                 : 5000L; // Default: 5000ms flush timeout (aligned with docs)
@@ -427,11 +428,13 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         }
         
         try {
-            // Read chunks from storage with per-chunk transformation during parsing.
-            // The transformer strips unneeded fields (e.g., environment cells for OrganismIndexer)
-            // DURING the parse loop, so only transformed chunks accumulate in memory.
+            // Read chunks from storage with wire-level field filtering and per-chunk transformation.
+            // The filter skips heavy fields at the protobuf wire level (never allocates Java objects).
+            // The transformer strips additional small fields after parsing.
+            // Both are applied DURING the parse loop, so only filtered+transformed chunks accumulate.
             StoragePath storagePath = StoragePath.of(batch.getStoragePath());
-            List<TickDataChunk> chunks = storage.readChunkBatch(storagePath, this::transformChunkForBuffering);
+            List<TickDataChunk> chunks = storage.readChunkBatch(
+                storagePath, getChunkFieldFilter(), this::transformChunkForBuffering);
 
             // Count total ticks across all chunks for metrics
             int totalTicks = chunks.stream().mapToInt(TickDataChunk::getTickCount).sum();
@@ -636,6 +639,21 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      */
     protected TickDataChunk transformChunkForBuffering(TickDataChunk chunk) {
         return chunk;
+    }
+
+    /**
+     * Returns the field filter for wire-level protobuf field skipping during chunk parsing.
+     * <p>
+     * Override in subclasses to skip heavy fields that this indexer does not need.
+     * Skipped fields are discarded at the {@link com.google.protobuf.CodedInputStream} level
+     * without allocating Java objects, saving hundreds of MB per chunk.
+     * <p>
+     * <strong>Default:</strong> {@link ChunkFieldFilter#ALL} (no fields skipped).
+     *
+     * @return The field filter to apply during chunk parsing
+     */
+    protected ChunkFieldFilter getChunkFieldFilter() {
+        return ChunkFieldFilter.ALL;
     }
     
     /**

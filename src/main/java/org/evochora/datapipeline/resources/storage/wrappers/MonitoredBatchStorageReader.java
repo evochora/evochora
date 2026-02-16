@@ -17,6 +17,7 @@ import org.evochora.datapipeline.api.resources.IWrappedResource;
 import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
+import org.evochora.datapipeline.api.resources.storage.ChunkFieldFilter;
 import org.evochora.datapipeline.api.resources.storage.IResourceBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
@@ -133,6 +134,47 @@ public class MonitoredBatchStorageReader implements IResourceBatchStorageRead, I
             bytesRead.addAndGet(bytes);
 
             // Record performance metrics
+            long latencyNanos = System.nanoTime() - startNanos;
+            recordRead(bytes, latencyNanos);
+
+            return result;
+        } catch (IOException e) {
+            readErrors.incrementAndGet();
+            throw e;
+        }
+    }
+
+    @Override
+    public List<TickDataChunk> readChunkBatch(StoragePath path, ChunkFieldFilter filter) throws IOException {
+        long startNanos = System.nanoTime();
+        try {
+            List<TickDataChunk> result = delegate.readChunkBatch(path, filter);
+
+            batchesRead.incrementAndGet();
+            long bytes = result.stream().mapToLong(TickDataChunk::getSerializedSize).sum();
+            bytesRead.addAndGet(bytes);
+
+            long latencyNanos = System.nanoTime() - startNanos;
+            recordRead(bytes, latencyNanos);
+
+            return result;
+        } catch (IOException e) {
+            readErrors.incrementAndGet();
+            throw e;
+        }
+    }
+
+    @Override
+    public List<TickDataChunk> readChunkBatch(StoragePath path, ChunkFieldFilter filter,
+                                              UnaryOperator<TickDataChunk> chunkTransformer) throws IOException {
+        long startNanos = System.nanoTime();
+        try {
+            List<TickDataChunk> result = delegate.readChunkBatch(path, filter, chunkTransformer);
+
+            batchesRead.incrementAndGet();
+            long bytes = result.stream().mapToLong(TickDataChunk::getSerializedSize).sum();
+            bytesRead.addAndGet(bytes);
+
             long latencyNanos = System.nanoTime() - startNanos;
             recordRead(bytes, latencyNanos);
 

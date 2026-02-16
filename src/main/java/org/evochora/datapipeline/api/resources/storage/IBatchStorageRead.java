@@ -152,6 +152,53 @@ public interface IBatchStorageRead extends IResource {
     }
 
     /**
+     * Reads a chunk batch from storage, skipping heavy protobuf fields at the wire level.
+     * <p>
+     * This method reduces peak memory by never allocating Java objects for the skipped fields.
+     * For example, with {@link ChunkFieldFilter#SKIP_ORGANISMS}, organism bytes (~730 MB per
+     * chunk) are discarded directly from the {@link com.google.protobuf.CodedInputStream}
+     * without deserialization.
+     * <p>
+     * <strong>Default implementation:</strong> Ignores the filter and falls back to
+     * {@link #readChunkBatch(StoragePath)}. Concrete storage implementations should override
+     * this with wire-level field skipping for true memory savings.
+     *
+     * @param path   The physical storage path (includes compression extension)
+     * @param filter Controls which fields to skip during parsing
+     * @return List of tick data chunks with filtered fields omitted
+     * @throws IOException              If file doesn't exist or read fails
+     * @throws IllegalArgumentException If path or filter is null
+     */
+    default List<TickDataChunk> readChunkBatch(StoragePath path, ChunkFieldFilter filter) throws IOException {
+        return readChunkBatch(path);
+    }
+
+    /**
+     * Reads a chunk batch from storage, skipping heavy protobuf fields at the wire level
+     * and applying a transformation to each chunk immediately after parsing.
+     * <p>
+     * Combines {@link ChunkFieldFilter} (wire-level skip) with a chunk transformer
+     * (Java-level strip). Use this when an indexer needs both: skip a category of data
+     * entirely at the wire level, then strip additional small fields from the remaining data.
+     * <p>
+     * <strong>Default implementation:</strong> Reads with the filter, then applies the
+     * transformer. Concrete storage implementations should override this to apply the
+     * transformer during the parse loop for true memory savings.
+     *
+     * @param path             The physical storage path (includes compression extension)
+     * @param filter           Controls which fields to skip during parsing
+     * @param chunkTransformer Transformation applied to each chunk immediately after parsing
+     * @return List of transformed tick data chunks with filtered fields omitted
+     * @throws IOException              If file doesn't exist or read fails
+     * @throws IllegalArgumentException If path, filter, or chunkTransformer is null
+     */
+    default List<TickDataChunk> readChunkBatch(StoragePath path, ChunkFieldFilter filter,
+                                               UnaryOperator<TickDataChunk> chunkTransformer) throws IOException {
+        List<TickDataChunk> chunks = readChunkBatch(path, filter);
+        return chunks.stream().map(chunkTransformer).toList();
+    }
+
+    /**
      * Reads a single protobuf message from storage at the specified physical path.
      * <p>
      * This method is designed for reading non-batch data like metadata, configurations,

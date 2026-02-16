@@ -16,12 +16,17 @@ import java.util.Map;
 import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 
+import org.evochora.datapipeline.api.contracts.CellDataColumns;
+import org.evochora.datapipeline.api.contracts.OrganismState;
+import org.evochora.datapipeline.api.contracts.PluginState;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
+import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.resources.IContextualResource;
 import org.evochora.datapipeline.api.resources.IWrappedResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
+import org.evochora.datapipeline.api.resources.storage.ChunkFieldFilter;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
 import org.evochora.datapipeline.api.resources.storage.IResourceBatchStorageRead;
@@ -277,7 +282,10 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
             throw new IllegalArgumentException("path cannot be null");
         }
 
+        long readStart = System.nanoTime();
         byte[] compressed = getRaw(path.asString());
+        long readLatency = System.nanoTime() - readStart;
+
         ICompressionCodec detectedCodec = org.evochora.datapipeline.utils.compression.CompressionCodecFactory.detectFromExtension(path.asString());
 
         TickDataChunk lastChunk = null;
@@ -299,6 +307,11 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         if (lastChunk == null) {
             throw new IOException("Empty batch file: " + path.asString());
         }
+
+        long batchSizeMB = compressed.length / 1_048_576;
+        lastReadBatchSizeMB.set(batchSizeMB);
+        maxReadBatchSizeMB.updateAndGet(current -> Math.max(current, batchSizeMB));
+        recordRead(compressed.length, readLatency);
 
         log.debug("Read snapshot-only from {}: tick {}, skipped deltas",
             path, lastChunk.getSnapshot().getTickNumber());
@@ -347,6 +360,345 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
                     // Skip delta data — not needed for resume. Bytes are discarded
                     // from the stream in small chunks, not loaded into memory.
                     input.skipField(tag);
+                    break;
+                default:
+                    input.skipField(tag);
+                    break;
+            }
+        }
+
+        return builder.build();
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Optimized implementation that skips heavy protobuf fields at the wire level based on
+     * the given {@link ChunkFieldFilter}. Skipped field bytes are discarded directly from
+     * the {@link CodedInputStream} without deserialization.
+     */
+    @Override
+    public List<TickDataChunk> readChunkBatch(StoragePath path, ChunkFieldFilter filter) throws IOException {
+        if (path == null) {
+            throw new IllegalArgumentException("path cannot be null");
+        }
+        if (filter == null) {
+            throw new IllegalArgumentException("filter cannot be null");
+        }
+
+        // Fast path: no filtering needed
+        if (filter == ChunkFieldFilter.ALL) {
+            return readChunkBatch(path);
+        }
+
+        long readStart = System.nanoTime();
+        byte[] compressed = getRaw(path.asString());
+        long readLatency = System.nanoTime() - readStart;
+
+        ICompressionCodec detectedCodec = org.evochora.datapipeline.utils.compression.CompressionCodecFactory.detectFromExtension(path.asString());
+
+        List<TickDataChunk> batch = new ArrayList<>();
+        try (InputStream decompressedStream = detectedCodec.wrapInputStream(new ByteArrayInputStream(compressed))) {
+            CodedInputStream cis = CodedInputStream.newInstance(decompressedStream);
+            cis.setSizeLimit(Integer.MAX_VALUE);
+
+            while (!cis.isAtEnd()) {
+                int messageSize = cis.readRawVarint32();
+                int limit = cis.pushLimit(messageSize);
+                batch.add(parseChunkWithFilter(cis, filter));
+                cis.skipRawBytes(cis.getBytesUntilLimit());
+                cis.popLimit(limit);
+            }
+        } catch (Exception e) {
+            throw new IOException("Failed to read chunk batch with filter " + filter + ": " + path.asString(), e);
+        }
+
+        long batchSizeMB = compressed.length / 1_048_576;
+        lastReadBatchSizeMB.set(batchSizeMB);
+        maxReadBatchSizeMB.updateAndGet(current -> Math.max(current, batchSizeMB));
+        recordRead(compressed.length, readLatency);
+
+        return batch;
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Combines wire-level field skipping with per-chunk transformation during the parse loop.
+     */
+    @Override
+    public List<TickDataChunk> readChunkBatch(StoragePath path, ChunkFieldFilter filter,
+                                              UnaryOperator<TickDataChunk> chunkTransformer) throws IOException {
+        if (path == null) {
+            throw new IllegalArgumentException("path cannot be null");
+        }
+        if (filter == null) {
+            throw new IllegalArgumentException("filter cannot be null");
+        }
+        if (chunkTransformer == null) {
+            throw new IllegalArgumentException("chunkTransformer cannot be null");
+        }
+
+        // Fast path: no filtering needed, delegate to existing transformer method
+        if (filter == ChunkFieldFilter.ALL) {
+            return readChunkBatch(path, chunkTransformer);
+        }
+
+        long readStart = System.nanoTime();
+        byte[] compressed = getRaw(path.asString());
+        long readLatency = System.nanoTime() - readStart;
+
+        ICompressionCodec detectedCodec = org.evochora.datapipeline.utils.compression.CompressionCodecFactory.detectFromExtension(path.asString());
+
+        List<TickDataChunk> batch = new ArrayList<>();
+        try (InputStream decompressedStream = detectedCodec.wrapInputStream(new ByteArrayInputStream(compressed))) {
+            CodedInputStream cis = CodedInputStream.newInstance(decompressedStream);
+            cis.setSizeLimit(Integer.MAX_VALUE);
+
+            while (!cis.isAtEnd()) {
+                int messageSize = cis.readRawVarint32();
+                int limit = cis.pushLimit(messageSize);
+                TickDataChunk chunk = parseChunkWithFilter(cis, filter);
+                batch.add(chunkTransformer.apply(chunk));
+                cis.skipRawBytes(cis.getBytesUntilLimit());
+                cis.popLimit(limit);
+            }
+        } catch (Exception e) {
+            throw new IOException("Failed to read chunk batch with filter " + filter + ": " + path.asString(), e);
+        }
+
+        long batchSizeMB = compressed.length / 1_048_576;
+        lastReadBatchSizeMB.set(batchSizeMB);
+        maxReadBatchSizeMB.updateAndGet(current -> Math.max(current, batchSizeMB));
+        recordRead(compressed.length, readLatency);
+
+        return batch;
+    }
+
+    /**
+     * Parses a TickDataChunk from a CodedInputStream, applying the given field filter to
+     * the snapshot and each delta.
+     *
+     * @param input  CodedInputStream positioned at the start of a TickDataChunk message
+     * @param filter Controls which fields to skip in nested TickData/TickDelta messages
+     * @return Parsed TickDataChunk with filtered fields omitted
+     * @throws IOException if parsing fails
+     */
+    private static TickDataChunk parseChunkWithFilter(CodedInputStream input, ChunkFieldFilter filter) throws IOException {
+        TickDataChunk.Builder builder = TickDataChunk.newBuilder();
+
+        while (true) {
+            int tag = input.readTag();
+            if (tag == 0) break;
+
+            switch (WireFormat.getTagFieldNumber(tag)) {
+                case TickDataChunk.SIMULATION_RUN_ID_FIELD_NUMBER:
+                    builder.setSimulationRunId(input.readString());
+                    break;
+                case TickDataChunk.FIRST_TICK_FIELD_NUMBER:
+                    builder.setFirstTick(input.readInt64());
+                    break;
+                case TickDataChunk.LAST_TICK_FIELD_NUMBER:
+                    builder.setLastTick(input.readInt64());
+                    break;
+                case TickDataChunk.TICK_COUNT_FIELD_NUMBER:
+                    builder.setTickCount(input.readInt32());
+                    break;
+                case TickDataChunk.SNAPSHOT_FIELD_NUMBER: {
+                    int length = input.readRawVarint32();
+                    int oldLimit = input.pushLimit(length);
+                    builder.setSnapshot(parseTickDataWithFilter(input, filter));
+                    input.skipRawBytes(input.getBytesUntilLimit());
+                    input.popLimit(oldLimit);
+                    break;
+                }
+                case TickDataChunk.DELTAS_FIELD_NUMBER: {
+                    int length = input.readRawVarint32();
+                    int oldLimit = input.pushLimit(length);
+                    builder.addDeltas(parseTickDeltaWithFilter(input, filter));
+                    input.skipRawBytes(input.getBytesUntilLimit());
+                    input.popLimit(oldLimit);
+                    break;
+                }
+                default:
+                    input.skipField(tag);
+                    break;
+            }
+        }
+
+        return builder.build();
+    }
+
+    /**
+     * Parses a TickData message from a CodedInputStream, skipping fields based on the filter.
+     * <p>
+     * Field mapping for TickData:
+     * <ul>
+     *   <li>{@code SKIP_ORGANISMS}: skips field 4 (organisms)</li>
+     *   <li>{@code SKIP_CELLS}: skips field 5 (cell_columns)</li>
+     * </ul>
+     *
+     * @param input  CodedInputStream positioned at the start of a TickData message
+     * @param filter Controls which fields to skip
+     * @return Parsed TickData with filtered fields omitted
+     * @throws IOException if parsing fails
+     */
+    private static TickData parseTickDataWithFilter(CodedInputStream input, ChunkFieldFilter filter) throws IOException {
+        TickData.Builder builder = TickData.newBuilder();
+
+        while (true) {
+            int tag = input.readTag();
+            if (tag == 0) break;
+
+            int fieldNumber = WireFormat.getTagFieldNumber(tag);
+
+            // Skip organisms when filter is SKIP_ORGANISMS
+            if (filter == ChunkFieldFilter.SKIP_ORGANISMS && fieldNumber == TickData.ORGANISMS_FIELD_NUMBER) {
+                input.skipField(tag);
+                continue;
+            }
+            // Skip cell_columns when filter is SKIP_CELLS
+            if (filter == ChunkFieldFilter.SKIP_CELLS && fieldNumber == TickData.CELL_COLUMNS_FIELD_NUMBER) {
+                input.skipField(tag);
+                continue;
+            }
+
+            switch (fieldNumber) {
+                case TickData.SIMULATION_RUN_ID_FIELD_NUMBER:
+                    builder.setSimulationRunId(input.readString());
+                    break;
+                case TickData.TICK_NUMBER_FIELD_NUMBER:
+                    builder.setTickNumber(input.readInt64());
+                    break;
+                case TickData.CAPTURE_TIME_MS_FIELD_NUMBER:
+                    builder.setCaptureTimeMs(input.readInt64());
+                    break;
+                case TickData.ORGANISMS_FIELD_NUMBER: {
+                    int length = input.readRawVarint32();
+                    int oldLimit = input.pushLimit(length);
+                    builder.addOrganisms(OrganismState.parseFrom(input));
+                    input.popLimit(oldLimit);
+                    break;
+                }
+                case TickData.CELL_COLUMNS_FIELD_NUMBER: {
+                    int length = input.readRawVarint32();
+                    int oldLimit = input.pushLimit(length);
+                    builder.setCellColumns(CellDataColumns.parseFrom(input));
+                    input.popLimit(oldLimit);
+                    break;
+                }
+                case TickData.RNG_STATE_FIELD_NUMBER:
+                    builder.setRngState(input.readBytes());
+                    break;
+                case TickData.PLUGIN_STATES_FIELD_NUMBER: {
+                    int length = input.readRawVarint32();
+                    int oldLimit = input.pushLimit(length);
+                    builder.addPluginStates(PluginState.parseFrom(input));
+                    input.popLimit(oldLimit);
+                    break;
+                }
+                case TickData.TOTAL_ORGANISMS_CREATED_FIELD_NUMBER:
+                    builder.setTotalOrganismsCreated(input.readInt64());
+                    break;
+                case TickData.TOTAL_UNIQUE_GENOMES_FIELD_NUMBER:
+                    builder.setTotalUniqueGenomes(input.readInt64());
+                    break;
+                case TickData.ALL_GENOME_HASHES_EVER_SEEN_FIELD_NUMBER: {
+                    // Handle both packed (LENGTH_DELIMITED) and unpacked (VARINT) encoding
+                    if (WireFormat.getTagWireType(tag) == WireFormat.WIRETYPE_LENGTH_DELIMITED) {
+                        int length = input.readRawVarint32();
+                        int oldLimit = input.pushLimit(length);
+                        while (input.getBytesUntilLimit() > 0) {
+                            builder.addAllGenomeHashesEverSeen(input.readInt64());
+                        }
+                        input.popLimit(oldLimit);
+                    } else {
+                        builder.addAllGenomeHashesEverSeen(input.readInt64());
+                    }
+                    break;
+                }
+                default:
+                    input.skipField(tag);
+                    break;
+            }
+        }
+
+        return builder.build();
+    }
+
+    /**
+     * Parses a TickDelta message from a CodedInputStream, skipping fields based on the filter.
+     * <p>
+     * Field mapping for TickDelta (note: field numbers differ from TickData):
+     * <ul>
+     *   <li>{@code SKIP_ORGANISMS}: skips field 5 (organisms)</li>
+     *   <li>{@code SKIP_CELLS}: skips field 4 (changed_cells)</li>
+     * </ul>
+     *
+     * @param input  CodedInputStream positioned at the start of a TickDelta message
+     * @param filter Controls which fields to skip
+     * @return Parsed TickDelta with filtered fields omitted
+     * @throws IOException if parsing fails
+     */
+    private static TickDelta parseTickDeltaWithFilter(CodedInputStream input, ChunkFieldFilter filter) throws IOException {
+        TickDelta.Builder builder = TickDelta.newBuilder();
+
+        while (true) {
+            int tag = input.readTag();
+            if (tag == 0) break;
+
+            int fieldNumber = WireFormat.getTagFieldNumber(tag);
+
+            // Skip organisms when filter is SKIP_ORGANISMS
+            if (filter == ChunkFieldFilter.SKIP_ORGANISMS && fieldNumber == TickDelta.ORGANISMS_FIELD_NUMBER) {
+                input.skipField(tag);
+                continue;
+            }
+            // Skip changed_cells when filter is SKIP_CELLS
+            if (filter == ChunkFieldFilter.SKIP_CELLS && fieldNumber == TickDelta.CHANGED_CELLS_FIELD_NUMBER) {
+                input.skipField(tag);
+                continue;
+            }
+
+            switch (fieldNumber) {
+                case TickDelta.TICK_NUMBER_FIELD_NUMBER:
+                    builder.setTickNumber(input.readInt64());
+                    break;
+                case TickDelta.CAPTURE_TIME_MS_FIELD_NUMBER:
+                    builder.setCaptureTimeMs(input.readInt64());
+                    break;
+                case TickDelta.DELTA_TYPE_FIELD_NUMBER:
+                    builder.setDeltaTypeValue(input.readEnum());
+                    break;
+                case TickDelta.CHANGED_CELLS_FIELD_NUMBER: {
+                    int length = input.readRawVarint32();
+                    int oldLimit = input.pushLimit(length);
+                    builder.setChangedCells(CellDataColumns.parseFrom(input));
+                    input.popLimit(oldLimit);
+                    break;
+                }
+                case TickDelta.ORGANISMS_FIELD_NUMBER: {
+                    int length = input.readRawVarint32();
+                    int oldLimit = input.pushLimit(length);
+                    builder.addOrganisms(OrganismState.parseFrom(input));
+                    input.popLimit(oldLimit);
+                    break;
+                }
+                case TickDelta.TOTAL_ORGANISMS_CREATED_FIELD_NUMBER:
+                    builder.setTotalOrganismsCreated(input.readInt64());
+                    break;
+                case TickDelta.RNG_STATE_FIELD_NUMBER:
+                    builder.setRngState(input.readBytes());
+                    break;
+                case TickDelta.PLUGIN_STATES_FIELD_NUMBER: {
+                    int length = input.readRawVarint32();
+                    int oldLimit = input.pushLimit(length);
+                    builder.addPluginStates(PluginState.parseFrom(input));
+                    input.popLimit(oldLimit);
+                    break;
+                }
+                case TickDelta.TOTAL_UNIQUE_GENOMES_FIELD_NUMBER:
+                    builder.setTotalUniqueGenomes(input.readInt64());
                     break;
                 default:
                     input.skipField(tag);

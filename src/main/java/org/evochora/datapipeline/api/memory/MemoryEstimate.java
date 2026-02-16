@@ -11,7 +11,7 @@ package org.evochora.datapipeline.api.memory;
  * MemoryEstimate estimate = new MemoryEstimate(
  *     "persistence-service-1",
  *     367_001_600L,  // ~350 MB
- *     "100 ticks × (480000 cells × 20B + 50000 organisms × 500B)",
+ *     "50 ticks × (480000 cells × 20B + 50000 organisms × 500B)",
  *     Category.SERVICE_BATCH
  * );
  * </pre>

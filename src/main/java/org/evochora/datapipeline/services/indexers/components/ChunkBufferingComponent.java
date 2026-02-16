@@ -19,7 +19,7 @@ import java.util.Map;
  * <p>
  * <strong>Chunk-based Buffering:</strong> After delta compression, data arrives as
  * {@link TickDataChunk} objects. Each chunk is self-contained (starts with a snapshot)
- * and typically contains ~100 ticks. The {@code insertBatchSize} parameter specifies
+ * and typically contains ~50 ticks. The {@code insertBatchSize} parameter specifies
  * the number of chunks to buffer before triggering a flush.
  * <p>
  * <strong>Thread Safety:</strong> This component is <strong>NOT thread-safe</strong>

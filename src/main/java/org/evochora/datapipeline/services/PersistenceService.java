@@ -106,7 +106,7 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
         }
 
         // Configuration with defaults
-        this.maxBatchSize = options.hasPath("maxBatchSize") ? options.getInt("maxBatchSize") : 20;
+        this.maxBatchSize = options.hasPath("maxBatchSize") ? options.getInt("maxBatchSize") : 10;
         this.batchTimeoutSeconds = options.hasPath("batchTimeoutSeconds") ? options.getInt("batchTimeoutSeconds") : 30;
         this.maxRetries = options.hasPath("maxRetries") ? options.getInt("maxRetries") : 3;
         this.retryBackoffMs = options.hasPath("retryBackoffMs") ? options.getInt("retryBackoffMs") : 1000;
