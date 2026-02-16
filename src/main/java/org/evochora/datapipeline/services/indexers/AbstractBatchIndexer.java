@@ -427,14 +427,15 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         }
         
         try {
-            // Read chunks from storage (GENERIC for all batch indexers!)
-            // Storage handles length-delimited format automatically
+            // Read chunks from storage with per-chunk transformation during parsing.
+            // The transformer strips unneeded fields (e.g., environment cells for OrganismIndexer)
+            // DURING the parse loop, so only transformed chunks accumulate in memory.
             StoragePath storagePath = StoragePath.of(batch.getStoragePath());
-            List<TickDataChunk> chunks = storage.readChunkBatch(storagePath);
-            
+            List<TickDataChunk> chunks = storage.readChunkBatch(storagePath, this::transformChunkForBuffering);
+
             // Count total ticks across all chunks for metrics
             int totalTicks = chunks.stream().mapToInt(TickDataChunk::getTickCount).sum();
-            
+
             if (components != null && components.buffering != null) {
                 // WITH buffering: Add to buffer, ACK after flush
                 components.buffering.addChunksFromBatch(chunks, batchId, msg);
@@ -617,6 +618,25 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      * @throws Exception if flush fails
      */
     protected abstract void flushChunks(List<TickDataChunk> chunks) throws Exception;
+
+    /**
+     * Transforms a chunk before it enters the buffer or is passed to {@link #flushChunks}.
+     * <p>
+     * Override in subclasses to strip fields not needed by this indexer, reducing buffer
+     * memory. For example, an organism-only indexer can strip environment cell data.
+     * <p>
+     * Called for every chunk in both the buffering path and the batch-passthrough path,
+     * immediately after {@code storage.readChunkBatch()} returns. The original chunk
+     * becomes eligible for GC once all chunks in the batch have been transformed.
+     * <p>
+     * <strong>Default:</strong> Returns the chunk unchanged (no-op).
+     *
+     * @param chunk The original chunk read from storage
+     * @return The (possibly stripped) chunk to buffer or flush
+     */
+    protected TickDataChunk transformChunkForBuffering(TickDataChunk chunk) {
+        return chunk;
+    }
     
     /**
      * Adds batch indexer metrics to the metrics map.

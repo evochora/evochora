@@ -10,6 +10,8 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 
+import org.evochora.junit.extensions.logging.ExpectLog;
+import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.test.utils.SimulationTestUtils;
@@ -192,32 +194,32 @@ class OrganismRestoreBuilderTest {
 
     @Test
     @Tag("unit")
-    void testRestoreBuilder_NegativeEnergy_ThrowsException() {
-        assertThatThrownBy(() ->
-            Organism.restore(1, 0L)
-                .ip(new int[]{0, 0})
-                .dv(new int[]{1, 0})
-                .initialPosition(new int[]{0, 0})
-                .energy(-10)
-                .build(simulation)
-        )
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("Energy cannot be negative");
+    @ExpectLog(level = LogLevel.WARN, messagePattern = ".*negative energy.*")
+    void testRestoreBuilder_NegativeEnergy_WarnsButCreates() {
+        Organism org = Organism.restore(1, 0L)
+            .ip(new int[]{0, 0})
+            .dv(new int[]{1, 0})
+            .initialPosition(new int[]{0, 0})
+            .energy(-10)
+            .build(simulation);
+
+        assertThat(org).isNotNull();
+        assertThat(org.getEr()).isEqualTo(-10);
     }
 
     @Test
     @Tag("unit")
-    void testRestoreBuilder_NegativeEntropy_ThrowsException() {
-        assertThatThrownBy(() ->
-            Organism.restore(1, 0L)
-                .ip(new int[]{0, 0})
-                .dv(new int[]{1, 0})
-                .initialPosition(new int[]{0, 0})
-                .entropy(-5)
-                .build(simulation)
-        )
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("Entropy cannot be negative");
+    @ExpectLog(level = LogLevel.WARN, messagePattern = ".*negative entropy.*")
+    void testRestoreBuilder_NegativeEntropy_WarnsButCreates() {
+        Organism org = Organism.restore(1, 0L)
+            .ip(new int[]{0, 0})
+            .dv(new int[]{1, 0})
+            .initialPosition(new int[]{0, 0})
+            .entropy(-5)
+            .build(simulation);
+
+        assertThat(org).isNotNull();
+        assertThat(org.getSr()).isEqualTo(-5);
     }
 
     // ==================== Immutability Tests ====================

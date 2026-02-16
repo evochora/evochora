@@ -1,12 +1,10 @@
 package org.evochora.datapipeline.resume;
 
 import java.io.IOException;
-import java.util.List;
 import java.util.Optional;
 
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.slf4j.Logger;
@@ -88,21 +86,10 @@ public class SnapshotLoader {
         StoragePath lastBatchPath = lastBatchOpt.get();
         log.debug("Found last batch file: {}", lastBatchPath);
 
-        // 3. Read all chunks from last batch
-        List<TickDataChunk> chunks = storageRead.readChunkBatch(lastBatchPath);
-        if (chunks.isEmpty()) {
-            throw new ResumeException("Empty batch file: " + lastBatchPath);
-        }
+        // 3. Read snapshot from last chunk (skips delta data at wire level to save memory)
+        TickData snapshot = storageRead.readLastSnapshot(lastBatchPath);
 
-        // 4. Get the last chunk's snapshot
-        TickDataChunk lastChunk = chunks.get(chunks.size() - 1);
-        TickData snapshot = lastChunk.getSnapshot();
-
-        log.debug("Read {} chunks from batch, using snapshot from tick {}",
-            chunks.size(), snapshot.getTickNumber());
-
-        log.info("Resume checkpoint: tick {} (from snapshot)",
-            snapshot.getTickNumber());
+        log.info("Resume checkpoint: tick {} (from snapshot)", snapshot.getTickNumber());
 
         return new ResumeCheckpoint(metadata, snapshot);
     }

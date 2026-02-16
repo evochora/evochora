@@ -81,6 +81,11 @@ class AbstractBatchIndexerTest {
         // All tests use configured runIds — stub storage validation to pass
         lenient().when(mockStorage.findMetadataPath(any(String.class)))
             .thenReturn(Optional.of(StoragePath.of("dummy/raw/metadata.pb")));
+
+        // Support 2-arg readChunkBatch: delegate to interface default method,
+        // which calls the 1-arg version (stubbed per-test) then applies the transformer.
+        lenient().when(mockStorage.readChunkBatch(any(StoragePath.class), any()))
+            .thenCallRealMethod();
     }
     
     @org.junit.jupiter.api.AfterEach
