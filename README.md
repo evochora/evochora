@@ -4,9 +4,6 @@
   <br><code>Simulation Platform for Digital Evolution Research</code>
 
   <br><br>
-  **Evochora is a scientific simulation platform for digital evolution research.<br>
-  Organisms live in an n-dimensional environment with configurable thermodynamic selection pressure and are written in EvoASM, a spatial assembly language.<br>
-  The compiler, the instruction set, and the environment are all extensible through plugins. A decoupled data pipeline persists raw simulation data that can be reindexed at any time, and all outputs are standard Parquet — ready for analysis in Python, R, or Jupyter. A web-based frontend allows tick-by-tick inspection and debugging of organism behavior.**
 
   <a href="http://evochora.org" style="font-size: 1.5em; font-weight: bold; text-decoration: none;" target="_blank">👉 SEE LIVE DEMO</a>
   <br>
@@ -58,6 +55,14 @@
 
 <br>
 
+## What is Evochora?
+
+Evochora is a scientific simulation platform where digital organisms — written in EvoASM, a spatial assembly language — live as distributed code in an n-dimensional grid. They interact with their surroundings exclusively through local pointers and replicate under configurable thermodynamic constraints. There is no fitness function and no external selection pressure.
+
+The platform is extensible at every layer: the compiler pipeline, the VM instruction set, the mutation operators, and the rules of the world are all configurable or replaceable through plugins. A decoupled data pipeline persists complete simulation state and exports all metrics as standard Parquet files — ready for analysis in Python, R, Jupyter, or DuckDB. A web-based frontend allows tick-by-tick inspection and debugging of organism behavior.
+
+<br>
+
 ## Quick Start
 
 **Requirements:** Java 21 (JRE or JDK)
@@ -79,6 +84,7 @@ The node starts a complete in-process simulation with the default primordial org
 
 ## Table of Contents
 
+- [What is Evochora?](#what-is-evochora)
 - [Quick Start](#quick-start)
 - [Why Evochora?](#why-evochora)
 - [Key Capabilities](#key-capabilities)
@@ -93,7 +99,9 @@ The node starts a complete in-process simulation with the default primordial org
 
 ## Why Evochora?
 
-Pioneering platforms like Tierra and Avida demonstrated that digital evolution can produce ecological dynamics and complex functions — but their reliance on global culling or task-based rewards imposes fixed selection pressures that may limit long-term evolvability. Evochora takes a different approach: organisms are spatially distributed code in an n-dimensional grid, interacting with their surroundings exclusively through local pointers. Survival is not a task to be solved but a constant energetic balancing act. This makes the physics of the world — not an external reward function — the primary driver of selection.
+Landmark platforms like Tierra and Avida demonstrated that digital evolution can produce genuine ecological dynamics and complex adapted functions. Evochora asks a complementary question: how do the fundamental rules of a world shape the evolutionary outcomes within it?
+
+To answer this, the physics of the world are themselves the experiment. Thermodynamic models, mutation operators, resource distribution, and death mechanics are all swappable plugins. Instead of asking "what evolves under these rules?", researchers can ask "how do the rules shape what evolves?" — and test the answer by changing them.
 
 For the full scientific motivation, see the [Scientific Overview](docs/SCIENTIFIC_OVERVIEW.md). For the personal story behind the project, see the [Origin Story](docs/ORIGIN_STORY.md).
 
