@@ -83,14 +83,11 @@ dependencies {
     implementation("org.duckdb:duckdb_jdbc:1.4.3.0")
 
     // ActiveMQ Artemis for high-performance messaging (Topics/Queues)
-    implementation("org.apache.activemq:artemis-jms-server:2.42.0")
-    implementation("org.apache.activemq:artemis-jms-client:2.42.0")
+    implementation("org.apache.artemis:artemis-jakarta-server:2.51.0")
+    implementation("org.apache.artemis:artemis-jakarta-client:2.51.0")
 
-    // Artemis JUnit 5 support for testing embedded broker
-    testImplementation("org.apache.activemq:artemis-junit-5:2.42.0") {
-        exclude(group = "org.slf4j")
-        exclude(group = "ch.qos.logback")
-    }
+    // JMS session pooling for producer sends (eliminates TCP session creation overhead)
+    implementation("org.messaginghub:pooled-jms:3.2.2")
 
     // Test fixtures: dependencies needed to compile the JUnit extension
     testFixturesImplementation("org.junit.jupiter:junit-jupiter-api:5.10.2")

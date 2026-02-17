@@ -44,11 +44,12 @@ public class TopicCleaner {
      * @param config application configuration
      */
     public TopicCleaner(Config config) {
-        // Get topic data directory from batch-topic configuration
-        if (config.hasPath("pipeline.resources.batch-topic.options.embedded.dataDirectory")) {
-            this.dataDirectory = config.getString("pipeline.resources.batch-topic.options.embedded.dataDirectory");
+        // Get broker data directory from topic-broker process configuration.
+        // TopicCleaner only operates on topic data (journal retention, subscriptions),
+        // so it reads from the topic-broker, not the queue-broker.
+        if (config.hasPath("node.processes.topic-broker.options.dataDirectory")) {
+            this.dataDirectory = config.getString("node.processes.topic-broker.options.dataDirectory");
         } else {
-            // Fallback to default
             String dataBaseDir = config.getString("pipeline.dataBaseDir");
             this.dataDirectory = dataBaseDir + "/topic";
         }
@@ -212,19 +213,29 @@ public class TopicCleaner {
 
     /**
      * Suppress Artemis logging during cleanup operations.
+     * <p>
+     * Only sets levels that have not been explicitly configured (via logback.xml),
+     * matching the null-check pattern used in
+     * {@link org.evochora.node.processes.broker.EmbeddedBrokerProcess#configureLogging()}.
      */
     private void suppressArtemisLogging() {
         ch.qos.logback.classic.Logger artemisLogger =
             (ch.qos.logback.classic.Logger) LoggerFactory.getLogger("org.apache.activemq.artemis");
-        artemisLogger.setLevel(ch.qos.logback.classic.Level.ERROR);
+        if (artemisLogger.getLevel() == null) {
+            artemisLogger.setLevel(ch.qos.logback.classic.Level.ERROR);
+        }
 
         ch.qos.logback.classic.Logger serverLogger =
             (ch.qos.logback.classic.Logger) LoggerFactory.getLogger("org.apache.activemq.artemis.core.server");
-        serverLogger.setLevel(ch.qos.logback.classic.Level.OFF);
+        if (serverLogger.getLevel() == null) {
+            serverLogger.setLevel(ch.qos.logback.classic.Level.OFF);
+        }
 
         // Suppress verbose audit logging
         ch.qos.logback.classic.Logger auditLogger =
             (ch.qos.logback.classic.Logger) LoggerFactory.getLogger("org.apache.activemq.audit");
-        auditLogger.setLevel(ch.qos.logback.classic.Level.OFF);
+        if (auditLogger.getLevel() == null) {
+            auditLogger.setLevel(ch.qos.logback.classic.Level.OFF);
+        }
     }
 }

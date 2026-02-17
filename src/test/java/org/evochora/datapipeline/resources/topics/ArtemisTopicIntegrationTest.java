@@ -14,9 +14,11 @@ import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.topics.ITopicReader;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
 import org.evochora.datapipeline.api.resources.topics.TopicMessage;
+import org.evochora.node.processes.broker.EmbeddedBrokerProcess;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -39,6 +41,7 @@ import com.typesafe.config.ConfigFactory;
  */
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
+@AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
 class ArtemisTopicIntegrationTest {
 
     private static File testDir;
@@ -62,18 +65,23 @@ class ArtemisTopicIntegrationTest {
         // (HOCON interprets backslashes as escape characters)
         String configPath = testDirPath.replace("\\", "/");
 
-        sharedConfig = ConfigFactory.parseString("""
-            brokerUrl = "vm://0"
-            embedded {
+        // Start topic broker (serverId=0) — matches production config
+        Config brokerConfig = ConfigFactory.parseString("""
+            enabled = true
+            serverId = 0
+            dataDirectory = "%s"
+            persistenceEnabled = true
+            journalRetention {
                 enabled = true
-                dataDirectory = "%s"
-                persistenceEnabled = true
-                journalRetention {
-                    enabled = true
-                    directory = "%s/history"
-                }
+                directory = "%s/history"
             }
             """.formatted(configPath, configPath));
+        EmbeddedBrokerProcess.ensureStarted(brokerConfig);
+
+        // Resource config: only topic-specific settings, no broker config
+        sharedConfig = ConfigFactory.parseString("""
+            brokerUrl = "vm://0"
+            """);
     }
 
     @AfterEach
@@ -83,10 +91,15 @@ class ArtemisTopicIntegrationTest {
         }
     }
 
+    @AfterAll
+    static void teardownBroker() throws Exception {
+        ArtemisTopicResource.resetKnownSubscriptionsForTesting();
+        EmbeddedBrokerProcess.resetForTesting();
+    }
+
     @Test
     @DisplayName("Should initialize Artemis broker and connect")
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
-    @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
+
     void shouldInitializeBroker() throws Exception {
         // When
         this.topic = new ArtemisTopicResource<>("test-topic-artemis", sharedConfig);
@@ -100,8 +113,7 @@ class ArtemisTopicIntegrationTest {
 
     @Test
     @DisplayName("Should write and read message end-to-end")
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
-    @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
+
     void shouldWriteAndReadMessage() throws Exception {
         // Given
         this.topic = new ArtemisTopicResource<>("batch-topic-artemis", sharedConfig);
@@ -111,7 +123,7 @@ class ArtemisTopicIntegrationTest {
             new ResourceContext("writer-service", "writer-port", "topic-write", "batch-topic-artemis", Map.of()));
 
         @SuppressWarnings("unchecked")
-        ITopicReader<BatchInfo, javax.jms.Message> reader = (ITopicReader<BatchInfo, javax.jms.Message>) this.topic.getWrappedResource(
+        ITopicReader<BatchInfo, jakarta.jms.Message> reader = (ITopicReader<BatchInfo, jakarta.jms.Message>) this.topic.getWrappedResource(
             new ResourceContext("reader-service", "reader-port", "topic-read", "batch-topic-artemis", Map.of("consumerGroup", "test-consumer-group")));
 
         this.topic.setSimulationRun("20250101-TEST-RUN");
@@ -128,7 +140,7 @@ class ArtemisTopicIntegrationTest {
         writer.send(message);
 
         // Then
-        TopicMessage<BatchInfo, javax.jms.Message> receivedMessage = reader.poll(5, TimeUnit.SECONDS);
+        TopicMessage<BatchInfo, jakarta.jms.Message> receivedMessage = reader.poll(5, TimeUnit.SECONDS);
 
         assertThat(receivedMessage).isNotNull();
         assertThat(receivedMessage.payload()).isEqualTo(message);
@@ -140,8 +152,7 @@ class ArtemisTopicIntegrationTest {
 
     @Test
     @DisplayName("Should support competing consumers (load balancing)")
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
-    @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
+
     void shouldSupportCompetingConsumers() throws Exception {
         // Given
         this.topic = new ArtemisTopicResource<>("competing-test-topic", sharedConfig);
@@ -151,11 +162,11 @@ class ArtemisTopicIntegrationTest {
             new ResourceContext("writer", "writer", "topic-write", "test", Map.of()));
 
         @SuppressWarnings("unchecked")
-        ITopicReader<BatchInfo, javax.jms.Message> reader1 = (ITopicReader<BatchInfo, javax.jms.Message>) this.topic.getWrappedResource(
+        ITopicReader<BatchInfo, jakarta.jms.Message> reader1 = (ITopicReader<BatchInfo, jakarta.jms.Message>) this.topic.getWrappedResource(
             new ResourceContext("r1", "p1", "topic-read", "test", Map.of("consumerGroup", "workers")));
 
         @SuppressWarnings("unchecked")
-        ITopicReader<BatchInfo, javax.jms.Message> reader2 = (ITopicReader<BatchInfo, javax.jms.Message>) this.topic.getWrappedResource(
+        ITopicReader<BatchInfo, jakarta.jms.Message> reader2 = (ITopicReader<BatchInfo, jakarta.jms.Message>) this.topic.getWrappedResource(
             new ResourceContext("r2", "p2", "topic-read", "test", Map.of("consumerGroup", "workers")));
 
         this.topic.setSimulationRun("RUN-COMPETING");
@@ -181,8 +192,7 @@ class ArtemisTopicIntegrationTest {
 
     @Test
     @DisplayName("Should support pub/sub (multiple consumer groups)")
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
-    @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
+
     void shouldSupportPubSub() throws Exception {
         // Given
         this.topic = new ArtemisTopicResource<>("pubsub-test-topic", sharedConfig);
@@ -192,11 +202,11 @@ class ArtemisTopicIntegrationTest {
             new ResourceContext("writer", "writer", "topic-write", "test", Map.of()));
 
         @SuppressWarnings("unchecked")
-        ITopicReader<BatchInfo, javax.jms.Message> groupA = (ITopicReader<BatchInfo, javax.jms.Message>) this.topic.getWrappedResource(
+        ITopicReader<BatchInfo, jakarta.jms.Message> groupA = (ITopicReader<BatchInfo, jakarta.jms.Message>) this.topic.getWrappedResource(
             new ResourceContext("r1", "p1", "topic-read", "test", Map.of("consumerGroup", "group-A")));
 
         @SuppressWarnings("unchecked")
-        ITopicReader<BatchInfo, javax.jms.Message> groupB = (ITopicReader<BatchInfo, javax.jms.Message>) this.topic.getWrappedResource(
+        ITopicReader<BatchInfo, jakarta.jms.Message> groupB = (ITopicReader<BatchInfo, jakarta.jms.Message>) this.topic.getWrappedResource(
             new ResourceContext("r2", "p2", "topic-read", "test", Map.of("consumerGroup", "group-B")));
 
         this.topic.setSimulationRun("RUN-PUBSUB");
@@ -211,8 +221,7 @@ class ArtemisTopicIntegrationTest {
 
     @Test
     @DisplayName("New consumer group should receive all historical messages via journal retention replay")
-    @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
+
     void shouldReplayHistoricalMessagesForNewConsumerGroup() throws Exception {
         // Given
         this.topic = new ArtemisTopicResource<>("retention-test", sharedConfig);
@@ -222,8 +231,8 @@ class ArtemisTopicIntegrationTest {
             new ResourceContext("writer", "w", "topic-write", "retention-test", Map.of()));
 
         @SuppressWarnings("unchecked")
-        ITopicReader<BatchInfo, javax.jms.Message> groupA =
-            (ITopicReader<BatchInfo, javax.jms.Message>) this.topic.getWrappedResource(
+        ITopicReader<BatchInfo, jakarta.jms.Message> groupA =
+            (ITopicReader<BatchInfo, jakarta.jms.Message>) this.topic.getWrappedResource(
                 new ResourceContext("indexer-a", "a", "topic-read", "retention-test",
                     Map.of("consumerGroup", "group-A")));
 
@@ -244,7 +253,7 @@ class ArtemisTopicIntegrationTest {
         // Group A reads and ACKs all 3 messages
         Set<Long> processedByA = new HashSet<>();
         for (int i = 0; i < 3; i++) {
-            TopicMessage<BatchInfo, javax.jms.Message> msg = groupA.poll(5, TimeUnit.SECONDS);
+            TopicMessage<BatchInfo, jakarta.jms.Message> msg = groupA.poll(5, TimeUnit.SECONDS);
             assertThat(msg).describedAs("Group A should receive message %d", i + 1).isNotNull();
             processedByA.add(msg.payload().getTickStart());
             groupA.ack(msg);
@@ -256,15 +265,15 @@ class ArtemisTopicIntegrationTest {
 
         // NEW consumer group B joins AFTER Group A finished
         @SuppressWarnings("unchecked")
-        ITopicReader<BatchInfo, javax.jms.Message> groupB =
-            (ITopicReader<BatchInfo, javax.jms.Message>) this.topic.getWrappedResource(
+        ITopicReader<BatchInfo, jakarta.jms.Message> groupB =
+            (ITopicReader<BatchInfo, jakarta.jms.Message>) this.topic.getWrappedResource(
                 new ResourceContext("indexer-b", "b", "topic-read", "retention-test",
                     Map.of("consumerGroup", "group-B")));
 
         // Group B should receive ALL 3 historical messages via replay
         Set<Long> processedByB = new HashSet<>();
         for (int i = 0; i < 3; i++) {
-            TopicMessage<BatchInfo, javax.jms.Message> msg = groupB.poll(5, TimeUnit.SECONDS);
+            TopicMessage<BatchInfo, jakarta.jms.Message> msg = groupB.poll(5, TimeUnit.SECONDS);
             assertThat(msg)
                 .describedAs("Group B should receive historical message %d via replay", i + 1)
                 .isNotNull();

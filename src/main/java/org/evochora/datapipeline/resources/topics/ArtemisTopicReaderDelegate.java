@@ -3,16 +3,17 @@ package org.evochora.datapipeline.resources.topics;
 import java.time.Instant;
 import java.util.concurrent.TimeUnit;
 
-import javax.jms.BytesMessage;
-import javax.jms.Connection;
-import javax.jms.JMSException;
-import javax.jms.MessageConsumer;
-import javax.jms.Session;
-import javax.jms.Topic;
+import jakarta.jms.BytesMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.Session;
+import jakarta.jms.Topic;
 
 import org.apache.activemq.artemis.api.jms.ActiveMQJMSConstants;
 import org.evochora.datapipeline.api.contracts.TopicEnvelope;
 import org.evochora.datapipeline.api.resources.ResourceContext;
+import org.evochora.datapipeline.utils.JmsUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -24,6 +25,13 @@ import com.google.protobuf.Message;
  * Uses JMS 2.0 Shared Subscriptions for Competing Consumers support.
  * Uses Artemis INDIVIDUAL_ACKNOWLEDGE mode for precise message acknowledgment.
  * <p>
+ * <strong>Corrupt Message Handling (DLQ):</strong>
+ * Messages that fail deserialization are NOT acknowledged. Instead, {@link Session#recover()}
+ * is called, which returns the message to the broker for redelivery. After
+ * {@code maxDeliveryAttempts} (configured in the broker's address settings), Artemis
+ * automatically routes the message to the dead-letter address (DLQ). This prevents
+ * corrupt messages from blocking the consumer while preserving them for diagnosis.
+ * <p>
  * <strong>Stuck Message Handling:</strong>
  * Tracks when messages are received (claimed). The parent {@link ArtemisTopicResource}
  * runs a watchdog thread that calls {@link #isStuck(Instant)} periodically. If a message
@@ -31,7 +39,7 @@ import com.google.protobuf.Message;
  * session recovery, causing the broker to redeliver the message to another consumer.
  */
 public class ArtemisTopicReaderDelegate<T extends Message> 
-    extends AbstractTopicDelegateReader<ArtemisTopicResource<T>, T, javax.jms.Message> {
+    extends AbstractTopicDelegateReader<ArtemisTopicResource<T>, T, jakarta.jms.Message> {
 
     private static final Logger log = LoggerFactory.getLogger(ArtemisTopicReaderDelegate.class);
     
@@ -162,14 +170,14 @@ public class ArtemisTopicReaderDelegate<T extends Message>
         // For server.replay(), Artemis expects the full internal queue name format: "address::queueName"
         String replayQueueName = targetTopicName + "::" + targetSubscriptionName;
 
-        if (ArtemisTopicResource.isJournalRetentionEnabled()) {
+        if (parent.isJournalRetentionEnabled()) {
             // Step 1: Fast-path check - have we seen this subscription in this JVM?
             boolean firstTimeInJvm = ArtemisTopicResource.registerSubscriptionInMemory(
                 targetTopicName, targetSubscriptionName);
 
             if (firstTimeInJvm) {
                 // Step 2: Check if queue actually exists in broker (persisted from previous run)
-                boolean queueExistsInBroker = ArtemisTopicResource.queueExistsInBroker(brokerQueueName);
+                boolean queueExistsInBroker = parent.queueExistsInBroker(brokerQueueName);
 
                 if (!queueExistsInBroker) {
                     // This is a truly NEW subscription - will need replay after creation
@@ -199,7 +207,7 @@ public class ArtemisTopicReaderDelegate<T extends Message>
         if (shouldReplay) {
             try {
                 log.debug("Triggering replay: address='{}', queue='{}'", targetTopicName, replayQueueName);
-                ArtemisTopicResource.triggerReplay(targetTopicName, replayQueueName);
+                parent.triggerReplay(targetTopicName, replayQueueName);
                 log.debug("Replay triggered for new consumer group '{}' on topic '{}'",
                     this.consumerGroup, targetTopicName);
             } catch (Exception e) {
@@ -216,12 +224,12 @@ public class ArtemisTopicReaderDelegate<T extends Message>
     }
 
     @Override
-    protected ReceivedEnvelope<javax.jms.Message> receiveEnvelope(long timeout, TimeUnit unit) throws InterruptedException {
+    protected ReceivedEnvelope<jakarta.jms.Message> receiveEnvelope(long timeout, TimeUnit unit) throws InterruptedException {
         try {
             // Lazy initialization: ensure consumer exists and is on the correct topic
             ensureConsumerInitialized();
             
-            javax.jms.Message message;
+            jakarta.jms.Message message;
             if (timeout == 0 && unit == null) {
                 message = consumer.receive(); // Block indefinitely
             } else {
@@ -241,55 +249,83 @@ public class ArtemisTopicReaderDelegate<T extends Message>
                 long length = bytesMessage.getBodyLength();
                 byte[] data = new byte[(int) length];
                 bytesMessage.readBytes(data);
-                
-                // Deserialize Envelope
-                TopicEnvelope envelope = TopicEnvelope.parseFrom(data);
-                
+
+                // Deserialize Envelope — errors are non-fatal (corrupt message, not transport failure)
+                TopicEnvelope envelope;
+                try {
+                    envelope = TopicEnvelope.parseFrom(data);
+                } catch (Exception e) {
+                    // Do NOT acknowledge — let Artemis redeliver up to maxDeliveryAttempts,
+                    // then route the message to the dead-letter queue (DLQ).
+                    // session.recover() marks unacknowledged messages for redelivery.
+                    int deliveryCount = getDeliveryCount(message);
+                    log.error("Failed to deserialize message from topic '{}' (delivery #{})",
+                        activeTopicName, deliveryCount);
+                    recordError("DESERIALIZE_FAILED", "Message deserialization failed",
+                        "Topic: " + activeTopicName + ", Delivery: " + deliveryCount
+                            + ", Error: " + e.getMessage());
+
+                    // Count unique corrupt messages (first delivery only) for DLQ metrics
+                    if (deliveryCount <= 1) {
+                        parent.recordDlqRejection();
+                    }
+
+                    session.recover();
+                    clearClaimTracking();
+                    return null;
+                }
+
                 // Record metrics (O(1) - AtomicLong increment + SlidingWindowCounter)
                 parent.recordRead();
-                
+
                 // Return with message itself as ACK token
                 return new ReceivedEnvelope<>(envelope, message);
             } else {
-                log.warn("Received non-BytesMessage in Artemis topic '{}': {}", activeTopicName, message.getClass().getName());
-                // Ack it to get it out of the way? Or DLQ?
-                message.acknowledge();
+                // Non-BytesMessage: cannot process. Reject for DLQ routing.
+                int deliveryCount = getDeliveryCount(message);
+                log.error("Received non-BytesMessage in Artemis topic '{}': {} (delivery #{})",
+                    activeTopicName, message.getClass().getName(), deliveryCount);
+                if (deliveryCount <= 1) {
+                    parent.recordDlqRejection();
+                }
+                session.recover();
                 clearClaimTracking();
                 return null;
             }
-            
+
         } catch (JMSException e) {
             // Check if this is caused by thread interruption (graceful shutdown)
-            if (isInterruptedException(e)) {
+            if (JmsUtils.isInterruptedException(e)) {
                 log.debug("JMS receive interrupted during shutdown (topic: {})", activeTopicName);
                 throw new InterruptedException("JMS receive interrupted");
             }
-            
+
             // Transient error - log at WARN level (AGENTS.md: Resources use WARN for transient errors)
             log.warn("JMS receive failed on topic '{}'", activeTopicName);
             throw new RuntimeException("JMS receive failed", e);
-        } catch (Exception e) {
-             throw new RuntimeException("Deserialization failed", e);
         }
     }
     
     /**
-     * Checks if a Throwable was caused by thread interruption (shutdown signal).
-     * Walks the cause chain to detect wrapped InterruptedException.
+     * Extracts the JMS delivery count from a message.
+     * <p>
+     * Uses the standard {@code JMSXDeliveryCount} property which Artemis sets on each delivery.
+     * Returns 0 if the property is unavailable (defensive fallback).
+     *
+     * @param message the JMS message
+     * @return delivery count (1 = first delivery), or 0 if unavailable
      */
-    private boolean isInterruptedException(Throwable e) {
-        Throwable cause = e;
-        while (cause != null) {
-            if (cause instanceof InterruptedException) {
-                return true;
-            }
-            cause = cause.getCause();
+    private int getDeliveryCount(jakarta.jms.Message message) {
+        try {
+            return message.getIntProperty("JMSXDeliveryCount");
+        } catch (JMSException e) {
+            return 0;
         }
-        return false;
     }
 
+
     @Override
-    protected void acknowledgeMessage(javax.jms.Message message) {
+    protected void acknowledgeMessage(jakarta.jms.Message message) {
         try {
             message.acknowledge();
             // Record metrics (O(1) - AtomicLong increment)

@@ -53,22 +53,14 @@ public final class Node {
     }
 
     /**
-     * Starts all managed processes and registers a shutdown hook for graceful termination.
+     * Registers the shutdown hook for graceful termination.
+     * <p>
+     * All processes are already started during {@link #Node(Config) construction}
+     * in dependency order. This method only registers the JVM shutdown hook.
      */
     public void start() {
         if (managedProcesses.isEmpty()) {
             LOGGER.warn("No processes configured to start. The node will be idle.");
-        } else {
-            LOGGER.info("\u001B[34m========== Management Interfaces ==========\u001B[0m");
-            managedProcesses.forEach((name, process) -> {
-                try {
-                    LOGGER.debug("Starting process '{}'...", name);
-                    process.start();
-                    LOGGER.debug("Process '{}' started successfully.", name);
-                } catch (final Exception e) {
-                    LOGGER.error("Failed to start process '{}'. The node may be unstable.", name, e);
-                }
-            });
         }
 
         shutdownHook = new Thread(this::stop, "shutdown");
@@ -197,7 +189,11 @@ public final class Node {
             throw e;
         }
 
-        // Step 3: Instantiate processes in dependency order
+        // Step 3: Instantiate and start processes in dependency order.
+        // Each process is started immediately after construction so that its
+        // services are available when the next process is instantiated.
+        // Example: EmbeddedBrokerProcess must be running before ServiceManagerProcess
+        // constructs ArtemisQueueResource (which connects to vm://0).
         final Map<String, Object> exposedServices = new HashMap<>();
 
         for (final String processName : orderedProcessNames) {
@@ -238,6 +234,12 @@ public final class Node {
                 final IProcess processInstance = (IProcess) constructor.newInstance(
                     processName, injectedDeps, def.options);
 
+                // Start the process immediately so its services are available
+                // for subsequent processes that depend on it.
+                LOGGER.debug("Starting process '{}'...", processName);
+                processInstance.start();
+                LOGGER.debug("Process '{}' started successfully.", processName);
+
                 managedProcesses.put(processName, processInstance);
 
                 // Collect exposed service if the process implements IServiceProvider
@@ -249,7 +251,7 @@ public final class Node {
                     }
                 }
 
-                LOGGER.debug("Successfully instantiated process '{}'.", processName);
+                LOGGER.debug("Successfully initialized process '{}'.", processName);
 
             } catch (final Exception e) {
                 LOGGER.error("Failed to initialize process '{}'. Skipping this process.", processName, e);
