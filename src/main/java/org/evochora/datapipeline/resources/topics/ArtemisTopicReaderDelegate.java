@@ -13,6 +13,7 @@ import jakarta.jms.Topic;
 import org.apache.activemq.artemis.api.jms.ActiveMQJMSConstants;
 import org.evochora.datapipeline.api.contracts.TopicEnvelope;
 import org.evochora.datapipeline.api.resources.ResourceContext;
+import org.evochora.datapipeline.utils.JmsUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -294,7 +295,7 @@ public class ArtemisTopicReaderDelegate<T extends Message>
 
         } catch (JMSException e) {
             // Check if this is caused by thread interruption (graceful shutdown)
-            if (isInterruptedException(e)) {
+            if (JmsUtils.isInterruptedException(e)) {
                 log.debug("JMS receive interrupted during shutdown (topic: {})", activeTopicName);
                 throw new InterruptedException("JMS receive interrupted");
             }
@@ -322,20 +323,6 @@ public class ArtemisTopicReaderDelegate<T extends Message>
         }
     }
 
-    /**
-     * Checks if a Throwable was caused by thread interruption (shutdown signal).
-     * Walks the cause chain to detect wrapped InterruptedException.
-     */
-    private boolean isInterruptedException(Throwable e) {
-        Throwable cause = e;
-        while (cause != null) {
-            if (cause instanceof InterruptedException) {
-                return true;
-            }
-            cause = cause.getCause();
-        }
-        return false;
-    }
 
     @Override
     protected void acknowledgeMessage(jakarta.jms.Message message) {

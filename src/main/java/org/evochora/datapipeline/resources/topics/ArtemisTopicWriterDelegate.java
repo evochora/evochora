@@ -11,6 +11,7 @@ import jakarta.jms.Topic;
 
 import org.evochora.datapipeline.api.contracts.TopicEnvelope;
 import org.evochora.datapipeline.api.resources.ResourceContext;
+import org.evochora.datapipeline.utils.JmsUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -75,7 +76,7 @@ public class ArtemisTopicWriterDelegate<T extends Message> extends AbstractTopic
             }
         } catch (JMSException e) {
             // Check if this is caused by thread interruption (graceful shutdown)
-            if (isInterruptedException(e)) {
+            if (JmsUtils.isInterruptedException(e)) {
                 log.debug("JMS send interrupted during shutdown (topic: {})", currentTopicName);
                 throw new InterruptedException("JMS send interrupted");
             }
@@ -87,20 +88,6 @@ public class ArtemisTopicWriterDelegate<T extends Message> extends AbstractTopic
         }
     }
 
-    /**
-     * Checks if a JMSException was caused by thread interruption (shutdown signal).
-     * Walks the cause chain to detect wrapped InterruptedException.
-     */
-    private boolean isInterruptedException(Throwable e) {
-        Throwable cause = e;
-        while (cause != null) {
-            if (cause instanceof InterruptedException) {
-                return true;
-            }
-            cause = cause.getCause();
-        }
-        return false;
-    }
 
     @Override
     public UsageState getUsageState(String usageType) {

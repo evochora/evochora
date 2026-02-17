@@ -44,13 +44,14 @@ public class TopicCleaner {
      * @param config application configuration
      */
     public TopicCleaner(Config config) {
-        // Get broker data directory from embedded-broker process configuration
-        if (config.hasPath("node.processes.embedded-broker.options.dataDirectory")) {
-            this.dataDirectory = config.getString("node.processes.embedded-broker.options.dataDirectory");
+        // Get broker data directory from topic-broker process configuration.
+        // TopicCleaner only operates on topic data (journal retention, subscriptions),
+        // so it reads from the topic-broker, not the queue-broker.
+        if (config.hasPath("node.processes.topic-broker.options.dataDirectory")) {
+            this.dataDirectory = config.getString("node.processes.topic-broker.options.dataDirectory");
         } else {
-            // Fallback to default
             String dataBaseDir = config.getString("pipeline.dataBaseDir");
-            this.dataDirectory = dataBaseDir + "/broker";
+            this.dataDirectory = dataBaseDir + "/topic";
         }
     }
 

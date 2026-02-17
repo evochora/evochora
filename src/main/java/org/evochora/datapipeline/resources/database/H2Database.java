@@ -842,12 +842,16 @@ public class H2Database extends AbstractDatabaseResource
     @Override
     public IDatabaseReader createReader(String runId) throws SQLException {
         Connection conn = dataSource.getConnection();
+        boolean success = false;
         try {
             H2SchemaUtil.setSchema(conn, runId);
-            return new H2DatabaseReader(conn, this, envStorageStrategy, orgStorageStrategy, runId);
-        } catch (SQLException e) {
-            conn.close();
-            throw new RuntimeException("Failed to create reader for runId: " + runId, e);
+            H2DatabaseReader reader = new H2DatabaseReader(conn, this, envStorageStrategy, orgStorageStrategy, runId);
+            success = true;
+            return reader;
+        } finally {
+            if (!success) {
+                conn.close();
+            }
         }
     }
 

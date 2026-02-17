@@ -99,7 +99,7 @@ class ArtemisTopicIntegrationTest {
 
     @Test
     @DisplayName("Should initialize Artemis broker and connect")
-    @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
+
     void shouldInitializeBroker() throws Exception {
         // When
         this.topic = new ArtemisTopicResource<>("test-topic-artemis", sharedConfig);
@@ -113,7 +113,7 @@ class ArtemisTopicIntegrationTest {
 
     @Test
     @DisplayName("Should write and read message end-to-end")
-    @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
+
     void shouldWriteAndReadMessage() throws Exception {
         // Given
         this.topic = new ArtemisTopicResource<>("batch-topic-artemis", sharedConfig);
@@ -152,7 +152,7 @@ class ArtemisTopicIntegrationTest {
 
     @Test
     @DisplayName("Should support competing consumers (load balancing)")
-    @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
+
     void shouldSupportCompetingConsumers() throws Exception {
         // Given
         this.topic = new ArtemisTopicResource<>("competing-test-topic", sharedConfig);
@@ -192,7 +192,7 @@ class ArtemisTopicIntegrationTest {
 
     @Test
     @DisplayName("Should support pub/sub (multiple consumer groups)")
-    @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
+
     void shouldSupportPubSub() throws Exception {
         // Given
         this.topic = new ArtemisTopicResource<>("pubsub-test-topic", sharedConfig);
@@ -221,7 +221,7 @@ class ArtemisTopicIntegrationTest {
 
     @Test
     @DisplayName("New consumer group should receive all historical messages via journal retention replay")
-    @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
+
     void shouldReplayHistoricalMessagesForNewConsumerGroup() throws Exception {
         // Given
         this.topic = new ArtemisTopicResource<>("retention-test", sharedConfig);

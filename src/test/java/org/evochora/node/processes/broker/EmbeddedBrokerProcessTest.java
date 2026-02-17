@@ -44,7 +44,7 @@ class EmbeddedBrokerProcessTest {
     @Test
     @DisplayName("Should start embedded broker when enabled")
     @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
-    @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
+
     void shouldStartBrokerWhenEnabled() {
         String configPath = TEST_DIR_PATH.replace("\\", "/");
 
@@ -94,14 +94,14 @@ class EmbeddedBrokerProcessTest {
     @Test
     @DisplayName("Should run two brokers with different server-IDs independently")
     @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
-    @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
+
     void shouldRunTwoBrokersIndependently() {
         String configPath = TEST_DIR_PATH.replace("\\", "/");
 
         Config topicBrokerConfig = ConfigFactory.parseString("""
             enabled = true
             serverId = 0
-            dataDirectory = "%s/topic-broker"
+            dataDirectory = "%s/topic"
             persistenceEnabled = true
             journalRetention { enabled = true }
             """.formatted(configPath));
@@ -109,7 +109,7 @@ class EmbeddedBrokerProcessTest {
         Config queueBrokerConfig = ConfigFactory.parseString("""
             enabled = true
             serverId = 1
-            dataDirectory = "%s/queue-broker"
+            dataDirectory = "%s/queue"
             persistenceEnabled = true
             journalRetention { enabled = false }
             """.formatted(configPath));

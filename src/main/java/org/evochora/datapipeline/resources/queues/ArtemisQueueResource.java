@@ -34,6 +34,7 @@ import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.evochora.datapipeline.resources.AbstractResource;
+import org.evochora.datapipeline.utils.JmsUtils;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.evochora.node.processes.broker.EmbeddedBrokerProcess;
 import org.evochora.datapipeline.resources.queues.wrappers.DirectInputQueueWrapper;
@@ -72,6 +73,12 @@ import com.typesafe.config.ConfigFactory;
  * holds exactly one persistent token message. The {@link #drainTo(Collection, int, long, TimeUnit)}
  * method acquires the token before draining, ensuring only one consumer drains at a time.
  * This replicates InMemoryBlockingQueue's {@code synchronized(drainLock)} over the network.
+ * <p>
+ * <strong>Known limitation:</strong> The token is consumed (AUTO_ACKNOWLEDGE) before the
+ * drain begins, and re-sent by {@code releaseToken()} after the drain completes. If the JVM
+ * crashes between these two points, the token queue is permanently empty and no consumer
+ * can drain again. Recovery requires restarting the broker (which re-seeds the token via
+ * {@code seedTokenIfEmpty()}) or manual intervention.
  * <p>
  * <strong>Dual-Mode Deployment:</strong> Works both in-process ({@code vm://0}) with
  * zero-copy InVM transport and distributed ({@code tcp://host:port}) for cloud deployment.
@@ -407,7 +414,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
             sendMessage(data);
             throughputCounter.recordCount();
         } catch (JMSException e) {
-            if (isInterruptedException(e)) {
+            if (JmsUtils.isInterruptedException(e)) {
                 throw new InterruptedException("put() interrupted");
             }
             log.error("Failed to put message to queue '{}'", queueName);
@@ -431,7 +438,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
             throughputCounter.recordCount();
             return true;
         } catch (JMSException e) {
-            if (isInterruptedException(e)) {
+            if (JmsUtils.isInterruptedException(e)) {
                 throw new InterruptedException("offer() interrupted");
             }
             return false;
@@ -604,7 +611,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
         } catch (InterruptedException e) {
             throw e;
         } catch (Exception e) {
-            if (e instanceof JMSException jmsEx && isInterruptedException(jmsEx)) {
+            if (e instanceof JMSException jmsEx && JmsUtils.isInterruptedException(jmsEx)) {
                 throw new InterruptedException("take() interrupted");
             }
             log.error("Failed to take from queue '{}'", queueName);
@@ -629,7 +636,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
             throughputCounter.recordCount();
             return Optional.of(element);
         } catch (Exception e) {
-            if (e instanceof JMSException jmsEx && isInterruptedException(jmsEx)) {
+            if (e instanceof JMSException jmsEx && JmsUtils.isInterruptedException(jmsEx)) {
                 throw new InterruptedException("poll() interrupted");
             }
             log.warn("Failed to poll from queue '{}'", queueName);
@@ -702,7 +709,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
                     return 0; // Timeout waiting for token
                 }
             } catch (JMSException e) {
-                if (isInterruptedException(e)) {
+                if (JmsUtils.isInterruptedException(e)) {
                     throw new InterruptedException("drainTo() interrupted acquiring token");
                 }
                 log.warn("Failed to acquire drain token on queue '{}'", queueName);
@@ -727,7 +734,9 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
                 }
                 collection.add(first.get());
 
-                // 4. Adaptive coalescing: only wait if queue is STILL empty (producer is slow)
+                // 4. Adaptive coalescing: only wait if queue is STILL empty (producer is slow).
+                //    Intentional Thread.sleep — this is a fixed delay, not a condition-wait,
+                //    so Awaitility does not apply here.
                 if (coalescingDelayMs > 0 && isDataQueueEmpty()) {
                     Thread.sleep(coalescingDelayMs);
                 }
@@ -789,6 +798,8 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
                 log.warn("Failed to release drain token on queue '{}' (attempt {}/3)", queueName, attempt);
                 if (attempt < 3) {
                     try {
+                        // Intentional Thread.sleep — linear backoff between JMS retries,
+                        // not a condition-wait, so Awaitility does not apply here.
                         Thread.sleep(50L * attempt);
                     } catch (InterruptedException ie) {
                         Thread.currentThread().interrupt();
@@ -1044,22 +1055,4 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
     // Utilities
     // =========================================================================
 
-    /**
-     * Checks if a JMSException wraps an InterruptedException.
-     * <p>
-     * Same pattern as {@code ArtemisTopicWriterDelegate.isInterruptedException()}.
-     *
-     * @param e the JMS exception to check
-     * @return true if the root cause is InterruptedException
-     */
-    private static boolean isInterruptedException(JMSException e) {
-        Throwable cause = e;
-        while (cause != null) {
-            if (cause instanceof InterruptedException) {
-                return true;
-            }
-            cause = cause.getCause();
-        }
-        return false;
-    }
 }

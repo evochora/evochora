@@ -117,7 +117,7 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
         this.claimTimeoutSeconds = options.hasPath("claimTimeout") ? options.getInt("claimTimeout") : 300;
         this.maxSizeBytesForEstimation = options.hasPath("maxSizeBytesForEstimation")
             ? options.getLong("maxSizeBytesForEstimation")
-            : 20L * 1024 * 1024; // Default: 20MB. MUST match default in EmbeddedBrokerProcess!
+            : EmbeddedBrokerProcess.DEFAULT_MAX_SIZE_BYTES;
         
         int maxPoolConnections = options.hasPath("maxPoolConnections") ? options.getInt("maxPoolConnections") : 1;
 
@@ -264,7 +264,12 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
      */
     protected Connection createConnection() throws JMSException {
         Connection connection = connectionFactory.createConnection();
-        connection.start(); // Always start connection to allow consuming
+        try {
+            connection.start();
+        } catch (JMSException e) {
+            connection.close();
+            throw e;
+        }
         openConnections.add(connection);
         return connection;
     }

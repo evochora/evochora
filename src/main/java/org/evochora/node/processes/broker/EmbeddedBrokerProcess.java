@@ -94,6 +94,15 @@ public class EmbeddedBrokerProcess extends AbstractProcess implements IServicePr
     /** Tracks journal retention per broker. */
     private static final ConcurrentHashMap<Integer, Boolean> retentionRegistry = new ConcurrentHashMap<>();
 
+    /**
+     * Default max address size in bytes before paging (20 MB).
+     * <p>
+     * Used as fallback when {@code addressSettings.maxSizeBytes} is not configured.
+     * Also referenced by {@link org.evochora.datapipeline.resources.topics.ArtemisTopicResource}
+     * for memory estimation.
+     */
+    public static final long DEFAULT_MAX_SIZE_BYTES = 20L * 1024 * 1024;
+
     /** Synchronizes broker startup and shutdown to prevent races. */
     private static final Object brokerLock = new Object();
 
@@ -479,7 +488,7 @@ public class EmbeddedBrokerProcess extends AbstractProcess implements IServicePr
 
         long maxSizeBytes = config.hasPath("addressSettings.maxSizeBytes")
             ? config.getLong("addressSettings.maxSizeBytes")
-            : 20L * 1024 * 1024;
+            : DEFAULT_MAX_SIZE_BYTES;
         addressSettings.setMaxSizeBytes(maxSizeBytes);
 
         int pageSizeBytes = config.hasPath("addressSettings.pageSizeBytes")
