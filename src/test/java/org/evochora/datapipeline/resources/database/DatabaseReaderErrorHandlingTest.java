@@ -70,14 +70,11 @@ class DatabaseReaderErrorHandlingTest {
     void createReader_throwsOnInvalidRunId() {
         // Given: Invalid run-id (schema doesn't exist)
         String invalidRunId = "nonexistent_run";
-        
-        // When/Then: Should throw RuntimeException with SQLException cause
-        RuntimeException exception = assertThrows(RuntimeException.class, () -> 
+
+        // When/Then: Should throw SQLException (schema not found)
+        assertThrows(SQLException.class, () ->
             database.createReader(invalidRunId)
         );
-        
-        assertTrue(exception.getCause() instanceof SQLException);
-        assertTrue(exception.getMessage().contains("Failed to create reader"));
     }
     
     @Test
@@ -129,18 +126,6 @@ class DatabaseReaderErrorHandlingTest {
     }
     
     @Test
-    void getMetadata_throwsOnInvalidRunId() throws SQLException {
-        // Given: Invalid run-id (schema doesn't exist)
-        String invalidRunId = "nonexistent_run";
-        
-        // When: Try to create reader for invalid run-id
-        // Then: Should throw RuntimeException (schema doesn't exist)
-        assertThrows(RuntimeException.class, () -> 
-            database.createReader(invalidRunId)
-        );
-    }
-    
-    @Test
     void connectionLeak_preventedOnException() throws SQLException {
         // Given: Database with limited pool
         Config limitedConfig = ConfigFactory.parseString(
@@ -153,7 +138,7 @@ class DatabaseReaderErrorHandlingTest {
             createTestSchema(limitedDb, "valid_run");
             
             // When: Reader creation fails but connection is still returned
-            assertThrows(RuntimeException.class, () -> 
+            assertThrows(SQLException.class, () ->
                 limitedDb.createReader("invalid_run")
             );
             
