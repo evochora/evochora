@@ -67,9 +67,10 @@ class ArtemisQueueResourceTest {
 
         String configPath = testDirPath.replace("\\", "/");
 
-        // Start broker explicitly with flat keys (as EmbeddedBrokerProcess would)
+        // Start queue broker (serverId=1) — matches production config
         Config brokerConfig = ConfigFactory.parseString("""
             enabled = true
+            serverId = 1
             dataDirectory = "%s"
             persistenceEnabled = true
             journalRetention {
@@ -80,7 +81,7 @@ class ArtemisQueueResourceTest {
 
         // Resource config: only queue-specific settings, no broker config
         baseConfig = ConfigFactory.parseString("""
-            brokerUrl = "vm://0"
+            brokerUrl = "vm://1"
             capacity = 10
             coalescingDelayMs = 0
             """);

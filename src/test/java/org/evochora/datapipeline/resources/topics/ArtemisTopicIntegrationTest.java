@@ -64,9 +64,10 @@ class ArtemisTopicIntegrationTest {
         // (HOCON interprets backslashes as escape characters)
         String configPath = testDirPath.replace("\\", "/");
 
-        // Start broker explicitly with flat keys (as EmbeddedBrokerProcess would)
+        // Start topic broker (serverId=0) — matches production config
         Config brokerConfig = ConfigFactory.parseString("""
             enabled = true
+            serverId = 0
             dataDirectory = "%s"
             persistenceEnabled = true
             journalRetention {

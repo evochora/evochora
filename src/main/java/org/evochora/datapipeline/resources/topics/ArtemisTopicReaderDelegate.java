@@ -162,14 +162,14 @@ public class ArtemisTopicReaderDelegate<T extends Message>
         // For server.replay(), Artemis expects the full internal queue name format: "address::queueName"
         String replayQueueName = targetTopicName + "::" + targetSubscriptionName;
 
-        if (ArtemisTopicResource.isJournalRetentionEnabled()) {
+        if (parent.isJournalRetentionEnabled()) {
             // Step 1: Fast-path check - have we seen this subscription in this JVM?
             boolean firstTimeInJvm = ArtemisTopicResource.registerSubscriptionInMemory(
                 targetTopicName, targetSubscriptionName);
 
             if (firstTimeInJvm) {
                 // Step 2: Check if queue actually exists in broker (persisted from previous run)
-                boolean queueExistsInBroker = ArtemisTopicResource.queueExistsInBroker(brokerQueueName);
+                boolean queueExistsInBroker = parent.queueExistsInBroker(brokerQueueName);
 
                 if (!queueExistsInBroker) {
                     // This is a truly NEW subscription - will need replay after creation
@@ -199,7 +199,7 @@ public class ArtemisTopicReaderDelegate<T extends Message>
         if (shouldReplay) {
             try {
                 log.debug("Triggering replay: address='{}', queue='{}'", targetTopicName, replayQueueName);
-                ArtemisTopicResource.triggerReplay(targetTopicName, replayQueueName);
+                parent.triggerReplay(targetTopicName, replayQueueName);
                 log.debug("Replay triggered for new consumer group '{}' on topic '{}'",
                     this.consumerGroup, targetTopicName);
             } catch (Exception e) {

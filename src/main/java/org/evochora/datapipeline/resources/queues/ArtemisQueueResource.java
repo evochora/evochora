@@ -91,6 +91,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
     private static final Logger log = LoggerFactory.getLogger(ArtemisQueueResource.class);
 
     private final String brokerUrl;
+    private final int serverId;
     private final String queueName;
     private final int capacity;
     private final int coalescingDelayMs;
@@ -148,6 +149,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
         Config finalConfig = options.withFallback(defaults);
 
         this.brokerUrl = finalConfig.hasPath("brokerUrl") ? finalConfig.getString("brokerUrl") : "vm://0";
+        this.serverId = EmbeddedBrokerProcess.parseInVmServerId(brokerUrl);
         this.queueName = finalConfig.hasPath("queueName") ? finalConfig.getString("queueName") : name;
         this.capacity = finalConfig.getInt("capacity");
         this.coalescingDelayMs = finalConfig.getInt("coalescingDelayMs");
@@ -220,7 +222,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
      * messages, so no special address settings are needed.
      */
     private void configureQueueAddressSettings() {
-        ActiveMQServer server = EmbeddedBrokerProcess.getServer();
+        ActiveMQServer server = EmbeddedBrokerProcess.getServer(serverId);
         if (server == null) {
             log.debug("No embedded server available for address settings — using broker defaults");
             return;
@@ -317,7 +319,6 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
      * @return the deserialized Protobuf message
      * @throws InvalidProtocolBufferException if the data is not valid protobuf
      */
-    @SuppressWarnings("unchecked")
     private T deserialize(byte[] data) throws InvalidProtocolBufferException {
         Any any = Any.parseFrom(data);
 
@@ -327,9 +328,15 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
         String className = typeUrl.substring(typeUrl.indexOf('/') + 1);
 
         try {
-            Class<? extends Message> messageClass =
-                (Class<? extends Message>) Class.forName(className);
-            return (T) any.unpack(messageClass);
+            Class<?> rawClass = Class.forName(className);
+            if (!Message.class.isAssignableFrom(rawClass)) {
+                throw new InvalidProtocolBufferException(
+                    "Class '" + className + "' from type URL '" + typeUrl +
+                    "' does not implement com.google.protobuf.Message");
+            }
+            @SuppressWarnings("unchecked")
+            Class<T> messageClass = (Class<T>) rawClass;
+            return any.unpack(messageClass);
         } catch (ClassNotFoundException e) {
             throw new InvalidProtocolBufferException(
                 "Cannot find class for type URL: " + typeUrl + ". " +
@@ -452,6 +459,14 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
      * producer connection. Blocks indefinitely if the queue is at capacity (BLOCK policy).
      * <p>
      * Used by {@link #put(Message)} which has no timeout.
+     * <p>
+     * <b>TCP deployment note:</b> Session-per-send is cheap for InVM transport but incurs
+     * round-trip and allocation overhead over TCP. Since queue producers are single-threaded
+     * (one service loop per resource wrapper), the fix is to promote the {@link Session} and
+     * {@link javax.jms.MessageProducer} to long-lived instance fields with lazy re-init on
+     * failure — the same pattern used by
+     * {@link org.evochora.datapipeline.resources.topics.ArtemisTopicReaderDelegate}.
+     * No session pooling is needed.
      *
      * @param data the serialized message bytes
      * @throws JMSException if sending fails
@@ -511,7 +526,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
      * @return true if the queue has reached its configured capacity
      */
     private boolean isQueueAtCapacity() {
-        ActiveMQServer server = EmbeddedBrokerProcess.getServer();
+        ActiveMQServer server = EmbeddedBrokerProcess.getServer(serverId);
         if (server == null) {
             return false; // Can't check, let send proceed (BLOCK policy handles it)
         }
@@ -718,7 +733,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
      * @return true if no messages are immediately available
      */
     private boolean isDataQueueEmpty() {
-        ActiveMQServer server = EmbeddedBrokerProcess.getServer();
+        ActiveMQServer server = EmbeddedBrokerProcess.getServer(serverId);
         if (server == null) {
             return false; // Can't check, assume non-empty (skip coalescing)
         }
@@ -799,6 +814,13 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
      * <p>
      * Supports the same usage types as {@link InMemoryBlockingQueue}:
      * {@code queue-in}, {@code queue-in-direct}, {@code queue-out}, {@code queue-out-direct}.
+     * <p>
+     * <b>Remote broker limitation:</b> When connected to a remote broker (non-InVM),
+     * the embedded server API is unavailable for queue depth inspection. Both
+     * {@code queue-in} and {@code queue-out} will always report {@link UsageState#ACTIVE},
+     * regardless of actual queue state. This does not affect correctness (Artemis BLOCK
+     * policy and JMS blocking provide real backpressure), but monitoring dashboards
+     * will not reflect queue fullness or emptiness in distributed mode.
      */
     @Override
     public UsageState getUsageState(String usageType) {
@@ -901,7 +923,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
      * @return current message count
      */
     private long getQueueMessageCount() {
-        ActiveMQServer server = EmbeddedBrokerProcess.getServer();
+        ActiveMQServer server = EmbeddedBrokerProcess.getServer(serverId);
         if (server == null) {
             return 0;
         }

@@ -22,7 +22,7 @@ import com.typesafe.config.ConfigFactory;
  * Integration tests for {@link EmbeddedBrokerProcess}.
  * <p>
  * Verifies broker lifecycle management: start with enabled=true, skip with
- * enabled=false, and clean shutdown.
+ * enabled=false, clean shutdown, and multi-broker support via server-IDs.
  */
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
@@ -50,6 +50,7 @@ class EmbeddedBrokerProcessTest {
 
         Config options = ConfigFactory.parseString("""
             enabled = true
+            serverId = 0
             dataDirectory = "%s"
             persistenceEnabled = true
             journalRetention { enabled = false }
@@ -57,16 +58,16 @@ class EmbeddedBrokerProcessTest {
 
         EmbeddedBrokerProcess process = new EmbeddedBrokerProcess("test-broker", Map.of(), options);
 
-        assertThat(EmbeddedBrokerProcess.isBrokerStarted()).isFalse();
+        assertThat(EmbeddedBrokerProcess.isBrokerStarted(0)).isFalse();
 
         process.start();
 
-        assertThat(EmbeddedBrokerProcess.isBrokerStarted()).isTrue();
-        assertThat(EmbeddedBrokerProcess.getServer()).isNotNull();
+        assertThat(EmbeddedBrokerProcess.isBrokerStarted(0)).isTrue();
+        assertThat(EmbeddedBrokerProcess.getServer(0)).isNotNull();
 
         process.stop();
 
-        assertThat(EmbeddedBrokerProcess.isBrokerStarted()).isFalse();
+        assertThat(EmbeddedBrokerProcess.isBrokerStarted(0)).isFalse();
     }
 
     @Test
@@ -77,7 +78,7 @@ class EmbeddedBrokerProcessTest {
         EmbeddedBrokerProcess process = new EmbeddedBrokerProcess("test-broker-disabled", Map.of(), options);
         process.start();
 
-        assertThat(EmbeddedBrokerProcess.isBrokerStarted()).isFalse();
+        assertThat(EmbeddedBrokerProcess.isBrokerStarted(0)).isFalse();
     }
 
     @Test
@@ -88,6 +89,66 @@ class EmbeddedBrokerProcessTest {
         EmbeddedBrokerProcess process = new EmbeddedBrokerProcess("test-broker-noop", Map.of(), options);
         process.start();
         process.stop(); // Should not throw
+    }
+
+    @Test
+    @DisplayName("Should run two brokers with different server-IDs independently")
+    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
+    @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
+    void shouldRunTwoBrokersIndependently() {
+        String configPath = TEST_DIR_PATH.replace("\\", "/");
+
+        Config topicBrokerConfig = ConfigFactory.parseString("""
+            enabled = true
+            serverId = 0
+            dataDirectory = "%s/topic-broker"
+            persistenceEnabled = true
+            journalRetention { enabled = true }
+            """.formatted(configPath));
+
+        Config queueBrokerConfig = ConfigFactory.parseString("""
+            enabled = true
+            serverId = 1
+            dataDirectory = "%s/queue-broker"
+            persistenceEnabled = true
+            journalRetention { enabled = false }
+            """.formatted(configPath));
+
+        EmbeddedBrokerProcess topicBroker = new EmbeddedBrokerProcess("topic-broker", Map.of(), topicBrokerConfig);
+        EmbeddedBrokerProcess queueBroker = new EmbeddedBrokerProcess("queue-broker", Map.of(), queueBrokerConfig);
+
+        // Start both
+        topicBroker.start();
+        queueBroker.start();
+
+        // Both running independently
+        assertThat(EmbeddedBrokerProcess.isBrokerStarted(0)).isTrue();
+        assertThat(EmbeddedBrokerProcess.isBrokerStarted(1)).isTrue();
+        assertThat(EmbeddedBrokerProcess.getServer(0)).isNotNull();
+        assertThat(EmbeddedBrokerProcess.getServer(1)).isNotNull();
+        assertThat(EmbeddedBrokerProcess.getServer(0)).isNotSameAs(EmbeddedBrokerProcess.getServer(1));
+
+        // Retention only on topic broker
+        assertThat(EmbeddedBrokerProcess.isJournalRetentionEnabled(0)).isTrue();
+        assertThat(EmbeddedBrokerProcess.isJournalRetentionEnabled(1)).isFalse();
+
+        // Stop queue broker, topic broker still running
+        queueBroker.stop();
+        assertThat(EmbeddedBrokerProcess.isBrokerStarted(0)).isTrue();
+        assertThat(EmbeddedBrokerProcess.isBrokerStarted(1)).isFalse();
+
+        topicBroker.stop();
+        assertThat(EmbeddedBrokerProcess.isBrokerStarted(0)).isFalse();
+    }
+
+    @Test
+    @DisplayName("Should parse InVM server-ID from broker URL")
+    void shouldParseInVmServerId() {
+        assertThat(EmbeddedBrokerProcess.parseInVmServerId("vm://0")).isEqualTo(0);
+        assertThat(EmbeddedBrokerProcess.parseInVmServerId("vm://1")).isEqualTo(1);
+        assertThat(EmbeddedBrokerProcess.parseInVmServerId("vm://42")).isEqualTo(42);
+        assertThat(EmbeddedBrokerProcess.parseInVmServerId("tcp://localhost:61616")).isEqualTo(-1);
+        assertThat(EmbeddedBrokerProcess.parseInVmServerId(null)).isEqualTo(-1);
     }
 
     private static void deleteDirectory(File dir) {

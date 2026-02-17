@@ -56,6 +56,7 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
     private static final Set<String> knownSubscriptions = ConcurrentHashMap.newKeySet();
     
     private final String brokerUrl;
+    private final int serverId;
     private final String baseTopicName; // Renamed from topicName
     private final ConnectionFactory connectionFactory;
     private final int claimTimeoutSeconds;
@@ -89,6 +90,7 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
         super(name, options);
         
         this.brokerUrl = options.hasPath("brokerUrl") ? options.getString("brokerUrl") : "vm://0";
+        this.serverId = EmbeddedBrokerProcess.parseInVmServerId(brokerUrl);
         this.baseTopicName = options.hasPath("topicName") ? options.getString("topicName") : name;
         this.effectiveTopicName = this.baseTopicName; // Default to base name until runId is set
         this.claimTimeoutSeconds = options.hasPath("claimTimeout") ? options.getInt("claimTimeout") : 300;
@@ -293,15 +295,15 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
     // =========================================================================
 
     /**
-     * Returns whether journal retention is enabled for the embedded broker.
+     * Returns whether journal retention is enabled for this resource's broker.
      * <p>
      * <b>Thread Safety:</b> Safe to call from any thread (delegates to
-     * {@link EmbeddedBrokerProcess#isJournalRetentionEnabled()}).
+     * {@link EmbeddedBrokerProcess#isJournalRetentionEnabled(int)}).
      *
      * @return true if retention is enabled and replay is available
      */
-    static boolean isJournalRetentionEnabled() {
-        return EmbeddedBrokerProcess.isJournalRetentionEnabled();
+    boolean isJournalRetentionEnabled() {
+        return EmbeddedBrokerProcess.isJournalRetentionEnabled(serverId);
     }
 
     /**
@@ -310,12 +312,12 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
      * Used by reader delegates to query queue existence and trigger replay.
      * <p>
      * <b>Thread Safety:</b> Safe to call from any thread (delegates to
-     * {@link EmbeddedBrokerProcess#getServer()}).
+     * {@link EmbeddedBrokerProcess#getServer(int)}).
      *
      * @return the ActiveMQServer, or null if broker not started or external broker used
      */
-    static ActiveMQServer getEmbeddedServer() {
-        return EmbeddedBrokerProcess.getServer();
+    ActiveMQServer getEmbeddedServer() {
+        return EmbeddedBrokerProcess.getServer(serverId);
     }
 
     /**
@@ -335,7 +337,7 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
      * @throws UnsupportedOperationException if external broker is used (JMX not implemented)
      * @throws RuntimeException if queue existence cannot be determined due to broker error
      */
-    static boolean queueExistsInBroker(String queueName) {
+    boolean queueExistsInBroker(String queueName) {
         ActiveMQServer server = getEmbeddedServer();
 
         try {
@@ -415,7 +417,7 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
      * @param queueName the queue to replay into (the subscription name, e.g., "batch-topic_analytics_runId"), must not be null
      * @throws Exception if replay fails or broker is unavailable
      */
-    static void triggerReplay(String addressName, String queueName) throws Exception {
+    void triggerReplay(String addressName, String queueName) throws Exception {
         ActiveMQServer server = getEmbeddedServer();
         if (server == null) {
             log.warn("Cannot replay messages: embedded server not available. "

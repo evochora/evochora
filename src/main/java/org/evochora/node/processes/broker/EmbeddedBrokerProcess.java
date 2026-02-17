@@ -1,12 +1,15 @@
 package org.evochora.node.processes.broker;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.apache.activemq.artemis.api.core.SimpleString;
 import org.apache.activemq.artemis.api.core.TransportConfiguration;
+import org.apache.activemq.artemis.core.remoting.impl.invm.TransportConstants;
 import org.apache.activemq.artemis.core.config.Configuration;
 import org.apache.activemq.artemis.core.config.impl.ConfigurationImpl;
 import org.apache.activemq.artemis.core.remoting.impl.invm.InVMAcceptorFactory;
@@ -24,51 +27,59 @@ import com.typesafe.config.Config;
 import ch.qos.logback.classic.Level;
 
 /**
- * Node process that manages the lifecycle of the embedded ActiveMQ Artemis broker.
+ * Node process that manages the lifecycle of an embedded ActiveMQ Artemis broker.
  * <p>
- * The broker is JVM-wide infrastructure shared by all Artemis-based resources
- * ({@code ArtemisTopicResource}, {@code ArtemisQueueResource}). This process ensures
- * the broker is started before any resources are created and stopped after all resources
- * are closed.
+ * Multiple instances of this process can run in the same JVM, each managing a
+ * separate Artemis broker with a unique InVM server-ID ({@code vm://0}, {@code vm://1}, etc.).
+ * This enables different broker configurations — for example, one broker for topics
+ * with journal retention and another for queues without retention.
  * <p>
- * Artemis in-VM transport ({@code vm://0}) only allows one broker per JVM. This class
- * manages that singleton instance and provides static accessors for resources that need
- * the underlying {@link ActiveMQServer} for management operations (queue settings,
- * replay triggers, address queries).
+ * Broker instances are stored in a static registry keyed by server-ID, accessible
+ * via {@link #getServer(int)} for management operations (queue settings, replay triggers,
+ * address queries).
  * <p>
  * <strong>Startup ordering:</strong> The {@code pipeline} process declares
- * {@code require = { broker = "embedded-broker" }} so that topological sorting places
- * this process before {@code pipeline}. The Node constructs and starts each process
- * in dependency order, guaranteeing the broker is running before ServiceManager
+ * {@code require} dependencies on broker processes so that topological sorting places
+ * them before {@code pipeline}. The Node constructs and starts each process
+ * in dependency order, guaranteeing all brokers are running before ServiceManager
  * creates resources.
  * <p>
  * <strong>Shutdown ordering:</strong> Node stops processes in reverse topological order
- * (LIFO). Since {@code pipeline} depends on {@code embedded-broker}, the pipeline
- * (and all its services/resources) stops first, then the broker shuts down cleanly.
+ * (LIFO). Since {@code pipeline} depends on the broker processes, the pipeline
+ * (and all its services/resources) stops first, then the brokers shut down cleanly.
  * <p>
  * <strong>Dual-mode deployment:</strong> When connecting to an external broker
  * ({@code brokerUrl = "tcp://..."}), set {@code enabled = false} to skip embedded
- * broker startup. Resources will get {@code null} from {@link #getServer()} and
+ * broker startup. Resources will get {@code null} from {@link #getServer(int)} and
  * fall back to broker defaults.
  * <p>
  * <strong>Thread Safety:</strong>
  * <ul>
  *   <li>{@code brokerLock}: Synchronizes broker startup and shutdown</li>
- *   <li>{@code brokerStarted}: AtomicBoolean for lock-free status reads</li>
- *   <li>{@code journalRetentionEnabled}: volatile for cross-thread visibility</li>
+ *   <li>{@code brokerRegistry}: ConcurrentHashMap for lock-free reads</li>
+ *   <li>{@code retentionRegistry}: ConcurrentHashMap for lock-free reads</li>
  * </ul>
  * <p>
  * <strong>Configuration:</strong>
  * <pre>
- * embedded-broker {
+ * topic-broker {
  *   className = "org.evochora.node.processes.broker.EmbeddedBrokerProcess"
  *   options {
  *     enabled = true
- *     dataDirectory = ${pipeline.dataBaseDir}/broker
+ *     serverId = 0
+ *     dataDirectory = ${pipeline.dataBaseDir}/topic-broker
  *     persistenceEnabled = true
- *     maxDiskUsage = -1
  *     journalRetention { enabled = true, periodDays = 7, maxBytes = 0 }
- *     addressSettings { redeliveryDelayMs = 5000, maxDeliveryAttempts = 0 }
+ *   }
+ * }
+ * queue-broker {
+ *   className = "org.evochora.node.processes.broker.EmbeddedBrokerProcess"
+ *   options {
+ *     enabled = true
+ *     serverId = 1
+ *     dataDirectory = ${pipeline.dataBaseDir}/queue-broker
+ *     persistenceEnabled = true
+ *     journalRetention { enabled = false }
  *   }
  * }
  * </pre>
@@ -77,12 +88,17 @@ public class EmbeddedBrokerProcess extends AbstractProcess implements IServicePr
 
     private static final Logger log = LoggerFactory.getLogger(EmbeddedBrokerProcess.class);
 
-    private static EmbeddedActiveMQ embeddedBroker;
-    private static final AtomicBoolean brokerStarted = new AtomicBoolean(false);
+    /** Registry of running broker instances, keyed by InVM server-ID. */
+    private static final ConcurrentHashMap<Integer, EmbeddedActiveMQ> brokerRegistry = new ConcurrentHashMap<>();
+
+    /** Tracks journal retention per broker. */
+    private static final ConcurrentHashMap<Integer, Boolean> retentionRegistry = new ConcurrentHashMap<>();
+
+    /** Synchronizes broker startup and shutdown to prevent races. */
     private static final Object brokerLock = new Object();
 
-    /** Tracks whether journal retention is enabled. Set once during broker startup. */
-    private static volatile boolean journalRetentionEnabled = false;
+    /** The InVM server-ID for this broker instance. */
+    private final int serverId;
 
     /**
      * Constructs a new EmbeddedBrokerProcess.
@@ -94,6 +110,7 @@ public class EmbeddedBrokerProcess extends AbstractProcess implements IServicePr
     public EmbeddedBrokerProcess(final String processName, final Map<String, Object> dependencies,
                                  final Config options) {
         super(processName, dependencies, options);
+        this.serverId = options.hasPath("serverId") ? options.getInt("serverId") : 0;
     }
 
     /**
@@ -116,42 +133,66 @@ public class EmbeddedBrokerProcess extends AbstractProcess implements IServicePr
     // =========================================================================
 
     /**
-     * Returns whether the embedded broker has been started.
+     * Returns whether an embedded broker with the given server-ID has been started.
      * <p>
-     * <b>Thread Safety:</b> Lock-free read via AtomicBoolean.
+     * <b>Thread Safety:</b> Lock-free read via ConcurrentHashMap.
      *
+     * @param serverId the InVM server-ID to check
      * @return true if the broker is running
      */
-    public static boolean isBrokerStarted() {
-        return brokerStarted.get();
+    public static boolean isBrokerStarted(int serverId) {
+        return brokerRegistry.containsKey(serverId);
     }
 
     /**
-     * Returns whether journal retention is enabled for the embedded broker.
+     * Returns whether journal retention is enabled for the broker with the given server-ID.
      * <p>
-     * <b>Thread Safety:</b> Safe to call from any thread (reads volatile field).
+     * <b>Thread Safety:</b> Safe to call from any thread (reads from ConcurrentHashMap).
      *
+     * @param serverId the InVM server-ID of the broker
      * @return true if retention is enabled and replay is available
      */
-    public static boolean isJournalRetentionEnabled() {
-        return journalRetentionEnabled;
+    public static boolean isJournalRetentionEnabled(int serverId) {
+        return retentionRegistry.getOrDefault(serverId, false);
     }
 
     /**
-     * Returns the embedded Artemis server instance for management operations.
+     * Returns the embedded Artemis server instance for the given server-ID.
      * <p>
      * Used by resources to query queue existence, trigger replay, or configure
      * address-specific settings at runtime.
      * <p>
      * <b>Thread Safety:</b> Safe to call from any thread.
      *
-     * @return the ActiveMQServer, or null if broker not started or external broker used
+     * @param serverId the InVM server-ID of the broker
+     * @return the ActiveMQServer, or null if the broker is not started or uses external transport
      */
-    public static ActiveMQServer getServer() {
-        if (embeddedBroker != null && brokerStarted.get()) {
-            return embeddedBroker.getActiveMQServer();
+    public static ActiveMQServer getServer(int serverId) {
+        EmbeddedActiveMQ broker = brokerRegistry.get(serverId);
+        if (broker != null) {
+            return broker.getActiveMQServer();
         }
         return null;
+    }
+
+    /**
+     * Parses the InVM server-ID from a broker URL.
+     * <p>
+     * For {@code vm://0} returns 0, for {@code vm://1} returns 1, etc.
+     * For external broker URLs (e.g. {@code tcp://...}) returns -1.
+     *
+     * @param brokerUrl the broker URL to parse
+     * @return the InVM server-ID, or -1 if not an InVM URL
+     */
+    public static int parseInVmServerId(String brokerUrl) {
+        if (brokerUrl != null && brokerUrl.startsWith("vm://")) {
+            try {
+                return Integer.parseInt(brokerUrl.substring(5));
+            } catch (NumberFormatException e) {
+                return 0;
+            }
+        }
+        return -1;
     }
 
     // =========================================================================
@@ -161,7 +202,7 @@ public class EmbeddedBrokerProcess extends AbstractProcess implements IServicePr
     @Override
     public void start() {
         if (!options.hasPath("enabled") || !options.getBoolean("enabled")) {
-            log.info("Embedded broker is disabled in configuration. Skipping startup.");
+            log.info("Embedded broker (serverId={}) is disabled in configuration. Skipping startup.", serverId);
             return;
         }
 
@@ -170,15 +211,15 @@ public class EmbeddedBrokerProcess extends AbstractProcess implements IServicePr
 
     @Override
     public void stop() {
-        if (!brokerStarted.get()) {
+        if (!brokerRegistry.containsKey(serverId)) {
             return;
         }
 
         try {
-            stopBroker();
+            stopBroker(serverId);
         } catch (Exception e) {
-            log.error("Failed to stop embedded broker");
-            throw new RuntimeException("Failed to stop embedded broker", e);
+            log.error("Failed to stop embedded broker (serverId={})", serverId);
+            throw new RuntimeException("Failed to stop embedded broker (serverId=" + serverId + ")", e);
         }
     }
 
@@ -187,14 +228,15 @@ public class EmbeddedBrokerProcess extends AbstractProcess implements IServicePr
     // =========================================================================
 
     /**
-     * Starts the embedded broker with the given configuration.
+     * Starts an embedded broker with the given configuration.
      * <p>
-     * Idempotent: if the broker is already running, this method returns immediately.
-     * In production, called by {@link #start()}. Tests may call this directly to
-     * start the broker without going through the Node process lifecycle.
+     * Idempotent: if a broker with the same server-ID is already running, this method
+     * returns immediately. In production, called by {@link #start()}. Tests may call
+     * this directly to start a broker without going through the Node process lifecycle.
      * <p>
      * Configuration keys (flat, no prefix):
      * <ul>
+     *   <li>{@code serverId} - InVM server-ID (default: 0)</li>
      *   <li>{@code dataDirectory} - Data directory path</li>
      *   <li>{@code persistenceEnabled} - Journal persistence (default: true)</li>
      *   <li>{@code maxDiskUsage} - Max disk usage percentage (default: -1 = disabled)</li>
@@ -205,63 +247,70 @@ public class EmbeddedBrokerProcess extends AbstractProcess implements IServicePr
      * @param config broker configuration (flat keys)
      */
     public static void ensureStarted(Config config) {
+        int id = config.hasPath("serverId") ? config.getInt("serverId") : 0;
+
         synchronized (brokerLock) {
-            if (brokerStarted.get()) {
+            if (brokerRegistry.containsKey(id)) {
                 return;
             }
 
             try {
                 configureLogging();
 
-                log.info("Starting Embedded ActiveMQ Artemis Broker...");
+                log.info("Starting Embedded ActiveMQ Artemis Broker (serverId={})...", id);
 
                 Configuration artemisConfig = new ConfigurationImpl();
 
                 configurePersistence(config, artemisConfig);
-                configureTransportAndSecurity(artemisConfig);
+                configureTransportAndSecurity(id, artemisConfig);
                 configureDiskUsage(config, artemisConfig);
-                configureJournalRetention(config, artemisConfig);
+                boolean retentionEnabled = configureJournalRetention(id, config, artemisConfig);
                 configureAddressSettings(config, artemisConfig);
 
-                embeddedBroker = new EmbeddedActiveMQ();
-                embeddedBroker.setConfiguration(artemisConfig);
-                embeddedBroker.start();
+                EmbeddedActiveMQ broker = new EmbeddedActiveMQ();
+                broker.setConfiguration(artemisConfig);
+                broker.start();
 
-                brokerStarted.set(true);
-                log.info("Embedded ActiveMQ Artemis Broker started successfully.");
+                brokerRegistry.put(id, broker);
+                if (retentionEnabled) {
+                    retentionRegistry.put(id, true);
+                }
+                log.info("Embedded ActiveMQ Artemis Broker (serverId={}) started successfully.", id);
 
             } catch (Exception e) {
-                log.error("Failed to start Embedded Artemis Broker");
-                throw new RuntimeException("Failed to start Embedded Artemis Broker", e);
+                log.error("Failed to start Embedded Artemis Broker (serverId={})", id);
+                throw new RuntimeException("Failed to start Embedded Artemis Broker (serverId=" + id + ")", e);
             }
         }
     }
 
     /**
-     * Gracefully stops the embedded broker.
+     * Gracefully stops the embedded broker with the given server-ID.
      * <p>
      * Safe to call when the broker is already stopped (no-op).
      *
+     * @param serverId the InVM server-ID of the broker to stop
      * @throws Exception if broker shutdown fails
      */
-    public static void stopBroker() throws Exception {
+    public static void stopBroker(int serverId) throws Exception {
         synchronized (brokerLock) {
-            if (embeddedBroker != null) {
+            EmbeddedActiveMQ broker = brokerRegistry.remove(serverId);
+            if (broker != null) {
                 try {
-                    log.info("Stopping Embedded ActiveMQ Artemis Broker...");
-                    embeddedBroker.stop();
-                    log.info("Embedded ActiveMQ Artemis Broker stopped.");
+                    log.info("Stopping Embedded ActiveMQ Artemis Broker (serverId={})...", serverId);
+                    broker.stop();
+                    log.info("Embedded ActiveMQ Artemis Broker (serverId={}) stopped.", serverId);
                 } finally {
-                    embeddedBroker = null;
-                    brokerStarted.set(false);
-                    journalRetentionEnabled = false;
+                    retentionRegistry.remove(serverId);
                 }
             }
         }
     }
 
     /**
-     * Resets the broker state for testing purposes only.
+     * Resets all broker state for testing purposes only.
+     * <p>
+     * Stops all running brokers and clears the registry.
      * <p>
      * <strong>WARNING:</strong> This method is intended exclusively for test cleanup.
      * Calling it in production will corrupt all active connections and sessions.
@@ -269,7 +318,15 @@ public class EmbeddedBrokerProcess extends AbstractProcess implements IServicePr
      * @throws Exception if broker shutdown fails
      */
     public static void resetForTesting() throws Exception {
-        stopBroker();
+        synchronized (brokerLock) {
+            for (int id : new ArrayList<>(brokerRegistry.keySet())) {
+                EmbeddedActiveMQ broker = brokerRegistry.remove(id);
+                if (broker != null) {
+                    broker.stop();
+                }
+            }
+            retentionRegistry.clear();
+        }
     }
 
     // =========================================================================
@@ -301,8 +358,17 @@ public class EmbeddedBrokerProcess extends AbstractProcess implements IServicePr
         }
     }
 
-    private static void configureTransportAndSecurity(Configuration artemisConfig) {
-        artemisConfig.addAcceptorConfiguration(new TransportConfiguration(InVMAcceptorFactory.class.getName()));
+    /**
+     * Configures InVM transport with the given server-ID and disables security/JMX.
+     *
+     * @param serverId     the InVM server-ID for the acceptor
+     * @param artemisConfig the Artemis configuration to modify
+     */
+    private static void configureTransportAndSecurity(int serverId, Configuration artemisConfig) {
+        Map<String, Object> params = new HashMap<>();
+        params.put(TransportConstants.SERVER_ID_PROP_NAME, serverId);
+        artemisConfig.addAcceptorConfiguration(
+            new TransportConfiguration(InVMAcceptorFactory.class.getName(), params));
         artemisConfig.setSecurityEnabled(false);
         artemisConfig.setJMXManagementEnabled(false);
     }
@@ -320,7 +386,15 @@ public class EmbeddedBrokerProcess extends AbstractProcess implements IServicePr
         }
     }
 
-    private static void configureJournalRetention(Config config, Configuration artemisConfig) {
+    /**
+     * Configures journal retention for the broker.
+     *
+     * @param serverId     the InVM server-ID (for logging)
+     * @param config       the broker configuration
+     * @param artemisConfig the Artemis configuration to modify
+     * @return true if journal retention was enabled
+     */
+    private static boolean configureJournalRetention(int serverId, Config config, Configuration artemisConfig) {
         boolean persistenceEnabled = config.hasPath("persistenceEnabled")
             ? config.getBoolean("persistenceEnabled")
             : true;
@@ -332,6 +406,7 @@ public class EmbeddedBrokerProcess extends AbstractProcess implements IServicePr
             if (!persistenceEnabled) {
                 log.warn("Journal retention requires persistenceEnabled=true. "
                     + "Retention will be DISABLED.");
+                return false;
             } else {
                 String dataDir = resolveDataDirectory(config);
                 String retentionDir = config.hasPath("journalRetention.directory")
@@ -363,15 +438,16 @@ public class EmbeddedBrokerProcess extends AbstractProcess implements IServicePr
                     artemisConfig.setJournalRetentionMaxBytes(maxBytes);
                 }
 
-                journalRetentionEnabled = true;
-
-                log.debug("Journal retention enabled: directory={}, periodDays={}, maxBytes={}",
-                    retentionDir,
+                log.debug("Broker (serverId={}): Journal retention enabled: directory={}, periodDays={}, maxBytes={}",
+                    serverId, retentionDir,
                     periodDays == 0 ? "unlimited" : periodDays,
                     maxBytes == 0 ? "unlimited" : maxBytes);
+
+                return true;
             }
         } else {
-            log.debug("Journal retention DISABLED (standard JMS behavior)");
+            log.debug("Broker (serverId={}): Journal retention DISABLED (standard JMS behavior)", serverId);
+            return false;
         }
     }
 

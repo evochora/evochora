@@ -212,19 +212,29 @@ public class TopicCleaner {
 
     /**
      * Suppress Artemis logging during cleanup operations.
+     * <p>
+     * Only sets levels that have not been explicitly configured (via logback.xml),
+     * matching the null-check pattern used in
+     * {@link org.evochora.node.processes.broker.EmbeddedBrokerProcess#configureLogging()}.
      */
     private void suppressArtemisLogging() {
         ch.qos.logback.classic.Logger artemisLogger =
             (ch.qos.logback.classic.Logger) LoggerFactory.getLogger("org.apache.activemq.artemis");
-        artemisLogger.setLevel(ch.qos.logback.classic.Level.ERROR);
+        if (artemisLogger.getLevel() == null) {
+            artemisLogger.setLevel(ch.qos.logback.classic.Level.ERROR);
+        }
 
         ch.qos.logback.classic.Logger serverLogger =
             (ch.qos.logback.classic.Logger) LoggerFactory.getLogger("org.apache.activemq.artemis.core.server");
-        serverLogger.setLevel(ch.qos.logback.classic.Level.OFF);
+        if (serverLogger.getLevel() == null) {
+            serverLogger.setLevel(ch.qos.logback.classic.Level.OFF);
+        }
 
         // Suppress verbose audit logging
         ch.qos.logback.classic.Logger auditLogger =
             (ch.qos.logback.classic.Logger) LoggerFactory.getLogger("org.apache.activemq.audit");
-        auditLogger.setLevel(ch.qos.logback.classic.Level.OFF);
+        if (auditLogger.getLevel() == null) {
+            auditLogger.setLevel(ch.qos.logback.classic.Level.OFF);
+        }
     }
 }
