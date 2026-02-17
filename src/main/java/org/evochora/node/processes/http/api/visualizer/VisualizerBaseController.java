@@ -303,6 +303,25 @@ public abstract class VisualizerBaseController extends AbstractController {
     }
 
     /**
+     * Checks if a SQLException indicates that a schema or table does not exist in H2.
+     * <p>
+     * H2 error codes:
+     * <ul>
+     *   <li>90079 — Schema not found ({@code SCHEMA_NOT_FOUND_1}, thrown by SET SCHEMA)</li>
+     *   <li>42104 — Table or view not found in empty database ({@code TABLE_OR_VIEW_NOT_FOUND_DATABASE_EMPTY_1})</li>
+     *   <li>42102 — Table or view not found ({@code TABLE_OR_VIEW_NOT_FOUND_1})</li>
+     * </ul>
+     * These indicate the client requested a run ID whose schema has not been created yet.
+     *
+     * @param sqlEx The SQLException to check
+     * @return {@code true} if this is a schema/table-not-found error
+     */
+    protected static boolean isSchemaNotFound(final SQLException sqlEx) {
+        int code = sqlEx.getErrorCode();
+        return code == 90079 || code == 42104 || code == 42102;
+    }
+
+    /**
      * Exception thrown when no run ID is available for the request.
      */
     public static class NoRunIdException extends RuntimeException {

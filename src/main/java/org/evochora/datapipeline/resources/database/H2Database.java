@@ -375,11 +375,13 @@ public class H2Database extends AbstractDatabaseResource
         Connection conn = (Connection) connection;
         try {
             // Use H2SchemaUtil for CREATE TABLE to handle concurrent initialization race conditions
-            H2SchemaUtil.executeDdlIfNotExists(
-                conn.createStatement(),
-                "CREATE TABLE IF NOT EXISTS metadata (\"key\" VARCHAR PRIMARY KEY, \"value\" TEXT)",
-                "metadata"
-            );
+            try (Statement ddlStmt = conn.createStatement()) {
+                H2SchemaUtil.executeDdlIfNotExists(
+                    ddlStmt,
+                    "CREATE TABLE IF NOT EXISTS metadata (\"key\" VARCHAR PRIMARY KEY, \"value\" TEXT)",
+                    "metadata"
+                );
+            }
             
             Gson gson = new Gson();
             Map<String, String> kvPairs = new HashMap<>();
@@ -405,13 +407,14 @@ public class H2Database extends AbstractDatabaseResource
             // Full metadata backup: Complete JSON for future extensibility without re-indexing
             kvPairs.put("full_metadata", ProtobufConverter.toJson(metadata));
 
-            PreparedStatement stmt = conn.prepareStatement("MERGE INTO metadata (\"key\", \"value\") KEY(\"key\") VALUES (?, ?)");
-            for (Map.Entry<String, String> entry : kvPairs.entrySet()) {
-                stmt.setString(1, entry.getKey());
-                stmt.setString(2, entry.getValue());
-                stmt.addBatch();
+            try (PreparedStatement stmt = conn.prepareStatement("MERGE INTO metadata (\"key\", \"value\") KEY(\"key\") VALUES (?, ?)")) {
+                for (Map.Entry<String, String> entry : kvPairs.entrySet()) {
+                    stmt.setString(1, entry.getKey());
+                    stmt.setString(2, entry.getValue());
+                    stmt.addBatch();
+                }
+                stmt.executeBatch();
             }
-            stmt.executeBatch();
             conn.commit();
             rowsInserted.addAndGet(kvPairs.size());
             queriesExecuted.incrementAndGet();
@@ -566,8 +569,21 @@ public class H2Database extends AbstractDatabaseResource
     // ========================================================================
 
     /**
-     * Implements {@link org.evochora.datapipeline.api.resources.database.IMetadataReader#getMetadata(String)}.
-     * Queries metadata table in current schema and deserializes from JSON.
+     * Retrieves simulation metadata from the metadata table in the current schema.
+     * <p>
+     * Queries the "full_metadata" key and deserializes the stored JSON back to a
+     * {@link SimulationMetadata} protobuf via {@link ProtobufConverter#fromJson(String, Class)}.
+     *
+     * @param connection     The JDBC connection (cast to {@link Connection}), must have the
+     *                       correct schema already set.
+     * @param simulationRunId The simulation run ID (used for error messages only).
+     * @return The deserialized {@link SimulationMetadata} protobuf.
+     * @throws org.evochora.datapipeline.api.resources.database.MetadataNotFoundException
+     *         if the metadata row does not exist or the table has not been created yet.
+     * @throws SQLException if a database access error occurs.
+     *
+     * <p><strong>Thread Safety:</strong> Not synchronized. Thread-safe only if the provided
+     * connection is not shared concurrently (guaranteed by the wrapper connection model).
      */
     @Override
     protected SimulationMetadata doGetMetadata(Object connection, String simulationRunId) throws Exception {
@@ -600,8 +616,19 @@ public class H2Database extends AbstractDatabaseResource
     }
 
     /**
-     * Implements {@link org.evochora.datapipeline.api.resources.database.IMetadataReader#hasMetadata(String)}.
-     * Checks if metadata exists via COUNT query.
+     * Checks whether simulation metadata exists in the current schema.
+     * <p>
+     * Queries for the "full_metadata" key in the metadata table. Returns {@code false}
+     * if the table does not yet exist (H2 error 42104/42102), rather than throwing.
+     *
+     * @param connection     The JDBC connection (cast to {@link Connection}), must have the
+     *                       correct schema already set.
+     * @param simulationRunId The simulation run ID (unused, present for API contract).
+     * @return {@code true} if metadata exists, {@code false} otherwise.
+     * @throws SQLException if a database access error occurs (other than missing table).
+     *
+     * <p><strong>Thread Safety:</strong> Not synchronized. Thread-safe only if the provided
+     * connection is not shared concurrently (guaranteed by the wrapper connection model).
      */
     @Override
     protected boolean doHasMetadata(Object connection, String simulationRunId) throws Exception {
@@ -624,8 +651,21 @@ public class H2Database extends AbstractDatabaseResource
     }
 
     /**
-     * Implements {@link org.evochora.datapipeline.api.resources.database.IMetadataReader#getRunIdInCurrentSchema()}.
-     * Extracts simulation run ID from metadata table in current schema.
+     * Retrieves the simulation run ID stored in the current schema's metadata table.
+     * <p>
+     * Reads the "simulation_info" key from the metadata table and extracts the
+     * {@code runId} field from the JSON value using Gson deserialization.
+     *
+     * @param connection The JDBC connection (cast to {@link Connection}), must have the
+     *                   correct schema already set.
+     * @return The simulation run ID string.
+     * @throws org.evochora.datapipeline.api.resources.database.MetadataNotFoundException
+     *         if the metadata row is missing, the table does not exist, or the runId field
+     *         is null/empty.
+     * @throws SQLException if a database access error occurs (other than missing table).
+     *
+     * <p><strong>Thread Safety:</strong> Not synchronized. Thread-safe only if the provided
+     * connection is not shared concurrently (guaranteed by the wrapper connection model).
      */
     @Override
     protected String doGetRunIdInCurrentSchema(Object connection) throws Exception {
@@ -833,6 +873,29 @@ public class H2Database extends AbstractDatabaseResource
         super.close();
     }
     
+    /**
+     * Creates a new {@link IDatabaseReader} bound to the given run ID's schema.
+     * <p>
+     * Acquires a pooled connection from HikariCP, sets the H2 schema to the run ID
+     * via {@link H2SchemaUtil#setSchema(Connection, String)}, and wraps it in an
+     * {@link H2DatabaseReader}. The connection is tracked in {@code readerCheckoutTimes}
+     * for stale-connection diagnostics.
+     * <p>
+     * Before acquiring, calls {@link #warnStaleReaderConnections()} to log warnings
+     * for any connections held longer than the configured threshold.
+     * <p>
+     * If schema setup fails, the connection is closed before the exception propagates
+     * (no connection leak on failure).
+     *
+     * @param runId The simulation run ID identifying the H2 schema.
+     * @return A new {@link IDatabaseReader} that must be closed by the caller.
+     * @throws SQLException if the schema does not exist (H2 error 90079) or a connection
+     *         cannot be acquired.
+     * @throws IllegalArgumentException if runId is null.
+     *
+     * <p><strong>Thread Safety:</strong> Thread-safe. Uses HikariCP's thread-safe pool
+     * and {@link java.util.concurrent.ConcurrentHashMap} for reader tracking.
+     */
     @Override
     public IDatabaseReader createReader(String runId) throws SQLException {
         // Check for stale reader connections before acquiring a new one
@@ -857,7 +920,9 @@ public class H2Database extends AbstractDatabaseResource
      * Unregisters a reader connection from the tracking map.
      * Called by {@link H2DatabaseReader#close()}.
      *
-     * @param conn The connection being returned
+     * @param conn The connection being returned.
+     *
+     * <p><strong>Thread Safety:</strong> Thread-safe. Uses {@link java.util.concurrent.ConcurrentHashMap#remove(Object)}.
      */
     void untrackReaderConnection(Connection conn) {
         readerCheckoutTimes.remove(conn);
@@ -865,7 +930,13 @@ public class H2Database extends AbstractDatabaseResource
 
     /**
      * Checks for reader connections held longer than the configured threshold
-     * and logs a warning for each one.
+     * and logs a warning if any are found.
+     * <p>
+     * <strong>Best-effort:</strong> This method iterates over a {@link ConcurrentHashMap}
+     * snapshot. Connections added concurrently by other threads may not appear in the
+     * current pass. This is acceptable since the method serves as a diagnostic warning,
+     * not a correctness guarantee. Also cleans up entries for connections that were
+     * closed without a corresponding {@link #untrackReaderConnection(Connection)} call.
      */
     private void warnStaleReaderConnections() {
         long now = System.currentTimeMillis();
@@ -972,37 +1043,28 @@ public class H2Database extends AbstractDatabaseResource
      */
     org.evochora.datapipeline.api.resources.database.dto.TickRange getTickRangeInternal(
             Connection conn, String runId) throws SQLException {
-        try {
-            // Query min and max tick numbers from environment_chunks table
-            // first_tick is the minimum tick in each chunk, last_tick is the maximum
-            // Schema is already set by the connection (via H2DatabaseReader)
-            PreparedStatement stmt = conn.prepareStatement(
+        try (PreparedStatement stmt = conn.prepareStatement(
                 "SELECT MIN(first_tick) as min_tick, MAX(last_tick) as max_tick " +
-                "FROM environment_chunks"
-            );
-            ResultSet rs = stmt.executeQuery();
-            
-            queriesExecuted.incrementAndGet();
-            
-            if (!rs.next()) {
-                // No rows in table
-                return null;
+                "FROM environment_chunks")) {
+            try (ResultSet rs = stmt.executeQuery()) {
+                queriesExecuted.incrementAndGet();
+
+                if (!rs.next()) {
+                    return null;
+                }
+
+                long minTick = rs.getLong("min_tick");
+                long maxTick = rs.getLong("max_tick");
+
+                if (rs.wasNull()) {
+                    return null;
+                }
+
+                return new org.evochora.datapipeline.api.resources.database.dto.TickRange(minTick, maxTick);
             }
-            
-            // Check if result is null (table exists but empty, or all chunks deleted)
-            long minTick = rs.getLong("min_tick");
-            long maxTick = rs.getLong("max_tick");
-            
-            if (rs.wasNull()) {
-                // Table exists but is empty
-                return null;
-            }
-            
-            return new org.evochora.datapipeline.api.resources.database.dto.TickRange(minTick, maxTick);
-            
         } catch (SQLException e) {
             // Table doesn't exist yet (no chunks written)
-            if (e.getErrorCode() == 42104 || e.getErrorCode() == 42102 || 
+            if (e.getErrorCode() == 42104 || e.getErrorCode() == 42102 ||
                 (e.getMessage().contains("Table") && e.getMessage().contains("not found"))) {
                 return null; // No ticks available
             }

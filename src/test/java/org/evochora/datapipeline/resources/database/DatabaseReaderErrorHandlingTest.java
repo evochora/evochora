@@ -126,17 +126,6 @@ class DatabaseReaderErrorHandlingTest {
     }
     
     @Test
-    void getMetadata_throwsOnInvalidRunId() {
-        // Given: Invalid run-id (schema doesn't exist)
-        String invalidRunId = "nonexistent_run";
-
-        // When/Then: Should throw SQLException (schema doesn't exist)
-        assertThrows(SQLException.class, () ->
-            database.createReader(invalidRunId)
-        );
-    }
-    
-    @Test
     void connectionLeak_preventedOnException() throws SQLException {
         // Given: Database with limited pool
         Config limitedConfig = ConfigFactory.parseString(

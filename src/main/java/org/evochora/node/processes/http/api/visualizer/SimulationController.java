@@ -173,26 +173,20 @@ public class SimulationController extends VisualizerBaseController {
             // Metadata not found - return 404
             throw new VisualizerBaseController.NoRunIdException("Metadata not found for run: " + runId, e);
         } catch (RuntimeException e) {
-            // Check if the error is due to non-existent schema (run ID not found)
             if (e.getCause() instanceof SQLException sqlEx) {
                 if (isPoolExhaustion(sqlEx)) {
                     throw new VisualizerBaseController.PoolExhaustionException("Connection pool exhausted", sqlEx);
                 }
-                String msg = sqlEx.getMessage();
-                if (msg != null && (msg.contains("schema") || msg.contains("Schema"))) {
+                if (isSchemaNotFound(sqlEx)) {
                     throw new VisualizerBaseController.NoRunIdException("Run ID not found: " + runId);
                 }
             }
             // Other runtime errors - wrap to provide better context
             throw new RuntimeException("Error retrieving metadata for runId: " + runId, e);
         } catch (SQLException e) {
-            // Check if the error is due to non-existent schema (run ID not found)
-            if (e.getMessage() != null && 
-                (e.getMessage().contains("schema") || e.getMessage().contains("Schema"))) {
-                // Schema doesn't exist - run ID not found
+            if (isSchemaNotFound(e)) {
                 throw new VisualizerBaseController.NoRunIdException("Run ID not found: " + runId);
             }
-            // Other database errors
             throw e;
         }
     }

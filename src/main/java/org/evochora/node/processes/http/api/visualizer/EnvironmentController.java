@@ -368,11 +368,8 @@ public class EnvironmentController extends VisualizerBaseController {
             
             return chunk;
         } catch (RuntimeException e) {
-            // Check if this is a schema/runId error
-            if (e.getCause() instanceof SQLException) {
-                SQLException sqlEx = (SQLException) e.getCause();
-                if (sqlEx.getMessage() != null && 
-                    (sqlEx.getMessage().contains("schema") || sqlEx.getMessage().contains("Schema"))) {
+            if (e.getCause() instanceof SQLException sqlEx) {
+                if (isSchemaNotFound(sqlEx)) {
                     throw new VisualizerBaseController.NoRunIdException("Run ID not found: " + runId);
                 }
             }
@@ -533,8 +530,7 @@ public class EnvironmentController extends VisualizerBaseController {
             if (isPoolExhaustion(sqlEx)) {
                 throw new VisualizerBaseController.PoolExhaustionException("Connection pool exhausted", sqlEx);
             }
-            final String msg = sqlEx.getMessage();
-            if (msg != null && (msg.contains("schema") || msg.contains("Schema"))) {
+            if (isSchemaNotFound(sqlEx)) {
                 throw new VisualizerBaseController.NoRunIdException("Run ID not found: " + runId);
             }
         }
@@ -671,39 +667,13 @@ public class EnvironmentController extends VisualizerBaseController {
             // Return TickRange directly (DTO)
             ctx.status(HttpStatus.OK).json(tickRange);
         } catch (VisualizerBaseController.NoRunIdException e) {
-            // Re-throw NoRunIdException directly (will be handled by exception handler)
             throw e;
         } catch (RuntimeException e) {
-            // Check if the error is due to non-existent schema (run ID not found)
-            // createReader throws RuntimeException if setSchema fails (schema doesn't exist)
-            String errorMsg = e.getMessage();
-            if (errorMsg != null && errorMsg.contains("Failed to create reader")) {
-                // This is likely a schema error - treat as 404
-                throw new VisualizerBaseController.NoRunIdException("Run ID not found: " + runId);
-            }
-            
-            if (e.getCause() instanceof SQLException sqlEx) {
-                if (isPoolExhaustion(sqlEx)) {
-                    throw new VisualizerBaseController.PoolExhaustionException("Connection pool exhausted", sqlEx);
-                }
-                String msg = sqlEx.getMessage();
-                if (msg != null) {
-                    if (msg.contains("schema") || msg.contains("Schema") ||
-                        msg.contains("not found") || msg.contains("does not exist")) {
-                        throw new VisualizerBaseController.NoRunIdException("Run ID not found: " + runId);
-                    }
-                }
-            }
-            // Other runtime errors - wrap to provide better context
-            throw new RuntimeException("Error retrieving environment tick range for runId: " + runId, e);
+            handleDatabaseException(e, runId);
         } catch (SQLException e) {
-            // Check if the error is due to non-existent schema (run ID not found)
-            if (e.getMessage() != null && 
-                (e.getMessage().contains("schema") || e.getMessage().contains("Schema"))) {
-                // Schema doesn't exist - run ID not found
-                throw new VisualizerBaseController.NoRunIdException("Run ID not found: " + runId);
+            if (isSchemaNotFound(e)) {
+                throw new NoRunIdException("Run ID not found: " + runId);
             }
-            // Other database errors
             throw e;
         }
     }
