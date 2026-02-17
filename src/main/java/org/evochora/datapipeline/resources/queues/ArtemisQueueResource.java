@@ -91,7 +91,8 @@ import com.typesafe.config.ConfigFactory;
  * @param <T> Protobuf message type held in the queue
  */
 public class ArtemisQueueResource<T extends Message> extends AbstractResource
-        implements IContextualResource, IInputQueueResource<T>, IOutputQueueResource<T>, IMemoryEstimatable {
+        implements IContextualResource, IInputQueueResource<T>, IOutputQueueResource<T>,
+                   IMemoryEstimatable, AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(ArtemisQueueResource.class);
 
@@ -368,6 +369,12 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
      * <p>
      * Non-blocking offer. Checks the address size via Artemis server API and returns
      * false immediately if the byte limit is reached.
+     * <p>
+     * <strong>Threading assumption:</strong> This method uses a check-then-act pattern
+     * ({@code isQueueAtCapacity()} followed by {@code sendMessage()}). This is safe because
+     * queue producers are single-threaded — each service wrapper binds exactly one producer
+     * thread. With concurrent producers, a race could cause {@code sendMessage()} to block
+     * via BLOCK policy despite the non-blocking contract.
      */
     @Override
     public boolean offer(T element) {
@@ -999,11 +1006,12 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
     // =========================================================================
 
     /**
-     * Closes all JMS connections and sessions.
+     * Closes all JMS resources: producer pool, connections, and connection factory.
      * <p>
-     * Closes consumer sessions first (stops message delivery), then connections.
-     * Token and data sessions are closed via their parent connections.
+     * Shutdown order: pool → connections (cascades to sessions/consumers/producers) → factory.
+     * The factory holds internal resources (thread pools, server locators) that must be released.
      */
+    @Override
     public void close() throws Exception {
         // Stop the producer session pool first
         try {
@@ -1021,6 +1029,14 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
             }
         }
         openConnections.clear();
+
+        // Close the underlying factory (releases thread pools, server locators)
+        try {
+            connectionFactory.close();
+        } catch (Exception e) {
+            log.debug("Error closing connection factory: {}", e.getMessage());
+        }
+
         log.debug("ArtemisQueueResource '{}' closed", getResourceName());
     }
 

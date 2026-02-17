@@ -2,11 +2,13 @@ package org.evochora.datapipeline.resources.topics;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 
 import jakarta.jms.Connection;
 import jakarta.jms.ConnectionFactory;
@@ -14,6 +16,7 @@ import jakarta.jms.JMSException;
 
 import org.apache.activemq.artemis.core.server.ActiveMQServer;
 import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
+import org.messaginghub.pooled.jms.JmsPoolConnectionFactory;
 import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
@@ -39,6 +42,15 @@ import com.typesafe.config.Config;
  * <strong>Persistence:</strong>
  * Uses Artemis Journal (Append-Only) for durability. Faster than SQL-based H2.
  * <p>
+ * <strong>JMS Session Threading:</strong>
+ * <ul>
+ *   <li>Writer: Session pooling via {@link JmsPoolConnectionFactory} — each send borrows
+ *       a pooled session, sends, then returns the session to the pool. This avoids TCP
+ *       round-trips for session creation.</li>
+ *   <li>Reader: Dedicated connection with {@code INDIVIDUAL_ACKNOWLEDGE} and long-lived
+ *       session for durable subscriptions. Not pooled.</li>
+ * </ul>
+ * <p>
  * <strong>Competing Consumers:</strong>
  * Supported natively via JMS 2.0 Shared Subscriptions.
  * <p>
@@ -58,8 +70,12 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
     private final String brokerUrl;
     private final int serverId;
     private final String baseTopicName; // Renamed from topicName
-    private final ConnectionFactory connectionFactory;
+    private final ActiveMQConnectionFactory connectionFactory;
     private final int claimTimeoutSeconds;
+
+    // Writer: pooled session factory — each send borrows a session from the pool.
+    // Avoids TCP round-trips for session creation while keeping thread safety.
+    private final JmsPoolConnectionFactory writerPool;
     
     // The effective topic name, incorporating the runId if set
     private volatile String effectiveTopicName;
@@ -71,6 +87,10 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
     private final Set<ArtemisTopicReaderDelegate<T>> readerDelegates = ConcurrentHashMap.newKeySet();
     
     private final long maxSizeBytesForEstimation;
+
+    // DLQ rejection counter — incremented on first deserialization failure per message.
+    // Tracks how many unique corrupt messages were rejected (will be routed to DLQ by Artemis).
+    private final AtomicLong dlqRejectionCount = new AtomicLong(0);
 
     // Watchdog for stuck message detection (null if claimTimeout disabled)
     private final ScheduledExecutorService watchdog;
@@ -84,6 +104,7 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
      *                  <li>{@code brokerUrl} - Artemis broker URL (default: "vm://0")</li>
      *                  <li>{@code topicName} - JMS topic name (default: resource name)</li>
      *                  <li>{@code claimTimeout} - Seconds before stuck message recovery (default: 300, 0=disabled)</li>
+     *                  <li>{@code maxPoolConnections} - Max connections in writer session pool (default: 1)</li>
      *                </ul>
      */
     public ArtemisTopicResource(String name, Config options) {
@@ -98,18 +119,27 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
             ? options.getLong("maxSizeBytesForEstimation")
             : 20L * 1024 * 1024; // Default: 20MB. MUST match default in EmbeddedBrokerProcess!
         
-        // Create ConnectionFactory
+        int maxPoolConnections = options.hasPath("maxPoolConnections") ? options.getInt("maxPoolConnections") : 1;
+
+        // Create ConnectionFactory and writer pool
         try {
             this.connectionFactory = new ActiveMQConnectionFactory(brokerUrl);
-            
+
+            // Writer pool: wraps the raw factory to pool sessions for send operations.
+            // One connection is sufficient for InVM; increase for TCP under high throughput.
+            this.writerPool = new JmsPoolConnectionFactory();
+            this.writerPool.setConnectionFactory(connectionFactory);
+            this.writerPool.setMaxConnections(maxPoolConnections);
+            this.writerPool.start();
+
             // Test connection
             try (Connection conn = connectionFactory.createConnection()) {
                 // Just test if we can connect
             }
-            
-            log.debug("Artemis topic resource '{}' initialized (url={}, topic={}, claimTimeout={}s)", 
+
+            log.debug("Artemis topic resource '{}' initialized (url={}, topic={}, claimTimeout={}s)",
                 name, brokerUrl, effectiveTopicName, claimTimeoutSeconds);
-            
+
         } catch (JMSException e) {
             log.error("Failed to initialize Artemis topic resource '{}'", name);
             recordError("INIT_FAILED", "Artemis initialization failed", "Topic: " + name + ", Url: " + brokerUrl);
@@ -140,6 +170,25 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
         }
     }
     
+    /**
+     * Records that a message was rejected due to deserialization failure and will be
+     * routed to the Artemis dead-letter queue after {@code maxDeliveryAttempts}.
+     * <p>
+     * O(1) — single {@link AtomicLong#incrementAndGet()}.
+     * <p>
+     * Only called on the first delivery attempt (deliveryCount == 1) to count unique
+     * corrupt messages rather than total rejection events.
+     */
+    void recordDlqRejection() {
+        dlqRejectionCount.incrementAndGet();
+    }
+
+    @Override
+    protected void addCustomMetrics(Map<String, Number> metrics) {
+        super.addCustomMetrics(metrics);
+        metrics.put("dlq_rejections", dlqRejectionCount.get());
+    }
+
     /**
      * Checks all reader delegates for stuck messages.
      * <p>
@@ -203,11 +252,33 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
         return claimTimeoutSeconds;
     }
     
+    /**
+     * Creates a raw JMS connection for reader delegates.
+     * <p>
+     * Readers need dedicated connections with {@code INDIVIDUAL_ACKNOWLEDGE} mode
+     * and long-lived sessions for durable subscriptions. Session pooling does not
+     * apply to readers.
+     *
+     * @return a started JMS connection tracked for cleanup on close
+     * @throws JMSException if connection creation fails
+     */
     protected Connection createConnection() throws JMSException {
         Connection connection = connectionFactory.createConnection();
         connection.start(); // Always start connection to allow consuming
         openConnections.add(connection);
         return connection;
+    }
+
+    /**
+     * Returns the writer session pool for topic writer delegates.
+     * <p>
+     * Writers borrow a pooled session per send, avoiding TCP round-trips for session
+     * creation while maintaining thread safety (JMS sessions are not thread-safe).
+     *
+     * @return the shared writer connection pool
+     */
+    ConnectionFactory getWriterPool() {
+        return writerPool;
     }
     
     protected void closeConnection(Connection connection) {
@@ -404,6 +475,16 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
     }
 
     /**
+     * Clears the static in-memory subscription registry.
+     * <p>
+     * Must be called between tests to prevent stale state from skipping
+     * broker queries and replay logic in subsequent test runs.
+     */
+    static void resetKnownSubscriptionsForTesting() {
+        knownSubscriptions.clear();
+    }
+
+    /**
      * Triggers replay of all retained messages from the journal to a queue.
      * <p>
      * This copies ALL messages from the retention journal that were sent to
@@ -461,10 +542,15 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
         }
         
         super.close(); // Closes delegates (readers/writers)
-        
-        // Close all tracked connections - this triggers broker cleanup
-        // Broker will log harmless warnings (AMQ222061, AMQ222107) about
-        // cleaning up sessions, but no ERROR logs.
+
+        // Stop writer pool first (returns pooled connections/sessions)
+        try {
+            writerPool.stop();
+        } catch (Exception e) {
+            log.debug("Error stopping writer pool: {}", e.getMessage());
+        }
+
+        // Close all tracked reader connections
         for (Connection conn : openConnections) {
             try {
                 conn.close();
@@ -474,5 +560,12 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
         }
         openConnections.clear();
         readerDelegates.clear();
+
+        // Close the underlying factory (releases server locator, Netty transport channels)
+        try {
+            connectionFactory.close();
+        } catch (Exception e) {
+            log.debug("Error closing connection factory: {}", e.getMessage());
+        }
     }
 }

@@ -41,6 +41,7 @@ import com.typesafe.config.ConfigFactory;
  */
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
+@AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
 class ArtemisTopicIntegrationTest {
 
     private static File testDir;
@@ -92,12 +93,12 @@ class ArtemisTopicIntegrationTest {
 
     @AfterAll
     static void teardownBroker() throws Exception {
+        ArtemisTopicResource.resetKnownSubscriptionsForTesting();
         EmbeddedBrokerProcess.resetForTesting();
     }
 
     @Test
     @DisplayName("Should initialize Artemis broker and connect")
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
     @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
     void shouldInitializeBroker() throws Exception {
         // When
@@ -112,7 +113,6 @@ class ArtemisTopicIntegrationTest {
 
     @Test
     @DisplayName("Should write and read message end-to-end")
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
     @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
     void shouldWriteAndReadMessage() throws Exception {
         // Given
@@ -152,7 +152,6 @@ class ArtemisTopicIntegrationTest {
 
     @Test
     @DisplayName("Should support competing consumers (load balancing)")
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
     @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
     void shouldSupportCompetingConsumers() throws Exception {
         // Given
@@ -193,7 +192,6 @@ class ArtemisTopicIntegrationTest {
 
     @Test
     @DisplayName("Should support pub/sub (multiple consumer groups)")
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
     @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
     void shouldSupportPubSub() throws Exception {
         // Given
@@ -224,7 +222,6 @@ class ArtemisTopicIntegrationTest {
     @Test
     @DisplayName("New consumer group should receive all historical messages via journal retention replay")
     @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
     void shouldReplayHistoricalMessagesForNewConsumerGroup() throws Exception {
         // Given
         this.topic = new ArtemisTopicResource<>("retention-test", sharedConfig);

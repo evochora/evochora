@@ -49,6 +49,7 @@ import java.util.Map;
  */
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
+@AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
 class ArtemisQueueResourceTest {
 
     private static File testDir;
@@ -109,7 +110,6 @@ class ArtemisQueueResourceTest {
 
     @Test
     @DisplayName("Should put and poll a single message")
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
     @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
     void shouldPutAndPoll() throws Exception {
         queue = new ArtemisQueueResource<>("test-put-poll", baseConfig);
@@ -125,7 +125,6 @@ class ArtemisQueueResourceTest {
 
     @Test
     @DisplayName("Should put and take a single message")
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
     @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
     void shouldPutAndTake() throws Exception {
         queue = new ArtemisQueueResource<>("test-put-take", baseConfig);
@@ -139,7 +138,6 @@ class ArtemisQueueResourceTest {
 
     @Test
     @DisplayName("Should return empty on poll when queue is empty")
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
     @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
     void shouldReturnEmptyOnEmptyPoll() throws Exception {
         queue = new ArtemisQueueResource<>("test-empty-poll", baseConfig);
@@ -150,7 +148,6 @@ class ArtemisQueueResourceTest {
 
     @Test
     @DisplayName("Should respect poll timeout on empty queue")
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
     @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
     void shouldRespectPollTimeout() throws Exception {
         queue = new ArtemisQueueResource<>("test-poll-timeout", baseConfig);
@@ -165,7 +162,6 @@ class ArtemisQueueResourceTest {
 
     @Test
     @DisplayName("Should put and poll multiple messages preserving order")
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
     @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
     void shouldPreserveOrder() throws Exception {
         queue = new ArtemisQueueResource<>("test-order", baseConfig);
@@ -187,7 +183,6 @@ class ArtemisQueueResourceTest {
 
     @Test
     @DisplayName("Should drainTo non-blocking")
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
     @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
     void shouldDrainToNonBlocking() throws Exception {
         queue = new ArtemisQueueResource<>("test-drain-nb", baseConfig);
@@ -208,7 +203,6 @@ class ArtemisQueueResourceTest {
 
     @Test
     @DisplayName("Should drainTo with timeout and token lock")
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
     @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
     void shouldDrainToWithTimeout() throws Exception {
         queue = new ArtemisQueueResource<>("test-drain-timeout", baseConfig);
@@ -226,7 +220,6 @@ class ArtemisQueueResourceTest {
 
     @Test
     @DisplayName("Should drainTo return 0 on empty queue after timeout")
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
     @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
     void shouldDrainToReturnZeroOnEmptyTimeout() throws Exception {
         queue = new ArtemisQueueResource<>("test-drain-empty", baseConfig);
@@ -247,7 +240,6 @@ class ArtemisQueueResourceTest {
 
     @Test
     @DisplayName("Should drain all messages in two sequential drain calls")
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
     @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
     void shouldDrainAllInTwoSteps() throws Exception {
         queue = new ArtemisQueueResource<>("test-two-step", baseConfig);
@@ -275,7 +267,6 @@ class ArtemisQueueResourceTest {
 
     @Test
     @DisplayName("Competing consumers should drain concurrently while processing, with consecutive ranges")
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
     @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
     void shouldGuaranteeNonOverlappingRanges() throws Exception {
         queue = new ArtemisQueueResource<>("test-competing", baseConfig);
@@ -378,7 +369,6 @@ class ArtemisQueueResourceTest {
 
     @Test
     @DisplayName("Should offer and poll successfully")
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
     @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
     void shouldOfferAndPoll() throws Exception {
         queue = new ArtemisQueueResource<>("test-offer", baseConfig);
@@ -393,7 +383,6 @@ class ArtemisQueueResourceTest {
 
     @Test
     @DisplayName("Should offerAll and drain successfully")
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
     @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
     void shouldOfferAllAndDrain() throws Exception {
         queue = new ArtemisQueueResource<>("test-offer-all", baseConfig);
@@ -414,7 +403,6 @@ class ArtemisQueueResourceTest {
 
     @Test
     @DisplayName("Should return false from offer when byte limit is reached")
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
     @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
     void shouldOfferReturnFalseWhenFull() throws Exception {
         Config smallConfig = ConfigFactory.parseString("maxSizeBytes = 1500")
@@ -444,7 +432,6 @@ class ArtemisQueueResourceTest {
 
     @Test
     @DisplayName("Should block put when byte limit is reached")
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
     @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
     void shouldBlockPutWhenFull() throws Exception {
         // Small byte limit + minimal producerWindowSize ensures per-message credit checks.
@@ -492,7 +479,6 @@ class ArtemisQueueResourceTest {
 
     @Test
     @DisplayName("Should provide monitored queue consumer and producer wrappers")
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
     @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
     void shouldProvideWrappedResources() throws Exception {
         queue = new ArtemisQueueResource<>("test-wrappers", baseConfig);
@@ -513,7 +499,6 @@ class ArtemisQueueResourceTest {
 
     @Test
     @DisplayName("Should return WAITING on empty queue for input, ACTIVE for output")
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
     @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
     void shouldReturnCorrectUsageState() throws Exception {
         queue = new ArtemisQueueResource<>("test-usage", baseConfig);
@@ -532,7 +517,6 @@ class ArtemisQueueResourceTest {
 
     @Test
     @DisplayName("Should return WAITING for output when byte limit is reached")
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
     @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
     void shouldReturnWaitingWhenFull() throws Exception {
         Config smallConfig = ConfigFactory.parseString("maxSizeBytes = 1500")
@@ -554,7 +538,6 @@ class ArtemisQueueResourceTest {
 
     @Test
     @DisplayName("Should estimate minimal heap usage for off-heap queue")
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
     @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
     void shouldEstimateMinimalHeap() throws Exception {
         queue = new ArtemisQueueResource<>("test-memory", baseConfig);
@@ -582,7 +565,6 @@ class ArtemisQueueResourceTest {
 
     @Test
     @DisplayName("Should putAll and drain all")
-    @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
     @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
     void shouldPutAllAndDrain() throws Exception {
         queue = new ArtemisQueueResource<>("test-putall", baseConfig);

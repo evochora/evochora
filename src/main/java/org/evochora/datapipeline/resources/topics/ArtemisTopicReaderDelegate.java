@@ -24,6 +24,13 @@ import com.google.protobuf.Message;
  * Uses JMS 2.0 Shared Subscriptions for Competing Consumers support.
  * Uses Artemis INDIVIDUAL_ACKNOWLEDGE mode for precise message acknowledgment.
  * <p>
+ * <strong>Corrupt Message Handling (DLQ):</strong>
+ * Messages that fail deserialization are NOT acknowledged. Instead, {@link Session#recover()}
+ * is called, which returns the message to the broker for redelivery. After
+ * {@code maxDeliveryAttempts} (configured in the broker's address settings), Artemis
+ * automatically routes the message to the dead-letter address (DLQ). This prevents
+ * corrupt messages from blocking the consumer while preserving them for diagnosis.
+ * <p>
  * <strong>Stuck Message Handling:</strong>
  * Tracks when messages are received (claimed). The parent {@link ArtemisTopicResource}
  * runs a watchdog thread that calls {@link #isStuck(Instant)} periodically. If a message
@@ -241,38 +248,80 @@ public class ArtemisTopicReaderDelegate<T extends Message>
                 long length = bytesMessage.getBodyLength();
                 byte[] data = new byte[(int) length];
                 bytesMessage.readBytes(data);
-                
-                // Deserialize Envelope
-                TopicEnvelope envelope = TopicEnvelope.parseFrom(data);
-                
+
+                // Deserialize Envelope — errors are non-fatal (corrupt message, not transport failure)
+                TopicEnvelope envelope;
+                try {
+                    envelope = TopicEnvelope.parseFrom(data);
+                } catch (Exception e) {
+                    // Do NOT acknowledge — let Artemis redeliver up to maxDeliveryAttempts,
+                    // then route the message to the dead-letter queue (DLQ).
+                    // session.recover() marks unacknowledged messages for redelivery.
+                    int deliveryCount = getDeliveryCount(message);
+                    log.error("Failed to deserialize message from topic '{}' (delivery #{})",
+                        activeTopicName, deliveryCount);
+                    recordError("DESERIALIZE_FAILED", "Message deserialization failed",
+                        "Topic: " + activeTopicName + ", Delivery: " + deliveryCount
+                            + ", Error: " + e.getMessage());
+
+                    // Count unique corrupt messages (first delivery only) for DLQ metrics
+                    if (deliveryCount <= 1) {
+                        parent.recordDlqRejection();
+                    }
+
+                    session.recover();
+                    clearClaimTracking();
+                    return null;
+                }
+
                 // Record metrics (O(1) - AtomicLong increment + SlidingWindowCounter)
                 parent.recordRead();
-                
+
                 // Return with message itself as ACK token
                 return new ReceivedEnvelope<>(envelope, message);
             } else {
-                log.warn("Received non-BytesMessage in Artemis topic '{}': {}", activeTopicName, message.getClass().getName());
-                // Ack it to get it out of the way? Or DLQ?
-                message.acknowledge();
+                // Non-BytesMessage: cannot process. Reject for DLQ routing.
+                int deliveryCount = getDeliveryCount(message);
+                log.error("Received non-BytesMessage in Artemis topic '{}': {} (delivery #{})",
+                    activeTopicName, message.getClass().getName(), deliveryCount);
+                if (deliveryCount <= 1) {
+                    parent.recordDlqRejection();
+                }
+                session.recover();
                 clearClaimTracking();
                 return null;
             }
-            
+
         } catch (JMSException e) {
             // Check if this is caused by thread interruption (graceful shutdown)
             if (isInterruptedException(e)) {
                 log.debug("JMS receive interrupted during shutdown (topic: {})", activeTopicName);
                 throw new InterruptedException("JMS receive interrupted");
             }
-            
+
             // Transient error - log at WARN level (AGENTS.md: Resources use WARN for transient errors)
             log.warn("JMS receive failed on topic '{}'", activeTopicName);
             throw new RuntimeException("JMS receive failed", e);
-        } catch (Exception e) {
-             throw new RuntimeException("Deserialization failed", e);
         }
     }
     
+    /**
+     * Extracts the JMS delivery count from a message.
+     * <p>
+     * Uses the standard {@code JMSXDeliveryCount} property which Artemis sets on each delivery.
+     * Returns 0 if the property is unavailable (defensive fallback).
+     *
+     * @param message the JMS message
+     * @return delivery count (1 = first delivery), or 0 if unavailable
+     */
+    private int getDeliveryCount(jakarta.jms.Message message) {
+        try {
+            return message.getIntProperty("JMSXDeliveryCount");
+        } catch (JMSException e) {
+            return 0;
+        }
+    }
+
     /**
      * Checks if a Throwable was caused by thread interruption (shutdown signal).
      * Walks the cause chain to detect wrapped InterruptedException.
