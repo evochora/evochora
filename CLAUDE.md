@@ -114,6 +114,11 @@ Evochora is an artificial life simulator for research into digital evolution. It
 **Before taking decision with potentially high influence**
 - Stop and ask the the user for feedback regaring proposed decission
 
+**Source Code Comments**
+- Comments in the source code must never be a reaction to a previous conversation
+- All comments need to be understandable without the context of previous conversations
+- Never comment what changed, but only explain the current code
+
 ## Architectural Review
 
 For significant changes, an architecture review agent is available. Key principles enforced:
