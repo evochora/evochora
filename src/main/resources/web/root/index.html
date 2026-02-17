@@ -13,326 +13,641 @@
     <link rel="manifest" href="/favicons/site.webmanifest">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Doto:wght@900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Doto:wght@900&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg-deep: #08080f;
+            --bg-mid: #0e0e18;
+            --bg-surface: rgba(255, 255, 255, 0.03);
+            --bg-surface-hover: rgba(255, 255, 255, 0.06);
+            --border: rgba(255, 255, 255, 0.08);
+            --border-hover: rgba(255, 255, 255, 0.15);
+            --text-primary: #d8d8de;
+            --text-secondary: rgba(216, 216, 222, 0.7);
+            --text-tertiary: rgba(216, 216, 222, 0.5);
+            --accent: #4a9eff;
+            --accent-dim: rgba(74, 158, 255, 0.15);
+            --accent-glow: rgba(74, 158, 255, 0.08);
+            --serif: 'Source Serif 4', Georgia, serif;
+            --sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            --doto: 'Doto', monospace;
+        }
+
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
 
+        html {
+            scroll-behavior: smooth;
+        }
+
         body {
-            font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #0a0a14 0%, #191923 100%);
-            color: #e0e0e0;
+            font-family: var(--sans);
+            background: var(--bg-deep);
+            color: var(--text-primary);
             min-height: 100vh;
-            display: flex;
-            justify-content: center;
-            padding: 2rem;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
         }
 
         .page {
             width: 100%;
-            max-width: 1120px;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 3rem 2rem 4rem;
             display: flex;
             flex-direction: column;
-            align-items: stretch;
-            gap: 2.5rem;
         }
 
-        .logo-container {
+        /* ── Logo ── */
+        .logo {
             text-align: center;
+            padding: 1rem 0 2.5rem;
         }
 
         .logo-text {
-            font-family: 'Doto', sans-serif;
+            font-family: var(--doto);
             font-weight: 900;
-            font-size: 64px;
-            color: #e0e0e0;
-            letter-spacing: 4px;
+            font-size: 56px;
+            color: var(--text-primary);
+            letter-spacing: 6px;
             line-height: 1;
-            opacity: 0.9;
+            opacity: 0.85;
         }
 
+        .logo-sub {
+            font-family: var(--serif);
+            font-size: 0.95rem;
+            font-weight: 300;
+            color: var(--text-tertiary);
+            margin-top: 0.5rem;
+            letter-spacing: 0.5px;
+        }
+
+        /* ── Dividers ── */
+        .divider {
+            border: none;
+            height: 1px;
+            background: var(--border);
+            margin: 2.5rem 0;
+        }
+
+        /* ── Hero ── */
         .hero {
             display: flex;
-            flex-direction: row;
-            gap: 2rem;
-            align-items: center;
-            justify-content: space-between;
-            flex-wrap: wrap;
+            gap: 2.5rem;
+            align-items: flex-start;
         }
 
         .hero-text {
-            flex: 1 1 300px;
-            min-width: 260px;
+            flex: 1 1 380px;
+            min-width: 280px;
         }
 
-        .welcome-title {
-            font-size: 1.6rem;
-            font-weight: 500;
-            margin-bottom: 1rem;
-            color: #e0e0e0;
-        }
-
-        .welcome-description {
-            font-size: 1rem;
-            line-height: 1.6;
-            opacity: 0.85;
-            margin-bottom: 1.5rem;
-        }
-
-        .primary-button {
-            display: inline-block;
-            margin-top: 0.5rem;
-            padding: 0.8rem 1.6rem;
-            border-radius: 999px;
-            background: #4a9eff;
-            color: #0a0a14;
+        .hero-headline {
+            font-family: var(--serif);
+            font-size: 1.75rem;
             font-weight: 600;
-            font-size: 0.95rem;
-            text-decoration: none;
-            box-shadow: 0 10px 25px rgba(74, 158, 255, 0.35);
-            transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+            line-height: 1.35;
+            color: var(--text-primary);
+            margin-bottom: 1.25rem;
         }
 
-        .primary-button:hover {
-            background: #66b3ff;
-            transform: translateY(-1px);
-            box-shadow: 0 14px 30px rgba(74, 158, 255, 0.45);
-        }
-
-        .button-group {
-            display: flex;
-            gap: 1rem;
-            flex-wrap: wrap;
-            margin-top: 0.5rem;
-        }
-
-        .primary-button.secondary {
-            background: transparent;
-            color: #4a9eff;
-            border: 2px solid #4a9eff;
-            box-shadow: none;
-        }
-
-        .primary-button.secondary:hover {
-            background: rgba(74, 158, 255, 0.15);
-            transform: translateY(-1px);
-            box-shadow: 0 8px 20px rgba(74, 158, 255, 0.25);
-        }
-
-        .github-link {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            color: #4a9eff;
-            text-decoration: none;
-            font-size: 0.95rem;
-            transition: opacity 0.3s ease;
-        }
-
-        .github-link:hover {
-            opacity: 0.8;
-        }
-
-        .github-icon {
-            width: 20px;
-            height: 20px;
-            fill: currentColor;
+        .hero-body {
+            font-family: var(--serif);
+            font-size: 1.05rem;
+            font-weight: 400;
+            line-height: 1.75;
+            color: var(--text-secondary);
         }
 
         .hero-video {
-            flex: 1 1 320px;
-            min-width: 280px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
-
-        .video-container {
-            width: 100%;
-            margin-bottom: 0.75rem;
+            flex: 1 1 420px;
+            min-width: 300px;
         }
 
         .demo-video {
-            max-width: 560px;
             width: 100%;
-            border-radius: 8px;
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+            border-radius: 4px;
+            border: 1px solid var(--border);
         }
 
         .video-caption {
-            font-size: 0.85rem;
-            opacity: 0.8;
+            font-size: 0.8rem;
+            color: var(--text-tertiary);
             margin-top: 0.5rem;
+            font-style: italic;
+            font-family: var(--serif);
         }
 
-        .video-caption a {
-            color: #4a9eff;
-            text-decoration: none;
-        }
-
-        .video-caption a:hover {
-            text-decoration: underline;
-        }
-
-        .actions-container, .community-section {
+        /* ── Action Cards ── */
+        .actions {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             gap: 1.5rem;
+        }
+
+        .action-card {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .action-card-img-link {
+            display: block;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            transition: border-color 0.2s ease, transform 0.2s ease;
+        }
+
+        .action-card-img-link:hover {
+            border-color: var(--border-hover);
+            transform: scale(1.02);
+        }
+
+        .action-card-img {
             width: 100%;
-        }
-
-        @media (max-width: 900px) {
-            .actions-container, .community-section {
-                grid-template-columns: repeat(2, 1fr);
-            }
-        }
-
-        @media (max-width: 600px) {
-            .actions-container, .community-section {
-                grid-template-columns: 1fr;
-            }
-        }
-
-        .link-card {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 8px;
-            padding: 1.5rem;
-            text-decoration: none;
-            color: #e0e0e0;
-            transition: all 0.3s ease;
+            aspect-ratio: 16 / 9;
+            object-fit: cover;
             display: block;
         }
 
-        .link-card:hover {
-            background: rgba(255, 255, 255, 0.1);
-            border-color: rgba(255, 255, 255, 0.2);
-            transform: translateY(-2px);
+        .action-card-placeholder-link {
+            display: block;
+            border-radius: 6px;
+            overflow: hidden;
+            border: 1px solid var(--border);
         }
 
-        .link-title {
-            font-size: 1.25rem;
+        .action-card-placeholder {
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            background: linear-gradient(135deg, #0d1117 0%, #161b22 50%, #0d1117 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .action-card-placeholder::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background:
+                radial-gradient(ellipse at 30% 40%, rgba(74, 158, 255, 0.06) 0%, transparent 60%),
+                radial-gradient(ellipse at 70% 60%, rgba(74, 158, 255, 0.04) 0%, transparent 50%);
+        }
+
+        .action-card-placeholder-text {
+            font-family: var(--sans);
+            font-size: 0.75rem;
+            color: var(--text-tertiary);
+            z-index: 1;
+        }
+
+        .action-card-body {
+            padding: 1rem 0.25rem 0;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .action-card-title {
+            font-family: var(--sans);
+            font-size: 0.95rem;
             font-weight: 600;
-            margin-bottom: 0.5rem;
-            color: #4a9eff;
+            color: var(--text-primary);
+            margin-bottom: 0.3rem;
         }
 
-        .link-description {
-            font-size: 0.9rem;
-            opacity: 0.8;
+        .action-card-desc {
+            font-size: 0.85rem;
             line-height: 1.5;
+            color: var(--text-secondary);
+            flex: 1;
         }
 
-        @media (max-width: 768px) {
-            body {
-                padding: 1.5rem;
+        .action-card-cta {
+            display: inline-block;
+            margin-top: 0.75rem;
+            padding: 0.45rem 1rem;
+            font-family: var(--sans);
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: var(--accent);
+            border: 1px solid var(--accent-dim);
+            border-radius: 4px;
+            text-decoration: none;
+            transition: background 0.15s ease, border-color 0.15s ease;
+            align-self: flex-start;
+        }
+
+        .action-card-cta:hover {
+            background: var(--accent-dim);
+            border-color: var(--accent);
+        }
+
+        .action-card-links {
+            margin-top: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .action-card-links a {
+            color: var(--accent);
+            text-decoration: none;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .action-card-links a:hover {
+            text-decoration: underline;
+        }
+
+        .colab-badge {
+            height: 20px;
+            display: block;
+        }
+
+        /* ── Section headings ── */
+        .section-title {
+            font-family: var(--serif);
+            font-size: 1.35rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 1.5rem;
+        }
+
+        /* ── Why Evochora ── */
+        .why-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem 2.5rem;
+        }
+
+        .why-item {
+            padding: 0;
+        }
+
+        .why-label {
+            font-family: var(--sans);
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.3rem;
+        }
+
+        .why-desc {
+            font-family: var(--serif);
+            font-size: 0.9rem;
+            line-height: 1.65;
+            color: var(--text-secondary);
+        }
+
+        /* ── Get Started ── */
+        .get-started {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 2rem 2.25rem;
+        }
+
+        .get-started-title {
+            font-family: var(--serif);
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.75rem;
+        }
+
+        .get-started-body {
+            font-family: var(--serif);
+            font-size: 0.95rem;
+            line-height: 1.7;
+            color: var(--text-secondary);
+            margin-bottom: 1.25rem;
+            max-width: 680px;
+        }
+
+        .get-started-actions {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .btn-primary {
+            display: inline-block;
+            padding: 0.6rem 1.4rem;
+            background: var(--accent);
+            color: var(--bg-deep);
+            font-family: var(--sans);
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-decoration: none;
+            border-radius: 4px;
+            transition: background 0.15s ease;
+        }
+
+        .btn-primary:hover {
+            background: #66b3ff;
+        }
+
+        .btn-secondary {
+            display: inline-block;
+            padding: 0.6rem 1.4rem;
+            color: var(--text-secondary);
+            font-family: var(--sans);
+            font-size: 0.875rem;
+            font-weight: 500;
+            text-decoration: none;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            transition: border-color 0.15s ease, color 0.15s ease;
+        }
+
+        .btn-secondary:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .get-started-req {
+            font-size: 0.8rem;
+            color: var(--text-tertiary);
+            margin-top: 0.75rem;
+        }
+
+
+        /* ── Footer ── */
+        .footer {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+            padding-top: 0.5rem;
+        }
+
+        .footer-link {
+            font-size: 0.8rem;
+            color: var(--text-tertiary);
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            transition: color 0.15s ease;
+        }
+
+        .footer-link:hover {
+            color: var(--text-secondary);
+        }
+
+        .footer-sep {
+            color: var(--border);
+            font-size: 0.7rem;
+            user-select: none;
+        }
+
+        .footer-icon {
+            width: 14px;
+            height: 14px;
+            fill: currentColor;
+            opacity: 0.8;
+        }
+
+        /* ── Responsive ── */
+        @media (max-width: 900px) {
+            .actions {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .why-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
+
+        @media (max-width: 680px) {
+            .page {
+                padding: 2rem 1.25rem 3rem;
+            }
+
+            .logo-text {
+                font-size: 40px;
+                letter-spacing: 4px;
             }
 
             .hero {
                 flex-direction: column;
-                align-items: stretch;
+                gap: 1.5rem;
             }
 
-            .hero-video {
-                align-items: center;
+            .hero-headline {
+                font-size: 1.4rem;
+            }
+
+            .actions {
+                grid-template-columns: 1fr;
+            }
+
+            .why-grid {
+                grid-template-columns: 1fr;
+                gap: 1.25rem;
+            }
+
+            .get-started {
+                padding: 1.5rem;
+            }
+
+            .divider {
+                margin: 2rem 0;
             }
         }
     </style>
 </head>
 <body>
     <div class="page">
-        <div class="logo-container">
-            <div class="logo-text">EVOCHORA</div>
-        </div>
 
+        <!-- Logo -->
+        <header class="logo">
+            <div class="logo-text">EVOCHORA</div>
+            <div class="logo-sub">Simulation Platform for Digital Evolution Research</div>
+        </header>
+
+        <!-- Hero -->
         <section class="hero">
             <div class="hero-text">
-                <div class="welcome-title">Welcome to Evochora</div>
-                <div class="welcome-description">
-                    Evochora is a laboratory for embodied artificial life research. It provides an n-dimensional environment where organisms are embodied agents that navigate, forage for energy, and solve the challenges of self-replication using EvoASM, a low-level assembly language that makes behaviors fully evolvable.
-                    <br><br>
-                    The platform is designed for scientific experimentation: test hypotheses about "digital physics" (thermodynamics, signaling, genomic stability) via a plugin-based architecture without modifying core code. This enables researchers to explore evolutionary mechanisms systematically.
-                    <br><br>
-                    You are viewing an Evochora node instance &mdash; either the <strong>public demo</strong> or a <strong>self-hosted installation</strong>. For long-term experiments and custom setups, run your own node. Source code and setup instructions are available on <a href="https://github.com/evochora/evochora" target="_blank" rel="noopener noreferrer" style="color: #4a9eff; text-decoration: none;">GitHub</a>.
-                </div>
-                <div class="button-group">
-                <a href="/visualizer" class="primary-button">Open Visualizer</a>
-                    <a href="/analyzer" class="primary-button secondary">Open Analyzer</a>
-                </div>
+                <h1 class="hero-headline">Welcome to Evochora</h1>
+                <p class="hero-body">
+                    Evochora provides a complete tool stack for digital evolution research &mdash; from
+                    authoring self-replicating organisms to analyzing the evolutionary dynamics and results.
+                </p>
+                <p class="hero-body" style="margin-top: 0.75rem;">
+                    Organisms are written in EvoASM, a purpose-built assembly language. They inhabit an
+                    n-dimensional environment governed by configurable thermodynamics. Mutation mechanics,
+                    resource dynamics, and death conditions are fully programmable through swappable
+                    plugins &mdash; even the EvoASM instruction set itself.
+                </p>
+                <p class="hero-body" style="margin-top: 0.75rem;">
+                    A built-in visualizer lets you inspect and debug individual organisms during simulation:
+                    registers, stacks, thermodynamic state, and executed code. The analyzer tracks population
+                    dynamics, genome diversity, generation depth, and more. For deeper analysis, a data
+                    pipeline exports all generated data as industry-standard Parquet files &mdash; ready
+                    for Python, R, DuckDB, or your preferred tools.
+                </p>
             </div>
-
             <div class="hero-video">
-                <div class="video-container">
-                    <video class="demo-video" autoplay muted loop playsinline preload="metadata" poster="/favicons/android-chrome-512x512.png">
-                        <source src="https://github.com/user-attachments/assets/69b33e5b-074b-46d6-917c-9b9cf06e10ef" type="video/mp4">
-                        Your browser does not support the video tag.
-                    </video>
+                <video class="demo-video" autoplay muted loop playsinline preload="auto"
+                       poster="/favicons/video-poster.png">
+                    <source src="https://github.com/user-attachments/assets/69b33e5b-074b-46d6-917c-9b9cf06e10ef"
+                            type="video/mp4">
+                </video>
+
+            </div>
+        </section>
+
+        <hr class="divider">
+
+        <!-- Action Cards -->
+        <section class="actions">
+            <div class="action-card">
+                <a href="/visualizer" class="action-card-img-link">
+                    <img class="action-card-img" src="/screenshots/visualizer.png"
+                         alt="Evochora Visualizer showing organism grid, registers, and assembly debugger">
+                </a>
+                <div class="action-card-body">
+                    <div class="action-card-title">Visualizer</div>
+                    <div class="action-card-desc">
+                        Inspect organisms tick-by-tick &mdash; registers, stacks, thermodynamic state, and executed code.
+                    </div>
+                    <a href="/visualizer" class="action-card-cta">Open Visualizer</a>
                 </div>
-                <div class="video-caption">
-                    This is a short demo of Evochora in action. See the full demo in the
-                    <a href="/visualizer">web visualizer</a>.
+            </div>
+
+            <div class="action-card">
+                <a href="/analyzer" class="action-card-img-link">
+                    <img class="action-card-img" src="/screenshots/analyzer.png"
+                         alt="Evochora Analyzer showing population dynamics, birth rates, and generation depth charts">
+                </a>
+                <div class="action-card-body">
+                    <div class="action-card-title">Analyzer</div>
+                    <div class="action-card-desc">
+                        Population dynamics, genome diversity, simulation metrics, and more.
+                    </div>
+                    <a href="/analyzer" class="action-card-cta">Open Analyzer</a>
+                </div>
+            </div>
+
+            <div class="action-card">
+                <div class="action-card-placeholder-link">
+                    <div class="action-card-placeholder">
+                        <span class="action-card-placeholder-text">Screenshot coming soon</span>
+                    </div>
+                </div>
+                <div class="action-card-body">
+                    <div class="action-card-title">Jupyter Notebook</div>
+                    <div class="action-card-desc">
+                        Explore simulation data with pandas, networkx, and DuckDB &mdash; phylogenetic trees, Muller plots, and more.
+                    </div>
+                    <div class="action-card-links">
+                        <a href="https://colab.research.google.com/github/evochora/evochora/blob/main/notebooks/data_analysis_guide.ipynb"
+                           target="_blank" rel="noopener noreferrer">
+                            <img class="colab-badge"
+                                 src="https://colab.research.google.com/assets/colab-badge.svg"
+                                 alt="Open in Colab">
+                        </a>
+                        <a href="https://raw.githubusercontent.com/evochora/evochora/main/notebooks/data_analysis_guide.ipynb"
+                           download>Download Notebook</a>
+                    </div>
                 </div>
             </div>
         </section>
 
-        <section class="actions-container">
-            <a href="/visualizer" class="link-card">
-                <div class="link-title">Visualizer</div>
-                <div class="link-description">Interactive web-based visualization of environments and organisms.</div>
-            </a>
+        <hr class="divider">
 
-            <a href="/analyzer" class="link-card">
-                <div class="link-title">Analyzer</div>
-                <div class="link-description">Analytics dashboard for simulation metrics, population trends, and performance data.</div>
-            </a>
-
-            <a href="/api-docs" class="link-card">
-                <div class="link-title">API Documentation</div>
-                <div class="link-description">OpenAPI documentation for the Evochora REST API.</div>
-            </a>
-        </section>
-
-        <section class="community-section">
-            <a href="https://github.com/evochora/evochora" class="link-card" target="_blank" rel="noopener noreferrer">
-                <div class="link-title">Run your own Evochora node</div>
-                <div class="link-description">
-                    For long-running experiments and custom setups, operate your own node.
-                    Full source code and setup instructions on GitHub.
+        <!-- Why Evochora -->
+        <section>
+            <h2 class="section-title">Why Evochora?</h2>
+            <div class="why-grid">
+                <div class="why-item">
+                    <div class="why-label">The physics are the experiment</div>
+                    <div class="why-desc">
+                        An n-dimensional environment, configurable thermodynamics, swappable mutation and death
+                        mechanics, and an extensible assembly instruction set &mdash; every aspect of the world
+                        is an experimental variable.
+                    </div>
                 </div>
-            </a>
-
-            <div class="link-card">
-                <div class="link-title">GitHub</div>
-                <div class="link-description">
-                    Browse the source code, open issues, and contribute to Evochora.
-                    <br><br>
-                    <a href="https://github.com/evochora/evochora" class="github-link" target="_blank" rel="noopener noreferrer">
-                        <svg class="github-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
-                        </svg>
-                        Get the code &amp; setup instructions
-                    </a>
+                <div class="why-item">
+                    <div class="why-label">From simulation to science</div>
+                    <div class="why-desc">
+                        A complete data pipeline exports everything as Parquet files.
+                        Analyze with Python, R, Jupyter, or DuckDB &mdash; bring your own methods.
+                    </div>
                 </div>
-            </div>
-
-            <div class="link-card">
-                <div class="link-title">Discord</div>
-                <div class="link-description">
-                    Join the Evochora community on Discord to discuss experiments, ask questions,
-                    and collaborate with other researchers.
-                    <br><br>
-                    <a href="https://discord.gg/t9yEJc4MKX" target="_blank" rel="noopener noreferrer" style="display:inline-block; margin-top:0.25rem;">
-                        <img src="https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat-square&logo=discord"
-                             alt="Join Evochora Discord Community">
-                    </a>
+                <div class="why-item">
+                    <div class="why-label">Deterministic &amp; reproducible</div>
+                    <div class="why-desc">
+                        Seed-based simulation with complete state persistence.
+                        Every experiment is perfectly reproducible.
+                    </div>
+                </div>
+                <div class="why-item">
+                    <div class="why-label">Open source, MIT licensed</div>
+                    <div class="why-desc">
+                        Use it, extend it, build on it. No restrictions.
+                    </div>
                 </div>
             </div>
         </section>
+
+        <hr class="divider">
+
+        <!-- Get Started -->
+        <section class="get-started">
+            <h2 class="get-started-title">Run Your Own Instance</h2>
+            <p class="get-started-body">
+                This demo hosts a set of simulations with default settings. To design your own experiments &mdash;
+                custom organisms, different physics, alternative mutation strategies &mdash; run your own Evochora node.
+            </p>
+            <div class="get-started-actions">
+                <a href="https://github.com/evochora/evochora/releases" class="btn-primary"
+                   target="_blank" rel="noopener noreferrer">Download Latest Release</a>
+                <a href="https://github.com/evochora/evochora#quick-start" class="btn-secondary"
+                   target="_blank" rel="noopener noreferrer">Read the Quick Start Guide</a>
+            </div>
+            <div class="get-started-req">Open Source: <a href="https://opensource.org/licenses/MIT" target="_blank" rel="noopener noreferrer" style="color: inherit;">MIT License</a> · Requires Java 21</div>
+        </section>
+
+        <hr class="divider">
+
+        <!-- Footer -->
+        <footer class="footer">
+            <a href="https://github.com/evochora/evochora" class="footer-link" target="_blank" rel="noopener noreferrer">
+                <svg class="footer-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                </svg>
+                GitHub
+            </a>
+            <span class="footer-sep">&middot;</span>
+            <a href="https://discord.gg/t9yEJc4MKX" class="footer-link" target="_blank" rel="noopener noreferrer">
+                <svg class="footer-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.095 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.095 2.157 2.42 0 1.333-.947 2.418-2.157 2.418z"/>
+                </svg>
+                Discord
+            </a>
+            <span class="footer-sep">&middot;</span>
+            <a href="/api-docs" class="footer-link">API Documentation</a>
+            <span class="footer-sep">&middot;</span>
+            <a href="https://github.com/evochora/evochora/blob/main/docs/SCIENTIFIC_OVERVIEW.md"
+               class="footer-link" target="_blank" rel="noopener noreferrer">Scientific Overview</a>
+            <span class="footer-sep">&middot;</span>
+            <a href="https://opensource.org/licenses/MIT" class="footer-link" target="_blank" rel="noopener noreferrer">MIT License</a>
+        </footer>
+
     </div>
 </body>
 </html>
-
