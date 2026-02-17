@@ -14,9 +14,11 @@ import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.topics.ITopicReader;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
 import org.evochora.datapipeline.api.resources.topics.TopicMessage;
+import org.evochora.node.processes.broker.EmbeddedBrokerProcess;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -62,18 +64,22 @@ class ArtemisTopicIntegrationTest {
         // (HOCON interprets backslashes as escape characters)
         String configPath = testDirPath.replace("\\", "/");
 
-        sharedConfig = ConfigFactory.parseString("""
-            brokerUrl = "vm://0"
-            embedded {
+        // Start broker explicitly with flat keys (as EmbeddedBrokerProcess would)
+        Config brokerConfig = ConfigFactory.parseString("""
+            enabled = true
+            dataDirectory = "%s"
+            persistenceEnabled = true
+            journalRetention {
                 enabled = true
-                dataDirectory = "%s"
-                persistenceEnabled = true
-                journalRetention {
-                    enabled = true
-                    directory = "%s/history"
-                }
+                directory = "%s/history"
             }
             """.formatted(configPath, configPath));
+        EmbeddedBrokerProcess.ensureStarted(brokerConfig);
+
+        // Resource config: only topic-specific settings, no broker config
+        sharedConfig = ConfigFactory.parseString("""
+            brokerUrl = "vm://0"
+            """);
     }
 
     @AfterEach
@@ -81,6 +87,11 @@ class ArtemisTopicIntegrationTest {
         if (topic != null) {
             topic.close();
         }
+    }
+
+    @AfterAll
+    static void teardownBroker() throws Exception {
+        EmbeddedBrokerProcess.resetForTesting();
     }
 
     @Test

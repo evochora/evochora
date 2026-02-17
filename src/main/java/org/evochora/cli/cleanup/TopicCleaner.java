@@ -44,13 +44,13 @@ public class TopicCleaner {
      * @param config application configuration
      */
     public TopicCleaner(Config config) {
-        // Get topic data directory from batch-topic configuration
-        if (config.hasPath("pipeline.resources.batch-topic.options.embedded.dataDirectory")) {
-            this.dataDirectory = config.getString("pipeline.resources.batch-topic.options.embedded.dataDirectory");
+        // Get broker data directory from embedded-broker process configuration
+        if (config.hasPath("node.processes.embedded-broker.options.dataDirectory")) {
+            this.dataDirectory = config.getString("node.processes.embedded-broker.options.dataDirectory");
         } else {
             // Fallback to default
             String dataBaseDir = config.getString("pipeline.dataBaseDir");
-            this.dataDirectory = dataBaseDir + "/topic";
+            this.dataDirectory = dataBaseDir + "/broker";
         }
     }
 

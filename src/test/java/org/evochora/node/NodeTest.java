@@ -186,9 +186,9 @@ class NodeTest {
     }
 
     @Test
-    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to start process 'failing-start-process'. The node may be unstable.")
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to initialize process 'failing-start-process'. Skipping this process.")
     @DisplayName("Should handle process that throws exception in start method")
-    void start_shouldHandleProcessStartException() {
+    void constructor_shouldHandleProcessStartException() {
         // Arrange - Config with process that throws exception in start
         Config failingStartConfig = ConfigFactory.parseString("""
             node {
@@ -200,11 +200,9 @@ class NodeTest {
             }
             """);
 
+        // Act - Start is now called during construction. Should not throw, but skip the failing process.
         testNode = new Node(failingStartConfig);
 
-        // Act - Should not throw exception, but log error for failing process
-        testNode.start();
-        
         // Assert - Node should handle the failing process gracefully
         assertThat(testNode).isNotNull();
     }
