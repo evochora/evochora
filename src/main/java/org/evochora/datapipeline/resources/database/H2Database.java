@@ -64,6 +64,10 @@ public class H2Database extends AbstractDatabaseResource
     private final Map<String, SimulationMetadata> metadataCache;
     private final int maxCacheSize;
 
+    // Reader connection tracking (only createReader connections, not wrapper connections)
+    private final ConcurrentHashMap<Connection, Long> readerCheckoutTimes = new ConcurrentHashMap<>();
+    private final long readerConnectionWarningThresholdMs;
+
     public H2Database(String name, Config options) {
         super(name, options);
 
@@ -131,7 +135,12 @@ public class H2Database extends AbstractDatabaseResource
             : 5;
         
         this.diskWritesCounter = new SlidingWindowCounter(metricsWindowSeconds);
-        
+
+        // Configuration: readerConnectionWarningThresholdMs (default: 30000)
+        this.readerConnectionWarningThresholdMs = options.hasPath("readerConnectionWarningThresholdMs")
+            ? options.getLong("readerConnectionWarningThresholdMs")
+            : 30_000L;
+
         // Load environment storage strategy via reflection
         this.envStorageStrategy = loadEnvironmentStorageStrategy(options);
         
@@ -826,17 +835,62 @@ public class H2Database extends AbstractDatabaseResource
     
     @Override
     public IDatabaseReader createReader(String runId) throws SQLException {
+        // Check for stale reader connections before acquiring a new one
+        warnStaleReaderConnections();
+
         Connection conn = dataSource.getConnection();
         boolean success = false;
         try {
             H2SchemaUtil.setSchema(conn, runId);
             H2DatabaseReader reader = new H2DatabaseReader(conn, this, envStorageStrategy, orgStorageStrategy, runId);
+            readerCheckoutTimes.put(conn, System.currentTimeMillis());
             success = true;
             return reader;
         } finally {
             if (!success) {
                 conn.close();
             }
+        }
+    }
+
+    /**
+     * Unregisters a reader connection from the tracking map.
+     * Called by {@link H2DatabaseReader#close()}.
+     *
+     * @param conn The connection being returned
+     */
+    void untrackReaderConnection(Connection conn) {
+        readerCheckoutTimes.remove(conn);
+    }
+
+    /**
+     * Checks for reader connections held longer than the configured threshold
+     * and logs a warning for each one.
+     */
+    private void warnStaleReaderConnections() {
+        long now = System.currentTimeMillis();
+        int staleCount = 0;
+        long oldestAgeMs = 0;
+
+        for (Map.Entry<Connection, Long> entry : readerCheckoutTimes.entrySet()) {
+            long ageMs = now - entry.getValue();
+            if (ageMs > readerConnectionWarningThresholdMs) {
+                staleCount++;
+                oldestAgeMs = Math.max(oldestAgeMs, ageMs);
+            }
+            // Clean up entries for connections that were closed without untrack
+            try {
+                if (entry.getKey().isClosed()) {
+                    readerCheckoutTimes.remove(entry.getKey());
+                }
+            } catch (SQLException e) {
+                readerCheckoutTimes.remove(entry.getKey());
+            }
+        }
+
+        if (staleCount > 0) {
+            log.warn("H2 reader connection(s) held too long: count={}, oldest={}ms, threshold={}ms, pool='{}'",
+                staleCount, oldestAgeMs, readerConnectionWarningThresholdMs, getResourceName());
         }
     }
 

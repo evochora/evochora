@@ -399,7 +399,8 @@ public class H2DatabaseReader implements IDatabaseReader {
     @Override
     public void close() {
         if (closed) return;
-        
+
+        database.untrackReaderConnection(connection);
         try {
             connection.close();
             closed = true;
