@@ -159,6 +159,17 @@ tasks.named("processResources") {
                 into(openApiTarget)
             }
         }
+
+        // Copy notebook to web root so it can be served for same-origin download
+        val notebookSource = file("notebooks/data_analysis_guide.ipynb")
+        val notebookTarget = layout.buildDirectory.get().asFile.resolve("resources/main/web/root/notebooks")
+        if (notebookSource.exists()) {
+            notebookTarget.mkdirs()
+            copy {
+                from(notebookSource)
+                into(notebookTarget)
+            }
+        }
     }
 }
 
