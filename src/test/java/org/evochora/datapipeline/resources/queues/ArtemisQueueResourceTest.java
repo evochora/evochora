@@ -82,7 +82,7 @@ class ArtemisQueueResourceTest {
         // Resource config: only queue-specific settings, no broker config
         baseConfig = ConfigFactory.parseString("""
             brokerUrl = "vm://1"
-            capacity = 10
+            maxSizeBytes = 100000
             coalescingDelayMs = 0
             """);
     }
@@ -280,8 +280,7 @@ class ArtemisQueueResourceTest {
     void shouldGuaranteeNonOverlappingRanges() throws Exception {
         queue = new ArtemisQueueResource<>("test-competing", baseConfig);
 
-        // Use exactly capacity (10) messages — BLOCK policy would halt the producer
-        // if we try to exceed capacity before consumers start.
+        // Use 10 small messages — well within the 100 KB byte limit.
         int totalMessages = 10;
         for (int i = 0; i < totalMessages; i++) {
             queue.put(BatchInfo.newBuilder().setTickStart(i).build());
@@ -414,18 +413,21 @@ class ArtemisQueueResourceTest {
     }
 
     @Test
-    @DisplayName("Should return false from offer when queue is at capacity")
+    @DisplayName("Should return false from offer when byte limit is reached")
     @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
     @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
     void shouldOfferReturnFalseWhenFull() throws Exception {
-        Config smallConfig = ConfigFactory.parseString("capacity = 3")
+        Config smallConfig = ConfigFactory.parseString("maxSizeBytes = 1500")
             .withFallback(baseConfig);
         queue = new ArtemisQueueResource<>("test-offer-full", smallConfig);
 
-        // Fill the queue
-        for (int i = 0; i < 3; i++) {
-            assertThat(queue.offer(BatchInfo.newBuilder().setTickStart(i).build())).isTrue();
+        // Fill the queue until the byte limit is reached
+        int accepted = 0;
+        while (queue.offer(BatchInfo.newBuilder().setTickStart(accepted).build())) {
+            accepted++;
         }
+
+        assertThat(accepted).describedAs("At least one message should fit").isGreaterThan(0);
 
         // Next offer should return false immediately (non-blocking)
         long start = System.currentTimeMillis();
@@ -441,17 +443,22 @@ class ArtemisQueueResourceTest {
     // =========================================================================
 
     @Test
-    @DisplayName("Should block put when queue is full")
+    @DisplayName("Should block put when byte limit is reached")
     @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
     @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
     void shouldBlockPutWhenFull() throws Exception {
-        Config smallConfig = ConfigFactory.parseString("capacity = 3")
-            .withFallback(baseConfig);
+        // Small byte limit + minimal producerWindowSize ensures per-message credit checks.
+        // With producerWindowSize=1, the producer must request credits from the broker for
+        // every byte, so the broker can enforce BLOCK even for tiny test messages.
+        Config smallConfig = ConfigFactory.parseString("""
+            maxSizeBytes = 1500
+            producerWindowSize = 1
+            """).withFallback(baseConfig);
         queue = new ArtemisQueueResource<>("test-backpressure", smallConfig);
 
-        // Fill the queue
-        for (int i = 0; i < 3; i++) {
-            queue.put(BatchInfo.newBuilder().setTickStart(i).build());
+        // Fill the queue until the byte limit is reached (using offer to avoid blocking)
+        while (queue.offer(BatchInfo.newBuilder().setTickStart(0).build())) {
+            // keep filling
         }
 
         // Next put should block — verify it blocks for at least 200ms
@@ -524,17 +531,17 @@ class ArtemisQueueResourceTest {
     }
 
     @Test
-    @DisplayName("Should return WAITING for output when queue is at capacity")
+    @DisplayName("Should return WAITING for output when byte limit is reached")
     @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
     @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
     void shouldReturnWaitingWhenFull() throws Exception {
-        Config smallConfig = ConfigFactory.parseString("capacity = 3")
+        Config smallConfig = ConfigFactory.parseString("maxSizeBytes = 1500")
             .withFallback(baseConfig);
         queue = new ArtemisQueueResource<>("test-usage-full", smallConfig);
 
-        // Fill queue to capacity
-        for (int i = 0; i < 3; i++) {
-            queue.put(BatchInfo.newBuilder().setTickStart(i).build());
+        // Fill queue until byte limit is reached
+        while (queue.offer(BatchInfo.newBuilder().setTickStart(0).build())) {
+            // keep filling
         }
 
         assertThat(queue.getUsageState("queue-out")).isEqualTo(UsageState.WAITING);
@@ -560,7 +567,7 @@ class ArtemisQueueResourceTest {
         assertThat(estimate.componentName()).isEqualTo("test-memory");
         assertThat(estimate.category()).isEqualTo(MemoryEstimate.Category.QUEUE);
 
-        // Off-heap queue should estimate much less than capacity × chunkSize
+        // Off-heap queue should estimate much less than an in-memory queue holding 10 chunks
         long inMemoryEstimate = 10L * params.estimateBytesPerChunk();
         assertThat(estimate.estimatedBytes()).isLessThan(inMemoryEstimate);
 

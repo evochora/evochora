@@ -8,9 +8,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-import javax.jms.Connection;
-import javax.jms.ConnectionFactory;
-import javax.jms.JMSException;
+import jakarta.jms.Connection;
+import jakarta.jms.ConnectionFactory;
+import jakarta.jms.JMSException;
 
 import org.apache.activemq.artemis.core.server.ActiveMQServer;
 import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
@@ -47,7 +47,7 @@ import com.typesafe.config.Config;
  * acknowledgment longer than {@code claimTimeout}, the session is recovered,
  * causing the broker to redeliver the message to another consumer.
  */
-public class ArtemisTopicResource<T extends Message> extends AbstractTopicResource<T, javax.jms.Message> 
+public class ArtemisTopicResource<T extends Message> extends AbstractTopicResource<T, jakarta.jms.Message> 
         implements IMemoryEstimatable {
     
     private static final Logger log = LoggerFactory.getLogger(ArtemisTopicResource.class);
@@ -238,7 +238,7 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
     }
 
     @Override
-    protected ITopicReader<T, javax.jms.Message> createReaderDelegate(ResourceContext context) {
+    protected ITopicReader<T, jakarta.jms.Message> createReaderDelegate(ResourceContext context) {
         return new ArtemisTopicReaderDelegate<>(this, context);
     }
 

@@ -3,12 +3,12 @@ package org.evochora.datapipeline.resources.topics;
 import java.time.Instant;
 import java.util.concurrent.TimeUnit;
 
-import javax.jms.BytesMessage;
-import javax.jms.Connection;
-import javax.jms.JMSException;
-import javax.jms.MessageConsumer;
-import javax.jms.Session;
-import javax.jms.Topic;
+import jakarta.jms.BytesMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.Session;
+import jakarta.jms.Topic;
 
 import org.apache.activemq.artemis.api.jms.ActiveMQJMSConstants;
 import org.evochora.datapipeline.api.contracts.TopicEnvelope;
@@ -31,7 +31,7 @@ import com.google.protobuf.Message;
  * session recovery, causing the broker to redeliver the message to another consumer.
  */
 public class ArtemisTopicReaderDelegate<T extends Message> 
-    extends AbstractTopicDelegateReader<ArtemisTopicResource<T>, T, javax.jms.Message> {
+    extends AbstractTopicDelegateReader<ArtemisTopicResource<T>, T, jakarta.jms.Message> {
 
     private static final Logger log = LoggerFactory.getLogger(ArtemisTopicReaderDelegate.class);
     
@@ -216,12 +216,12 @@ public class ArtemisTopicReaderDelegate<T extends Message>
     }
 
     @Override
-    protected ReceivedEnvelope<javax.jms.Message> receiveEnvelope(long timeout, TimeUnit unit) throws InterruptedException {
+    protected ReceivedEnvelope<jakarta.jms.Message> receiveEnvelope(long timeout, TimeUnit unit) throws InterruptedException {
         try {
             // Lazy initialization: ensure consumer exists and is on the correct topic
             ensureConsumerInitialized();
             
-            javax.jms.Message message;
+            jakarta.jms.Message message;
             if (timeout == 0 && unit == null) {
                 message = consumer.receive(); // Block indefinitely
             } else {
@@ -289,7 +289,7 @@ public class ArtemisTopicReaderDelegate<T extends Message>
     }
 
     @Override
-    protected void acknowledgeMessage(javax.jms.Message message) {
+    protected void acknowledgeMessage(jakarta.jms.Message message) {
         try {
             message.acknowledge();
             // Record metrics (O(1) - AtomicLong increment)

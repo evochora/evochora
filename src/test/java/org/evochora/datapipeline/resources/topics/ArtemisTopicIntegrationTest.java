@@ -123,7 +123,7 @@ class ArtemisTopicIntegrationTest {
             new ResourceContext("writer-service", "writer-port", "topic-write", "batch-topic-artemis", Map.of()));
 
         @SuppressWarnings("unchecked")
-        ITopicReader<BatchInfo, javax.jms.Message> reader = (ITopicReader<BatchInfo, javax.jms.Message>) this.topic.getWrappedResource(
+        ITopicReader<BatchInfo, jakarta.jms.Message> reader = (ITopicReader<BatchInfo, jakarta.jms.Message>) this.topic.getWrappedResource(
             new ResourceContext("reader-service", "reader-port", "topic-read", "batch-topic-artemis", Map.of("consumerGroup", "test-consumer-group")));
 
         this.topic.setSimulationRun("20250101-TEST-RUN");
@@ -140,7 +140,7 @@ class ArtemisTopicIntegrationTest {
         writer.send(message);
 
         // Then
-        TopicMessage<BatchInfo, javax.jms.Message> receivedMessage = reader.poll(5, TimeUnit.SECONDS);
+        TopicMessage<BatchInfo, jakarta.jms.Message> receivedMessage = reader.poll(5, TimeUnit.SECONDS);
 
         assertThat(receivedMessage).isNotNull();
         assertThat(receivedMessage.payload()).isEqualTo(message);
@@ -163,11 +163,11 @@ class ArtemisTopicIntegrationTest {
             new ResourceContext("writer", "writer", "topic-write", "test", Map.of()));
 
         @SuppressWarnings("unchecked")
-        ITopicReader<BatchInfo, javax.jms.Message> reader1 = (ITopicReader<BatchInfo, javax.jms.Message>) this.topic.getWrappedResource(
+        ITopicReader<BatchInfo, jakarta.jms.Message> reader1 = (ITopicReader<BatchInfo, jakarta.jms.Message>) this.topic.getWrappedResource(
             new ResourceContext("r1", "p1", "topic-read", "test", Map.of("consumerGroup", "workers")));
 
         @SuppressWarnings("unchecked")
-        ITopicReader<BatchInfo, javax.jms.Message> reader2 = (ITopicReader<BatchInfo, javax.jms.Message>) this.topic.getWrappedResource(
+        ITopicReader<BatchInfo, jakarta.jms.Message> reader2 = (ITopicReader<BatchInfo, jakarta.jms.Message>) this.topic.getWrappedResource(
             new ResourceContext("r2", "p2", "topic-read", "test", Map.of("consumerGroup", "workers")));
 
         this.topic.setSimulationRun("RUN-COMPETING");
@@ -204,11 +204,11 @@ class ArtemisTopicIntegrationTest {
             new ResourceContext("writer", "writer", "topic-write", "test", Map.of()));
 
         @SuppressWarnings("unchecked")
-        ITopicReader<BatchInfo, javax.jms.Message> groupA = (ITopicReader<BatchInfo, javax.jms.Message>) this.topic.getWrappedResource(
+        ITopicReader<BatchInfo, jakarta.jms.Message> groupA = (ITopicReader<BatchInfo, jakarta.jms.Message>) this.topic.getWrappedResource(
             new ResourceContext("r1", "p1", "topic-read", "test", Map.of("consumerGroup", "group-A")));
 
         @SuppressWarnings("unchecked")
-        ITopicReader<BatchInfo, javax.jms.Message> groupB = (ITopicReader<BatchInfo, javax.jms.Message>) this.topic.getWrappedResource(
+        ITopicReader<BatchInfo, jakarta.jms.Message> groupB = (ITopicReader<BatchInfo, jakarta.jms.Message>) this.topic.getWrappedResource(
             new ResourceContext("r2", "p2", "topic-read", "test", Map.of("consumerGroup", "group-B")));
 
         this.topic.setSimulationRun("RUN-PUBSUB");
@@ -234,8 +234,8 @@ class ArtemisTopicIntegrationTest {
             new ResourceContext("writer", "w", "topic-write", "retention-test", Map.of()));
 
         @SuppressWarnings("unchecked")
-        ITopicReader<BatchInfo, javax.jms.Message> groupA =
-            (ITopicReader<BatchInfo, javax.jms.Message>) this.topic.getWrappedResource(
+        ITopicReader<BatchInfo, jakarta.jms.Message> groupA =
+            (ITopicReader<BatchInfo, jakarta.jms.Message>) this.topic.getWrappedResource(
                 new ResourceContext("indexer-a", "a", "topic-read", "retention-test",
                     Map.of("consumerGroup", "group-A")));
 
@@ -256,7 +256,7 @@ class ArtemisTopicIntegrationTest {
         // Group A reads and ACKs all 3 messages
         Set<Long> processedByA = new HashSet<>();
         for (int i = 0; i < 3; i++) {
-            TopicMessage<BatchInfo, javax.jms.Message> msg = groupA.poll(5, TimeUnit.SECONDS);
+            TopicMessage<BatchInfo, jakarta.jms.Message> msg = groupA.poll(5, TimeUnit.SECONDS);
             assertThat(msg).describedAs("Group A should receive message %d", i + 1).isNotNull();
             processedByA.add(msg.payload().getTickStart());
             groupA.ack(msg);
@@ -268,15 +268,15 @@ class ArtemisTopicIntegrationTest {
 
         // NEW consumer group B joins AFTER Group A finished
         @SuppressWarnings("unchecked")
-        ITopicReader<BatchInfo, javax.jms.Message> groupB =
-            (ITopicReader<BatchInfo, javax.jms.Message>) this.topic.getWrappedResource(
+        ITopicReader<BatchInfo, jakarta.jms.Message> groupB =
+            (ITopicReader<BatchInfo, jakarta.jms.Message>) this.topic.getWrappedResource(
                 new ResourceContext("indexer-b", "b", "topic-read", "retention-test",
                     Map.of("consumerGroup", "group-B")));
 
         // Group B should receive ALL 3 historical messages via replay
         Set<Long> processedByB = new HashSet<>();
         for (int i = 0; i < 3; i++) {
-            TopicMessage<BatchInfo, javax.jms.Message> msg = groupB.poll(5, TimeUnit.SECONDS);
+            TopicMessage<BatchInfo, jakarta.jms.Message> msg = groupB.poll(5, TimeUnit.SECONDS);
             assertThat(msg)
                 .describedAs("Group B should receive historical message %d via replay", i + 1)
                 .isNotNull();

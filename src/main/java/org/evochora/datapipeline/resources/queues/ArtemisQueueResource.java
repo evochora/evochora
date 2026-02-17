@@ -7,23 +7,23 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.LockSupport;
 import java.util.function.Predicate;
 
-import javax.jms.BytesMessage;
-import javax.jms.Connection;
-import javax.jms.DeliveryMode;
-import javax.jms.JMSException;
-import javax.jms.MessageConsumer;
-import javax.jms.MessageProducer;
-import javax.jms.Queue;
-import javax.jms.Session;
+import jakarta.jms.BytesMessage;
+import jakarta.jms.Connection;
+import jakarta.jms.DeliveryMode;
+import jakarta.jms.JMSException;
+import jakarta.jms.MessageConsumer;
+import jakarta.jms.MessageProducer;
+import jakarta.jms.Queue;
+import jakarta.jms.Session;
 
 import org.apache.activemq.artemis.api.core.SimpleString;
 import org.apache.activemq.artemis.core.server.ActiveMQServer;
 import org.apache.activemq.artemis.core.settings.impl.AddressFullMessagePolicy;
 import org.apache.activemq.artemis.core.settings.impl.AddressSettings;
 import org.apache.activemq.artemis.jms.client.ActiveMQConnectionFactory;
+import org.messaginghub.pooled.jms.JmsPoolConnectionFactory;
 import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
@@ -60,10 +60,12 @@ import com.typesafe.config.ConfigFactory;
  * contents off-heap into Artemis journal files, reducing heap to ~2-3 GB (only in-flight
  * serialization/deserialization buffers).
  * <p>
- * <strong>Backpressure:</strong> Uses Artemis {@code BLOCK} address policy with
- * {@code maxSizeMessages} to limit queue depth by message count (not bytes).
- * When full, {@link #put(Message)} blocks until space is available, matching
- * {@link java.util.concurrent.ArrayBlockingQueue} semantics.
+ * <strong>Backpressure:</strong> Uses Artemis BLOCK address policy with {@code maxSizeBytes}
+ * for native byte-based backpressure. When the address size exceeds the configured byte limit,
+ * the broker withholds producer credits and {@code send()} blocks until consumers free space.
+ * This works natively for both InVM and TCP modes. For large production messages (&gt;&gt;64 KB),
+ * the default producer credit window works perfectly. For small messages, configure
+ * {@code producerWindowSize} to ensure per-message credit checks.
  * <p>
  * <strong>Token-Queue Drain Lock:</strong> To guarantee non-overlapping consecutive batch
  * ranges with competing consumers, a second JMS queue ({@code {queueName}.drain-lock})
@@ -79,7 +81,9 @@ import com.typesafe.config.ConfigFactory;
  * <p>
  * <strong>JMS Session Threading:</strong>
  * <ul>
- *   <li>Producer: Long-lived session and producer (single-threaded per service loop)</li>
+ *   <li>Producer: Session pooling via {@link JmsPoolConnectionFactory} — each send borrows
+ *       a pooled session, creates a producer, sends, then returns the session to the pool.
+ *       This avoids TCP round-trips for session creation.</li>
  *   <li>Consumer: Single long-lived session with {@code AUTO_ACKNOWLEDGE}</li>
  *   <li>Token: Separate long-lived session (accessed only within token-synchronized drain)</li>
  * </ul>
@@ -94,16 +98,15 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
     private final String brokerUrl;
     private final int serverId;
     private final String queueName;
-    private final int capacity;
+    private final long maxSizeBytes;
+    private final int producerWindowSize;
     private final int coalescingDelayMs;
     private final long estimatedBytesPerItem;
 
     private final ActiveMQConnectionFactory connectionFactory;
 
-    // Producer: dedicated connection + long-lived session and producer
-    private final Connection producerConnection;
-    private final Session producerSession;
-    private final MessageProducer dataProducer;
+    // Producer: pooled session factory — each send borrows a session from the pool
+    private final JmsPoolConnectionFactory producerPool;
 
     // Consumer: dedicated connection + long-lived session
     private final Connection consumerConnection;
@@ -136,7 +139,8 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
      *                <ul>
      *                  <li>{@code brokerUrl} - Artemis broker URL (default: "vm://0")</li>
      *                  <li>{@code queueName} - JMS queue name (default: resource name)</li>
-     *                  <li>{@code capacity} - Maximum queue depth in messages (default: 10)</li>
+     *                  <li>{@code maxSizeBytes} - Maximum address size in bytes before BLOCK (default: 1 GB)</li>
+     *                  <li>{@code producerWindowSize} - Producer credit window in bytes (default: 0 = Artemis default 64 KB)</li>
      *                  <li>{@code coalescingDelayMs} - Delay for batch coalescing (default: 0)</li>
      *                  <li>{@code metricsWindowSeconds} - Throughput calculation window (default: 5)</li>
      *                  <li>{@code estimatedBytesPerItem} - Override for memory estimation (default: 0 = auto)</li>
@@ -145,7 +149,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
     public ArtemisQueueResource(String name, Config options) {
         super(name, options);
         Config defaults = ConfigFactory.parseMap(Map.of(
-            "capacity", 10,
+            "maxSizeBytes", 1073741824L, // 1 GB — off-heap journal storage, not Java heap
             "coalescingDelayMs", 0,
             "metricsWindowSeconds", 5
         ));
@@ -154,14 +158,16 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
         this.brokerUrl = finalConfig.hasPath("brokerUrl") ? finalConfig.getString("brokerUrl") : "vm://0";
         this.serverId = EmbeddedBrokerProcess.parseInVmServerId(brokerUrl);
         this.queueName = finalConfig.hasPath("queueName") ? finalConfig.getString("queueName") : name;
-        this.capacity = finalConfig.getInt("capacity");
+        this.maxSizeBytes = finalConfig.getLong("maxSizeBytes");
+        this.producerWindowSize = finalConfig.hasPath("producerWindowSize")
+            ? finalConfig.getInt("producerWindowSize") : 0;
         this.coalescingDelayMs = finalConfig.getInt("coalescingDelayMs");
         this.metricsWindowSeconds = finalConfig.getInt("metricsWindowSeconds");
         this.estimatedBytesPerItem = finalConfig.hasPath("estimatedBytesPerItem")
             ? finalConfig.getLong("estimatedBytesPerItem") : 0;
 
-        if (capacity <= 0) {
-            throw new IllegalArgumentException("Capacity must be positive for resource '" + name + "'.");
+        if (maxSizeBytes <= 0) {
+            throw new IllegalArgumentException("maxSizeBytes must be positive for resource '" + name + "'.");
         }
         if (coalescingDelayMs < 0) {
             throw new IllegalArgumentException("coalescingDelayMs cannot be negative for resource '" + name + "'.");
@@ -172,18 +178,20 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
 
         this.throughputCounter = new SlidingWindowCounter(metricsWindowSeconds);
 
-        // Configure queue-specific address settings (BLOCK policy, message count limit)
+        // Configure queue-specific address settings (BLOCK policy with byte-based limit)
         configureQueueAddressSettings();
 
         try {
             this.connectionFactory = new ActiveMQConnectionFactory(brokerUrl);
+            if (producerWindowSize > 0) {
+                this.connectionFactory.setProducerWindowSize(producerWindowSize);
+            }
 
-            // Producer connection + long-lived session and producer
-            this.producerConnection = createTrackedConnection();
-            this.producerSession = producerConnection.createSession(false, Session.AUTO_ACKNOWLEDGE);
-            Queue producerQueue = producerSession.createQueue(queueName);
-            this.dataProducer = producerSession.createProducer(producerQueue);
-            this.dataProducer.setDeliveryMode(DeliveryMode.PERSISTENT);
+            // Producer pool: wraps the raw factory to pool sessions for send operations
+            this.producerPool = new JmsPoolConnectionFactory();
+            this.producerPool.setConnectionFactory(connectionFactory);
+            this.producerPool.setMaxConnections(1);
+            this.producerPool.start();
 
             // Consumer connection + long-lived session (AUTO_ACKNOWLEDGE: messages acked on receive)
             this.consumerConnection = createTrackedConnection();
@@ -202,8 +210,8 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
             // Seed the token queue with exactly one token if empty
             seedTokenIfEmpty(tokenQueueName);
 
-            log.debug("ArtemisQueueResource '{}' initialized (url={}, queue={}, capacity={}, coalescing={}ms)",
-                name, brokerUrl, queueName, capacity, coalescingDelayMs);
+            log.debug("ArtemisQueueResource '{}' initialized (url={}, queue={}, maxSizeBytes={}, coalescing={}ms)",
+                name, brokerUrl, queueName, maxSizeBytes, coalescingDelayMs);
 
         } catch (JMSException e) {
             // Clean up any connections created before the failure.
@@ -219,11 +227,11 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
     }
 
     /**
-     * Configures BLOCK-based address settings for the data queue and token queue.
+     * Configures BLOCK-based address settings for the data queue.
      * <p>
      * Unlike topics (which use PAGE policy to never block producers), queues use BLOCK
-     * policy to provide ArrayBlockingQueue-like backpressure. The queue depth is limited
-     * by message count ({@code maxSizeMessages}), not byte size.
+     * policy to provide backpressure. The queue depth is limited by byte size
+     * ({@code maxSizeBytes}), enforced natively via Artemis producer credits.
      * <p>
      * The token queue inherits global "#" defaults (PAGE policy). It only ever holds 0-1
      * messages, so no special address settings are needed.
@@ -235,19 +243,19 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
             return;
         }
 
-        // Data queue: BLOCK policy with message count limit
+        // Data queue: BLOCK policy with byte-based limit
         AddressSettings dataSettings = new AddressSettings();
         dataSettings.setAddressFullMessagePolicy(AddressFullMessagePolicy.BLOCK);
-        dataSettings.setMaxSizeMessages(capacity);
-        dataSettings.setMaxSizeBytes(-1); // Disable byte limit, use message count only
+        dataSettings.setMaxSizeBytes(maxSizeBytes);
+        dataSettings.setMaxSizeMessages(-1); // Disable message-count limit, use byte size only
         dataSettings.setDefaultMaxConsumers(-1); // Unlimited consumers
         server.getAddressSettingsRepository().addMatch(queueName, dataSettings);
 
         // Token queue: inherits global "#" settings (PAGE policy).
         // The token queue only ever holds 0-1 messages, so no special settings needed.
 
-        log.debug("Address settings configured: data queue '{}' (BLOCK, max {})",
-            queueName, capacity);
+        log.debug("Address settings configured: data queue '{}' (BLOCK, maxSizeBytes={})",
+            queueName, maxSizeBytes);
     }
 
     /**
@@ -263,7 +271,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
     private void seedTokenIfEmpty(String tokenQueueName) throws JMSException {
         // Try to receive existing token (non-blocking)
         // With AUTO_ACKNOWLEDGE, receiving the token also acknowledges it.
-        javax.jms.Message existingToken = tokenConsumer.receiveNoWait();
+        jakarta.jms.Message existingToken = tokenConsumer.receiveNoWait();
 
         if (existingToken != null) {
             // Token exists (already acknowledged by AUTO_ACKNOWLEDGE) — re-send to put it back
@@ -358,13 +366,8 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
     /**
      * {@inheritDoc}
      * <p>
-     * Non-blocking offer. Checks queue capacity via server API before sending.
-     * Returns false immediately if the queue is at capacity.
-     * <p>
-     * <strong>Race condition note:</strong> The capacity check and send are not atomic.
-     * If the queue fills between check and send, the send will briefly block (Artemis BLOCK
-     * policy). This is benign — InMemoryBlockingQueue's non-blocking offer also does not
-     * guarantee atomicity.
+     * Non-blocking offer. Checks the address size via Artemis server API and returns
+     * false immediately if the byte limit is reached.
      */
     @Override
     public boolean offer(T element) {
@@ -386,24 +389,13 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
     /**
      * {@inheritDoc}
      * <p>
-     * Blocking put. Waits until the queue has space, then sends.
-     * <p>
-     * Backpressure is implemented at the application level via {@link #isQueueAtCapacity()}
-     * polling rather than relying solely on Artemis BLOCK policy credits. This is necessary
-     * because the long-lived producer's byte-based credit window (default 64 KB) can allow
-     * small messages past the {@code maxSizeMessages} limit. The broker's BLOCK policy
-     * remains active as a safety net.
+     * Blocking put. Sends the message via the producer pool. If the address has exceeded
+     * {@code maxSizeBytes}, the Artemis BLOCK policy withholds producer credits and the
+     * {@code send()} call blocks until consumers free space.
      */
     @Override
     public void put(T element) throws InterruptedException {
         byte[] data = serialize(element);
-        // Application-level blocking: wait until queue has space
-        while (isQueueAtCapacity()) {
-            if (Thread.interrupted()) {
-                throw new InterruptedException("put() interrupted while waiting for capacity");
-            }
-            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(10));
-        }
         try {
             sendMessage(data);
             throughputCounter.recordCount();
@@ -419,8 +411,10 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
     /**
      * {@inheritDoc}
      * <p>
-     * Blocking offer with timeout. Creates a temporary connection with {@code callTimeout}
-     * set, so the send will time out if the queue remains full. Returns false on timeout.
+     * Blocking offer with timeout. Attempts to send the message with a bounded wait.
+     * If the queue is at capacity (BLOCK policy), the send blocks until space is available
+     * or the timeout expires. Uses a dedicated connection with {@code callTimeout} to
+     * enforce the time limit.
      */
     @Override
     public boolean offer(T element, long timeout, TimeUnit unit) throws InterruptedException {
@@ -433,7 +427,6 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
             if (isInterruptedException(e)) {
                 throw new InterruptedException("offer() interrupted");
             }
-            // Send timeout or error — return false
             return false;
         }
     }
@@ -471,22 +464,32 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
     }
 
     /**
-     * Sends a serialized message to the data queue using the long-lived producer session.
+     * Sends a serialized message to the data queue using a pooled session.
      * <p>
-     * Callers are responsible for capacity checks before calling this method.
-     * {@link #put(Message)} polls {@link #isQueueAtCapacity()} before sending;
-     * {@link #offer(Message)} returns false if at capacity.
+     * Borrows a session from the {@link #producerPool}, creates a producer, sends,
+     * then closes (returns session to pool). The session pool avoids TCP round-trips
+     * for session creation while ensuring each send gets fresh producer credits from
+     * the broker — preventing credit pre-fetch from bypassing the BLOCK policy.
      * <p>
      * Thread safety: queue producers are single-threaded (one service loop per resource
-     * wrapper), so no synchronization is needed on the shared session/producer.
+     * wrapper), so no synchronization is needed.
      *
      * @param data the serialized message bytes
      * @throws JMSException if sending fails
      */
     private void sendMessage(byte[] data) throws JMSException {
-        BytesMessage message = producerSession.createBytesMessage();
-        message.writeBytes(data);
-        dataProducer.send(message);
+        try (Connection conn = producerPool.createConnection()) {
+            conn.start();
+            try (Session session = conn.createSession(false, Session.AUTO_ACKNOWLEDGE)) {
+                Queue queue = session.createQueue(queueName);
+                try (MessageProducer producer = session.createProducer(queue)) {
+                    producer.setDeliveryMode(DeliveryMode.PERSISTENT);
+                    BytesMessage message = session.createBytesMessage();
+                    message.writeBytes(data);
+                    producer.send(message);
+                }
+            }
+        }
     }
 
     /**
@@ -506,6 +509,9 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
         try (ActiveMQConnectionFactory timeoutFactory = new ActiveMQConnectionFactory(brokerUrl)) {
             timeoutFactory.setBlockOnDurableSend(true);
             timeoutFactory.setCallTimeout(timeoutMs);
+            if (producerWindowSize > 0) {
+                timeoutFactory.setProducerWindowSize(producerWindowSize);
+            }
 
             try (Connection connection = timeoutFactory.createConnection()) {
                 connection.start();
@@ -523,13 +529,13 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
     }
 
     /**
-     * Checks if the data queue is at maximum capacity.
+     * Checks if the data queue address has reached its byte-size limit.
      * <p>
-     * Uses Artemis server API to compare message count against configured capacity.
-     * Falls back to assuming not at capacity if the server is unavailable (allows send
-     * to proceed; Artemis BLOCK policy provides the real backpressure).
+     * Uses the Artemis {@code PagingStore.getAddressSize()} API — the same metric that
+     * the BLOCK policy checks internally. Falls back to assuming not at capacity if the
+     * server is unavailable (allows send to proceed; BLOCK policy provides the real backpressure).
      *
-     * @return true if the queue has reached its configured capacity
+     * @return true if the address size has reached or exceeded {@code maxSizeBytes}
      */
     private boolean isQueueAtCapacity() {
         ActiveMQServer server = EmbeddedBrokerProcess.getServer(serverId);
@@ -537,9 +543,9 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
             return false; // Can't check, let send proceed (BLOCK policy handles it)
         }
         try {
-            var queueControl = server.locateQueue(SimpleString.of(queueName));
-            if (queueControl != null) {
-                return queueControl.getMessageCount() >= capacity;
+            var pgStore = server.getPagingManager().getPageStore(SimpleString.of(queueName));
+            if (pgStore != null) {
+                return pgStore.getAddressSize() >= maxSizeBytes;
             }
             return false;
         } catch (Exception e) {
@@ -559,7 +565,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
     @Override
     public Optional<T> poll() {
         try {
-            javax.jms.Message msg = dataConsumer.receiveNoWait();
+            jakarta.jms.Message msg = dataConsumer.receiveNoWait();
             if (msg == null) {
                 return Optional.empty();
             }
@@ -581,7 +587,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
     @Override
     public T take() throws InterruptedException {
         try {
-            javax.jms.Message msg = dataConsumer.receive(0);
+            jakarta.jms.Message msg = dataConsumer.receive(0);
             if (msg == null) {
                 throw new InterruptedException("take() returned null — consumer likely closed");
             }
@@ -608,7 +614,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
     public Optional<T> poll(long timeout, TimeUnit unit) throws InterruptedException {
         try {
             long timeoutMs = unit.toMillis(timeout);
-            javax.jms.Message msg = dataConsumer.receive(timeoutMs);
+            jakarta.jms.Message msg = dataConsumer.receive(timeoutMs);
             if (msg == null) {
                 return Optional.empty();
             }
@@ -635,7 +641,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
         int count = 0;
         try {
             while (count < maxElements) {
-                javax.jms.Message msg = dataConsumer.receiveNoWait();
+                jakarta.jms.Message msg = dataConsumer.receiveNoWait();
                 if (msg == null) {
                     break;
                 }
@@ -681,7 +687,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
             long deadlineMs = System.currentTimeMillis() + unit.toMillis(timeout);
 
             // 1. Acquire drain token (blocks until available or timeout)
-            javax.jms.Message token;
+            jakarta.jms.Message token;
             try {
                 long tokenTimeout = Math.max(0, deadlineMs - System.currentTimeMillis());
                 token = tokenConsumer.receive(tokenTimeout);
@@ -762,7 +768,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
      *
      * @param token the consumed token message
      */
-    private void releaseToken(javax.jms.Message token) {
+    private void releaseToken(jakarta.jms.Message token) {
         JMSException lastException = null;
         for (int attempt = 1; attempt <= 3; attempt++) {
             try {
@@ -800,7 +806,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
      * @throws JMSException if JMS operations fail
      * @throws InvalidProtocolBufferException if deserialization fails
      */
-    private T extractPayload(javax.jms.Message msg) throws JMSException, InvalidProtocolBufferException {
+    private T extractPayload(jakarta.jms.Message msg) throws JMSException, InvalidProtocolBufferException {
         if (!(msg instanceof BytesMessage bytesMsg)) {
             throw new JMSException("Expected BytesMessage, got: " + msg.getClass().getName());
         }
@@ -916,8 +922,9 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
     @Override
     protected void addCustomMetrics(Map<String, Number> metrics) {
         super.addCustomMetrics(metrics);
-        metrics.put("capacity", capacity);
-        metrics.put("current_size", getQueueMessageCount());
+        metrics.put("max_size_bytes", maxSizeBytes);
+        metrics.put("address_size_bytes", getAddressSize());
+        metrics.put("message_count", getQueueMessageCount());
         metrics.put("throughput_per_sec", throughputCounter.getRate());
     }
 
@@ -956,12 +963,35 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
     }
 
     /**
-     * Returns the configured capacity of this queue.
+     * Returns the configured maximum address size in bytes.
      *
-     * @return The maximum number of elements this queue can hold.
+     * @return The byte limit before BLOCK policy halts producers.
      */
-    public int getCapacity() {
-        return capacity;
+    public long getMaxSizeBytes() {
+        return maxSizeBytes;
+    }
+
+    /**
+     * Returns the current address size in bytes via the Artemis PagingStore API.
+     * <p>
+     * Returns 0 if the server is unavailable (e.g. remote broker deployment).
+     *
+     * @return current address size in bytes
+     */
+    private long getAddressSize() {
+        ActiveMQServer server = EmbeddedBrokerProcess.getServer(serverId);
+        if (server == null) {
+            return 0;
+        }
+        try {
+            var pgStore = server.getPagingManager().getPageStore(SimpleString.of(queueName));
+            if (pgStore != null) {
+                return pgStore.getAddressSize();
+            }
+            return 0;
+        } catch (Exception e) {
+            return 0;
+        }
     }
 
     // =========================================================================
@@ -975,6 +1005,13 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
      * Token and data sessions are closed via their parent connections.
      */
     public void close() throws Exception {
+        // Stop the producer session pool first
+        try {
+            producerPool.stop();
+        } catch (Exception e) {
+            log.debug("Error stopping producer pool: {}", e.getMessage());
+        }
+
         // Close all tracked connections — this cascades to sessions, consumers, producers
         for (Connection conn : openConnections) {
             try {
