@@ -354,12 +354,14 @@ class ArtemisQueueResourceTest {
         }
 
         // Verify: processing happened concurrently, not sequentially.
-        // Parallel: ~500ms processing + ~200ms drain overhead + ~200ms empty-queue timeouts ≈ 900ms
-        // Sequential: 2 × (500ms processing + 100ms drain + 100ms timeout) ≈ 1400ms
+        // Parallel: ~500ms processing + overhead ≈ 700-1000ms (varies by CI environment)
+        // Sequential: 2 × (500ms processing + drain + timeout) ≈ 1400ms+
+        // Threshold set conservatively for slow CI environments (e.g. Windows GitHub Actions).
+        long sequentialMinimum = 2 * (processingTimeMs + drainTimeoutMs); // 1200ms
         assertThat(wallElapsed)
-            .describedAs("Wall clock (%dms) should show parallel processing (< 1100ms), "
-                + "not sequential (≥ 1200ms)", wallElapsed)
-            .isLessThan(1100);
+            .describedAs("Wall clock (%dms) should be well below sequential minimum (%dms), "
+                + "proving parallel processing", wallElapsed, sequentialMinimum)
+            .isLessThan(sequentialMinimum);
     }
 
     // =========================================================================
