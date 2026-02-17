@@ -101,8 +101,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          # For release events, checkout the tag explicitly
-          ref: ${{ steps.version.outputs.tag }}
+          # For release events, checkout the tag explicitly.
+          # For push/workflow_dispatch, use the triggering commit (github.sha).
+          ref: ${{ steps.version.outputs.is_release == 'true' && steps.version.outputs.tag || github.sha }}
 
       - name: Set up JDK 21 and Gradle Cache
         uses: actions/setup-java@v4
