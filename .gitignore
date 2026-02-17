@@ -58,3 +58,6 @@ extensions/vscode/src/*.vsix
 
 # Local configuration file (user-specific overrides)
 local.conf
+
+# Python virtual environments
+.venv/
