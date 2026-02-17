@@ -189,7 +189,7 @@ public class EmbeddedBrokerProcess extends AbstractProcess implements IServicePr
             try {
                 return Integer.parseInt(brokerUrl.substring(5));
             } catch (NumberFormatException e) {
-                return 0;
+                return -1;
             }
         }
         return -1;

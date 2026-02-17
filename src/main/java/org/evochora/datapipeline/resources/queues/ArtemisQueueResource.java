@@ -7,6 +7,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.LockSupport;
 import java.util.function.Predicate;
 
 import javax.jms.BytesMessage;
@@ -78,7 +79,7 @@ import com.typesafe.config.ConfigFactory;
  * <p>
  * <strong>JMS Session Threading:</strong>
  * <ul>
- *   <li>Producer: Session-per-send pattern (thread-safe, cheap for vm://0)</li>
+ *   <li>Producer: Long-lived session and producer (single-threaded per service loop)</li>
  *   <li>Consumer: Single long-lived session with {@code AUTO_ACKNOWLEDGE}</li>
  *   <li>Token: Separate long-lived session (accessed only within token-synchronized drain)</li>
  * </ul>
@@ -99,8 +100,10 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
 
     private final ActiveMQConnectionFactory connectionFactory;
 
-    // Producer: dedicated connection, session-per-send for thread safety
+    // Producer: dedicated connection + long-lived session and producer
     private final Connection producerConnection;
+    private final Session producerSession;
+    private final MessageProducer dataProducer;
 
     // Consumer: dedicated connection + long-lived session
     private final Connection consumerConnection;
@@ -175,8 +178,12 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
         try {
             this.connectionFactory = new ActiveMQConnectionFactory(brokerUrl);
 
-            // Producer connection
+            // Producer connection + long-lived session and producer
             this.producerConnection = createTrackedConnection();
+            this.producerSession = producerConnection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+            Queue producerQueue = producerSession.createQueue(queueName);
+            this.dataProducer = producerSession.createProducer(producerQueue);
+            this.dataProducer.setDeliveryMode(DeliveryMode.PERSISTENT);
 
             // Consumer connection + long-lived session (AUTO_ACKNOWLEDGE: messages acked on receive)
             this.consumerConnection = createTrackedConnection();
@@ -379,15 +386,24 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
     /**
      * {@inheritDoc}
      * <p>
-     * Blocking put. Serializes the element and sends it to the Artemis queue.
-     * With BLOCK policy, the send blocks until space is available (matching
-     * {@link java.util.concurrent.ArrayBlockingQueue#put} semantics).
+     * Blocking put. Waits until the queue has space, then sends.
      * <p>
-     * Uses session-per-send pattern for thread safety.
+     * Backpressure is implemented at the application level via {@link #isQueueAtCapacity()}
+     * polling rather than relying solely on Artemis BLOCK policy credits. This is necessary
+     * because the long-lived producer's byte-based credit window (default 64 KB) can allow
+     * small messages past the {@code maxSizeMessages} limit. The broker's BLOCK policy
+     * remains active as a safety net.
      */
     @Override
     public void put(T element) throws InterruptedException {
         byte[] data = serialize(element);
+        // Application-level blocking: wait until queue has space
+        while (isQueueAtCapacity()) {
+            if (Thread.interrupted()) {
+                throw new InterruptedException("put() interrupted while waiting for capacity");
+            }
+            LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(10));
+        }
         try {
             sendMessage(data);
             throughputCounter.recordCount();
@@ -455,32 +471,22 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
     }
 
     /**
-     * Sends a serialized message to the data queue using session-per-send on the shared
-     * producer connection. Blocks indefinitely if the queue is at capacity (BLOCK policy).
+     * Sends a serialized message to the data queue using the long-lived producer session.
      * <p>
-     * Used by {@link #put(Message)} which has no timeout.
+     * Callers are responsible for capacity checks before calling this method.
+     * {@link #put(Message)} polls {@link #isQueueAtCapacity()} before sending;
+     * {@link #offer(Message)} returns false if at capacity.
      * <p>
-     * <b>TCP deployment note:</b> Session-per-send is cheap for InVM transport but incurs
-     * round-trip and allocation overhead over TCP. Since queue producers are single-threaded
-     * (one service loop per resource wrapper), the fix is to promote the {@link Session} and
-     * {@link javax.jms.MessageProducer} to long-lived instance fields with lazy re-init on
-     * failure — the same pattern used by
-     * {@link org.evochora.datapipeline.resources.topics.ArtemisTopicReaderDelegate}.
-     * No session pooling is needed.
+     * Thread safety: queue producers are single-threaded (one service loop per resource
+     * wrapper), so no synchronization is needed on the shared session/producer.
      *
      * @param data the serialized message bytes
      * @throws JMSException if sending fails
      */
     private void sendMessage(byte[] data) throws JMSException {
-        try (Session session = producerConnection.createSession(false, Session.AUTO_ACKNOWLEDGE)) {
-            Queue queue = session.createQueue(queueName);
-            try (MessageProducer producer = session.createProducer(queue)) {
-                producer.setDeliveryMode(DeliveryMode.PERSISTENT);
-                BytesMessage message = session.createBytesMessage();
-                message.writeBytes(data);
-                producer.send(message);
-            }
-        }
+        BytesMessage message = producerSession.createBytesMessage();
+        message.writeBytes(data);
+        dataProducer.send(message);
     }
 
     /**
