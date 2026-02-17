@@ -1,6 +1,7 @@
 package org.evochora.node.processes.http.api.visualizer;
 
 import java.sql.SQLException;
+import java.sql.SQLTransientConnectionException;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -284,6 +285,21 @@ public abstract class VisualizerBaseController extends AbstractController {
 
             return new CacheConfig(enabled, maxAge, useETag);
         }
+    }
+
+    /**
+     * Checks if a SQLException indicates HikariCP connection pool exhaustion.
+     * <p>
+     * HikariCP throws {@link SQLTransientConnectionException} when no connection
+     * can be acquired within the configured timeout. This is distinct from H2's
+     * LOCK_TIMEOUT (error code 50200), which indicates table-level lock contention
+     * between concurrent readers and writers.
+     *
+     * @param sqlEx The SQLException to check
+     * @return {@code true} if this is a pool exhaustion error
+     */
+    protected static boolean isPoolExhaustion(final SQLException sqlEx) {
+        return sqlEx instanceof SQLTransientConnectionException;
     }
 
     /**

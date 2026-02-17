@@ -564,27 +564,21 @@ public class H2Database extends AbstractDatabaseResource
     protected SimulationMetadata doGetMetadata(Object connection, String simulationRunId) throws Exception {
         Connection conn = (Connection) connection;
         
-        try {
-            // Query metadata table (schema already set by ensureConnection)
-            PreparedStatement stmt = conn.prepareStatement(
-                "SELECT \"value\" FROM metadata WHERE \"key\" = ?"
-            );
+        try (PreparedStatement stmt = conn.prepareStatement(
+                "SELECT \"value\" FROM metadata WHERE \"key\" = ?")) {
             stmt.setString(1, "full_metadata");
-            ResultSet rs = stmt.executeQuery();
-            
-            queriesExecuted.incrementAndGet();
-            
-            if (!rs.next()) {
-                throw new org.evochora.datapipeline.api.resources.database.MetadataNotFoundException(
-                    "Metadata not found for run: " + simulationRunId
-                );
+            try (ResultSet rs = stmt.executeQuery()) {
+                queriesExecuted.incrementAndGet();
+
+                if (!rs.next()) {
+                    throw new org.evochora.datapipeline.api.resources.database.MetadataNotFoundException(
+                        "Metadata not found for run: " + simulationRunId
+                    );
+                }
+
+                String json = rs.getString("value");
+                return ProtobufConverter.fromJson(json, SimulationMetadata.class);
             }
-            
-            String json = rs.getString("value");
-            SimulationMetadata metadata = ProtobufConverter.fromJson(json, SimulationMetadata.class);
-            
-            return metadata;
-            
         } catch (SQLException e) {
             // Table doesn't exist yet (MetadataIndexer hasn't run or is still running)
             if (e.getErrorCode() == 42104 || e.getErrorCode() == 42102 || (e.getMessage().contains("Table") && e.getMessage().contains("not found"))) {
@@ -604,18 +598,13 @@ public class H2Database extends AbstractDatabaseResource
     protected boolean doHasMetadata(Object connection, String simulationRunId) throws Exception {
         Connection conn = (Connection) connection;
         
-        try {
-            // Query metadata existence (schema already set by ensureConnection)
-            PreparedStatement stmt = conn.prepareStatement(
-                "SELECT COUNT(*) as cnt FROM metadata WHERE \"key\" = ?"
-            );
+        try (PreparedStatement stmt = conn.prepareStatement(
+                "SELECT COUNT(*) as cnt FROM metadata WHERE \"key\" = ?")) {
             stmt.setString(1, "full_metadata");
-            ResultSet rs = stmt.executeQuery();
-            
-            queriesExecuted.incrementAndGet();
-            
-            return rs.next() && rs.getInt("cnt") > 0;
-            
+            try (ResultSet rs = stmt.executeQuery()) {
+                queriesExecuted.incrementAndGet();
+                return rs.next() && rs.getInt("cnt") > 0;
+            }
         } catch (SQLException e) {
             // Table doesn't exist yet - metadata not available
             if (e.getErrorCode() == 42104 || e.getMessage().contains("Table") && e.getMessage().contains("not found")) {
@@ -633,35 +622,31 @@ public class H2Database extends AbstractDatabaseResource
     protected String doGetRunIdInCurrentSchema(Object connection) throws Exception {
         Connection conn = (Connection) connection;
         
-        try {
-            // Query 'simulation_info' (small, indexed key-value - much faster than 'full_metadata')
-            // This key is written by doInsertMetadata() with runId, startTime, seed, samplingInterval
-            PreparedStatement stmt = conn.prepareStatement(
-                "SELECT \"value\" FROM metadata WHERE \"key\" = ?"
-            );
+        try (PreparedStatement stmt = conn.prepareStatement(
+                "SELECT \"value\" FROM metadata WHERE \"key\" = ?")) {
             stmt.setString(1, "simulation_info");
-            ResultSet rs = stmt.executeQuery();
-            
-            queriesExecuted.incrementAndGet();
-            
-            if (!rs.next()) {
-                throw new org.evochora.datapipeline.api.resources.database.MetadataNotFoundException(
-                    "Metadata not found in current schema"
-                );
+            try (ResultSet rs = stmt.executeQuery()) {
+                queriesExecuted.incrementAndGet();
+
+                if (!rs.next()) {
+                    throw new org.evochora.datapipeline.api.resources.database.MetadataNotFoundException(
+                        "Metadata not found in current schema"
+                    );
+                }
+
+                // Parse small JSON (~100 bytes) with Gson (type-safe with POJO)
+                String json = rs.getString("value");
+                Gson gson = new Gson();
+                SimulationInfo simInfo = gson.fromJson(json, SimulationInfo.class);
+
+                if (simInfo.runId == null || simInfo.runId.isEmpty()) {
+                    throw new org.evochora.datapipeline.api.resources.database.MetadataNotFoundException(
+                        "Metadata exists but runId field is missing or empty"
+                    );
+                }
+
+                return simInfo.runId;
             }
-            
-            // Parse small JSON (~100 bytes) with Gson (type-safe with POJO)
-            String json = rs.getString("value");
-            Gson gson = new Gson();
-            SimulationInfo simInfo = gson.fromJson(json, SimulationInfo.class);
-            
-            if (simInfo.runId == null || simInfo.runId.isEmpty()) {
-                throw new org.evochora.datapipeline.api.resources.database.MetadataNotFoundException(
-                    "Metadata exists but runId field is missing or empty"
-                );
-            }
-            
-            return simInfo.runId;
             
         } catch (SQLException e) {
             // Table doesn't exist yet (MetadataIndexer hasn't run)

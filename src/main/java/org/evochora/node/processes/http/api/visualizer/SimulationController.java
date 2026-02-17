@@ -174,26 +174,13 @@ public class SimulationController extends VisualizerBaseController {
             throw new VisualizerBaseController.NoRunIdException("Metadata not found for run: " + runId, e);
         } catch (RuntimeException e) {
             // Check if the error is due to non-existent schema (run ID not found)
-            if (e.getCause() instanceof SQLException) {
-                SQLException sqlEx = (SQLException) e.getCause();
+            if (e.getCause() instanceof SQLException sqlEx) {
+                if (isPoolExhaustion(sqlEx)) {
+                    throw new VisualizerBaseController.PoolExhaustionException("Connection pool exhausted", sqlEx);
+                }
                 String msg = sqlEx.getMessage();
-                
-                if (msg != null) {
-                    String lowerMsg = msg.toLowerCase();
-                    
-                    // Check for schema errors FIRST (before pool exhaustion)
-                    if (msg.contains("schema") || msg.contains("Schema")) {
-                        // Schema doesn't exist - run ID not found
-                        throw new VisualizerBaseController.NoRunIdException("Run ID not found: " + runId);
-                    }
-                    
-                    // Check for connection pool timeout/exhaustion (specific patterns only)
-                    if (lowerMsg.contains("timeout") || 
-                        lowerMsg.contains("connection is not available") ||
-                        lowerMsg.contains("connection pool")) {
-                        // Connection pool exhausted or timeout
-                        throw new VisualizerBaseController.PoolExhaustionException("Connection pool exhausted or timeout", sqlEx);
-                    }
+                if (msg != null && (msg.contains("schema") || msg.contains("Schema"))) {
+                    throw new VisualizerBaseController.NoRunIdException("Run ID not found: " + runId);
                 }
             }
             // Other runtime errors - wrap to provide better context

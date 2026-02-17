@@ -144,22 +144,13 @@ public class OrganismController extends VisualizerBaseController {
             ctx.status(HttpStatus.OK).json(new OrganismsResponseDto(organisms, totalOrganismCount, stringTree));
         } catch (RuntimeException e) {
             // Check for schema / connection issues analogous to Environment/SimulationController
-            if (e.getCause() instanceof SQLException) {
-                final SQLException sqlEx = (SQLException) e.getCause();
+            if (e.getCause() instanceof SQLException sqlEx) {
+                if (isPoolExhaustion(sqlEx)) {
+                    throw new PoolExhaustionException("Connection pool exhausted", sqlEx);
+                }
                 final String msg = sqlEx.getMessage();
-
-                if (msg != null) {
-                    final String lowerMsg = msg.toLowerCase();
-
-                    if (msg.contains("schema") || msg.contains("Schema")) {
-                        throw new NoRunIdException("Run ID not found: " + runId);
-                    }
-
-                    if (lowerMsg.contains("timeout")
-                            || lowerMsg.contains("connection is not available")
-                            || lowerMsg.contains("connection pool")) {
-                        throw new PoolExhaustionException("Connection pool exhausted or timeout", sqlEx);
-                    }
+                if (msg != null && (msg.contains("schema") || msg.contains("Schema"))) {
+                    throw new NoRunIdException("Run ID not found: " + runId);
                 }
             }
             throw new RuntimeException("Error retrieving organisms for runId: " + runId, e);
@@ -241,22 +232,13 @@ public class OrganismController extends VisualizerBaseController {
             // Specific 404 for missing organism or tick row, re-throw for central handler
             throw e;
         } catch (RuntimeException e) {
-            if (e.getCause() instanceof SQLException) {
-                final SQLException sqlEx = (SQLException) e.getCause();
+            if (e.getCause() instanceof SQLException sqlEx) {
+                if (isPoolExhaustion(sqlEx)) {
+                    throw new PoolExhaustionException("Connection pool exhausted", sqlEx);
+                }
                 final String msg = sqlEx.getMessage();
-
-                if (msg != null) {
-                    final String lowerMsg = msg.toLowerCase();
-
-                    if (msg.contains("schema") || msg.contains("Schema")) {
-                        throw new NoRunIdException("Run ID not found: " + runId);
-                    }
-
-                    if (lowerMsg.contains("timeout")
-                            || lowerMsg.contains("connection is not available")
-                            || lowerMsg.contains("connection pool")) {
-                        throw new PoolExhaustionException("Connection pool exhausted or timeout", sqlEx);
-                    }
+                if (msg != null && (msg.contains("schema") || msg.contains("Schema"))) {
+                    throw new NoRunIdException("Run ID not found: " + runId);
                 }
             }
             throw new RuntimeException("Error retrieving organism details for runId: " + runId, e);
@@ -373,26 +355,13 @@ public class OrganismController extends VisualizerBaseController {
             throw e;
         } catch (RuntimeException e) {
             // Check if the error is due to non-existent schema (run ID not found)
-            if (e.getCause() instanceof SQLException) {
-                SQLException sqlEx = (SQLException) e.getCause();
+            if (e.getCause() instanceof SQLException sqlEx) {
+                if (isPoolExhaustion(sqlEx)) {
+                    throw new VisualizerBaseController.PoolExhaustionException("Connection pool exhausted", sqlEx);
+                }
                 String msg = sqlEx.getMessage();
-                
-                if (msg != null) {
-                    String lowerMsg = msg.toLowerCase();
-                    
-                    // Check for schema errors FIRST (before pool exhaustion)
-                    if (msg.contains("schema") || msg.contains("Schema")) {
-                        // Schema doesn't exist - run ID not found
-                        throw new VisualizerBaseController.NoRunIdException("Run ID not found: " + runId);
-                    }
-                    
-                    // Check for connection pool timeout/exhaustion (specific patterns only)
-                    if (lowerMsg.contains("timeout") || 
-                        lowerMsg.contains("connection is not available") ||
-                        lowerMsg.contains("connection pool")) {
-                        // Connection pool exhausted or timeout
-                        throw new VisualizerBaseController.PoolExhaustionException("Connection pool exhausted or timeout", sqlEx);
-                    }
+                if (msg != null && (msg.contains("schema") || msg.contains("Schema"))) {
+                    throw new VisualizerBaseController.NoRunIdException("Run ID not found: " + runId);
                 }
             }
             // Other runtime errors - wrap to provide better context
