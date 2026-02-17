@@ -28,6 +28,8 @@ import com.typesafe.config.ConfigFactory;
 @ExtendWith(LogWatchExtension.class)
 class EmbeddedBrokerProcessTest {
 
+    private static final String TEST_DIR_PATH = System.getProperty("java.io.tmpdir") + "/artemis-process-test";
+
     @BeforeEach
     void ensureCleanState() throws Exception {
         EmbeddedBrokerProcess.resetForTesting();
@@ -36,6 +38,7 @@ class EmbeddedBrokerProcessTest {
     @AfterEach
     void cleanup() throws Exception {
         EmbeddedBrokerProcess.resetForTesting();
+        deleteDirectory(new File(TEST_DIR_PATH));
     }
 
     @Test
@@ -43,8 +46,7 @@ class EmbeddedBrokerProcessTest {
     @AllowLog(level = LogLevel.ERROR, loggerPattern = "io\\.netty\\.util\\.ResourceLeakDetector")
     @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
     void shouldStartBrokerWhenEnabled() {
-        String testDir = System.getProperty("java.io.tmpdir") + "/artemis-process-test";
-        String configPath = testDir.replace("\\", "/");
+        String configPath = TEST_DIR_PATH.replace("\\", "/");
 
         Config options = ConfigFactory.parseString("""
             enabled = true
@@ -65,8 +67,6 @@ class EmbeddedBrokerProcessTest {
         process.stop();
 
         assertThat(EmbeddedBrokerProcess.isBrokerStarted()).isFalse();
-
-        deleteDirectory(new File(testDir));
     }
 
     @Test

@@ -97,6 +97,9 @@ class ArtemisQueueResourceTest {
     @AfterAll
     static void teardownBroker() throws Exception {
         EmbeddedBrokerProcess.resetForTesting();
+        if (testDir != null) {
+            deleteDirectory(testDir);
+        }
     }
 
     // =========================================================================

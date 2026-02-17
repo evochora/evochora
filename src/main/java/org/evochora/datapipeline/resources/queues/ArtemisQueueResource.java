@@ -79,7 +79,7 @@ import com.typesafe.config.ConfigFactory;
  * <strong>JMS Session Threading:</strong>
  * <ul>
  *   <li>Producer: Session-per-send pattern (thread-safe, cheap for vm://0)</li>
- *   <li>Consumer: Single long-lived session with {@code INDIVIDUAL_ACKNOWLEDGE}</li>
+ *   <li>Consumer: Single long-lived session with {@code AUTO_ACKNOWLEDGE}</li>
  *   <li>Token: Separate long-lived session (accessed only within token-synchronized drain)</li>
  * </ul>
  *
@@ -111,8 +111,9 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
     private final MessageConsumer tokenConsumer;
     private final MessageProducer tokenProducer;
 
-    // Throughput tracking (5-second window, hardcoded — matches InMemory default)
-    private final SlidingWindowCounter throughputCounter = new SlidingWindowCounter(5);
+    // Throughput tracking
+    private final int metricsWindowSeconds;
+    private final SlidingWindowCounter throughputCounter;
 
     // Local drain lock: serializes JMS session access within the same JVM.
     // JMS sessions are NOT thread-safe, so concurrent consumers in the same JVM
@@ -133,6 +134,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
      *                  <li>{@code queueName} - JMS queue name (default: resource name)</li>
      *                  <li>{@code capacity} - Maximum queue depth in messages (default: 10)</li>
      *                  <li>{@code coalescingDelayMs} - Delay for batch coalescing (default: 0)</li>
+     *                  <li>{@code metricsWindowSeconds} - Throughput calculation window (default: 5)</li>
      *                  <li>{@code estimatedBytesPerItem} - Override for memory estimation (default: 0 = auto)</li>
      *                </ul>
      */
@@ -140,7 +142,8 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
         super(name, options);
         Config defaults = ConfigFactory.parseMap(Map.of(
             "capacity", 10,
-            "coalescingDelayMs", 0
+            "coalescingDelayMs", 0,
+            "metricsWindowSeconds", 5
         ));
         Config finalConfig = options.withFallback(defaults);
 
@@ -148,6 +151,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
         this.queueName = finalConfig.hasPath("queueName") ? finalConfig.getString("queueName") : name;
         this.capacity = finalConfig.getInt("capacity");
         this.coalescingDelayMs = finalConfig.getInt("coalescingDelayMs");
+        this.metricsWindowSeconds = finalConfig.getInt("metricsWindowSeconds");
         this.estimatedBytesPerItem = finalConfig.hasPath("estimatedBytesPerItem")
             ? finalConfig.getLong("estimatedBytesPerItem") : 0;
 
@@ -160,6 +164,8 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
         if (estimatedBytesPerItem < 0) {
             throw new IllegalArgumentException("estimatedBytesPerItem cannot be negative for resource '" + name + "'.");
         }
+
+        this.throughputCounter = new SlidingWindowCounter(metricsWindowSeconds);
 
         // Configure queue-specific address settings (BLOCK policy, message count limit)
         configureQueueAddressSettings();
@@ -191,6 +197,13 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
                 name, brokerUrl, queueName, capacity, coalescingDelayMs);
 
         } catch (JMSException e) {
+            // Clean up any connections created before the failure.
+            // close() iterates openConnections and cascades to sessions/consumers/producers.
+            try {
+                close();
+            } catch (Exception closeEx) {
+                log.debug("Error during cleanup after failed initialization: {}", closeEx.getMessage());
+            }
             log.error("Failed to initialize ArtemisQueueResource '{}'", name);
             throw new RuntimeException("Failed to initialize ArtemisQueueResource: " + name, e);
         }
@@ -729,15 +742,31 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
      * @param token the consumed token message
      */
     private void releaseToken(javax.jms.Message token) {
-        try {
-            // Token was already acknowledged on receive (AUTO_ACKNOWLEDGE).
-            // Send a new token to make it available for the next consumer.
-            BytesMessage newToken = tokenSession.createBytesMessage();
-            tokenProducer.send(newToken);
-        } catch (JMSException e) {
-            log.error("Failed to release drain token on queue '{}' — drain lock is now STUCK", queueName);
-            throw new RuntimeException("Failed to release drain token — lock stuck on queue: " + queueName, e);
+        JMSException lastException = null;
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try {
+                // Token was already acknowledged on receive (AUTO_ACKNOWLEDGE).
+                // Send a new token to make it available for the next consumer.
+                BytesMessage newToken = tokenSession.createBytesMessage();
+                tokenProducer.send(newToken);
+                return;
+            } catch (JMSException e) {
+                lastException = e;
+                log.warn("Failed to release drain token on queue '{}' (attempt {}/3)", queueName, attempt);
+                if (attempt < 3) {
+                    try {
+                        Thread.sleep(50L * attempt);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            }
         }
+        recordError("TOKEN_RELEASE_FAILED", "Failed to release drain token after 3 attempts",
+            lastException != null ? lastException.getMessage() : "unknown");
+        log.error("Failed to release drain token on queue '{}' after 3 attempts — drain lock is now STUCK", queueName);
+        throw new RuntimeException("Failed to release drain token — lock stuck on queue: " + queueName, lastException);
     }
 
     /**
