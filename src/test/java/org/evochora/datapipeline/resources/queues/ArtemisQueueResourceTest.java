@@ -276,22 +276,15 @@ class ArtemisQueueResourceTest {
             queue.put(BatchInfo.newBuilder().setTickStart(i).build());
         }
 
-        // Each consumer drains a batch, then simulates 500ms processing time.
+        // Each consumer drains a batch, then simulates processing time.
         // During processing (outside drainLock), the other consumer can enter drainTo.
         //
-        // Timeline (parallel):
-        //   ~0ms: A drains 5, B blocked on drainLock
-        //   ~50ms: A releases drainLock, starts 500ms processing. B drains 5.
-        //   ~100ms: B releases drainLock, starts 500ms processing.
-        //   ~550ms: A finishes processing, enters drainTo (empty queue, 100ms timeout)
-        //   ~600ms: B finishes processing, blocked on drainLock
-        //   ~650ms: A's drainTo times out, releases drainLock, exits. B enters drainTo.
-        //   ~750ms: B's drainTo times out, exits.
-        // Total parallel: ~750ms
+        // Parallel: both consumers process concurrently → wall time ≈ 1× processing + overhead
+        // Sequential: consumers wait for each other → wall time ≈ 2× processing + overhead
         //
-        // If sequential (drainLock held during processing):
-        //   A drain + process + timeout + B drain + process + timeout = ~1300ms
-        long processingTimeMs = 500;
+        // Processing time set high enough (1000ms) that even on slow CI (Windows GitHub Actions),
+        // the 2× gap between parallel and sequential is clearly distinguishable.
+        long processingTimeMs = 1000;
         long drainTimeoutMs = 100; // Short timeout so empty-queue exits quickly
 
         List<List<Long>> allBatches = new ArrayList<>();
@@ -354,14 +347,13 @@ class ArtemisQueueResourceTest {
         }
 
         // Verify: processing happened concurrently, not sequentially.
-        // Parallel: ~500ms processing + overhead ≈ 700-1000ms (varies by CI environment)
-        // Sequential: 2 × (500ms processing + drain + timeout) ≈ 1400ms+
-        // Threshold set conservatively for slow CI environments (e.g. Windows GitHub Actions).
-        long sequentialMinimum = 2 * (processingTimeMs + drainTimeoutMs); // 1200ms
+        // Parallel: ~1× processingTime + overhead ≈ 1200-1600ms
+        // Sequential: ~2× processingTime + overhead ≈ 2200-2600ms
+        // Threshold: 2× processingTime — generous enough for slow CI, strict enough to catch regressions.
         assertThat(wallElapsed)
-            .describedAs("Wall clock (%dms) should be well below sequential minimum (%dms), "
-                + "proving parallel processing", wallElapsed, sequentialMinimum)
-            .isLessThan(sequentialMinimum);
+            .describedAs("Wall clock (%dms) should be below 2× processingTime (%dms), "
+                + "proving parallel processing", wallElapsed, 2 * processingTimeMs)
+            .isLessThan(2 * processingTimeMs);
     }
 
     // =========================================================================
