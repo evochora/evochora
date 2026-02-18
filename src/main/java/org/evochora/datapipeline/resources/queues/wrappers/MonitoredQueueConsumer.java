@@ -8,6 +8,8 @@ import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.StreamingBatch;
 import org.evochora.datapipeline.resources.AbstractResource;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -21,6 +23,8 @@ import java.util.concurrent.atomic.AtomicLong;
  * @param <T> The type of elements consumed from the queue.
  */
 public class MonitoredQueueConsumer<T> extends AbstractResource implements IInputQueueResource<T>, IWrappedResource {
+
+    private static final Logger log = LoggerFactory.getLogger(MonitoredQueueConsumer.class);
 
     private final IInputQueueResource<T> delegate;
     private final ResourceContext context;
@@ -60,6 +64,12 @@ public class MonitoredQueueConsumer<T> extends AbstractResource implements IInpu
      * <p>
      * Delegates to the underlying queue and records the batch size for metrics.
      * The message count is known immediately from {@link StreamingBatch#size()}.
+     *
+     * @param maxSize maximum number of elements to receive
+     * @param timeout maximum time to wait for at least one element
+     * @param unit    time unit for the timeout parameter
+     * @return a {@link StreamingBatch} containing 0 to {@code maxSize} elements (never null)
+     * @throws InterruptedException if interrupted while waiting
      */
     @Override
     public StreamingBatch<T> receiveBatch(int maxSize, long timeout, TimeUnit unit) throws InterruptedException {
@@ -72,6 +82,8 @@ public class MonitoredQueueConsumer<T> extends AbstractResource implements IInpu
         } catch (InterruptedException e) {
             throw e;
         } catch (Exception e) {
+            log.error("receiveBatch failed: service={}, queue={}, error={}",
+                context.serviceName(), delegate.getResourceName(), e.getMessage());
             recordError("RECEIVE_BATCH_ERROR", "Error receiving batch from queue",
                 String.format("Service: %s, Queue: %s, Error: %s", context.serviceName(), delegate.getResourceName(), e.getMessage()));
             throw e;

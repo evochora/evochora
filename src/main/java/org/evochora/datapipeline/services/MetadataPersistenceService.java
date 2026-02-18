@@ -154,47 +154,44 @@ public class MetadataPersistenceService extends AbstractService {
     protected void run() throws InterruptedException {
         // Poll until metadata message arrives or stop requested (one-shot pattern)
         // Uses receiveBatch(1) with timeout to allow graceful shutdown via isStopRequested()
-        SimulationMetadata metadata = null;
-        while (!isStopRequested() && metadata == null) {
+        while (!isStopRequested()) {
             try (var batch = inputQueue.receiveBatch(1, 500, TimeUnit.MILLISECONDS)) {
-                if (batch.size() > 0) {
-                    metadata = batch.iterator().next();
-                    batch.commit();
+                if (batch.size() == 0) {
+                    continue;
                 }
+
+                SimulationMetadata metadata = batch.iterator().next();
+                log.debug("Received metadata message for simulation {}", metadata.getSimulationRunId());
+
+                // Validate simulation run ID
+                if (metadata.getSimulationRunId() == null || metadata.getSimulationRunId().isEmpty()) {
+                    log.warn("Metadata contains empty or null simulationRunId, sending to DLQ");
+                    recordError(
+                        "INVALID_SIMULATION_RUN_ID",
+                        "Metadata contains empty or null simulationRunId",
+                        "Cannot persist metadata without valid simulation run ID"
+                    );
+                    sendToDLQ(metadata, "Empty or null simulationRunId",
+                        new IllegalStateException("Empty or null simulationRunId"));
+                    metadataFailed.incrementAndGet();
+                    batch.commit();
+                    return;
+                }
+
+                // Generate storage key: {simulationRunId}/raw/metadata.pb
+                String simulationRunId = metadata.getSimulationRunId();
+                String key = simulationRunId + "/raw/metadata.pb";
+
+                // Write metadata with retry logic, then commit
+                writeMetadataWithRetry(key, metadata);
+                batch.commit();
+
+                log.debug("Metadata persisted successfully for simulation {}, service stopping", simulationRunId);
+                return;
             }
         }
-        
-        // Check if we stopped without receiving metadata
-        if (metadata == null) {
-            log.debug("MetadataPersistenceService stopped before receiving metadata");
-            return;
-        }
 
-        log.debug("Received metadata message for simulation {}", metadata.getSimulationRunId());
-
-        // Validate simulation run ID
-        if (metadata.getSimulationRunId() == null || metadata.getSimulationRunId().isEmpty()) {
-            log.warn("Metadata contains empty or null simulationRunId, sending to DLQ");
-            recordError(
-                "INVALID_SIMULATION_RUN_ID",
-                "Metadata contains empty or null simulationRunId",
-                "Cannot persist metadata without valid simulation run ID"
-            );
-            sendToDLQ(metadata, "Empty or null simulationRunId",
-                new IllegalStateException("Empty or null simulationRunId"));
-            metadataFailed.incrementAndGet();
-            return;
-        }
-
-        // Generate storage key: {simulationRunId}/raw/metadata.pb
-        String simulationRunId = metadata.getSimulationRunId();
-        String key = simulationRunId + "/raw/metadata.pb";
-
-        // Write metadata with retry logic
-        writeMetadataWithRetry(key, metadata);
-
-        log.debug("Metadata persisted successfully for simulation {}, service stopping", simulationRunId);
-        // Exit run() - service stops naturally (one-shot pattern)
+        log.debug("MetadataPersistenceService stopped before receiving metadata");
     }
 
     /**

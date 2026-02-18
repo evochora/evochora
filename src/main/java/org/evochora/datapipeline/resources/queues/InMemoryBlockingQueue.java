@@ -240,6 +240,12 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
      * <strong>Note:</strong> InMemoryBlockingQueue holds all items on heap regardless,
      * so no streaming heap benefit applies here. The streaming benefit is specific to
      * off-heap brokers like Artemis.
+     *
+     * @param maxSize maximum number of elements to receive
+     * @param timeout maximum time to wait for at least one element
+     * @param unit    time unit for the timeout parameter
+     * @return a {@link StreamingBatch} containing 0 to {@code maxSize} elements (never null)
+     * @throws InterruptedException if interrupted while waiting
      */
     @Override
     public StreamingBatch<T> receiveBatch(int maxSize, long timeout, TimeUnit unit) throws InterruptedException {
@@ -280,7 +286,7 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
      */
     private void drainAvailableItems(List<T> target, int maxElements) {
         ArrayList<TimestampedObject<T>> drained = new ArrayList<>();
-        int count = queue.drainTo(drained, maxElements);
+        queue.drainTo(drained, maxElements);
         for (TimestampedObject<T> tsObject : drained) {
             target.add(tsObject.object);
             if (!disableTimestamps && tsObject.timestamp != null) {

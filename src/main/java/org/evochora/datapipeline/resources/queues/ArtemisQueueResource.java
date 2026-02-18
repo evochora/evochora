@@ -1,6 +1,5 @@
 package org.evochora.datapipeline.resources.queues;
 
-import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -70,9 +69,10 @@ import com.typesafe.config.ConfigFactory;
  * <p>
  * <strong>Streaming consumption:</strong> The consumer session uses {@code SESSION_TRANSACTED}
  * for receive-then-acknowledge semantics. {@link #receiveBatch(int, long, TimeUnit)} receives
- * JMS message references (lightweight, ~100 bytes each) during a token-locked phase, then
- * returns a {@link StreamingBatch} whose iterator lazily deserializes payloads one at a time.
- * This reduces peak heap from {@code N × chunkSize} to {@code 1 × chunkSize}.
+ * N messages during a token-locked phase, eagerly calling {@code reset()} on each to force
+ * body download (preventing Artemis's {@code discardBody()} from evicting previous bodies).
+ * The returned {@link StreamingBatch} iterator lazily deserializes payloads one at a time.
+ * Peak heap: {@code N × serializedSize + 1 × deserializedSize}.
  * <p>
  * <strong>Token-Queue Drain Lock:</strong> A second JMS queue ({@code {queueName}.drain-lock})
  * holds exactly one persistent token message. {@link #receiveBatch} acquires the token before
@@ -573,6 +573,12 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
      * Messages are in-flight until {@link StreamingBatch#commit()} calls {@code session.commit()}.
      * If processing fails, {@link StreamingBatch#close()} calls {@code session.rollback()},
      * returning messages to the queue for redelivery.
+     *
+     * @param maxSize maximum number of messages to receive
+     * @param timeout maximum time to wait for at least one message
+     * @param unit    time unit for the timeout parameter
+     * @return a {@link StreamingBatch} containing 0 to {@code maxSize} messages (never null)
+     * @throws InterruptedException if interrupted while waiting for the token or data
      */
     @Override
     public StreamingBatch<T> receiveBatch(int maxSize, long timeout, TimeUnit unit)
@@ -738,14 +744,19 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
     // =========================================================================
 
     /**
-     * A {@link StreamingBatch} backed by JMS message references with lazy deserialization.
+     * A {@link StreamingBatch} backed by JMS messages with lazy deserialization.
      * <p>
-     * Message references are lightweight (~100 bytes each, pointing to Artemis journal).
-     * Actual payload bytes are only read and deserialized when {@link Iterator#next()} is called,
-     * keeping at most one deserialized message on the heap at a time.
+     * Messages hold their serialized bodies on heap (populated by {@code reset()} during receive).
+     * Actual deserialization happens lazily when {@link Iterator#next()} is called, keeping at most
+     * one deserialized message on the heap at a time. After deserialization, the message reference
+     * is nulled out to allow GC of the serialized body.
      * <p>
      * <strong>Commit:</strong> {@code session.commit()} acknowledges all messages in the batch.
      * <strong>Close without commit:</strong> {@code session.rollback()} returns messages to the queue.
+     * <p>
+     * <strong>Thread safety:</strong> Only one ArtemisStreamingBatch may be active per
+     * ArtemisQueueResource instance at any time. The consumer session is shared state —
+     * using a new batch before closing the previous one leads to undefined behavior.
      */
     private class ArtemisStreamingBatch implements StreamingBatch<T> {
         private final List<jakarta.jms.Message> messages;

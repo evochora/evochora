@@ -192,7 +192,7 @@ class PersistenceServiceTest {
 
     @Test
     @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Failed to write streaming batch: .*")
+               messagePattern = ".*failed to write streaming batch: .*")
     void testWriteFailureDoesNotCommit() throws Exception {
         service = new PersistenceService("test-persistence", config, resources);
 
@@ -480,7 +480,7 @@ class PersistenceServiceTest {
 
     @Test
     @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Failed to write streaming batch: .*")
+               messagePattern = ".*failed to write streaming batch: .*")
     void shouldNotSendNotificationIfStorageWriteFails() throws Exception {
         resources.put("topic", Collections.singletonList(mockBatchTopic));
         service = new PersistenceService("test-persistence", config, resources);
@@ -540,7 +540,7 @@ class PersistenceServiceTest {
 
     @Test
     @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Failed to write streaming batch: .*")
+               messagePattern = ".*failed to write streaming batch: .*")
     void testErrorTracking() throws Exception {
         service = new PersistenceService("test-persistence", config, resources);
 

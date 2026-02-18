@@ -13,8 +13,10 @@ package org.evochora.datapipeline.api.resources.queues;
  * <p>
  * <strong>Streaming semantics:</strong> The {@link #iterator()} lazily deserializes messages
  * one at a time. For brokers that store messages off-heap (e.g., Artemis journal files),
- * only one message resides on the Java heap at any time, reducing peak memory from
- * {@code N × messageSize} to {@code 1 × messageSize}.
+ * only one <em>deserialized</em> message resides on the Java heap at any time. Note that
+ * Artemis requires eager body download ({@code reset()}) during the receive phase to prevent
+ * body eviction, so N <em>serialized</em> message bodies are on heap simultaneously.
+ * Peak memory is {@code N × serializedSize + 1 × deserializedSize}.
  * <p>
  * <strong>Failure handling:</strong> If {@link #close()} is called without a prior
  * {@link #commit()}, messages are released back to the broker for redelivery.

@@ -38,6 +38,7 @@ public class DirectInputQueueWrapper<T> implements IInputQueueResource<T>, IWrap
         return UsageState.ACTIVE;
     }
 
+    /** {@inheritDoc} */
     @Override
     public StreamingBatch<T> receiveBatch(int maxSize, long timeout, TimeUnit unit) throws InterruptedException {
         return delegate.receiveBatch(maxSize, timeout, unit);

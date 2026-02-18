@@ -183,6 +183,20 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         return StoragePath.of(physicalPath);
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Peeks the first chunk for metadata (simulationRunId, firstTick), writes all chunks
+     * to a temp file via {@link #writeChunksToTempFile}, then atomically renames to the
+     * final path via {@link #finalizeStreamingWrite}. The {@link TrackingIterable} validates
+     * that all chunks share the same simulationRunId.
+     *
+     * @param chunks iterator of chunks to write (must contain at least one element)
+     * @return streaming write result with path, tick range, chunk count, and byte count
+     * @throws IOException              if the streaming write or finalization fails
+     * @throws IllegalArgumentException if the iterator is null or empty
+     * @throws IllegalStateException    if chunks have mismatched simulationRunIds
+     */
     @Override
     public StreamingWriteResult writeChunkBatchStreaming(Iterator<TickDataChunk> chunks) throws IOException {
         if (chunks == null || !chunks.hasNext()) {
@@ -1547,6 +1561,7 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
     private static class TrackingIterable implements Iterable<TickDataChunk> {
         private final TickDataChunk firstChunk;
         private final Iterator<TickDataChunk> remaining;
+        private final String expectedSimulationRunId;
         private long lastTick;
         private int chunkCount;
         private int totalTickCount;
@@ -1554,6 +1569,7 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         TrackingIterable(TickDataChunk firstChunk, Iterator<TickDataChunk> remaining) {
             this.firstChunk = firstChunk;
             this.remaining = remaining;
+            this.expectedSimulationRunId = firstChunk.getSimulationRunId();
             this.lastTick = firstChunk.getLastTick();
             this.chunkCount = 0;
             this.totalTickCount = 0;
@@ -1577,6 +1593,11 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
                         firstReturned = true;
                     } else {
                         chunk = remaining.next();
+                        if (!expectedSimulationRunId.equals(chunk.getSimulationRunId())) {
+                            throw new IllegalStateException(String.format(
+                                "simulationRunId mismatch in batch: expected '%s' (from first chunk) but chunk at tick %d has '%s'",
+                                expectedSimulationRunId, chunk.getFirstTick(), chunk.getSimulationRunId()));
+                        }
                     }
                     lastTick = chunk.getLastTick();
                     chunkCount++;

@@ -142,9 +142,11 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
     /**
      * Main service loop: receive → stream-write → notify → commit.
      * <p>
-     * Chunks are lazily deserialized one at a time during the streaming write,
-     * keeping peak heap at 1x chunk. On write failure, the batch is not committed
-     * and the broker redelivers messages on the next {@code receiveBatch()}.
+     * Each iteration receives a batch of N serialized messages from the broker,
+     * then lazily deserializes one chunk at a time during the streaming write.
+     * Peak heap: N × serialized chunk + 1 × deserialized chunk. On write failure,
+     * the batch is not committed and the broker redelivers messages on the next
+     * {@code receiveBatch()}.
      *
      * @throws InterruptedException if the thread is interrupted (triggers graceful shutdown)
      */
@@ -163,12 +165,16 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
                 log.debug("Received batch of {} chunks", batch.size());
 
                 try {
-                    // Optional: filter duplicates during iteration
+                    // Optional: filter duplicates during iteration.
+                    // On write failure, close() rolls back and the broker redelivers all N messages.
+                    // The idempotency tracker will filter already-processed chunks as duplicates.
+                    // If all redelivered chunks are duplicates, we commit and skip (no-op batch).
                     Iterator<TickDataChunk> chunks = maybeFilterDuplicates(batch.iterator());
 
                     // If all chunks were filtered as duplicates, commit and move on
                     if (!chunks.hasNext()) {
                         log.debug("All chunks in batch were duplicates, skipping");
+                        currentBatchSize.set(0);
                         batch.commit();
                         continue;
                     }
@@ -196,8 +202,7 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
                     // Messages are redelivered by the broker on next receiveBatch().
                     // RuntimeException covers lazy deserialization failures in the streaming
                     // batch iterator (e.g., corrupt protobuf messages).
-                    // TEMPORARY: log full stack trace for diagnosis
-                    log.warn("Failed to write streaming batch: {}", e.getMessage());
+                    log.warn("{}: failed to write streaming batch: {}", serviceName, e.getMessage());
                     recordError("BATCH_WRITE_FAILED", "Streaming write failed", e.getMessage());
                     batchesFailed.incrementAndGet();
                 }
@@ -311,11 +316,14 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
      * <p>
      * Estimates memory for the PersistenceService streaming write.
      * <p>
-     * With streaming, only 1 chunk is held on heap at a time during iteration,
-     * plus lightweight message references for the batch. This is a significant
-     * reduction from the previous batch model (maxBatchSize x bytesPerChunk).
+     * With streaming, N serialized chunks are held on heap (from Artemis {@code reset()})
+     * plus 1 deserialized chunk during iteration. This is a reduction from the previous
+     * batch model (maxBatchSize × deserialized bytesPerChunk).
      * <p>
-     * <strong>Calculation:</strong> 1 × bytesPerChunk + maxBatchSize × 100B (message refs)
+     * <strong>Calculation:</strong> maxBatchSize × serializedBytesPerChunk + 1 × deserializedBytesPerChunk
+     *
+     * @param params simulation parameters for size estimates
+     * @return list containing one worst-case memory estimate for this service
      */
     @Override
     public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {

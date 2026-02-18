@@ -28,7 +28,8 @@ public interface IInputQueueResource<T> extends IResource {
      * <p>
      * Blocks until at least one message is available or the timeout expires.
      * Returns a {@link StreamingBatch} that lazily deserializes messages during iteration,
-     * keeping only one message on the heap at a time.
+     * keeping only one <em>deserialized</em> message on the heap at a time. Serialized
+     * message bodies may be held on heap depending on the broker implementation.
      * <p>
      * <strong>Usage pattern:</strong>
      * <pre>

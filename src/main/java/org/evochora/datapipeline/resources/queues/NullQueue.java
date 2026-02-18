@@ -92,7 +92,18 @@ public class NullQueue<T> extends AbstractResource implements IContextualResourc
         return elements.size();  // All "accepted"
     }
 
-    // IInputQueueResource implementation - never return data
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Always returns an empty batch after sleeping for the requested timeout.
+     * No data is ever stored or returned.
+     *
+     * @param maxSize ignored (no data to return)
+     * @param timeout time to sleep before returning
+     * @param unit    time unit for the timeout parameter
+     * @return an always-empty {@link StreamingBatch}
+     * @throws InterruptedException if interrupted while sleeping
+     */
     @Override
     public StreamingBatch<T> receiveBatch(int maxSize, long timeout, TimeUnit unit) throws InterruptedException {
         // Block for the requested timeout (simulates waiting for data that never comes)
