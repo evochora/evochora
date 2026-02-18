@@ -399,7 +399,7 @@
                 grid-template-columns: 1fr 1fr;
             }
 
-            .why-grid {
+            .why-grid, .next-grid {
                 grid-template-columns: 1fr 1fr;
             }
         }
@@ -427,7 +427,7 @@
                 grid-template-columns: 1fr;
             }
 
-            .why-grid {
+            .why-grid, .next-grid {
                 grid-template-columns: 1fr;
                 gap: 1.25rem;
             }
@@ -440,6 +440,60 @@
                 margin: 2rem 0;
             }
         }
+        /* ── Next Steps (local mode) ── */
+        .next-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem 6rem;
+        }
+
+        .next-item {
+            padding: 0.9rem 1rem;
+            border-left: 2px solid var(--accent);
+            background: rgba(74, 158, 255, 0.03);
+            border-radius: 0 4px 4px 0;
+        }
+
+        .next-label {
+            font-family: var(--sans);
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.3rem;
+        }
+
+        .next-desc {
+            font-family: var(--serif);
+            font-size: 0.9rem;
+            line-height: 1.65;
+            color: var(--text-secondary);
+        }
+
+        .next-links {
+            margin-top: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .next-links a {
+            color: var(--accent);
+            text-decoration: none;
+            font-family: var(--sans);
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .next-links a:hover {
+            text-decoration: underline;
+        }
+
+        .next-link-sep {
+            color: var(--text-tertiary);
+            font-size: 0.75rem;
+        }
+
         /* ── Node Banner ── */
         .node-banner {
             display: flex;
@@ -691,10 +745,10 @@
             </div>
         </section>
 
-        <hr class="divider">
+        <hr class="divider" data-mode="demo">
 
-        <!-- Why Evochora -->
-        <section>
+        <!-- Why Evochora (demo only) -->
+        <section data-mode="demo">
             <h2 class="section-title">Why Evochora?</h2>
             <div class="why-grid">
                 <div class="why-item">
@@ -728,10 +782,10 @@
             </div>
         </section>
 
-        <hr class="divider">
+        <hr class="divider" data-mode="demo">
 
-        <!-- Get Started -->
-        <section class="get-started">
+        <!-- Get Started (demo only) -->
+        <section class="get-started" data-mode="demo">
             <h2 class="get-started-title">Run Your Own Instance</h2>
             <p class="get-started-body">
                 This demo hosts a set of simulations with default settings. To design your own experiments &mdash;
@@ -744,6 +798,100 @@
                    target="_blank" rel="noopener noreferrer">Read the Quick Start Guide</a>
             </div>
             <div class="get-started-req">Open Source: <a href="https://opensource.org/licenses/MIT" target="_blank" rel="noopener noreferrer" style="color: inherit;">MIT License</a> · Requires Java 21</div>
+        </section>
+
+        <hr class="divider">
+
+        <!-- What's Next (both modes) -->
+        <section>
+            <h2 class="section-title">What's Next</h2>
+            <div class="next-grid">
+                <div class="next-item">
+                    <div class="next-label">Get Help</div>
+                    <div class="next-desc">
+                        Questions, ideas, feedback &mdash; reach out.
+                    </div>
+                    <div class="next-links">
+                        <a href="https://github.com/evochora/evochora/discussions" target="_blank" rel="noopener noreferrer">
+                            <img src="https://img.shields.io/badge/GitHub-Discussions-181717?logo=github&logoColor=white" alt="GitHub Discussions" style="height: 20px;">
+                        </a>
+                        <a href="https://discord.gg/t9yEJc4MKX" target="_blank" rel="noopener noreferrer">
+                            <img src="https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white" alt="Discord" style="height: 20px;">
+                        </a>
+                    </div>
+                </div>
+                <div class="next-item">
+                    <div class="next-label">Configure Your Simulation</div>
+                    <div class="next-desc">
+                        Customize thermodynamics, mutation rates, energy dynamics, and environment parameters.
+                    </div>
+                    <div class="next-links">
+                        <a href="https://github.com/evochora/evochora/blob/main/evochora.conf" target="_blank" rel="noopener noreferrer">Configuration Reference</a>
+                    </div>
+                </div>
+                <div class="next-item">
+                    <div class="next-label">Write Organisms</div>
+                    <div class="next-desc">
+                        Create digital organisms in EvoASM, a purpose-built assembly language for self-replicating programs.
+                    </div>
+                    <div class="next-links">
+                        <a href="https://github.com/evochora/evochora/blob/main/docs/ASSEMBLY_SPEC.md" target="_blank" rel="noopener noreferrer">Assembly Spec</a>
+                        <span class="next-link-sep">|</span>
+                        <a href="https://github.com/evochora/evochora/tree/main/assembly" target="_blank" rel="noopener noreferrer">Examples</a>
+                        <span class="next-link-sep">|</span>
+                        <a href="https://github.com/evochora/evochora/tree/main/extensions" target="_blank" rel="noopener noreferrer">Syntax Highlighting</a>
+                    </div>
+                </div>
+                <div class="next-item">
+                    <div class="next-label">Build Plugins</div>
+                    <div class="next-desc">
+                        Write custom plugins for mutation strategies, death mechanics, energy sources, and more.
+                    </div>
+                    <div class="next-links">
+                        <a href="https://github.com/evochora/evochora/tree/main/src/main/java/org/evochora/runtime/worldgen" target="_blank" rel="noopener noreferrer">Reference Plugins</a>
+                    </div>
+                </div>
+                <div class="next-item">
+                    <div class="next-label">CLI Tools</div>
+                    <div class="next-desc">
+                        Render simulation videos, compile EvoASM organisms, and inspect storage from the command line.
+                    </div>
+                    <div class="next-links">
+                        <a href="https://github.com/evochora/evochora/blob/main/docs/CLI_USAGE.md" target="_blank" rel="noopener noreferrer">CLI Reference</a>
+                    </div>
+                </div>
+                <div class="next-item">
+                    <div class="next-label">API Documentation</div>
+                    <div class="next-desc">
+                        REST API for visualization, analytics, and service management.
+                    </div>
+                    <div class="next-links">
+                        <a href="/api-docs">OpenAPI Reference</a>
+                    </div>
+                </div>
+                <div class="next-item">
+                    <div class="next-label">Scientific Overview</div>
+                    <div class="next-desc">
+                        Theoretical foundations, design decisions, and the computational model behind Evochora.
+                    </div>
+                    <div class="next-links">
+                        <a href="https://github.com/evochora/evochora/blob/main/docs/SCIENTIFIC_OVERVIEW.md" target="_blank" rel="noopener noreferrer">Read the Paper</a>
+                    </div>
+                </div>
+                <div class="next-item">
+                    <div class="next-label">Contribute</div>
+                    <div class="next-desc">
+                        Open source, MIT licensed. Bug reports, ideas, and pull requests are welcome.
+                    </div>
+                    <div class="next-links">
+                        <a href="https://github.com/evochora/evochora/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer">Contributing Guide</a>
+                        <span class="next-link-sep">|</span>
+                        <a href="https://github.com/evochora/evochora/issues?q=state%3Aopen%20label%3A%22action%3A%20good%20first%20issue%22" target="_blank" rel="noopener noreferrer">Good First Issues</a>
+                        <span class="next-link-sep">|</span>
+                        <a href="https://github.com/orgs/evochora/projects/1" target="_blank" rel="noopener noreferrer">Project Roadmap</a>
+                    </div>
+                </div>
+            </div>
         </section>
 
         <hr class="divider">
