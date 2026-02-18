@@ -1,15 +1,20 @@
 package org.evochora.cli.cleanup;
 
+import java.io.IOException;
 import java.io.PrintWriter;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,9 +32,13 @@ public class DatabaseCleaner {
 
     private static final Logger log = LoggerFactory.getLogger(DatabaseCleaner.class);
 
+    private static final String CHUNK_DIR_CONFIG_PATH =
+            "pipeline.resources.index-database.options.h2EnvironmentStrategy.options.chunkDirectory";
+
     private final String jdbcUrl;
     private final String username;
     private final String password;
+    private final Path chunkDirectory;
 
     /**
      * Creates a new DatabaseCleaner.
@@ -41,6 +50,9 @@ public class DatabaseCleaner {
         this.jdbcUrl = dbConfig.getString("jdbcUrl");
         this.username = dbConfig.getString("username");
         this.password = dbConfig.getString("password");
+        this.chunkDirectory = config.hasPath(CHUNK_DIR_CONFIG_PATH)
+                ? Path.of(config.getString(CHUNK_DIR_CONFIG_PATH))
+                : null;
     }
 
     /**
@@ -125,7 +137,12 @@ public class DatabaseCleaner {
                     if (force) {
                         try {
                             stmt.execute("DROP SCHEMA \"" + schemaName + "\" CASCADE");
-                            out.printf("  %s DELETE %s (deleted)%n", "\u2717", schemaName);
+                            boolean chunksClean = deleteChunkDirectory(schemaName);
+                            if (chunksClean) {
+                                out.printf("  %s DELETE %s (deleted)%n", "\u2717", schemaName);
+                            } else {
+                                out.printf("  %s DELETE %s (deleted, chunk cleanup failed)%n", "\u2717", schemaName);
+                            }
                             deleteCount++;
                         } catch (SQLException e) {
                             out.printf("  %s DELETE %s (FAILED: %s)%n", "\u2717", schemaName, e.getMessage());
@@ -143,6 +160,43 @@ public class DatabaseCleaner {
 
         out.println();
         return new CleanupService.AreaStats(keepCount, deleteCount);
+    }
+
+    /**
+     * Deletes the chunk file directory for a schema, if it exists.
+     *
+     * @param schemaName the H2 schema name (used as subdirectory name)
+     * @return {@code true} if no chunk directory existed or it was fully deleted,
+     *         {@code false} if deletion partially or fully failed
+     */
+    private boolean deleteChunkDirectory(String schemaName) {
+        if (chunkDirectory == null) {
+            return true;
+        }
+        Path schemaDir = chunkDirectory.resolve(schemaName).normalize();
+        if (!schemaDir.startsWith(chunkDirectory)) {
+            log.warn("Skipping chunk cleanup for schema '{}': resolved path escapes base directory", schemaName);
+            return false;
+        }
+        if (!Files.exists(schemaDir)) {
+            return true;
+        }
+        boolean[] success = {true};
+        try (Stream<Path> walk = Files.walk(schemaDir)) {
+            walk.sorted(Comparator.reverseOrder()).forEach(path -> {
+                try {
+                    Files.delete(path);
+                } catch (IOException e) {
+                    success[0] = false;
+                    log.warn("Failed to delete chunk file {}: {}", path, e.getMessage());
+                }
+            });
+            log.debug("Deleted chunk directory: {}", schemaDir);
+        } catch (IOException e) {
+            log.warn("Failed to walk chunk directory {}: {}", schemaDir, e.getMessage());
+            return false;
+        }
+        return success[0];
     }
 
     /**

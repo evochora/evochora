@@ -42,7 +42,11 @@ class EnvironmentDataWriterWrapperTest {
         String dbPath = tempDir.toString().replace("\\", "/");
         var config = ConfigFactory.parseString("""
             jdbcUrl = "jdbc:h2:file:%s/test-wrapper"
-            """.formatted(dbPath));
+            h2EnvironmentStrategy {
+              className = "org.evochora.datapipeline.resources.database.h2.RowPerChunkStrategy"
+              options { chunkDirectory = "%s/env-chunks" }
+            }
+            """.formatted(dbPath, dbPath));
         
         database = new H2Database("test-db", config);
         

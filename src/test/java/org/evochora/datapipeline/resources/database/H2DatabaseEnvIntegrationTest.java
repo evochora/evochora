@@ -41,36 +41,23 @@ class H2DatabaseEnvIntegrationTest {
     }
     
     @Test
-    void testStrategyLoading_DefaultStrategy() throws Exception {
+    void testStrategyLoading_NoStrategyConfigured() throws Exception {
         // Given: H2Database without h2EnvironmentStrategy config
-        // Use forward slashes in path (works on all platforms, avoids Config parsing issues with backslashes)
         String dbPath = tempDir.toString().replace("\\", "/");
         Config config = ConfigFactory.parseString("""
-            jdbcUrl = "jdbc:h2:file:%s/test-default-strategy"
+            jdbcUrl = "jdbc:h2:file:%s/test-no-strategy"
             """.formatted(dbPath));
-        
-        // When: Create database
+
+        // When: Create database (succeeds — strategy is not loaded eagerly)
         database = new H2Database("test-db", config);
-        
-        // Then: Should use default RowPerChunkStrategy
         assertThat(database).isNotNull();
-        
-        // Verify it can create environment table and write data
-        TickData snapshot = TickData.newBuilder()
-            .setTickNumber(1L)
-            .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
-                CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
-            )))
-            .build();
-        
-        TickDataChunk chunk = TickDataChunk.newBuilder()
-            .setSnapshot(snapshot)
-            .build();
-        
+
+        // Then: Environment operations should fail with clear error
         Object conn = database.acquireDedicatedConnection();
         try {
-            database.doCreateEnvironmentDataTable(conn, 2);
-            database.doWriteEnvironmentChunks(conn, List.of(chunk));
+            assertThatThrownBy(() -> database.doCreateEnvironmentDataTable(conn, 2))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Environment storage strategy not configured");
         } finally {
             if (conn instanceof java.sql.Connection) {
                 ((java.sql.Connection) conn).close();
@@ -88,13 +75,14 @@ class H2DatabaseEnvIntegrationTest {
             h2EnvironmentStrategy {
                 className = "org.evochora.datapipeline.resources.database.h2.RowPerChunkStrategy"
                 options {
+                    chunkDirectory = "%s/env-chunks"
                     compression {
                         codec = "zstd"
                         level = 3
                     }
                 }
             }
-            """.formatted(dbPath));
+            """.formatted(dbPath, dbPath));
         
         // When: Create database
         database = new H2Database("test-db", config);

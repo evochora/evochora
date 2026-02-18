@@ -70,10 +70,15 @@ class EnvironmentIndexerIntegrationTest {
         
         // Setup in-memory H2 database with unique name for parallel testing
         dbUrl = "jdbc:h2:mem:test-env-indexer-" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1;MODE=PostgreSQL";
+        String chunkDir = tempStorageDir.toAbsolutePath().toString().replace("\\", "/") + "/env-chunks";
         Config dbConfig = ConfigFactory.parseString(
             "jdbcUrl = \"" + dbUrl + "\"\n" +
             "username = \"sa\"\n" +
-            "password = \"\""
+            "password = \"\"\n" +
+            "h2EnvironmentStrategy {\n" +
+            "  className = \"org.evochora.datapipeline.resources.database.h2.RowPerChunkStrategy\"\n" +
+            "  options { chunkDirectory = \"" + chunkDir + "\" }\n" +
+            "}\n"
         );
         testDatabase = new H2Database("test-db", dbConfig);
         

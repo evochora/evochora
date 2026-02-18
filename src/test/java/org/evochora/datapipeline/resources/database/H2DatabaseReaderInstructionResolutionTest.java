@@ -26,6 +26,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 
 import com.typesafe.config.ConfigFactory;
 
+import java.nio.file.Path;
+import org.junit.jupiter.api.io.TempDir;
+
 /**
  * Tests instruction resolution in H2DatabaseReader.
  * <p>
@@ -37,6 +40,9 @@ import com.typesafe.config.ConfigFactory;
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
 class H2DatabaseReaderInstructionResolutionTest {
+
+    @TempDir
+    Path tempChunkDir;
 
     private H2Database database;
     private IDatabaseReaderProvider provider;
@@ -57,7 +63,7 @@ class H2DatabaseReaderInstructionResolutionTest {
             "maxPoolSize = 5\n" +
             "h2EnvironmentStrategy {\n" +
             "  className = \"org.evochora.datapipeline.resources.database.h2.RowPerChunkStrategy\"\n" +
-            "  options { compression { enabled = false } }\n" +
+            "  options { chunkDirectory = \"" + tempChunkDir.toString().replace("\\", "/") + "\" }\n" +
             "}\n"
         );
         database = new H2Database("test-db", dbConfig);

@@ -5,12 +5,17 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.List;
+import java.util.Properties;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.DeltaType;
@@ -27,42 +32,38 @@ import com.google.protobuf.WireFormat;
 import com.typesafe.config.Config;
 
 /**
- * RowPerChunkStrategy: Stores entire TickDataChunks as BLOBs (one row per chunk).
+ * RowPerChunkStrategy: Stores environment chunk data as files on the filesystem,
+ * with H2 providing only the tick-range index for fast lookups.
  * <p>
- * This strategy stores delta-compressed chunks directly in the database without
- * decompression, maximizing storage savings. Decompression is deferred to the
- * EnvironmentController, which can cache decompressed chunks for efficient
- * sequential access.
+ * Chunk data (compressed Protobuf) is written to individual files under a configurable
+ * directory, organized by H2 schema name (one subdirectory per simulation run).
+ * H2 stores only {@code first_tick} and {@code last_tick} per chunk — two BIGINTs per row,
+ * enabling sub-millisecond index lookups even in very large databases.
  * <p>
  * <strong>Read optimization:</strong> When reading chunks, only fields needed for
  * environment rendering are parsed (CellDataColumns, metadata). Heavy fields like
  * OrganismState lists, RNG state, and plugin states are skipped at the wire level
  * using {@link CodedInputStream}, reducing heap allocation and GC pressure.
  * <p>
- * <strong>Storage:</strong> One row per chunk
- * <ul>
- *   <li>50 ticks per chunk = 50× fewer rows than per-tick storage</li>
- *   <li>15M ticks = ~300K rows (vs 15M rows with per-tick)</li>
- *   <li>Chunk BLOB: ~3-8MB compressed (snapshot + 49 deltas)</li>
- * </ul>
+ * <strong>File layout:</strong>
+ * <pre>
+ * {chunkDirectory}/{schema}/.chunk_meta                           (metadata)
+ * {chunkDirectory}/{schema}/{bucket}/chunk_{firstTick}.pb         (uncompressed)
+ * {chunkDirectory}/{schema}/{bucket}/chunk_{firstTick}.pb.zst     (zstd compressed)
+ * </pre>
  * <p>
  * <strong>Schema:</strong>
  * <pre>
  * CREATE TABLE environment_chunks (
  *   first_tick BIGINT PRIMARY KEY,
- *   last_tick BIGINT NOT NULL,
- *   chunk_blob BYTEA NOT NULL
+ *   last_tick BIGINT NOT NULL
  * )
  * </pre>
  * <p>
- * <strong>Query Performance:</strong>
- * <ul>
- *   <li>Write: Fast (1 MERGE per chunk)</li>
- *   <li>Read: Must load entire chunk (~10-20ms), then decompress specific tick</li>
- *   <li>With LRU cache in controller: subsequent ticks in same chunk are instant</li>
- * </ul>
- * <p>
- * <strong>Best For:</strong> Production deployments with delta compression enabled.
+ * <strong>Write safety:</strong> Files are written via temp file + atomic rename to
+ * prevent corrupt partial files on crash. Files are written before the H2 MERGE so
+ * that a failed MERGE leaves only a harmless orphan file, never an H2 entry pointing
+ * to a missing file.
  *
  * @see IH2EnvStorageStrategy
  * @see AbstractH2EnvStorageStrategy
@@ -99,40 +100,71 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
     private static final int DELTA_PLUGIN_STATES = 8;
     private static final int DELTA_TOTAL_UNIQUE_GENOMES = 9;
 
+    private static final String CHUNK_META_FILENAME = ".chunk_meta";
+    private static final String META_KEY_TICKS_PER_SUBDIR = "ticksPerSubdirectory";
+    private static final int DEFAULT_MAX_FILES_PER_DIRECTORY = 10_000;
+
     private final ICompressionCodec codec;
+    private final Path chunkDirectory;
+    private final int maxFilesPerDirectory;
     private String mergeSql;
 
+    /** Cached ticksPerSubdirectory per schema directory (loaded from .chunk_meta). */
+    private final ConcurrentHashMap<Path, Long> metadataCache = new ConcurrentHashMap<>();
+
     /**
-     * Creates RowPerChunkStrategy with optional compression for the BLOB storage.
+     * Creates RowPerChunkStrategy with file-based chunk storage.
      * <p>
-     * Note: This compression is for the outer BLOB storage layer. The TickDataChunk
-     * itself may already contain compressed delta data internally.
+     * Requires {@code chunkDirectory} in config to specify where chunk files are stored.
+     * Compression settings control how chunk data is compressed before writing to files.
+     * <p>
+     * {@code maxFilesPerDirectory} controls automatic subdirectory partitioning.
+     * On first write, {@code ticksPerSubdirectory} is computed as
+     * {@code maxFilesPerDirectory × tickCount} and persisted in a {@code .chunk_meta}
+     * file per run. Subsequent writes and reads use this persisted value.
      *
-     * @param options Config with optional compression block
+     * @param options Config with required {@code chunkDirectory} and optional {@code compression} block
+     * @throws IllegalArgumentException if {@code chunkDirectory} is missing from config
      */
     public RowPerChunkStrategy(Config options) {
         super(options);
         this.codec = CompressionCodecFactory.create(options);
-        log.debug("RowPerChunkStrategy initialized with compression: {}", codec.getName());
+
+        if (!options.hasPath("chunkDirectory")) {
+            throw new IllegalArgumentException(
+                    "RowPerChunkStrategy requires 'chunkDirectory' in config");
+        }
+        this.chunkDirectory = Path.of(options.getString("chunkDirectory"));
+        this.maxFilesPerDirectory = options.hasPath("maxFilesPerDirectory")
+                ? options.getInt("maxFilesPerDirectory")
+                : DEFAULT_MAX_FILES_PER_DIRECTORY;
+
+        log.debug("RowPerChunkStrategy initialized: chunkDirectory={}, maxFilesPerDir={}, compression={}",
+                chunkDirectory, maxFilesPerDirectory, codec.getName());
+    }
+
+    /**
+     * Returns the base directory where chunk files are stored.
+     *
+     * @return the chunk directory path
+     */
+    public Path getChunkDirectory() {
+        return chunkDirectory;
     }
 
     @Override
     public void createTables(Connection conn, int dimensions) throws SQLException {
         try (Statement stmt = conn.createStatement()) {
-            // Create environment_chunks table
-            // first_tick is PRIMARY KEY (automatic B-tree index)
-            // last_tick indexed for range queries
+            // H2 stores only the tick-range index; chunk data lives on the filesystem
             H2SchemaUtil.executeDdlIfNotExists(
                 stmt,
                 "CREATE TABLE IF NOT EXISTS environment_chunks (" +
                 "  first_tick BIGINT PRIMARY KEY," +
-                "  last_tick BIGINT NOT NULL," +
-                "  chunk_blob BYTEA NOT NULL" +
+                "  last_tick BIGINT NOT NULL" +
                 ")",
                 "environment_chunks"
             );
 
-            // Index on last_tick for efficient range queries
             H2SchemaUtil.executeDdlIfNotExists(
                 stmt,
                 "CREATE INDEX IF NOT EXISTS idx_env_chunks_last_tick ON environment_chunks(last_tick)",
@@ -140,9 +172,8 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
             );
         }
 
-        // Cache SQL string for MERGE operations
-        this.mergeSql = "MERGE INTO environment_chunks (first_tick, last_tick, chunk_blob) " +
-                       "KEY (first_tick) VALUES (?, ?, ?)";
+        this.mergeSql = "MERGE INTO environment_chunks (first_tick, last_tick) " +
+                       "KEY (first_tick) VALUES (?, ?)";
 
         log.debug("Environment chunk tables created for {} dimensions", dimensions);
     }
@@ -158,9 +189,19 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
             return;
         }
 
+        // Ensure the schema-specific directory exists
+        Path schemaDir = resolveSchemaDirectory(conn);
+        try {
+            Files.createDirectories(schemaDir);
+        } catch (IOException e) {
+            throw new SQLException("Failed to create chunk directory: " + schemaDir, e);
+        }
+
+        // Ensure metadata exists (computed from first chunk's tickCount)
+        long ticksPerSubdir = ensureChunkMetadata(schemaDir, chunks.get(0));
+
         try (PreparedStatement stmt = conn.prepareStatement(mergeSql)) {
             for (TickDataChunk chunk : chunks) {
-                // Validate chunk has required fields
                 if (!chunk.hasSnapshot()) {
                     log.warn("Chunk starting at tick {} has no snapshot - skipping",
                              chunk.getSnapshot().getTickNumber());
@@ -169,17 +210,67 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
 
                 long firstTick = chunk.getSnapshot().getTickNumber();
                 long lastTick = calculateLastTick(chunk);
-                byte[] chunkBlob = serializeChunk(chunk);
+                byte[] chunkData = serializeChunk(chunk);
+
+                // Resolve subdirectory, ensure it exists, then write file first
+                // (orphan file is harmless; missing file is not)
+                Path subdir = resolveSubdirectory(schemaDir, firstTick, ticksPerSubdir);
+                try {
+                    Files.createDirectories(subdir);
+                } catch (IOException e) {
+                    throw new SQLException("Failed to create chunk subdirectory: " + subdir, e);
+                }
+                writeChunkFile(subdir, firstTick, chunkData);
 
                 stmt.setLong(1, firstTick);
                 stmt.setLong(2, lastTick);
-                stmt.setBytes(3, chunkBlob);
                 stmt.addBatch();
                 Thread.yield();
             }
 
             stmt.executeBatch();
-            log.debug("Wrote {} chunks to environment_chunks table", chunks.size());
+            log.debug("Wrote {} chunks to environment_chunks table and filesystem", chunks.size());
+        }
+    }
+
+    /**
+     * Returns the chunk filename for the given first tick.
+     * <p>
+     * Format: {@code chunk_{firstTick}.pb} (uncompressed) or
+     * {@code chunk_{firstTick}.pb.zst} (zstd compressed).
+     *
+     * @param firstTick the first tick of the chunk
+     * @return the filename including codec-specific extension
+     */
+    private String chunkFilename(long firstTick) {
+        return "chunk_" + firstTick + ".pb" + codec.getFileExtension();
+    }
+
+    /**
+     * Writes compressed chunk data to a file using temp file + atomic rename.
+     *
+     * @param directory the target directory (schema subdirectory)
+     * @param firstTick the first tick of the chunk (used in filename)
+     * @param chunkData the compressed chunk bytes
+     * @throws SQLException if file I/O fails
+     */
+    private void writeChunkFile(Path directory, long firstTick, byte[] chunkData)
+            throws SQLException {
+        Path targetFile = directory.resolve(chunkFilename(firstTick));
+        Path tempFile = directory.resolve(chunkFilename(firstTick) + ".tmp");
+
+        try {
+            Files.write(tempFile, chunkData);
+            Files.move(tempFile, targetFile,
+                    StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            // Clean up temp file on failure
+            try {
+                Files.deleteIfExists(tempFile);
+            } catch (IOException suppressed) {
+                e.addSuppressed(suppressed);
+            }
+            throw new SQLException("Failed to write chunk file: " + targetFile, e);
         }
     }
 
@@ -201,7 +292,7 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
     }
 
     /**
-     * Serializes the chunk to a compressed BLOB.
+     * Serializes the chunk to compressed bytes.
      * <p>
      * Uses the configured compression codec to wrap the Protobuf serialization.
      */
@@ -219,35 +310,34 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
     }
 
     /**
-     * Reads the chunk containing the specified tick, using a streaming partial parser
-     * that skips fields not needed for environment rendering (organisms, RNG state,
-     * plugin states, genome hashes).
+     * Reads the chunk containing the specified tick from the filesystem, using a
+     * streaming partial parser that skips fields not needed for environment rendering
+     * (organisms, RNG state, plugin states, genome hashes).
      * <p>
-     * This reduces heap allocation by avoiding creation of OrganismState objects,
-     * which can amount to ~50MB per chunk. The returned TickDataChunk has empty
-     * organism lists but complete CellDataColumns, compatible with
-     * {@link org.evochora.datapipeline.utils.delta.DeltaCodec.Decoder#decompressTick}.
+     * The H2 database is queried only for the tick-range index (returns a BIGINT,
+     * not a BLOB), then the chunk file is read directly from disk.
      */
     @Override
     public TickDataChunk readChunkContaining(Connection conn, long tickNumber)
             throws SQLException, TickNotFoundException {
-        byte[] blobData = queryChunkBlob(conn, tickNumber);
-        return parseChunkForEnvironment(blobData);
+        long firstTick = queryFirstTick(conn, tickNumber);
+        byte[] chunkData = readChunkFile(conn, firstTick);
+        return parseChunkForEnvironment(chunkData);
     }
 
     /**
-     * Queries the compressed chunk BLOB from the database.
+     * Queries H2 for the first_tick of the chunk containing the specified tick.
      *
      * @param conn Database connection (schema already set)
      * @param tickNumber Tick number to find
-     * @return The compressed BLOB bytes
+     * @return The first_tick of the containing chunk
      * @throws SQLException if database read fails
      * @throws TickNotFoundException if no chunk contains the requested tick
      */
-    private byte[] queryChunkBlob(Connection conn, long tickNumber)
+    private long queryFirstTick(Connection conn, long tickNumber)
             throws SQLException, TickNotFoundException {
 
-        String sql = "SELECT chunk_blob FROM environment_chunks WHERE first_tick <= ? AND last_tick >= ?";
+        String sql = "SELECT first_tick FROM environment_chunks WHERE first_tick <= ? AND last_tick >= ?";
 
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setLong(1, tickNumber);
@@ -257,14 +347,218 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
                 if (!rs.next()) {
                     throw new TickNotFoundException("No chunk found containing tick " + tickNumber);
                 }
-
-                byte[] blobData = rs.getBytes("chunk_blob");
-                if (blobData == null || blobData.length == 0) {
-                    throw new TickNotFoundException("Chunk for tick " + tickNumber + " has empty BLOB");
-                }
-
-                return blobData;
+                return rs.getLong("first_tick");
             }
+        }
+    }
+
+    /**
+     * Reads the compressed chunk file from the filesystem.
+     * <p>
+     * Uses the persisted {@code .chunk_meta} to determine the correct subdirectory.
+     *
+     * @param conn Database connection (used to resolve schema directory)
+     * @param firstTick First tick of the chunk
+     * @return The compressed chunk bytes
+     * @throws SQLException if file I/O fails
+     * @throws TickNotFoundException if the chunk file does not exist
+     */
+    private byte[] readChunkFile(Connection conn, long firstTick)
+            throws SQLException, TickNotFoundException {
+        Path schemaDir = resolveSchemaDirectory(conn);
+        long ticksPerSubdir = loadChunkMetadata(schemaDir);
+        Path subdir = resolveSubdirectory(schemaDir, firstTick, ticksPerSubdir);
+        Path chunkFile = subdir.resolve(chunkFilename(firstTick));
+
+        if (!Files.exists(chunkFile)) {
+            throw new TickNotFoundException(
+                    "Chunk file not found for tick " + firstTick + ": " + chunkFile);
+        }
+
+        try {
+            return Files.readAllBytes(chunkFile);
+        } catch (IOException e) {
+            throw new SQLException("Failed to read chunk file: " + chunkFile, e);
+        }
+    }
+
+    /**
+     * Resolves the schema-specific subdirectory for chunk files.
+     *
+     * @param conn Database connection with schema already set
+     * @return Path to the schema directory (e.g., {chunkDirectory}/SIM_20260216_...)
+     * @throws SQLException if schema name cannot be determined
+     */
+    private Path resolveSchemaDirectory(Connection conn) throws SQLException {
+        String schema = conn.getSchema();
+        if (schema == null || schema.isEmpty()) {
+            throw new SQLException("Connection has no schema set - cannot resolve chunk directory");
+        }
+        return chunkDirectory.resolve(schema);
+    }
+
+    // ========================================================================
+    // Subdirectory partitioning and chunk metadata
+    // ========================================================================
+
+    /**
+     * Resolves the subdirectory path for a given firstTick (no I/O).
+     * <p>
+     * Subdirectory name is zero-padded bucket index: {@code firstTick / ticksPerSubdirectory}.
+     *
+     * @param schemaDir the schema-specific base directory
+     * @param firstTick the first tick of the chunk
+     * @param ticksPerSubdir ticks per subdirectory (from .chunk_meta)
+     * @return path to the subdirectory
+     */
+    private Path resolveSubdirectory(Path schemaDir, long firstTick, long ticksPerSubdir) {
+        long bucket = firstTick / ticksPerSubdir;
+        return schemaDir.resolve(String.format("%04d", bucket));
+    }
+
+    /**
+     * Ensures the {@code .chunk_meta} file exists in the schema directory.
+     * <p>
+     * Thread-safe via {@link ConcurrentHashMap#computeIfAbsent}: only one thread
+     * per schema directory computes and writes the metadata. Cross-process safety
+     * is achieved via atomic file write (temp file + {@code ATOMIC_MOVE}): if another
+     * process wins the race, the loser reads back the winner's value.
+     *
+     * @param schemaDir the schema-specific directory
+     * @param firstChunk the first chunk being written (used to determine tickCount)
+     * @return the ticksPerSubdirectory value
+     * @throws SQLException if metadata cannot be written or read
+     */
+    private long ensureChunkMetadata(Path schemaDir, TickDataChunk firstChunk) throws SQLException {
+        try {
+            return metadataCache.computeIfAbsent(schemaDir,
+                    dir -> computeOrLoadMetadata(dir, firstChunk));
+        } catch (UncheckedSQLException e) {
+            throw e.getCause();
+        }
+    }
+
+    /**
+     * Computes {@code ticksPerSubdirectory} and writes it atomically to {@code .chunk_meta},
+     * or loads the existing file if another process created it first.
+     *
+     * @param schemaDir the schema-specific directory
+     * @param firstChunk the first chunk (used to determine tickCount)
+     * @return the ticksPerSubdirectory value
+     * @throws UncheckedSQLException if I/O fails
+     */
+    private long computeOrLoadMetadata(Path schemaDir, TickDataChunk firstChunk) {
+        Path metaFile = schemaDir.resolve(CHUNK_META_FILENAME);
+
+        // Another process may have created it already
+        if (Files.exists(metaFile)) {
+            return readMetadataFile(metaFile);
+        }
+
+        // Compute from first chunk
+        int tickCount = Math.max(firstChunk.getTickCount(), 1);
+        long ticksPerSubdir = (long) maxFilesPerDirectory * tickCount;
+
+        // Atomic write: temp file + rename
+        Path tempFile = schemaDir.resolve(CHUNK_META_FILENAME + ".tmp");
+        Properties props = new Properties();
+        props.setProperty(META_KEY_TICKS_PER_SUBDIR, Long.toString(ticksPerSubdir));
+
+        try (OutputStream out = Files.newOutputStream(tempFile)) {
+            props.store(out, "Chunk storage metadata - do not edit");
+        } catch (IOException e) {
+            throw new UncheckedSQLException(
+                    new SQLException("Failed to write chunk metadata: " + metaFile, e));
+        }
+
+        try {
+            Files.move(tempFile, metaFile, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException e) {
+            // Another process won the race — use their value
+            try {
+                Files.deleteIfExists(tempFile);
+            } catch (IOException suppressed) {
+                e.addSuppressed(suppressed);
+            }
+            if (Files.exists(metaFile)) {
+                return readMetadataFile(metaFile);
+            }
+            throw new UncheckedSQLException(
+                    new SQLException("Failed to create chunk metadata: " + metaFile, e));
+        }
+
+        log.debug("Created chunk metadata: ticksPerSubdirectory={} (maxFiles={} × tickCount={})",
+                ticksPerSubdir, maxFilesPerDirectory, tickCount);
+        return ticksPerSubdir;
+    }
+
+    /**
+     * Reads {@code ticksPerSubdirectory} from a {@code .chunk_meta} Properties file.
+     *
+     * @param metaFile the metadata file to read
+     * @return the ticksPerSubdirectory value
+     * @throws UncheckedSQLException if the file is missing required keys or I/O fails
+     */
+    private long readMetadataFile(Path metaFile) {
+        Properties props = new Properties();
+        try (InputStream in = Files.newInputStream(metaFile)) {
+            props.load(in);
+        } catch (IOException e) {
+            throw new UncheckedSQLException(
+                    new SQLException("Failed to read chunk metadata: " + metaFile, e));
+        }
+
+        String value = props.getProperty(META_KEY_TICKS_PER_SUBDIR);
+        if (value == null) {
+            throw new UncheckedSQLException(new SQLException(
+                    "Missing '" + META_KEY_TICKS_PER_SUBDIR + "' in " + metaFile));
+        }
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException e) {
+            throw new UncheckedSQLException(new SQLException(
+                    "Invalid '" + META_KEY_TICKS_PER_SUBDIR + "' value '" + value + "' in " + metaFile, e));
+        }
+    }
+
+    /**
+     * Loads {@code ticksPerSubdirectory} from the {@code .chunk_meta} file.
+     * <p>
+     * Thread-safe via {@link ConcurrentHashMap#computeIfAbsent}.
+     *
+     * @param schemaDir the schema-specific directory
+     * @return the ticksPerSubdirectory value
+     * @throws SQLException if metadata file is missing or unreadable
+     */
+    private long loadChunkMetadata(Path schemaDir) throws SQLException {
+        try {
+            return metadataCache.computeIfAbsent(schemaDir, dir -> {
+                Path metaFile = dir.resolve(CHUNK_META_FILENAME);
+                if (!Files.exists(metaFile)) {
+                    throw new UncheckedSQLException(new SQLException(
+                            "Chunk metadata not found: " + metaFile + ". " +
+                            "This run may have been created with an older version."));
+                }
+                return readMetadataFile(metaFile);
+            });
+        } catch (UncheckedSQLException e) {
+            throw e.getCause();
+        }
+    }
+
+    /**
+     * Wraps {@link SQLException} for use inside lambdas that don't allow checked exceptions
+     * (e.g., {@link ConcurrentHashMap#computeIfAbsent}).
+     */
+    private static class UncheckedSQLException extends RuntimeException {
+
+        UncheckedSQLException(SQLException cause) {
+            super(cause);
+        }
+
+        @Override
+        public synchronized SQLException getCause() {
+            return (SQLException) super.getCause();
         }
     }
 
@@ -273,7 +567,7 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
     // ========================================================================
 
     /**
-     * Parses a compressed BLOB using {@link CodedInputStream}, streaming decompression
+     * Parses compressed chunk data using {@link CodedInputStream}, streaming decompression
      * directly without intermediate byte[] allocation.
      */
     private TickDataChunk parseChunkForEnvironment(byte[] compressedBlob) throws SQLException {

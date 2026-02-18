@@ -87,7 +87,7 @@ class SimulationControllerIntegrationTest {
             "maxPoolSize = 10\n" +
             "h2EnvironmentStrategy {\n" +
             "  className = \"org.evochora.datapipeline.resources.database.h2.RowPerChunkStrategy\"\n" +
-            "  options { compression { enabled = true, codec = \"zstd\", level = 3 } }\n" +
+            "  options { chunkDirectory = \"" + tempStorageDir.toAbsolutePath().toString().replace("\\", "/") + "/env-chunks\", compression { enabled = true, codec = \"zstd\", level = 3 } }\n" +
             "}\n"
         );
         testDatabase = new H2Database("test-db", dbConfig);
