@@ -61,6 +61,11 @@ public class H2DatabaseReader implements IDatabaseReader {
     @Override
     public TickDataChunk readChunkContaining(long tickNumber) throws SQLException, TickNotFoundException {
         ensureNotClosed();
+        if (envStrategy == null) {
+            throw new IllegalStateException(
+                "Environment storage strategy not configured. " +
+                "Add h2EnvironmentStrategy to database configuration.");
+        }
         return envStrategy.readChunkContaining(connection, tickNumber);
     }
     

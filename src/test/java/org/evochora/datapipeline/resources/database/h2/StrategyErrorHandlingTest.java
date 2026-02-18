@@ -18,11 +18,16 @@ import org.junit.jupiter.api.Test;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
+
+import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -33,17 +38,22 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 @Tag("integration")
 class StrategyErrorHandlingTest {
-    
+
+    @TempDir
+    Path tempChunkDir;
+
     private H2Database database;
     private String testRunId;
-    
+
     @BeforeEach
     void setUp() throws SQLException {
+        String chunkDir = tempChunkDir.toString().replace("\\", "\\\\");
         Config config = ConfigFactory.parseString(
             "jdbcUrl = \"jdbc:h2:mem:test-strategy-errors-" + System.nanoTime() + ";MODE=PostgreSQL\"\n" +
             "maxPoolSize = 2\n" +
             "h2EnvironmentStrategy {\n" +
             "  className = \"org.evochora.datapipeline.resources.database.h2.RowPerChunkStrategy\"\n" +
+            "  options { chunkDirectory = \"" + chunkDir + "\" }\n" +
             "}\n"
         );
         database = new H2Database("test-db", config);
@@ -154,171 +164,167 @@ class StrategyErrorHandlingTest {
         }
     }
 
+    /**
+     * Resolves the schema name for the given runId (same logic as H2SchemaUtil).
+     */
+    private String resolveSchemaName(String runId) {
+        return "SIM_" + runId.replaceAll("[^a-zA-Z0-9]", "_").toUpperCase();
+    }
+
     private void insertCorruptedChunk(String runId, long tick) throws SQLException {
         try {
             java.lang.reflect.Field dataSourceField = H2Database.class.getDeclaredField("dataSource");
             dataSourceField.setAccessible(true);
             com.zaxxer.hikari.HikariDataSource dataSource = (com.zaxxer.hikari.HikariDataSource) dataSourceField.get(database);
-            
+
             try (Connection conn = dataSource.getConnection()) {
                 org.evochora.datapipeline.utils.H2SchemaUtil.setSchema(conn, runId);
-                
-                // Create chunk table
-                conn.createStatement().execute(
-                    "CREATE TABLE IF NOT EXISTS environment_chunks (" +
-                    "first_tick BIGINT PRIMARY KEY, " +
-                    "last_tick BIGINT NOT NULL, " +
-                    "chunk_blob BYTEA NOT NULL" +
-                    ")"
-                );
-                
-                PreparedStatement stmt = conn.prepareStatement(
-                    "INSERT INTO environment_chunks (first_tick, last_tick, chunk_blob) VALUES (?, ?, ?)"
-                );
-                stmt.setLong(1, tick);
-                stmt.setLong(2, tick);
-                stmt.setBytes(3, new byte[]{1, 2, 3, 4});  // Corrupted data
-                stmt.executeUpdate();
+                createChunkTable(conn);
+                insertTickRange(conn, tick, tick);
             }
+
+            // Write corrupted data as chunk file
+            writeChunkFile(runId, tick, new byte[]{1, 2, 3, 4});
         } catch (Exception e) {
             throw new SQLException("Failed to insert corrupted chunk", e);
         }
     }
-    
+
     private void insertEmptyChunk(String runId, long tick) throws SQLException {
         try {
             java.lang.reflect.Field dataSourceField = H2Database.class.getDeclaredField("dataSource");
             dataSourceField.setAccessible(true);
             com.zaxxer.hikari.HikariDataSource dataSource = (com.zaxxer.hikari.HikariDataSource) dataSourceField.get(database);
-            
+
             try (Connection conn = dataSource.getConnection()) {
                 org.evochora.datapipeline.utils.H2SchemaUtil.setSchema(conn, runId);
-                
-                // Create chunk table
-                conn.createStatement().execute(
-                    "CREATE TABLE IF NOT EXISTS environment_chunks (" +
-                    "first_tick BIGINT PRIMARY KEY, " +
-                    "last_tick BIGINT NOT NULL, " +
-                    "chunk_blob BYTEA NOT NULL" +
-                    ")"
-                );
-                
-                // Create valid chunk with empty snapshot (no cells)
-                TickData emptySnapshot = TickData.newBuilder()
-                    .setTickNumber(tick)
-                    .build();
-                
-                TickDataChunk chunk = TickDataChunk.newBuilder()
-                    .setSnapshot(emptySnapshot)
-                    .setFirstTick(tick)
-                    .setTickCount(1)  // Must be deltas.size() + 1
-                    .build();
-                
-                PreparedStatement stmt = conn.prepareStatement(
-                    "INSERT INTO environment_chunks (first_tick, last_tick, chunk_blob) VALUES (?, ?, ?)"
-                );
-                stmt.setLong(1, tick);
-                stmt.setLong(2, tick);
-                stmt.setBytes(3, chunk.toByteArray());
-                stmt.executeUpdate();
+                createChunkTable(conn);
+                insertTickRange(conn, tick, tick);
             }
+
+            // Write valid chunk with empty snapshot as file
+            TickData emptySnapshot = TickData.newBuilder()
+                .setTickNumber(tick)
+                .build();
+
+            TickDataChunk chunk = TickDataChunk.newBuilder()
+                .setSnapshot(emptySnapshot)
+                .setFirstTick(tick)
+                .setTickCount(1)
+                .build();
+
+            writeChunkFile(runId, tick, chunk.toByteArray());
         } catch (Exception e) {
             throw new SQLException("Failed to insert empty chunk", e);
         }
     }
-    
+
     private void insertChunk(String runId, long firstTick, long lastTick) throws SQLException {
         try {
             java.lang.reflect.Field dataSourceField = H2Database.class.getDeclaredField("dataSource");
             dataSourceField.setAccessible(true);
             com.zaxxer.hikari.HikariDataSource dataSource = (com.zaxxer.hikari.HikariDataSource) dataSourceField.get(database);
-            
+
             try (Connection conn = dataSource.getConnection()) {
                 org.evochora.datapipeline.utils.H2SchemaUtil.setSchema(conn, runId);
-                
-                // Create chunk table
-                conn.createStatement().execute(
-                    "CREATE TABLE IF NOT EXISTS environment_chunks (" +
-                    "first_tick BIGINT PRIMARY KEY, " +
-                    "last_tick BIGINT NOT NULL, " +
-                    "chunk_blob BYTEA NOT NULL" +
-                    ")"
-                );
-                
-                // Create minimal valid chunk
-                TickData snapshot = TickData.newBuilder()
-                    .setTickNumber(firstTick)
-                    .build();
-                
-                long tickCount = lastTick - firstTick + 1;
-                TickDataChunk.Builder chunkBuilder = TickDataChunk.newBuilder()
-                    .setSnapshot(snapshot)
-                    .setFirstTick(firstTick)
-                    .setTickCount((int) tickCount);
-                
-                // Add empty deltas for ticks after the snapshot
-                for (long t = firstTick + 1; t <= lastTick; t++) {
-                    chunkBuilder.addDeltas(TickDelta.newBuilder()
-                        .setTickNumber(t)
-                        .build());
-                }
-                
-                PreparedStatement stmt = conn.prepareStatement(
-                    "INSERT INTO environment_chunks (first_tick, last_tick, chunk_blob) VALUES (?, ?, ?)"
-                );
-                stmt.setLong(1, firstTick);
-                stmt.setLong(2, lastTick);
-                stmt.setBytes(3, chunkBuilder.build().toByteArray());
-                stmt.executeUpdate();
+                createChunkTable(conn);
+                insertTickRange(conn, firstTick, lastTick);
             }
+
+            // Write minimal valid chunk as file
+            TickData snapshot = TickData.newBuilder()
+                .setTickNumber(firstTick)
+                .build();
+
+            long tickCount = lastTick - firstTick + 1;
+            TickDataChunk.Builder chunkBuilder = TickDataChunk.newBuilder()
+                .setSnapshot(snapshot)
+                .setFirstTick(firstTick)
+                .setTickCount((int) tickCount);
+
+            for (long t = firstTick + 1; t <= lastTick; t++) {
+                chunkBuilder.addDeltas(TickDelta.newBuilder()
+                    .setTickNumber(t)
+                    .build());
+            }
+
+            writeChunkFile(runId, firstTick, chunkBuilder.build().toByteArray());
         } catch (Exception e) {
             throw new SQLException("Failed to insert chunk", e);
         }
     }
-    
+
     private void insertChunkWithCells(String runId, long tick) throws SQLException {
         try {
             java.lang.reflect.Field dataSourceField = H2Database.class.getDeclaredField("dataSource");
             dataSourceField.setAccessible(true);
             com.zaxxer.hikari.HikariDataSource dataSource = (com.zaxxer.hikari.HikariDataSource) dataSourceField.get(database);
-            
+
             try (Connection conn = dataSource.getConnection()) {
                 org.evochora.datapipeline.utils.H2SchemaUtil.setSchema(conn, runId);
-                
-                // Create chunk table
-                conn.createStatement().execute(
-                    "CREATE TABLE IF NOT EXISTS environment_chunks (" +
-                    "first_tick BIGINT PRIMARY KEY, " +
-                    "last_tick BIGINT NOT NULL, " +
-                    "chunk_blob BYTEA NOT NULL" +
-                    ")"
-                );
-                
-                // Create valid chunk with cells
-                TickData snapshot = TickData.newBuilder()
-                    .setTickNumber(tick)
-                    .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
-                        CellStateTestHelper.createCellState(0, 0, 1, 255, 0),
-                        CellStateTestHelper.createCellState(1, 0, 1, 128, 0)
-                    )))
-                    .build();
-                
-                TickDataChunk chunk = TickDataChunk.newBuilder()
-                    .setSnapshot(snapshot)
-                    .setFirstTick(tick)
-                    .setTickCount(1)  // Must be deltas.size() + 1
-                    .build();
-                
-                PreparedStatement stmt = conn.prepareStatement(
-                    "INSERT INTO environment_chunks (first_tick, last_tick, chunk_blob) VALUES (?, ?, ?)"
-                );
-                stmt.setLong(1, tick);
-                stmt.setLong(2, tick);
-                stmt.setBytes(3, chunk.toByteArray());
-                stmt.executeUpdate();
+                createChunkTable(conn);
+                insertTickRange(conn, tick, tick);
             }
+
+            // Write valid chunk with cells as file
+            TickData snapshot = TickData.newBuilder()
+                .setTickNumber(tick)
+                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                    CellStateTestHelper.createCellState(0, 0, 1, 255, 0),
+                    CellStateTestHelper.createCellState(1, 0, 1, 128, 0)
+                )))
+                .build();
+
+            TickDataChunk chunk = TickDataChunk.newBuilder()
+                .setSnapshot(snapshot)
+                .setFirstTick(tick)
+                .setTickCount(1)
+                .build();
+
+            writeChunkFile(runId, tick, chunk.toByteArray());
         } catch (Exception e) {
             throw new SQLException("Failed to insert chunk with cells", e);
         }
+    }
+
+    private void createChunkTable(Connection conn) throws SQLException {
+        conn.createStatement().execute(
+            "CREATE TABLE IF NOT EXISTS environment_chunks (" +
+            "first_tick BIGINT PRIMARY KEY, " +
+            "last_tick BIGINT NOT NULL" +
+            ")"
+        );
+    }
+
+    private void insertTickRange(Connection conn, long firstTick, long lastTick) throws SQLException {
+        PreparedStatement stmt = conn.prepareStatement(
+            "INSERT INTO environment_chunks (first_tick, last_tick) VALUES (?, ?)"
+        );
+        stmt.setLong(1, firstTick);
+        stmt.setLong(2, lastTick);
+        stmt.executeUpdate();
+    }
+
+    private void writeChunkFile(String runId, long firstTick, byte[] data) throws IOException {
+        String schemaName = resolveSchemaName(runId);
+        Path schemaDir = tempChunkDir.resolve(schemaName);
+        Files.createDirectories(schemaDir);
+
+        // Write .chunk_meta (ticksPerSubdirectory = 10000 for default maxFilesPerDirectory × tickCount=1)
+        long ticksPerSubdir = 10_000L;
+        Path metaFile = schemaDir.resolve(".chunk_meta");
+        if (!Files.exists(metaFile)) {
+            var props = new java.util.Properties();
+            props.setProperty("ticksPerSubdirectory", Long.toString(ticksPerSubdir));
+            try (var out = Files.newOutputStream(metaFile)) {
+                props.store(out, null);
+            }
+        }
+
+        // Write chunk file in subdirectory
+        long bucket = firstTick / ticksPerSubdir;
+        Path subdir = schemaDir.resolve(String.format("%04d", bucket));
+        Files.createDirectories(subdir);
+        Files.write(subdir.resolve("chunk_" + firstTick + ".pb"), data);
     }
 }

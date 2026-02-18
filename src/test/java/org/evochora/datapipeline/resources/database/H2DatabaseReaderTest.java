@@ -2,6 +2,7 @@ package org.evochora.datapipeline.resources.database;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +30,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
@@ -46,6 +48,9 @@ import com.typesafe.config.ConfigFactory;
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
 class H2DatabaseReaderTest {
+
+    @TempDir
+    Path tempChunkDir;
 
     private H2Database database;
     private IDatabaseReaderProvider provider;
@@ -66,7 +71,7 @@ class H2DatabaseReaderTest {
             "maxPoolSize = 5\n" +
             "h2EnvironmentStrategy {\n" +
             "  className = \"org.evochora.datapipeline.resources.database.h2.RowPerChunkStrategy\"\n" +
-            "  options { compression { enabled = false } }\n" +
+            "  options { chunkDirectory = \"" + tempChunkDir.toString().replace("\\", "/") + "\" }\n" +
             "}\n"
         );
         database = new H2Database("test-db", dbConfig);
@@ -91,7 +96,8 @@ class H2DatabaseReaderTest {
             conn.createStatement().execute("SET SCHEMA \"SIM_" + runId.toUpperCase().replaceAll("[^A-Z0-9_]", "_") + "\"");
 
             // Create tables using strategy
-            RowPerChunkStrategy strategy = new RowPerChunkStrategy(ConfigFactory.empty());
+            RowPerChunkStrategy strategy = new RowPerChunkStrategy(ConfigFactory.parseString(
+                    "chunkDirectory = \"" + tempChunkDir.toString().replace("\\", "\\\\") + "\""));
             strategy.createTables(conn, 2);
 
             // Write chunk spanning ticks 10-30
@@ -132,7 +138,8 @@ class H2DatabaseReaderTest {
             conn.createStatement().execute("CREATE SCHEMA IF NOT EXISTS \"SIM_" + runId.toUpperCase().replaceAll("[^A-Z0-9_]", "_") + "\"");
             conn.createStatement().execute("SET SCHEMA \"SIM_" + runId.toUpperCase().replaceAll("[^A-Z0-9_]", "_") + "\"");
 
-            RowPerChunkStrategy strategy = new RowPerChunkStrategy(ConfigFactory.empty());
+            RowPerChunkStrategy strategy = new RowPerChunkStrategy(ConfigFactory.parseString(
+                    "chunkDirectory = \"" + tempChunkDir.toString().replace("\\", "\\\\") + "\""));
             strategy.createTables(conn, 2);
         }
 
@@ -170,7 +177,8 @@ class H2DatabaseReaderTest {
             conn.createStatement().execute("CREATE SCHEMA IF NOT EXISTS \"SIM_" + runId.toUpperCase().replaceAll("[^A-Z0-9_]", "_") + "\"");
             conn.createStatement().execute("SET SCHEMA \"SIM_" + runId.toUpperCase().replaceAll("[^A-Z0-9_]", "_") + "\"");
 
-            RowPerChunkStrategy strategy = new RowPerChunkStrategy(ConfigFactory.empty());
+            RowPerChunkStrategy strategy = new RowPerChunkStrategy(ConfigFactory.parseString(
+                    "chunkDirectory = \"" + tempChunkDir.toString().replace("\\", "\\\\") + "\""));
             strategy.createTables(conn, 2);
 
             // Write single chunk with single tick (no deltas)

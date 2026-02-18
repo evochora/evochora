@@ -50,8 +50,8 @@ public class H2Database extends AbstractDatabaseResource
     private final AtomicLong diskWrites = new AtomicLong(0);
     private final SlidingWindowCounter diskWritesCounter;
     
-    // Environment storage strategy (loaded via reflection)
-    private final IH2EnvStorageStrategy envStorageStrategy;
+    // Environment storage strategy: eager when explicitly configured, lazy otherwise
+    private volatile IH2EnvStorageStrategy envStorageStrategy;
     
     // Organism storage strategy (loaded via reflection)
     private final IH2OrgStorageStrategy orgStorageStrategy;
@@ -141,12 +141,16 @@ public class H2Database extends AbstractDatabaseResource
             ? options.getLong("readerConnectionWarningThresholdMs")
             : 30_000L;
 
-        // Load environment storage strategy via reflection
-        this.envStorageStrategy = loadEnvironmentStorageStrategy(options);
-        
         // Load organism storage strategy via reflection
         this.orgStorageStrategy = loadOrganismStorageStrategy(options);
-        
+
+        // Load environment storage strategy eagerly when explicitly configured
+        // (validates className/options immediately), lazy when absent (default strategy
+        // requires chunkDirectory which may not be available in all contexts)
+        if (options.hasPath("h2EnvironmentStrategy")) {
+            this.envStorageStrategy = loadEnvironmentStorageStrategy(options);
+        }
+
         // Initialize metadata cache
         this.maxCacheSize = options.hasPath("metadataCacheSize") 
             ? options.getInt("metadataCacheSize") 
@@ -181,33 +185,42 @@ public class H2Database extends AbstractDatabaseResource
      * @return Loaded strategy instance
      */
     private IH2EnvStorageStrategy loadEnvironmentStorageStrategy(Config options) {
-        if (options.hasPath("h2EnvironmentStrategy")) {
-            Config strategyConfig = options.getConfig("h2EnvironmentStrategy");
-            String strategyClassName = strategyConfig.getString("className");
-            
-            // Extract options for strategy (defaults to empty config if missing)
-            Config strategyOptions = strategyConfig.hasPath("options")
-                ? strategyConfig.getConfig("options")
-                : ConfigFactory.empty();
-            
-            IH2EnvStorageStrategy strategy = createStorageStrategy(strategyClassName, strategyOptions);
-            log.debug("Loaded environment storage strategy: {} with options: {}", 
-                     strategyClassName, strategyOptions.hasPath("compression.codec") 
-                         ? strategyOptions.getString("compression.codec") 
-                         : "none");
-            return strategy;
-        } else {
-            // Default: RowPerChunkStrategy without compression
-            Config emptyConfig = ConfigFactory.empty();
-            IH2EnvStorageStrategy strategy = createStorageStrategy(
-                "org.evochora.datapipeline.resources.database.h2.RowPerChunkStrategy",
-                emptyConfig
-            );
-            log.debug("Using default RowPerChunkStrategy (no compression)");
-            return strategy;
-        }
+        Config strategyConfig = options.getConfig("h2EnvironmentStrategy");
+        String strategyClassName = strategyConfig.getString("className");
+
+        // Extract options for strategy (defaults to empty config if missing)
+        Config strategyOptions = strategyConfig.hasPath("options")
+            ? strategyConfig.getConfig("options")
+            : ConfigFactory.empty();
+
+        IH2EnvStorageStrategy strategy = createStorageStrategy(strategyClassName, strategyOptions);
+        log.debug("Loaded environment storage strategy: {} with options: {}",
+                 strategyClassName, strategyOptions.hasPath("compression.codec")
+                     ? strategyOptions.getString("compression.codec")
+                     : "none");
+        return strategy;
     }
     
+    /**
+     * Returns the environment storage strategy.
+     * <p>
+     * The strategy is loaded eagerly when {@code h2EnvironmentStrategy} is explicitly
+     * configured. When absent, this method throws because the default strategy requires
+     * configuration (e.g., {@code chunkDirectory}) that cannot be inferred.
+     *
+     * @return the environment storage strategy, never null
+     * @throws IllegalStateException if no environment strategy is configured
+     */
+    private IH2EnvStorageStrategy getEnvStrategy() {
+        IH2EnvStorageStrategy s = envStorageStrategy;
+        if (s == null) {
+            throw new IllegalStateException(
+                "Environment storage strategy not configured. " +
+                "Add h2EnvironmentStrategy to database configuration.");
+        }
+        return s;
+    }
+
     /**
      * Loads organism storage strategy via reflection.
      * <p>
@@ -446,7 +459,7 @@ public class H2Database extends AbstractDatabaseResource
         Connection conn = (Connection) connection;
         
         // Delegate to storage strategy
-        envStorageStrategy.createTables(conn, dimensions);
+        getEnvStrategy().createTables(conn, dimensions);
         
         // Commit transaction
         conn.commit();
@@ -472,7 +485,7 @@ public class H2Database extends AbstractDatabaseResource
         
         try {
             // Delegate to storage strategy for SQL operations
-            envStorageStrategy.writeChunks(conn, chunks);
+            getEnvStrategy().writeChunks(conn, chunks);
             
             // Commit transaction on success
             conn.commit();

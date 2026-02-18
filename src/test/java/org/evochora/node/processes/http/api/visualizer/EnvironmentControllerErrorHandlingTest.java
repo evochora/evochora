@@ -13,11 +13,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.io.TempDir;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 
 import io.javalin.Javalin;
+
+import java.nio.file.Path;
 
 /**
  * Phase 3 error handling tests: HTTP error responses and edge cases.
@@ -31,6 +34,9 @@ import io.javalin.Javalin;
 @Tag("integration")
 @ExtendWith(LogWatchExtension.class)
 class EnvironmentControllerErrorHandlingTest {
+
+    @TempDir
+    Path tempChunkDir;
 
     private H2Database database;
     private Javalin app;
@@ -46,7 +52,7 @@ class EnvironmentControllerErrorHandlingTest {
             "maxPoolSize = 5\n" +
             "h2EnvironmentStrategy {\n" +
             "  className = \"org.evochora.datapipeline.resources.database.h2.RowPerChunkStrategy\"\n" +
-            "  options { compression { enabled = true, codec = \"zstd\", level = 3 } }\n" +
+            "  options { chunkDirectory = \"" + tempChunkDir.toString().replace("\\", "/") + "\" }\n" +
             "}\n"
         );
         database = new H2Database("test-db", dbConfig);

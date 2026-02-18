@@ -14,6 +14,8 @@ import static org.mockito.Mockito.when;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -40,6 +42,7 @@ import org.evochora.runtime.model.Molecule;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.ArgumentCaptor;
 
 import com.typesafe.config.Config;
@@ -49,205 +52,226 @@ import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 /**
  * Unit tests for RowPerChunkStrategy.
  * <p>
- * Tests compression configuration, table creation, chunk serialization,
- * and read/write behavior for delta-compressed environment data.
+ * Tests file-based chunk storage: H2 holds only the tick-range index,
+ * chunk data is written to and read from the filesystem.
  */
 @Tag("unit")
 class RowPerChunkStrategyTest {
-    
+
+    private static final String TEST_SCHEMA = "TEST_SCHEMA";
+
+    @TempDir
+    Path tempDir;
+
     private RowPerChunkStrategy strategy;
     private Connection mockConnection;
     private Statement mockStatement;
     private PreparedStatement mockPreparedStatement;
     private ResultSet mockResultSet;
-    
+
     @BeforeEach
     void setUp() throws SQLException {
         mockConnection = mock(Connection.class);
         mockStatement = mock(Statement.class);
         mockPreparedStatement = mock(PreparedStatement.class);
         mockResultSet = mock(ResultSet.class);
-        
+
         when(mockConnection.createStatement()).thenReturn(mockStatement);
         when(mockConnection.prepareStatement(anyString())).thenReturn(mockPreparedStatement);
         when(mockPreparedStatement.executeQuery()).thenReturn(mockResultSet);
-        when(mockConnection.getSchema()).thenReturn("TEST_SCHEMA");
+        when(mockConnection.getSchema()).thenReturn(TEST_SCHEMA);
     }
-    
+
+    private Config configWithChunkDir() {
+        return ConfigFactory.parseString(
+                "chunkDirectory = \"" + tempDir.toString().replace("\\", "\\\\") + "\"");
+    }
+
+    private Config configWithChunkDirAndZstd() {
+        return ConfigFactory.parseString(
+                "chunkDirectory = \"" + tempDir.toString().replace("\\", "\\\\") + "\"\n" +
+                "compression { enabled = true, codec = \"zstd\", level = 3 }");
+    }
+
+    // ========================================================================
+    // Constructor tests
+    // ========================================================================
+
     @Test
-    void testConstructor_NoCompression() {
-        // Given: Config without compression section
-        Config config = ConfigFactory.empty();
-        
-        // When: Create strategy
-        strategy = new RowPerChunkStrategy(config);
-        
-        // Then: Should use NoneCodec
-        assertThat(strategy).isNotNull();
+    void testConstructor_RequiresChunkDirectory() {
+        assertThatThrownBy(() -> new RowPerChunkStrategy(ConfigFactory.empty()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("chunkDirectory");
     }
-    
+
+    @Test
+    void testConstructor_WithChunkDirectory() {
+        strategy = new RowPerChunkStrategy(configWithChunkDir());
+
+        assertThat(strategy).isNotNull();
+        assertThat(strategy.getChunkDirectory()).isEqualTo(tempDir);
+    }
+
     @Test
     void testConstructor_WithZstdCompression() {
-        // Given: Config with zstd compression
-        Config config = ConfigFactory.parseString("""
-            compression {
-              enabled = true
-              codec = "zstd"
-              level = 3
-            }
-            """);
-        
-        // When: Create strategy
-        strategy = new RowPerChunkStrategy(config);
-        
-        // Then: Should create successfully
+        strategy = new RowPerChunkStrategy(configWithChunkDirAndZstd());
+
         assertThat(strategy).isNotNull();
     }
-    
+
+    // ========================================================================
+    // createTables tests
+    // ========================================================================
+
     @Test
     void testCreateTables_CreatesTableAndIndex() throws SQLException {
-        // Given: Strategy with no compression
-        strategy = new RowPerChunkStrategy(ConfigFactory.empty());
-        
-        // When: Create tables
+        strategy = new RowPerChunkStrategy(configWithChunkDir());
+
         strategy.createTables(mockConnection, 2);
-        
-        // Then: Should execute CREATE TABLE and CREATE INDEX
+
         verify(mockStatement, times(2)).execute(anyString());
-        
-        // Verify SQL strings
+
         ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
         verify(mockStatement, times(2)).execute(sqlCaptor.capture());
-        
+
         List<String> executedSql = sqlCaptor.getAllValues();
         assertThat(executedSql).hasSize(2);
-        
-        // First call: CREATE TABLE
+
+        // CREATE TABLE: only first_tick and last_tick, no BLOB
         assertThat(executedSql.get(0))
             .contains("CREATE TABLE IF NOT EXISTS environment_chunks")
             .contains("first_tick BIGINT PRIMARY KEY")
             .contains("last_tick BIGINT NOT NULL")
-            .contains("chunk_blob BYTEA NOT NULL");
-        
-        // Second call: CREATE INDEX
+            .doesNotContain("chunk_blob")
+            .doesNotContain("BYTEA");
+
+        // CREATE INDEX
         assertThat(executedSql.get(1))
             .contains("CREATE INDEX IF NOT EXISTS idx_env_chunks_last_tick");
     }
-    
+
     @Test
-    void testCreateTables_CachesSqlString() throws SQLException {
-        // Given: Strategy
-        strategy = new RowPerChunkStrategy(ConfigFactory.empty());
-        
-        // When: Create tables
+    void testCreateTables_CachesMergeSql() throws SQLException {
+        strategy = new RowPerChunkStrategy(configWithChunkDir());
+
         strategy.createTables(mockConnection, 3);
-        
-        // Then: mergeSql should be cached
+
         assertThat(strategy.getMergeSql())
             .contains("MERGE INTO environment_chunks")
             .contains("first_tick")
             .contains("last_tick")
-            .contains("chunk_blob");
+            .doesNotContain("chunk_blob");
     }
-    
+
+    // ========================================================================
+    // writeChunks tests
+    // ========================================================================
+
     @Test
     void testWriteChunks_EmptyList() throws SQLException {
-        // Given: Strategy with empty chunk list
-        strategy = new RowPerChunkStrategy(ConfigFactory.empty());
-        
-        // When: Write empty list
+        strategy = new RowPerChunkStrategy(configWithChunkDir());
+
         strategy.writeChunks(mockConnection, List.of());
-        
-        // Then: Should not execute any database operations
+
         verify(mockConnection, times(0)).prepareStatement(anyString());
     }
-    
+
     @Test
-    void testWriteChunks_SingleChunk() throws SQLException {
-        // Given: Strategy with one chunk
-        strategy = new RowPerChunkStrategy(ConfigFactory.empty());
+    void testWriteChunks_SingleChunk_WritesFileAndH2() throws SQLException, IOException {
+        strategy = new RowPerChunkStrategy(configWithChunkDir());
         strategy.createTables(mockConnection, 2);
-        
+
         TickDataChunk chunk = createChunkWithSnapshot(1000L);
-        
-        // When: Write single chunk
+
         strategy.writeChunks(mockConnection, List.of(chunk));
-        
-        // Then: Should use PreparedStatement and execute batch
+
+        // Verify H2 MERGE with correct tick values
         verify(mockPreparedStatement).setLong(eq(1), eq(1000L)); // first_tick
         verify(mockPreparedStatement).setLong(eq(2), eq(1000L)); // last_tick (no deltas)
         verify(mockPreparedStatement).addBatch();
         verify(mockPreparedStatement).executeBatch();
+
+        // Verify file exists on disk
+        Path chunkFile = tempDir.resolve(TEST_SCHEMA).resolve("0000").resolve("chunk_1000.pb");
+        assertThat(chunkFile).exists();
+        assertThat(Files.size(chunkFile)).isGreaterThan(0);
     }
-    
+
     @Test
     void testWriteChunks_ChunkWithDeltas() throws SQLException {
-        // Given: Strategy with chunk containing deltas
-        strategy = new RowPerChunkStrategy(ConfigFactory.empty());
+        strategy = new RowPerChunkStrategy(configWithChunkDir());
         strategy.createTables(mockConnection, 2);
-        
+
         TickDataChunk chunk = createChunkWithDeltas(1000L, 1004L);
-        
-        // When: Write chunk
+
         strategy.writeChunks(mockConnection, List.of(chunk));
-        
-        // Then: Should calculate last_tick correctly
+
+        // Verify last_tick from last delta
         verify(mockPreparedStatement).setLong(eq(1), eq(1000L)); // first_tick
         verify(mockPreparedStatement).setLong(eq(2), eq(1004L)); // last_tick (from last delta)
+
+        // Verify file exists
+        Path chunkFile = tempDir.resolve(TEST_SCHEMA).resolve("0000").resolve("chunk_1000.pb");
+        assertThat(chunkFile).exists();
     }
-    
+
+    @Test
+    void testWriteChunks_CreatesSchemaDirectory() throws SQLException {
+        strategy = new RowPerChunkStrategy(configWithChunkDir());
+        strategy.createTables(mockConnection, 2);
+
+        TickDataChunk chunk = createChunkWithSnapshot(5000L);
+
+        strategy.writeChunks(mockConnection, List.of(chunk));
+
+        Path schemaDir = tempDir.resolve(TEST_SCHEMA);
+        assertThat(schemaDir).isDirectory();
+    }
+
+    // ========================================================================
+    // readChunkContaining tests
+    // ========================================================================
+
     @Test
     void testReadChunkContaining_NotFound() throws SQLException {
-        // Given: Range query returns no matching chunk
-        strategy = new RowPerChunkStrategy(ConfigFactory.empty());
+        strategy = new RowPerChunkStrategy(configWithChunkDir());
         when(mockResultSet.next()).thenReturn(false);
 
-        // When/Then: Should throw TickNotFoundException
         assertThatThrownBy(() -> strategy.readChunkContaining(mockConnection, 500L))
             .isInstanceOf(TickNotFoundException.class)
             .hasMessageContaining("No chunk found containing tick 500");
     }
 
     @Test
-    void testReadChunkContaining_EmptyBlob() throws SQLException {
-        // Given: Range query finds chunk but blob is empty
-        strategy = new RowPerChunkStrategy(ConfigFactory.empty());
-        when(mockResultSet.next()).thenReturn(true);
-        when(mockResultSet.getBytes("chunk_blob")).thenReturn(new byte[0]);
+    void testReadChunkContaining_FileNotFound() throws SQLException, IOException {
+        strategy = new RowPerChunkStrategy(configWithChunkDir());
 
-        // When/Then: Should throw TickNotFoundException
-        assertThatThrownBy(() -> strategy.readChunkContaining(mockConnection, 500L))
+        // Create schema directory with metadata but no chunk file
+        Path schemaDir = tempDir.resolve(TEST_SCHEMA);
+        Files.createDirectories(schemaDir);
+        var props = new java.util.Properties();
+        props.setProperty("ticksPerSubdirectory", "10000");
+        try (var out = Files.newOutputStream(schemaDir.resolve(".chunk_meta"))) {
+            props.store(out, null);
+        }
+
+        when(mockResultSet.next()).thenReturn(true);
+        when(mockResultSet.getLong("first_tick")).thenReturn(1000L);
+
+        assertThatThrownBy(() -> strategy.readChunkContaining(mockConnection, 1000L))
             .isInstanceOf(TickNotFoundException.class)
-            .hasMessageContaining("empty BLOB");
+            .hasMessageContaining("Chunk file not found");
     }
-    
-    @Test
-    void testGetMergeSql_ReturnsCorrectSql() throws SQLException {
-        // Given: Strategy with tables created
-        strategy = new RowPerChunkStrategy(ConfigFactory.empty());
-        strategy.createTables(mockConnection, 2);
-        
-        // When: Get SQL
-        String sql = strategy.getMergeSql();
-        
-        // Then: Should return correct MERGE statement
-        assertThat(sql)
-            .contains("MERGE INTO environment_chunks")
-            .contains("first_tick")
-            .contains("last_tick")
-            .contains("chunk_blob")
-            .contains("KEY (first_tick)");
-    }
-    
+
     // ========================================================================
     // Partial parse: organisms stripped, CellDataColumns preserved
     // ========================================================================
 
     @Test
     void readChunkContaining_preservesCellDataColumns() throws SQLException, TickNotFoundException, IOException {
-        strategy = new RowPerChunkStrategy(ConfigFactory.empty());
+        strategy = new RowPerChunkStrategy(configWithChunkDir());
         TickDataChunk fullChunk = buildChunkWithOrganisms();
-        mockBlobReturn(compressWithZstd(fullChunk));
+        prepareChunkFile(fullChunk.getSnapshot().getTickNumber(), compressWithZstd(fullChunk));
 
         TickDataChunk result = strategy.readChunkContaining(mockConnection, 0);
 
@@ -265,7 +289,7 @@ class RowPerChunkStrategyTest {
 
     @Test
     void readChunkContaining_stripsOrganismsAndRngAndPlugins() throws SQLException, TickNotFoundException, IOException {
-        strategy = new RowPerChunkStrategy(ConfigFactory.empty());
+        strategy = new RowPerChunkStrategy(configWithChunkDir());
         TickDataChunk fullChunk = buildChunkWithOrganisms();
 
         assertTrue(fullChunk.getSnapshot().getOrganismsCount() > 0,
@@ -273,7 +297,7 @@ class RowPerChunkStrategyTest {
         assertTrue(fullChunk.getSnapshot().getRngState().size() > 0,
                 "Full chunk must contain RNG state");
 
-        mockBlobReturn(compressWithZstd(fullChunk));
+        prepareChunkFile(fullChunk.getSnapshot().getTickNumber(), compressWithZstd(fullChunk));
 
         TickDataChunk result = strategy.readChunkContaining(mockConnection, 0);
 
@@ -289,9 +313,9 @@ class RowPerChunkStrategyTest {
 
     @Test
     void readChunkContaining_preservesMetadata() throws SQLException, TickNotFoundException, IOException {
-        strategy = new RowPerChunkStrategy(ConfigFactory.empty());
+        strategy = new RowPerChunkStrategy(configWithChunkDir());
         TickDataChunk fullChunk = buildChunkWithOrganisms();
-        mockBlobReturn(compressWithZstd(fullChunk));
+        prepareChunkFile(fullChunk.getSnapshot().getTickNumber(), compressWithZstd(fullChunk));
 
         TickDataChunk result = strategy.readChunkContaining(mockConnection, 0);
 
@@ -304,9 +328,9 @@ class RowPerChunkStrategyTest {
     @Test
     void readChunkContaining_compatibleWithDeltaCodecDecoder()
             throws SQLException, TickNotFoundException, IOException, ChunkCorruptedException {
-        strategy = new RowPerChunkStrategy(ConfigFactory.empty());
+        strategy = new RowPerChunkStrategy(configWithChunkDir());
         TickDataChunk fullChunk = buildChunkWithOrganisms();
-        mockBlobReturn(compressWithZstd(fullChunk));
+        prepareChunkFile(fullChunk.getSnapshot().getTickNumber(), compressWithZstd(fullChunk));
 
         TickDataChunk result = strategy.readChunkContaining(mockConnection, 0);
 
@@ -328,9 +352,33 @@ class RowPerChunkStrategyTest {
     // Helper methods
     // ========================================================================
 
-    private void mockBlobReturn(byte[] blobData) throws SQLException {
+    /**
+     * Writes a compressed chunk file to the schema directory with subdirectory
+     * structure and .chunk_meta, then mocks the H2 query to return the corresponding first_tick.
+     */
+    private void prepareChunkFile(long firstTick, byte[] compressedData) throws IOException, SQLException {
+        Path schemaDir = tempDir.resolve(TEST_SCHEMA);
+        Files.createDirectories(schemaDir);
+
+        // Write .chunk_meta (ticksPerSubdirectory = 10000 × 1 for default maxFilesPerDirectory)
+        long ticksPerSubdir = 10_000L;
+        Path metaFile = schemaDir.resolve(".chunk_meta");
+        if (!Files.exists(metaFile)) {
+            var props = new java.util.Properties();
+            props.setProperty("ticksPerSubdirectory", Long.toString(ticksPerSubdir));
+            try (var out = Files.newOutputStream(metaFile)) {
+                props.store(out, null);
+            }
+        }
+
+        // Write chunk file in subdirectory
+        long bucket = firstTick / ticksPerSubdir;
+        Path subdir = schemaDir.resolve(String.format("%04d", bucket));
+        Files.createDirectories(subdir);
+        Files.write(subdir.resolve("chunk_" + firstTick + ".pb"), compressedData);
+
         when(mockResultSet.next()).thenReturn(true);
-        when(mockResultSet.getBytes("chunk_blob")).thenReturn(blobData);
+        when(mockResultSet.getLong("first_tick")).thenReturn(firstTick);
     }
 
     private TickDataChunk buildChunkWithOrganisms() {
@@ -385,10 +433,6 @@ class RowPerChunkStrategyTest {
         }
     }
 
-    // ========================================================================
-    // Legacy helper methods (for mock-based tests above)
-    // ========================================================================
-
     private TickData createSnapshotWithCells(long tickNumber, int cellCount) {
         TickData.Builder builder = TickData.newBuilder().setTickNumber(tickNumber);
         java.util.List<CellState> cells = new java.util.ArrayList<>();
@@ -398,24 +442,23 @@ class RowPerChunkStrategyTest {
         builder.setCellColumns(CellStateTestHelper.createColumnsFromCells(cells));
         return builder.build();
     }
-    
+
     private TickDataChunk createChunkWithSnapshot(long tickNumber) {
         return TickDataChunk.newBuilder()
             .setSnapshot(createSnapshotWithCells(tickNumber, 3))
             .build();
     }
-    
+
     private TickDataChunk createChunkWithDeltas(long firstTick, long lastTick) {
         TickDataChunk.Builder builder = TickDataChunk.newBuilder()
             .setSnapshot(createSnapshotWithCells(firstTick, 3));
-        
-        // Add deltas for each tick between first and last
+
         for (long t = firstTick + 1; t <= lastTick; t++) {
             builder.addDeltas(TickDelta.newBuilder()
                 .setTickNumber(t)
                 .build());
         }
-        
+
         return builder.build();
     }
 }
