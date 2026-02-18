@@ -174,38 +174,8 @@
             display: block;
         }
 
-        .action-card-placeholder-link {
-            display: block;
-            border-radius: 6px;
-            overflow: hidden;
-            border: 1px solid var(--border);
-        }
-
-        .action-card-placeholder {
-            width: 100%;
-            aspect-ratio: 16 / 9;
-            background: linear-gradient(135deg, #0d1117 0%, #161b22 50%, #0d1117 100%);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .action-card-placeholder::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            background:
-                radial-gradient(ellipse at 30% 40%, rgba(74, 158, 255, 0.06) 0%, transparent 60%),
-                radial-gradient(ellipse at 70% 60%, rgba(74, 158, 255, 0.04) 0%, transparent 50%);
-        }
-
-        .action-card-placeholder-text {
-            font-family: var(--sans);
-            font-size: 0.75rem;
-            color: var(--text-tertiary);
-            z-index: 1;
+        .action-card-img[src*="notebook"] {
+            filter: brightness(0.25);
         }
 
         .action-card-body {
@@ -287,11 +257,14 @@
         .why-grid {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 1.5rem 2.5rem;
+            gap: 1.5rem 6rem;
         }
 
         .why-item {
-            padding: 0;
+            padding: 0.9rem 1rem;
+            border-left: 2px solid var(--accent);
+            background: rgba(74, 158, 255, 0.03);
+            border-radius: 0 4px 4px 0;
         }
 
         .why-label {
@@ -467,6 +440,11 @@
                 margin: 2rem 0;
             }
         }
+        /* ── Mode visibility (demo vs local) ── */
+        [data-mode="local"] { display: none; }
+        [data-mode="demo"] { display: revert; }
+        body.local [data-mode="demo"] { display: none; }
+        body.local [data-mode="local"] { display: revert; }
     </style>
 </head>
 <body>
@@ -543,11 +521,11 @@
             </div>
 
             <div class="action-card">
-                <div class="action-card-placeholder-link">
-                    <div class="action-card-placeholder">
-                        <span class="action-card-placeholder-text">Screenshot coming soon</span>
-                    </div>
-                </div>
+                <a href="https://colab.research.google.com/github/evochora/evochora/blob/main/notebooks/data_analysis_guide.ipynb?flush_cache=true"
+                   target="_blank" rel="noopener noreferrer" class="action-card-img-link">
+                    <img class="action-card-img" src="/screenshots/notebook.png"
+                         alt="Muller Plot showing lineage clade dynamics over evolutionary time">
+                </a>
                 <div class="action-card-body">
                     <div class="action-card-title">Jupyter Notebook</div>
                     <div class="action-card-desc">

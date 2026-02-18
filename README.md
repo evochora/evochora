@@ -22,6 +22,10 @@
   <a href="https://github.com/evochora/evochora/actions">
     <img src="https://img.shields.io/github/actions/workflow/status/evochora/evochora/build.yml?branch=main&style=flat&logo=github&logoColor=white&label=Build" height="28">
   </a>
+  &nbsp;&nbsp;
+  <a href="https://colab.research.google.com/github/evochora/evochora/blob/main/notebooks/data_analysis_guide.ipynb?flush_cache=true">
+    <img src="https://colab.research.google.com/assets/colab-badge.svg" height="28">
+  </a>
 
 </div>
 
@@ -120,6 +124,7 @@ For the full scientific motivation, see the [Scientific Overview](docs/SCIENTIFI
 - **Standard Formats** — All simulation data exports as Parquet, ready for Python, R, or Jupyter
 - **Pluggable Analytics** — Add custom metrics as analytics plugins with built-in chart visualization; built-in plugins cover population, vital stats, age distribution, genome diversity, and more
 - **Web-Based Inspection** — Step through every tick, inspect organism registers, stacks, and debug EvoASM execution in the browser
+- **Jupyter Notebook** — A ready-to-use [data analysis notebook](https://colab.research.google.com/github/evochora/evochora/blob/main/notebooks/data_analysis_guide.ipynb?flush_cache=true) with phylogenetic trees, Muller plots, and cross-metric analysis using pandas, networkx, and DuckDB
 
 ### Trust Your Results
 - **Deterministic Simulation** — Seed-based; identical input produces identical output, guaranteed
