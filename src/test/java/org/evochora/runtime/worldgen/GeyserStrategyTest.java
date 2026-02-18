@@ -29,8 +29,10 @@ public class GeyserStrategyTest {
     void initializesGeysersAndPlacesEnergyOnAxisAdjacentCells_inND() {
         // 3D world 3x3x3 to allow neighbors around random geyser locations
         Environment env = new Environment(new int[]{3, 3, 3}, true);
-        // count=1 for determinism, interval=1 to trigger on tick 1, amount=77
-        GeyserCreator strat = new GeyserCreator(1, 1, 77);
+        // percentage yields 1 geyser for 27 cells, interval=1 to trigger on tick 1, amount=77
+        GeyserCreator strat = new GeyserCreator(
+                new org.evochora.runtime.internal.services.SeededRandomProvider(0L),
+                0.04, 1, 77, 2);
 
         // Create mock Simulation
         Simulation sim = mock(Simulation.class);

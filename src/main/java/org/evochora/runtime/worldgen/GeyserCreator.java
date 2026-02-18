@@ -16,10 +16,19 @@ import java.util.Random;
 /**
  * A geyser-based energy distribution tick plugin. It creates geysers that erupt
  * at regular intervals, distributing energy to nearby cells.
+ * <p>
+ * The number of geysers scales with the environment size via a configurable
+ * percentage of total cells.
+ * <ul>
+ *   <li><b>percentage:</b> Fraction of total cells to place as geyser sources (0.0–1.0).</li>
+ *   <li><b>interval:</b> Tick interval between eruptions.</li>
+ *   <li><b>amount:</b> Energy amount placed per eruption.</li>
+ *   <li><b>safetyRadius:</b> Radius around placement that must be unowned.</li>
+ * </ul>
  */
 public class GeyserCreator implements ITickPlugin {
 
-    private final int geyserCount;
+    private final double geyserPercentage;
     private final int tickInterval;
     private final int energyAmount;
     /** Radius around a candidate cell that must be free of organism-owned cells. */
@@ -31,53 +40,33 @@ public class GeyserCreator implements ITickPlugin {
      * Creates a geyser-based energy distributor.
      *
      * @param randomProvider Source of randomness.
-     * @param count Number of geysers to spawn.
+     * @param percentage Fraction of total environment cells to place as geyser sources.
      * @param interval Tick interval for eruptions.
      * @param amount Energy amount placed per eruption.
      * @param safetyRadius Radius around placement that must be unowned.
      */
-    public GeyserCreator(IRandomProvider randomProvider, int count, int interval, int amount, int safetyRadius) {
+    public GeyserCreator(IRandomProvider randomProvider, double percentage, int interval, int amount, int safetyRadius) {
         this.random = randomProvider.asJavaRandom();
-        this.geyserCount = count;
+        this.geyserPercentage = percentage;
         this.tickInterval = interval;
         this.energyAmount = amount;
         this.safetyRadius = Math.max(0, safetyRadius);
     }
 
     /**
-     * Backward-compatible constructor for existing callers.
-     * @param randomProvider Source of randomness.
-     * @param count Number of geysers to spawn.
-     * @param interval Tick interval for eruptions.
-     * @param amount Energy amount placed per eruption.
-     */
-    public GeyserCreator(IRandomProvider randomProvider, int count, int interval, int amount) {
-        this(randomProvider, count, interval, amount, 2);
-    }
-
-    /**
-     * Config-based constructor for the new data pipeline.
+     * Config-based constructor used by the simulation engine plugin loader.
+     *
      * @param randomProvider Source of randomness.
      * @param config Configuration object containing geyser parameters.
      */
     public GeyserCreator(IRandomProvider randomProvider, com.typesafe.config.Config config) {
         this(
             randomProvider,
-            config.getInt("count"),
+            config.getDouble("percentage"),
             config.getInt("interval"),
             config.getInt("amount"),
             config.getInt("safetyRadius")
         );
-    }
-
-    /**
-     * Backward-compatible constructor for legacy code/tests.
-     * @param count Number of geysers to spawn.
-     * @param interval Tick interval for eruptions.
-     * @param amount Energy amount placed per eruption.
-     */
-    public GeyserCreator(int count, int interval, int amount) {
-        this(new org.evochora.runtime.internal.services.SeededRandomProvider(0L), count, interval, amount, 2);
     }
 
     @Override
@@ -117,6 +106,12 @@ public class GeyserCreator implements ITickPlugin {
     private void initializeGeysers(Environment environment) {
         geyserLocations = new ArrayList<>();
         int[] shape = environment.getShape();
+        long totalCells = 1;
+        for (int dim : shape) {
+            totalCells *= dim;
+        }
+        int geyserCount = Math.max(1, (int) (geyserPercentage * totalCells));
+
         for (int i = 0; i < geyserCount; i++) {
             int[] coord = null;
             // Try to find a safe source: cell is empty and safety radius is unowned

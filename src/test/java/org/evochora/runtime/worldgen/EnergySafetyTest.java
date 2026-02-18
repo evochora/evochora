@@ -73,7 +73,7 @@ public class EnergySafetyTest {
         }
 
         // Deterministic RNG and safety radius 2
-        GeyserCreator geyser = new GeyserCreator(new SeededRandomProvider(0L), 1, 1, 13, 2);
+        GeyserCreator geyser = new GeyserCreator(new SeededRandomProvider(0L), 0.021, 1, 13, 2);
 
         // Create mock Simulation
         Simulation sim = mock(Simulation.class);

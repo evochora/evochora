@@ -333,7 +333,7 @@ class SimulationMetadataIntegrationTest {
                       {
                         className = "org.evochora.runtime.worldgen.GeyserCreator"
                         options {
-                          count = 2
+                          percentage = 0.0002
                           interval = 100
                           amount = 1000
                           safetyRadius = 2

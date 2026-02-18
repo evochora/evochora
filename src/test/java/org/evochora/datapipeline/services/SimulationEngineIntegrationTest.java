@@ -512,7 +512,7 @@ class SimulationEngineIntegrationTest {
                         Map.of(
                                 "className", "org.evochora.runtime.worldgen.GeyserCreator",
                                 "options", Map.of(
-                                        "count", 3,
+                                        "percentage", 0.03,
                                         "interval", 5,
                                         "amount", 100,
                                         "safetyRadius", 2
@@ -564,7 +564,7 @@ class SimulationEngineIntegrationTest {
                         Map.of(
                                 "className", "org.evochora.runtime.worldgen.GeyserCreator",
                                 "options", Map.of(
-                                        "count", 2,
+                                        "percentage", 0.02,
                                         "interval", 10,
                                         "amount", 80,
                                         "safetyRadius", 2
