@@ -519,11 +519,9 @@
         /* ── Run List ── */
         .run-list-title {
             font-family: var(--sans);
-            font-size: 0.75rem;
-            font-weight: 500;
-            color: var(--text-tertiary);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
+            font-size: 0.85rem;
+            font-weight: 400;
+            color: var(--text-secondary);
             margin-bottom: 0.6rem;
         }
 
@@ -939,7 +937,7 @@
 
         // ── API helper with timeout ──
         function fetchJSON(url, timeoutMs) {
-            timeoutMs = timeoutMs || 5000;
+            timeoutMs = timeoutMs || 10000;
             var controller = new AbortController();
             var timer = setTimeout(function() { controller.abort(); }, timeoutMs);
             return fetch(url, { signal: controller.signal })
@@ -1013,7 +1011,7 @@
         }
 
         function fetchPipelineStatus() {
-            return fetchJSON('/pipeline/api/status', 8000).then(function(status) {
+            return fetchJSON('/pipeline/api/status', 15000).then(function(status) {
                 if (!status) return;
                 activeRunId = null;
                 var simEngine = (status.services || []).find(function(s) {
@@ -1080,7 +1078,7 @@
                 return;
             }
 
-            var h = '<div class="run-list-title">Simulation Runs</div>';
+            var h = '<div class="run-list-title">Simulation runs available on this instance:</div>';
             h += '<table class="run-table"><thead><tr>';
             h += '<th>Started</th><th>Environment</th><th>Sampling</th><th>Ticks</th><th>Organisms</th><th></th>';
             h += '</tr></thead><tbody>';
