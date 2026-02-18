@@ -24,7 +24,10 @@ export class AppSwitcher {
     renderOverlayContent() {
         const currentUrl = window.location.pathname;
         const appLinks = this.apps
-            .filter(app => !currentUrl.includes(app.url))
+            .filter(app => {
+                if (app.url === '/') return currentUrl !== '/' && currentUrl !== '/index.html';
+                return !currentUrl.startsWith(app.url);
+            })
             .map(app => {
                 const link = document.createElement('a');
                 link.href = this.buildUrl(app.url);

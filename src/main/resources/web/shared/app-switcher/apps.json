@@ -1,8 +1,13 @@
 [
   {
+    "name": "Home",
+    "url": "/",
+    "description": "Overview and documentation"
+  },
+  {
     "name": "Visualizer",
     "url": "/visualizer/",
-    "description": "Real-time simulation viewer"
+    "description": "Simulation inspector and debugger"
   },
   {
     "name": "Analyzer",
