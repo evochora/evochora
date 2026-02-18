@@ -440,6 +440,140 @@
                 margin: 2rem 0;
             }
         }
+        /* ── Node Banner ── */
+        .node-banner {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.6rem 1rem;
+            font-size: 0.85rem;
+            color: var(--accent);
+            background: var(--accent-glow);
+            border: 1px solid var(--accent-dim);
+            border-radius: 4px;
+            margin-bottom: 1.5rem;
+        }
+
+        .node-banner-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #50c878;
+            flex-shrink: 0;
+        }
+
+        /* ── Run List ── */
+        .run-list-title {
+            font-family: var(--sans);
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.6rem;
+        }
+
+        .run-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+
+        .run-table th {
+            text-align: left;
+            font-weight: 500;
+            color: var(--text-tertiary);
+            padding: 0.3rem 0.75rem;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .run-table th:nth-child(n+2) {
+            text-align: right;
+        }
+
+        .run-table td {
+            padding: 0.3rem 0.75rem;
+            color: var(--text-secondary);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .run-table td:nth-child(n+2) {
+            text-align: right;
+        }
+
+        .run-table tbody tr:hover {
+            background: var(--bg-surface-hover);
+        }
+
+        .run-active td {
+            color: var(--text-primary);
+        }
+
+        .run-status-badge {
+            display: inline-block;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            padding: 0.15rem 0.5rem;
+            border-radius: 3px;
+            margin-right: 0.5rem;
+        }
+
+        .run-status-running {
+            color: #50c878;
+            background: rgba(80, 200, 120, 0.1);
+            border: 1px solid rgba(80, 200, 120, 0.25);
+        }
+
+        .run-status-paused {
+            color: #e0c050;
+            background: rgba(224, 192, 80, 0.1);
+            border: 1px solid rgba(224, 192, 80, 0.25);
+        }
+
+        .run-status-error {
+            color: #e05050;
+            background: rgba(224, 80, 80, 0.1);
+            border: 1px solid rgba(224, 80, 80, 0.25);
+        }
+
+        .run-viz-link {
+            color: var(--accent);
+            text-decoration: none;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .run-viz-link:hover {
+            text-decoration: underline;
+        }
+
+        .run-link-sep {
+            color: var(--text-tertiary);
+            font-size: 0.75rem;
+            margin: 0 0.15rem;
+        }
+
+        .run-list-loading, .run-list-empty, .run-list-offline {
+            font-size: 0.85rem;
+            color: var(--text-tertiary);
+            padding: 0.5rem 0;
+        }
+
+        .node-banner-offline {
+            color: #c0a050;
+            background: rgba(192, 160, 80, 0.08);
+            border-color: rgba(192, 160, 80, 0.2);
+            margin-bottom: 0;
+        }
+
+        .node-banner-offline .node-banner-dot {
+            background: #c0a050;
+        }
+
         /* ── Mode visibility (demo vs local) ── */
         [data-mode="local"] { display: none; }
         [data-mode="demo"] { display: revert; }
@@ -489,6 +623,19 @@
         </section>
 
         <hr class="divider">
+
+        <!-- Node Banner (JS-controlled: success on local, offline on both) -->
+        <div class="node-banner" id="node-banner" style="display: none;">
+            <span class="node-banner-dot"></span>
+            <span id="node-banner-text"></span>
+        </div>
+
+        <!-- Simulation Runs -->
+        <section id="run-list">
+            <div class="run-list-loading">Loading simulation data&hellip;</div>
+        </section>
+
+        <hr class="divider" id="run-list-divider">
 
         <!-- Action Cards -->
         <section class="actions">
@@ -626,5 +773,219 @@
         </footer>
 
     </div>
+    <script>
+    (function() {
+        'use strict';
+
+        // ── Mode detection ──
+        var DEMO_HOSTS = ['evochora.org', 'www.evochora.org'];
+        var isLocal = !DEMO_HOSTS.includes(window.location.hostname);
+        if (isLocal) {
+            document.body.classList.add('local');
+        }
+
+        // ── State ──
+        var runData = {};
+        var activeRunId = null;
+        var systemOnline = true;
+
+        // ── API helper with timeout ──
+        function fetchJSON(url, timeoutMs) {
+            timeoutMs = timeoutMs || 5000;
+            var controller = new AbortController();
+            var timer = setTimeout(function() { controller.abort(); }, timeoutMs);
+            return fetch(url, { signal: controller.signal })
+                .then(function(res) {
+                    clearTimeout(timer);
+                    if (!res.ok) return null;
+                    return res.json();
+                })
+                .catch(function() {
+                    clearTimeout(timer);
+                    return null;
+                });
+        }
+
+        // ── Data fetchers ──
+        function fetchRuns() {
+            return fetchJSON('/analyzer/api/runs').then(function(runs) {
+                if (!runs) {
+                    systemOnline = false;
+                    runData = {};
+                    activeRunId = null;
+                    return;
+                }
+                systemOnline = true;
+                var ids = {};
+                runs.forEach(function(r) {
+                    ids[r.runId] = true;
+                    if (!runData[r.runId]) {
+                        runData[r.runId] = { runId: r.runId, startTime: r.startTime };
+                    }
+                });
+                Object.keys(runData).forEach(function(id) {
+                    if (!ids[id]) delete runData[id];
+                });
+            });
+        }
+
+        function fetchTicks(runId) {
+            return fetchJSON('/visualizer/api/organisms/ticks?runId=' + encodeURIComponent(runId))
+                .then(function(data) {
+                    if (data) {
+                        runData[runId].maxTick = data.maxTick;
+                    }
+                });
+        }
+
+        function fetchMetadata(runId) {
+            if (runData[runId].samplingInterval !== undefined) return Promise.resolve();
+            return fetchJSON('/visualizer/api/simulation/metadata?runId=' + encodeURIComponent(runId))
+                .then(function(data) {
+                    if (data && data.samplingInterval !== undefined) {
+                        runData[runId].samplingInterval = data.samplingInterval;
+                    }
+                });
+        }
+
+        function fetchOrganisms(runId) {
+            var maxTick = runData[runId].maxTick;
+            if (maxTick === undefined) return Promise.resolve();
+            return fetchJSON('/visualizer/api/organisms/' + maxTick + '?runId=' + encodeURIComponent(runId))
+                .then(function(data) {
+                    if (data && data.organisms) {
+                        runData[runId].organismsAlive = data.organisms.length;
+                    }
+                });
+        }
+
+        function fetchPipelineStatus() {
+            return fetchJSON('/pipeline/api/status', 8000).then(function(status) {
+                if (!status) return;
+                activeRunId = null;
+                var simEngine = (status.services || []).find(function(s) {
+                    return s.name === 'simulation-engine';
+                });
+                if (simEngine && (simEngine.state === 'RUNNING' || simEngine.state === 'PAUSED' || simEngine.state === 'ERROR')) {
+                    var sorted = Object.values(runData).sort(function(a, b) {
+                        return (b.startTime || 0) - (a.startTime || 0);
+                    });
+                    if (sorted.length > 0) {
+                        activeRunId = sorted[0].runId;
+                        runData[activeRunId]._engineState = simEngine.state;
+                    }
+                }
+            });
+        }
+
+        // ── Formatting ──
+        function fmt(n) {
+            if (n === undefined || n === null) return '\u2014';
+            return Number(n).toLocaleString('en-US');
+        }
+
+        function fmtTimestamp(runId) {
+            var m = runId.match(/^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})/);
+            if (!m) return runId.substring(0, 15);
+            return m[1] + '-' + m[2] + '-' + m[3] + ' ' + m[4] + ':' + m[5];
+        }
+
+        // ── Banner ──
+        function updateBanner() {
+            var banner = document.getElementById('node-banner');
+            var text = document.getElementById('node-banner-text');
+            if (!systemOnline) {
+                banner.style.display = 'flex';
+                banner.classList.add('node-banner-offline');
+                text.textContent = 'Evochora node is not reachable.';
+            } else if (isLocal) {
+                banner.style.display = 'flex';
+                banner.classList.remove('node-banner-offline');
+                text.textContent = 'Your Evochora node is running.';
+            } else {
+                banner.style.display = 'none';
+                banner.classList.remove('node-banner-offline');
+            }
+        }
+
+        // ── Render ──
+        function render() {
+            var el = document.getElementById('run-list');
+            updateBanner();
+
+            if (!systemOnline) {
+                el.innerHTML = '';
+                return;
+            }
+
+            var runs = Object.values(runData).sort(function(a, b) {
+                return (b.startTime || 0) - (a.startTime || 0);
+            });
+
+            if (runs.length === 0) {
+                el.innerHTML = '<div class="run-list-empty">No simulation runs available yet.</div>';
+                return;
+            }
+
+            var h = '<div class="run-list-title">Simulation Runs</div>';
+            h += '<table class="run-table"><thead><tr>';
+            h += '<th>Started</th><th>Sampling</th><th>Ticks</th><th>Organisms</th><th></th>';
+            h += '</tr></thead><tbody>';
+
+            runs.forEach(function(run) {
+                var isActive = run.runId === activeRunId;
+                var cls = isActive ? ' class="run-active"' : '';
+                var encodedId = encodeURIComponent(run.runId);
+                h += '<tr' + cls + '>';
+                h += '<td>' + fmtTimestamp(run.runId);
+                if (isActive && run._engineState) {
+                    var state = run._engineState;
+                    var badgeCls = 'run-status-badge ';
+                    if (state === 'RUNNING') badgeCls += 'run-status-running';
+                    else if (state === 'PAUSED') badgeCls += 'run-status-paused';
+                    else if (state === 'ERROR') badgeCls += 'run-status-error';
+                    h += ' <span class="' + badgeCls + '">' + state + '</span>';
+                }
+                h += '</td>';
+                h += '<td>' + fmt(run.samplingInterval) + '</td>';
+                h += '<td>' + fmt(run.maxTick) + '</td>';
+                h += '<td>' + fmt(run.organismsAlive) + '</td>';
+                h += '<td>';
+                h += '<a href="/analyzer?runId=' + encodedId + '" class="run-viz-link">Analyzer</a>';
+                h += ' <span class="run-link-sep">|</span> ';
+                h += '<a href="/visualizer?runId=' + encodedId + '" class="run-viz-link">Visualizer</a>';
+                h += '</td></tr>';
+            });
+
+            h += '</tbody></table>';
+            el.innerHTML = h;
+        }
+
+        // ── Refresh cycles ──
+        function refreshLight() {
+            return fetchRuns().then(function() {
+                var promises = Object.keys(runData).map(function(id) {
+                    return Promise.all([fetchTicks(id), fetchMetadata(id)]);
+                });
+                return Promise.all(promises);
+            }).then(render);
+        }
+
+        function refreshHeavy() {
+            if (!systemOnline) return Promise.resolve();
+            return fetchPipelineStatus().then(function() {
+                var promises = Object.keys(runData).map(function(id) {
+                    return fetchOrganisms(id);
+                });
+                return Promise.all(promises);
+            }).then(render);
+        }
+
+        // ── Start ──
+        refreshLight().then(refreshHeavy);
+        setInterval(refreshLight, 15000);
+        setInterval(refreshHeavy, 30000);
+    })();
+    </script>
 </body>
 </html>
