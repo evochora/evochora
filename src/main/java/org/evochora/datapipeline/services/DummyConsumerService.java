@@ -130,21 +130,20 @@ public class DummyConsumerService<T> extends AbstractService {
             checkPause();
 
             T message = null;
-            try {
-                // Use poll() with timeout to allow graceful shutdown via isStopRequested()
-                var optionalMessage = inputQueue.poll(500, TimeUnit.MILLISECONDS);
-                if (optionalMessage.isEmpty()) {
+            try (var batch = inputQueue.receiveBatch(1, 500, TimeUnit.MILLISECONDS)) {
+                if (batch.size() == 0) {
                     continue; // Timeout - loop back to check isStopRequested()
                 }
-                message = optionalMessage.get();
+                message = batch.iterator().next();
 
                 messagesReceived.incrementAndGet();
                 int messageId = extractMessageId(message);
 
                 // Check for duplicate (idempotency) if tracker is configured
-                if (idempotencyTracker != null && !idempotencyTracker.checkAndMarkProcessed(messageId)) {
+                if (idempotencyTracker != null && idempotencyTracker.isProcessed(messageId)) {
                     messagesDuplicate.incrementAndGet();
                     logger.debug("Skipping duplicate message with ID: {}", messageId);
+                    batch.commit();
                     continue;
                 }
 
@@ -154,7 +153,14 @@ public class DummyConsumerService<T> extends AbstractService {
 
                 // Clean up retry tracking for successfully processed message
                 retryTracker.remove(messageId);
-                
+                batch.commit();
+
+                // Mark as processed AFTER successful commit.
+                // This ensures failed messages are fully retried on redelivery.
+                if (idempotencyTracker != null) {
+                    idempotencyTracker.markProcessed(messageId);
+                }
+
                 // Check if we've reached the max message limit
                 if (maxMessages != -1 && messageCounter >= maxMessages) {
                     logger.info("Reached max message limit of {}. Stopping service.", maxMessages);

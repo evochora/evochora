@@ -3,9 +3,10 @@ package org.evochora.datapipeline.resources.queues;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
@@ -19,6 +20,7 @@ import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
+import org.evochora.datapipeline.api.resources.queues.StreamingBatch;
 import org.evochora.datapipeline.resources.AbstractResource;
 import org.evochora.datapipeline.resources.queues.wrappers.DirectInputQueueWrapper;
 import org.evochora.datapipeline.resources.queues.wrappers.DirectOutputQueueWrapper;
@@ -46,11 +48,11 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
     private final boolean disableTimestamps;
     private final SlidingWindowCounter throughputCounter;
 
-    // Lock to ensure drainTo(with timeout) is atomic across competing consumers
+    // Lock to ensure receiveBatch is atomic across competing consumers
     // This GUARANTEES non-overlapping consecutive batch ranges
     private final Object drainLock = new Object();
     private final int coalescingDelayMs;
-    
+
     // Optional: Override for memory estimation (bytes per item)
     // If set, uses this value instead of SimulationParameters.estimateBytesPerTick()
     // Useful for queues that don't hold TickData (e.g., metadata-queue holds SimulationMetadata)
@@ -225,128 +227,75 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
         return metricsWindowSeconds;
     }
 
-    /**
-     * {@inheritDoc}
-     * This implementation retrieves an element and records its timestamp for throughput calculation.
-     */
-    @Override
-    public Optional<T> poll() {
-        TimestampedObject<T> tsObject = queue.poll();
-        if (tsObject != null) {
-            if (!disableTimestamps && tsObject.timestamp != null) {
-                throughputCounter.recordCount();
-            }
-            return Optional.of(tsObject.object);
-        }
-        return Optional.empty();
-    }
+    // ==================== IInputQueueResource ====================
 
     /**
      * {@inheritDoc}
-     * This implementation retrieves an element and records its timestamp for throughput calculation.
-     */
-    @Override
-    public T take() throws InterruptedException {
-        TimestampedObject<T> tsObject = queue.take();
-        if (!disableTimestamps && tsObject.timestamp != null) {
-            throughputCounter.recordCount();
-        }
-        return tsObject.object;
-    }
-
-    /**
-     * {@inheritDoc}
-     * This implementation retrieves an element and records its timestamp for throughput calculation.
-     */
-    @Override
-    public Optional<T> poll(long timeout, TimeUnit unit) throws InterruptedException {
-        TimestampedObject<T> tsObject = queue.poll(timeout, unit);
-        if (tsObject != null) {
-            if (!disableTimestamps && tsObject.timestamp != null) {
-                throughputCounter.recordCount();
-            }
-            return Optional.of(tsObject.object);
-        }
-        return Optional.empty();
-    }
-
-    /**
-     * {@inheritDoc}
-     * This implementation drains elements and records a single timestamp for the entire batch operation
-     * for throughput calculation.
-     */
-    @Override
-    public int drainTo(Collection<? super T> collection, int maxElements) {
-        ArrayList<TimestampedObject<T>> drainedObjects = new ArrayList<>();
-        int count = queue.drainTo(drainedObjects, maxElements);
-
-        if (count > 0 && !disableTimestamps) {
-            for (TimestampedObject<T> tsObject : drainedObjects) {
-                collection.add(tsObject.object);
-                // Record a count for each drained object to contribute to throughput metrics.
-                if (tsObject.timestamp != null) {
-                    throughputCounter.recordCount();
-                }
-            }
-        } else if (count > 0) {
-            // Just extract objects without timestamp tracking
-            for (TimestampedObject<T> tsObject : drainedObjects) {
-                collection.add(tsObject.object);
-            }
-        }
-        return count;
-    }
-
-    /**
-     * {@inheritDoc}
-     * This implementation simulates a timeout for the drain operation, as the underlying
-     * {@link ArrayBlockingQueue#drainTo} does not support it.
+     * <p>
+     * Eagerly drains items from the internal queue into a list and returns them
+     * as an {@link InMemoryStreamingBatch}. The drain is synchronized via
+     * {@link #drainLock} to guarantee non-overlapping consecutive batch ranges
+     * across competing consumers.
+     * <p>
+     * <strong>Note:</strong> InMemoryBlockingQueue holds all items on heap regardless,
+     * so no streaming heap benefit applies here. The streaming benefit is specific to
+     * off-heap brokers like Artemis.
      *
-     * CRITICAL: This method is synchronized via drainLock to ensure atomicity across competing
-     * consumers. This GUARANTEES non-overlapping consecutive tick ranges in batch files when
-     * multiple PersistenceService instances compete for items.
-     *
-     * ADAPTIVE COALESCING: If configured with coalescingDelayMs > 0, after receiving the first
-     * element from an empty queue, the method checks if the queue is still empty. If so, it waits
-     * briefly to allow the producer to add more items, improving batch sizes. If queue has data,
-     * it drains immediately to avoid unnecessary delays.
-     *
-     * Lock scope: The entire drainTo operation (wait + drain) is atomic per consumer.
-     * Other consumers block waiting for the lock, preventing interleaved operations.
+     * @param maxSize maximum number of elements to receive
+     * @param timeout maximum time to wait for at least one element
+     * @param unit    time unit for the timeout parameter
+     * @return a {@link StreamingBatch} containing 0 to {@code maxSize} elements (never null)
+     * @throws InterruptedException if interrupted while waiting
      */
     @Override
-    public int drainTo(Collection<? super T> collection, int maxElements, long timeout, TimeUnit unit) throws InterruptedException {
-        // ATOMIC OPERATION: Entire drain is synchronized to guarantee consecutive ranges
+    public StreamingBatch<T> receiveBatch(int maxSize, long timeout, TimeUnit unit) throws InterruptedException {
         synchronized (drainLock) {
-            // First, attempt a non-blocking drain to get any immediately available elements.
-            int drained = drainTo(collection, maxElements);
+            // First, attempt a non-blocking drain
+            List<T> items = new ArrayList<>();
+            drainAvailableItems(items, maxSize);
 
-            // If we drained something OR if the timeout is zero, we're done
-            if (drained > 0 || timeout == 0) {
-                return drained;
+            if (!items.isEmpty() || timeout == 0) {
+                return new InMemoryStreamingBatch<>(items);
             }
 
-            // Queue was empty - wait for at least ONE element to arrive
-            Optional<T> item = poll(timeout, unit);
-            if (item.isPresent()) {
-                collection.add(item.get());
-
-                // ADAPTIVE COALESCING: Only wait if queue is STILL empty (producer is slow)
-                // If queue has data, drain immediately (producer is fast, no need to wait)
-                boolean queueStillEmpty = queue.isEmpty();
-                if (coalescingDelayMs > 0 && queueStillEmpty) {
-                    Thread.sleep(coalescingDelayMs);
-                }
-
-                // Now drain any accumulated elements
-                int additional = drainTo(collection, maxElements - 1);
-                return 1 + additional;
+            // Queue was empty — wait for at least ONE element to arrive
+            TimestampedObject<T> tsObject = queue.poll(timeout, unit);
+            if (tsObject == null) {
+                return new InMemoryStreamingBatch<>(Collections.emptyList());
+            }
+            items.add(tsObject.object);
+            if (!disableTimestamps && tsObject.timestamp != null) {
+                throughputCounter.recordCount();
             }
 
-            // Timeout elapsed with no elements
-            return 0;
+            // ADAPTIVE COALESCING: Only wait if queue is STILL empty (producer is slow)
+            boolean queueStillEmpty = queue.isEmpty();
+            if (coalescingDelayMs > 0 && queueStillEmpty) {
+                Thread.sleep(coalescingDelayMs);
+            }
+
+            // Drain remaining available items
+            drainAvailableItems(items, maxSize - 1);
+
+            return new InMemoryStreamingBatch<>(items);
         }
     }
+
+    /**
+     * Drains up to {@code maxElements} immediately available items from the internal queue.
+     */
+    private void drainAvailableItems(List<T> target, int maxElements) {
+        ArrayList<TimestampedObject<T>> drained = new ArrayList<>();
+        queue.drainTo(drained, maxElements);
+        for (TimestampedObject<T> tsObject : drained) {
+            target.add(tsObject.object);
+            if (!disableTimestamps && tsObject.timestamp != null) {
+                throughputCounter.recordCount();
+            }
+        }
+    }
+
+    // ==================== IOutputQueueResource ====================
 
     /**
      * {@inheritDoc}
@@ -417,9 +366,44 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
             this.timestamp = skipTimestamp ? null : Instant.now();
         }
     }
-    
+
+    /**
+     * A StreamingBatch backed by an eagerly-drained list.
+     * <p>
+     * For in-memory queues, commit/close are no-ops since there is no broker
+     * to acknowledge or roll back to. Items are removed from the internal
+     * {@link ArrayBlockingQueue} during the drain and cannot be "returned".
+     */
+    private static class InMemoryStreamingBatch<T> implements StreamingBatch<T> {
+        private final List<T> items;
+
+        InMemoryStreamingBatch(List<T> items) {
+            this.items = items;
+        }
+
+        @Override
+        public int size() {
+            return items.size();
+        }
+
+        @Override
+        public Iterator<T> iterator() {
+            return items.iterator();
+        }
+
+        @Override
+        public void commit() {
+            // No-op: in-memory queue has no crash recovery mechanism
+        }
+
+        @Override
+        public void close() {
+            // No-op: items are already removed from the queue during drain
+        }
+    }
+
     // ==================== IMemoryEstimatable ====================
-    
+
     /**
      * {@inheritDoc}
      * <p>
@@ -455,7 +439,7 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
             SimulationParameters.formatBytes(bytesPerItem),
             itemType,
             SimulationParameters.formatBytes(wrapperOverhead));
-        
+
         return List.of(new MemoryEstimate(
             getResourceName(),
             totalBytes,
@@ -463,7 +447,7 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
             MemoryEstimate.Category.QUEUE
         ));
     }
-    
+
     /**
      * Returns the configured capacity of this queue.
      * <p>

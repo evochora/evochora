@@ -310,6 +310,55 @@ class SimulationParametersTest {
         assertEquals(expected, params.estimateBytesPerTick());
     }
 
+    // ========================================================================
+    // Serialized Wire Format Estimation
+    // ========================================================================
+
+    @Test
+    void estimateSerializedBytesPerTick_smallerThanDeserialized() {
+        SimulationParameters params = SimulationParameters.of(new int[]{1000, 1000}, 1000);
+
+        long serialized = params.estimateSerializedBytesPerTick();
+        long deserialized = params.estimateBytesPerTick();
+
+        assertTrue(serialized < deserialized,
+            "Serialized (" + serialized + ") should be smaller than deserialized (" + deserialized + ")");
+        assertTrue(serialized > 0, "Serialized estimate must be positive");
+    }
+
+    @Test
+    void estimateSerializedBytesPerChunk_smallerThanDeserialized() {
+        SimulationParameters params = SimulationParameters.of(new int[]{1000, 1000}, 1000);
+
+        long serialized = params.estimateSerializedBytesPerChunk();
+        long deserialized = params.estimateBytesPerChunk();
+
+        assertTrue(serialized < deserialized,
+            "Serialized chunk (" + serialized + ") should be smaller than deserialized chunk (" + deserialized + ")");
+    }
+
+    @Test
+    void estimateSerializedBytesPerDelta_smallerThanSnapshot() {
+        SimulationParameters params = SimulationParameters.of(new int[]{1000, 1000}, 1000);
+
+        long snapshot = params.estimateSerializedBytesPerTick();
+        long delta = params.estimateSerializedBytesPerDelta();
+
+        assertTrue(delta < snapshot,
+            "Serialized delta (" + delta + ") should be smaller than serialized snapshot (" + snapshot + ")");
+    }
+
+    @Test
+    void estimateSerializedBytesPerTick_includesAllComponents() {
+        SimulationParameters params = SimulationParameters.of(new int[]{100, 100}, 1000);
+
+        long expected = params.totalCells() * SimulationParameters.SERIALIZED_BYTES_PER_CELL
+                      + (long) params.maxOrganisms() * SimulationParameters.SERIALIZED_BYTES_PER_ORGANISM
+                      + SimulationParameters.SERIALIZED_TICKDATA_WRAPPER_OVERHEAD;
+
+        assertEquals(expected, params.estimateSerializedBytesPerTick());
+    }
+
     @Test
     void formatBytes_formatsCorrectly() {
         assertEquals("500 B", SimulationParameters.formatBytes(500));

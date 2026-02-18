@@ -6,13 +6,15 @@ import org.evochora.datapipeline.api.resources.IWrappedResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
+import org.evochora.datapipeline.api.resources.queues.StreamingBatch;
 import org.evochora.datapipeline.resources.AbstractResource;
 import org.evochora.datapipeline.resources.queues.wrappers.DirectOutputQueueWrapper;
 import org.evochora.datapipeline.resources.queues.wrappers.MonitoredQueueConsumer;
 
 import java.util.Collection;
+import java.util.Collections;
+import java.util.Iterator;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -20,7 +22,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * A /dev/null style queue resource that discards all data immediately without any storage or synchronization.
  * This is useful for performance testing to isolate simulation overhead from queue/consumer overhead.
  *
- * <p>All put operations succeed instantly. All take operations return empty/wait indefinitely.</p>
+ * <p>All put operations succeed instantly. All receive operations return empty batches after timeout.</p>
  *
  * @param <T> The type of elements (ignored, never stored)
  */
@@ -90,31 +92,47 @@ public class NullQueue<T> extends AbstractResource implements IContextualResourc
         return elements.size();  // All "accepted"
     }
 
-    // IInputQueueResource implementation - never return data
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Always returns an empty batch after sleeping for the requested timeout.
+     * No data is ever stored or returned.
+     *
+     * @param maxSize ignored (no data to return)
+     * @param timeout time to sleep before returning
+     * @param unit    time unit for the timeout parameter
+     * @return an always-empty {@link StreamingBatch}
+     * @throws InterruptedException if interrupted while sleeping
+     */
     @Override
-    public Optional<T> poll() {
-        return Optional.empty();  // No data available
+    public StreamingBatch<T> receiveBatch(int maxSize, long timeout, TimeUnit unit) throws InterruptedException {
+        // Block for the requested timeout (simulates waiting for data that never comes)
+        Thread.sleep(unit.toMillis(timeout));
+        return new EmptyStreamingBatch<>();
     }
 
-    @Override
-    public T take() throws InterruptedException {
-        // Block forever since there's no data
-        Thread.sleep(Long.MAX_VALUE);
-        return null;  // Never reached
-    }
+    /**
+     * A StreamingBatch that is always empty. Used by NullQueue which never has data.
+     */
+    private static class EmptyStreamingBatch<T> implements StreamingBatch<T> {
+        @Override
+        public int size() {
+            return 0;
+        }
 
-    @Override
-    public Optional<T> poll(long timeout, TimeUnit unit) {
-        return Optional.empty();  // No data available
-    }
+        @Override
+        public Iterator<T> iterator() {
+            return Collections.emptyIterator();
+        }
 
-    @Override
-    public int drainTo(Collection<? super T> collection, int maxElements) {
-        return 0;  // No data to drain
-    }
+        @Override
+        public void commit() {
+            // No-op
+        }
 
-    @Override
-    public int drainTo(Collection<? super T> collection, int maxElements, long timeout, TimeUnit unit) {
-        return 0;  // No data to drain
+        @Override
+        public void close() {
+            // No-op
+        }
     }
 }

@@ -11,6 +11,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.function.UnaryOperator;
@@ -31,6 +32,7 @@ import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
 import org.evochora.datapipeline.api.resources.storage.IResourceBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
+import org.evochora.datapipeline.api.resources.storage.StreamingWriteResult;
 import org.evochora.datapipeline.resources.AbstractResource;
 import org.evochora.datapipeline.resources.storage.wrappers.MonitoredAnalyticsStorageWriter;
 import org.evochora.datapipeline.resources.storage.wrappers.MonitoredBatchStorageReader;
@@ -179,6 +181,59 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         log.debug("Wrote chunk batch {} with {} chunks ({} ticks)", physicalPath, batch.size(), totalTicks);
 
         return StoragePath.of(physicalPath);
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Peeks the first chunk for metadata (simulationRunId, firstTick), writes all chunks
+     * to a temp file via {@link #writeChunksToTempFile}, then atomically renames to the
+     * final path via {@link #finalizeStreamingWrite}. The {@link TrackingIterable} validates
+     * that all chunks share the same simulationRunId.
+     *
+     * @param chunks iterator of chunks to write (must contain at least one element)
+     * @return streaming write result with path, tick range, chunk count, and byte count
+     * @throws IOException              if the streaming write or finalization fails
+     * @throws IllegalArgumentException if the iterator is null or empty
+     * @throws IllegalStateException    if chunks have mismatched simulationRunIds
+     */
+    @Override
+    public StreamingWriteResult writeChunkBatchStreaming(Iterator<TickDataChunk> chunks) throws IOException {
+        if (chunks == null || !chunks.hasNext()) {
+            throw new IllegalArgumentException("chunks iterator cannot be null or empty");
+        }
+
+        // 1. Peek first chunk for metadata (simulationId, firstTick)
+        TickDataChunk firstChunk = chunks.next();
+        String simulationId = firstChunk.getSimulationRunId();
+        long firstTick = firstChunk.getFirstTick();
+
+        // 2. Compute folder path from firstTick
+        String folderPath = simulationId + "/raw/" + calculateFolderPath(firstTick);
+
+        // 3. Write to temp file, tracking lastTick as we go
+        TrackingIterable trackingIterable = new TrackingIterable(firstChunk, chunks);
+        long writeStart = System.nanoTime();
+        TempWriteResult tempResult = writeChunksToTempFile(folderPath, trackingIterable, codec);
+        long writeLatency = System.nanoTime() - writeStart;
+
+        long lastTick = trackingIterable.getLastTick();
+        int chunkCount = trackingIterable.getChunkCount();
+
+        // 4. Compute final path from actual tick range
+        String logicalFilename = String.format("batch_%019d_%019d.pb", firstTick, lastTick);
+        String physicalPath = folderPath + "/" + logicalFilename + codec.getFileExtension();
+
+        // 5. Atomic rename: temp → final
+        finalizeStreamingWrite(tempResult.tempHandle(), physicalPath);
+
+        // 6. Record metrics
+        recordWrite(tempResult.bytesWritten(), writeLatency);
+        log.debug("Wrote streaming batch {} with {} chunks (ticks {}-{})",
+            physicalPath, chunkCount, firstTick, lastTick);
+
+        return new StreamingWriteResult(StoragePath.of(physicalPath), simulationId, firstTick, lastTick,
+            chunkCount, trackingIterable.getTotalTickCount(), tempResult.bytesWritten());
     }
 
     @Override
@@ -1269,6 +1324,37 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
                                                        ICompressionCodec codec) throws IOException;
 
     /**
+     * Writes chunks to a temporary file in the given folder.
+     * <p>
+     * Implementations must:
+     * <ul>
+     *   <li>Create the folder if it does not exist</li>
+     *   <li>Write each chunk using {@code chunk.writeDelimitedTo(compressedStream)}</li>
+     *   <li>Clean up the temp file on failure</li>
+     * </ul>
+     *
+     * @param folderPath relative folder path within the storage root
+     * @param chunks     iterable of chunks to write
+     * @param codec      compression codec to wrap the output stream
+     * @return result containing the temp file handle and bytes written
+     * @throws IOException if the write fails
+     */
+    protected abstract TempWriteResult writeChunksToTempFile(
+        String folderPath, Iterable<TickDataChunk> chunks, ICompressionCodec codec) throws IOException;
+
+    /**
+     * Atomically moves a temp file to its final path.
+     * <p>
+     * Implementations must ensure the move is atomic (e.g., {@code Files.move(ATOMIC_MOVE)})
+     * so that concurrent readers never see partial data.
+     *
+     * @param tempHandle        backend-specific handle to the temp file
+     * @param finalPhysicalPath relative physical path within the storage root
+     * @throws IOException if the move fails
+     */
+    protected abstract void finalizeStreamingWrite(String tempHandle, String finalPhysicalPath) throws IOException;
+
+    /**
      * Reads raw bytes from physical path.
      * <p>
      * Implementation must:
@@ -1464,5 +1550,97 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
             return bytesWritten;
         }
     }
+
+    /**
+     * An iterable that wraps a peeked first chunk and remaining iterator,
+     * tracking the last tick and chunk count during iteration.
+     * <p>
+     * Used by {@link #writeChunkBatchStreaming} to derive metadata (lastTick, chunkCount)
+     * during the streaming write without requiring a second pass.
+     */
+    private static class TrackingIterable implements Iterable<TickDataChunk> {
+        private final TickDataChunk firstChunk;
+        private final Iterator<TickDataChunk> remaining;
+        private final String expectedSimulationRunId;
+        private long lastTick;
+        private int chunkCount;
+        private int totalTickCount;
+
+        TrackingIterable(TickDataChunk firstChunk, Iterator<TickDataChunk> remaining) {
+            this.firstChunk = firstChunk;
+            this.remaining = remaining;
+            this.expectedSimulationRunId = firstChunk.getSimulationRunId();
+            this.lastTick = firstChunk.getLastTick();
+            this.chunkCount = 0;
+            this.totalTickCount = 0;
+        }
+
+        @Override
+        public Iterator<TickDataChunk> iterator() {
+            return new Iterator<>() {
+                private boolean firstReturned = false;
+
+                @Override
+                public boolean hasNext() {
+                    return !firstReturned || remaining.hasNext();
+                }
+
+                @Override
+                public TickDataChunk next() {
+                    TickDataChunk chunk;
+                    if (!firstReturned) {
+                        chunk = firstChunk;
+                        firstReturned = true;
+                    } else {
+                        chunk = remaining.next();
+                        if (!expectedSimulationRunId.equals(chunk.getSimulationRunId())) {
+                            throw new IllegalStateException(String.format(
+                                "simulationRunId mismatch in batch: expected '%s' (from first chunk) but chunk at tick %d has '%s'",
+                                expectedSimulationRunId, chunk.getFirstTick(), chunk.getSimulationRunId()));
+                        }
+                    }
+                    lastTick = chunk.getLastTick();
+                    chunkCount++;
+                    totalTickCount += chunk.getTickCount();
+                    return chunk;
+                }
+            };
+        }
+
+        /**
+         * Returns the last tick seen during iteration.
+         *
+         * @return the last tick from the most recently iterated chunk
+         */
+        long getLastTick() {
+            return lastTick;
+        }
+
+        /**
+         * Returns the number of chunks iterated so far.
+         *
+         * @return chunk count
+         */
+        int getChunkCount() {
+            return chunkCount;
+        }
+
+        /**
+         * Returns the sum of tick counts across all iterated chunks.
+         *
+         * @return total tick count
+         */
+        int getTotalTickCount() {
+            return totalTickCount;
+        }
+    }
+
+    /**
+     * Result of writing chunks to a temporary file.
+     *
+     * @param tempHandle   backend-specific handle to the temp file (e.g., absolute file path)
+     * @param bytesWritten number of compressed bytes written
+     */
+    protected record TempWriteResult(String tempHandle, long bytesWritten) {}
 
 }

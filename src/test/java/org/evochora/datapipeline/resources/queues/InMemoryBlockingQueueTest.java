@@ -11,7 +11,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -22,6 +21,7 @@ import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
+import org.evochora.datapipeline.api.resources.queues.StreamingBatch;
 import org.evochora.datapipeline.resources.queues.wrappers.MonitoredQueueConsumer;
 import org.evochora.datapipeline.resources.queues.wrappers.MonitoredQueueProducer;
 import org.junit.jupiter.api.BeforeEach;
@@ -73,17 +73,21 @@ public class InMemoryBlockingQueueTest {
     }
 
     @Test
-    void testPutAndTake() throws InterruptedException {
+    void testPutAndReceive() throws InterruptedException {
         producer.put("test-message");
-        assertEquals("test-message", consumer.take());
+        try (StreamingBatch<String> batch = consumer.receiveBatch(1, 5, TimeUnit.SECONDS)) {
+            assertEquals(1, batch.size());
+            assertEquals("test-message", batch.iterator().next());
+        }
     }
 
     @Test
-    void testOfferAndPoll() {
+    void testOfferAndReceive() throws InterruptedException {
         assertTrue(producer.offer("test-message"));
-        Optional<String> received = consumer.poll();
-        assertTrue(received.isPresent());
-        assertEquals("test-message", received.get());
+        try (StreamingBatch<String> batch = consumer.receiveBatch(1, 0, TimeUnit.MILLISECONDS)) {
+            assertEquals(1, batch.size());
+            assertEquals("test-message", batch.iterator().next());
+        }
     }
 
     @Test
@@ -95,8 +99,10 @@ public class InMemoryBlockingQueueTest {
     }
 
     @Test
-    void testPollReturnsEmptyWhenEmpty() {
-        assertTrue(consumer.poll().isEmpty());
+    void testReceiveReturnsEmptyWhenEmpty() throws InterruptedException {
+        try (StreamingBatch<String> batch = consumer.receiveBatch(1, 0, TimeUnit.MILLISECONDS)) {
+            assertEquals(0, batch.size());
+        }
     }
 
     @Test
@@ -119,39 +125,45 @@ public class InMemoryBlockingQueueTest {
         });
 
         Thread.sleep(100);
-        consumer.take();
+        // Consume one item to free space
+        try (StreamingBatch<String> batch = consumer.receiveBatch(1, 0, TimeUnit.MILLISECONDS)) {
+            assertEquals(1, batch.size());
+        }
         latch.await(1, TimeUnit.SECONDS);
         assertTrue(offerSuccess.get());
         executor.shutdown();
     }
 
     @Test
-    void testPollWithTimeoutReturnsEmpty() throws InterruptedException {
-        Optional<String> result = consumer.poll(10, TimeUnit.MILLISECONDS);
-        assertTrue(result.isEmpty());
+    void testReceiveWithTimeoutReturnsEmpty() throws InterruptedException {
+        try (StreamingBatch<String> batch = consumer.receiveBatch(1, 10, TimeUnit.MILLISECONDS)) {
+            assertEquals(0, batch.size());
+        }
     }
 
     @Test
-    void testPutAllAndDrainTo() throws InterruptedException {
+    void testPutAllAndReceiveBatch() throws InterruptedException {
         List<String> items = List.of("batch1", "batch2", "batch3");
         producer.putAll(items);
 
-        List<String> drainedItems = new ArrayList<>();
-        int count = consumer.drainTo(drainedItems, 5);
-
-        assertEquals(3, count);
-        assertEquals(items, drainedItems);
+        try (StreamingBatch<String> batch = consumer.receiveBatch(5, 0, TimeUnit.MILLISECONDS)) {
+            assertEquals(3, batch.size());
+            List<String> drainedItems = new ArrayList<>();
+            batch.iterator().forEachRemaining(drainedItems::add);
+            assertEquals(items, drainedItems);
+        }
     }
 
     @Test
-    void testDrainToWithMaxElements() throws InterruptedException {
+    void testReceiveBatchWithMaxElements() throws InterruptedException {
         producer.putAll(List.of("1", "2", "3", "4", "5"));
 
-        List<String> drainedItems = new ArrayList<>();
-        int count = consumer.drainTo(drainedItems, 3);
-
-        assertEquals(3, count);
-        assertEquals(List.of("1", "2", "3"), drainedItems);
+        try (StreamingBatch<String> batch = consumer.receiveBatch(3, 0, TimeUnit.MILLISECONDS)) {
+            assertEquals(3, batch.size());
+            List<String> drainedItems = new ArrayList<>();
+            batch.iterator().forEachRemaining(drainedItems::add);
+            assertEquals(List.of("1", "2", "3"), drainedItems);
+        }
         assertEquals(2, queue.getMetrics().get("current_size"));
     }
 
@@ -186,9 +198,10 @@ public class InMemoryBlockingQueueTest {
         producer.offer("message2");
         producer.putAll(List.of("batch1", "batch2"));
 
-        consumer.take();
-        consumer.poll();
-        consumer.drainTo(new ArrayList<>(), 2);
+        // Consume all 4 messages using receiveBatch
+        try (StreamingBatch<String> batch = consumer.receiveBatch(4, 0, TimeUnit.MILLISECONDS)) {
+            assertEquals(4, batch.size());
+        }
 
         Map<String, Number> producerMetrics = ((MonitoredQueueProducer<String>) producer).getMetrics();
         assertEquals(4L, producerMetrics.get("messages_sent"));
@@ -229,8 +242,11 @@ public class InMemoryBlockingQueueTest {
         Runnable consumerTask = () -> {
             for (int i = 0; i < 5; i++) {
                 try {
-                    assertNotNull(consumer.take());
-                    latch.countDown();
+                    try (StreamingBatch<String> batch = consumer.receiveBatch(1, 5, TimeUnit.SECONDS)) {
+                        assertEquals(1, batch.size());
+                        assertNotNull(batch.iterator().next());
+                        latch.countDown();
+                    }
                 } catch (InterruptedException e) { fail(e); }
             }
         };

@@ -6,7 +6,6 @@ import static org.awaitility.Awaitility.await;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -21,6 +20,7 @@ import org.evochora.datapipeline.api.resources.IResource.UsageState;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
+import org.evochora.datapipeline.api.resources.queues.StreamingBatch;
 import org.evochora.node.processes.broker.EmbeddedBrokerProcess;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.LogLevel;
@@ -41,8 +41,8 @@ import java.util.Map;
 /**
  * Integration tests for ArtemisQueueResource.
  * <p>
- * Tests verify end-to-end functionality including put/poll/take round-trips,
- * drainTo with token-based drain lock, competing consumers, backpressure,
+ * Tests verify end-to-end functionality including receiveBatch round-trips,
+ * token-based drain lock, competing consumers, backpressure,
  * adaptive coalescing, and memory estimation.
  * <p>
  * <b>Note:</b> All tests share the singleton embedded broker instance.
@@ -109,59 +109,62 @@ class ArtemisQueueResourceTest {
     // =========================================================================
 
     @Test
-    @DisplayName("Should put and poll a single message")
-    void shouldPutAndPoll() throws Exception {
+    @DisplayName("Should put and receive a single message")
+    void shouldPutAndReceive() throws Exception {
         queue = new ArtemisQueueResource<>("test-put-poll", baseConfig);
 
         BatchInfo msg = BatchInfo.newBuilder().setTickStart(100).setTickEnd(200).build();
         queue.put(msg);
 
-        Optional<BatchInfo> received = queue.poll();
-        assertThat(received).isPresent();
-        assertThat(received.get().getTickStart()).isEqualTo(100);
-        assertThat(received.get().getTickEnd()).isEqualTo(200);
+        try (StreamingBatch<BatchInfo> batch = queue.receiveBatch(1, 5, TimeUnit.SECONDS)) {
+            assertThat(batch.size()).isEqualTo(1);
+            BatchInfo received = batch.iterator().next();
+            assertThat(received.getTickStart()).isEqualTo(100);
+            assertThat(received.getTickEnd()).isEqualTo(200);
+            batch.commit();
+        }
     }
 
     @Test
-    @DisplayName("Should put and take a single message")
-
-    void shouldPutAndTake() throws Exception {
+    @DisplayName("Should put and receive a single message with blocking wait")
+    void shouldPutAndReceiveBlocking() throws Exception {
         queue = new ArtemisQueueResource<>("test-put-take", baseConfig);
 
         BatchInfo msg = BatchInfo.newBuilder().setTickStart(300).build();
         queue.put(msg);
 
-        BatchInfo received = queue.take();
-        assertThat(received.getTickStart()).isEqualTo(300);
+        try (StreamingBatch<BatchInfo> batch = queue.receiveBatch(1, 5, TimeUnit.SECONDS)) {
+            assertThat(batch.size()).isEqualTo(1);
+            assertThat(batch.iterator().next().getTickStart()).isEqualTo(300);
+            batch.commit();
+        }
     }
 
     @Test
-    @DisplayName("Should return empty on poll when queue is empty")
-
-    void shouldReturnEmptyOnEmptyPoll() throws Exception {
+    @DisplayName("Should return empty batch when queue is empty")
+    void shouldReturnEmptyOnEmptyReceive() throws Exception {
         queue = new ArtemisQueueResource<>("test-empty-poll", baseConfig);
 
-        Optional<BatchInfo> received = queue.poll();
-        assertThat(received).isEmpty();
+        try (StreamingBatch<BatchInfo> batch = queue.receiveBatch(1, 0, TimeUnit.MILLISECONDS)) {
+            assertThat(batch.size()).isZero();
+        }
     }
 
     @Test
-    @DisplayName("Should respect poll timeout on empty queue")
-
-    void shouldRespectPollTimeout() throws Exception {
+    @DisplayName("Should respect receive timeout on empty queue")
+    void shouldRespectReceiveTimeout() throws Exception {
         queue = new ArtemisQueueResource<>("test-poll-timeout", baseConfig);
 
         long start = System.currentTimeMillis();
-        Optional<BatchInfo> received = queue.poll(200, TimeUnit.MILLISECONDS);
-        long elapsed = System.currentTimeMillis() - start;
-
-        assertThat(received).isEmpty();
-        assertThat(elapsed).isGreaterThanOrEqualTo(150); // Allow some slack
+        try (StreamingBatch<BatchInfo> batch = queue.receiveBatch(1, 200, TimeUnit.MILLISECONDS)) {
+            long elapsed = System.currentTimeMillis() - start;
+            assertThat(batch.size()).isZero();
+            assertThat(elapsed).isGreaterThanOrEqualTo(150); // Allow some slack
+        }
     }
 
     @Test
-    @DisplayName("Should put and poll multiple messages preserving order")
-
+    @DisplayName("Should put and receive multiple messages preserving order")
     void shouldPreserveOrder() throws Exception {
         queue = new ArtemisQueueResource<>("test-order", baseConfig);
 
@@ -170,94 +173,96 @@ class ArtemisQueueResourceTest {
         }
 
         for (int i = 0; i < 5; i++) {
-            Optional<BatchInfo> received = queue.poll();
-            assertThat(received).isPresent();
-            assertThat(received.get().getTickStart()).isEqualTo(i * 1000);
+            try (StreamingBatch<BatchInfo> batch = queue.receiveBatch(1, 5, TimeUnit.SECONDS)) {
+                assertThat(batch.size()).isEqualTo(1);
+                assertThat(batch.iterator().next().getTickStart()).isEqualTo(i * 1000);
+                batch.commit();
+            }
         }
     }
 
     // =========================================================================
-    // DrainTo Tests
+    // Batch Receive Tests
     // =========================================================================
 
     @Test
-    @DisplayName("Should drainTo non-blocking")
-
-    void shouldDrainToNonBlocking() throws Exception {
+    @DisplayName("Should receive batch non-blocking")
+    void shouldReceiveBatchNonBlocking() throws Exception {
         queue = new ArtemisQueueResource<>("test-drain-nb", baseConfig);
 
         for (int i = 0; i < 5; i++) {
             queue.put(BatchInfo.newBuilder().setTickStart(i).build());
         }
 
-        List<BatchInfo> drained = new ArrayList<>();
-        int count = queue.drainTo(drained, 10);
-
-        assertThat(count).isEqualTo(5);
-        assertThat(drained).hasSize(5);
-        for (int i = 0; i < 5; i++) {
-            assertThat(drained.get(i).getTickStart()).isEqualTo(i);
+        try (StreamingBatch<BatchInfo> batch = queue.receiveBatch(10, 0, TimeUnit.MILLISECONDS)) {
+            assertThat(batch.size()).isEqualTo(5);
+            List<BatchInfo> items = new ArrayList<>();
+            batch.iterator().forEachRemaining(items::add);
+            for (int i = 0; i < 5; i++) {
+                assertThat(items.get(i).getTickStart()).isEqualTo(i);
+            }
+            batch.commit();
         }
     }
 
     @Test
-    @DisplayName("Should drainTo with timeout and token lock")
-
-    void shouldDrainToWithTimeout() throws Exception {
+    @DisplayName("Should receive batch with timeout and token lock")
+    void shouldReceiveBatchWithTimeout() throws Exception {
         queue = new ArtemisQueueResource<>("test-drain-timeout", baseConfig);
 
         for (int i = 0; i < 3; i++) {
             queue.put(BatchInfo.newBuilder().setTickStart(i).build());
         }
 
-        List<BatchInfo> drained = new ArrayList<>();
-        int count = queue.drainTo(drained, 10, 1, TimeUnit.SECONDS);
-
-        assertThat(count).isEqualTo(3);
-        assertThat(drained).hasSize(3);
+        try (StreamingBatch<BatchInfo> batch = queue.receiveBatch(10, 1, TimeUnit.SECONDS)) {
+            assertThat(batch.size()).isEqualTo(3);
+            batch.commit();
+        }
     }
 
     @Test
-    @DisplayName("Should drainTo return 0 on empty queue after timeout")
-
-    void shouldDrainToReturnZeroOnEmptyTimeout() throws Exception {
+    @DisplayName("Should return empty batch after timeout on empty queue")
+    void shouldReturnEmptyBatchOnEmptyTimeout() throws Exception {
         queue = new ArtemisQueueResource<>("test-drain-empty", baseConfig);
 
-        List<BatchInfo> drained = new ArrayList<>();
         long start = System.currentTimeMillis();
-        int count = queue.drainTo(drained, 10, 200, TimeUnit.MILLISECONDS);
-        long elapsed = System.currentTimeMillis() - start;
-
-        assertThat(count).isZero();
-        assertThat(drained).isEmpty();
-        assertThat(elapsed).isGreaterThanOrEqualTo(150);
+        try (StreamingBatch<BatchInfo> batch = queue.receiveBatch(10, 200, TimeUnit.MILLISECONDS)) {
+            long elapsed = System.currentTimeMillis() - start;
+            assertThat(batch.size()).isZero();
+            assertThat(elapsed).isGreaterThanOrEqualTo(150);
+        }
     }
 
     // =========================================================================
-    // Sequential Two-Step Drain Test
+    // Sequential Two-Step Receive Test
     // =========================================================================
 
     @Test
-    @DisplayName("Should drain all messages in two sequential drain calls")
-
-    void shouldDrainAllInTwoSteps() throws Exception {
+    @DisplayName("Should receive all messages in two sequential batch calls")
+    void shouldReceiveAllInTwoSteps() throws Exception {
         queue = new ArtemisQueueResource<>("test-two-step", baseConfig);
 
         for (int i = 0; i < 10; i++) {
             queue.put(BatchInfo.newBuilder().setTickStart(i).build());
         }
 
-        // First drain: get 5
-        List<BatchInfo> batch1 = new ArrayList<>();
-        int count1 = queue.drainTo(batch1, 5, 1, TimeUnit.SECONDS);
+        int totalCount = 0;
 
-        // Second drain: get remaining 5
-        List<BatchInfo> batch2 = new ArrayList<>();
-        int count2 = queue.drainTo(batch2, 5, 1, TimeUnit.SECONDS);
+        // First receive: get 5
+        try (StreamingBatch<BatchInfo> batch1 = queue.receiveBatch(5, 1, TimeUnit.SECONDS)) {
+            assertThat(batch1.size()).isEqualTo(5);
+            totalCount += batch1.size();
+            batch1.commit();
+        }
 
-        assertThat(count1).isEqualTo(5);
-        assertThat(count2).isEqualTo(5);
-        assertThat(batch1.size() + batch2.size()).isEqualTo(10);
+        // Second receive: get remaining 5
+        try (StreamingBatch<BatchInfo> batch2 = queue.receiveBatch(5, 1, TimeUnit.SECONDS)) {
+            assertThat(batch2.size()).isEqualTo(5);
+            totalCount += batch2.size();
+            batch2.commit();
+        }
+
+        assertThat(totalCount).isEqualTo(10);
     }
 
     // =========================================================================
@@ -265,8 +270,7 @@ class ArtemisQueueResourceTest {
     // =========================================================================
 
     @Test
-    @DisplayName("Competing consumers should drain concurrently while processing, with consecutive ranges")
-
+    @DisplayName("Competing consumers should receive concurrently while processing, with consecutive ranges")
     void shouldGuaranteeNonOverlappingRanges() throws Exception {
         queue = new ArtemisQueueResource<>("test-competing", baseConfig);
 
@@ -276,16 +280,10 @@ class ArtemisQueueResourceTest {
             queue.put(BatchInfo.newBuilder().setTickStart(i).build());
         }
 
-        // Each consumer drains a batch, then simulates processing time.
-        // During processing (outside drainLock), the other consumer can enter drainTo.
-        //
-        // Parallel: both consumers process concurrently → wall time ≈ 1× processing + overhead
-        // Sequential: consumers wait for each other → wall time ≈ 2× processing + overhead
-        //
-        // Processing time set high enough (1000ms) that even on slow CI (Windows GitHub Actions),
-        // the 2× gap between parallel and sequential is clearly distinguishable.
+        // Each consumer receives a batch, then simulates processing time.
+        // During processing (outside drainLock), the other consumer can enter receiveBatch.
         long processingTimeMs = 1000;
-        long drainTimeoutMs = 100; // Short timeout so empty-queue exits quickly
+        long receiveTimeoutMs = 100; // Short timeout so empty-queue exits quickly
 
         List<List<Long>> allBatches = new ArrayList<>();
         ExecutorService executor = Executors.newFixedThreadPool(2);
@@ -294,21 +292,22 @@ class ArtemisQueueResourceTest {
         Runnable consumer = () -> {
             try {
                 while (true) {
-                    List<BatchInfo> batch = new ArrayList<>();
-                    int count = queue.drainTo(batch, 5, drainTimeoutMs, TimeUnit.MILLISECONDS);
-                    if (count > 0) {
-                        List<Long> batchTicks = new ArrayList<>();
-                        for (BatchInfo msg : batch) {
-                            batchTicks.add(msg.getTickStart());
+                    try (StreamingBatch<BatchInfo> batch = queue.receiveBatch(5, receiveTimeoutMs, TimeUnit.MILLISECONDS)) {
+                        if (batch.size() > 0) {
+                            List<Long> batchTicks = new ArrayList<>();
+                            for (BatchInfo msg : batch) {
+                                batchTicks.add(msg.getTickStart());
+                            }
+                            synchronized (allBatches) {
+                                allBatches.add(batchTicks);
+                            }
+                            batch.commit();
+                            // Simulate processing time — the OTHER consumer should be able
+                            // to receive the next batch during this sleep.
+                            Thread.sleep(processingTimeMs);
+                        } else {
+                            break;
                         }
-                        synchronized (allBatches) {
-                            allBatches.add(batchTicks);
-                        }
-                        // Simulate processing time — the OTHER consumer should be able
-                        // to drain the next batch during this sleep.
-                        Thread.sleep(processingTimeMs);
-                    } else {
-                        break;
                     }
                 }
             } catch (InterruptedException e) {
@@ -347,9 +346,6 @@ class ArtemisQueueResourceTest {
         }
 
         // Verify: processing happened concurrently, not sequentially.
-        // Parallel: ~1× processingTime + overhead ≈ 1200-1600ms
-        // Sequential: ~2× processingTime + overhead ≈ 2200-2600ms
-        // Threshold: 2× processingTime — generous enough for slow CI, strict enough to catch regressions.
         assertThat(wallElapsed)
             .describedAs("Wall clock (%dms) should be below 2× processingTime (%dms), "
                 + "proving parallel processing", wallElapsed, 2 * processingTimeMs)
@@ -361,23 +357,23 @@ class ArtemisQueueResourceTest {
     // =========================================================================
 
     @Test
-    @DisplayName("Should offer and poll successfully")
-
-    void shouldOfferAndPoll() throws Exception {
+    @DisplayName("Should offer and receive successfully")
+    void shouldOfferAndReceive() throws Exception {
         queue = new ArtemisQueueResource<>("test-offer", baseConfig);
 
         boolean offered = queue.offer(BatchInfo.newBuilder().setTickStart(42).build());
         assertThat(offered).isTrue();
 
-        Optional<BatchInfo> received = queue.poll();
-        assertThat(received).isPresent();
-        assertThat(received.get().getTickStart()).isEqualTo(42);
+        try (StreamingBatch<BatchInfo> batch = queue.receiveBatch(1, 5, TimeUnit.SECONDS)) {
+            assertThat(batch.size()).isEqualTo(1);
+            assertThat(batch.iterator().next().getTickStart()).isEqualTo(42);
+            batch.commit();
+        }
     }
 
     @Test
-    @DisplayName("Should offerAll and drain successfully")
-
-    void shouldOfferAllAndDrain() throws Exception {
+    @DisplayName("Should offerAll and receive all")
+    void shouldOfferAllAndReceiveAll() throws Exception {
         queue = new ArtemisQueueResource<>("test-offer-all", baseConfig);
 
         List<BatchInfo> messages = List.of(
@@ -389,14 +385,14 @@ class ArtemisQueueResourceTest {
         int offered = queue.offerAll(messages);
         assertThat(offered).isEqualTo(3);
 
-        List<BatchInfo> drained = new ArrayList<>();
-        int count = queue.drainTo(drained, 10);
-        assertThat(count).isEqualTo(3);
+        try (StreamingBatch<BatchInfo> batch = queue.receiveBatch(10, 5, TimeUnit.SECONDS)) {
+            assertThat(batch.size()).isEqualTo(3);
+            batch.commit();
+        }
     }
 
     @Test
     @DisplayName("Should return false from offer when byte limit is reached")
-
     void shouldOfferReturnFalseWhenFull() throws Exception {
         Config smallConfig = ConfigFactory.parseString("maxSizeBytes = 1500")
             .withFallback(baseConfig);
@@ -426,13 +422,8 @@ class ArtemisQueueResourceTest {
     @Test
     @DisplayName("Should block put when byte limit is reached")
     // Filling the queue to capacity triggers an Artemis-internal WARN about address-full.
-    // The message arrives with null format via SLF4J 2.0's fluent logging path, so no
-    // messagePattern can be matched. See: https://jira.qos.ch/browse/LOGBACK-1737
     @AllowLog(level = LogLevel.WARN, loggerPattern = "org\\.apache\\.activemq\\.artemis.*")
     void shouldBlockPutWhenFull() throws Exception {
-        // Small byte limit + minimal producerWindowSize ensures per-message credit checks.
-        // With producerWindowSize=1, the producer must request credits from the broker for
-        // every byte, so the broker can enforce BLOCK even for tiny test messages.
         Config smallConfig = ConfigFactory.parseString("""
             maxSizeBytes = 1500
             producerWindowSize = 1
@@ -461,8 +452,11 @@ class ArtemisQueueResourceTest {
                .atMost(500, TimeUnit.MILLISECONDS)
                .until(() -> !putCompleted.get());
 
-        // Drain one item to free space
-        queue.poll();
+        // Receive one item to free space
+        try (StreamingBatch<BatchInfo> batch = queue.receiveBatch(1, 0, TimeUnit.MILLISECONDS)) {
+            assertThat(batch.size()).isGreaterThan(0);
+            batch.commit();
+        }
 
         // Now put should complete
         await().atMost(5, TimeUnit.SECONDS).untilTrue(putCompleted);
@@ -475,7 +469,6 @@ class ArtemisQueueResourceTest {
 
     @Test
     @DisplayName("Should provide monitored queue consumer and producer wrappers")
-
     void shouldProvideWrappedResources() throws Exception {
         queue = new ArtemisQueueResource<>("test-wrappers", baseConfig);
 
@@ -489,13 +482,15 @@ class ArtemisQueueResourceTest {
 
         producer.put(BatchInfo.newBuilder().setTickStart(555).build());
 
-        BatchInfo received = consumer.take();
-        assertThat(received.getTickStart()).isEqualTo(555);
+        try (StreamingBatch<BatchInfo> batch = consumer.receiveBatch(1, 5, TimeUnit.SECONDS)) {
+            assertThat(batch.size()).isEqualTo(1);
+            assertThat(batch.iterator().next().getTickStart()).isEqualTo(555);
+            batch.commit();
+        }
     }
 
     @Test
     @DisplayName("Should return WAITING on empty queue for input, ACTIVE for output")
-
     void shouldReturnCorrectUsageState() throws Exception {
         queue = new ArtemisQueueResource<>("test-usage", baseConfig);
 
@@ -513,7 +508,6 @@ class ArtemisQueueResourceTest {
 
     @Test
     @DisplayName("Should return WAITING for output when byte limit is reached")
-
     void shouldReturnWaitingWhenFull() throws Exception {
         Config smallConfig = ConfigFactory.parseString("maxSizeBytes = 1500")
             .withFallback(baseConfig);
@@ -534,7 +528,6 @@ class ArtemisQueueResourceTest {
 
     @Test
     @DisplayName("Should estimate minimal heap usage for off-heap queue")
-
     void shouldEstimateMinimalHeap() throws Exception {
         queue = new ArtemisQueueResource<>("test-memory", baseConfig);
 
@@ -560,9 +553,8 @@ class ArtemisQueueResourceTest {
     // =========================================================================
 
     @Test
-    @DisplayName("Should putAll and drain all")
-
-    void shouldPutAllAndDrain() throws Exception {
+    @DisplayName("Should putAll and receive all")
+    void shouldPutAllAndReceiveAll2() throws Exception {
         queue = new ArtemisQueueResource<>("test-putall", baseConfig);
 
         List<BatchInfo> messages = new ArrayList<>();
@@ -572,11 +564,46 @@ class ArtemisQueueResourceTest {
 
         queue.putAll(messages);
 
-        List<BatchInfo> drained = new ArrayList<>();
-        int count = queue.drainTo(drained, 10);
-        assertThat(count).isEqualTo(5);
-        assertThat(drained.get(0).getTickStart()).isEqualTo(0);
-        assertThat(drained.get(4).getTickStart()).isEqualTo(400);
+        try (StreamingBatch<BatchInfo> batch = queue.receiveBatch(10, 5, TimeUnit.SECONDS)) {
+            assertThat(batch.size()).isEqualTo(5);
+            List<BatchInfo> items = new ArrayList<>();
+            batch.iterator().forEachRemaining(items::add);
+            assertThat(items.get(0).getTickStart()).isEqualTo(0);
+            assertThat(items.get(4).getTickStart()).isEqualTo(400);
+            batch.commit();
+        }
+    }
+
+    // =========================================================================
+    // Large Message Tests (>100KB triggers Artemis large message handling)
+    // =========================================================================
+
+    @Test
+    @DisplayName("Should put and receive a large message (>100KB) via streaming batch")
+    void shouldPutAndReceiveLargeMessage() throws Exception {
+        Config largeConfig = ConfigFactory.parseString("maxSizeBytes = 200000000")
+            .withFallback(baseConfig);
+        queue = new ArtemisQueueResource<>("test-large-msg", largeConfig);
+
+        // Create a message well above 100KB (Artemis default minLargeMessageSize)
+        // Use 10MB to ensure large message handling is triggered
+        String largePath = "x".repeat(10_000_000); // 10MB string
+        BatchInfo msg = BatchInfo.newBuilder()
+            .setTickStart(42)
+            .setTickEnd(84)
+            .setStoragePath(largePath)
+            .build();
+
+        queue.put(msg);
+
+        try (StreamingBatch<BatchInfo> batch = queue.receiveBatch(1, 5, TimeUnit.SECONDS)) {
+            assertThat(batch.size()).isEqualTo(1);
+            BatchInfo received = batch.iterator().next();
+            assertThat(received.getTickStart()).isEqualTo(42);
+            assertThat(received.getTickEnd()).isEqualTo(84);
+            assertThat(received.getStoragePath()).hasSize(10_000_000);
+            batch.commit();
+        }
     }
 
     // =========================================================================

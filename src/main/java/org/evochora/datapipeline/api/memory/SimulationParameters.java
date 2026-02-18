@@ -95,6 +95,41 @@ public record SimulationParameters(
      * rng_state (bytes), strategy_states (list), total_organisms_created.
      */
     public static final int TICKDATA_WRAPPER_OVERHEAD = 500;
+
+    // ========================================================================
+    // Serialized Protobuf Wire Format Sizes (on-wire bytes, NOT Java heap)
+    // ========================================================================
+
+    /**
+     * Serialized bytes per cell in protobuf wire format.
+     * <p>
+     * CellDataColumns uses 3 packed int32 columns (flat_indices, molecule_data, owner_ids).
+     * Worst-case varint encoding for int32 is 5 bytes. 3 × 5 = 15 bytes/cell.
+     */
+    public static final int SERIALIZED_BYTES_PER_CELL = 15;
+
+    /**
+     * Serialized bytes per OrganismState in protobuf wire format.
+     * <p>
+     * Breakdown (typical worst case without deep stacks):
+     * <ul>
+     *   <li>24 register values (DR+PR+FPR): ~192 bytes</li>
+     *   <li>9 vectors (ip, initial_position, dv, data_pointers, etc.): ~207 bytes</li>
+     *   <li>Fixed scalars (ids, energy, flags, counters): ~80 bytes</li>
+     *   <li>Strings (program_id): ~30 bytes</li>
+     *   <li>Instruction execution data + next instruction preview: ~80 bytes</li>
+     * </ul>
+     * Protobuf wire format is more compact than Java heap (no object headers/padding).
+     */
+    public static final int SERIALIZED_BYTES_PER_ORGANISM = 600;
+
+    /**
+     * Serialized TickData wrapper overhead in protobuf wire format.
+     * <p>
+     * Dominated by rng_state (Well19937c: 624 ints × 4 bytes = ~2500 bytes)
+     * plus plugin states (~300 bytes) and string/counter fields (~200 bytes).
+     */
+    public static final int SERIALIZED_TICKDATA_WRAPPER_OVERHEAD = 3000;
     
     // ========================================================================
     // Default Values for Delta Compression
@@ -358,6 +393,57 @@ public record SimulationParameters(
         return (double) uncompressedSize / compressedSize;
     }
     
+    // ========================================================================
+    // Serialized Protobuf Wire Format Estimation
+    // ========================================================================
+
+    /**
+     * Estimates serialized bytes per TickData in protobuf wire format (snapshot).
+     * <p>
+     * This estimates the on-wire size of a single serialized TickData message,
+     * as opposed to {@link #estimateBytesPerTick()} which estimates Java heap
+     * after deserialization. Used for estimating message broker memory overhead.
+     *
+     * @return Estimated serialized bytes per TickData at worst-case occupancy.
+     */
+    public long estimateSerializedBytesPerTick() {
+        return totalCells * SERIALIZED_BYTES_PER_CELL
+             + (long) maxOrganisms * SERIALIZED_BYTES_PER_ORGANISM
+             + SERIALIZED_TICKDATA_WRAPPER_OVERHEAD;
+    }
+
+    /**
+     * Estimates serialized bytes per TickDelta in protobuf wire format.
+     * <p>
+     * Uses {@link #estimatedDeltaRatio} to calculate expected changed cells.
+     * Organisms are always fully serialized in deltas (they change almost entirely every tick).
+     *
+     * @return Estimated serialized bytes per TickDelta.
+     */
+    public long estimateSerializedBytesPerDelta() {
+        long changedCells = (long) Math.ceil(totalCells * estimatedDeltaRatio);
+        return changedCells * SERIALIZED_BYTES_PER_CELL
+             + (long) maxOrganisms * SERIALIZED_BYTES_PER_ORGANISM
+             + SERIALIZED_TICKDATA_WRAPPER_OVERHEAD;
+    }
+
+    /**
+     * Estimates serialized bytes per TickDataChunk in protobuf wire format.
+     * <p>
+     * Mirrors {@link #estimateBytesPerChunk()} but uses serialized wire format
+     * constants instead of Java heap constants. Used by services that hold
+     * serialized messages on heap (e.g., PersistenceService with Artemis).
+     *
+     * @return Estimated serialized bytes per chunk.
+     */
+    public long estimateSerializedBytesPerChunk() {
+        int numSnapshots = snapshotsPerChunk();
+        int numDeltas = samplesPerChunk() - numSnapshots;
+
+        return (long) numSnapshots * estimateSerializedBytesPerTick()
+             + (long) numDeltas * estimateSerializedBytesPerDelta();
+    }
+
     // ========================================================================
     // String Representation
     // ========================================================================

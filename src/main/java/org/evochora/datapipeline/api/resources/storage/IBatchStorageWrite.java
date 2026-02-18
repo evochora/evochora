@@ -5,6 +5,7 @@ import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.IResource;
 
 import java.io.IOException;
+import java.util.Iterator;
 import java.util.List;
 
 /**
@@ -98,5 +99,37 @@ public interface IBatchStorageWrite extends IResource {
      * @throws IllegalArgumentException If key is null/empty or message is null
      */
     <T extends MessageLite> StoragePath writeMessage(String key, T message) throws IOException;
+
+    /**
+     * Writes chunks from an iterator to storage, streaming one chunk at a time.
+     * <p>
+     * Unlike {@link #writeChunkBatch(List, long, long)}, this method does not require all
+     * chunks to be in memory simultaneously. The tick range and folder path are derived from
+     * the chunks during iteration:
+     * <ol>
+     *   <li>First chunk provides {@code firstTick} and {@code simulationRunId}</li>
+     *   <li>Chunks are streamed through compression to a temp file</li>
+     *   <li>Last chunk provides {@code lastTick}</li>
+     *   <li>Temp file is atomically renamed to final path</li>
+     * </ol>
+     * <p>
+     * <strong>Atomicity:</strong> Data is written to a temp file during iteration.
+     * The final file only appears after all chunks are written and the atomic rename succeeds.
+     * On failure, the temp file is cleaned up.
+     * <p>
+     * <strong>Example usage (PersistenceService with streaming):</strong>
+     * <pre>
+     * try (StreamingBatch&lt;TickDataChunk&gt; batch = queue.receiveBatch(10, 30, SECONDS)) {
+     *     StreamingWriteResult result = storage.writeChunkBatchStreaming(batch.iterator());
+     *     batch.commit();
+     * }
+     * </pre>
+     *
+     * @param chunks iterator over tick data chunks (must have at least one element)
+     * @return result containing storage path, tick range, chunk count, and bytes written
+     * @throws IOException if the write fails (temp file is cleaned up)
+     * @throws IllegalArgumentException if the iterator is null or empty
+     */
+    StreamingWriteResult writeChunkBatchStreaming(Iterator<TickDataChunk> chunks) throws IOException;
 
 }

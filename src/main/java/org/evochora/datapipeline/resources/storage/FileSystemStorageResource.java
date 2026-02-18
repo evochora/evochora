@@ -143,6 +143,68 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
         }
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Creates the folder under {@code rootDirectory}, writes chunks to a UUID-named temp file
+     * with compression, and returns the temp file path. The temp file is deleted on failure.
+     *
+     * @param folderPath folder path relative to root directory
+     * @param chunks     the chunks to write (iterated once)
+     * @param codec      compression codec to apply
+     * @return result containing temp file absolute path and compressed bytes written
+     * @throws IOException if directory creation or write fails
+     */
+    @Override
+    protected TempWriteResult writeChunksToTempFile(String folderPath, Iterable<TickDataChunk> chunks,
+                                                     ICompressionCodec codec) throws IOException {
+        File parentDir = new File(rootDirectory, folderPath);
+        parentDir.mkdirs();
+        if (!parentDir.isDirectory()) {
+            throw new IOException("Failed to create directory: " + parentDir.getAbsolutePath());
+        }
+
+        File tempFile = new File(parentDir, UUID.randomUUID() + ".tmp");
+
+        long bytesWritten;
+        try (OutputStream fileOut = new BufferedOutputStream(
+                 Files.newOutputStream(tempFile.toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE));
+             CountingOutputStream counting = new CountingOutputStream(fileOut);
+             OutputStream compressed = codec.wrapOutputStream(counting)) {
+
+            for (TickDataChunk chunk : chunks) {
+                chunk.writeDelimitedTo(compressed);
+            }
+            compressed.flush();
+            bytesWritten = counting.getBytesWritten();
+        } catch (IOException | RuntimeException e) {
+            try { Files.deleteIfExists(tempFile.toPath()); } catch (IOException ignored) {}
+            throw e;
+        }
+
+        return new TempWriteResult(tempFile.getAbsolutePath(), bytesWritten);
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Atomically moves the temp file to its final location under {@code rootDirectory}.
+     *
+     * @param tempHandle        absolute path to the temporary file
+     * @param finalPhysicalPath final path relative to root directory
+     * @throws IOException if directory creation or the atomic move fails
+     */
+    @Override
+    protected void finalizeStreamingWrite(String tempHandle, String finalPhysicalPath) throws IOException {
+        File finalFile = new File(rootDirectory, finalPhysicalPath);
+        File parentDir = finalFile.getParentFile();
+        if (parentDir != null && !parentDir.mkdirs() && !parentDir.isDirectory()) {
+            throw new IOException("Failed to create parent directories for: " + finalFile.getAbsolutePath());
+        }
+        Files.move(Path.of(tempHandle), finalFile.toPath(),
+            StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+    }
+
     @Override
     protected byte[] getRaw(String physicalPath) throws IOException {
         validateKey(physicalPath);
