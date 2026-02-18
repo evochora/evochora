@@ -2,68 +2,54 @@ package org.evochora.datapipeline.api.resources.queues;
 
 import org.evochora.datapipeline.api.resources.IResource;
 
-import java.util.Collection;
-import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Interface for queue-based resources that can provide data input capabilities.
- * This interface is designed to be a close analog to {@link java.util.concurrent.BlockingQueue},
- * offering a variety of methods for retrieving elements with different blocking behaviors.
+ * Interface for queue resources that provide batch consumption with explicit acknowledgment.
+ * <p>
+ * This interface models the universal receive-process-acknowledge pattern. Consumers receive
+ * a batch of messages as a {@link StreamingBatch}, process them (e.g., stream to storage),
+ * and then either {@link StreamingBatch#commit() commit} (acknowledge) or
+ * {@link StreamingBatch#close() close} (rollback) the batch.
+ * <p>
+ * <strong>Consecutive batch guarantee:</strong> Each batch contains consecutive messages
+ * from the queue. Competing consumers receive non-overlapping batches. This is enforced
+ * by implementation-specific mechanisms (e.g., drain locks, token queues).
+ * <p>
+ * <strong>Broker-agnostic:</strong> This interface works with any message broker:
+ * Artemis (JMS), Kafka, SQS, Apache Bookkeeper, or in-memory queues.
  *
  * @param <T> The type of data this resource can provide.
  */
 public interface IInputQueueResource<T> extends IResource {
 
     /**
-     * Retrieves and removes the head of this queue, or returns {@link Optional#empty()} if this queue is empty.
-     * This is a non-blocking operation.
+     * Receives a batch of up to {@code maxSize} messages from the queue.
+     * <p>
+     * Blocks until at least one message is available or the timeout expires.
+     * Returns a {@link StreamingBatch} that lazily deserializes messages during iteration,
+     * keeping only one message on the heap at a time.
+     * <p>
+     * <strong>Usage pattern:</strong>
+     * <pre>
+     * try (StreamingBatch&lt;T&gt; batch = queue.receiveBatch(10, 30, SECONDS)) {
+     *     if (batch.size() == 0) continue; // Timeout, no data
+     *     process(batch.iterator());       // Lazy, one-at-a-time
+     *     batch.commit();                  // Acknowledge all
+     * } // Automatic rollback if commit() was not called
+     * </pre>
+     * <p>
+     * <strong>Consecutive guarantee:</strong> All messages in the batch are consecutive
+     * queue entries. No other consumer can interleave messages within this batch.
+     * <p>
+     * <strong>Coalescing:</strong> Implementations may wait briefly after receiving the
+     * first message to accumulate more messages into the batch (adaptive coalescing).
      *
-     * @return an {@link Optional} containing the head of this queue, or {@link Optional#empty()} if this queue is empty
-     */
-    Optional<T> poll();
-
-    /**
-     * Retrieves and removes the head of this queue, waiting if necessary until an element becomes available.
-     * This is a blocking operation.
-     *
-     * @return the head of this queue
+     * @param maxSize the maximum number of messages to receive
+     * @param timeout how long to wait for at least one message
+     * @param unit    the time unit of the timeout parameter
+     * @return a {@link StreamingBatch} containing 0 to {@code maxSize} messages (never null)
      * @throws InterruptedException if interrupted while waiting
      */
-    T take() throws InterruptedException;
-
-    /**
-     * Retrieves and removes the head of this queue, waiting up to the specified wait time if necessary
-     * for an element to become available.
-     *
-     * @param timeout how long to wait before giving up, in units of {@code unit}
-     * @param unit a {@code TimeUnit} determining how to interpret the timeout parameter
-     * @return an {@link Optional} containing the head of this queue, or {@link Optional#empty()} if the specified
-     *         waiting time elapses before an element is available
-     * @throws InterruptedException if interrupted while waiting
-     */
-    Optional<T> poll(long timeout, TimeUnit unit) throws InterruptedException;
-
-    /**
-     * Removes at most the given number of available elements from this queue and adds them into the given collection.
-     * A non-blocking version of {@link #drainTo(Collection, int, long, TimeUnit)}.
-     *
-     * @param collection the collection to drain elements into
-     * @param maxElements the maximum number of elements to drain
-     * @return the number of elements transferred
-     */
-    int drainTo(Collection<? super T> collection, int maxElements);
-
-    /**
-     * Drains a batch of elements from the queue into the given collection, waiting up to the
-     * specified time if necessary for elements to become available.
-     *
-     * @param collection the collection to drain elements into
-     * @param maxElements the maximum number of elements to drain
-     * @param timeout how long to wait before giving up, in units of {@code unit}
-     * @param unit a {@code TimeUnit} determining how to interpret the timeout parameter
-     * @return the number of elements transferred
-     * @throws InterruptedException if interrupted while waiting
-     */
-    int drainTo(Collection<? super T> collection, int maxElements, long timeout, TimeUnit unit) throws InterruptedException;
+    StreamingBatch<T> receiveBatch(int maxSize, long timeout, TimeUnit unit) throws InterruptedException;
 }

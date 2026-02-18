@@ -144,6 +144,47 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
     }
 
     @Override
+    protected TempWriteResult writeChunksToTempFile(String folderPath, Iterable<TickDataChunk> chunks,
+                                                     ICompressionCodec codec) throws IOException {
+        File parentDir = new File(rootDirectory, folderPath);
+        parentDir.mkdirs();
+        if (!parentDir.isDirectory()) {
+            throw new IOException("Failed to create directory: " + parentDir.getAbsolutePath());
+        }
+
+        File tempFile = new File(parentDir, UUID.randomUUID() + ".tmp");
+
+        long bytesWritten;
+        try (OutputStream fileOut = new BufferedOutputStream(
+                 Files.newOutputStream(tempFile.toPath(), StandardOpenOption.CREATE, StandardOpenOption.WRITE));
+             CountingOutputStream counting = new CountingOutputStream(fileOut);
+             OutputStream compressed = codec.wrapOutputStream(counting)) {
+
+            for (TickDataChunk chunk : chunks) {
+                chunk.writeDelimitedTo(compressed);
+            }
+            compressed.flush();
+            bytesWritten = counting.getBytesWritten();
+        } catch (IOException e) {
+            try { Files.deleteIfExists(tempFile.toPath()); } catch (IOException ignored) {}
+            throw e;
+        }
+
+        return new TempWriteResult(tempFile.getAbsolutePath(), bytesWritten);
+    }
+
+    @Override
+    protected void finalizeStreamingWrite(String tempHandle, String finalPhysicalPath) throws IOException {
+        File finalFile = new File(rootDirectory, finalPhysicalPath);
+        File parentDir = finalFile.getParentFile();
+        if (parentDir != null) {
+            parentDir.mkdirs();
+        }
+        Files.move(Path.of(tempHandle), finalFile.toPath(),
+            StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    @Override
     protected byte[] getRaw(String physicalPath) throws IOException {
         validateKey(physicalPath);
         File file = new File(rootDirectory, physicalPath);

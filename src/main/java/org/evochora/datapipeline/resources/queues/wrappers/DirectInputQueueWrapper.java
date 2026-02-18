@@ -3,9 +3,8 @@ package org.evochora.datapipeline.resources.queues.wrappers;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.IWrappedResource;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
+import org.evochora.datapipeline.api.resources.queues.StreamingBatch;
 
-import java.util.Collection;
-import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -40,27 +39,7 @@ public class DirectInputQueueWrapper<T> implements IInputQueueResource<T>, IWrap
     }
 
     @Override
-    public Optional<T> poll() {
-        return delegate.poll();
-    }
-
-    @Override
-    public T take() throws InterruptedException {
-        return delegate.take();
-    }
-
-    @Override
-    public Optional<T> poll(long timeout, TimeUnit unit) throws InterruptedException {
-        return delegate.poll(timeout, unit);
-    }
-
-    @Override
-    public int drainTo(Collection<? super T> collection, int maxElements) {
-        return delegate.drainTo(collection, maxElements);
-    }
-
-    @Override
-    public int drainTo(Collection<? super T> collection, int maxElements, long timeout, TimeUnit unit) throws InterruptedException {
-        return delegate.drainTo(collection, maxElements, timeout, unit);
+    public StreamingBatch<T> receiveBatch(int maxSize, long timeout, TimeUnit unit) throws InterruptedException {
+        return delegate.receiveBatch(maxSize, timeout, unit);
     }
 }

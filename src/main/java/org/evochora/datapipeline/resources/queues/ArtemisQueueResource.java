@@ -1,9 +1,11 @@
 package org.evochora.datapipeline.resources.queues;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -33,6 +35,7 @@ import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
+import org.evochora.datapipeline.api.resources.queues.StreamingBatch;
 import org.evochora.datapipeline.resources.AbstractResource;
 import org.evochora.datapipeline.utils.JmsUtils;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
@@ -52,8 +55,7 @@ import com.typesafe.config.ConfigFactory;
 
 /**
  * Artemis JMS-backed queue that stores messages off-heap (journal/memory-mapped files),
- * providing bounded capacity with backpressure and identical semantics to
- * {@link InMemoryBlockingQueue}.
+ * providing bounded capacity with backpressure and streaming batch consumption.
  * <p>
  * <strong>Motivation:</strong> InMemoryBlockingQueue stores all queued items on the Java heap.
  * For large environments (e.g. 4000x3000 = 12M cells), each TickDataChunk is ~1.1 GB,
@@ -64,21 +66,18 @@ import com.typesafe.config.ConfigFactory;
  * <strong>Backpressure:</strong> Uses Artemis BLOCK address policy with {@code maxSizeBytes}
  * for native byte-based backpressure. When the address size exceeds the configured byte limit,
  * the broker withholds producer credits and {@code send()} blocks until consumers free space.
- * This works natively for both InVM and TCP modes. For large production messages (&gt;&gt;64 KB),
- * the default producer credit window works perfectly. For small messages, configure
- * {@code producerWindowSize} to ensure per-message credit checks.
  * <p>
- * <strong>Token-Queue Drain Lock:</strong> To guarantee non-overlapping consecutive batch
- * ranges with competing consumers, a second JMS queue ({@code {queueName}.drain-lock})
- * holds exactly one persistent token message. The {@link #drainTo(Collection, int, long, TimeUnit)}
- * method acquires the token before draining, ensuring only one consumer drains at a time.
- * This replicates InMemoryBlockingQueue's {@code synchronized(drainLock)} over the network.
+ * <strong>Streaming consumption:</strong> The consumer session uses {@code SESSION_TRANSACTED}
+ * for receive-then-acknowledge semantics. {@link #receiveBatch(int, long, TimeUnit)} receives
+ * JMS message references (lightweight, ~100 bytes each) during a token-locked phase, then
+ * returns a {@link StreamingBatch} whose iterator lazily deserializes payloads one at a time.
+ * This reduces peak heap from {@code N × chunkSize} to {@code 1 × chunkSize}.
  * <p>
- * <strong>Known limitation:</strong> The token is consumed (AUTO_ACKNOWLEDGE) before the
- * drain begins, and re-sent by {@code releaseToken()} after the drain completes. If the JVM
- * crashes between these two points, the token queue is permanently empty and no consumer
- * can drain again. Recovery requires restarting the broker (which re-seeds the token via
- * {@code seedTokenIfEmpty()}) or manual intervention.
+ * <strong>Token-Queue Drain Lock:</strong> A second JMS queue ({@code {queueName}.drain-lock})
+ * holds exactly one persistent token message. {@link #receiveBatch} acquires the token before
+ * receiving messages, ensuring only one consumer receives at a time. The token is released
+ * after the receive phase (before iteration/processing), preserving parallelism for the
+ * write phase.
  * <p>
  * <strong>Dual-Mode Deployment:</strong> Works both in-process ({@code vm://0}) with
  * zero-copy InVM transport and distributed ({@code tcp://host:port}) for cloud deployment.
@@ -89,10 +88,11 @@ import com.typesafe.config.ConfigFactory;
  * <strong>JMS Session Threading:</strong>
  * <ul>
  *   <li>Producer: Session pooling via {@link JmsPoolConnectionFactory} — each send borrows
- *       a pooled session, creates a producer, sends, then returns the session to the pool.
- *       This avoids TCP round-trips for session creation.</li>
- *   <li>Consumer: Single long-lived session with {@code AUTO_ACKNOWLEDGE}</li>
- *   <li>Token: Separate long-lived session (accessed only within token-synchronized drain)</li>
+ *       a pooled session, creates a producer, sends, then returns the session to the pool.</li>
+ *   <li>Consumer: Single long-lived session with {@code SESSION_TRANSACTED} — messages
+ *       are received but not acknowledged until {@code commit()} is called.</li>
+ *   <li>Token: Separate long-lived session with {@code AUTO_ACKNOWLEDGE} (token is consumed
+ *       on receive and re-sent on release).</li>
  * </ul>
  *
  * @param <T> Protobuf message type held in the queue
@@ -116,7 +116,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
     // Producer: pooled session factory — each send borrows a session from the pool
     private final JmsPoolConnectionFactory producerPool;
 
-    // Consumer: dedicated connection + long-lived session
+    // Consumer: dedicated connection + long-lived transacted session
     private final Connection consumerConnection;
     private final Session consumerSession;
     private final MessageConsumer dataConsumer;
@@ -201,9 +201,10 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
             this.producerPool.setMaxConnections(1);
             this.producerPool.start();
 
-            // Consumer connection + long-lived session (AUTO_ACKNOWLEDGE: messages acked on receive)
+            // Consumer connection + long-lived TRANSACTED session
+            // Messages are received but not acknowledged until session.commit()
             this.consumerConnection = createTrackedConnection();
-            this.consumerSession = consumerConnection.createSession(false, Session.AUTO_ACKNOWLEDGE);
+            this.consumerSession = consumerConnection.createSession(true, Session.SESSION_TRANSACTED);
             Queue dataQueue = consumerSession.createQueue(queueName);
             this.dataConsumer = consumerSession.createConsumer(dataQueue);
 
@@ -335,8 +336,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
      * Deserializes bytes back to a Protobuf message using {@code google.protobuf.Any}.
      * <p>
      * Extracts the type URL from the Any wrapper, loads the corresponding class,
-     * and unpacks the payload. This is the same pattern used by
-     * {@code AbstractTopicDelegateReader}.
+     * and unpacks the payload.
      *
      * @param data the serialized bytes
      * @return the deserialized Protobuf message
@@ -367,6 +367,33 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
         }
     }
 
+    /**
+     * Extracts the Protobuf payload from a JMS BytesMessage.
+     *
+     * @param msg the JMS message
+     * @return the deserialized Protobuf message
+     * @throws JMSException if JMS operations fail
+     * @throws InvalidProtocolBufferException if deserialization fails
+     */
+    private T extractPayload(jakarta.jms.Message msg) throws JMSException, InvalidProtocolBufferException {
+        if (!(msg instanceof BytesMessage bytesMsg)) {
+            throw new JMSException("Expected BytesMessage, got: " + msg.getClass().getName());
+        }
+
+        bytesMsg.reset();
+
+        int bodyLength = (int) bytesMsg.getBodyLength();
+        byte[] data = new byte[bodyLength];
+        int bytesRead = bytesMsg.readBytes(data);
+
+        if (bytesRead != bodyLength) {
+            throw new JMSException(String.format(
+                "BytesMessage body truncated: expected %d bytes, read %d bytes", bodyLength, bytesRead));
+        }
+
+        return deserialize(data);
+    }
+
     // =========================================================================
     // IOutputQueueResource — Producer Methods
     // =========================================================================
@@ -376,12 +403,6 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
      * <p>
      * Non-blocking offer. Checks the address size via Artemis server API and returns
      * false immediately if the byte limit is reached.
-     * <p>
-     * <strong>Threading assumption:</strong> This method uses a check-then-act pattern
-     * ({@code isQueueAtCapacity()} followed by {@code sendMessage()}). This is safe because
-     * queue producers are single-threaded — each service wrapper binds exactly one producer
-     * thread. With concurrent producers, a race could cause {@code sendMessage()} to block
-     * via BLOCK policy despite the non-blocking contract.
      */
     @Override
     public boolean offer(T element) {
@@ -403,9 +424,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
     /**
      * {@inheritDoc}
      * <p>
-     * Blocking put. Sends the message via the producer pool. If the address has exceeded
-     * {@code maxSizeBytes}, the Artemis BLOCK policy withholds producer credits and the
-     * {@code send()} call blocks until consumers free space.
+     * Blocking put. BLOCK policy withholds producer credits when address exceeds maxSizeBytes.
      */
     @Override
     public void put(T element) throws InterruptedException {
@@ -425,10 +444,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
     /**
      * {@inheritDoc}
      * <p>
-     * Blocking offer with timeout. Attempts to send the message with a bounded wait.
-     * If the queue is at capacity (BLOCK policy), the send blocks until space is available
-     * or the timeout expires. Uses a dedicated connection with {@code callTimeout} to
-     * enforce the time limit.
+     * Blocking offer with timeout. Uses a dedicated connection with callTimeout.
      */
     @Override
     public boolean offer(T element, long timeout, TimeUnit unit) throws InterruptedException {
@@ -445,9 +461,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
         }
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public void putAll(Collection<T> elements) throws InterruptedException {
         for (T element : elements) {
@@ -455,9 +469,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
         }
     }
 
-    /**
-     * {@inheritDoc}
-     */
+    /** {@inheritDoc} */
     @Override
     public int offerAll(Collection<T> elements) {
         if (elements == null) {
@@ -479,17 +491,6 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
 
     /**
      * Sends a serialized message to the data queue using a pooled session.
-     * <p>
-     * Borrows a session from the {@link #producerPool}, creates a producer, sends,
-     * then closes (returns session to pool). The session pool avoids TCP round-trips
-     * for session creation while ensuring each send gets fresh producer credits from
-     * the broker — preventing credit pre-fetch from bypassing the BLOCK policy.
-     * <p>
-     * Thread safety: queue producers are single-threaded (one service loop per resource
-     * wrapper), so no synchronization is needed.
-     *
-     * @param data the serialized message bytes
-     * @throws JMSException if sending fails
      */
     private void sendMessage(byte[] data) throws JMSException {
         try (Connection conn = producerPool.createConnection()) {
@@ -507,17 +508,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
     }
 
     /**
-     * Sends a serialized message using a temporary connection with {@code callTimeout}.
-     * <p>
-     * Creates a new {@link ActiveMQConnectionFactory} with the specified timeout so the
-     * send will fail with a JMSException if the queue remains at capacity beyond the timeout.
-     * Connection-per-call is acceptable because {@code offer(timeout)} is not the hot path.
-     * <p>
-     * Used by {@link #offer(Message, long, TimeUnit)} which needs a bounded wait.
-     *
-     * @param data the serialized message bytes
-     * @param timeoutMs send timeout in milliseconds
-     * @throws JMSException if sending fails or times out
+     * Sends a serialized message using a temporary connection with callTimeout.
      */
     private void sendMessageWithTimeout(byte[] data, long timeoutMs) throws JMSException {
         try (ActiveMQConnectionFactory timeoutFactory = new ActiveMQConnectionFactory(brokerUrl)) {
@@ -544,12 +535,6 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
 
     /**
      * Checks if the data queue address has reached its byte-size limit.
-     * <p>
-     * Uses the Artemis {@code PagingStore.getAddressSize()} API — the same metric that
-     * the BLOCK policy checks internally. Falls back to assuming not at capacity if the
-     * server is unavailable (allows send to proceed; BLOCK policy provides the real backpressure).
-     *
-     * @return true if the address size has reached or exceeded {@code maxSizeBytes}
      */
     private boolean isQueueAtCapacity() {
         ActiveMQServer server = EmbeddedBrokerProcess.getServer(serverId);
@@ -574,127 +559,29 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
     /**
      * {@inheritDoc}
      * <p>
-     * Non-blocking poll. Returns immediately with the next message or empty.
-     */
-    @Override
-    public Optional<T> poll() {
-        try {
-            jakarta.jms.Message msg = dataConsumer.receiveNoWait();
-            if (msg == null) {
-                return Optional.empty();
-            }
-            T element = extractPayload(msg);
-            throughputCounter.recordCount();
-            return Optional.of(element);
-        } catch (Exception e) {
-            log.warn("Failed to poll from queue '{}'", queueName);
-            recordError("POLL_FAILED", "Failed to poll message", e.getMessage());
-            return Optional.empty();
-        }
-    }
-
-    /**
-     * {@inheritDoc}
-     * <p>
-     * Blocking take. Waits indefinitely until a message is available.
-     */
-    @Override
-    public T take() throws InterruptedException {
-        try {
-            jakarta.jms.Message msg = dataConsumer.receive(0);
-            if (msg == null) {
-                throw new InterruptedException("take() returned null — consumer likely closed");
-            }
-            T element = extractPayload(msg);
-            throughputCounter.recordCount();
-            return element;
-        } catch (InterruptedException e) {
-            throw e;
-        } catch (Exception e) {
-            if (e instanceof JMSException jmsEx && JmsUtils.isInterruptedException(jmsEx)) {
-                throw new InterruptedException("take() interrupted");
-            }
-            log.error("Failed to take from queue '{}'", queueName);
-            throw new RuntimeException("Failed to take from queue: " + queueName, e);
-        }
-    }
-
-    /**
-     * {@inheritDoc}
-     * <p>
-     * Blocking poll with timeout.
-     */
-    @Override
-    public Optional<T> poll(long timeout, TimeUnit unit) throws InterruptedException {
-        try {
-            long timeoutMs = unit.toMillis(timeout);
-            jakarta.jms.Message msg = dataConsumer.receive(timeoutMs);
-            if (msg == null) {
-                return Optional.empty();
-            }
-            T element = extractPayload(msg);
-            throughputCounter.recordCount();
-            return Optional.of(element);
-        } catch (Exception e) {
-            if (e instanceof JMSException jmsEx && JmsUtils.isInterruptedException(jmsEx)) {
-                throw new InterruptedException("poll() interrupted");
-            }
-            log.warn("Failed to poll from queue '{}'", queueName);
-            recordError("POLL_FAILED", "Failed to receive message", e.getMessage());
-            return Optional.empty();
-        }
-    }
-
-    /**
-     * {@inheritDoc}
-     * <p>
-     * Non-blocking drain. Receives up to {@code maxElements} immediately available messages.
-     */
-    @Override
-    public int drainTo(Collection<? super T> collection, int maxElements) {
-        int count = 0;
-        try {
-            while (count < maxElements) {
-                jakarta.jms.Message msg = dataConsumer.receiveNoWait();
-                if (msg == null) {
-                    break;
-                }
-                T element = extractPayload(msg);
-                collection.add(element);
-                throughputCounter.recordCount();
-                count++;
-            }
-        } catch (Exception e) {
-            log.warn("Failed during drainTo on queue '{}' (drained {} before error)", queueName, count);
-            recordError("DRAIN_FAILED", "Failed during drain", e.getMessage());
-        }
-        return count;
-    }
-
-    /**
-     * {@inheritDoc}
-     * <p>
-     * <strong>Token-based drain lock:</strong> Acquires a token from the drain-lock queue
-     * before draining, ensuring only one consumer drains at a time. This guarantees
+     * <strong>Token-based batch receive:</strong> Acquires a token from the drain-lock queue
+     * before receiving, ensuring only one consumer receives at a time. This guarantees
      * non-overlapping consecutive batch ranges with competing consumers.
      * <p>
-     * <strong>Flow:</strong>
+     * <strong>Two-phase design for parallelism:</strong>
      * <ol>
-     *   <li>Acquire drain token (blocks until available or timeout)</li>
-     *   <li>Non-blocking drain of immediately available messages</li>
-     *   <li>If queue was empty: wait for first message with remaining timeout</li>
-     *   <li>Adaptive coalescing: if queue is still empty after first message, wait briefly</li>
-     *   <li>Drain remaining available messages</li>
-     *   <li>Release token (always, even on exception)</li>
+     *   <li><strong>Phase 1 (token-locked, fast):</strong> Receive JMS Message references
+     *       (lightweight, ~100 bytes each). No payload deserialization.</li>
+     *   <li><strong>Phase 2 (parallel, no token):</strong> Iterator lazily deserializes
+     *       each message payload one at a time during processing.</li>
      * </ol>
+     * The token is released after Phase 1, so other consumers can receive their batches
+     * while this consumer is still processing (writing to storage).
      * <p>
-     * This replicates the exact semantics of InMemoryBlockingQueue's
-     * {@code synchronized(drainLock)} block over the network.
+     * <strong>Transacted session:</strong> The consumer session uses {@code SESSION_TRANSACTED}.
+     * Messages are in-flight until {@link StreamingBatch#commit()} calls {@code session.commit()}.
+     * If processing fails, {@link StreamingBatch#close()} calls {@code session.rollback()},
+     * returning messages to the queue for redelivery.
      */
     @Override
-    public int drainTo(Collection<? super T> collection, int maxElements, long timeout, TimeUnit unit)
+    public StreamingBatch<T> receiveBatch(int maxSize, long timeout, TimeUnit unit)
             throws InterruptedException {
-        // ATOMIC OPERATION: Entire drain is synchronized to guarantee consecutive ranges.
+        // ATOMIC OPERATION: Entire receive is synchronized to guarantee consecutive ranges.
         // drainLock serializes JMS session access within the same JVM (sessions are NOT thread-safe).
         // Token queue adds cross-JVM serialization for distributed deployment.
         synchronized (drainLock) {
@@ -706,59 +593,87 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
                 long tokenTimeout = Math.max(0, deadlineMs - System.currentTimeMillis());
                 token = tokenConsumer.receive(tokenTimeout);
                 if (token == null) {
-                    return 0; // Timeout waiting for token
+                    return new ArtemisStreamingBatch(Collections.emptyList()); // Timeout
                 }
             } catch (JMSException e) {
                 if (JmsUtils.isInterruptedException(e)) {
-                    throw new InterruptedException("drainTo() interrupted acquiring token");
+                    throw new InterruptedException("receiveBatch() interrupted acquiring token");
                 }
                 log.warn("Failed to acquire drain token on queue '{}'", queueName);
                 recordError("TOKEN_ACQUIRE_FAILED", "Failed to acquire drain token", e.getMessage());
-                return 0;
+                return new ArtemisStreamingBatch(Collections.emptyList());
             }
 
             try {
-                // 2. Non-blocking drain of immediately available messages
-                int drained = drainTo(collection, maxElements);
+                // 2. Non-blocking receive of immediately available JMS Messages
+                List<jakarta.jms.Message> messages = new ArrayList<>();
+                receiveAvailable(messages, maxSize);
 
-                // If we drained something OR if the timeout is zero, we're done
-                if (drained > 0 || timeout == 0) {
-                    return drained;
+                // If we received something OR if the timeout is zero, we're done
+                if (!messages.isEmpty() || timeout == 0) {
+                    return new ArtemisStreamingBatch(messages);
                 }
 
-                // 3. Queue was empty — wait for at least ONE element to arrive
-                long dataTimeout = Math.max(0, deadlineMs - System.currentTimeMillis());
-                Optional<T> first = poll(dataTimeout, TimeUnit.MILLISECONDS);
-                if (first.isEmpty()) {
-                    return 0; // Timeout
+                // 3. Queue was empty — wait for at least ONE message to arrive
+                try {
+                    long dataTimeout = Math.max(0, deadlineMs - System.currentTimeMillis());
+                    jakarta.jms.Message first = dataConsumer.receive(dataTimeout);
+                    if (first == null) {
+                        return new ArtemisStreamingBatch(Collections.emptyList()); // Timeout
+                    }
+                    messages.add(first);
+                } catch (JMSException e) {
+                    if (JmsUtils.isInterruptedException(e)) {
+                        throw new InterruptedException("receiveBatch() interrupted waiting for data");
+                    }
+                    log.warn("Failed to receive from queue '{}'", queueName);
+                    recordError("RECEIVE_FAILED", "Failed to receive message", e.getMessage());
+                    return new ArtemisStreamingBatch(Collections.emptyList());
                 }
-                collection.add(first.get());
 
-                // 4. Adaptive coalescing: only wait if queue is STILL empty (producer is slow).
-                //    Intentional Thread.sleep — this is a fixed delay, not a condition-wait,
-                //    so Awaitility does not apply here.
+                // 4. Adaptive coalescing: only wait if queue is STILL empty (producer is slow)
                 if (coalescingDelayMs > 0 && isDataQueueEmpty()) {
+                    // Intentional Thread.sleep — fixed delay, not condition-wait
                     Thread.sleep(coalescingDelayMs);
                 }
 
                 // 5. Drain remaining available messages
-                int additional = drainTo(collection, maxElements - 1);
-                return 1 + additional;
+                receiveAvailable(messages, maxSize - 1);
+
+                return new ArtemisStreamingBatch(messages);
 
             } finally {
                 // 6. Release token (always, even on exception)
+                // Token is released HERE — BEFORE iteration/processing
                 releaseToken(token);
             }
         }
     }
 
     /**
-     * Checks if the data queue currently has no messages available.
-     * <p>
-     * Uses Artemis server API to check the queue message count without consuming.
-     * Falls back to assuming non-empty if the server is unavailable.
+     * Non-blocking receive of immediately available JMS messages.
      *
-     * @return true if no messages are immediately available
+     * @param messages list to add messages to
+     * @param max maximum number of messages to receive
+     */
+    private void receiveAvailable(List<jakarta.jms.Message> messages, int max) {
+        try {
+            while (messages.size() < max) {
+                jakarta.jms.Message msg = dataConsumer.receiveNoWait();
+                if (msg == null) {
+                    break;
+                }
+                messages.add(msg);
+            }
+        } catch (JMSException e) {
+            log.warn("Failed during non-blocking receive on queue '{}' (received {} before error)",
+                queueName, messages.size());
+            recordError("RECEIVE_FAILED", "Failed during batch receive", e.getMessage());
+        }
+    }
+
+    /**
+     * Checks if the data queue currently has no messages available.
      */
     private boolean isDataQueueEmpty() {
         ActiveMQServer server = EmbeddedBrokerProcess.getServer(serverId);
@@ -778,11 +693,6 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
 
     /**
      * Releases the drain token back to the token queue.
-     * <p>
-     * Acknowledges the consumed token and sends a new one. This is done in a
-     * finally block to ensure the token is always released, even on exception.
-     *
-     * @param token the consumed token message
      */
     private void releaseToken(jakarta.jms.Message token) {
         JMSException lastException = null;
@@ -798,8 +708,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
                 log.warn("Failed to release drain token on queue '{}' (attempt {}/3)", queueName, attempt);
                 if (attempt < 3) {
                     try {
-                        // Intentional Thread.sleep — linear backoff between JMS retries,
-                        // not a condition-wait, so Awaitility does not apply here.
+                        // Intentional Thread.sleep — linear backoff between JMS retries
                         Thread.sleep(50L * attempt);
                     } catch (InterruptedException ie) {
                         Thread.currentThread().interrupt();
@@ -814,25 +723,86 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
         throw new RuntimeException("Failed to release drain token — lock stuck on queue: " + queueName, lastException);
     }
 
+    // =========================================================================
+    // ArtemisStreamingBatch — Inner Class
+    // =========================================================================
+
     /**
-     * Extracts the Protobuf payload from a JMS BytesMessage.
+     * A {@link StreamingBatch} backed by JMS message references with lazy deserialization.
      * <p>
-     * Message acknowledgment is handled automatically by the session (AUTO_ACKNOWLEDGE mode).
-     *
-     * @param msg the JMS message
-     * @return the deserialized Protobuf message
-     * @throws JMSException if JMS operations fail
-     * @throws InvalidProtocolBufferException if deserialization fails
+     * Message references are lightweight (~100 bytes each, pointing to Artemis journal).
+     * Actual payload bytes are only read and deserialized when {@link Iterator#next()} is called,
+     * keeping at most one deserialized message on the heap at a time.
+     * <p>
+     * <strong>Commit:</strong> {@code session.commit()} acknowledges all messages in the batch.
+     * <strong>Close without commit:</strong> {@code session.rollback()} returns messages to the queue.
      */
-    private T extractPayload(jakarta.jms.Message msg) throws JMSException, InvalidProtocolBufferException {
-        if (!(msg instanceof BytesMessage bytesMsg)) {
-            throw new JMSException("Expected BytesMessage, got: " + msg.getClass().getName());
+    private class ArtemisStreamingBatch implements StreamingBatch<T> {
+        private final List<jakarta.jms.Message> messages;
+        private boolean committed = false;
+
+        ArtemisStreamingBatch(List<jakarta.jms.Message> messages) {
+            this.messages = messages;
         }
 
-        byte[] data = new byte[(int) bytesMsg.getBodyLength()];
-        bytesMsg.readBytes(data);
+        @Override
+        public int size() {
+            return messages.size();
+        }
 
-        return deserialize(data);
+        @Override
+        public Iterator<T> iterator() {
+            return new Iterator<T>() {
+                private int index = 0;
+
+                @Override
+                public boolean hasNext() {
+                    return index < messages.size();
+                }
+
+                @Override
+                public T next() {
+                    if (!hasNext()) {
+                        throw new java.util.NoSuchElementException();
+                    }
+                    try {
+                        T element = extractPayload(messages.get(index++));
+                        throughputCounter.recordCount();
+                        return element;
+                    } catch (Exception e) {
+                        throw new RuntimeException("Failed to deserialize message at index " + (index - 1)
+                            + " from queue '" + queueName + "'", e);
+                    }
+                }
+            };
+        }
+
+        @Override
+        public void commit() {
+            if (!committed && !messages.isEmpty()) {
+                try {
+                    consumerSession.commit();
+                    committed = true;
+                } catch (JMSException e) {
+                    throw new RuntimeException("Failed to commit batch of " + messages.size()
+                        + " messages on queue '" + queueName + "'", e);
+                }
+            }
+        }
+
+        @Override
+        public void close() {
+            if (!committed && !messages.isEmpty()) {
+                try {
+                    consumerSession.rollback();
+                } catch (JMSException e) {
+                    // Rollback failure is not recoverable — log and swallow.
+                    // Messages will be cleaned up when the session is eventually closed.
+                    log.warn("Failed to rollback uncommitted batch of {} messages on queue '{}'",
+                        messages.size(), queueName);
+                }
+            }
+        }
     }
 
     // =========================================================================
@@ -844,13 +814,6 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
      * <p>
      * Supports the same usage types as {@link InMemoryBlockingQueue}:
      * {@code queue-in}, {@code queue-in-direct}, {@code queue-out}, {@code queue-out-direct}.
-     * <p>
-     * <b>Remote broker limitation:</b> When connected to a remote broker (non-InVM),
-     * the embedded server API is unavailable for queue depth inspection. Both
-     * {@code queue-in} and {@code queue-out} will always report {@link UsageState#ACTIVE},
-     * regardless of actual queue state. This does not affect correctness (Artemis BLOCK
-     * policy and JMS blocking provide real backpressure), but monitoring dashboards
-     * will not reflect queue fullness or emptiness in distributed mode.
      */
     @Override
     public UsageState getUsageState(String usageType) {
@@ -871,11 +834,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
         };
     }
 
-    /**
-     * {@inheritDoc}
-     * <p>
-     * Returns monitored or direct wrappers identical to {@link InMemoryBlockingQueue}.
-     */
+    /** {@inheritDoc} */
     @Override
     public IWrappedResource getWrappedResource(ResourceContext context) {
         if (context.usageType() == null) {
@@ -912,8 +871,6 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
      */
     @Override
     public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
-        // Only in-flight buffers: 2x item size (one produce + one consume in flight)
-        // Plus small overhead for JMS session objects
         long bytesPerItem = estimatedBytesPerItem > 0
             ? estimatedBytesPerItem
             : params.estimateBytesPerChunk();
@@ -946,13 +903,6 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
         metrics.put("throughput_per_sec", throughputCounter.getRate());
     }
 
-    /**
-     * Returns the current message count in the data queue via server API.
-     * <p>
-     * Returns 0 if the server is unavailable (e.g. remote broker deployment).
-     *
-     * @return current message count
-     */
     private long getQueueMessageCount() {
         ActiveMQServer server = EmbeddedBrokerProcess.getServer(serverId);
         if (server == null) {
@@ -971,8 +921,6 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
 
     /**
      * Clears errors from the resource's error list based on a predicate.
-     * <p>
-     * Used by wrapper resources to clear context-specific errors.
      *
      * @param filter A predicate to select which errors to remove.
      */
@@ -989,13 +937,6 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
         return maxSizeBytes;
     }
 
-    /**
-     * Returns the current address size in bytes via the Artemis PagingStore API.
-     * <p>
-     * Returns 0 if the server is unavailable (e.g. remote broker deployment).
-     *
-     * @return current address size in bytes
-     */
     private long getAddressSize() {
         ActiveMQServer server = EmbeddedBrokerProcess.getServer(serverId);
         if (server == null) {
@@ -1018,9 +959,6 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
 
     /**
      * Closes all JMS resources: producer pool, connections, and connection factory.
-     * <p>
-     * Shutdown order: pool → connections (cascades to sessions/consumers/producers) → factory.
-     * The factory holds internal resources (thread pools, server locators) that must be released.
      */
     @Override
     public void close() throws Exception {
@@ -1050,9 +988,4 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
 
         log.debug("ArtemisQueueResource '{}' closed", getResourceName());
     }
-
-    // =========================================================================
-    // Utilities
-    // =========================================================================
-
 }

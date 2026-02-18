@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -12,9 +13,9 @@ import static org.mockito.Mockito.when;
 
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 import org.evochora.datapipeline.api.contracts.SystemContracts.DummyMessage;
@@ -22,6 +23,7 @@ import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.IDeadLetterQueueResource;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
+import org.evochora.datapipeline.api.resources.queues.StreamingBatch;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.resources.idempotency.InMemoryIdempotencyTracker;
 import org.junit.jupiter.api.BeforeEach;
@@ -67,9 +69,9 @@ public class DummyConsumerServiceTest {
         DummyConsumerService<DummyMessage> service = new DummyConsumerService<>("test-consumer", config, resources);
 
         // Use unique IDs for idempotency tracking
-        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class)))
-                .thenReturn(Optional.of(DummyMessage.newBuilder().setId(1).setContent("Msg1").build()))
-                .thenReturn(Optional.of(DummyMessage.newBuilder().setId(2).setContent("Msg2").build()));
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class)))
+                .thenReturn(batchOf(DummyMessage.newBuilder().setId(1).setContent("Msg1").build()))
+                .thenReturn(batchOf(DummyMessage.newBuilder().setId(2).setContent("Msg2").build()));
 
         service.start();
 
@@ -79,7 +81,7 @@ public class DummyConsumerServiceTest {
         }
         assertEquals(IService.State.STOPPED, service.getCurrentState());
 
-        verify(mockInputQueue, times(2)).poll(anyLong(), any(TimeUnit.class));
+        verify(mockInputQueue, times(2)).receiveBatch(anyInt(), anyLong(), any(TimeUnit.class));
         Map<String, Number> metrics = service.getMetrics();
         assertEquals(2L, metrics.get("messages_received").longValue());
         assertEquals(0L, metrics.get("messages_duplicate").longValue()); // No duplicates
@@ -90,8 +92,8 @@ public class DummyConsumerServiceTest {
         Config config = ConfigFactory.parseString("maxMessages=-1");
         DummyConsumerService<DummyMessage> service = new DummyConsumerService<>("test-consumer", config, resources);
 
-        // Make the mock return empty (no message) - service will poll and check isStopRequested
-        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class))).thenReturn(Optional.empty());
+        // Make the mock return empty batch (no message) - service will poll and check isStopRequested
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class))).thenReturn(emptyBatch());
 
         assertEquals(IService.State.STOPPED, service.getCurrentState());
         service.start();
@@ -113,10 +115,10 @@ public class DummyConsumerServiceTest {
         DummyConsumerService<DummyMessage> service = new DummyConsumerService<>("test-consumer", config, resources);
 
         // Use unique IDs to avoid idempotency filtering
-        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class)))
-                .thenReturn(Optional.of(DummyMessage.newBuilder().setId(10).build()))
-                .thenReturn(Optional.of(DummyMessage.newBuilder().setId(11).build()))
-                .thenReturn(Optional.of(DummyMessage.newBuilder().setId(12).build()));
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class)))
+                .thenReturn(batchOf(DummyMessage.newBuilder().setId(10).build()))
+                .thenReturn(batchOf(DummyMessage.newBuilder().setId(11).build()))
+                .thenReturn(batchOf(DummyMessage.newBuilder().setId(12).build()));
 
         service.start();
 
@@ -139,12 +141,12 @@ public class DummyConsumerServiceTest {
         Config config = ConfigFactory.parseString("maxMessages=2");
         DummyConsumerService<DummyMessage> service = new DummyConsumerService<>("test-consumer", config, resources);
         // Use unique IDs so messages aren't filtered as duplicates
-        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class)))
-                .thenReturn(Optional.of(DummyMessage.newBuilder().setId(20).build()))
-                .thenReturn(Optional.of(DummyMessage.newBuilder().setId(21).build()));
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class)))
+                .thenReturn(batchOf(DummyMessage.newBuilder().setId(20).build()))
+                .thenReturn(batchOf(DummyMessage.newBuilder().setId(21).build()));
         service.start();
         Thread.sleep(100); // Let service run and stop itself
-        verify(mockInputQueue, times(2)).poll(anyLong(), any(TimeUnit.class));
+        verify(mockInputQueue, times(2)).receiveBatch(anyInt(), anyLong(), any(TimeUnit.class));
         assertEquals(IService.State.STOPPED, service.getCurrentState());
     }
 
@@ -154,11 +156,11 @@ public class DummyConsumerServiceTest {
         DummyConsumerService<DummyMessage> service = new DummyConsumerService<>("test-consumer", config, resources);
 
         // Send same ID twice - second one should be filtered
-        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class)))
-                .thenReturn(Optional.of(DummyMessage.newBuilder().setId(100).setContent("First").build()))
-                .thenReturn(Optional.of(DummyMessage.newBuilder().setId(101).setContent("Second").build()))
-                .thenReturn(Optional.of(DummyMessage.newBuilder().setId(100).setContent("Duplicate of first").build())) // Duplicate!
-                .thenReturn(Optional.of(DummyMessage.newBuilder().setId(102).setContent("Third").build()));
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class)))
+                .thenReturn(batchOf(DummyMessage.newBuilder().setId(100).setContent("First").build()))
+                .thenReturn(batchOf(DummyMessage.newBuilder().setId(101).setContent("Second").build()))
+                .thenReturn(batchOf(DummyMessage.newBuilder().setId(100).setContent("Duplicate of first").build())) // Duplicate!
+                .thenReturn(batchOf(DummyMessage.newBuilder().setId(102).setContent("Third").build()));
 
         service.start();
 
@@ -172,5 +174,27 @@ public class DummyConsumerServiceTest {
         assertEquals(1L, metrics.get("messages_duplicate").longValue()); // One was duplicate
         // Idempotency tracker should have 3 unique IDs (100, 101, 102)
         assertEquals(3L, metrics.get("idempotency_tracker_size").longValue());
+    }
+
+    // ========== Helper Methods ==========
+
+    @SafeVarargs
+    private static <T> StreamingBatch<T> batchOf(T... items) {
+        List<T> list = List.of(items);
+        return new StreamingBatch<T>() {
+            @Override public int size() { return list.size(); }
+            @Override public Iterator<T> iterator() { return list.iterator(); }
+            @Override public void commit() {}
+            @Override public void close() {}
+        };
+    }
+
+    private static <T> StreamingBatch<T> emptyBatch() {
+        return new StreamingBatch<T>() {
+            @Override public int size() { return 0; }
+            @Override public Iterator<T> iterator() { return Collections.emptyIterator(); }
+            @Override public void commit() {}
+            @Override public void close() {}
+        };
     }
 }

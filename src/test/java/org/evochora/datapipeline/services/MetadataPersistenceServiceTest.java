@@ -9,6 +9,7 @@ import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
+import org.evochora.datapipeline.api.resources.queues.StreamingBatch;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
 import org.evochora.datapipeline.api.services.IService.State;
@@ -25,9 +26,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 import static org.awaitility.Awaitility.await;
@@ -150,7 +151,7 @@ class MetadataPersistenceServiceTest {
 
         // Topic is now optional - service should start with WARN log
         MetadataPersistenceService service = new MetadataPersistenceService("test-metadata-persistence", config, resources);
-        
+
         assertNotNull(service);
     }
 
@@ -175,7 +176,7 @@ class MetadataPersistenceServiceTest {
         SimulationMetadata metadata = createTestMetadata("sim-123");
 
         // Mock queue to return metadata
-        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class))).thenReturn(Optional.of(metadata));
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class))).thenReturn(batchOf(metadata));
         when(mockStorage.writeMessage(anyString(), any())).thenReturn(StoragePath.of("sim-123/raw/metadata.pb"));
 
         // Start service (will process message and stop)
@@ -194,7 +195,7 @@ class MetadataPersistenceServiceTest {
 
         // Verify topic notification was sent
         verify(mockTopic).setSimulationRun(eq("sim-123"));
-        verify(mockTopic).send(argThat(info -> 
+        verify(mockTopic).send(argThat(info ->
             info.getSimulationRunId().equals("sim-123") &&
             info.getStoragePath().startsWith("sim-123/raw/metadata.pb") &&
             info.getWrittenAtMs() > 0
@@ -213,7 +214,7 @@ class MetadataPersistenceServiceTest {
 
         SimulationMetadata metadata = createTestMetadata("my-simulation-run-42");
 
-        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class))).thenReturn(Optional.of(metadata));
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class))).thenReturn(batchOf(metadata));
         when(mockStorage.writeMessage(anyString(), any())).thenReturn(StoragePath.of("sim-123/raw/metadata.pb"));
 
         service.start();
@@ -240,7 +241,7 @@ class MetadataPersistenceServiceTest {
             .setInitialSeed(42)
             .build();
 
-        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class))).thenReturn(Optional.of(metadata));
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class))).thenReturn(batchOf(metadata));
         when(mockInputQueue.getResourceName()).thenReturn("context-data");
         when(mockDLQ.offer(any())).thenReturn(true);
 
@@ -274,7 +275,7 @@ class MetadataPersistenceServiceTest {
             // simulationRunId not set (defaults to empty string in proto3)
             .build();
 
-        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class))).thenReturn(Optional.of(metadata));
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class))).thenReturn(batchOf(metadata));
         when(mockInputQueue.getResourceName()).thenReturn("context-data");
         when(mockDLQ.offer(any())).thenReturn(true);
 
@@ -297,7 +298,7 @@ class MetadataPersistenceServiceTest {
 
         SimulationMetadata metadata = createTestMetadata("sim-123");
 
-        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class))).thenReturn(Optional.of(metadata));
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class))).thenReturn(batchOf(metadata));
 
         // First attempt fails, second succeeds
         when(mockStorage.writeMessage(anyString(), any()))
@@ -327,7 +328,7 @@ class MetadataPersistenceServiceTest {
 
         SimulationMetadata metadata = createTestMetadata("sim-123");
 
-        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class))).thenReturn(Optional.of(metadata));
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class))).thenReturn(batchOf(metadata));
         when(mockInputQueue.getResourceName()).thenReturn("context-data");
         doThrow(new IOException("Persistent error")).when(mockStorage).writeMessage(anyString(), any());
         when(mockDLQ.offer(any())).thenReturn(true);
@@ -360,7 +361,7 @@ class MetadataPersistenceServiceTest {
 
         SimulationMetadata metadata = createTestMetadata("sim-456");
 
-        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class))).thenReturn(Optional.of(metadata));
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class))).thenReturn(batchOf(metadata));
         when(mockInputQueue.getResourceName()).thenReturn("context-data");
         doThrow(new IOException("Storage failure")).when(mockStorage).writeMessage(anyString(), any());
         when(mockDLQ.offer(any())).thenReturn(true);
@@ -390,7 +391,7 @@ class MetadataPersistenceServiceTest {
 
         SimulationMetadata metadata = createTestMetadata("sim-789");
 
-        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class))).thenReturn(Optional.of(metadata));
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class))).thenReturn(batchOf(metadata));
         doThrow(new IOException("Storage failure")).when(mockStorage).writeMessage(anyString(), any());
 
         service.start();
@@ -412,7 +413,7 @@ class MetadataPersistenceServiceTest {
 
         SimulationMetadata metadata = createTestMetadata("sim-full");
 
-        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class))).thenReturn(Optional.of(metadata));
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class))).thenReturn(batchOf(metadata));
         when(mockInputQueue.getResourceName()).thenReturn("context-data");
         doThrow(new IOException("Storage failure")).when(mockStorage).writeMessage(anyString(), any());
         when(mockDLQ.offer(any())).thenReturn(false); // DLQ full
@@ -434,9 +435,9 @@ class MetadataPersistenceServiceTest {
     void testGracefulShutdownBeforeMessageReceived() throws Exception {
         service = new MetadataPersistenceService("test-metadata-persistence", config, resources);
 
-        // Mock queue.poll() to return empty (simulating no message available)
+        // Mock queue to return empty batch (simulating no message available)
         // Service will check isStopRequested() between polls
-        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class))).thenReturn(Optional.empty());
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class))).thenReturn(emptyBatch());
 
         service.start();
 
@@ -463,7 +464,7 @@ class MetadataPersistenceServiceTest {
 
         SimulationMetadata metadata = createTestMetadata("sim-metrics");
 
-        when(mockInputQueue.poll(anyLong(), any(TimeUnit.class))).thenReturn(Optional.of(metadata));
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class))).thenReturn(batchOf(metadata));
         when(mockStorage.writeMessage(anyString(), any())).thenReturn(StoragePath.of("sim-123/raw/metadata.pb"));
 
         service.start();
@@ -486,5 +487,25 @@ class MetadataPersistenceServiceTest {
             .setInitialSeed(12345)
             .setStartTimeMs(System.currentTimeMillis())
             .build();
+    }
+
+    @SafeVarargs
+    private static <T> StreamingBatch<T> batchOf(T... items) {
+        List<T> list = List.of(items);
+        return new StreamingBatch<T>() {
+            @Override public int size() { return list.size(); }
+            @Override public Iterator<T> iterator() { return list.iterator(); }
+            @Override public void commit() {}
+            @Override public void close() {}
+        };
+    }
+
+    private static <T> StreamingBatch<T> emptyBatch() {
+        return new StreamingBatch<T>() {
+            @Override public int size() { return 0; }
+            @Override public Iterator<T> iterator() { return Collections.emptyIterator(); }
+            @Override public void commit() {}
+            @Override public void close() {}
+        };
     }
 }

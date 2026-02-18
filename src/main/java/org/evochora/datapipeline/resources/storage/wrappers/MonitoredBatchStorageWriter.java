@@ -2,6 +2,7 @@ package org.evochora.datapipeline.resources.storage.wrappers;
 
 import java.io.IOException;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
@@ -14,6 +15,7 @@ import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
+import org.evochora.datapipeline.api.resources.storage.StreamingWriteResult;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowPercentiles;
 
@@ -101,6 +103,27 @@ public class MonitoredBatchStorageWriter implements IBatchStorageWrite, IWrapped
             recordWrite(1, bytes, latencyNanos);
 
             return path;
+        } catch (IOException e) {
+            writeErrors.incrementAndGet();
+            throw e;
+        }
+    }
+
+    @Override
+    public StreamingWriteResult writeChunkBatchStreaming(Iterator<TickDataChunk> chunks) throws IOException {
+        long startNanos = System.nanoTime();
+        try {
+            StreamingWriteResult result = delegate.writeChunkBatchStreaming(chunks);
+
+            // Update cumulative metrics
+            batchesWritten.incrementAndGet();
+            bytesWritten.addAndGet(result.bytesWritten());
+
+            // Record performance metrics
+            long latencyNanos = System.nanoTime() - startNanos;
+            recordWrite(result.chunkCount(), result.bytesWritten(), latencyNanos);
+
+            return result;
         } catch (IOException e) {
             writeErrors.incrementAndGet();
             throw e;

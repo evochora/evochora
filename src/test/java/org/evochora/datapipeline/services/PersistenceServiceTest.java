@@ -7,14 +7,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.argThat;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -22,20 +19,22 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 import org.evochora.datapipeline.api.contracts.BatchInfo;
-import org.evochora.datapipeline.api.contracts.SystemContracts;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
+import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
-import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
+import org.evochora.datapipeline.api.resources.queues.StreamingBatch;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
+import org.evochora.datapipeline.api.resources.storage.StreamingWriteResult;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
 import org.evochora.datapipeline.api.services.IService.State;
 import org.evochora.junit.extensions.logging.AllowLog;
@@ -53,8 +52,10 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 
 /**
- * Comprehensive unit tests for PersistenceService with mocked dependencies.
- * Tests cover batch processing, deduplication, retry logic, DLQ handling, and configuration validation.
+ * Unit tests for PersistenceService with streaming write architecture.
+ * <p>
+ * Tests cover the receive-process-acknowledge pattern: receiveBatch → writeChunkBatchStreaming → commit.
+ * Write failure causes rollback via close() without commit, relying on broker redelivery.
  */
 @Tag("unit")
 @ExtendWith({MockitoExtension.class, LogWatchExtension.class})
@@ -63,15 +64,12 @@ class PersistenceServiceTest {
 
     @Mock
     private IInputQueueResource<TickDataChunk> mockInputQueue;
-    
+
     @Mock
     private IBatchStorageWrite mockStorage;
 
     @Mock
     private ITopicWriter<BatchInfo> mockBatchTopic;
-
-    @Mock
-    private IOutputQueueResource<SystemContracts.DeadLetterMessage> mockDLQ;
 
     @Mock
     private IIdempotencyTracker<Long> mockIdempotencyTracker;
@@ -86,20 +84,20 @@ class PersistenceServiceTest {
         resources.put("input", Collections.singletonList(mockInputQueue));
         resources.put("storage", Collections.singletonList(mockStorage));
         // topic is optional - add it per test as needed
-        
+
         config = ConfigFactory.parseMap(Map.of(
             "maxBatchSize", 100,
-            "batchTimeoutSeconds", 2,
-            "maxRetries", 2,
-            "retryBackoffMs", 100
+            "batchTimeoutSeconds", 2
         ));
     }
+
+    // ========== Constructor Tests ==========
 
     @Test
     @AllowLog(level = LogLevel.INFO, loggerPattern = ".*PersistenceService.*")
     void testConstructorWithRequiredResources() {
         service = new PersistenceService("test-persistence", config, resources);
-        
+
         assertNotNull(service);
         assertEquals("test-persistence", service.serviceName);
         assertTrue(service.isHealthy());
@@ -109,11 +107,10 @@ class PersistenceServiceTest {
     @Test
     @AllowLog(level = LogLevel.INFO, loggerPattern = ".*PersistenceService.*")
     void testConstructorWithOptionalResources() {
-        resources.put("dlq", Collections.singletonList(mockDLQ));
         resources.put("idempotencyTracker", Collections.singletonList(mockIdempotencyTracker));
-        
+
         service = new PersistenceService("test-persistence", config, resources);
-        
+
         assertNotNull(service);
         assertTrue(service.isHealthy());
     }
@@ -133,44 +130,22 @@ class PersistenceServiceTest {
     @Test
     void testConstructorWithInvalidBatchTimeout() {
         Config invalidConfig = ConfigFactory.parseMap(Map.of("batchTimeoutSeconds", -1));
-        
+
         IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
             new PersistenceService("test-persistence", invalidConfig, resources);
         });
-        
+
         assertTrue(exception.getMessage().contains("batchTimeoutSeconds must be positive"));
-    }
-
-    @Test
-    void testConstructorWithInvalidMaxRetries() {
-        Config invalidConfig = ConfigFactory.parseMap(Map.of("maxRetries", -1));
-        
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
-            new PersistenceService("test-persistence", invalidConfig, resources);
-        });
-        
-        assertTrue(exception.getMessage().contains("maxRetries cannot be negative"));
-    }
-
-    @Test
-    void testConstructorWithInvalidRetryBackoff() {
-        Config invalidConfig = ConfigFactory.parseMap(Map.of("retryBackoffMs", -1));
-        
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> {
-            new PersistenceService("test-persistence", invalidConfig, resources);
-        });
-        
-        assertTrue(exception.getMessage().contains("retryBackoffMs cannot be negative"));
     }
 
     @Test
     void testConstructorWithMissingInputResource() {
         resources.remove("input");
-        
+
         IllegalStateException exception = assertThrows(IllegalStateException.class, () -> {
             new PersistenceService("test-persistence", config, resources);
         });
-        
+
         assertTrue(exception.getMessage().contains("Resource port 'input' is not configured"));
     }
 
@@ -186,543 +161,157 @@ class PersistenceServiceTest {
         assertTrue(exception.getMessage().contains("Resource port 'storage' is not configured"));
     }
 
+    // ========== Streaming Write Tests ==========
+
     @Test
     @AllowLog(level = LogLevel.INFO, loggerPattern = ".*PersistenceService.*")
-    void testSuccessfulBatchWrite() throws Exception {
+    void testSuccessfulStreamingWrite() throws Exception {
         service = new PersistenceService("test-persistence", config, resources);
-        
-        // Mock queue behavior - return data on first call, then throw InterruptedException to stop
-        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
-            .thenAnswer(invocation -> {
-                List<TickDataChunk> batch = invocation.getArgument(0);
-                batch.addAll(createTestBatch("sim-123", 100, 102));
-                return 3;
-            })
-            .thenThrow(new InterruptedException("Test shutdown"));
-        when(mockStorage.writeChunkBatch(anyList(), anyLong(), anyLong()))
-            .thenReturn(StoragePath.of("001/batch_0000000000000000100_0000000000000000102.pb"));
 
-        // Start service in background
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class)))
+            .thenReturn(batchOf(createTestBatch("sim-123", 100, 102)))
+            .thenThrow(new InterruptedException("Test shutdown"));
+        when(mockStorage.writeChunkBatchStreaming(any()))
+            .thenReturn(new StreamingWriteResult(
+                StoragePath.of("001/batch_0000000000000000100_0000000000000000102.pb"),
+                "sim-123", 100L, 102L, 3, 3, 1024L));
+
         service.start();
 
-        // Wait for batch to be processed
-        await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
+        await().atMost(5, TimeUnit.SECONDS)
             .until(() -> service.getMetrics().get("batches_written").longValue() > 0);
 
-        // Verify storage was called with batch API
-        verify(mockStorage).writeChunkBatch(argThat(list -> list.size() == 3), eq(100L), eq(102L));
-        
-        // Verify metrics
+        // Verify streaming write was called (not the old batch write)
+        verify(mockStorage).writeChunkBatchStreaming(any());
+        verify(mockStorage, never()).writeChunkBatch(any(), anyLong(), anyLong());
+
         assertEquals(1, service.getMetrics().get("batches_written").longValue());
         assertEquals(3, service.getMetrics().get("ticks_written").longValue());
-        
-        // Service stops itself due to InterruptedException, no need to call stop()
+        assertEquals(1024, service.getMetrics().get("bytes_written").longValue());
     }
 
     @Test
     @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Batch consistency violation: first=.*, last=.*, sending to DLQ")
-    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Failed batch has no DLQ configured, data will be lost: .*")
-    void testBatchConsistencyViolation() throws Exception {
-        service = new PersistenceService("test-persistence", config, resources);
-        
-        // Mock queue behavior - return mixed simulationRunIds, then throw InterruptedException
-        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
-            .thenAnswer(invocation -> {
-                List<TickDataChunk> batch = invocation.getArgument(0);
-                batch.add(createChunk("sim-123", 100));
-                batch.add(createChunk("sim-456", 101)); // Different simulationRunId
-                return 2;
-            })
-            .thenThrow(new InterruptedException("Test shutdown"));
-        
-        service.start();
-        
-        // Wait for batch to be processed
-        await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> service.getMetrics().get("batches_failed").longValue() > 0);
-        
-        // Verify batch was not written to storage
-        verify(mockStorage, never()).writeChunkBatch(anyList(), anyLong(), anyLong());
-        
-        // Verify metrics
-        assertEquals(0, service.getMetrics().get("batches_written").longValue());
-        assertEquals(1, service.getMetrics().get("batches_failed").longValue());
-        
-        // Service stops itself due to InterruptedException, no need to call stop()
-    }
-
-    @Test
-    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Batch contains chunk with empty or null simulationRunId, sending to DLQ")
-    void testEmptySimulationRunIdValidation() throws Exception {
-        resources.put("dlq", Collections.singletonList(mockDLQ));
+               messagePattern = "Failed to write streaming batch: .*")
+    void testWriteFailureDoesNotCommit() throws Exception {
         service = new PersistenceService("test-persistence", config, resources);
 
-        // Mock queue behavior - return batch with empty simulationRunId, then throw InterruptedException
-        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
-            .thenAnswer(invocation -> {
-                List<TickDataChunk> batch = invocation.getArgument(0);
-                // Create chunk with empty simulationRunId to trigger validation error
-                batch.add(TickDataChunk.newBuilder()
-                    .setSimulationRunId("")
-                    .setFirstTick(100)
-                    .setLastTick(100)
-                    .setTickCount(1)
-                    .setSnapshot(TickData.newBuilder().setSimulationRunId("").setTickNumber(100).build())
-                    .build());
-                return 1;
-            })
+        StreamingBatch<TickDataChunk> spyBatch = new SpyStreamingBatch<>(createTestBatch("sim-123", 100, 102));
+
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class)))
+            .thenReturn(spyBatch)
             .thenThrow(new InterruptedException("Test shutdown"));
-        when(mockDLQ.offer(any(SystemContracts.DeadLetterMessage.class))).thenReturn(true);
-        when(mockInputQueue.getResourceName()).thenReturn("test-input-queue");
+        when(mockStorage.writeChunkBatchStreaming(any()))
+            .thenThrow(new IOException("Storage unavailable"));
 
         service.start();
 
-        // Wait for batch to be rejected
-        await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
+        await().atMost(5, TimeUnit.SECONDS)
             .until(() -> service.getMetrics().get("batches_failed").longValue() > 0);
 
-        // Verify batch was not written to storage
-        verify(mockStorage, never()).writeChunkBatch(anyList(), anyLong(), anyLong());
+        // Verify commit was NOT called (rollback via close)
+        assertEquals(0, ((SpyStreamingBatch<?>) spyBatch).commitCount);
+        assertEquals(1, ((SpyStreamingBatch<?>) spyBatch).closeCount);
 
-        // Verify DLQ was called
-        verify(mockDLQ).offer(any(SystemContracts.DeadLetterMessage.class));
-
-        // Verify metrics
         assertEquals(0, service.getMetrics().get("batches_written").longValue());
         assertEquals(1, service.getMetrics().get("batches_failed").longValue());
 
         // Verify error was recorded
         assertEquals(1, service.getErrors().size());
-        assertEquals("INVALID_SIMULATION_RUN_ID", service.getErrors().get(0).errorType());
-
-        // Service stops itself due to InterruptedException, no need to call stop()
-    }
-
-    @Test
-    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Batch contains chunk with empty or null simulationRunId, sending to DLQ")
-    void testNullSimulationRunIdValidation() throws Exception {
-        resources.put("dlq", Collections.singletonList(mockDLQ));
-        service = new PersistenceService("test-persistence", config, resources);
-
-        // Mock queue behavior - return batch with null simulationRunId, then throw InterruptedException
-        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
-            .thenAnswer(invocation -> {
-                List<TickDataChunk> batch = invocation.getArgument(0);
-                // Create a chunk without setting simulationRunId (will be empty string in protobuf)
-                batch.add(TickDataChunk.newBuilder()
-                    .setFirstTick(100)
-                    .setLastTick(100)
-                    .setTickCount(1)
-                    .setSnapshot(TickData.newBuilder().setTickNumber(100).build())
-                    .build());
-                return 1;
-            })
-            .thenThrow(new InterruptedException("Test shutdown"));
-        when(mockDLQ.offer(any(SystemContracts.DeadLetterMessage.class))).thenReturn(true);
-        when(mockInputQueue.getResourceName()).thenReturn("test-input-queue");
-
-        service.start();
-
-        // Wait for batch to be rejected
-        await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> service.getMetrics().get("batches_failed").longValue() > 0);
-
-        // Verify batch was not written to storage
-        verify(mockStorage, never()).writeChunkBatch(anyList(), anyLong(), anyLong());
-
-        // Verify DLQ was called
-        verify(mockDLQ).offer(any(SystemContracts.DeadLetterMessage.class));
-
-        // Verify metrics
-        assertEquals(0, service.getMetrics().get("batches_written").longValue());
-        assertEquals(1, service.getMetrics().get("batches_failed").longValue());
-
-        // Verify error was recorded
-        assertEquals(1, service.getErrors().size());
-        assertEquals("INVALID_SIMULATION_RUN_ID", service.getErrors().get(0).errorType());
-
-        // Service stops itself due to InterruptedException, no need to call stop()
-    }
-
-    @Test
-    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Duplicate chunk detected: .*", occurrences = -1)
-    @AllowLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
-              messagePattern = "\\[.*\\] Removed .* duplicate chunks, .* unique chunks remain: range \\[.*\\]")
-    void testDuplicateTickDetection() throws Exception {
-        resources.put("idempotencyTracker", Collections.singletonList(mockIdempotencyTracker));
-        service = new PersistenceService("test-persistence", config, resources);
-
-        // Mock queue behavior - return data, then throw InterruptedException
-        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
-            .thenAnswer(invocation -> {
-                List<TickDataChunk> batch = invocation.getArgument(0);
-                batch.addAll(createTestBatch("sim-123", 100, 102));
-                return 3;
-            })
-            .thenThrow(new InterruptedException("Test shutdown"));
-        when(mockStorage.writeChunkBatch(anyList(), anyLong(), anyLong()))
-            .thenReturn(StoragePath.of("batch_file.pb"));
-
-        // Mock idempotency tracker - uses atomic checkAndMarkProcessed()
-        // First tick is duplicate (returns false), others are new (returns true)
-        // Changed from String to Long keys (tick number only)
-        when(mockIdempotencyTracker.checkAndMarkProcessed(100L)).thenReturn(false); // Already processed
-        when(mockIdempotencyTracker.checkAndMarkProcessed(101L)).thenReturn(true);  // New
-        when(mockIdempotencyTracker.checkAndMarkProcessed(102L)).thenReturn(true);  // New
-
-        service.start();
-
-        // Wait for batch to be processed
-        await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> service.getMetrics().get("batches_written").longValue() > 0);
-
-        // Verify batch write was called
-        verify(mockStorage).writeChunkBatch(argThat(list -> list.size() == 2), eq(100L), eq(102L));
-
-        // Verify the atomic method was actually called for all ticks
-        verify(mockIdempotencyTracker).checkAndMarkProcessed(100L);
-        verify(mockIdempotencyTracker).checkAndMarkProcessed(101L);
-        verify(mockIdempotencyTracker).checkAndMarkProcessed(102L);
-
-        // Verify duplicate detection metrics
-        assertEquals(1, service.getMetrics().get("duplicate_ticks_detected").longValue());
-
-        // Service stops itself due to InterruptedException, no need to call stop()
-    }
-
-    @Test
-    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Failed to write batch .* \\(attempt .*\\): .*, retrying in .*ms", occurrences = -1)
-    void testRetryLogicWithTransientFailure() throws Exception {
-        service = new PersistenceService("test-persistence", config, resources);
-        
-        // Mock queue behavior - return data, then throw InterruptedException
-        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
-            .thenAnswer(invocation -> {
-                List<TickDataChunk> batch = invocation.getArgument(0);
-                batch.addAll(createTestBatch("sim-123", 100, 102));
-                return 3;
-            })
-            .thenThrow(new InterruptedException("Test shutdown"));
-        
-        // First call fails, second succeeds
-        when(mockStorage.writeChunkBatch(anyList(), anyLong(), anyLong()))
-            .thenThrow(new IOException("Transient failure"))
-            .thenReturn(StoragePath.of("batch_file.pb"));
-        
-        service.start();
-        
-        // Wait for batch to be processed
-        await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> service.getMetrics().get("batches_written").longValue() > 0);
-        
-        // Verify storage was called twice (retry)
-        verify(mockStorage, times(2)).writeChunkBatch(anyList(), anyLong(), anyLong());
-        
-        // Verify success metrics
-        assertEquals(1, service.getMetrics().get("batches_written").longValue());
-        assertEquals(0, service.getMetrics().get("batches_failed").longValue());
-        
-        // Service stops itself due to InterruptedException, no need to call stop()
-    }
-
-    @Test
-    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Failed to write batch .* after .* retries, sending to DLQ")
-    void testDLQHandlingAfterAllRetriesExhausted() throws Exception {
-        // Use faster retry backoff to speed up test (10ms vs 100ms base)
-        Config fastRetryConfig = ConfigFactory.parseMap(Map.of(
-            "maxBatchSize", 100,
-            "batchTimeoutSeconds", 2,
-            "maxRetries", 2,
-            "retryBackoffMs", 10  // 10 + 20 + 40 = 70ms total vs 700ms with 100ms base
-        ));
-        resources.put("dlq", Collections.singletonList(mockDLQ));
-        service = new PersistenceService("test-persistence", fastRetryConfig, resources);
-
-        // Mock queue behavior - return data, then throw InterruptedException
-        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
-            .thenAnswer(invocation -> {
-                List<TickDataChunk> batch = invocation.getArgument(0);
-                batch.addAll(createTestBatch("sim-123", 100, 102));
-                return 3;
-            })
-            .thenThrow(new InterruptedException("Test shutdown"));
-        when(mockStorage.writeChunkBatch(anyList(), anyLong(), anyLong()))
-            .thenThrow(new IOException("Persistent failure"));
-        when(mockDLQ.offer(any(SystemContracts.DeadLetterMessage.class))).thenReturn(true);
-        when(mockInputQueue.getResourceName()).thenReturn("test-input-queue");
-
-        service.start();
-
-        // Wait for batch to be processed
-        await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> service.getMetrics().get("batches_failed").longValue() > 0);
-
-        // Verify DLQ was called
-        verify(mockDLQ).offer(any(SystemContracts.DeadLetterMessage.class));
-
-        // Verify failure metrics
-        assertEquals(0, service.getMetrics().get("batches_written").longValue());
-        assertEquals(1, service.getMetrics().get("batches_failed").longValue());
-
-        // Service stops itself due to InterruptedException, no need to call stop()
-    }
-
-    @Test
-    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Failed to write batch .* after .* retries, sending to DLQ")
-    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Failed batch has no DLQ configured, data will be lost: .*")
-    void testDLQHandlingWhenNotConfigured() throws Exception {
-        service = new PersistenceService("test-persistence", config, resources);
-
-        // Mock queue behavior - return data, then throw InterruptedException
-        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
-            .thenAnswer(invocation -> {
-                List<TickDataChunk> batch = invocation.getArgument(0);
-                batch.addAll(createTestBatch("sim-123", 100, 102));
-                return 3;
-            })
-            .thenThrow(new InterruptedException("Test shutdown"));
-        when(mockStorage.writeChunkBatch(anyList(), anyLong(), anyLong()))
-            .thenThrow(new IOException("Persistent failure"));
-
-        service.start();
-
-        // Wait for batch to be processed
-        await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> service.getMetrics().get("batches_failed").longValue() > 0);
-
-        // Verify failure metrics
-        assertEquals(0, service.getMetrics().get("batches_written").longValue());
-        assertEquals(1, service.getMetrics().get("batches_failed").longValue());
-
-        // Service stops itself due to InterruptedException, no need to call stop()
-    }
-
-    @Test
-    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*PersistenceService.*")
-    void testGracefulShutdownWithPartialBatch() throws Exception {
-        service = new PersistenceService("test-persistence", config, resources);
-        
-        // Mock queue behavior - return data on first call, then throw InterruptedException
-        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
-            .thenAnswer(invocation -> {
-                List<TickDataChunk> batch = invocation.getArgument(0);
-                batch.addAll(createTestBatch("sim-123", 100, 102));
-                return 3;
-            })
-            .thenThrow(new InterruptedException("Shutdown signal"));
-        when(mockStorage.writeChunkBatch(anyList(), anyLong(), anyLong()))
-            .thenReturn(StoragePath.of("batch_file.pb"));
-        
-        service.start();
-
-        // Wait for first batch to be processed and service to stop
-        await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> service.getCurrentState() == State.STOPPED);
-
-        // Verify first batch was written
-        verify(mockStorage).writeChunkBatch(anyList(), anyLong(), anyLong());
-
-        // Verify metrics
-        assertEquals(1, service.getMetrics().get("batches_written").longValue());
-
-        // Service stops itself due to InterruptedException, no need to call stop()
-    }
-
-    @Test
-    void testMetricsAccuracy() throws Exception {
-        service = new PersistenceService("test-persistence", config, resources);
-        
-        // Mock queue behavior - return data, then throw InterruptedException
-        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
-            .thenAnswer(invocation -> {
-                List<TickDataChunk> batch = invocation.getArgument(0);
-                batch.addAll(createTestBatch("sim-123", 100, 102));
-                return 3;
-            })
-            .thenThrow(new InterruptedException("Test shutdown"));
-        when(mockStorage.writeChunkBatch(anyList(), anyLong(), anyLong()))
-            .thenReturn(StoragePath.of("batch_file.pb"));
-        
-        service.start();
-        
-        // Wait for batch to be processed
-        await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> service.getMetrics().get("batches_written").longValue() > 0);
-        
-        Map<String, Number> metrics = service.getMetrics();
-        
-        assertEquals(1, metrics.get("batches_written").longValue());
-        assertEquals(3, metrics.get("ticks_written").longValue());
-        assertEquals(0, metrics.get("batches_failed").longValue());
-        assertEquals(0, metrics.get("duplicate_ticks_detected").longValue());
-        assertEquals(3, metrics.get("current_batch_size").intValue());
-        
-        // Service stops itself due to InterruptedException, no need to call stop()
+        assertEquals("BATCH_WRITE_FAILED", service.getErrors().get(0).errorType());
     }
 
     @Test
     void testEmptyBatchHandling() throws Exception {
         service = new PersistenceService("test-persistence", config, resources);
-        
-        // Mock queue behavior - return 0 (no data), then throw InterruptedException
-        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
-            .thenReturn(0) // No data available
+
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class)))
+            .thenReturn(emptyBatch())
             .thenThrow(new InterruptedException("Test shutdown"));
-        
+
         service.start();
 
-        // Wait until service processes the empty batch (drainTo called at least once)
-        await().atMost(2, java.util.concurrent.TimeUnit.SECONDS)
+        await().atMost(2, TimeUnit.SECONDS)
             .untilAsserted(() -> verify(mockInputQueue, atLeastOnce())
-                .drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)));
+                .receiveBatch(anyInt(), anyLong(), any(TimeUnit.class)));
 
-        // Verify no storage operations occurred for empty batch
-        verify(mockStorage, never()).writeChunkBatch(anyList(), anyLong(), anyLong());
-        
-        // Verify metrics remain zero
+        // Verify no storage operations occurred
+        verify(mockStorage, never()).writeChunkBatchStreaming(any());
+
         Map<String, Number> metrics = service.getMetrics();
         assertEquals(0, metrics.get("batches_written").longValue());
         assertEquals(0, metrics.get("ticks_written").longValue());
-        
-        // Service stops itself due to InterruptedException, no need to call stop()
     }
 
     @Test
-    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Batch consistency violation: first=.*, last=.*, sending to DLQ")
-    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Failed batch has no DLQ configured, data will be lost: .*")
-    void testErrorTrackingAndClearing() throws Exception {
+    void testMetricsAccuracy() throws Exception {
         service = new PersistenceService("test-persistence", config, resources);
 
-        // Mock queue behavior - return mixed simulationRunIds to trigger error, then throw InterruptedException
-        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
-            .thenAnswer(invocation -> {
-                List<TickDataChunk> batch = invocation.getArgument(0);
-                batch.add(createChunk("sim-123", 100));
-                batch.add(createChunk("sim-456", 101)); // Different simulationRunId causes error
-                return 2;
-            })
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class)))
+            .thenReturn(batchOf(createTestBatch("sim-123", 100, 102)))
             .thenThrow(new InterruptedException("Test shutdown"));
+        when(mockStorage.writeChunkBatchStreaming(any()))
+            .thenReturn(new StreamingWriteResult(
+                StoragePath.of("batch_file.pb"), "sim-123", 100L, 102L, 3, 3, 2048L));
 
         service.start();
 
-        // Wait for errors to be recorded
-        await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> service.getErrors().size() >= 2);
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> service.getMetrics().get("batches_written").longValue() > 0);
 
-        // Verify errors were recorded (2 errors: batch violation + DLQ not configured)
-        assertEquals(2, service.getErrors().size());
-        assertEquals("BATCH_CONSISTENCY_VIOLATION", service.getErrors().get(0).errorType());
-        assertEquals("DLQ_NOT_CONFIGURED", service.getErrors().get(1).errorType());
-        // Details should contain "First: sim-123, Last: sim-456, Batch size: 2"
-        assertTrue(service.getErrors().get(0).details().contains("First:"));
-        assertTrue(service.getErrors().get(0).details().contains("Last:"));
+        Map<String, Number> metrics = service.getMetrics();
 
-        // Clear errors
-        service.clearErrors();
-
-        // Verify errors list is now empty
-        assertEquals(0, service.getErrors().size());
-
-        // Service stops itself due to InterruptedException, no need to call stop()
+        assertEquals(1, metrics.get("batches_written").longValue());
+        assertEquals(3, metrics.get("ticks_written").longValue());
+        assertEquals(2048, metrics.get("bytes_written").longValue());
+        assertEquals(0, metrics.get("batches_failed").longValue());
+        assertEquals(0, metrics.get("duplicate_ticks_detected").longValue());
+        assertEquals(3, metrics.get("current_batch_size").intValue());
     }
 
     @Test
-    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Batch contains chunk with empty or null simulationRunId, sending to DLQ")
-    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Batch consistency violation: first=.*, last=.*, sending to DLQ")
-    void testMultipleErrorsAccumulate() throws Exception {
-        resources.put("dlq", Collections.singletonList(mockDLQ));
+    void testCurrentBatchSizeResetToZero() throws Exception {
         service = new PersistenceService("test-persistence", config, resources);
 
-        // Mock queue behavior - return multiple batches with errors
-        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
-            .thenAnswer(invocation -> {
-                List<TickDataChunk> batch = invocation.getArgument(0);
-                // Empty simulationRunId
-                batch.add(TickDataChunk.newBuilder()
-                    .setSimulationRunId("")
-                    .setFirstTick(100)
-                    .setLastTick(100)
-                    .setTickCount(1)
-                    .setSnapshot(TickData.newBuilder().setSimulationRunId("").setTickNumber(100).build())
-                    .build());
-                return 1;
-            })
-            .thenAnswer(invocation -> {
-                List<TickDataChunk> batch = invocation.getArgument(0);
-                batch.add(createChunk("sim-123", 100));
-                batch.add(createChunk("sim-456", 101)); // Mixed IDs
-                return 2;
-            })
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class)))
+            .thenReturn(batchOf(createTestBatch("sim-123", 100, 102)))
+            .thenReturn(emptyBatch())
             .thenThrow(new InterruptedException("Test shutdown"));
-        when(mockDLQ.offer(any(SystemContracts.DeadLetterMessage.class))).thenReturn(true);
-        when(mockInputQueue.getResourceName()).thenReturn("test-input-queue");
+        when(mockStorage.writeChunkBatchStreaming(any()))
+            .thenReturn(new StreamingWriteResult(
+                StoragePath.of("batch_file.pb"), "sim-123", 100L, 102L, 3, 3, 1024L));
 
         service.start();
 
-        // Wait for errors to accumulate
-        await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> service.getErrors().size() >= 2);
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> service.getMetrics().get("batches_written").longValue() > 0);
 
-        // Verify multiple errors were recorded
-        assertTrue(service.getErrors().size() >= 2);
-        // First error should be INVALID_SIMULATION_RUN_ID
-        assertEquals("INVALID_SIMULATION_RUN_ID", service.getErrors().get(0).errorType());
-        // Second error should be BATCH_CONSISTENCY_VIOLATION
-        assertEquals("BATCH_CONSISTENCY_VIOLATION", service.getErrors().get(1).errorType());
+        // Wait for empty batch to reset currentBatchSize to 0
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> service.getMetrics().get("current_batch_size").intValue() == 0);
 
-        // Service stops itself due to InterruptedException, no need to call stop()
+        assertEquals(0, service.getMetrics().get("current_batch_size").intValue());
     }
 
     @Test
-    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Batch contains chunk with empty or null simulationRunId, sending to DLQ")
-    void testErrorDetailsContainUsefulInformation() throws Exception {
-        resources.put("dlq", Collections.singletonList(mockDLQ));
+    @AllowLog(level = LogLevel.INFO, loggerPattern = ".*PersistenceService.*")
+    void testGracefulShutdown() throws Exception {
         service = new PersistenceService("test-persistence", config, resources);
 
-        // Mock queue behavior - return batch with empty simulationRunId
-        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
-            .thenAnswer(invocation -> {
-                List<TickDataChunk> batch = invocation.getArgument(0);
-                batch.add(TickDataChunk.newBuilder()
-                    .setSimulationRunId("")
-                    .setFirstTick(100)
-                    .setLastTick(100)
-                    .setTickCount(1)
-                    .setSnapshot(TickData.newBuilder().setSimulationRunId("").setTickNumber(100).build())
-                    .build());
-                return 1;
-            })
-            .thenThrow(new InterruptedException("Test shutdown"));
-        when(mockDLQ.offer(any(SystemContracts.DeadLetterMessage.class))).thenReturn(true);
-        when(mockInputQueue.getResourceName()).thenReturn("test-input-queue");
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class)))
+            .thenReturn(batchOf(createTestBatch("sim-123", 100, 102)))
+            .thenThrow(new InterruptedException("Shutdown signal"));
+        when(mockStorage.writeChunkBatchStreaming(any()))
+            .thenReturn(new StreamingWriteResult(
+                StoragePath.of("batch_file.pb"), "sim-123", 100L, 102L, 3, 3, 1024L));
 
         service.start();
 
-        // Wait for error to be recorded
-        await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> !service.getErrors().isEmpty());
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> service.getCurrentState() == State.STOPPED);
 
-        // Verify error details contain batch size
-        var error = service.getErrors().get(0);
-        assertEquals("INVALID_SIMULATION_RUN_ID", error.errorType());
-        assertEquals("Batch contains chunk with empty or null simulationRunId", error.message());
-        assertTrue(error.details().contains("Batch size: 1"));
-
-        // Service stops itself due to InterruptedException, no need to call stop()
+        verify(mockStorage).writeChunkBatchStreaming(any());
+        assertEquals(1, service.getMetrics().get("batches_written").longValue());
     }
 
     @Test
@@ -730,269 +319,154 @@ class PersistenceServiceTest {
     void testHealthCheckReflectsServiceState() throws Exception {
         service = new PersistenceService("test-persistence", config, resources);
 
-        // Service should be healthy after construction (READY state)
         assertTrue(service.isHealthy());
 
-        // Start service - should still be healthy (RUNNING state)
-        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
-            .thenReturn(0)
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class)))
+            .thenReturn(emptyBatch())
             .thenThrow(new InterruptedException("Test shutdown"));
 
         service.start();
 
-        // Wait until service is actually running (has called drainTo at least once)
-        await().atMost(2, java.util.concurrent.TimeUnit.SECONDS)
+        await().atMost(2, TimeUnit.SECONDS)
             .untilAsserted(() -> verify(mockInputQueue, atLeastOnce())
-                .drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)));
+                .receiveBatch(anyInt(), anyLong(), any(TimeUnit.class)));
 
-        // Should still be healthy during normal operation
         assertTrue(service.isHealthy());
 
-        // Service stops itself due to InterruptedException
-        await().atMost(2, java.util.concurrent.TimeUnit.SECONDS)
+        await().atMost(2, TimeUnit.SECONDS)
             .until(() -> service.getCurrentState() == State.STOPPED);
 
-        // After stopping, should still be healthy (STOPPED != ERROR)
         assertTrue(service.isHealthy());
     }
 
+    // ========== Idempotency Tests ==========
+
     @Test
-    void testCurrentBatchSizeResetToZero() throws Exception {
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
+               messagePattern = "Duplicate chunk detected: .*", occurrences = -1)
+    void testDuplicateChunkFiltering() throws Exception {
+        resources.put("idempotencyTracker", Collections.singletonList(mockIdempotencyTracker));
         service = new PersistenceService("test-persistence", config, resources);
 
-        // Mock queue behavior - first return data, then return 0 (empty drain), then throw InterruptedException
-        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
-            .thenAnswer(invocation -> {
-                List<TickDataChunk> batch = invocation.getArgument(0);
-                batch.addAll(createTestBatch("sim-123", 100, 102));
-                return 3;
-            })
-            .thenReturn(0) // Empty drain
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class)))
+            .thenReturn(batchOf(createTestBatch("sim-123", 100, 102)))
             .thenThrow(new InterruptedException("Test shutdown"));
-        when(mockStorage.writeChunkBatch(anyList(), anyLong(), anyLong()))
-            .thenReturn(StoragePath.of("batch_file.pb"));
+
+        // Mock must drain the iterator to trigger the filtering logic
+        when(mockStorage.writeChunkBatchStreaming(any())).thenAnswer(invocation -> {
+            Iterator<TickDataChunk> iter = invocation.getArgument(0);
+            int count = 0;
+            long lastTick = 0;
+            while (iter.hasNext()) {
+                TickDataChunk chunk = iter.next();
+                lastTick = chunk.getLastTick();
+                count++;
+            }
+            return new StreamingWriteResult(
+                StoragePath.of("batch_file.pb"), "sim-123", 101L, lastTick, count, count, 512L);
+        });
+
+        // First tick is duplicate (returns false), others are new (returns true)
+        when(mockIdempotencyTracker.checkAndMarkProcessed(100L)).thenReturn(false);
+        when(mockIdempotencyTracker.checkAndMarkProcessed(101L)).thenReturn(true);
+        when(mockIdempotencyTracker.checkAndMarkProcessed(102L)).thenReturn(true);
 
         service.start();
 
-        // Wait for first batch to be processed
-        await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
+        await().atMost(5, TimeUnit.SECONDS)
             .until(() -> service.getMetrics().get("batches_written").longValue() > 0);
 
-        // Note: We don't check currentBatchSize == 3 here because it's a race condition:
-        // the service may have already processed the empty drain and reset it to 0.
+        verify(mockStorage).writeChunkBatchStreaming(any());
+        verify(mockIdempotencyTracker).checkAndMarkProcessed(100L);
+        verify(mockIdempotencyTracker).checkAndMarkProcessed(101L);
+        verify(mockIdempotencyTracker).checkAndMarkProcessed(102L);
 
-        // Wait for empty drain to occur (which resets currentBatchSize to 0)
-        await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> service.getMetrics().get("current_batch_size").intValue() == 0);
-
-        // Verify currentBatchSize was reset to 0
-        assertEquals(0, service.getMetrics().get("current_batch_size").intValue());
-
-        // Service stops itself due to InterruptedException, no need to call stop()
+        assertEquals(1, service.getMetrics().get("duplicate_ticks_detected").longValue());
     }
 
     @Test
     @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
-               messagePattern = "Failed to write batch .* after .* retries, sending to DLQ")
-    void testRetryBackoffCap() throws Exception {
-        // Configure with high maxRetries to test exponential backoff
-        Config highRetryConfig = ConfigFactory.parseMap(Map.of(
-            "maxBatchSize", 100,
-            "batchTimeoutSeconds", 1,
-            "maxRetries", 8,  // 8 retries: backoff will be 10, 20, 40, 80, 160, 320, 640, 1280ms (total ~2550ms)
-            "retryBackoffMs", 10  // Small base to make test fast while still testing exponential behavior
-        ));
-        resources.put("dlq", Collections.singletonList(mockDLQ));
-        service = new PersistenceService("test-persistence", highRetryConfig, resources);
+               messagePattern = "Duplicate chunk detected: .*", occurrences = -1)
+    void testAllDuplicatesSkipped() throws Exception {
+        resources.put("idempotencyTracker", Collections.singletonList(mockIdempotencyTracker));
+        service = new PersistenceService("test-persistence", config, resources);
 
-        // Mock queue behavior - return data, then throw InterruptedException
-        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
-            .thenAnswer(invocation -> {
-                List<TickDataChunk> batch = invocation.getArgument(0);
-                batch.addAll(createTestBatch("sim-123", 100, 102));
-                return 3;
-            })
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class)))
+            .thenReturn(batchOf(createTestBatch("sim-123", 100, 102)))
             .thenThrow(new InterruptedException("Test shutdown"));
 
-        // Storage always fails to trigger retries
-        when(mockStorage.writeChunkBatch(anyList(), anyLong(), anyLong()))
-            .thenThrow(new IOException("Persistent failure"));
-        when(mockDLQ.offer(any(SystemContracts.DeadLetterMessage.class))).thenReturn(true);
-        when(mockInputQueue.getResourceName()).thenReturn("test-input-queue");
+        // All ticks are duplicates
+        when(mockIdempotencyTracker.checkAndMarkProcessed(anyLong())).thenReturn(false);
 
-        long startTime = System.currentTimeMillis();
         service.start();
 
-        // Wait for batch to fail after all retries
-        await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
-            .until(() -> service.getMetrics().get("batches_failed").longValue() > 0);
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> service.getMetrics().get("duplicate_ticks_detected").longValue() >= 3);
 
-        long elapsedTime = System.currentTimeMillis() - startTime;
+        // Storage should never be called (all duplicates)
+        verify(mockStorage, never()).writeChunkBatchStreaming(any());
 
-        // With 8 retries and 10ms base backoff:
-        // Backoff times: 10 + 20 + 40 + 80 + 160 + 320 + 640 + 1280 = 2550ms
-        // The test verifies exponential backoff works correctly
-
-        // Expected total backoff time: ~2550ms, plus processing overhead
-        // We verify it's under 3500ms (giving 950ms buffer for processing)
-        assertTrue(elapsedTime < 3500,
-            String.format("Retry with exponential backoff took %dms, expected < 3500ms", elapsedTime));
-
-        // Verify all retries were attempted (8 retries + 1 initial = 9 total attempts)
-        verify(mockStorage, times(9)).writeChunkBatch(anyList(), anyLong(), anyLong());
-
-        // Verify DLQ was called after exhausting retries
-        verify(mockDLQ).offer(any(SystemContracts.DeadLetterMessage.class));
-
-        // Service stops itself due to InterruptedException, no need to call stop()
+        assertEquals(3, service.getMetrics().get("duplicate_ticks_detected").longValue());
+        assertEquals(0, service.getMetrics().get("batches_written").longValue());
     }
+
+    // ========== Batch Notification Tests ==========
 
     @Test
     void shouldSendBatchNotificationAfterSuccessfulWrite() throws Exception {
-        // Given
         resources.put("topic", Collections.singletonList(mockBatchTopic));
         service = new PersistenceService("test-persistence", config, resources);
         List<TickDataChunk> batch = createTestBatch("run-123", 0, 99);
-        
-        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
-            .thenAnswer(invocation -> {
-                List<TickDataChunk> target = invocation.getArgument(0);
-                target.addAll(batch);
-                return batch.size();
-            })
-            .thenReturn(0); // Then return 0 to prevent infinite loop
-            
-        when(mockStorage.writeChunkBatch(anyList(), anyLong(), anyLong()))
-            .thenReturn(StoragePath.of("run-123/raw/batch_0000000000000000000_0000000000000000099.pb"));
-        
-        // When
+
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class)))
+            .thenReturn(batchOf(batch))
+            .thenReturn(emptyBatch());
+        when(mockStorage.writeChunkBatchStreaming(any()))
+            .thenReturn(new StreamingWriteResult(
+                StoragePath.of("run-123/raw/batch_0000000000000000000_0000000000000000099.pb"),
+                "run-123", 0L, 99L, 100, 100, 4096L));
+
         service.start();
         await().atMost(2, TimeUnit.SECONDS)
             .until(() -> service.getMetrics().get("batches_written").longValue() == 1);
         service.stop();
-        
-        // Then
-        verify(mockStorage).writeChunkBatch(anyList(), eq(0L), eq(99L));
-        verify(mockBatchTopic).send(argThat(notification -> 
+
+        verify(mockStorage).writeChunkBatchStreaming(any());
+        verify(mockBatchTopic).send(argThat(notification ->
             notification.getSimulationRunId().equals("run-123") &&
-            notification.getStoragePath().startsWith("run-123/raw/batch_0000000000000000000_0000000000000000099.pb") &&
+            notification.getStoragePath().equals("run-123/raw/batch_0000000000000000000_0000000000000000099.pb") &&
             notification.getTickStart() == 0 &&
             notification.getTickEnd() == 99 &&
             notification.getWrittenAtMs() > 0
         ));
-        
+
         assertEquals(1, service.getMetrics().get("batches_written").longValue());
         assertEquals(1, service.getMetrics().get("notifications_sent").longValue());
-        assertEquals(0, service.getMetrics().get("notifications_failed").longValue());
-    }
-
-    @Test
-    @ExpectLog(level = LogLevel.WARN, messagePattern = "Failed batch has no DLQ configured, data will be lost: 100 chunks")
-    void shouldRetryBatchIfTopicFails() throws Exception {
-        // Given
-        resources.put("topic", Collections.singletonList(mockBatchTopic));
-        List<TickDataChunk> batch = createTestBatch("run-123", 0, 99);
-        
-        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
-            .thenAnswer(invocation -> {
-                List<TickDataChunk> target = invocation.getArgument(0);
-                target.addAll(batch);
-                return batch.size();
-            })
-            .thenReturn(0);
-            
-        when(mockStorage.writeChunkBatch(anyList(), anyLong(), anyLong()))
-            .thenReturn(StoragePath.of("run-123/raw/batch_0000000000000000000_0000000000000000099.pb"));
-        
-        // Topic always fails (InterruptedException)
-        doThrow(new InterruptedException("Topic unavailable"))
-            .when(mockBatchTopic).send(any(BatchInfo.class));
-        
-        service = new PersistenceService("test-persistence", config, resources);
-        
-        // When
-        service.start();
-        await().atMost(2, TimeUnit.SECONDS)
-            .until(() -> service.getMetrics().get("batches_failed").longValue() == 1);
-        
-        // Service stops itself due to InterruptedException
-        
-        // Then - Storage was called once, topic was called once, then interrupted
-        verify(mockStorage, times(1)).writeChunkBatch(anyList(), eq(0L), eq(99L));
-        verify(mockBatchTopic, times(1)).send(any(BatchInfo.class));
-        
-        assertEquals(0, service.getMetrics().get("batches_written").longValue());
-        assertEquals(0, service.getMetrics().get("notifications_sent").longValue());
-        assertEquals(1, service.getMetrics().get("notifications_failed").longValue());
-        assertEquals(1, service.getMetrics().get("batches_failed").longValue());
-    }
-
-    @Test
-    @ExpectLog(level = LogLevel.WARN, messagePattern = "Failed to write batch or send notification \\[ticks 0-99\\] after 2 retries, sending to DLQ")
-    @ExpectLog(level = LogLevel.WARN, messagePattern = "Failed batch has no DLQ configured, data will be lost: 100 chunks")
-    void shouldNotSendNotificationIfStorageWriteFails() throws Exception {
-        // Given
-        List<TickDataChunk> batch = createTestBatch("run-123", 0, 99);
-        
-        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
-            .thenAnswer(invocation -> {
-                List<TickDataChunk> target = invocation.getArgument(0);
-                target.addAll(batch);
-                return batch.size();
-            })
-            .thenReturn(0);
-            
-        // Storage always fails
-        when(mockStorage.writeChunkBatch(anyList(), anyLong(), anyLong()))
-            .thenThrow(new IOException("Storage unavailable"));
-        
-        service = new PersistenceService("test-persistence", config, resources);
-        
-        // When
-        service.start();
-        await().atMost(2, TimeUnit.SECONDS)
-            .until(() -> service.getMetrics().get("batches_failed").longValue() == 1);
-        service.stop();
-        
-        // Then - Topic was never called because storage failed
-        verify(mockStorage, times(3)).writeChunkBatch(anyList(), eq(0L), eq(99L)); // 1 + 2 retries
-        verify(mockBatchTopic, never()).send(any(BatchInfo.class));
-        
-        assertEquals(0, service.getMetrics().get("batches_written").longValue());
-        assertEquals(0, service.getMetrics().get("notifications_sent").longValue());
-        assertEquals(0, service.getMetrics().get("notifications_failed").longValue());
-        assertEquals(1, service.getMetrics().get("batches_failed").longValue());
     }
 
     @Test
     void shouldIncludeCorrectBatchInfoFields() throws Exception {
-        // Given
         resources.put("topic", Collections.singletonList(mockBatchTopic));
         service = new PersistenceService("test-persistence", config, resources);
         List<TickDataChunk> batch = createTestBatch("run-abc-def", 1000, 1099);
-        
+
         long beforeWrite = System.currentTimeMillis();
-        
-        when(mockInputQueue.drainTo(anyList(), anyInt(), anyLong(), any(TimeUnit.class)))
-            .thenAnswer(invocation -> {
-                List<TickDataChunk> target = invocation.getArgument(0);
-                target.addAll(batch);
-                return batch.size();
-            })
-            .thenReturn(0);
-            
-        when(mockStorage.writeChunkBatch(anyList(), anyLong(), anyLong()))
-            .thenReturn(StoragePath.of("run-abc-def/raw/batch_0000000000000001000_0000000000000001099.pb"));
-        
-        // When
+
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class)))
+            .thenReturn(batchOf(batch))
+            .thenReturn(emptyBatch());
+        when(mockStorage.writeChunkBatchStreaming(any()))
+            .thenReturn(new StreamingWriteResult(
+                StoragePath.of("run-abc-def/raw/batch_0000000000000001000_0000000000000001099.pb"),
+                "run-abc-def", 1000L, 1099L, 100, 100, 4096L));
+
         service.start();
         await().atMost(2, TimeUnit.SECONDS)
             .until(() -> service.getMetrics().get("batches_written").longValue() == 1);
         service.stop();
-        
+
         long afterWrite = System.currentTimeMillis();
-        
-        // Then
+
         verify(mockBatchTopic).send(argThat(notification -> {
             assertEquals("run-abc-def", notification.getSimulationRunId());
             assertEquals("run-abc-def/raw/batch_0000000000000001000_0000000000000001099.pb", notification.getStoragePath());
@@ -1004,7 +478,118 @@ class PersistenceServiceTest {
         }));
     }
 
-    // Helper methods
+    @Test
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
+               messagePattern = "Failed to write streaming batch: .*")
+    void shouldNotSendNotificationIfStorageWriteFails() throws Exception {
+        resources.put("topic", Collections.singletonList(mockBatchTopic));
+        service = new PersistenceService("test-persistence", config, resources);
+        List<TickDataChunk> batch = createTestBatch("run-123", 0, 99);
+
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class)))
+            .thenReturn(batchOf(batch))
+            .thenReturn(emptyBatch());
+        when(mockStorage.writeChunkBatchStreaming(any()))
+            .thenThrow(new IOException("Storage unavailable"));
+
+        service.start();
+        await().atMost(2, TimeUnit.SECONDS)
+            .until(() -> service.getMetrics().get("batches_failed").longValue() == 1);
+        service.stop();
+
+        // Topic was never called because storage failed
+        verify(mockStorage).writeChunkBatchStreaming(any());
+        verify(mockBatchTopic, never()).send(any(BatchInfo.class));
+
+        assertEquals(0, service.getMetrics().get("batches_written").longValue());
+        assertEquals(0, service.getMetrics().get("notifications_sent").longValue());
+        assertEquals(1, service.getMetrics().get("batches_failed").longValue());
+    }
+
+    @Test
+    void shouldNotCommitIfTopicSendIsInterrupted() throws Exception {
+        resources.put("topic", Collections.singletonList(mockBatchTopic));
+        service = new PersistenceService("test-persistence", config, resources);
+        List<TickDataChunk> batch = createTestBatch("run-123", 0, 99);
+
+        SpyStreamingBatch<TickDataChunk> spyBatch = new SpyStreamingBatch<>(batch);
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class)))
+            .thenReturn(spyBatch)
+            .thenReturn(emptyBatch());
+        when(mockStorage.writeChunkBatchStreaming(any()))
+            .thenReturn(new StreamingWriteResult(
+                StoragePath.of("run-123/raw/batch.pb"), "run-123", 0L, 99L, 100, 100, 4096L));
+
+        // Topic send throws InterruptedException → service stops, no commit
+        doThrow(new InterruptedException("Topic unavailable"))
+            .when(mockBatchTopic).send(any(BatchInfo.class));
+
+        service.start();
+        await().atMost(2, TimeUnit.SECONDS)
+            .until(() -> service.getCurrentState() == State.STOPPED);
+
+        // Storage was written but commit was not called (topic failed)
+        verify(mockStorage).writeChunkBatchStreaming(any());
+        assertEquals(0, spyBatch.commitCount);
+
+        // Batch not counted as written (no commit)
+        assertEquals(0, service.getMetrics().get("batches_written").longValue());
+    }
+
+    // ========== Error Tracking Tests ==========
+
+    @Test
+    @ExpectLog(level = LogLevel.WARN, loggerPattern = ".*PersistenceService.*",
+               messagePattern = "Failed to write streaming batch: .*")
+    void testErrorTracking() throws Exception {
+        service = new PersistenceService("test-persistence", config, resources);
+
+        when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class)))
+            .thenReturn(batchOf(createTestBatch("sim-123", 100, 102)))
+            .thenThrow(new InterruptedException("Test shutdown"));
+        when(mockStorage.writeChunkBatchStreaming(any()))
+            .thenThrow(new IOException("Disk full"));
+
+        service.start();
+
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> !service.getErrors().isEmpty());
+
+        assertEquals(1, service.getErrors().size());
+        assertEquals("BATCH_WRITE_FAILED", service.getErrors().get(0).errorType());
+        assertEquals("Streaming write failed", service.getErrors().get(0).message());
+        assertEquals("Disk full", service.getErrors().get(0).details());
+
+        service.clearErrors();
+        assertEquals(0, service.getErrors().size());
+    }
+
+    // ========== Memory Estimate Tests ==========
+
+    @Test
+    void testMemoryEstimateReflectsStreaming() {
+        service = new PersistenceService("test-persistence", config, resources);
+
+        SimulationParameters params = SimulationParameters.of(new int[]{400, 300}, 100);
+        List<org.evochora.datapipeline.api.memory.MemoryEstimate> estimates = service.estimateWorstCaseMemory(params);
+
+        assertEquals(1, estimates.size());
+        var estimate = estimates.get(0);
+        assertEquals("test-persistence", estimate.componentName());
+
+        // With streaming: 1 chunk + message refs (much less than maxBatchSize × chunk)
+        long bytesPerChunk = params.estimateBytesPerChunk();
+        long expected = bytesPerChunk + 100L * 100; // 1 chunk + 100 batch × 100 bytes refs
+        assertEquals(expected, estimate.estimatedBytes());
+
+        // Verify it's dramatically less than the old N×chunk model
+        long oldEstimate = 100L * bytesPerChunk; // maxBatchSize=100 × chunk
+        assertTrue(estimate.estimatedBytes() < oldEstimate / 10,
+            "Streaming estimate should be <10% of old batch estimate");
+    }
+
+    // ========== Helper Methods ==========
+
     private List<TickDataChunk> createTestBatch(String simulationRunId, long startTick, long endTick) {
         List<TickDataChunk> batch = new ArrayList<>();
         for (long tick = startTick; tick <= endTick; tick++) {
@@ -1013,25 +598,53 @@ class PersistenceServiceTest {
         return batch;
     }
 
-    private TickData createTickData(String simulationRunId, long tickNumber) {
-        return TickData.newBuilder()
+    private TickDataChunk createChunk(String simulationRunId, long firstTick) {
+        TickData snapshot = TickData.newBuilder()
             .setSimulationRunId(simulationRunId)
-            .setTickNumber(tickNumber)
+            .setTickNumber(firstTick)
             .build();
-    }
-    
-    private TickDataChunk createChunk(String simulationRunId, long firstTick, int tickCount) {
-        TickData snapshot = createTickData(simulationRunId, firstTick);
         return TickDataChunk.newBuilder()
             .setSimulationRunId(simulationRunId)
             .setFirstTick(firstTick)
-            .setLastTick(firstTick + tickCount - 1)
-            .setTickCount(tickCount)
+            .setLastTick(firstTick)
+            .setTickCount(1)
             .setSnapshot(snapshot)
             .build();
     }
-    
-    private TickDataChunk createChunk(String simulationRunId, long firstTick) {
-        return createChunk(simulationRunId, firstTick, 1);
+
+    private static <T> StreamingBatch<T> batchOf(List<T> items) {
+        return new StreamingBatch<T>() {
+            @Override public int size() { return items.size(); }
+            @Override public Iterator<T> iterator() { return items.iterator(); }
+            @Override public void commit() {}
+            @Override public void close() {}
+        };
+    }
+
+    private static <T> StreamingBatch<T> emptyBatch() {
+        return new StreamingBatch<T>() {
+            @Override public int size() { return 0; }
+            @Override public Iterator<T> iterator() { return Collections.emptyIterator(); }
+            @Override public void commit() {}
+            @Override public void close() {}
+        };
+    }
+
+    /**
+     * A StreamingBatch that tracks commit and close calls for verification.
+     */
+    private static class SpyStreamingBatch<T> implements StreamingBatch<T> {
+        private final List<T> items;
+        int commitCount = 0;
+        int closeCount = 0;
+
+        SpyStreamingBatch(List<T> items) {
+            this.items = items;
+        }
+
+        @Override public int size() { return items.size(); }
+        @Override public Iterator<T> iterator() { return items.iterator(); }
+        @Override public void commit() { commitCount++; }
+        @Override public void close() { closeCount++; }
     }
 }

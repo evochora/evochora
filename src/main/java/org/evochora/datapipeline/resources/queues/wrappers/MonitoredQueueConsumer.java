@@ -5,12 +5,11 @@ import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.IWrappedResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
+import org.evochora.datapipeline.api.resources.queues.StreamingBatch;
 import org.evochora.datapipeline.resources.AbstractResource;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 
-import java.util.Collection;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -40,20 +39,11 @@ public class MonitoredQueueConsumer<T> extends AbstractResource implements IInpu
         super(((AbstractResource) delegate).getResourceName(), ((AbstractResource) delegate).getOptions());
         this.delegate = delegate;
         this.context = context;
-        
+
         // Configuration hierarchy: Context parameter > Resource option > Default (5)
         int windowSeconds = Integer.parseInt(context.parameters().getOrDefault("metricsWindowSeconds", "5"));
-        
-        this.throughputCounter = new SlidingWindowCounter(windowSeconds);
-    }
 
-    /**
-     * Records a consumption event for throughput calculation.
-     * This is an O(1) operation using SlidingWindowCounter.
-     */
-    private void recordConsumption() {
-        messagesConsumed.incrementAndGet();
-        throughputCounter.recordCount();
+        this.throughputCounter = new SlidingWindowCounter(windowSeconds);
     }
 
     /**
@@ -67,98 +57,22 @@ public class MonitoredQueueConsumer<T> extends AbstractResource implements IInpu
 
     /**
      * {@inheritDoc}
-     * This implementation increments the consumed messages counter if an element is successfully retrieved.
+     * <p>
+     * Delegates to the underlying queue and records the batch size for metrics.
+     * The message count is known immediately from {@link StreamingBatch#size()}.
      */
     @Override
-    public Optional<T> poll() {
+    public StreamingBatch<T> receiveBatch(int maxSize, long timeout, TimeUnit unit) throws InterruptedException {
         try {
-            Optional<T> result = delegate.poll();
-            if (result.isPresent()) {
-                recordConsumption();
+            StreamingBatch<T> batch = delegate.receiveBatch(maxSize, timeout, unit);
+            if (batch.size() > 0) {
+                recordConsumptions(batch.size());
             }
-            return result;
-        } catch (Exception e) {
-            recordError("POLL_ERROR", "Error polling from queue", 
-                String.format("Service: %s, Queue: %s, Error: %s", context.serviceName(), delegate.getResourceName(), e.getMessage()));
-            throw e;
-        }
-    }
-
-    /**
-     * {@inheritDoc}
-     * This implementation increments the consumed messages counter after an element is successfully retrieved.
-     */
-    @Override
-    public T take() throws InterruptedException {
-        try {
-            T result = delegate.take();
-            recordConsumption();
-            return result;
+            return batch;
         } catch (InterruptedException e) {
             throw e;
         } catch (Exception e) {
-            recordError("TAKE_ERROR", "Error taking from queue", 
-                String.format("Service: %s, Queue: %s, Error: %s", context.serviceName(), delegate.getResourceName(), e.getMessage()));
-            throw e;
-        }
-    }
-
-    /**
-     * {@inheritDoc}
-     * This implementation increments the consumed messages counter if an element is successfully retrieved.
-     */
-    @Override
-    public Optional<T> poll(long timeout, TimeUnit unit) throws InterruptedException {
-        try {
-            Optional<T> result = delegate.poll(timeout, unit);
-            if (result.isPresent()) {
-                recordConsumption();
-            }
-            return result;
-        } catch (InterruptedException e) {
-            throw e;
-        } catch (Exception e) {
-            recordError("POLL_TIMEOUT_ERROR", "Error polling from queue with timeout", 
-                String.format("Service: %s, Queue: %s, Error: %s", context.serviceName(), delegate.getResourceName(), e.getMessage()));
-            throw e;
-        }
-    }
-
-    /**
-     * {@inheritDoc}
-     * This implementation increments the consumed messages counter by the number of elements successfully drained.
-     */
-    @Override
-    public int drainTo(Collection<? super T> collection, int maxElements) {
-        try {
-            int count = delegate.drainTo(collection, maxElements);
-            if (count > 0) {
-                recordConsumptions(count);
-            }
-            return count;
-        } catch (Exception e) {
-            recordError("DRAIN_ERROR", "Error draining from queue", 
-                String.format("Service: %s, Queue: %s, Error: %s", context.serviceName(), delegate.getResourceName(), e.getMessage()));
-            throw e;
-        }
-    }
-
-    /**
-     * {@inheritDoc}
-     * This implementation increments the consumed messages counter by the number of elements successfully drained.
-     */
-    @Override
-    public int drainTo(Collection<? super T> collection, int maxElements, long timeout, TimeUnit unit) throws InterruptedException {
-        try {
-            int count = delegate.drainTo(collection, maxElements, timeout, unit);
-            if (count > 0) {
-                recordConsumptions(count);
-            }
-            return count;
-        } catch (InterruptedException e) {
-            throw e;
-        } catch (Exception e) {
-            recordError("DRAIN_TIMEOUT_ERROR", "Error draining from queue with timeout", 
+            recordError("RECEIVE_BATCH_ERROR", "Error receiving batch from queue",
                 String.format("Service: %s, Queue: %s, Error: %s", context.serviceName(), delegate.getResourceName(), e.getMessage()));
             throw e;
         }
@@ -182,12 +96,12 @@ public class MonitoredQueueConsumer<T> extends AbstractResource implements IInpu
         if (!super.isHealthy()) {
             return false;
         }
-        
+
         // Then check delegate health if available
         if (delegate instanceof IMonitorable) {
             return ((IMonitorable) delegate).isHealthy();
         }
-        
+
         return true;
     }
 

@@ -153,12 +153,14 @@ public class MetadataPersistenceService extends AbstractService {
     @Override
     protected void run() throws InterruptedException {
         // Poll until metadata message arrives or stop requested (one-shot pattern)
-        // Uses poll() with timeout to allow graceful shutdown via isStopRequested()
+        // Uses receiveBatch(1) with timeout to allow graceful shutdown via isStopRequested()
         SimulationMetadata metadata = null;
         while (!isStopRequested() && metadata == null) {
-            var optionalMetadata = inputQueue.poll(500, TimeUnit.MILLISECONDS);
-            if (optionalMetadata.isPresent()) {
-                metadata = optionalMetadata.get();
+            try (var batch = inputQueue.receiveBatch(1, 500, TimeUnit.MILLISECONDS)) {
+                if (batch.size() > 0) {
+                    metadata = batch.iterator().next();
+                    batch.commit();
+                }
             }
         }
         

@@ -9,6 +9,7 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.api.resources.queues.StreamingBatch;
 import org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.LogLevel;
@@ -29,7 +30,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 
 import static org.awaitility.Awaitility.await;
@@ -145,11 +145,19 @@ class SimulationEngineIntegrationTest {
         }
         
         // Clean up queues to ensure test isolation
-        if (tickDataQueue != null) {
-            tickDataQueue.drainTo(new ArrayList<>(), Integer.MAX_VALUE);
-        }
-        if (metadataQueue != null) {
-            metadataQueue.drainTo(new ArrayList<>(), Integer.MAX_VALUE);
+        try {
+            if (tickDataQueue != null) {
+                try (StreamingBatch<?> batch = tickDataQueue.receiveBatch(Integer.MAX_VALUE, 0, TimeUnit.MILLISECONDS)) {
+                    // Drain all remaining items
+                }
+            }
+            if (metadataQueue != null) {
+                try (StreamingBatch<?> batch = metadataQueue.receiveBatch(Integer.MAX_VALUE, 0, TimeUnit.MILLISECONDS)) {
+                    // Drain all remaining items
+                }
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
         }
     }
 
@@ -167,10 +175,11 @@ class SimulationEngineIntegrationTest {
 
         engine.stop();
 
-        Optional<SimulationMetadata> metadataOpt = metadataQueue.poll(0, TimeUnit.MILLISECONDS);
-        assertTrue(metadataOpt.isPresent(), "Metadata should be present in the queue");
-        
-        SimulationMetadata metadata = metadataOpt.get();
+        SimulationMetadata metadata;
+        try (StreamingBatch<SimulationMetadata> metaBatch = metadataQueue.receiveBatch(1, 0, TimeUnit.MILLISECONDS)) {
+            assertEquals(1, metaBatch.size(), "Metadata should be present in the queue");
+            metadata = metaBatch.iterator().next();
+        }
         assertNotNull(metadata);
         assertFalse(metadata.getSimulationRunId().isEmpty());
         assertEquals(12345L, metadata.getInitialSeed());
@@ -210,11 +219,14 @@ class SimulationEngineIntegrationTest {
         await().atMost(5, TimeUnit.SECONDS)
                 .untilAsserted(() -> assertTrue(tickDataQueue.getMetrics().get("current_size").longValue() > 0));
 
-        Optional<TickDataChunk> chunkOpt = tickDataQueue.poll(100, TimeUnit.MILLISECONDS);
+        TickDataChunk receivedChunk;
+        try (StreamingBatch<TickDataChunk> chunkBatch = tickDataQueue.receiveBatch(1, 100, TimeUnit.MILLISECONDS)) {
+            assertTrue(chunkBatch.size() > 0, "TickData should be present");
+            receivedChunk = chunkBatch.iterator().next();
+        }
         engine.stop();
 
-        assertTrue(chunkOpt.isPresent(), "TickData should be present");
-        TickData tickData = chunkOpt.get().getSnapshot();
+        TickData tickData = receivedChunk.getSnapshot();
         
         assertEquals(1, tickData.getOrganismsCount());
         OrganismState organism = tickData.getOrganisms(0);
@@ -234,11 +246,14 @@ class SimulationEngineIntegrationTest {
         await().atMost(5, TimeUnit.SECONDS)
                 .untilAsserted(() -> assertTrue(tickDataQueue.getMetrics().get("current_size").longValue() > 0));
 
-        Optional<TickDataChunk> chunkOpt = tickDataQueue.poll(100, TimeUnit.MILLISECONDS);
+        TickDataChunk rngChunk;
+        try (StreamingBatch<TickDataChunk> chunkBatch = tickDataQueue.receiveBatch(1, 100, TimeUnit.MILLISECONDS)) {
+            assertTrue(chunkBatch.size() > 0);
+            rngChunk = chunkBatch.iterator().next();
+        }
         engine.stop();
 
-        assertTrue(chunkOpt.isPresent());
-        TickData tickData = chunkOpt.get().getSnapshot();
+        TickData tickData = rngChunk.getSnapshot();
         assertFalse(tickData.getRngState().isEmpty(), "RNG state should be captured");
     }
 
@@ -434,12 +449,15 @@ class SimulationEngineIntegrationTest {
         await().atMost(5, TimeUnit.SECONDS)
                 .untilAsserted(() -> assertTrue(tickDataQueue.getMetrics().get("current_size").longValue() > 0));
 
-        Optional<TickDataChunk> chunkOpt = tickDataQueue.poll(100, TimeUnit.MILLISECONDS);
+        TickDataChunk multiChunk;
+        try (StreamingBatch<TickDataChunk> chunkBatch = tickDataQueue.receiveBatch(1, 100, TimeUnit.MILLISECONDS)) {
+            assertTrue(chunkBatch.size() > 0);
+            multiChunk = chunkBatch.iterator().next();
+        }
         engine.stop();
 
-        assertTrue(chunkOpt.isPresent());
-        TickData tickData = chunkOpt.get().getSnapshot();
-        
+        TickData tickData = multiChunk.getSnapshot();
+
         // Should capture all three organisms
         assertTrue(tickData.getOrganismsCount() >= 1 && tickData.getOrganismsCount() <= 3,
                 "Should capture between 1 and 3 organisms (some may have died)");
@@ -488,17 +506,22 @@ class SimulationEngineIntegrationTest {
                 .untilAsserted(() -> assertEquals(AbstractService.State.PAUSED, engine.getCurrentState()));
 
         // Verify metadata includes tick plugin info in resolvedConfigJson
-        Optional<SimulationMetadata> metadataOpt = metadataQueue.poll(0, TimeUnit.MILLISECONDS);
-        assertTrue(metadataOpt.isPresent());
-        SimulationMetadata metadata = metadataOpt.get();
-        String configJson = metadata.getResolvedConfigJson();
+        SimulationMetadata solarMeta;
+        try (StreamingBatch<SimulationMetadata> metaBatch = metadataQueue.receiveBatch(1, 0, TimeUnit.MILLISECONDS)) {
+            assertEquals(1, metaBatch.size());
+            solarMeta = metaBatch.iterator().next();
+        }
+        String configJson = solarMeta.getResolvedConfigJson();
         assertTrue(configJson.contains("SolarRadiationCreator"),
                 "resolvedConfigJson should contain SolarRadiationCreator plugin");
 
         // Verify tick data includes plugin state
-        Optional<TickDataChunk> chunkOpt = tickDataQueue.poll(0, TimeUnit.MILLISECONDS);
-        assertTrue(chunkOpt.isPresent());
-        TickData tickData = chunkOpt.get().getSnapshot();
+        TickDataChunk solarChunk;
+        try (StreamingBatch<TickDataChunk> chunkBatch = tickDataQueue.receiveBatch(1, 0, TimeUnit.MILLISECONDS)) {
+            assertTrue(chunkBatch.size() > 0);
+            solarChunk = chunkBatch.iterator().next();
+        }
+        TickData tickData = solarChunk.getSnapshot();
         assertEquals(1, tickData.getPluginStatesCount());
 
         engine.stop();
@@ -529,17 +552,22 @@ class SimulationEngineIntegrationTest {
                 .untilAsserted(() -> assertEquals(AbstractService.State.PAUSED, engine.getCurrentState()));
 
         // Verify metadata includes tick plugin info in resolvedConfigJson
-        Optional<SimulationMetadata> metadataOpt = metadataQueue.poll(0, TimeUnit.MILLISECONDS);
-        assertTrue(metadataOpt.isPresent());
-        SimulationMetadata metadata = metadataOpt.get();
-        String configJson = metadata.getResolvedConfigJson();
+        SimulationMetadata geyserMeta;
+        try (StreamingBatch<SimulationMetadata> metaBatch = metadataQueue.receiveBatch(1, 0, TimeUnit.MILLISECONDS)) {
+            assertEquals(1, metaBatch.size());
+            geyserMeta = metaBatch.iterator().next();
+        }
+        String configJson = geyserMeta.getResolvedConfigJson();
         assertTrue(configJson.contains("GeyserCreator"),
                 "resolvedConfigJson should contain GeyserCreator plugin");
 
         // Verify tick data includes plugin state
-        Optional<TickDataChunk> chunkOpt = tickDataQueue.poll(0, TimeUnit.MILLISECONDS);
-        assertTrue(chunkOpt.isPresent());
-        TickData tickData = chunkOpt.get().getSnapshot();
+        TickDataChunk geyserChunk;
+        try (StreamingBatch<TickDataChunk> chunkBatch = tickDataQueue.receiveBatch(1, 0, TimeUnit.MILLISECONDS)) {
+            assertTrue(chunkBatch.size() > 0);
+            geyserChunk = chunkBatch.iterator().next();
+        }
+        TickData tickData = geyserChunk.getSnapshot();
         assertEquals(1, tickData.getPluginStatesCount());
         // Plugin state should be non-empty after initialization
         assertFalse(tickData.getPluginStates(0).getStateBlob().isEmpty());
@@ -581,19 +609,24 @@ class SimulationEngineIntegrationTest {
                 .untilAsserted(() -> assertEquals(AbstractService.State.PAUSED, engine.getCurrentState()));
 
         // Verify metadata includes both plugins in resolvedConfigJson
-        Optional<SimulationMetadata> metadataOpt = metadataQueue.poll(0, TimeUnit.MILLISECONDS);
-        assertTrue(metadataOpt.isPresent());
-        SimulationMetadata metadata = metadataOpt.get();
-        String configJson = metadata.getResolvedConfigJson();
+        SimulationMetadata multiPluginMeta;
+        try (StreamingBatch<SimulationMetadata> metaBatch = metadataQueue.receiveBatch(1, 0, TimeUnit.MILLISECONDS)) {
+            assertEquals(1, metaBatch.size());
+            multiPluginMeta = metaBatch.iterator().next();
+        }
+        String configJson = multiPluginMeta.getResolvedConfigJson();
         assertTrue(configJson.contains("SolarRadiationCreator"),
                 "resolvedConfigJson should contain SolarRadiationCreator plugin");
         assertTrue(configJson.contains("GeyserCreator"),
                 "resolvedConfigJson should contain GeyserCreator plugin");
 
         // Verify tick data includes both plugin states
-        Optional<TickDataChunk> chunkOpt = tickDataQueue.poll(0, TimeUnit.MILLISECONDS);
-        assertTrue(chunkOpt.isPresent());
-        TickData tickData = chunkOpt.get().getSnapshot();
+        TickDataChunk multiPluginChunk;
+        try (StreamingBatch<TickDataChunk> chunkBatch = tickDataQueue.receiveBatch(1, 0, TimeUnit.MILLISECONDS)) {
+            assertTrue(chunkBatch.size() > 0);
+            multiPluginChunk = chunkBatch.iterator().next();
+        }
+        TickData tickData = multiPluginChunk.getSnapshot();
         assertEquals(2, tickData.getPluginStatesCount());
 
         engine.stop();
@@ -724,26 +757,33 @@ class SimulationEngineIntegrationTest {
         await().atMost(10, TimeUnit.SECONDS)
                 .untilAsserted(() -> assertEquals(AbstractService.State.PAUSED, engine1.getCurrentState()));
         
-        Optional<TickDataChunk> chunk1Opt = tickDataQueue.poll(0, TimeUnit.MILLISECONDS);
+        TickDataChunk chunk1;
+        try (StreamingBatch<TickDataChunk> batch1 = tickDataQueue.receiveBatch(1, 0, TimeUnit.MILLISECONDS)) {
+            assertTrue(batch1.size() > 0);
+            chunk1 = batch1.iterator().next();
+        }
         engine1.stop();
 
         // Clear queues
-        while (tickDataQueue.poll(0, TimeUnit.MILLISECONDS).isPresent()) {}
-        while (metadataQueue.poll(0, TimeUnit.MILLISECONDS).isPresent()) {}
+        try (StreamingBatch<?> clearTick = tickDataQueue.receiveBatch(Integer.MAX_VALUE, 0, TimeUnit.MILLISECONDS)) {}
+        try (StreamingBatch<?> clearMeta = metadataQueue.receiveBatch(Integer.MAX_VALUE, 0, TimeUnit.MILLISECONDS)) {}
 
         // Run second engine with same seed
         SimulationEngine engine2 = new SimulationEngine("test-engine-2", deterministicConfig, resources);
         engine2.start();
         await().atMost(10, TimeUnit.SECONDS)
                 .untilAsserted(() -> assertEquals(AbstractService.State.PAUSED, engine2.getCurrentState()));
-        
-        Optional<TickDataChunk> chunk2Opt = tickDataQueue.poll(0, TimeUnit.MILLISECONDS);
+
+        TickDataChunk chunk2;
+        try (StreamingBatch<TickDataChunk> batch2 = tickDataQueue.receiveBatch(1, 0, TimeUnit.MILLISECONDS)) {
+            assertTrue(batch2.size() > 0);
+            chunk2 = batch2.iterator().next();
+        }
         engine2.stop();
 
         // Compare results
-        assertTrue(chunk1Opt.isPresent() && chunk2Opt.isPresent());
-        TickData tickData1 = chunk1Opt.get().getSnapshot();
-        TickData tickData2 = chunk2Opt.get().getSnapshot();
+        TickData tickData1 = chunk1.getSnapshot();
+        TickData tickData2 = chunk2.getSnapshot();
 
         // RNG states should be identical with same seed
         assertEquals(tickData1.getRngState(), tickData2.getRngState(), 

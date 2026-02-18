@@ -1,16 +1,15 @@
 package org.evochora.datapipeline.services;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.evochora.datapipeline.api.contracts.BatchInfo;
-import org.evochora.datapipeline.api.contracts.SystemContracts;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
@@ -18,28 +17,31 @@ import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IIdempotencyTracker;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
-import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
-import org.evochora.datapipeline.api.resources.storage.StoragePath;
+import org.evochora.datapipeline.api.resources.storage.StreamingWriteResult;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
 
-import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
 
 /**
- * Service that drains TickDataChunk batches from queues and persists them to storage.
+ * Service that streams TickDataChunk batches from queues to storage one chunk at a time.
  * <p>
- * PersistenceService provides reliable batch persistence with:
- * <ul>
- *   <li>Configurable batch size and timeout for flexible throughput/latency trade-offs</li>
- *   <li>Optional idempotency tracking to detect duplicate ticks (bug detection)</li>
- *   <li>Retry logic with exponential backoff for transient failures</li>
- *   <li>Dead letter queue support for unrecoverable failures</li>
- *   <li>Graceful shutdown that persists partial batches without data loss</li>
- * </ul>
+ * PersistenceService uses a streaming architecture where chunks are lazily deserialized
+ * from the message broker during the write to storage. This keeps peak heap usage at
+ * 1x chunk instead of Nx chunks (where N is batch size).
+ * <p>
+ * <strong>Receive-Process-Acknowledge pattern:</strong>
+ * <ol>
+ *   <li>{@code receiveBatch()}: receive N message references from broker (lightweight)</li>
+ *   <li>{@code writeChunkBatchStreaming()}: lazily deserialize and write one chunk at a time</li>
+ *   <li>{@code commit()}: acknowledge messages — broker deletes them</li>
+ * </ol>
+ * <p>
+ * On write failure, messages are not committed. The broker automatically redelivers them
+ * on the next {@code receiveBatch()} call. Poison messages are handled by configuring
+ * the broker's dead letter address with max delivery attempts.
  * <p>
  * Multiple instances can run concurrently as competing consumers on the same queue.
- * All instances should share the same idempotencyTracker and dlq resources.
  * <p>
  * <strong>Thread Safety:</strong> Each instance runs in its own thread. No synchronization
  * needed between instances - queue handles distribution, idempotency tracker is thread-safe.
@@ -52,14 +54,11 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
     private final ITopicWriter<BatchInfo> batchTopic;
 
     // Optional resources
-    private final IOutputQueueResource<SystemContracts.DeadLetterMessage> dlq;
     private final IIdempotencyTracker<Long> idempotencyTracker;
 
     // Configuration
     private final int maxBatchSize;
     private final int batchTimeoutSeconds;
-    private final int maxRetries;
-    private final int retryBackoffMs;
 
     // Metrics
     private final AtomicLong batchesWritten = new AtomicLong(0);
@@ -70,13 +69,30 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
     private final AtomicInteger currentBatchSize = new AtomicInteger(0);
     private final AtomicLong notificationsSent = new AtomicLong(0);
     private final AtomicLong notificationsFailed = new AtomicLong(0);
-    
+
     // State tracking
     private volatile boolean topicInitialized = false;
-    
-    // Track current batch for shutdown cleanup in finally-block
-    private List<TickDataChunk> currentBatch = null;
 
+    /**
+     * Constructs a PersistenceService with the given name, options, and resources.
+     * <p>
+     * <strong>Required resources:</strong>
+     * <ul>
+     *   <li>{@code input}: {@link IInputQueueResource} for TickDataChunk messages</li>
+     *   <li>{@code storage}: {@link IBatchStorageWrite} for writing chunk batches</li>
+     * </ul>
+     * <strong>Optional resources:</strong>
+     * <ul>
+     *   <li>{@code topic}: {@link ITopicWriter} for batch notifications (enables event-driven indexing)</li>
+     *   <li>{@code idempotencyTracker}: {@link IIdempotencyTracker} for duplicate chunk detection</li>
+     * </ul>
+     *
+     * @param name      the service name
+     * @param options   HOCON config with {@code maxBatchSize} and {@code batchTimeoutSeconds}
+     * @param resources the resource map
+     * @throws IllegalArgumentException if configuration values are invalid
+     * @throws IllegalStateException    if required resources are missing
+     */
     public PersistenceService(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
 
@@ -93,13 +109,9 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
         this.batchTopic = writer;
 
         @SuppressWarnings("unchecked")
-        IOutputQueueResource<SystemContracts.DeadLetterMessage> dlqResource = (IOutputQueueResource<SystemContracts.DeadLetterMessage>) getOptionalResource("dlq", IOutputQueueResource.class).orElse(null);
-        this.dlq = dlqResource;
-
-        @SuppressWarnings("unchecked")
         IIdempotencyTracker<Long> tracker = (IIdempotencyTracker<Long>) getOptionalResource("idempotencyTracker", IIdempotencyTracker.class).orElse(null);
         this.idempotencyTracker = tracker;
-        
+
         // Warn if batch topic is not configured (event-driven indexing disabled)
         if (batchTopic == null) {
             log.warn("PersistenceService initialized WITHOUT batch-topic - event-driven indexing disabled!");
@@ -108,8 +120,6 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
         // Configuration with defaults
         this.maxBatchSize = options.hasPath("maxBatchSize") ? options.getInt("maxBatchSize") : 10;
         this.batchTimeoutSeconds = options.hasPath("batchTimeoutSeconds") ? options.getInt("batchTimeoutSeconds") : 30;
-        this.maxRetries = options.hasPath("maxRetries") ? options.getInt("maxRetries") : 3;
-        this.retryBackoffMs = options.hasPath("retryBackoffMs") ? options.getInt("retryBackoffMs") : 1000;
 
         // Validation
         if (maxBatchSize <= 0) {
@@ -118,365 +128,171 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
         if (batchTimeoutSeconds <= 0) {
             throw new IllegalArgumentException("batchTimeoutSeconds must be positive");
         }
-        if (maxRetries < 0) {
-            throw new IllegalArgumentException("maxRetries cannot be negative");
-        }
-        if (retryBackoffMs < 0) {
-            throw new IllegalArgumentException("retryBackoffMs cannot be negative");
-        }
 
-        log.debug("PersistenceService initialized: maxBatchSize={}, batchTimeout={}s, maxRetries={}, idempotency={}",
-            maxBatchSize, batchTimeoutSeconds, maxRetries, idempotencyTracker != null ? "enabled" : "disabled");
+        log.debug("PersistenceService initialized: maxBatchSize={}, batchTimeout={}s, idempotency={}",
+            maxBatchSize, batchTimeoutSeconds, idempotencyTracker != null ? "enabled" : "disabled");
     }
 
     @Override
     protected void logStarted() {
-        log.info("PersistenceService started: batch=[size={}, timeout={}s], retry=[max={}, backoff={}ms], dlq={}, idempotency={}",
-            maxBatchSize, batchTimeoutSeconds, maxRetries, retryBackoffMs,
-            dlq != null ? "configured" : "none", idempotencyTracker != null ? "enabled" : "disabled");
-    }
-
-    @Override
-    protected void run() throws InterruptedException {
-        try {
-            // Check both isStopRequested() (graceful) and isInterrupted() (forced)
-            while (!isStopRequested() && !Thread.currentThread().isInterrupted()) {
-                checkPause();
-
-                currentBatch = new ArrayList<>();
-
-                try {
-                    // Drain batch from queue with timeout
-                    int count = inputQueue.drainTo(currentBatch, maxBatchSize, batchTimeoutSeconds, TimeUnit.SECONDS);
-                    currentBatchSize.set(count); // Always update, even if zero
-
-                    if (count == 0) {
-                        currentBatch = null;  // No batch to clean up
-                        continue; // No data available, loop again
-                    }
-
-                    log.debug("Drained {} chunks from queue", count);
-
-                    // Process and persist batch
-                    processBatch(currentBatch);
-                    currentBatch = null;  // Successfully processed
-
-                    // Yield to other threads/processes after batch to prevent system freezing
-                    Thread.yield();
-                    
-                } catch (InterruptedException e) {
-                    // Keep currentBatch for finally-block (even if partially filled by drainTo)
-                    // drainTo() may have transferred data to collection before interruption!
-                    throw e;  // Re-throw to exit loop
-                }
-            }
-        } finally {
-            // Final batch completion (if interrupted during processing)
-            if (currentBatch != null && !currentBatch.isEmpty()) {
-                log.info("Shutdown: Completing batch of {} chunks", currentBatch.size());
-                
-                // Clear interrupt flag to allow DB operations
-                boolean wasInterrupted = Thread.interrupted();
-                try {
-                    processBatch(currentBatch);
-                } catch (Exception e) {
-                    log.warn("Failed to complete shutdown batch of {} chunks", currentBatch.size());
-                } finally {
-                    if (wasInterrupted) {
-                        Thread.currentThread().interrupt();
-                    }
-                }
-            }
-        }
-    }
-
-    private void processBatch(List<TickDataChunk> batch) {
-        if (batch.isEmpty()) {
-            return;
-        }
-
-        // Validate batch consistency (first and last chunk must have same simulationRunId)
-        String firstSimRunId = batch.get(0).getSimulationRunId();
-
-        // Check for empty or null simulationRunId
-        if (firstSimRunId == null || firstSimRunId.isEmpty()) {
-            log.warn("Batch contains chunk with empty or null simulationRunId, sending to DLQ");
-            recordError(
-                "INVALID_SIMULATION_RUN_ID",
-                "Batch contains chunk with empty or null simulationRunId",
-                String.format("Batch size: %d chunks", batch.size())
-            );
-            sendToDLQ(batch, "Empty or null simulationRunId", 0,
-                new IllegalStateException("Empty or null simulationRunId"));
-            batchesFailed.incrementAndGet();
-            return;
-        }
-
-        String lastSimRunId = batch.get(batch.size() - 1).getSimulationRunId();
-
-        if (!firstSimRunId.equals(lastSimRunId)) {
-            log.warn("Batch consistency violation: first='{}', last='{}', sending to DLQ",
-                firstSimRunId, lastSimRunId);
-            recordError(
-                "BATCH_CONSISTENCY_VIOLATION",
-                "Batch contains mixed simulationRunIds",
-                String.format("First: %s, Last: %s, Batch size: %d chunks", firstSimRunId, lastSimRunId, batch.size())
-            );
-            sendToDLQ(batch, "Batch contains mixed simulationRunIds", 0,
-                new IllegalStateException("Mixed simulationRunIds"));
-            batchesFailed.incrementAndGet();
-            return;
-        }
-
-        // Extract tick range from batch (before deduplication)
-        // This determines the folder and filename, so must reflect the original range
-        long startTick = batch.get(0).getFirstTick();
-        long endTick = batch.get(batch.size() - 1).getLastTick();
-
-        // Optional: Check for duplicate chunks (bug detection)
-        List<TickDataChunk> dedupedBatch = batch;
-        if (idempotencyTracker != null) {
-            int originalSize = batch.size();
-            dedupedBatch = deduplicateBatch(batch);
-            int dedupedSize = dedupedBatch.size();
-            int duplicatesRemoved = originalSize - dedupedSize;
-
-            if (dedupedBatch.isEmpty()) {
-                log.warn("[{}] Entire batch was duplicates ({} chunks), skipping", serviceName, originalSize);
-                return;
-            }
-
-            if (duplicatesRemoved > 0) {
-                long firstTick = dedupedBatch.get(0).getFirstTick();
-                long lastTick = dedupedBatch.get(dedupedBatch.size() - 1).getLastTick();
-                log.warn("[{}] Removed {} duplicate chunks, {} unique chunks remain: range [{}-{}]",
-                    serviceName, duplicatesRemoved, dedupedSize, firstTick, lastTick);
-            }
-        }
-
-        // Write batch with retry logic (storage handles folders, filenames, compression)
-        writeBatchWithRetry(dedupedBatch, startTick, endTick);
-    }
-
-    private List<TickDataChunk> deduplicateBatch(List<TickDataChunk> batch) {
-        List<TickDataChunk> deduped = new ArrayList<>(batch.size());
-
-        for (TickDataChunk chunk : batch) {
-            // Use firstTick as key - each chunk has a unique firstTick
-            // and the tracker is per-service-instance (never shared across runs)
-            long idempotencyKey = chunk.getFirstTick();
-
-            // Atomic check-and-mark operation to prevent race conditions
-            if (!idempotencyTracker.checkAndMarkProcessed(idempotencyKey)) {
-                // Returns false = already processed
-                log.warn("Duplicate chunk detected: firstTick={}", idempotencyKey);
-                duplicateTicksDetected.incrementAndGet();
-                continue; // Skip duplicate
-            }
-
-            // Returns true = newly marked, safe to add
-            deduped.add(chunk);
-        }
-
-        return deduped;
+        log.info("PersistenceService started: batch=[size={}, timeout={}s], idempotency={}",
+            maxBatchSize, batchTimeoutSeconds, idempotencyTracker != null ? "enabled" : "disabled");
     }
 
     /**
-     * Writes a batch of chunks to storage with retry logic and sends a notification to the batch topic.
+     * Main service loop: receive → stream-write → notify → commit.
      * <p>
-     * Both storage write and topic notification must succeed for the operation to complete.
-     * If either fails, the entire operation is retried (including both storage write and notification).
-     * <p>
-     * <strong>Thread Safety:</strong> This method is called from the service's run loop thread.
+     * Chunks are lazily deserialized one at a time during the streaming write,
+     * keeping peak heap at 1x chunk. On write failure, the batch is not committed
+     * and the broker redelivers messages on the next {@code receiveBatch()}.
      *
-     * @param batch The batch of chunks to write (must not be empty).
-     * @param firstTick The first tick number in the batch.
-     * @param lastTick The last tick number in the batch.
+     * @throws InterruptedException if the thread is interrupted (triggers graceful shutdown)
      */
-    private void writeBatchWithRetry(List<TickDataChunk> batch, long firstTick, long lastTick) {
-        int attempt = 0;
-        int backoff = retryBackoffMs;
-        Exception lastException = null;
+    @Override
+    protected void run() throws InterruptedException {
+        while (!isStopRequested() && !Thread.currentThread().isInterrupted()) {
+            checkPause();
 
-        while (attempt <= maxRetries) {
-            try {
-                // Storage handles everything: folders, compression, manifests
-                StoragePath storagePath = storage.writeChunkBatch(batch, firstTick, lastTick);
-
-                // Send notification to topic (if configured)
-                if (batchTopic != null) {
-                    // Initialize topic with simulation run ID on first batch
-                    String simulationRunId = batch.get(0).getSimulationRunId();
-                    if (!topicInitialized) {
-                        log.debug("Initializing topic with runId: {}", simulationRunId);
-                        batchTopic.setSimulationRun(simulationRunId);
-                        topicInitialized = true;
-                        log.debug("Topic initialized successfully");
-                    }
-
-                    // Send notification to topic (must succeed for operation to complete)
-                    BatchInfo notification = BatchInfo.newBuilder()
-                        .setSimulationRunId(simulationRunId)
-                        .setStoragePath(storagePath.asString())
-                        .setTickStart(firstTick)
-                        .setTickEnd(lastTick)
-                        .setWrittenAtMs(System.currentTimeMillis())
-                        .build();
-
-                    log.debug("Sending BatchInfo to topic: ticks {}-{}", firstTick, lastTick);
-                    batchTopic.send(notification);
-                    log.debug("BatchInfo sent successfully");
-                    notificationsSent.incrementAndGet();
-                } else {
-                    log.debug("batchTopic is null - skipping notification");
+            try (var batch = inputQueue.receiveBatch(maxBatchSize, batchTimeoutSeconds, TimeUnit.SECONDS)) {
+                if (batch.size() == 0) {
+                    currentBatchSize.set(0);
+                    continue;
                 }
 
-                // Success - update metrics
-                batchesWritten.incrementAndGet();
-                // Count total ticks in all chunks
-                int totalTicks = batch.stream().mapToInt(TickDataChunk::getTickCount).sum();
-                ticksWritten.addAndGet(totalTicks);
+                currentBatchSize.set(batch.size());
+                log.debug("Received batch of {} chunks", batch.size());
 
-                // Calculate uncompressed bytes for metrics
-                long bytesInBatch = batch.stream()
-                    .mapToLong(TickDataChunk::getSerializedSize)
-                    .sum();
-                bytesWritten.addAndGet(bytesInBatch);
+                try {
+                    // Optional: filter duplicates during iteration
+                    Iterator<TickDataChunk> chunks = maybeFilterDuplicates(batch.iterator());
 
-                log.debug("Successfully wrote batch {} with {} chunks ({} ticks) and sent notification", 
-                    storagePath, batch.size(), totalTicks);
-                return;
-
-            } catch (IOException | InterruptedException e) {
-                lastException = e;
-                
-                // Handle interruption immediately (topic send failed)
-                if (e instanceof InterruptedException) {
-                    Thread.currentThread().interrupt();
-                    log.debug("Interrupted during batch write or notification, aborting retries");
-                    notificationsFailed.incrementAndGet();
-                    break;
-                }
-                
-                // IOException - storage write failed (topic was never called)
-                attempt++;
-
-                if (attempt <= maxRetries) {
-                    log.debug("Failed to write batch or send notification [ticks {}-{}] (attempt {}/{}): {}, retrying in {}ms",
-                        firstTick, lastTick, attempt, maxRetries, e.getMessage(), backoff);
-
-                    try {
-                        Thread.sleep(backoff);
-                    } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        log.debug("Interrupted during retry backoff, aborting retries");
-                        break;
+                    // If all chunks were filtered as duplicates, commit and move on
+                    if (!chunks.hasNext()) {
+                        log.debug("All chunks in batch were duplicates, skipping");
+                        batch.commit();
+                        continue;
                     }
 
-                    // Exponential backoff with cap to prevent overflow
-                    backoff = Math.min(backoff * 2, 60000); // Max 60 seconds
-                } else {
-                    log.warn("Failed to write batch or send notification [ticks {}-{}] after {} retries, sending to DLQ",
-                        firstTick, lastTick, maxRetries);
+                    // Stream-write to storage (one chunk at a time on heap)
+                    StreamingWriteResult result = storage.writeChunkBatchStreaming(chunks);
+
+                    // Send batch notification to topic (if configured)
+                    sendBatchNotification(result);
+
+                    // ACK: broker deletes messages
+                    batch.commit();
+
+                    // Update metrics
+                    batchesWritten.incrementAndGet();
+                    ticksWritten.addAndGet(result.totalTickCount());
+                    bytesWritten.addAndGet(result.bytesWritten());
+                    currentBatchSize.set(result.chunkCount());
+
+                    log.debug("Wrote streaming batch {} with {} chunks ({} ticks)",
+                        result.path(), result.chunkCount(), result.totalTickCount());
+
+                } catch (IOException | RuntimeException e) {
+                    // Write or deserialization failed — don't commit. close() will rollback.
+                    // Messages are redelivered by the broker on next receiveBatch().
+                    // RuntimeException covers lazy deserialization failures in the streaming
+                    // batch iterator (e.g., corrupt protobuf messages).
+                    log.warn("Failed to write streaming batch: {}", e.getMessage());
+                    recordError("BATCH_WRITE_FAILED", "Streaming write failed", e.getMessage());
+                    batchesFailed.incrementAndGet();
                 }
             }
-        }
 
-        // All retries exhausted - record error
-        String errorDetails = String.format("Batch: [ticks %d-%d], Retries: %d, Exception: %s",
-            firstTick, lastTick, maxRetries, lastException != null ? lastException.getMessage() : "Unknown");
-        recordError(
-            "BATCH_WRITE_OR_NOTIFY_FAILED",
-            "Failed to write batch or send notification after all retries",
-            errorDetails
-        );
-        sendToDLQ(batch, lastException != null ? lastException.getMessage() : "Unknown error", attempt - 1, lastException);
-        batchesFailed.incrementAndGet();
+            Thread.yield();
+        }
     }
 
-    private void sendToDLQ(List<TickDataChunk> batch, String errorMessage, int retryAttempts, Exception exception) {
-        if (dlq == null) {
-            log.warn("Failed batch has no DLQ configured, data will be lost: {} chunks", batch.size());
-            recordError(
-                "DLQ_NOT_CONFIGURED",
-                "Failed batch lost - no DLQ configured",
-                String.format("Batch size: %d chunks", batch.size())
-            );
+    /**
+     * Wraps the chunk iterator with a filtering iterator that skips duplicates.
+     * <p>
+     * If no idempotency tracker is configured, returns the original iterator unchanged.
+     * The filtering iterator uses a look-ahead pattern to support {@code hasNext()}
+     * after filtering.
+     *
+     * @param chunks the original chunk iterator from the streaming batch
+     * @return the same iterator (if no tracker) or a filtering iterator that skips duplicates
+     */
+    private Iterator<TickDataChunk> maybeFilterDuplicates(Iterator<TickDataChunk> chunks) {
+        if (idempotencyTracker == null) {
+            return chunks;
+        }
+
+        return new Iterator<>() {
+            private TickDataChunk next = advance();
+
+            private TickDataChunk advance() {
+                while (chunks.hasNext()) {
+                    TickDataChunk chunk = chunks.next();
+                    long key = chunk.getFirstTick();
+                    if (idempotencyTracker.checkAndMarkProcessed(key)) {
+                        return chunk;
+                    }
+                    log.warn("Duplicate chunk detected: firstTick={}", key);
+                    duplicateTicksDetected.incrementAndGet();
+                }
+                return null;
+            }
+
+            @Override
+            public boolean hasNext() {
+                return next != null;
+            }
+
+            @Override
+            public TickDataChunk next() {
+                if (next == null) {
+                    throw new NoSuchElementException();
+                }
+                TickDataChunk current = next;
+                next = advance();
+                return current;
+            }
+        };
+    }
+
+    /**
+     * Sends a batch notification to the topic if configured.
+     * <p>
+     * Initializes the topic with the simulation run ID on the first notification.
+     * If the topic is not configured, this method is a no-op.
+     *
+     * @param result the streaming write result containing batch metadata
+     * @throws InterruptedException if interrupted during topic send
+     */
+    private void sendBatchNotification(StreamingWriteResult result) throws InterruptedException {
+        if (batchTopic == null) {
             return;
         }
 
-        try {
-            // Serialize batch to bytes
-            ByteArrayOutputStream bos = new ByteArrayOutputStream();
-            for (TickDataChunk chunk : batch) {
-                chunk.writeDelimitedTo(bos);
-            }
-
-            // Extract batch metadata
-            String simulationRunId = batch.get(0).getSimulationRunId();
-            long startTick = batch.get(0).getFirstTick();
-            long endTick = batch.get(batch.size() - 1).getLastTick();
-            int totalTicks = batch.stream().mapToInt(TickDataChunk::getTickCount).sum();
-            String storageKey = String.format("%s/raw/batch_%019d_%019d.pb", simulationRunId, startTick, endTick);
-
-            // Build stack trace
-            List<String> stackTraceLines = new ArrayList<>();
-            if (exception != null) {
-                for (StackTraceElement element : exception.getStackTrace()) {
-                    stackTraceLines.add(element.toString());
-                    if (stackTraceLines.size() >= 10) break; // Limit stack trace size
-                }
-            }
-
-            // Get source queue name from IResource interface
-            String sourceQueue = inputQueue.getResourceName();
-
-            SystemContracts.DeadLetterMessage dlqMessage = SystemContracts.DeadLetterMessage.newBuilder()
-                .setOriginalMessage(ByteString.copyFrom(bos.toByteArray()))
-                .setMessageType("List<TickDataChunk>")
-                .setFirstFailureTimeMs(System.currentTimeMillis())
-                .setLastFailureTimeMs(System.currentTimeMillis())
-                .setRetryCount(retryAttempts)
-                .setFailureReason(errorMessage)
-                .setSourceService(serviceName)
-                .setSourceQueue(sourceQueue)
-                .addAllStackTraceLines(stackTraceLines)
-                .putMetadata("simulationRunId", simulationRunId)
-                .putMetadata("startTick", String.valueOf(startTick))
-                .putMetadata("endTick", String.valueOf(endTick))
-                .putMetadata("chunkCount", String.valueOf(batch.size()))
-                .putMetadata("tickCount", String.valueOf(totalTicks))
-                .putMetadata("storageKey", storageKey)
-                .putMetadata("exceptionType", exception != null ? exception.getClass().getName() : "Unknown")
-                .build();
-
-            if (dlq.offer(dlqMessage)) {
-                log.info("Sent failed batch to DLQ: {} chunks ({} ticks) ({}:{})", 
-                    batch.size(), totalTicks, simulationRunId, startTick);
-            } else {
-                log.warn("DLQ is full, failed batch lost: {} chunks", batch.size());
-                recordError(
-                    "DLQ_FULL",
-                    "Dead letter queue is full, failed batch lost",
-                    String.format("Batch size: %d chunks, SimulationRunId: %s, StartTick: %d", batch.size(), simulationRunId, startTick)
-                );
-            }
-
-        } catch (Exception e) {
-            log.warn("Failed to send batch to DLQ");
-            recordError(
-                "DLQ_SEND_FAILED",
-                "Failed to send batch to dead letter queue",
-                String.format("Batch size: %d chunks, Exception: %s", batch.size(), e.getMessage())
-            );
+        String simulationRunId = result.simulationRunId();
+        if (!topicInitialized) {
+            log.debug("Initializing topic with runId: {}", simulationRunId);
+            batchTopic.setSimulationRun(simulationRunId);
+            topicInitialized = true;
         }
-    }
 
+        BatchInfo notification = BatchInfo.newBuilder()
+            .setSimulationRunId(simulationRunId)
+            .setStoragePath(result.path().asString())
+            .setTickStart(result.firstTick())
+            .setTickEnd(result.lastTick())
+            .setWrittenAtMs(System.currentTimeMillis())
+            .build();
+
+        log.debug("Sending BatchInfo to topic: ticks {}-{}", result.firstTick(), result.lastTick());
+        batchTopic.send(notification);
+        log.debug("BatchInfo sent successfully");
+        notificationsSent.incrementAndGet();
+    }
 
     @Override
     protected void addCustomMetrics(Map<String, Number> metrics) {
         super.addCustomMetrics(metrics);
-        
+
         metrics.put("batches_written", batchesWritten.get());
         metrics.put("ticks_written", ticksWritten.get());
         metrics.put("bytes_written", bytesWritten.get());
@@ -486,48 +302,30 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
         metrics.put("notifications_sent", notificationsSent.get());
         metrics.put("notifications_failed", notificationsFailed.get());
     }
-    
+
     // ==================== IMemoryEstimatable ====================
-    
+
     /**
      * {@inheritDoc}
      * <p>
-     * Estimates memory for the PersistenceService batch buffer at worst-case.
+     * Estimates memory for the PersistenceService streaming write.
      * <p>
-     * <strong>Calculation:</strong> maxBatchSize × bytesPerTick (100% occupancy)
+     * With streaming, only 1 chunk is held on heap at a time during iteration,
+     * plus lightweight message references for the batch. This is a significant
+     * reduction from the previous batch model (maxBatchSize x bytesPerChunk).
      * <p>
-     * The batch is held in memory during draining from queue until written to storage.
-     * With streaming serialization, only the List&lt;TickDataChunk&gt; is held - no additional
-     * byte array copies are created during write.
-     */
-    /**
-     * {@inheritDoc}
-     * <p>
-     * Estimates memory for the PersistenceService batch buffer.
-     * <p>
-     * <strong>Important:</strong> After delta compression, maxBatchSize is in CHUNKS (not ticks).
-     * Each chunk contains a full snapshot plus deltas, so memory is calculated as:
-     * <ul>
-     *   <li>Chunks in batch: maxBatchSize × bytesPerChunk</li>
-     *   <li>Each chunk: 1 snapshot + (samplesPerChunk - 1) deltas</li>
-     * </ul>
+     * <strong>Calculation:</strong> 1 × bytesPerChunk + maxBatchSize × 100B (message refs)
      */
     @Override
     public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
-        // Each chunk in the batch contains a snapshot + deltas
         long bytesPerChunk = params.estimateBytesPerChunk();
-        long totalBytes = (long) maxBatchSize * bytesPerChunk;
 
-        // Add ArrayList overhead (~24 bytes per reference + array backing)
-        long arrayListOverhead = (long) maxBatchSize * 8 + 64;
-        totalBytes += arrayListOverhead;
+        // Streaming write: 1 chunk in memory + message references
+        long totalBytes = bytesPerChunk;
+        totalBytes += (long) maxBatchSize * 100; // ~100 bytes per JMS message reference
 
-        String explanation = String.format("%d maxBatchSize (chunks) × %s/chunk (%d samples/chunk, %d ticks, 100%% environment + %d organisms)",
-            maxBatchSize,
-            SimulationParameters.formatBytes(bytesPerChunk),
-            params.samplesPerChunk(),
-            params.simulationTicksPerChunk(),
-            params.maxOrganisms());
+        String explanation = String.format("1 × %s/chunk (streaming) + %d × 100B message refs",
+            SimulationParameters.formatBytes(bytesPerChunk), maxBatchSize);
 
         return List.of(new MemoryEstimate(
             serviceName,
