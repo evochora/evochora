@@ -212,8 +212,14 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
                 long lastTick = calculateLastTick(chunk);
                 byte[] chunkData = serializeChunk(chunk);
 
-                // Resolve subdirectory and write file first (orphan file is harmless; missing file is not)
+                // Resolve subdirectory, ensure it exists, then write file first
+                // (orphan file is harmless; missing file is not)
                 Path subdir = resolveSubdirectory(schemaDir, firstTick, ticksPerSubdir);
+                try {
+                    Files.createDirectories(subdir);
+                } catch (IOException e) {
+                    throw new SQLException("Failed to create chunk subdirectory: " + subdir, e);
+                }
                 writeChunkFile(subdir, firstTick, chunkData);
 
                 stmt.setLong(1, firstTick);
@@ -396,110 +402,164 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
     // ========================================================================
 
     /**
-     * Resolves the subdirectory for a given firstTick.
+     * Resolves the subdirectory path for a given firstTick (no I/O).
      * <p>
      * Subdirectory name is zero-padded bucket index: {@code firstTick / ticksPerSubdirectory}.
      *
      * @param schemaDir the schema-specific base directory
      * @param firstTick the first tick of the chunk
      * @param ticksPerSubdir ticks per subdirectory (from .chunk_meta)
-     * @return path to the subdirectory, created if necessary
-     * @throws SQLException if directory creation fails
+     * @return path to the subdirectory
      */
-    private Path resolveSubdirectory(Path schemaDir, long firstTick, long ticksPerSubdir)
-            throws SQLException {
+    private Path resolveSubdirectory(Path schemaDir, long firstTick, long ticksPerSubdir) {
         long bucket = firstTick / ticksPerSubdir;
-        Path subdir = schemaDir.resolve(String.format("%04d", bucket));
-        try {
-            Files.createDirectories(subdir);
-        } catch (IOException e) {
-            throw new SQLException("Failed to create chunk subdirectory: " + subdir, e);
-        }
-        return subdir;
+        return schemaDir.resolve(String.format("%04d", bucket));
     }
 
     /**
      * Ensures the {@code .chunk_meta} file exists in the schema directory.
      * <p>
-     * On first call for a schema, computes {@code ticksPerSubdirectory} from
-     * {@code maxFilesPerDirectory × tickCount} and writes it to disk.
-     * Subsequent calls return the cached value.
+     * Thread-safe via {@link ConcurrentHashMap#computeIfAbsent}: only one thread
+     * per schema directory computes and writes the metadata. Cross-process safety
+     * is achieved via atomic file write (temp file + {@code ATOMIC_MOVE}): if another
+     * process wins the race, the loser reads back the winner's value.
      *
      * @param schemaDir the schema-specific directory
      * @param firstChunk the first chunk being written (used to determine tickCount)
      * @return the ticksPerSubdirectory value
-     * @throws SQLException if metadata cannot be written
+     * @throws SQLException if metadata cannot be written or read
      */
     private long ensureChunkMetadata(Path schemaDir, TickDataChunk firstChunk) throws SQLException {
-        Long cached = metadataCache.get(schemaDir);
-        if (cached != null) {
-            return cached;
+        try {
+            return metadataCache.computeIfAbsent(schemaDir,
+                    dir -> computeOrLoadMetadata(dir, firstChunk));
+        } catch (UncheckedSQLException e) {
+            throw e.getCause();
         }
+    }
 
+    /**
+     * Computes {@code ticksPerSubdirectory} and writes it atomically to {@code .chunk_meta},
+     * or loads the existing file if another process created it first.
+     *
+     * @param schemaDir the schema-specific directory
+     * @param firstChunk the first chunk (used to determine tickCount)
+     * @return the ticksPerSubdirectory value
+     * @throws UncheckedSQLException if I/O fails
+     */
+    private long computeOrLoadMetadata(Path schemaDir, TickDataChunk firstChunk) {
         Path metaFile = schemaDir.resolve(CHUNK_META_FILENAME);
+
+        // Another process may have created it already
         if (Files.exists(metaFile)) {
-            long value = loadChunkMetadata(schemaDir);
-            return value;
+            return readMetadataFile(metaFile);
         }
 
         // Compute from first chunk
         int tickCount = Math.max(firstChunk.getTickCount(), 1);
         long ticksPerSubdir = (long) maxFilesPerDirectory * tickCount;
 
-        // Write metadata file
+        // Atomic write: temp file + rename
+        Path tempFile = schemaDir.resolve(CHUNK_META_FILENAME + ".tmp");
         Properties props = new Properties();
         props.setProperty(META_KEY_TICKS_PER_SUBDIR, Long.toString(ticksPerSubdir));
 
-        try (OutputStream out = Files.newOutputStream(metaFile)) {
+        try (OutputStream out = Files.newOutputStream(tempFile)) {
             props.store(out, "Chunk storage metadata - do not edit");
         } catch (IOException e) {
-            throw new SQLException("Failed to write chunk metadata: " + metaFile, e);
+            throw new UncheckedSQLException(
+                    new SQLException("Failed to write chunk metadata: " + metaFile, e));
         }
 
-        metadataCache.put(schemaDir, ticksPerSubdir);
+        try {
+            Files.move(tempFile, metaFile, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException e) {
+            // Another process won the race — use their value
+            try {
+                Files.deleteIfExists(tempFile);
+            } catch (IOException suppressed) {
+                e.addSuppressed(suppressed);
+            }
+            if (Files.exists(metaFile)) {
+                return readMetadataFile(metaFile);
+            }
+            throw new UncheckedSQLException(
+                    new SQLException("Failed to create chunk metadata: " + metaFile, e));
+        }
+
         log.debug("Created chunk metadata: ticksPerSubdirectory={} (maxFiles={} × tickCount={})",
                 ticksPerSubdir, maxFilesPerDirectory, tickCount);
         return ticksPerSubdir;
     }
 
     /**
+     * Reads {@code ticksPerSubdirectory} from a {@code .chunk_meta} Properties file.
+     *
+     * @param metaFile the metadata file to read
+     * @return the ticksPerSubdirectory value
+     * @throws UncheckedSQLException if the file is missing required keys or I/O fails
+     */
+    private long readMetadataFile(Path metaFile) {
+        Properties props = new Properties();
+        try (InputStream in = Files.newInputStream(metaFile)) {
+            props.load(in);
+        } catch (IOException e) {
+            throw new UncheckedSQLException(
+                    new SQLException("Failed to read chunk metadata: " + metaFile, e));
+        }
+
+        String value = props.getProperty(META_KEY_TICKS_PER_SUBDIR);
+        if (value == null) {
+            throw new UncheckedSQLException(new SQLException(
+                    "Missing '" + META_KEY_TICKS_PER_SUBDIR + "' in " + metaFile));
+        }
+        try {
+            return Long.parseLong(value);
+        } catch (NumberFormatException e) {
+            throw new UncheckedSQLException(new SQLException(
+                    "Invalid '" + META_KEY_TICKS_PER_SUBDIR + "' value '" + value + "' in " + metaFile, e));
+        }
+    }
+
+    /**
      * Loads {@code ticksPerSubdirectory} from the {@code .chunk_meta} file.
      * <p>
-     * Result is cached per schema directory.
+     * Thread-safe via {@link ConcurrentHashMap#computeIfAbsent}.
      *
      * @param schemaDir the schema-specific directory
      * @return the ticksPerSubdirectory value
      * @throws SQLException if metadata file is missing or unreadable
      */
     private long loadChunkMetadata(Path schemaDir) throws SQLException {
-        Long cached = metadataCache.get(schemaDir);
-        if (cached != null) {
-            return cached;
+        try {
+            return metadataCache.computeIfAbsent(schemaDir, dir -> {
+                Path metaFile = dir.resolve(CHUNK_META_FILENAME);
+                if (!Files.exists(metaFile)) {
+                    throw new UncheckedSQLException(new SQLException(
+                            "Chunk metadata not found: " + metaFile + ". " +
+                            "This run may have been created with an older version."));
+                }
+                return readMetadataFile(metaFile);
+            });
+        } catch (UncheckedSQLException e) {
+            throw e.getCause();
+        }
+    }
+
+    /**
+     * Wraps {@link SQLException} for use inside lambdas that don't allow checked exceptions
+     * (e.g., {@link ConcurrentHashMap#computeIfAbsent}).
+     */
+    private static class UncheckedSQLException extends RuntimeException {
+
+        UncheckedSQLException(SQLException cause) {
+            super(cause);
         }
 
-        Path metaFile = schemaDir.resolve(CHUNK_META_FILENAME);
-        if (!Files.exists(metaFile)) {
-            throw new SQLException(
-                    "Chunk metadata not found: " + metaFile + ". " +
-                    "This run may have been created with an older version.");
+        @Override
+        public synchronized SQLException getCause() {
+            return (SQLException) super.getCause();
         }
-
-        Properties props = new Properties();
-        try (InputStream in = Files.newInputStream(metaFile)) {
-            props.load(in);
-        } catch (IOException e) {
-            throw new SQLException("Failed to read chunk metadata: " + metaFile, e);
-        }
-
-        String value = props.getProperty(META_KEY_TICKS_PER_SUBDIR);
-        if (value == null) {
-            throw new SQLException(
-                    "Missing '" + META_KEY_TICKS_PER_SUBDIR + "' in " + metaFile);
-        }
-
-        long ticksPerSubdir = Long.parseLong(value);
-        metadataCache.put(schemaDir, ticksPerSubdir);
-        return ticksPerSubdir;
     }
 
     // ========================================================================

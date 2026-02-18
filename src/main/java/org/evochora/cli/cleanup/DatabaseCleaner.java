@@ -137,8 +137,12 @@ public class DatabaseCleaner {
                     if (force) {
                         try {
                             stmt.execute("DROP SCHEMA \"" + schemaName + "\" CASCADE");
-                            deleteChunkDirectory(schemaName);
-                            out.printf("  %s DELETE %s (deleted)%n", "\u2717", schemaName);
+                            boolean chunksClean = deleteChunkDirectory(schemaName);
+                            if (chunksClean) {
+                                out.printf("  %s DELETE %s (deleted)%n", "\u2717", schemaName);
+                            } else {
+                                out.printf("  %s DELETE %s (deleted, chunk cleanup failed)%n", "\u2717", schemaName);
+                            }
                             deleteCount++;
                         } catch (SQLException e) {
                             out.printf("  %s DELETE %s (FAILED: %s)%n", "\u2717", schemaName, e.getMessage());
@@ -162,27 +166,37 @@ public class DatabaseCleaner {
      * Deletes the chunk file directory for a schema, if it exists.
      *
      * @param schemaName the H2 schema name (used as subdirectory name)
+     * @return {@code true} if no chunk directory existed or it was fully deleted,
+     *         {@code false} if deletion partially or fully failed
      */
-    private void deleteChunkDirectory(String schemaName) {
+    private boolean deleteChunkDirectory(String schemaName) {
         if (chunkDirectory == null) {
-            return;
+            return true;
         }
-        Path schemaDir = chunkDirectory.resolve(schemaName);
+        Path schemaDir = chunkDirectory.resolve(schemaName).normalize();
+        if (!schemaDir.startsWith(chunkDirectory)) {
+            log.warn("Skipping chunk cleanup for schema '{}': resolved path escapes base directory", schemaName);
+            return false;
+        }
         if (!Files.exists(schemaDir)) {
-            return;
+            return true;
         }
+        boolean[] success = {true};
         try (Stream<Path> walk = Files.walk(schemaDir)) {
             walk.sorted(Comparator.reverseOrder()).forEach(path -> {
                 try {
                     Files.delete(path);
                 } catch (IOException e) {
+                    success[0] = false;
                     log.warn("Failed to delete chunk file {}: {}", path, e.getMessage());
                 }
             });
             log.debug("Deleted chunk directory: {}", schemaDir);
         } catch (IOException e) {
             log.warn("Failed to walk chunk directory {}: {}", schemaDir, e.getMessage());
+            return false;
         }
+        return success[0];
     }
 
     /**

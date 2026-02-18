@@ -97,7 +97,7 @@ class H2DatabaseReaderTest {
 
             // Create tables using strategy
             RowPerChunkStrategy strategy = new RowPerChunkStrategy(ConfigFactory.parseString(
-                    "chunkDirectory = \"" + tempChunkDir.toString().replace("\\", "\\\\") + "\""));
+                    "chunkDirectory = \"" + tempChunkDir.toString().replace("\\", "/") + "\""));
             strategy.createTables(conn, 2);
 
             // Write chunk spanning ticks 10-30
@@ -139,7 +139,7 @@ class H2DatabaseReaderTest {
             conn.createStatement().execute("SET SCHEMA \"SIM_" + runId.toUpperCase().replaceAll("[^A-Z0-9_]", "_") + "\"");
 
             RowPerChunkStrategy strategy = new RowPerChunkStrategy(ConfigFactory.parseString(
-                    "chunkDirectory = \"" + tempChunkDir.toString().replace("\\", "\\\\") + "\""));
+                    "chunkDirectory = \"" + tempChunkDir.toString().replace("\\", "/") + "\""));
             strategy.createTables(conn, 2);
         }
 
@@ -178,7 +178,7 @@ class H2DatabaseReaderTest {
             conn.createStatement().execute("SET SCHEMA \"SIM_" + runId.toUpperCase().replaceAll("[^A-Z0-9_]", "_") + "\"");
 
             RowPerChunkStrategy strategy = new RowPerChunkStrategy(ConfigFactory.parseString(
-                    "chunkDirectory = \"" + tempChunkDir.toString().replace("\\", "\\\\") + "\""));
+                    "chunkDirectory = \"" + tempChunkDir.toString().replace("\\", "/") + "\""));
             strategy.createTables(conn, 2);
 
             // Write single chunk with single tick (no deltas)
