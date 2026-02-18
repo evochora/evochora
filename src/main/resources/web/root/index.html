@@ -990,8 +990,13 @@
             if (runData[runId].samplingInterval !== undefined) return Promise.resolve();
             return fetchJSON('/visualizer/api/simulation/metadata?runId=' + encodeURIComponent(runId))
                 .then(function(data) {
-                    if (data && data.samplingInterval !== undefined) {
-                        runData[runId].samplingInterval = data.samplingInterval;
+                    if (data) {
+                        if (data.samplingInterval !== undefined) {
+                            runData[runId].samplingInterval = data.samplingInterval;
+                        }
+                        if (data.environment && data.environment.shape) {
+                            runData[runId].shape = data.environment.shape;
+                        }
                     }
                 });
         }
@@ -1077,7 +1082,7 @@
 
             var h = '<div class="run-list-title">Simulation Runs</div>';
             h += '<table class="run-table"><thead><tr>';
-            h += '<th>Started</th><th>Sampling</th><th>Ticks</th><th>Organisms</th><th></th>';
+            h += '<th>Started</th><th>Environment</th><th>Sampling</th><th>Ticks</th><th>Organisms</th><th></th>';
             h += '</tr></thead><tbody>';
 
             runs.forEach(function(run) {
@@ -1095,6 +1100,7 @@
                     h += ' <span class="' + badgeCls + '">' + state + '</span>';
                 }
                 h += '</td>';
+                h += '<td>' + (run.shape ? run.shape.join(' \u00d7 ') : '\u2014') + '</td>';
                 h += '<td>' + fmt(run.samplingInterval) + '</td>';
                 h += '<td>' + fmt(run.maxTick) + '</td>';
                 h += '<td>' + fmt(run.organismsAlive) + '</td>';
