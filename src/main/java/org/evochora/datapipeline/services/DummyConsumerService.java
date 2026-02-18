@@ -140,7 +140,7 @@ public class DummyConsumerService<T> extends AbstractService {
                 int messageId = extractMessageId(message);
 
                 // Check for duplicate (idempotency) if tracker is configured
-                if (idempotencyTracker != null && !idempotencyTracker.checkAndMarkProcessed(messageId)) {
+                if (idempotencyTracker != null && idempotencyTracker.isProcessed(messageId)) {
                     messagesDuplicate.incrementAndGet();
                     logger.debug("Skipping duplicate message with ID: {}", messageId);
                     batch.commit();
@@ -154,6 +154,12 @@ public class DummyConsumerService<T> extends AbstractService {
                 // Clean up retry tracking for successfully processed message
                 retryTracker.remove(messageId);
                 batch.commit();
+
+                // Mark as processed AFTER successful commit.
+                // This ensures failed messages are fully retried on redelivery.
+                if (idempotencyTracker != null) {
+                    idempotencyTracker.markProcessed(messageId);
+                }
 
                 // Check if we've reached the max message limit
                 if (maxMessages != -1 && messageCounter >= maxMessages) {

@@ -80,12 +80,12 @@ public class MonitoredQueueConsumer<T> extends AbstractResource implements IInpu
             }
             return batch;
         } catch (InterruptedException e) {
+            log.debug("receiveBatch interrupted: service={}, queue={}",
+                context.serviceName(), delegate.getResourceName());
             throw e;
         } catch (Exception e) {
             log.error("receiveBatch failed: service={}, queue={}, error={}",
                 context.serviceName(), delegate.getResourceName(), e.getMessage());
-            recordError("RECEIVE_BATCH_ERROR", "Error receiving batch from queue",
-                String.format("Service: %s, Queue: %s, Error: %s", context.serviceName(), delegate.getResourceName(), e.getMessage()));
             throw e;
         }
     }

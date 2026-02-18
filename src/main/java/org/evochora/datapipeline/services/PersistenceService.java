@@ -1,6 +1,7 @@
 package org.evochora.datapipeline.services;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -167,9 +168,10 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
                 try {
                     // Optional: filter duplicates during iteration.
                     // On write failure, close() rolls back and the broker redelivers all N messages.
-                    // The idempotency tracker will filter already-processed chunks as duplicates.
-                    // If all redelivered chunks are duplicates, we commit and skip (no-op batch).
-                    Iterator<TickDataChunk> chunks = maybeFilterDuplicates(batch.iterator());
+                    // Chunks are only checked (not marked) during filtering — marking happens
+                    // after successful commit to ensure redelivery retries on failure.
+                    List<Long> processedKeys = new ArrayList<>();
+                    Iterator<TickDataChunk> chunks = maybeFilterDuplicates(batch.iterator(), processedKeys);
 
                     // If all chunks were filtered as duplicates, commit and move on
                     if (!chunks.hasNext()) {
@@ -187,6 +189,10 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
 
                     // ACK: broker deletes messages
                     batch.commit();
+
+                    // Mark chunks as processed AFTER successful commit.
+                    // This ensures failed batches are fully retried on redelivery.
+                    markAllProcessed(processedKeys);
 
                     // Update metrics
                     batchesWritten.incrementAndGet();
@@ -217,12 +223,14 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
      * <p>
      * If no idempotency tracker is configured, returns the original iterator unchanged.
      * The filtering iterator uses a look-ahead pattern to support {@code hasNext()}
-     * after filtering.
+     * after filtering. Non-duplicate keys are collected in {@code processedKeys} for
+     * deferred marking after successful commit.
      *
-     * @param chunks the original chunk iterator from the streaming batch
+     * @param chunks        the original chunk iterator from the streaming batch
+     * @param processedKeys collects firstTick keys of non-duplicate chunks (populated during iteration)
      * @return the same iterator (if no tracker) or a filtering iterator that skips duplicates
      */
-    private Iterator<TickDataChunk> maybeFilterDuplicates(Iterator<TickDataChunk> chunks) {
+    private Iterator<TickDataChunk> maybeFilterDuplicates(Iterator<TickDataChunk> chunks, List<Long> processedKeys) {
         if (idempotencyTracker == null) {
             return chunks;
         }
@@ -234,7 +242,8 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
                 while (chunks.hasNext()) {
                     TickDataChunk chunk = chunks.next();
                     long key = chunk.getFirstTick();
-                    if (idempotencyTracker.checkAndMarkProcessed(key)) {
+                    if (!idempotencyTracker.isProcessed(key)) {
+                        processedKeys.add(key);
                         return chunk;
                     }
                     log.warn("Duplicate chunk detected: firstTick={}", key);
@@ -258,6 +267,23 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
                 return current;
             }
         };
+    }
+
+    /**
+     * Marks all collected keys as processed in the idempotency tracker.
+     * <p>
+     * Called after successful commit to ensure failed batches are fully retried
+     * on redelivery (keys are not prematurely marked as processed).
+     *
+     * @param keys the firstTick keys to mark as processed
+     */
+    private void markAllProcessed(List<Long> keys) {
+        if (idempotencyTracker == null || keys.isEmpty()) {
+            return;
+        }
+        for (long key : keys) {
+            idempotencyTracker.markProcessed(key);
+        }
     }
 
     /**
@@ -290,9 +316,18 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
             .build();
 
         log.debug("Sending BatchInfo to topic: ticks {}-{}", result.firstTick(), result.lastTick());
-        batchTopic.send(notification);
-        log.debug("BatchInfo sent successfully");
-        notificationsSent.incrementAndGet();
+        try {
+            batchTopic.send(notification);
+            log.debug("BatchInfo sent successfully");
+            notificationsSent.incrementAndGet();
+        } catch (RuntimeException e) {
+            // Batch is already persisted — notification failure is transient.
+            // Indexers will catch up on next successful notification or via polling.
+            log.warn("{}: failed to send batch notification for ticks {}-{}: {}",
+                serviceName, result.firstTick(), result.lastTick(), e.getMessage());
+            recordError("NOTIFICATION_SEND_FAILED", "Failed to send batch notification", e.getMessage());
+            notificationsFailed.incrementAndGet();
+        }
     }
 
     @Override

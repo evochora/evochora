@@ -366,10 +366,10 @@ class PersistenceServiceTest {
                 StoragePath.of("batch_file.pb"), "sim-123", 101L, lastTick, count, count, 512L);
         });
 
-        // First tick is duplicate (returns false), others are new (returns true)
-        when(mockIdempotencyTracker.checkAndMarkProcessed(100L)).thenReturn(false);
-        when(mockIdempotencyTracker.checkAndMarkProcessed(101L)).thenReturn(true);
-        when(mockIdempotencyTracker.checkAndMarkProcessed(102L)).thenReturn(true);
+        // First tick is duplicate (isProcessed=true), others are new (isProcessed=false)
+        when(mockIdempotencyTracker.isProcessed(100L)).thenReturn(true);
+        when(mockIdempotencyTracker.isProcessed(101L)).thenReturn(false);
+        when(mockIdempotencyTracker.isProcessed(102L)).thenReturn(false);
 
         service.start();
 
@@ -377,9 +377,14 @@ class PersistenceServiceTest {
             .until(() -> service.getMetrics().get("batches_written").longValue() > 0);
 
         verify(mockStorage).writeChunkBatchStreaming(any());
-        verify(mockIdempotencyTracker).checkAndMarkProcessed(100L);
-        verify(mockIdempotencyTracker).checkAndMarkProcessed(101L);
-        verify(mockIdempotencyTracker).checkAndMarkProcessed(102L);
+        verify(mockIdempotencyTracker).isProcessed(100L);
+        verify(mockIdempotencyTracker).isProcessed(101L);
+        verify(mockIdempotencyTracker).isProcessed(102L);
+
+        // markProcessed called only for non-duplicate chunks, after commit
+        verify(mockIdempotencyTracker).markProcessed(101L);
+        verify(mockIdempotencyTracker).markProcessed(102L);
+        verify(mockIdempotencyTracker, never()).markProcessed(100L);
 
         assertEquals(1, service.getMetrics().get("duplicate_ticks_detected").longValue());
     }
@@ -395,8 +400,8 @@ class PersistenceServiceTest {
             .thenReturn(batchOf(createTestBatch("sim-123", 100, 102)))
             .thenThrow(new InterruptedException("Test shutdown"));
 
-        // All ticks are duplicates
-        when(mockIdempotencyTracker.checkAndMarkProcessed(anyLong())).thenReturn(false);
+        // All ticks are duplicates (isProcessed=true)
+        when(mockIdempotencyTracker.isProcessed(anyLong())).thenReturn(true);
 
         service.start();
 
@@ -405,6 +410,9 @@ class PersistenceServiceTest {
 
         // Storage should never be called (all duplicates)
         verify(mockStorage, never()).writeChunkBatchStreaming(any());
+
+        // markProcessed never called (nothing was processed)
+        verify(mockIdempotencyTracker, never()).markProcessed(anyLong());
 
         assertEquals(3, service.getMetrics().get("duplicate_ticks_detected").longValue());
         assertEquals(0, service.getMetrics().get("batches_written").longValue());

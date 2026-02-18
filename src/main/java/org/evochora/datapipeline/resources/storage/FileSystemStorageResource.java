@@ -177,7 +177,7 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
             }
             compressed.flush();
             bytesWritten = counting.getBytesWritten();
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
             try { Files.deleteIfExists(tempFile.toPath()); } catch (IOException ignored) {}
             throw e;
         }
