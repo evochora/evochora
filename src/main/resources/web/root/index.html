@@ -1047,11 +1047,11 @@
         function updateBanner() {
             var banner = document.getElementById('node-banner');
             var text = document.getElementById('node-banner-text');
-            if (!systemOnline) {
+            if (!systemOnline && isLocal) {
                 banner.style.display = 'flex';
                 banner.classList.add('node-banner-offline');
                 text.textContent = 'Evochora node is not reachable.';
-            } else if (isLocal) {
+            } else if (systemOnline && isLocal) {
                 banner.style.display = 'flex';
                 banner.classList.remove('node-banner-offline');
                 text.textContent = 'Your Evochora node is running.';
