@@ -120,8 +120,9 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
      * <p>
      * {@code maxFilesPerDirectory} controls automatic subdirectory partitioning.
      * On first write, {@code ticksPerSubdirectory} is computed as
-     * {@code maxFilesPerDirectory × tickCount} and persisted in a {@code .chunk_meta}
-     * file per run. Subsequent writes and reads use this persisted value.
+     * {@code maxFilesPerDirectory × chunkTickStep} (where chunkTickStep accounts for
+     * the sampling interval) and persisted in a {@code .chunk_meta} file per run.
+     * Subsequent writes and reads use this persisted value.
      *
      * @param options Config with required {@code chunkDirectory} and optional {@code compression} block
      * @throws IllegalArgumentException if {@code chunkDirectory} is missing from config
@@ -455,9 +456,9 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
             return readMetadataFile(metaFile);
         }
 
-        // Compute from first chunk
-        int tickCount = Math.max(firstChunk.getTickCount(), 1);
-        long ticksPerSubdir = (long) maxFilesPerDirectory * tickCount;
+        // Compute from first chunk, accounting for sampling interval
+        long chunkTickStep = estimateChunkTickStep(firstChunk);
+        long ticksPerSubdir = (long) maxFilesPerDirectory * chunkTickStep;
 
         // Atomic write: temp file + rename
         Path tempFile = schemaDir.resolve(CHUNK_META_FILENAME + ".tmp");
@@ -487,9 +488,33 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
                     new SQLException("Failed to create chunk metadata: " + metaFile, e));
         }
 
-        log.debug("Created chunk metadata: ticksPerSubdirectory={} (maxFiles={} × tickCount={})",
-                ticksPerSubdir, maxFilesPerDirectory, tickCount);
+        log.debug("Created chunk metadata: ticksPerSubdirectory={} (maxFiles={} × chunkTickStep={})",
+                ticksPerSubdir, maxFilesPerDirectory, chunkTickStep);
         return ticksPerSubdir;
+    }
+
+    /**
+     * Estimates the distance in tick numbers between consecutive chunks' first ticks.
+     * <p>
+     * With {@code samplingInterval > 1}, tick numbers in a chunk are spaced apart
+     * (e.g., 0, 1000, 2000, ...). The chunk's {@code tickCount} only counts sampled
+     * ticks, not the actual tick number range. This method infers the sampling interval
+     * from the chunk's tick range and computes the real spacing.
+     *
+     * @param chunk the first chunk being written
+     * @return estimated tick step between consecutive chunks
+     */
+    private long estimateChunkTickStep(TickDataChunk chunk) {
+        int tickCount = Math.max(chunk.getTickCount(), 1);
+        if (tickCount <= 1 || chunk.getDeltasCount() == 0) {
+            return tickCount;
+        }
+
+        long firstTick = chunk.getSnapshot().getTickNumber();
+        long lastTick = chunk.getDeltas(chunk.getDeltasCount() - 1).getTickNumber();
+        long samplingInterval = (lastTick - firstTick) / (tickCount - 1);
+
+        return tickCount * Math.max(samplingInterval, 1);
     }
 
     /**
