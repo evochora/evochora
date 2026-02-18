@@ -23,7 +23,7 @@ import picocli.CommandLine.Option;
     name = "evochora",
     mixinStandardHelpOptions = true,
     version = "Evochora 1.0",
-    description = "Evochora - Advanced Evolution Simulation Platform",
+    description = "Evochora - Simulation Platform for Digital Evolution Research",
     subcommands = {
         NodeCommand.class,
         CompileCommand.class,
@@ -31,6 +31,14 @@ import picocli.CommandLine.Option;
         RenderVideoCommand.class,
         CleanupCommand.class,
         CommandLine.HelpCommand.class
+    },
+    footer = {
+        "",
+        "JVM Options:",
+        "  Default heap size is 8 GB. To adjust, set the EVOCHORA_OPTS or JAVA_OPTS",
+        "  environment variable before starting:",
+        "",
+        "    EVOCHORA_OPTS=\"-Xmx16g\" bin/evochora node run"
     }
 )
 public class CommandLineInterface implements Callable<Integer> {

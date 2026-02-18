@@ -99,6 +99,7 @@ dependencies {
 
 application {
     mainClass.set("org.evochora.cli.CommandLineInterface")
+    applicationDefaultJvmArgs = listOf("-Xmx8g")
 }
 
 // Fix for Windows "Input line is too long" error

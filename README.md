@@ -82,7 +82,11 @@ Open the visualizer in your browser: `http://localhost:8081/visualizer/`
 
 The node starts a complete in-process simulation with the default primordial organism, including persistence, indexing, and the web frontend. Press Ctrl+C to stop.
 
-> **Resource requirements:** Evochora records every tick for full replay. Allow sufficient disk space for long-running experiments and 8GB+ heap memory. The system warns at startup if memory is insufficient.
+> **Resource requirements:** Evochora records every tick for full replay. Allow sufficient disk space for long-running experiments. The default heap size is 8 GB. To increase it, set `EVOCHORA_OPTS` before starting:
+> ```bash
+> EVOCHORA_OPTS="-Xmx16g" bin/evochora node run
+> ```
+> The system warns at startup if memory is insufficient for the configured world size.
 
 <br>
 
