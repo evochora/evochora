@@ -577,15 +577,16 @@ class PersistenceServiceTest {
         var estimate = estimates.get(0);
         assertEquals("test-persistence", estimate.componentName());
 
-        // With streaming: 1 chunk + message refs (much less than maxBatchSize × chunk)
-        long bytesPerChunk = params.estimateBytesPerChunk();
-        long expected = bytesPerChunk + 100L * 100; // 1 chunk + 100 batch × 100 bytes refs
+        // Streaming: N × serialized chunk + 1 × deserialized chunk
+        long serializedBytesPerChunk = params.estimateSerializedBytesPerChunk();
+        long deserializedBytesPerChunk = params.estimateBytesPerChunk();
+        long expected = 100L * serializedBytesPerChunk + deserializedBytesPerChunk;
         assertEquals(expected, estimate.estimatedBytes());
 
-        // Verify it's dramatically less than the old N×chunk model
-        long oldEstimate = 100L * bytesPerChunk; // maxBatchSize=100 × chunk
-        assertTrue(estimate.estimatedBytes() < oldEstimate / 10,
-            "Streaming estimate should be <10% of old batch estimate");
+        // Verify it's less than the old N × deserialized chunk model
+        long oldEstimate = 100L * deserializedBytesPerChunk;
+        assertTrue(estimate.estimatedBytes() < oldEstimate,
+            "Streaming estimate should be less than old batch estimate");
     }
 
     // ========== Helper Methods ==========

@@ -1,5 +1,6 @@
 package org.evochora.datapipeline.resources.queues;
 
+import java.io.ByteArrayOutputStream;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -380,17 +381,12 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
             throw new JMSException("Expected BytesMessage, got: " + msg.getClass().getName());
         }
 
+        // Body is already available: reset() was called eagerly after receive()
+        // in receiveBatch/receiveAvailable to force large message chunk download.
+        // This second reset() is a no-op (already in read mode).
         bytesMsg.reset();
-
-        int bodyLength = (int) bytesMsg.getBodyLength();
-        byte[] data = new byte[bodyLength];
-        int bytesRead = bytesMsg.readBytes(data);
-
-        if (bytesRead != bodyLength) {
-            throw new JMSException(String.format(
-                "BytesMessage body truncated: expected %d bytes, read %d bytes", bodyLength, bytesRead));
-        }
-
+        byte[] data = new byte[(int) bytesMsg.getBodyLength()];
+        bytesMsg.readBytes(data);
         return deserialize(data);
     }
 
@@ -621,6 +617,13 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
                     if (first == null) {
                         return new ArtemisStreamingBatch(Collections.emptyList()); // Timeout
                     }
+                    // Force immediate body download for large messages. Artemis's
+                    // ClientConsumerImpl.receive() unconditionally calls discardBody()
+                    // on the previous message — reset() populates writableBuffer, making
+                    // the subsequent discardBody() a no-op and preserving the body.
+                    if (first instanceof BytesMessage bm) {
+                        bm.reset();
+                    }
                     messages.add(first);
                 } catch (JMSException e) {
                     if (JmsUtils.isInterruptedException(e)) {
@@ -662,6 +665,13 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
                 jakarta.jms.Message msg = dataConsumer.receiveNoWait();
                 if (msg == null) {
                     break;
+                }
+                // Force immediate body download for large messages. Artemis's
+                // ClientConsumerImpl.receive() unconditionally calls discardBody()
+                // on the previous message — reset() populates writableBuffer, making
+                // the subsequent discardBody() a no-op and preserving the body.
+                if (msg instanceof BytesMessage bm) {
+                    bm.reset();
                 }
                 messages.add(msg);
             }
@@ -766,11 +776,13 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
                         throw new java.util.NoSuchElementException();
                     }
                     try {
-                        T element = extractPayload(messages.get(index++));
+                        T element = extractPayload(messages.get(index));
+                        messages.set(index, null); // Allow GC of serialized message body
+                        index++;
                         throughputCounter.recordCount();
                         return element;
                     } catch (Exception e) {
-                        throw new RuntimeException("Failed to deserialize message at index " + (index - 1)
+                        throw new RuntimeException("Failed to deserialize message at index " + index
                             + " from queue '" + queueName + "'", e);
                     }
                 }

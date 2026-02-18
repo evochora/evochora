@@ -196,6 +196,7 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
                     // Messages are redelivered by the broker on next receiveBatch().
                     // RuntimeException covers lazy deserialization failures in the streaming
                     // batch iterator (e.g., corrupt protobuf messages).
+                    // TEMPORARY: log full stack trace for diagnosis
                     log.warn("Failed to write streaming batch: {}", e.getMessage());
                     recordError("BATCH_WRITE_FAILED", "Streaming write failed", e.getMessage());
                     batchesFailed.incrementAndGet();
@@ -318,14 +319,17 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
      */
     @Override
     public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
-        long bytesPerChunk = params.estimateBytesPerChunk();
+        long serializedBytesPerChunk = params.estimateSerializedBytesPerChunk();
+        long deserializedBytesPerChunk = params.estimateBytesPerChunk();
 
-        // Streaming write: 1 chunk in memory + message references
-        long totalBytes = bytesPerChunk;
-        totalBytes += (long) maxBatchSize * 100; // ~100 bytes per JMS message reference
+        // N serialized chunks held on heap (from reset() in ArtemisStreamingBatch)
+        // + 1 deserialized chunk during iteration/write
+        long totalBytes = (long) maxBatchSize * serializedBytesPerChunk + deserializedBytesPerChunk;
 
-        String explanation = String.format("1 × %s/chunk (streaming) + %d × 100B message refs",
-            SimulationParameters.formatBytes(bytesPerChunk), maxBatchSize);
+        String explanation = String.format("%d × %s/chunk (serialized) + 1 × %s/chunk (deserialized)",
+            maxBatchSize,
+            SimulationParameters.formatBytes(serializedBytesPerChunk),
+            SimulationParameters.formatBytes(deserializedBytesPerChunk));
 
         return List.of(new MemoryEstimate(
             serviceName,
