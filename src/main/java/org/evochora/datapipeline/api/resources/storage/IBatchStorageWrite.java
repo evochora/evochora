@@ -23,7 +23,7 @@ import java.util.List;
  * Storage configuration (folder structure, compression) is transparent to callers.
  * Services only need to know about batch write operations, not the underlying organization.
  * <p>
- * <strong>Thread Safety:</strong> writeChunkBatch() is thread-safe. Multiple services can write
+ * <strong>Thread Safety:</strong> All write methods are thread-safe. Multiple services can write
  * concurrently as competing consumers without coordination.
  * <p>
  * <strong>Usage Pattern:</strong> This interface is injected into services via usage type
@@ -34,36 +34,30 @@ public interface IBatchStorageWrite extends IResource {
     /**
      * Writes a batch of tick data chunks to storage with automatic folder organization.
      * <p>
-     * Each chunk is a self-contained unit containing a snapshot and deltas.
-     * <p>
-     * The batch is:
-     * <ul>
-     *   <li>Compressed according to storage configuration</li>
-     *   <li>Written to appropriate folder based on firstTick</li>
-     *   <li>Atomically committed (temp file → final file)</li>
-     * </ul>
+     * Delegates to {@link #writeChunkBatchStreaming(Iterator)} which handles folder path
+     * calculation, compression, and atomic write. The {@code firstTick} and {@code lastTick}
+     * parameters are ignored — tick range is derived from the chunks during iteration.
      * <p>
      * The returned {@link StoragePath} represents the physical path including compression
      * extension (e.g., ".zst" for Zstandard). This path can be passed directly to
      * {@link IBatchStorageRead#readChunkBatch(StoragePath)} for reading.
+     *
      * <p>
-     * <strong>Example usage (PersistenceService with delta compression):</strong>
-     * <pre>
-     * List&lt;TickDataChunk&gt; chunks = queue.drainTo(maxBatchSize);
-     * long firstTick = chunks.get(0).getFirstTick();
-     * long lastTick = chunks.get(chunks.size() - 1).getLastTick();
-     * StoragePath path = storage.writeChunkBatch(chunks, firstTick, lastTick);
-     * log.info("Wrote {} chunks ({} ticks) to {}", chunks.size(), totalTicks, path);
-     * </pre>
+     * <strong>Thread Safety:</strong> See interface-level documentation.
      *
      * @param batch The tick data chunks to persist (must be non-empty)
-     * @param firstTick The first tick number in the batch (from first chunk)
-     * @param lastTick The last tick number in the batch (from last chunk)
+     * @param firstTick ignored (derived from chunks)
+     * @param lastTick ignored (derived from chunks)
      * @return The physical storage path where batch was written (includes compression extension)
      * @throws IOException If write fails
-     * @throws IllegalArgumentException If batch is empty or tick order is invalid (firstTick > lastTick)
+     * @throws IllegalArgumentException If batch is empty
      */
-    StoragePath writeChunkBatch(List<TickDataChunk> batch, long firstTick, long lastTick) throws IOException;
+    default StoragePath writeChunkBatch(List<TickDataChunk> batch, long firstTick, long lastTick) throws IOException {
+        if (batch == null || batch.isEmpty()) {
+            throw new IllegalArgumentException("batch must be non-empty");
+        }
+        return writeChunkBatchStreaming(batch.iterator()).path();
+    }
 
     /**
      * Writes a single protobuf message to storage at the specified key.
@@ -124,6 +118,9 @@ public interface IBatchStorageWrite extends IResource {
      *     batch.commit();
      * }
      * </pre>
+     *
+     * <p>
+     * <strong>Thread Safety:</strong> See interface-level documentation.
      *
      * @param chunks iterator over tick data chunks (must have at least one element)
      * @return result containing storage path, tick range, chunk count, and bytes written

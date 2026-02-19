@@ -3,7 +3,7 @@ package org.evochora.datapipeline.services;
 import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
-import org.evochora.datapipeline.api.resources.storage.StoragePath;
+import org.evochora.datapipeline.api.resources.storage.StreamingWriteResult;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 
@@ -65,17 +65,15 @@ public class DummyWriterService extends AbstractService {
                 currentTick += ticksPerChunk;
             }
             
-            long lastTick = currentTick - 1;
-
             try {
-                // Write chunk batch using chunk batch API
-                StoragePath path = storage.writeChunkBatch(batch, firstTick, lastTick);
-                totalChunksWritten.addAndGet(batch.size());
+                StreamingWriteResult result = storage.writeChunkBatchStreaming(batch.iterator());
+                totalChunksWritten.addAndGet(result.chunkCount());
                 writeOperations.incrementAndGet();
                 log.debug("Wrote chunk batch {} with {} chunks (ticks {}-{})",
-                    path, batch.size(), firstTick, lastTick);
+                    result.path(), result.chunkCount(), result.firstTick(), result.lastTick());
 
             } catch (IOException e) {
+                long lastTick = currentTick - 1;
                 log.warn("Failed to write chunk batch (ticks {}-{})", firstTick, lastTick);
                 writeErrors.incrementAndGet();
                 recordError(

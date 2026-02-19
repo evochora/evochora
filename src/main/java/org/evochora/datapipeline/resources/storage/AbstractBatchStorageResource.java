@@ -145,44 +145,6 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
             name, codec.getName(), codec.getLevel(), folderLevels, metricsWindowSeconds);
     }
 
-    @Override
-    public StoragePath writeChunkBatch(List<TickDataChunk> batch, long firstTick, long lastTick) throws IOException {
-        if (batch == null || batch.isEmpty()) {
-            throw new IllegalArgumentException("batch cannot be null or empty");
-        }
-        if (firstTick > lastTick) {
-            throw new IllegalArgumentException(
-                String.format("firstTick (%d) cannot be greater than lastTick (%d)", firstTick, lastTick)
-            );
-        }
-
-        // Calculate folder path from firstTick
-        // Structure: {runId}/raw/{folderLevels}/batch_xxx.pb
-        String simulationId = batch.get(0).getSimulationRunId();
-        String folderPath = simulationId + "/raw/" + calculateFolderPath(firstTick);
-
-        // Generate batch filename (logical key without compression)
-        String logicalFilename = String.format("batch_%019d_%019d.pb", firstTick, lastTick);
-        String logicalPath = folderPath + "/" + logicalFilename;
-
-        // Convert to physical path (adds compression extension)
-        String physicalPath = toPhysicalPath(logicalPath);
-
-        // STREAMING: Delegate to backend-specific atomic streaming implementation
-        long writeStart = System.nanoTime();
-        long bytesWritten = writeChunkAtomicStreaming(physicalPath, batch, codec);
-        long writeLatency = System.nanoTime() - writeStart;
-
-        // Record metrics
-        recordWrite(bytesWritten, writeLatency);
-
-        // Calculate total ticks for logging
-        int totalTicks = batch.stream().mapToInt(TickDataChunk::getTickCount).sum();
-        log.debug("Wrote chunk batch {} with {} chunks ({} ticks)", physicalPath, batch.size(), totalTicks);
-
-        return StoragePath.of(physicalPath);
-    }
-
     /**
      * {@inheritDoc}
      * <p>
@@ -1295,35 +1257,6 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
     protected abstract void putRaw(String physicalPath, byte[] data) throws IOException;
 
     /**
-     * Writes a batch of chunks atomically with streaming support.
-     * <p>
-     * Each chunk contains a snapshot and deltas, providing self-contained data units.
-     * <p>
-     * <strong>Atomicity Requirements:</strong>
-     * <ul>
-     *   <li>The batch must be fully written or not at all (no partial writes visible)</li>
-     *   <li>On failure, any partial data must be cleaned up</li>
-     *   <li>Concurrent reads must not see incomplete data</li>
-     * </ul>
-     * <p>
-     * <strong>Memory Efficiency:</strong>
-     * Implementations should stream data directly through compression to storage,
-     * avoiding in-memory buffering. Use {@link CountingOutputStream} to track bytes.
-     * <p>
-     * <strong>Compression:</strong>
-     * The provided codec must be used to compress the protobuf stream. Each chunk
-     * should be written using {@code chunk.writeDelimitedTo(compressedStream)}.
-     *
-     * @param physicalPath final destination path (including compression extension)
-     * @param batch the batch of chunks to write (non-empty)
-     * @param codec compression codec to wrap the output stream with
-     * @return number of bytes written (compressed size, for metrics)
-     * @throws IOException if the write fails (partial data must be cleaned up)
-     */
-    protected abstract long writeChunkAtomicStreaming(String physicalPath, List<TickDataChunk> batch,
-                                                       ICompressionCodec codec) throws IOException;
-
-    /**
      * Writes chunks to a temporary file in the given folder.
      * <p>
      * Implementations must:
@@ -1598,6 +1531,11 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
                                 "simulationRunId mismatch in batch: expected '%s' (from first chunk) but chunk at tick %d has '%s'",
                                 expectedSimulationRunId, chunk.getFirstTick(), chunk.getSimulationRunId()));
                         }
+                    }
+                    if (chunkCount > 0 && chunk.getFirstTick() < lastTick) {
+                        throw new IllegalStateException(String.format(
+                            "chunks not in ascending tick order: previous lastTick=%d but chunk has firstTick=%d",
+                            lastTick, chunk.getFirstTick()));
                     }
                     lastTick = chunk.getLastTick();
                     chunkCount++;

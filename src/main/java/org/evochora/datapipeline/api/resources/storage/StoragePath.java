@@ -26,7 +26,7 @@ import java.util.Objects;
  * <p>
  * <strong>Thread Safety:</strong> This class is immutable and thread-safe.
  *
- * @see IBatchStorageWrite#writeChunkBatch(java.util.List, long, long)
+ * @see IBatchStorageWrite#writeChunkBatchStreaming(java.util.Iterator)
  * @see IBatchStorageRead#readChunkBatch(StoragePath)
  */
 public final class StoragePath {

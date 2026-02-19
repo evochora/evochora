@@ -401,13 +401,6 @@ class FileSystemStorageResourceTest {
     }
 
     @Test
-    void testWriteChunkBatch_InvalidTickOrder_Throws() {
-        TickDataChunk chunk = createChunk(100, 109, 10);
-        assertThrows(IllegalArgumentException.class, 
-                () -> storage.writeChunkBatch(List.of(chunk), 109, 100));
-    }
-
-    @Test
     void testReadChunkBatch_NotFound() {
         StoragePath nonExistentPath = StoragePath.of("test-sim/raw/000/000/batch_not_found.pb");
         assertThrows(IOException.class, () -> storage.readChunkBatch(nonExistentPath));

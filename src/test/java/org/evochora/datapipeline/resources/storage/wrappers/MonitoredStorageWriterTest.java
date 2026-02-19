@@ -3,6 +3,7 @@ package org.evochora.datapipeline.resources.storage.wrappers;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
+import org.evochora.datapipeline.api.resources.storage.StreamingWriteResult;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
@@ -54,16 +55,17 @@ class MonitoredStorageWriterTest {
             createChunk(120, 129)
         );
 
-        when(mockDelegate.writeChunkBatch(anyList(), anyLong(), anyLong()))
-            .thenReturn(StoragePath.of("001/batch.pb"));
+        long expectedBytes = batch.stream().mapToLong(TickDataChunk::getSerializedSize).sum();
+        StreamingWriteResult result = new StreamingWriteResult(
+            StoragePath.of("001/batch.pb"), "test-sim", 100, 129, 3, 30, expectedBytes);
+        when(mockDelegate.writeChunkBatchStreaming(any())).thenReturn(result);
 
         monitoredWriter.writeChunkBatch(batch, 100, 129);
 
-        verify(mockDelegate).writeChunkBatch(batch, 100, 129);
+        verify(mockDelegate).writeChunkBatchStreaming(any());
 
         Map<String, Number> metrics = monitoredWriter.getMetrics();
         assertEquals(1L, metrics.get("batches_written").longValue());
-        long expectedBytes = batch.stream().mapToLong(TickDataChunk::getSerializedSize).sum();
         assertEquals(expectedBytes, metrics.get("bytes_written").longValue());
     }
 
@@ -71,7 +73,7 @@ class MonitoredStorageWriterTest {
     void testErrorMetricTrackedOnFailure() throws IOException {
         List<TickDataChunk> batch = Collections.singletonList(createChunk(1, 10));
 
-        when(mockDelegate.writeChunkBatch(anyList(), anyLong(), anyLong()))
+        when(mockDelegate.writeChunkBatchStreaming(any()))
             .thenThrow(new IOException("Storage failure"));
 
         assertThrows(IOException.class, () -> monitoredWriter.writeChunkBatch(batch, 1, 10));
@@ -83,15 +85,17 @@ class MonitoredStorageWriterTest {
 
     @Test
     void testMultipleBatchesTracked() throws IOException {
-        when(mockDelegate.writeChunkBatch(anyList(), anyLong(), anyLong()))
-            .thenReturn(StoragePath.of("batch1.pb"))
-            .thenReturn(StoragePath.of("batch2.pb"));
-
         List<TickDataChunk> batch1 = Arrays.asList(
             createChunk(1, 10),
             createChunk(11, 20)
         );
         List<TickDataChunk> batch2 = Collections.singletonList(createChunk(21, 30));
+
+        long bytes1 = batch1.stream().mapToLong(TickDataChunk::getSerializedSize).sum();
+        long bytes2 = batch2.stream().mapToLong(TickDataChunk::getSerializedSize).sum();
+        when(mockDelegate.writeChunkBatchStreaming(any()))
+            .thenReturn(new StreamingWriteResult(StoragePath.of("batch1.pb"), "test-sim", 1, 20, 2, 20, bytes1))
+            .thenReturn(new StreamingWriteResult(StoragePath.of("batch2.pb"), "test-sim", 21, 30, 1, 10, bytes2));
 
         monitoredWriter.writeChunkBatch(batch1, 1, 20);
         monitoredWriter.writeChunkBatch(batch2, 21, 30);

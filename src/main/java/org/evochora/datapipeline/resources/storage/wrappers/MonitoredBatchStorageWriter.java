@@ -66,28 +66,6 @@ public class MonitoredBatchStorageWriter implements IBatchStorageWrite, IWrapped
     }
 
     @Override
-    public StoragePath writeChunkBatch(List<TickDataChunk> batch, long firstTick, long lastTick) throws IOException {
-        long startNanos = System.nanoTime();
-        try {
-            StoragePath path = delegate.writeChunkBatch(batch, firstTick, lastTick);
-
-            // Update cumulative metrics
-            batchesWritten.incrementAndGet();
-            long bytes = batch.stream().mapToLong(TickDataChunk::getSerializedSize).sum();
-            bytesWritten.addAndGet(bytes);
-
-            // Record performance metrics
-            long latencyNanos = System.nanoTime() - startNanos;
-            recordWrite(batch.size(), bytes, latencyNanos);
-
-            return path;
-        } catch (IOException e) {
-            writeErrors.incrementAndGet();
-            throw e;
-        }
-    }
-
-    @Override
     public <T extends MessageLite> StoragePath writeMessage(String key, T message) throws IOException {
         long startNanos = System.nanoTime();
         try {
@@ -145,6 +123,20 @@ public class MonitoredBatchStorageWriter implements IBatchStorageWrite, IWrapped
         return delegate.getUsageState(usageType);
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Metric definitions:
+     * <ul>
+     *   <li>{@code batches_written}: cumulative batch write count</li>
+     *   <li>{@code messages_written}: cumulative single-message write count</li>
+     *   <li>{@code bytes_written}: cumulative compressed bytes written to storage</li>
+     *   <li>{@code write_errors}: cumulative write error count</li>
+     *   <li>{@code batches_per_sec}: sliding window batch write rate</li>
+     *   <li>{@code bytes_per_sec}: sliding window compressed byte throughput</li>
+     *   <li>{@code avg_write_latency_ms}: sliding window average write latency in milliseconds</li>
+     * </ul>
+     */
     @Override
     public Map<String, Number> getMetrics() {
         return Map.of(
