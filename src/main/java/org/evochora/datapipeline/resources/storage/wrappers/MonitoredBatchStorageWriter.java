@@ -123,6 +123,20 @@ public class MonitoredBatchStorageWriter implements IBatchStorageWrite, IWrapped
         return delegate.getUsageState(usageType);
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Metric definitions:
+     * <ul>
+     *   <li>{@code batches_written}: cumulative batch write count</li>
+     *   <li>{@code messages_written}: cumulative single-message write count</li>
+     *   <li>{@code bytes_written}: cumulative compressed bytes written to storage</li>
+     *   <li>{@code write_errors}: cumulative write error count</li>
+     *   <li>{@code batches_per_sec}: sliding window batch write rate</li>
+     *   <li>{@code bytes_per_sec}: sliding window compressed byte throughput</li>
+     *   <li>{@code avg_write_latency_ms}: sliding window average write latency in milliseconds</li>
+     * </ul>
+     */
     @Override
     public Map<String, Number> getMetrics() {
         return Map.of(

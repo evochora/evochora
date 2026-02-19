@@ -15,7 +15,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -59,11 +58,11 @@ class MonitoredStorageWriterTest {
         long expectedBytes = batch.stream().mapToLong(TickDataChunk::getSerializedSize).sum();
         StreamingWriteResult result = new StreamingWriteResult(
             StoragePath.of("001/batch.pb"), "test-sim", 100, 129, 3, 30, expectedBytes);
-        when(mockDelegate.writeChunkBatchStreaming(any(Iterator.class))).thenReturn(result);
+        when(mockDelegate.writeChunkBatchStreaming(any())).thenReturn(result);
 
         monitoredWriter.writeChunkBatch(batch, 100, 129);
 
-        verify(mockDelegate).writeChunkBatchStreaming(any(Iterator.class));
+        verify(mockDelegate).writeChunkBatchStreaming(any());
 
         Map<String, Number> metrics = monitoredWriter.getMetrics();
         assertEquals(1L, metrics.get("batches_written").longValue());
@@ -74,7 +73,7 @@ class MonitoredStorageWriterTest {
     void testErrorMetricTrackedOnFailure() throws IOException {
         List<TickDataChunk> batch = Collections.singletonList(createChunk(1, 10));
 
-        when(mockDelegate.writeChunkBatchStreaming(any(Iterator.class)))
+        when(mockDelegate.writeChunkBatchStreaming(any()))
             .thenThrow(new IOException("Storage failure"));
 
         assertThrows(IOException.class, () -> monitoredWriter.writeChunkBatch(batch, 1, 10));
@@ -94,7 +93,7 @@ class MonitoredStorageWriterTest {
 
         long bytes1 = batch1.stream().mapToLong(TickDataChunk::getSerializedSize).sum();
         long bytes2 = batch2.stream().mapToLong(TickDataChunk::getSerializedSize).sum();
-        when(mockDelegate.writeChunkBatchStreaming(any(Iterator.class)))
+        when(mockDelegate.writeChunkBatchStreaming(any()))
             .thenReturn(new StreamingWriteResult(StoragePath.of("batch1.pb"), "test-sim", 1, 20, 2, 20, bytes1))
             .thenReturn(new StreamingWriteResult(StoragePath.of("batch2.pb"), "test-sim", 21, 30, 1, 10, bytes2));
 
