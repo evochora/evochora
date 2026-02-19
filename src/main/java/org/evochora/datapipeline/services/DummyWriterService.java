@@ -67,7 +67,7 @@ public class DummyWriterService extends AbstractService {
             
             try {
                 StreamingWriteResult result = storage.writeChunkBatchStreaming(batch.iterator());
-                totalChunksWritten.addAndGet(batch.size());
+                totalChunksWritten.addAndGet(result.chunkCount());
                 writeOperations.incrementAndGet();
                 log.debug("Wrote chunk batch {} with {} chunks (ticks {}-{})",
                     result.path(), result.chunkCount(), result.firstTick(), result.lastTick());

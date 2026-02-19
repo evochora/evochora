@@ -1532,6 +1532,11 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
                                 expectedSimulationRunId, chunk.getFirstTick(), chunk.getSimulationRunId()));
                         }
                     }
+                    if (chunkCount > 0 && chunk.getFirstTick() < lastTick) {
+                        throw new IllegalStateException(String.format(
+                            "chunks not in ascending tick order: previous lastTick=%d but chunk has firstTick=%d",
+                            lastTick, chunk.getFirstTick()));
+                    }
                     lastTick = chunk.getLastTick();
                     chunkCount++;
                     totalTickCount += chunk.getTickCount();
