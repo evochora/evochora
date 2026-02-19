@@ -871,7 +871,7 @@ public class H2Database extends AbstractDatabaseResource
                 // SHUTDOWN IMMEDIATELY: closes all connections immediately without rollback
                 // This avoids hours-long rollback on large databases during shutdown
                 stmt.execute("SHUTDOWN IMMEDIATELY");
-                log.info("H2 database '{}' shutdown immediately executed", getResourceName());
+                log.debug("H2 database '{}' shutdown immediately executed", getResourceName());
             } catch (SQLException e) {
                 // 90121 = "Database is already closed" (normal auto-close)
                 // 90098 = "The database has been closed" (MVStore I/O error killed the database)
@@ -880,11 +880,23 @@ public class H2Database extends AbstractDatabaseResource
                 } else {
                     log.warn("H2 database '{}' SHUTDOWN IMMEDIATELY failed: {}",
                         getResourceName(), e.getMessage());
+                    recordError("SHUTDOWN_FAILED", "SHUTDOWN IMMEDIATELY failed",
+                        "Database: " + getResourceName() + ", Error: " + e.getMessage());
                 }
                 // Database is dead or already closed — don't attempt more SQL operations.
                 // Just close wrappers (releasing pooled connections) and force-close the pool.
-                closeAllWrappers();
-                dataSource.close();
+                try {
+                    closeAllWrappers();
+                } finally {
+                    try {
+                        dataSource.close();
+                    } catch (Exception poolEx) {
+                        log.warn("H2 database '{}' connection pool close failed: {}",
+                            getResourceName(), poolEx.getMessage());
+                        recordError("POOL_CLOSE_FAILED", "Connection pool close failed during force-close",
+                            "Database: " + getResourceName() + ", Error: " + poolEx.getMessage());
+                    }
+                }
                 log.debug("H2 database '{}' connection pool force-closed", getResourceName());
                 return;
             }

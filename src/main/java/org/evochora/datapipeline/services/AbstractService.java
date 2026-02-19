@@ -143,9 +143,10 @@ public abstract class AbstractService implements IService, IMonitorable {
                     long pollIntervalMs = 50; // Check every 50ms
                     
                     // Phase 1: Graceful grace period (80% of total timeout)
-                    // Services must finish their current operation (e.g., H2 flush) before
-                    // interrupt. Thread.interrupt() permanently closes Java NIO FileChannels
-                    // (ClosedByInterruptException), which kills H2 MVStore if mid-write.
+                    // Services must finish their current operation (e.g., database flushes,
+                    // storage writes) before interrupt. Thread.interrupt() permanently closes
+                    // Java NIO FileChannels (ClosedByInterruptException), corrupting any
+                    // file-based storage that is mid-write.
                     long gracePeriodMs = totalTimeoutMs * 4 / 5;
                     
                     while (serviceThread.isAlive() && 
