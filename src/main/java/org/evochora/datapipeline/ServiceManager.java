@@ -873,33 +873,24 @@ public class ServiceManager implements IMonitorable {
         
         // Log summary with INFO or WARN depending on heap availability
         if (totalEstimatedBytes <= maxHeapBytes) {
-            log.info("Memory estimate: {} (peak: {} services + {} Node overhead), available heap: {} (-Xmx) ✓",
+            log.info("Memory estimate: {} (peak: {} services + {} Node overhead), available heap: {} (-Xmx)",
                 SimulationParameters.formatBytes(totalEstimatedBytes),
                 services.size(),
                 SimulationParameters.formatBytes(nodeProcessOverhead),
                 SimulationParameters.formatBytes(maxHeapBytes));
-            log.info("  Note: Services started later via API are NOT included in this estimate.");
         } else {
-            log.warn("⚠️ MEMORY WARNING: Estimated peak {} exceeds available heap {}",
+            // Build compact top-N offenders string for single-line warning
+            String topOffenders = allEstimates.stream()
+                .sorted((a, b) -> Long.compare(b.estimatedBytes(), a.estimatedBytes()))
+                .limit(3)
+                .map(e -> e.componentName() + " " + e.formattedBytes())
+                .collect(Collectors.joining(", "));
+
+            log.warn("Estimated peak {} exceeds available heap {}. Largest: {}. Recommended: -Xmx{}",
                 SimulationParameters.formatBytes(totalEstimatedBytes),
-                SimulationParameters.formatBytes(maxHeapBytes));
-            log.warn("  Based on {} services + {} Node overhead (services started via API NOT included)",
-                services.size(), SimulationParameters.formatBytes(nodeProcessOverhead));
-            
-            // Detailed breakdown at WARN level
-            log.warn("  Memory breakdown by component:");
-            for (MemoryEstimate estimate : allEstimates) {
-                log.warn("    {} → {}: {}", estimate.componentName(), estimate.formattedBytes(), estimate.explanation());
-            }
-            log.warn("    Node processes (fixed) → {}: HttpServer, H2Console, H2TcpServer",
-                SimulationParameters.formatBytes(nodeProcessOverhead));
-            
-            log.warn("  RECOMMENDATION: -Xmx{} (estimate + 30%% safety margin)",
+                SimulationParameters.formatBytes(maxHeapBytes),
+                topOffenders,
                 formatHeapRecommendation(recommendedHeapBytes));
-            log.warn("  To reduce memory requirements:");
-            log.warn("    - Decrease tick-queue capacity (currently configured in resources)");
-            log.warn("    - Decrease persistence maxBatchSize (currently in services)");
-            log.warn("    - Decrease indexer insertBatchSize (currently in services)");
         }
     }
     
