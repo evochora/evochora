@@ -2,6 +2,7 @@ package org.evochora.datapipeline.resources.storage;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -11,12 +12,13 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
-import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 
+import org.evochora.datapipeline.api.resources.storage.CheckedConsumer;
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.PluginState;
@@ -198,89 +200,63 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
             chunkCount, trackingIterable.getTotalTickCount(), tempResult.bytesWritten());
     }
 
-    @Override
-    public List<TickDataChunk> readChunkBatch(StoragePath path) throws IOException {
-        if (path == null) {
-            throw new IllegalArgumentException("path cannot be null");
-        }
-
-        // Read compressed bytes
-        long readStart = System.nanoTime();
-        byte[] compressed = getRaw(path.asString());
-        long readLatency = System.nanoTime() - readStart;
-
-        // Detect compression codec from file extension
-        ICompressionCodec detectedCodec = org.evochora.datapipeline.utils.compression.CompressionCodecFactory.detectFromExtension(path.asString());
-
-        // Stream directly: decompress → parse in one pass (no intermediate byte array!)
-        List<TickDataChunk> batch = new ArrayList<>();
-        try (InputStream decompressedStream = detectedCodec.wrapInputStream(new ByteArrayInputStream(compressed))) {
-            while (true) {
-                TickDataChunk chunk = TickDataChunk.parseDelimitedFrom(decompressedStream);
-                if (chunk == null) break;  // End of stream
-                batch.add(chunk);
-            }
-        } catch (Exception e) {
-            throw new IOException("Failed to decompress and parse chunk batch: " + path.asString(), e);
-        }
-
-        // Record batch size metrics (O(1) operations only)
-        long batchSizeMB = compressed.length / 1_048_576;
-        lastReadBatchSizeMB.set(batchSizeMB);
-        maxReadBatchSizeMB.updateAndGet(current -> Math.max(current, batchSizeMB));
-
-        // Record metrics
-        recordRead(compressed.length, readLatency);
-
-        return batch;
-    }
-
     /**
      * {@inheritDoc}
      * <p>
-     * Optimized implementation that applies the transformer to each chunk <em>during</em>
-     * the parse loop, so only transformed chunks accumulate in the result list.
-     * This dramatically reduces peak heap usage when the transformer strips large fields
-     * (e.g., environment cell data).
+     * Streaming implementation that parses one chunk at a time from the compressed protobuf
+     * stream, applies the filter and transformer, and passes each chunk to the consumer before
+     * parsing the next. Only one parsed chunk is held in memory at any time.
      */
     @Override
-    public List<TickDataChunk> readChunkBatch(StoragePath path, UnaryOperator<TickDataChunk> chunkTransformer) throws IOException {
+    public void forEachChunk(StoragePath path, ChunkFieldFilter filter,
+                             CheckedConsumer<TickDataChunk> consumer) throws Exception {
         if (path == null) {
             throw new IllegalArgumentException("path cannot be null");
         }
-        if (chunkTransformer == null) {
-            throw new IllegalArgumentException("chunkTransformer cannot be null");
+        if (filter == null) {
+            throw new IllegalArgumentException("filter cannot be null");
+        }
+        if (consumer == null) {
+            throw new IllegalArgumentException("consumer cannot be null");
         }
 
-        // Read compressed bytes
-        long readStart = System.nanoTime();
-        byte[] compressed = getRaw(path.asString());
-        long readLatency = System.nanoTime() - readStart;
+        long startNanos = System.nanoTime();
 
-        // Detect compression codec from file extension
-        ICompressionCodec detectedCodec = org.evochora.datapipeline.utils.compression.CompressionCodecFactory.detectFromExtension(path.asString());
+        ICompressionCodec detectedCodec = org.evochora.datapipeline.utils.compression.CompressionCodecFactory
+            .detectFromExtension(path.asString());
 
-        // Stream: decompress → parse → transform per chunk (only transformed chunks accumulate)
-        List<TickDataChunk> batch = new ArrayList<>();
-        try (InputStream decompressedStream = detectedCodec.wrapInputStream(new ByteArrayInputStream(compressed))) {
-            while (true) {
-                TickDataChunk chunk = TickDataChunk.parseDelimitedFrom(decompressedStream);
-                if (chunk == null) break;  // End of stream
-                batch.add(chunkTransformer.apply(chunk));
+        long bytesRead;
+        try (InputStream rawStream = openRawStream(path.asString());
+             CountingInputStream countingStream = new CountingInputStream(rawStream);
+             InputStream decompressedStream = detectedCodec.wrapInputStream(countingStream)) {
+
+            if (filter == ChunkFieldFilter.ALL) {
+                while (true) {
+                    TickDataChunk chunk = TickDataChunk.parseDelimitedFrom(decompressedStream);
+                    if (chunk == null) break;
+                    consumer.accept(chunk);
+                }
+            } else {
+                CodedInputStream cis = CodedInputStream.newInstance(decompressedStream);
+                cis.setSizeLimit(Integer.MAX_VALUE);
+
+                while (!cis.isAtEnd()) {
+                    int messageSize = cis.readRawVarint32();
+                    int limit = cis.pushLimit(messageSize);
+                    TickDataChunk chunk = parseChunkWithFilter(cis, filter);
+                    consumer.accept(chunk);
+                    cis.skipRawBytes(cis.getBytesUntilLimit());
+                    cis.popLimit(limit);
+                }
             }
-        } catch (Exception e) {
-            throw new IOException("Failed to decompress and parse chunk batch: " + path.asString(), e);
+
+            bytesRead = countingStream.getBytesRead();
         }
 
-        // Record batch size metrics (O(1) operations only)
-        long batchSizeMB = compressed.length / 1_048_576;
+        long batchSizeMB = bytesRead / 1_048_576;
         lastReadBatchSizeMB.set(batchSizeMB);
         maxReadBatchSizeMB.updateAndGet(current -> Math.max(current, batchSizeMB));
-
-        // Record metrics
-        recordRead(compressed.length, readLatency);
-
-        return batch;
+        recordRead(bytesRead, System.nanoTime() - startNanos);
     }
 
     /**
@@ -387,110 +363,6 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         return builder.build();
     }
 
-    /**
-     * {@inheritDoc}
-     * <p>
-     * Optimized implementation that skips heavy protobuf fields at the wire level based on
-     * the given {@link ChunkFieldFilter}. Skipped field bytes are discarded directly from
-     * the {@link CodedInputStream} without deserialization.
-     */
-    @Override
-    public List<TickDataChunk> readChunkBatch(StoragePath path, ChunkFieldFilter filter) throws IOException {
-        if (path == null) {
-            throw new IllegalArgumentException("path cannot be null");
-        }
-        if (filter == null) {
-            throw new IllegalArgumentException("filter cannot be null");
-        }
-
-        // Fast path: no filtering needed
-        if (filter == ChunkFieldFilter.ALL) {
-            return readChunkBatch(path);
-        }
-
-        long readStart = System.nanoTime();
-        byte[] compressed = getRaw(path.asString());
-        long readLatency = System.nanoTime() - readStart;
-
-        ICompressionCodec detectedCodec = org.evochora.datapipeline.utils.compression.CompressionCodecFactory.detectFromExtension(path.asString());
-
-        List<TickDataChunk> batch = new ArrayList<>();
-        try (InputStream decompressedStream = detectedCodec.wrapInputStream(new ByteArrayInputStream(compressed))) {
-            CodedInputStream cis = CodedInputStream.newInstance(decompressedStream);
-            cis.setSizeLimit(Integer.MAX_VALUE);
-
-            while (!cis.isAtEnd()) {
-                int messageSize = cis.readRawVarint32();
-                int limit = cis.pushLimit(messageSize);
-                batch.add(parseChunkWithFilter(cis, filter));
-                cis.skipRawBytes(cis.getBytesUntilLimit());
-                cis.popLimit(limit);
-            }
-        } catch (Exception e) {
-            throw new IOException("Failed to read chunk batch with filter " + filter + ": " + path.asString(), e);
-        }
-
-        long batchSizeMB = compressed.length / 1_048_576;
-        lastReadBatchSizeMB.set(batchSizeMB);
-        maxReadBatchSizeMB.updateAndGet(current -> Math.max(current, batchSizeMB));
-        recordRead(compressed.length, readLatency);
-
-        return batch;
-    }
-
-    /**
-     * {@inheritDoc}
-     * <p>
-     * Combines wire-level field skipping with per-chunk transformation during the parse loop.
-     */
-    @Override
-    public List<TickDataChunk> readChunkBatch(StoragePath path, ChunkFieldFilter filter,
-                                              UnaryOperator<TickDataChunk> chunkTransformer) throws IOException {
-        if (path == null) {
-            throw new IllegalArgumentException("path cannot be null");
-        }
-        if (filter == null) {
-            throw new IllegalArgumentException("filter cannot be null");
-        }
-        if (chunkTransformer == null) {
-            throw new IllegalArgumentException("chunkTransformer cannot be null");
-        }
-
-        // Fast path: no filtering needed, delegate to existing transformer method
-        if (filter == ChunkFieldFilter.ALL) {
-            return readChunkBatch(path, chunkTransformer);
-        }
-
-        long readStart = System.nanoTime();
-        byte[] compressed = getRaw(path.asString());
-        long readLatency = System.nanoTime() - readStart;
-
-        ICompressionCodec detectedCodec = org.evochora.datapipeline.utils.compression.CompressionCodecFactory.detectFromExtension(path.asString());
-
-        List<TickDataChunk> batch = new ArrayList<>();
-        try (InputStream decompressedStream = detectedCodec.wrapInputStream(new ByteArrayInputStream(compressed))) {
-            CodedInputStream cis = CodedInputStream.newInstance(decompressedStream);
-            cis.setSizeLimit(Integer.MAX_VALUE);
-
-            while (!cis.isAtEnd()) {
-                int messageSize = cis.readRawVarint32();
-                int limit = cis.pushLimit(messageSize);
-                TickDataChunk chunk = parseChunkWithFilter(cis, filter);
-                batch.add(chunkTransformer.apply(chunk));
-                cis.skipRawBytes(cis.getBytesUntilLimit());
-                cis.popLimit(limit);
-            }
-        } catch (Exception e) {
-            throw new IOException("Failed to read chunk batch with filter " + filter + ": " + path.asString(), e);
-        }
-
-        long batchSizeMB = compressed.length / 1_048_576;
-        lastReadBatchSizeMB.set(batchSizeMB);
-        maxReadBatchSizeMB.updateAndGet(current -> Math.max(current, batchSizeMB));
-        recordRead(compressed.length, readLatency);
-
-        return batch;
-    }
 
     /**
      * Parses a TickDataChunk from a CodedInputStream, applying the given field filter to
@@ -937,36 +809,21 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
 
 
     @Override
-    public BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults) throws IOException {
-        return listBatchFilesInternal(prefix, continuationToken, maxResults, null, null, IBatchStorageRead.SortOrder.ASCENDING);
-    }
-
-    @Override
     public BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults,
+                                               long startTick, long endTick,
                                                IBatchStorageRead.SortOrder sortOrder) throws IOException {
         if (sortOrder == null) {
             throw new IllegalArgumentException("sortOrder cannot be null");
         }
-        return listBatchFilesInternal(prefix, continuationToken, maxResults, null, null, sortOrder);
-    }
-
-    @Override
-    public BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults, long startTick) throws IOException {
-        if (startTick < 0) {
-            throw new IllegalArgumentException("startTick must be >= 0");
-        }
-        return listBatchFilesInternal(prefix, continuationToken, maxResults, startTick, null, IBatchStorageRead.SortOrder.ASCENDING);
-    }
-
-    @Override
-    public BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults, long startTick, long endTick) throws IOException {
         if (startTick < 0) {
             throw new IllegalArgumentException("startTick must be >= 0");
         }
         if (endTick < startTick) {
             throw new IllegalArgumentException("endTick must be >= startTick");
         }
-        return listBatchFilesInternal(prefix, continuationToken, maxResults, startTick, endTick, IBatchStorageRead.SortOrder.ASCENDING);
+        Long startTickNullable = (startTick == 0) ? null : startTick;
+        Long endTickNullable = (endTick == Long.MAX_VALUE) ? null : endTick;
+        return listBatchFilesInternal(prefix, continuationToken, maxResults, startTickNullable, endTickNullable, sortOrder);
     }
 
     /**
@@ -1005,7 +862,6 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
 
         // Delegate to subclass to get all files with prefix
         // listRaw returns PHYSICAL paths (with compression extensions)
-        // Note: For descending order / finding the last batch, use findLastBatchFile() instead
         List<String> allPhysicalFiles = listRaw(prefix, false, continuationToken, (maxResults + 1) * 2, startTick, endTick);
 
         // Filter to batch files and sort lexicographically (ascending tick order)
@@ -1050,6 +906,10 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
 
         // deduplicatedByFirstTick is already in ascending order from LinkedHashMap
         List<String> sortedPaths = new ArrayList<>(deduplicatedByFirstTick.values());
+
+        if (sortOrder == IBatchStorageRead.SortOrder.DESCENDING) {
+            Collections.reverse(sortedPaths);
+        }
 
         // Convert to StoragePath list with limit
         List<StoragePath> batchFiles = sortedPaths.stream()
@@ -1288,19 +1148,43 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
     protected abstract void finalizeStreamingWrite(String tempHandle, String finalPhysicalPath) throws IOException;
 
     /**
-     * Reads raw bytes from physical path.
+     * Opens a streaming read handle for the raw (still compressed) bytes at the given path.
+     * <p>
+     * This is the read-side counterpart to the streaming write methods
+     * ({@link #writeChunksToTempFile}, {@link #finalizeStreamingWrite}).
      * <p>
      * Implementation must:
      * <ul>
      *   <li>Throw IOException if file doesn't exist</li>
-     *   <li>Only perform I/O - metrics are tracked by caller (get() method)</li>
+     *   <li>Return a buffered InputStream (callers should not need to wrap)</li>
+     *   <li>Only perform I/O - metrics are tracked by caller</li>
      * </ul>
+     * <p>
+     * S3 mapping: {@code GetObjectRequest} returning the response input stream.
+     *
+     * @param physicalPath physical path including compression extension
+     * @return InputStream of raw compressed bytes (caller closes)
+     * @throws IOException if file not found or read fails
+     */
+    protected abstract InputStream openRawStream(String physicalPath) throws IOException;
+
+    /**
+     * Reads all raw bytes from the given physical path into memory.
+     * <p>
+     * Delegates to {@link #openRawStream(String)} and reads the full content.
+     * Used by methods that need the complete byte array (e.g., {@link #readMessage},
+     * {@link #readLastSnapshot}). For streaming chunk processing, prefer
+     * {@link #openRawStream(String)} directly.
      *
      * @param physicalPath physical path including compression extension
      * @return raw bytes (still compressed, caller handles decompression)
      * @throws IOException if file not found or read fails
      */
-    protected abstract byte[] getRaw(String physicalPath) throws IOException;
+    protected byte[] getRaw(String physicalPath) throws IOException {
+        try (InputStream stream = openRawStream(physicalPath)) {
+            return stream.readAllBytes();
+        }
+    }
 
     /**
      * Lists physical paths or directory prefixes matching a prefix, with optional tick filtering.
@@ -1413,6 +1297,38 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
     }
 
     // ===== Helper classes =====
+
+    /**
+     * An input stream wrapper that counts compressed bytes read.
+     * <p>
+     * Used for metrics tracking during streaming reads without requiring
+     * the compressed data to be buffered in memory.
+     */
+    private static class CountingInputStream extends FilterInputStream {
+        private long bytesRead;
+
+        CountingInputStream(InputStream in) {
+            super(in);
+        }
+
+        @Override
+        public int read() throws IOException {
+            int b = super.read();
+            if (b != -1) bytesRead++;
+            return b;
+        }
+
+        @Override
+        public int read(byte[] b, int off, int len) throws IOException {
+            int n = super.read(b, off, len);
+            if (n > 0) bytesRead += n;
+            return n;
+        }
+
+        long getBytesRead() {
+            return bytesRead;
+        }
+    }
 
     /**
      * An output stream wrapper that counts bytes written.

@@ -30,6 +30,7 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataReader;
+import org.evochora.datapipeline.api.resources.storage.CheckedConsumer;
 import org.evochora.datapipeline.api.resources.storage.IResourceBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.IResourceTopicReader;
@@ -65,7 +66,7 @@ class AbstractBatchIndexerTest {
     private AtomicInteger flushCount;
 
     @BeforeEach
-    void setup() throws IOException {
+    void setup() throws Exception {
         // Create mocks that implement both capability interfaces AND IResource
         // This simulates production where wrappers implement IResource via AbstractResource
         @SuppressWarnings("unchecked")
@@ -87,13 +88,18 @@ class AbstractBatchIndexerTest {
         stubReadChunkBatchOverloads();
     }
     
-    @SuppressWarnings("unchecked")
-    private void stubReadChunkBatchOverloads() throws IOException {
-        lenient().when(mockStorage.readChunkBatch(any(StoragePath.class), any(java.util.function.UnaryOperator.class)))
-            .thenCallRealMethod();
+    private void stubReadChunkBatchOverloads() throws Exception {
+        // forEachChunk is abstract — provide an answer that iterates from readChunkBatch(path)
+        lenient().doAnswer(invocation -> {
+            StoragePath p = invocation.getArgument(0);
+            CheckedConsumer<TickDataChunk> c = invocation.getArgument(2);
+            for (TickDataChunk chunk : mockStorage.readChunkBatch(p)) {
+                c.accept(chunk);
+            }
+            return null;
+        }).when(mockStorage).forEachChunk(any(), any(), any());
+        // readChunkBatch(path, filter) is a default that delegates to forEachChunk
         lenient().when(mockStorage.readChunkBatch(any(StoragePath.class), any(org.evochora.datapipeline.api.resources.storage.ChunkFieldFilter.class)))
-            .thenCallRealMethod();
-        lenient().when(mockStorage.readChunkBatch(any(StoragePath.class), any(org.evochora.datapipeline.api.resources.storage.ChunkFieldFilter.class), any(java.util.function.UnaryOperator.class)))
             .thenCallRealMethod();
     }
 

@@ -12,7 +12,7 @@ package org.evochora.datapipeline.api.resources.storage;
  * objects. For a 4000x3000 environment with ~580 organisms, skipping organisms saves ~730 MB
  * per chunk and skipping cells saves ~550 MB per snapshot.
  *
- * @see IBatchStorageRead#readChunkBatch(StoragePath, ChunkFieldFilter)
+ * @see IBatchStorageRead#forEachChunk(StoragePath, ChunkFieldFilter, CheckedConsumer)
  */
 public enum ChunkFieldFilter {
 

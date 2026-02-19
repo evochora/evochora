@@ -8,9 +8,9 @@ import org.evochora.datapipeline.api.resources.IResource;
 
 import java.io.IOException;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.function.UnaryOperator;
 
 /**
  * Read-only interface for storage resources that support batch read operations.
@@ -29,6 +29,29 @@ import java.util.function.UnaryOperator;
  * <p>
  * <strong>Usage Pattern:</strong> This interface is injected into services via usage type
  * "storage-read:resourceName" to ensure type safety and proper metric isolation.
+ *
+ * <h3>Implementor contract</h3>
+ * Implementations must provide these 6 abstract methods:
+ * <ol>
+ *   <li>{@link #forEachChunk} — streaming chunk read (the primary read primitive)</li>
+ *   <li>{@link #readMessage} — single protobuf message read (metadata, configs)</li>
+ *   <li>{@link #listBatchFiles(String, String, int, long, long, SortOrder)} — batch file listing</li>
+ *   <li>{@link #listRunIds} — run discovery</li>
+ *   <li>{@link #findMetadataPath} — metadata file lookup</li>
+ *   <li>{@link #findLastBatchFile} — last batch file lookup for resume</li>
+ * </ol>
+ * All other methods are default convenience overloads that delegate to these primitives.
+ *
+ * <h3>Legacy methods (will be removed once all consumers use streaming)</h3>
+ * The following methods materialize all chunks into a {@code List} and exist only for
+ * backward compatibility with consumers that have not yet migrated to streaming via
+ * {@link #forEachChunk}:
+ * <ul>
+ *   <li>{@link #readChunkBatch(StoragePath)} — collect all chunks into a list</li>
+ *   <li>{@link #readChunkBatch(StoragePath, ChunkFieldFilter)} — collect with wire-level filtering</li>
+ *   <li>{@link #readLastSnapshot(StoragePath)} — read last snapshot via full materialization</li>
+ * </ul>
+ * New consumers should use {@link #forEachChunk} directly to avoid O(n) heap allocation.
  */
 public interface IBatchStorageRead extends IResource {
 
@@ -78,41 +101,39 @@ public interface IBatchStorageRead extends IResource {
     List<String> listRunIds(Instant afterTimestamp) throws IOException;
 
     /**
-     * Reads a chunk batch file by its physical storage path.
+     * Reads a chunk batch file by its physical storage path, returning all chunks as a list.
      * <p>
-     * Each chunk is a self-contained unit containing a snapshot and deltas.
+     * <strong>Legacy:</strong> This method materializes all chunks into memory. New consumers
+     * should use {@link #forEachChunk} to process chunks one at a time without O(n) heap.
+     * Will be removed once all consumers have migrated to streaming.
      * <p>
-     * This method:
-     * <ul>
-     *   <li>Decompresses the file automatically based on path extension</li>
-     *   <li>Parses length-delimited protobuf messages</li>
-     *   <li>Returns all chunks in the batch in original order</li>
-     * </ul>
-     * <p>
-     * <strong>Example usage (IndexerService with delta compression):</strong>
-     * <pre>
-     * StoragePath path = StoragePath.of(batchInfo.getStoragePath());
-     * List&lt;TickDataChunk&gt; chunks = storage.readChunkBatch(path);
-     * log.info("Read {} chunks from {}", chunks.size(), path);
-     * </pre>
+     * <strong>Default implementation:</strong> Collects all chunks from {@link #forEachChunk}
+     * into a list.
      *
      * @param path The physical storage path (includes compression extension)
      * @return List of all tick data chunks in the batch
      * @throws IOException If file doesn't exist or read fails
      * @throws IllegalArgumentException If path is null
      */
-    List<TickDataChunk> readChunkBatch(StoragePath path) throws IOException;
+    default List<TickDataChunk> readChunkBatch(StoragePath path) throws IOException {
+        List<TickDataChunk> result = new ArrayList<>();
+        try {
+            forEachChunk(path, ChunkFieldFilter.ALL, result::add);
+        } catch (IOException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IOException("Failed to read chunk batch: " + path, e);
+        }
+        return result;
+    }
 
     /**
-     * Reads the snapshot from the last chunk in a batch file, skipping all delta data.
+     * Reads the snapshot from the last chunk in a batch file.
      * <p>
-     * This method is optimized for resume operations where only the last snapshot is needed.
-     * By skipping delta fields at the wire format level during protobuf parsing, peak memory
-     * usage drops dramatically (e.g., from ~8 GB to ~500 MB for a 4000x3000 environment).
-     * <p>
-     * <strong>Default implementation:</strong> Parses the full batch and extracts the last
-     * snapshot. Concrete storage implementations should override this to skip delta bytes
-     * during parsing for true memory savings.
+     * <strong>Legacy:</strong> This default implementation streams all chunks via
+     * {@link #forEachChunk} and returns the last snapshot. Will be removed once all
+     * consumers have migrated to streaming. Resume operations should use
+     * {@link #forEachChunk} with a snapshot-only filter instead.
      *
      * @param path The physical storage path (includes compression extension)
      * @return The snapshot TickData from the last chunk in the batch
@@ -120,48 +141,28 @@ public interface IBatchStorageRead extends IResource {
      * @throws IllegalArgumentException If path is null
      */
     default TickData readLastSnapshot(StoragePath path) throws IOException {
-        List<TickDataChunk> chunks = readChunkBatch(path);
-        if (chunks.isEmpty()) {
+        TickData[] last = new TickData[1];
+        try {
+            forEachChunk(path, ChunkFieldFilter.ALL, chunk -> last[0] = chunk.getSnapshot());
+        } catch (IOException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IOException("Failed to read last snapshot: " + path, e);
+        }
+        if (last[0] == null) {
             throw new IOException("Empty batch file: " + path);
         }
-        return chunks.get(chunks.size() - 1).getSnapshot();
-    }
-
-    /**
-     * Reads a chunk batch from storage, applying a transformation to each chunk immediately
-     * after parsing — before the next chunk is parsed.
-     * <p>
-     * This method reduces peak memory usage when indexers only need a subset of each chunk's
-     * data. For example, the OrganismIndexer strips environment cell data (~672 MB per snapshot)
-     * from each chunk during parsing, so only the small organism-only representation (~2 MB)
-     * accumulates in the returned list.
-     * <p>
-     * <strong>Default implementation:</strong> Reads all chunks via {@link #readChunkBatch(StoragePath)},
-     * then applies the transformer. Concrete storage implementations should override this to apply
-     * the transformer during the parse loop for true memory savings.
-     *
-     * @param path             The physical storage path (includes compression extension)
-     * @param chunkTransformer Transformation applied to each chunk immediately after parsing
-     * @return List of transformed tick data chunks in the batch
-     * @throws IOException              If file doesn't exist or read fails
-     * @throws IllegalArgumentException If path or chunkTransformer is null
-     */
-    default List<TickDataChunk> readChunkBatch(StoragePath path, UnaryOperator<TickDataChunk> chunkTransformer) throws IOException {
-        List<TickDataChunk> chunks = readChunkBatch(path);
-        return chunks.stream().map(chunkTransformer).toList();
+        return last[0];
     }
 
     /**
      * Reads a chunk batch from storage, skipping heavy protobuf fields at the wire level.
      * <p>
-     * This method reduces peak memory by never allocating Java objects for the skipped fields.
-     * For example, with {@link ChunkFieldFilter#SKIP_ORGANISMS}, organism bytes (~730 MB per
-     * chunk) are discarded directly from the {@link com.google.protobuf.CodedInputStream}
-     * without deserialization.
+     * <strong>Legacy:</strong> This method materializes all filtered chunks into a list.
+     * New consumers should use {@link #forEachChunk} directly to apply wire-level filtering
+     * without O(n) heap allocation. Will be removed once all consumers have migrated to streaming.
      * <p>
-     * <strong>Default implementation:</strong> Ignores the filter and falls back to
-     * {@link #readChunkBatch(StoragePath)}. Concrete storage implementations should override
-     * this with wire-level field skipping for true memory savings.
+     * <strong>Default implementation:</strong> Collects chunks from {@code forEachChunk} into a list.
      *
      * @param path   The physical storage path (includes compression extension)
      * @param filter Controls which fields to skip during parsing
@@ -170,32 +171,15 @@ public interface IBatchStorageRead extends IResource {
      * @throws IllegalArgumentException If path or filter is null
      */
     default List<TickDataChunk> readChunkBatch(StoragePath path, ChunkFieldFilter filter) throws IOException {
-        return readChunkBatch(path);
-    }
-
-    /**
-     * Reads a chunk batch from storage, skipping heavy protobuf fields at the wire level
-     * and applying a transformation to each chunk immediately after parsing.
-     * <p>
-     * Combines {@link ChunkFieldFilter} (wire-level skip) with a chunk transformer
-     * (Java-level strip). Use this when an indexer needs both: skip a category of data
-     * entirely at the wire level, then strip additional small fields from the remaining data.
-     * <p>
-     * <strong>Default implementation:</strong> Reads with the filter, then applies the
-     * transformer. Concrete storage implementations should override this to apply the
-     * transformer during the parse loop for true memory savings.
-     *
-     * @param path             The physical storage path (includes compression extension)
-     * @param filter           Controls which fields to skip during parsing
-     * @param chunkTransformer Transformation applied to each chunk immediately after parsing
-     * @return List of transformed tick data chunks with filtered fields omitted
-     * @throws IOException              If file doesn't exist or read fails
-     * @throws IllegalArgumentException If path, filter, or chunkTransformer is null
-     */
-    default List<TickDataChunk> readChunkBatch(StoragePath path, ChunkFieldFilter filter,
-                                               UnaryOperator<TickDataChunk> chunkTransformer) throws IOException {
-        List<TickDataChunk> chunks = readChunkBatch(path, filter);
-        return chunks.stream().map(chunkTransformer).toList();
+        List<TickDataChunk> result = new ArrayList<>();
+        try {
+            forEachChunk(path, filter, result::add);
+        } catch (IOException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IOException("Failed to read chunk batch with filter " + filter + ": " + path, e);
+        }
+        return result;
     }
 
     /**
@@ -265,147 +249,109 @@ public interface IBatchStorageRead extends IResource {
     Optional<StoragePath> findMetadataPath(String runId) throws IOException;
 
     /**
-     * Lists batch files with pagination support (S3-compatible).
+     * Lists batch files within a tick range with pagination and configurable sort order.
      * <p>
-     * This method returns batch files matching the prefix, with support for iterating through
-     * large result sets without loading all filenames into memory. Results are sorted
-     * lexicographically by filename in ascending order (oldest first).
-     * <p>
-     * Only files matching the pattern "batch_*" are returned. The search is recursive through
-     * the hierarchical folder structure.
-     * <p>
-     * <strong>Example usage (DummyReaderService discovering files):</strong>
-     * <pre>
-     * String prefix = "sim123/";
-     * String token = null;
-     * do {
-     *     BatchFileListResult result = storage.listBatchFiles(prefix, token, 1000);
-     *     for (StoragePath path : result.getFilenames()) {
-     *         if (!processedFiles.contains(path)) {
-     *             List&lt;TickDataChunk&gt; chunks = storage.readChunkBatch(path);
-     *             // Process chunks...
-     *             processedFiles.add(path);
-     *         }
-     *     }
-     *     token = result.getNextContinuationToken();
-     * } while (result.isTruncated());
-     * </pre>
-     *
-     * @param prefix Filter prefix (e.g., "sim123/" for specific simulation, "" for all)
-     * @param continuationToken Token from previous call, or null for first page
-     * @param maxResults Maximum files to return per page (must be > 0, typical: 1000)
-     * @return Paginated result with filenames and continuation token
-     * @throws IOException If storage access fails
-     * @throws IllegalArgumentException If prefix is null or maxResults <= 0
-     */
-    BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults) throws IOException;
-
-    /**
-     * Lists batch files with pagination and configurable sort order.
-     * <p>
-     * This method is useful when only the most recent files are needed, such as finding
-     * the last checkpoint for resume operations. Using {@link SortOrder#DESCENDING} with
-     * {@code maxResults=1} efficiently returns just the last batch file without loading
-     * all filenames into memory.
+     * This is the single primitive listing operation. All convenience overloads delegate here.
+     * Returns batch files where the batch start tick falls within [{@code startTick}, {@code endTick}].
      * <p>
      * Only files matching the pattern "batch_*" are returned. The search is recursive through
      * the hierarchical folder structure.
      * <p>
-     * <strong>Example usage (SnapshotLoader finding last batch for resume):</strong>
-     * <pre>
-     * BatchFileListResult result = storage.listBatchFiles(
-     *     "sim123/raw/",
-     *     null,
-     *     1,
-     *     SortOrder.DESCENDING
-     * );
-     * if (!result.getFilenames().isEmpty()) {
-     *     StoragePath lastBatchPath = result.getFilenames().get(0);
-     *     // Resume from this checkpoint...
-     * }
-     * </pre>
+     * <strong>Sentinel values for "no filter":</strong>
+     * <ul>
+     *   <li>{@code startTick = 0} — no lower bound (ticks are always &ge; 0)</li>
+     *   <li>{@code endTick = Long.MAX_VALUE} — no upper bound</li>
+     * </ul>
      *
      * @param prefix Filter prefix (e.g., "sim123/" for specific simulation, "" for all)
      * @param continuationToken Token from previous call, or null for first page
-     * @param maxResults Maximum files to return per page (must be > 0)
+     * @param maxResults Maximum files to return per page (must be &gt; 0)
+     * @param startTick Minimum start tick (inclusive), 0 for no lower bound
+     * @param endTick Maximum start tick (inclusive), {@code Long.MAX_VALUE} for no upper bound
      * @param sortOrder Sort order for results ({@link SortOrder#ASCENDING} or {@link SortOrder#DESCENDING})
      * @return Paginated result with filenames and continuation token
      * @throws IOException If storage access fails
-     * @throws IllegalArgumentException If prefix is null, sortOrder is null, or maxResults <= 0
+     * @throws IllegalArgumentException If prefix is null, sortOrder is null, startTick &lt; 0,
+     *         endTick &lt; startTick, or maxResults &le; 0
      */
-    BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults, SortOrder sortOrder) throws IOException;
+    BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults,
+                                       long startTick, long endTick, SortOrder sortOrder) throws IOException;
 
     /**
-     * Lists batch files starting from a specific tick with pagination support.
+     * Convenience overload: lists all batch files with pagination, sorted ascending.
      * <p>
-     * Returns batch files where the batch start tick is greater than or equal to {@code startTick}.
-     * Results are sorted by start tick (ascending), enabling sequential processing.
+     * Delegates to {@link #listBatchFiles(String, String, int, long, long, SortOrder)}
+     * with no tick filtering and ascending sort order.
+     *
+     * @param prefix Filter prefix (e.g., "sim123/" for specific simulation, "" for all)
+     * @param continuationToken Token from previous call, or null for first page
+     * @param maxResults Maximum files to return per page (must be &gt; 0)
+     * @return Paginated result with filenames and continuation token
+     * @throws IOException If storage access fails
+     * @throws IllegalArgumentException If prefix is null or maxResults &le; 0
+     */
+    default BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults) throws IOException {
+        return listBatchFiles(prefix, continuationToken, maxResults, 0, Long.MAX_VALUE, SortOrder.ASCENDING);
+    }
+
+    /**
+     * Convenience overload: lists all batch files with pagination and configurable sort order.
      * <p>
-     * This method is optimized for both filesystem and S3:
-     * <ul>
-     *   <li>Filesystem: Efficient directory traversal with early termination after maxResults</li>
-     *   <li>S3: Pagination with server-side filtering by filename pattern</li>
-     * </ul>
+     * Delegates to {@link #listBatchFiles(String, String, int, long, long, SortOrder)}
+     * with no tick filtering.
+     *
+     * @param prefix Filter prefix (e.g., "sim123/" for specific simulation, "" for all)
+     * @param continuationToken Token from previous call, or null for first page
+     * @param maxResults Maximum files to return per page (must be &gt; 0)
+     * @param sortOrder Sort order for results ({@link SortOrder#ASCENDING} or {@link SortOrder#DESCENDING})
+     * @return Paginated result with filenames and continuation token
+     * @throws IOException If storage access fails
+     * @throws IllegalArgumentException If prefix is null, sortOrder is null, or maxResults &le; 0
+     */
+    default BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults,
+                                               SortOrder sortOrder) throws IOException {
+        return listBatchFiles(prefix, continuationToken, maxResults, 0, Long.MAX_VALUE, sortOrder);
+    }
+
+    /**
+     * Convenience overload: lists batch files starting from a specific tick, sorted ascending.
      * <p>
-     * <strong>Example usage (EnvironmentIndexer discovering new batches):</strong>
-     * <pre>
-     * long lastProcessedTick = 5000;
-     * String token = null;
-     * BatchFileListResult result = storage.listBatchFiles(
-     *     "sim123/",
-     *     token,
-     *     100,  // Process up to 100 batches per iteration
-     *     lastProcessedTick + samplingInterval  // Start from next expected tick
-     * );
-     * for (String filename : result.getFilenames()) {
-     *     // Process batch...
-     * }
-     * </pre>
+     * Delegates to {@link #listBatchFiles(String, String, int, long, long, SortOrder)}
+     * with no upper tick bound and ascending sort order.
      *
      * @param prefix Filter prefix (e.g., "sim123/" for specific simulation)
      * @param continuationToken Token from previous call, or null for first page
-     * @param maxResults Maximum files to return per page (must be > 0)
-     * @param startTick Minimum start tick (inclusive) - batches with startTick >= this value
+     * @param maxResults Maximum files to return per page (must be &gt; 0)
+     * @param startTick Minimum start tick (inclusive)
      * @return Paginated result with matching batch filenames, sorted by start tick
      * @throws IOException If storage access fails
-     * @throws IllegalArgumentException If prefix is null, startTick < 0, or maxResults <= 0
+     * @throws IllegalArgumentException If prefix is null, startTick &lt; 0, or maxResults &le; 0
      */
-    BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults, long startTick) throws IOException;
+    default BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults,
+                                               long startTick) throws IOException {
+        return listBatchFiles(prefix, continuationToken, maxResults, startTick, Long.MAX_VALUE, SortOrder.ASCENDING);
+    }
 
     /**
-     * Lists batch files within a tick range with pagination support.
+     * Convenience overload: lists batch files within a tick range, sorted ascending.
      * <p>
-     * Returns batch files where the batch start tick is greater than or equal to {@code startTick}
-     * and less than or equal to {@code endTick}. Results are sorted by start tick (ascending).
-     * <p>
-     * This method is optimized for both filesystem and S3:
-     * <ul>
-     *   <li>Filesystem: Efficient filtering with early termination when range exceeded</li>
-     *   <li>S3: Pagination with server-side filtering by filename pattern</li>
-     * </ul>
-     * <p>
-     * <strong>Example usage (analyze specific tick range):</strong>
-     * <pre>
-     * BatchFileListResult result = storage.listBatchFiles(
-     *     "sim123/",
-     *     null,   // continuationToken
-     *     100,    // maxResults
-     *     1000,   // startTick
-     *     5000    // endTick
-     * );
-     * // Process batches in range [1000, 5000]
-     * </pre>
+     * Delegates to {@link #listBatchFiles(String, String, int, long, long, SortOrder)}
+     * with ascending sort order.
      *
      * @param prefix Filter prefix (e.g., "sim123/" for specific simulation)
      * @param continuationToken Token from previous call, or null for first page
-     * @param maxResults Maximum files to return per page (must be > 0)
+     * @param maxResults Maximum files to return per page (must be &gt; 0)
      * @param startTick Minimum start tick (inclusive)
      * @param endTick Maximum start tick (inclusive)
      * @return Paginated result with matching batch filenames, sorted by start tick
      * @throws IOException If storage access fails
-     * @throws IllegalArgumentException If prefix is null, ticks invalid, or maxResults <= 0
+     * @throws IllegalArgumentException If prefix is null, startTick &lt; 0, endTick &lt; startTick,
+     *         or maxResults &le; 0
      */
-    BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults, long startTick, long endTick) throws IOException;
+    default BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults,
+                                               long startTick, long endTick) throws IOException {
+        return listBatchFiles(prefix, continuationToken, maxResults, startTick, endTick, SortOrder.ASCENDING);
+    }
 
     /**
      * Finds the last (most recent by tick number) batch file for a given run prefix.
@@ -424,8 +370,8 @@ public interface IBatchStorageRead extends IResource {
      * <pre>
      * Optional&lt;StoragePath&gt; lastBatch = storage.findLastBatchFile("sim123/raw/");
      * if (lastBatch.isPresent()) {
-     *     List&lt;TickDataChunk&gt; chunks = storage.readChunkBatch(lastBatch.get());
-     *     // Resume from last chunk...
+     *     TickData snapshot = storage.readLastSnapshot(lastBatch.get());
+     *     // Resume from snapshot...
      * }
      * </pre>
      *
@@ -435,4 +381,37 @@ public interface IBatchStorageRead extends IResource {
      * @throws IllegalArgumentException If runIdPrefix is null
      */
     Optional<StoragePath> findLastBatchFile(String runIdPrefix) throws IOException;
+
+    /**
+     * Streams chunks from a batch file one at a time, applying wire-level field filtering.
+     * <p>
+     * This is the primary read primitive for chunk data. Each chunk is parsed from the
+     * compressed protobuf stream, passed to the consumer, and discarded before the next
+     * chunk is parsed. Peak heap usage is O(chunkSize) regardless of how many chunks
+     * the batch file contains.
+     *
+     * @param path     The physical storage path (includes compression extension)
+     * @param filter   Controls which fields to skip during parsing
+     * @param consumer Callback invoked once per chunk with the filtered chunk
+     * @throws Exception              If reading, parsing, or the consumer callback fails
+     * @throws IllegalArgumentException If any parameter is null
+     */
+    void forEachChunk(StoragePath path, ChunkFieldFilter filter,
+                      CheckedConsumer<TickDataChunk> consumer) throws Exception;
+
+    /**
+     * Convenience overload: streams all chunks without field filtering.
+     * <p>
+     * Delegates to {@link #forEachChunk(StoragePath, ChunkFieldFilter, CheckedConsumer)}
+     * with {@link ChunkFieldFilter#ALL}.
+     *
+     * @param path     The physical storage path (includes compression extension)
+     * @param consumer Callback invoked once per chunk
+     * @throws Exception              If reading, parsing, or the consumer callback fails
+     * @throws IllegalArgumentException If any parameter is null
+     */
+    default void forEachChunk(StoragePath path,
+                              CheckedConsumer<TickDataChunk> consumer) throws Exception {
+        forEachChunk(path, ChunkFieldFilter.ALL, consumer);
+    }
 }

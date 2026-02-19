@@ -7,8 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.UnaryOperator;
-
+import org.evochora.datapipeline.api.resources.storage.CheckedConsumer;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.IMonitorable;
@@ -71,28 +70,9 @@ public class MonitoredBatchStorageReader implements IResourceBatchStorageRead, I
     }
 
     @Override
-    public BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults) throws IOException {
-        // Simple delegation - no metrics for now (can be added later if needed)
-        return delegate.listBatchFiles(prefix, continuationToken, maxResults);
-    }
-
-    @Override
-    public BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults, long startTick) throws IOException {
-        // Simple delegation - no metrics for now (can be added later if needed)
-        return delegate.listBatchFiles(prefix, continuationToken, maxResults, startTick);
-    }
-
-    @Override
-    public BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults, long startTick, long endTick) throws IOException {
-        // Simple delegation - no metrics for now (can be added later if needed)
-        return delegate.listBatchFiles(prefix, continuationToken, maxResults, startTick, endTick);
-    }
-
-    @Override
     public BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults,
-                                               SortOrder sortOrder) throws IOException {
-        // Simple delegation - no metrics for now (can be added later if needed)
-        return delegate.listBatchFiles(prefix, continuationToken, maxResults, sortOrder);
+                                               long startTick, long endTick, SortOrder sortOrder) throws IOException {
+        return delegate.listBatchFiles(prefix, continuationToken, maxResults, startTick, endTick, sortOrder);
     }
 
     @Override
@@ -100,91 +80,36 @@ public class MonitoredBatchStorageReader implements IResourceBatchStorageRead, I
         return delegate.findLastBatchFile(runIdPrefix);
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Delegates to the underlying storage with per-service read metrics (batch count, latency).
+     */
     @Override
-    public List<TickDataChunk> readChunkBatch(StoragePath path) throws IOException {
+    public void forEachChunk(StoragePath path, ChunkFieldFilter filter,
+                             CheckedConsumer<TickDataChunk> consumer) throws Exception {
         long startNanos = System.nanoTime();
         try {
-            List<TickDataChunk> result = delegate.readChunkBatch(path);
+            delegate.forEachChunk(path, filter, consumer);
 
-            // Update cumulative metrics
             batchesRead.incrementAndGet();
-            long bytes = result.stream().mapToLong(TickDataChunk::getSerializedSize).sum();
-            bytesRead.addAndGet(bytes);
-
-            // Record performance metrics
             long latencyNanos = System.nanoTime() - startNanos;
-            recordRead(bytes, latencyNanos);
-
-            return result;
+            recordRead(0, latencyNanos);
         } catch (IOException e) {
             readErrors.incrementAndGet();
             throw e;
         }
     }
 
-    @Override
-    public List<TickDataChunk> readChunkBatch(StoragePath path, UnaryOperator<TickDataChunk> chunkTransformer) throws IOException {
-        long startNanos = System.nanoTime();
-        try {
-            List<TickDataChunk> result = delegate.readChunkBatch(path, chunkTransformer);
+    // readChunkBatch overloads are defaults that delegate to forEachChunk, which IS monitored above.
 
-            // Update cumulative metrics
-            batchesRead.incrementAndGet();
-            long bytes = result.stream().mapToLong(TickDataChunk::getSerializedSize).sum();
-            bytesRead.addAndGet(bytes);
-
-            // Record performance metrics
-            long latencyNanos = System.nanoTime() - startNanos;
-            recordRead(bytes, latencyNanos);
-
-            return result;
-        } catch (IOException e) {
-            readErrors.incrementAndGet();
-            throw e;
-        }
-    }
-
-    @Override
-    public List<TickDataChunk> readChunkBatch(StoragePath path, ChunkFieldFilter filter) throws IOException {
-        long startNanos = System.nanoTime();
-        try {
-            List<TickDataChunk> result = delegate.readChunkBatch(path, filter);
-
-            batchesRead.incrementAndGet();
-            long bytes = result.stream().mapToLong(TickDataChunk::getSerializedSize).sum();
-            bytesRead.addAndGet(bytes);
-
-            long latencyNanos = System.nanoTime() - startNanos;
-            recordRead(bytes, latencyNanos);
-
-            return result;
-        } catch (IOException e) {
-            readErrors.incrementAndGet();
-            throw e;
-        }
-    }
-
-    @Override
-    public List<TickDataChunk> readChunkBatch(StoragePath path, ChunkFieldFilter filter,
-                                              UnaryOperator<TickDataChunk> chunkTransformer) throws IOException {
-        long startNanos = System.nanoTime();
-        try {
-            List<TickDataChunk> result = delegate.readChunkBatch(path, filter, chunkTransformer);
-
-            batchesRead.incrementAndGet();
-            long bytes = result.stream().mapToLong(TickDataChunk::getSerializedSize).sum();
-            bytesRead.addAndGet(bytes);
-
-            long latencyNanos = System.nanoTime() - startNanos;
-            recordRead(bytes, latencyNanos);
-
-            return result;
-        } catch (IOException e) {
-            readErrors.incrementAndGet();
-            throw e;
-        }
-    }
-
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Explicit override to route through the delegate's optimized implementation, which
+     * skips delta bytes at the wire level. The interface default would stream all chunks
+     * through {@link #forEachChunk}, parsing all fields unnecessarily.
+     */
     @Override
     public TickData readLastSnapshot(StoragePath path) throws IOException {
         long startNanos = System.nanoTime();

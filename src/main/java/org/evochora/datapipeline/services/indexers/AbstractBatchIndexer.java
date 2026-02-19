@@ -1,6 +1,8 @@
 package org.evochora.datapipeline.services.indexers;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -75,7 +77,14 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
     private final AtomicLong batchesProcessed = new AtomicLong(0);
     private final AtomicLong ticksProcessed = new AtomicLong(0);
     private final AtomicLong batchesMovedToDlq = new AtomicLong(0);
-    
+
+    // Streaming processing state (null/zero when useStreamingProcessing() returns false)
+    private final StreamingAckTracker<ACK> streamingTracker;
+    private final int streamingInsertBatchSize;
+    private final long streamingFlushTimeoutMs;
+    private int streamingUncommittedChunks;
+    private long streamingLastCommitTime;
+
     /**
      * Creates a new batch indexer.
      * <p>
@@ -94,13 +103,26 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         // Template method: Let subclass configure components
         this.components = createComponents();
         
-        // Automatically set topicPollTimeout to flushTimeout if buffering enabled
-        if (components != null && components.buffering != null) {
-            this.topicPollTimeoutMs = (int) components.buffering.getFlushTimeoutMs();
+        // Initialize streaming or traditional processing
+        if (useStreamingProcessing()) {
+            this.streamingInsertBatchSize = options.hasPath("insertBatchSize")
+                ? options.getInt("insertBatchSize") : 5;
+            this.streamingFlushTimeoutMs = options.hasPath("flushTimeoutMs")
+                ? options.getLong("flushTimeoutMs") : 5000L;
+            this.streamingTracker = new StreamingAckTracker<>();
+            this.streamingLastCommitTime = System.currentTimeMillis();
+            this.topicPollTimeoutMs = (int) this.streamingFlushTimeoutMs;
         } else {
-            this.topicPollTimeoutMs = options.hasPath("topicPollTimeoutMs") 
-                ? options.getInt("topicPollTimeoutMs") 
-                : 5000;
+            this.streamingInsertBatchSize = 0;
+            this.streamingFlushTimeoutMs = 0;
+            this.streamingTracker = null;
+            if (components != null && components.buffering != null) {
+                this.topicPollTimeoutMs = (int) components.buffering.getFlushTimeoutMs();
+            } else {
+                this.topicPollTimeoutMs = options.hasPath("topicPollTimeoutMs")
+                    ? options.getInt("topicPollTimeoutMs")
+                    : 5000;
+            }
         }
     }
     
@@ -337,8 +359,11 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
                 TopicMessage<BatchInfo, ACK> msg = topic.poll(topicPollTimeoutMs, TimeUnit.MILLISECONDS);
                 
                 if (msg == null) {
-                    // Check buffering component for timeout-based flush
-                    if (components != null && components.buffering != null 
+                    // Timeout-based commit (streaming) or flush (buffering)
+                    if (streamingTracker != null && streamingUncommittedChunks > 0
+                        && (System.currentTimeMillis() - streamingLastCommitTime) >= streamingFlushTimeoutMs) {
+                        streamingCommitAndAck();
+                    } else if (components != null && components.buffering != null
                         && components.buffering.shouldFlush()) {
                         flushAndAcknowledge();
                     }
@@ -348,8 +373,19 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
                 processBatchMessage(msg);
             }
         } finally {
-            // Final flush of remaining buffered ticks (always executed, even on interrupt!)
-            if (components != null && components.buffering != null 
+            // Final commit/flush of remaining data (always executed, even on interrupt!)
+            if (streamingTracker != null && streamingUncommittedChunks > 0) {
+                boolean wasInterrupted = Thread.interrupted();
+                try {
+                    streamingCommitAndAck();
+                } catch (Exception e) {
+                    throw e;
+                } finally {
+                    if (wasInterrupted) {
+                        Thread.currentThread().interrupt();
+                    }
+                }
+            } else if (components != null && components.buffering != null
                 && components.buffering.getBufferSize() > 0) {
                 // Clear interrupt flag temporarily to allow final flush to complete.
                 // H2 Database's internal locking mechanism fails if thread is interrupted
@@ -428,13 +464,19 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         }
         
         try {
-            // Read chunks from storage with wire-level field filtering and per-chunk transformation.
-            // The filter skips heavy fields at the protobuf wire level (never allocates Java objects).
-            // The transformer strips additional small fields after parsing.
-            // Both are applied DURING the parse loop, so only filtered+transformed chunks accumulate.
             StoragePath storagePath = StoragePath.of(batch.getStoragePath());
+
+            if (streamingTracker != null) {
+                // STREAMING path: process one chunk at a time via forEachChunk.
+                // DLQ retry reset and idempotency marking happen in streamingCommitAndAck()
+                // after the batch is actually committed.
+                processStreamingBatch(batch, batchId, storagePath, msg);
+                return;
+            }
+
+            // TRADITIONAL path: read all chunks into list, then flush
             List<TickDataChunk> chunks = storage.readChunkBatch(
-                storagePath, getChunkFieldFilter(), this::transformChunkForBuffering);
+                storagePath, getChunkFieldFilter());
 
             // Count total ticks across all chunks for metrics
             int totalTicks = chunks.stream().mapToInt(TickDataChunk::getTickCount).sum();
@@ -561,7 +603,79 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         // Yield to other threads/processes after flush to prevent system freezing
         Thread.yield();
     }
-    
+
+    /**
+     * Processes a batch using the streaming path.
+     * <p>
+     * Reads chunks one at a time via {@code forEachChunk}, calling {@link #processChunk}
+     * for each. Commits are triggered every {@code insertBatchSize} chunks. Batch completion
+     * and ACK tracking are managed by {@link StreamingAckTracker}.
+     *
+     * @param batch     The batch info from the topic message
+     * @param batchId   The batch identifier (storage path)
+     * @param path      The resolved storage path
+     * @param msg       The topic message to ACK after all chunks are committed
+     * @throws Exception if reading, processing, or committing fails
+     */
+    private void processStreamingBatch(BatchInfo batch, String batchId, StoragePath path,
+                                       TopicMessage<BatchInfo, ACK> msg) throws Exception {
+        streamingTracker.registerBatch(batchId, msg);
+
+        try {
+            storage.forEachChunk(path, getChunkFieldFilter(), chunk -> {
+                    processChunk(chunk);
+                    streamingTracker.onChunkProcessed(batchId, chunk.getTickCount());
+                    streamingUncommittedChunks++;
+
+                    if (streamingUncommittedChunks >= streamingInsertBatchSize) {
+                        streamingCommitAndAck();
+                    }
+                });
+
+            streamingTracker.completeBatch(batchId);
+
+            log.debug("Streamed batch: {}, ticks=[{}-{}]",
+                batch.getStoragePath(), batch.getTickStart(), batch.getTickEnd());
+        } catch (Exception e) {
+            streamingTracker.removeBatch(batchId);
+            throw e;
+        }
+    }
+
+    /**
+     * Commits processed chunks and acknowledges completed batches.
+     * <p>
+     * Called when the uncommitted chunk count reaches {@code insertBatchSize}, on poll
+     * timeout, or during shutdown. After committing, drains all fully completed batches
+     * from the tracker and ACKs their topic messages.
+     *
+     * @throws Exception if commit or ACK fails
+     */
+    private void streamingCommitAndAck() throws Exception {
+        commitProcessedChunks();
+        streamingTracker.onCommit();
+
+        for (StreamingAckTracker.CompletedBatch<ACK> completed : streamingTracker.drainCompleted()) {
+            @SuppressWarnings("unchecked")
+            TopicMessage<BatchInfo, ACK> batchMsg = (TopicMessage<BatchInfo, ACK>) completed.message();
+            topic.ack(batchMsg);
+            batchesProcessed.incrementAndGet();
+            ticksProcessed.addAndGet(completed.ticksProcessed());
+
+            if (components != null && components.idempotency != null) {
+                components.idempotency.markProcessed(completed.batchId());
+            }
+            if (components != null && components.dlq != null) {
+                components.dlq.resetRetryCount(completed.batchId());
+            }
+        }
+
+        streamingUncommittedChunks = 0;
+        streamingLastCommitTime = System.currentTimeMillis();
+
+        Thread.yield();
+    }
+
     /**
      * Gets the simulation metadata.
      * <p>
@@ -655,7 +769,58 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
     protected ChunkFieldFilter getChunkFieldFilter() {
         return ChunkFieldFilter.ALL;
     }
-    
+
+    /**
+     * Indicates whether this indexer uses streaming chunk processing.
+     * <p>
+     * When enabled, chunks are processed one at a time via {@link #processChunk(TickDataChunk)}
+     * instead of being accumulated into a list. This reduces peak heap usage from
+     * O(n &times; chunkSize) to O(chunkSize) by never holding more than one parsed chunk
+     * in memory.
+     * <p>
+     * Streaming indexers must also override {@link #processChunk(TickDataChunk)} and
+     * {@link #commitProcessedChunks()}.
+     * <p>
+     * <strong>Default:</strong> Returns {@code false} (traditional list-based processing).
+     *
+     * @return {@code true} to use streaming processing, {@code false} for traditional processing
+     */
+    protected boolean useStreamingProcessing() {
+        return false;
+    }
+
+    /**
+     * Processes a single chunk during streaming processing.
+     * <p>
+     * Called once per chunk during {@code forEachChunk} iteration. Implementations should
+     * write the chunk's data to the database without committing — commits are handled by
+     * {@link #commitProcessedChunks()} based on {@code insertBatchSize}.
+     * <p>
+     * Only called when {@link #useStreamingProcessing()} returns {@code true}.
+     *
+     * @param chunk The filtered and transformed chunk to process
+     * @throws Exception if processing fails
+     */
+    protected void processChunk(TickDataChunk chunk) throws Exception {
+        throw new UnsupportedOperationException(
+            getClass().getSimpleName() + " must override processChunk() when useStreamingProcessing() returns true");
+    }
+
+    /**
+     * Commits all chunks processed since the last commit.
+     * <p>
+     * Called when {@code insertBatchSize} chunks have been processed, on timeout, or
+     * during shutdown. Implementations should commit all accumulated database writes.
+     * <p>
+     * Only called when {@link #useStreamingProcessing()} returns {@code true}.
+     *
+     * @throws Exception if commit fails
+     */
+    protected void commitProcessedChunks() throws Exception {
+        throw new UnsupportedOperationException(
+            getClass().getSimpleName() + " must override commitProcessedChunks() when useStreamingProcessing() returns true");
+    }
+
     /**
      * Adds batch indexer metrics to the metrics map.
      * <p>
@@ -672,6 +837,134 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         metrics.put("batches_moved_to_dlq", batchesMovedToDlq.get());
     }
     
+    /**
+     * Tracks batch completion and commit progress for streaming processing.
+     * <p>
+     * Manages the relationship between chunk processing, commits, and batch ACKs.
+     * A batch can only be ACKed when all its chunks are both processed AND committed.
+     * <p>
+     * <strong>Thread Safety:</strong> Not thread-safe. Used only from the single service thread.
+     *
+     * @param <ACK> The acknowledgment token type
+     */
+    static class StreamingAckTracker<ACK> {
+
+        private final List<PendingBatch<ACK>> pending = new ArrayList<>();
+
+        /**
+         * Registers a new batch for tracking.
+         *
+         * @param batchId The batch identifier
+         * @param msg     The topic message to ACK when the batch is fully committed
+         */
+        void registerBatch(String batchId, TopicMessage<?, ACK> msg) {
+            pending.add(new PendingBatch<>(batchId, msg));
+        }
+
+        /**
+         * Records that a chunk from the specified batch has been processed.
+         *
+         * @param batchId   The batch identifier
+         * @param tickCount Number of ticks in the processed chunk
+         */
+        void onChunkProcessed(String batchId, int tickCount) {
+            PendingBatch<ACK> batch = findBatch(batchId);
+            batch.chunksProcessed++;
+            batch.ticksProcessed += tickCount;
+        }
+
+        /**
+         * Marks a batch as complete (all chunks have been streamed from storage).
+         *
+         * @param batchId The batch identifier
+         */
+        void completeBatch(String batchId) {
+            findBatch(batchId).complete = true;
+        }
+
+        /**
+         * Records that a commit has occurred, advancing the committed chunk count
+         * for all pending batches to match their processed chunk count.
+         */
+        void onCommit() {
+            for (PendingBatch<ACK> b : pending) {
+                b.chunksCommitted = b.chunksProcessed;
+            }
+        }
+
+        /**
+         * Removes a batch from tracking (used on processing failure).
+         *
+         * @param batchId The batch identifier to remove
+         */
+        void removeBatch(String batchId) {
+            Iterator<PendingBatch<ACK>> it = pending.iterator();
+            while (it.hasNext()) {
+                if (it.next().batchId.equals(batchId)) {
+                    it.remove();
+                    return;
+                }
+            }
+        }
+
+        /**
+         * Drains completed batches from the front of the pending list.
+         * <p>
+         * A batch is complete when all chunks have been streamed ({@code complete == true})
+         * and all processed chunks have been committed ({@code chunksCommitted >= chunksProcessed}).
+         * Stops at the first incomplete batch to preserve processing order.
+         *
+         * @return List of completed batches (removed from pending)
+         */
+        List<CompletedBatch<ACK>> drainCompleted() {
+            List<CompletedBatch<ACK>> completed = new ArrayList<>();
+            Iterator<PendingBatch<ACK>> it = pending.iterator();
+            while (it.hasNext()) {
+                PendingBatch<ACK> b = it.next();
+                if (b.complete && b.chunksCommitted >= b.chunksProcessed) {
+                    completed.add(new CompletedBatch<>(b.batchId, b.message, b.ticksProcessed));
+                    it.remove();
+                } else {
+                    break;
+                }
+            }
+            return completed;
+        }
+
+        /**
+         * Completed batch information for ACK processing.
+         *
+         * @param batchId        The batch identifier
+         * @param message        The topic message to ACK
+         * @param ticksProcessed Total ticks processed in this batch
+         * @param <ACK>          The acknowledgment token type
+         */
+        record CompletedBatch<ACK>(String batchId, TopicMessage<?, ACK> message, int ticksProcessed) {}
+
+        private PendingBatch<ACK> findBatch(String batchId) {
+            for (int i = pending.size() - 1; i >= 0; i--) {
+                if (pending.get(i).batchId.equals(batchId)) {
+                    return pending.get(i);
+                }
+            }
+            throw new IllegalStateException("Unknown batch: " + batchId);
+        }
+
+        private static class PendingBatch<ACK> {
+            final String batchId;
+            final TopicMessage<?, ACK> message;
+            int chunksProcessed;
+            int chunksCommitted;
+            boolean complete;
+            int ticksProcessed;
+
+            PendingBatch(String batchId, TopicMessage<?, ACK> msg) {
+                this.batchId = batchId;
+                this.message = msg;
+            }
+        }
+    }
+
     /**
      * Component configuration for batch indexers.
      * <p>
