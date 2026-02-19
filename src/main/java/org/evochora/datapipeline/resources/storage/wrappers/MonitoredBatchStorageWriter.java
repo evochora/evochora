@@ -66,28 +66,6 @@ public class MonitoredBatchStorageWriter implements IBatchStorageWrite, IWrapped
     }
 
     @Override
-    public StoragePath writeChunkBatch(List<TickDataChunk> batch, long firstTick, long lastTick) throws IOException {
-        long startNanos = System.nanoTime();
-        try {
-            StoragePath path = delegate.writeChunkBatch(batch, firstTick, lastTick);
-
-            // Update cumulative metrics
-            batchesWritten.incrementAndGet();
-            long bytes = batch.stream().mapToLong(TickDataChunk::getSerializedSize).sum();
-            bytesWritten.addAndGet(bytes);
-
-            // Record performance metrics
-            long latencyNanos = System.nanoTime() - startNanos;
-            recordWrite(batch.size(), bytes, latencyNanos);
-
-            return path;
-        } catch (IOException e) {
-            writeErrors.incrementAndGet();
-            throw e;
-        }
-    }
-
-    @Override
     public <T extends MessageLite> StoragePath writeMessage(String key, T message) throws IOException {
         long startNanos = System.nanoTime();
         try {

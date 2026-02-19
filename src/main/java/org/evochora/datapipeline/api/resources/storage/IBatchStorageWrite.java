@@ -34,36 +34,24 @@ public interface IBatchStorageWrite extends IResource {
     /**
      * Writes a batch of tick data chunks to storage with automatic folder organization.
      * <p>
-     * Each chunk is a self-contained unit containing a snapshot and deltas.
-     * <p>
-     * The batch is:
-     * <ul>
-     *   <li>Compressed according to storage configuration</li>
-     *   <li>Written to appropriate folder based on firstTick</li>
-     *   <li>Atomically committed (temp file → final file)</li>
-     * </ul>
+     * Delegates to {@link #writeChunkBatchStreaming(Iterator)} which handles folder path
+     * calculation, compression, and atomic write. The {@code firstTick} and {@code lastTick}
+     * parameters are ignored — tick range is derived from the chunks during iteration.
      * <p>
      * The returned {@link StoragePath} represents the physical path including compression
      * extension (e.g., ".zst" for Zstandard). This path can be passed directly to
      * {@link IBatchStorageRead#readChunkBatch(StoragePath)} for reading.
-     * <p>
-     * <strong>Example usage (PersistenceService with delta compression):</strong>
-     * <pre>
-     * List&lt;TickDataChunk&gt; chunks = queue.drainTo(maxBatchSize);
-     * long firstTick = chunks.get(0).getFirstTick();
-     * long lastTick = chunks.get(chunks.size() - 1).getLastTick();
-     * StoragePath path = storage.writeChunkBatch(chunks, firstTick, lastTick);
-     * log.info("Wrote {} chunks ({} ticks) to {}", chunks.size(), totalTicks, path);
-     * </pre>
      *
      * @param batch The tick data chunks to persist (must be non-empty)
-     * @param firstTick The first tick number in the batch (from first chunk)
-     * @param lastTick The last tick number in the batch (from last chunk)
+     * @param firstTick ignored (derived from chunks)
+     * @param lastTick ignored (derived from chunks)
      * @return The physical storage path where batch was written (includes compression extension)
      * @throws IOException If write fails
-     * @throws IllegalArgumentException If batch is empty or tick order is invalid (firstTick > lastTick)
+     * @throws IllegalArgumentException If batch is empty
      */
-    StoragePath writeChunkBatch(List<TickDataChunk> batch, long firstTick, long lastTick) throws IOException;
+    default StoragePath writeChunkBatch(List<TickDataChunk> batch, long firstTick, long lastTick) throws IOException {
+        return writeChunkBatchStreaming(batch.iterator()).path();
+    }
 
     /**
      * Writes a single protobuf message to storage at the specified key.
