@@ -873,16 +873,24 @@ public class H2Database extends AbstractDatabaseResource
                 stmt.execute("SHUTDOWN IMMEDIATELY");
                 log.info("H2 database '{}' shutdown immediately executed", getResourceName());
             } catch (SQLException e) {
-                if (e.getErrorCode() == 90121) {
+                // 90121 = "Database is already closed" (normal auto-close)
+                // 90098 = "The database has been closed" (MVStore I/O error killed the database)
+                if (e.getErrorCode() == 90121 || e.getErrorCode() == 90098) {
                     log.debug("H2 database '{}' already closed", getResourceName());
                 } else {
                     log.warn("H2 database '{}' SHUTDOWN IMMEDIATELY failed: {}",
                         getResourceName(), e.getMessage());
                 }
+                // Database is dead or already closed — don't attempt more SQL operations.
+                // Just close wrappers (releasing pooled connections) and force-close the pool.
+                closeAllWrappers();
+                dataSource.close();
+                log.debug("H2 database '{}' connection pool force-closed", getResourceName());
+                return;
             }
         }
 
-        // Now close wrappers and pool (connections already closed by SHUTDOWN IMMEDIATELY)
+        // Normal path: SHUTDOWN IMMEDIATELY succeeded — close wrappers and pool
         super.close();
     }
     
