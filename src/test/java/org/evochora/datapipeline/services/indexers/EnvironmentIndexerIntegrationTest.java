@@ -529,7 +529,7 @@ class EnvironmentIndexerIntegrationTest {
         ResourceContext storageWriteContext = new ResourceContext("test", "storage-port", "storage-write", "test-storage", Map.of("simulationRunId", runId));
         IBatchStorageWrite storageWriter = (IBatchStorageWrite) testStorage.getWrappedResource(storageWriteContext);
         
-        StoragePath batchPath = storageWriter.writeChunkBatch(chunks, firstTick, lastTick);
+        StoragePath batchPath = storageWriter.writeChunkBatchStreaming(chunks.iterator()).path();
         // Note: IBatchStorageWrite does not implement AutoCloseable - no close() needed
         
         // Send batch notification to topic

@@ -305,9 +305,9 @@ class DummyIndexerIntegrationTest {
         List<TickDataChunk> chunks2 = createTestChunks(runId, 10, 10);
         List<TickDataChunk> chunks3 = createTestChunks(runId, 20, 10);
         
-        StoragePath key1 = testStorage.writeChunkBatch(chunks1, 0, 9);
-        StoragePath key2 = testStorage.writeChunkBatch(chunks2, 10, 19);
-        StoragePath key3 = testStorage.writeChunkBatch(chunks3, 20, 29);
+        StoragePath key1 = testStorage.writeChunkBatchStreaming(chunks1.iterator()).path();
+        StoragePath key2 = testStorage.writeChunkBatchStreaming(chunks2.iterator()).path();
+        StoragePath key3 = testStorage.writeChunkBatchStreaming(chunks3.iterator()).path();
         
         // Create indexer with real topic (not mock!)
         Config config = ConfigFactory.parseString("""
@@ -358,9 +358,9 @@ class DummyIndexerIntegrationTest {
         List<TickDataChunk> chunks2 = createTestChunks(runId, 100, 100);
         List<TickDataChunk> chunks3 = createTestChunks(runId, 200, 100);
         
-        StoragePath key1 = testStorage.writeChunkBatch(chunks1, 0, 99);
-        StoragePath key2 = testStorage.writeChunkBatch(chunks2, 100, 199);
-        StoragePath key3 = testStorage.writeChunkBatch(chunks3, 200, 299);
+        StoragePath key1 = testStorage.writeChunkBatchStreaming(chunks1.iterator()).path();
+        StoragePath key2 = testStorage.writeChunkBatchStreaming(chunks2.iterator()).path();
+        StoragePath key3 = testStorage.writeChunkBatchStreaming(chunks3.iterator()).path();
         
         // Create indexer WITH buffering (insertBatchSize=3 chunks)
         Config config = ConfigFactory.parseString("""
@@ -401,7 +401,7 @@ class DummyIndexerIntegrationTest {
         
         // Write one chunk (< insertBatchSize of 10 chunks)
         List<TickDataChunk> chunks1 = createTestChunks(runId, 0, 50);
-        StoragePath key1 = testStorage.writeChunkBatch(chunks1, 0, 49);
+        StoragePath key1 = testStorage.writeChunkBatchStreaming(chunks1.iterator()).path();
         
         // Create indexer with short flush timeout (insertBatchSize=10 chunks, but only 1 chunk sent)
         Config config = ConfigFactory.parseString("""
@@ -443,11 +443,11 @@ class DummyIndexerIntegrationTest {
         List<TickDataChunk> chunks4 = createTestChunks(runId, 300, 100);
         List<TickDataChunk> chunks5 = createTestChunks(runId, 400, 100);
         
-        StoragePath key1 = testStorage.writeChunkBatch(chunks1, 0, 99);
-        StoragePath key2 = testStorage.writeChunkBatch(chunks2, 100, 199);
-        StoragePath key3 = testStorage.writeChunkBatch(chunks3, 200, 299);
-        StoragePath key4 = testStorage.writeChunkBatch(chunks4, 300, 399);
-        StoragePath key5 = testStorage.writeChunkBatch(chunks5, 400, 499);
+        StoragePath key1 = testStorage.writeChunkBatchStreaming(chunks1.iterator()).path();
+        StoragePath key2 = testStorage.writeChunkBatchStreaming(chunks2.iterator()).path();
+        StoragePath key3 = testStorage.writeChunkBatchStreaming(chunks3.iterator()).path();
+        StoragePath key4 = testStorage.writeChunkBatchStreaming(chunks4.iterator()).path();
+        StoragePath key5 = testStorage.writeChunkBatchStreaming(chunks5.iterator()).path();
         
         Config config = ConfigFactory.parseString("""
             runId = "%s"
@@ -499,9 +499,9 @@ class DummyIndexerIntegrationTest {
         List<TickDataChunk> chunks2 = createTestChunks(runId, 100, 100);
         List<TickDataChunk> chunks3 = createTestChunks(runId, 200, 100);
         
-        StoragePath key1 = testStorage.writeChunkBatch(chunks1, 0, 99);
-        StoragePath key2 = testStorage.writeChunkBatch(chunks2, 100, 199);
-        StoragePath key3 = testStorage.writeChunkBatch(chunks3, 200, 299);
+        StoragePath key1 = testStorage.writeChunkBatchStreaming(chunks1.iterator()).path();
+        StoragePath key2 = testStorage.writeChunkBatchStreaming(chunks2.iterator()).path();
+        StoragePath key3 = testStorage.writeChunkBatchStreaming(chunks3.iterator()).path();
         
         Config config = ConfigFactory.parseString("""
             runId = "%s"

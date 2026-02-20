@@ -181,9 +181,7 @@ class PersistenceServiceTest {
         await().atMost(5, TimeUnit.SECONDS)
             .until(() -> service.getMetrics().get("batches_written").longValue() > 0);
 
-        // Verify streaming write was called (not the old batch write)
         verify(mockStorage).writeChunkBatchStreaming(any());
-        verify(mockStorage, never()).writeChunkBatch(any(), anyLong(), anyLong());
 
         assertEquals(1, service.getMetrics().get("batches_written").longValue());
         assertEquals(3, service.getMetrics().get("ticks_written").longValue());

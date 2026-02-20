@@ -96,7 +96,7 @@ class ResumeIntegrationTest {
         storage.writeMessage(TEST_RUN_ID + "/raw/metadata.pb", metadata);
 
         TickDataChunk chunk = createTestChunk(1, 50);
-        storage.writeChunkBatch(List.of(chunk), 1, 50);
+        storage.writeChunkBatchStreaming(List.of(chunk).iterator());
 
         // Load checkpoint
         SnapshotLoader loader = new SnapshotLoader(storage);
@@ -126,7 +126,7 @@ class ResumeIntegrationTest {
 
         // Create chunk with accumulated deltas at tick 20 and 40
         TickDataChunk chunk = createTestChunkWithAccumulatedDeltas(1, 50);
-        storage.writeChunkBatch(List.of(chunk), 1, 50);
+        storage.writeChunkBatchStreaming(List.of(chunk).iterator());
 
         // Load checkpoint
         SnapshotLoader loader = new SnapshotLoader(storage);
@@ -149,7 +149,7 @@ class ResumeIntegrationTest {
         storage.writeMessage(TEST_RUN_ID + "/raw/metadata.pb", metadata);
 
         TickDataChunk chunk = createTestChunk(1, 50);
-        storage.writeChunkBatch(List.of(chunk), 1, 50);
+        storage.writeChunkBatchStreaming(List.of(chunk).iterator());
 
         // Load checkpoint
         SnapshotLoader loader = new SnapshotLoader(storage);
@@ -174,7 +174,7 @@ class ResumeIntegrationTest {
         storage.writeMessage(TEST_RUN_ID + "/raw/metadata.pb", metadata);
 
         TickDataChunk chunk = createTestChunk(1, 50);
-        storage.writeChunkBatch(List.of(chunk), 1, 50);
+        storage.writeChunkBatchStreaming(List.of(chunk).iterator());
 
         // Load checkpoint and restore
         SnapshotLoader loader = new SnapshotLoader(storage);
@@ -206,8 +206,8 @@ class ResumeIntegrationTest {
         TickDataChunk chunk1 = createTestChunk(1, 50);
         TickDataChunk chunk2 = createTestChunkWithAccumulatedDeltas(51, 100);
 
-        storage.writeChunkBatch(List.of(chunk1), 1, 50);
-        storage.writeChunkBatch(List.of(chunk2), 51, 100);
+        storage.writeChunkBatchStreaming(List.of(chunk1).iterator());
+        storage.writeChunkBatchStreaming(List.of(chunk2).iterator());
 
         // Load checkpoint
         SnapshotLoader loader = new SnapshotLoader(storage);

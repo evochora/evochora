@@ -591,7 +591,7 @@ class AnalyticsIndexerEndToEndTest {
             chunks.add(chunk);
         }
         
-        return testStorage.writeChunkBatch(chunks, firstTick, lastTick);
+        return testStorage.writeChunkBatchStreaming(chunks.iterator()).path();
     }
 
     private void sendBatchInfoToTopic(String runId, String storageKey, long tickStart, long tickEnd) throws Exception {

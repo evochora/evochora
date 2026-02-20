@@ -103,9 +103,9 @@ class FileSystemStorageResourceTest {
     @Test
     void testListBatchFiles_Success() throws IOException {
         // Write 3 batch files for test-sim using chunks
-        storage.writeChunkBatch(List.of(createChunk(1, 2, 2)), 1, 2);
-        storage.writeChunkBatch(List.of(createChunk(10, 20, 11)), 10, 20);
-        storage.writeChunkBatch(List.of(createChunk(100, 200, 101)), 100, 200);
+        storage.writeChunkBatchStreaming(List.of(createChunk(1, 2, 2)).iterator());
+        storage.writeChunkBatchStreaming(List.of(createChunk(10, 20, 11)).iterator());
+        storage.writeChunkBatchStreaming(List.of(createChunk(100, 200, 101)).iterator());
 
         // List all batches for test-sim
         BatchFileListResult result = storage.listBatchFiles("test-sim/", null, 10);
@@ -123,7 +123,7 @@ class FileSystemStorageResourceTest {
         for(int i=0; i<10; i++) {
             batch.add(createChunk(i * 10, i * 10 + 9, 10));
         }
-        StoragePath batchPath = storage.writeChunkBatch(batch, 0, 99);
+        StoragePath batchPath = storage.writeChunkBatchStreaming(batch.iterator()).path();
 
         // Read the batch concurrently from 10 threads
         int numThreads = 10;
@@ -382,7 +382,7 @@ class FileSystemStorageResourceTest {
         List<TickDataChunk> batch = List.of(chunk1, chunk2);
 
         // Write
-        StoragePath path = storage.writeChunkBatch(batch, 0, 19);
+        StoragePath path = storage.writeChunkBatchStreaming(batch.iterator()).path();
         assertNotNull(path);
         assertTrue(path.asString().contains("test-sim"));
         assertTrue(path.asString().contains("batch_"));
@@ -397,7 +397,7 @@ class FileSystemStorageResourceTest {
     @Test
     void testWriteChunkBatch_EmptyBatch_Throws() {
         assertThrows(IllegalArgumentException.class, 
-                () -> storage.writeChunkBatch(List.of(), 0, 0));
+                () -> storage.writeChunkBatchStreaming(List.<TickDataChunk>of().iterator()));
     }
 
     @Test
@@ -420,10 +420,10 @@ class FileSystemStorageResourceTest {
         // Create two batch files manually with same firstTick (0) but different lastTick
         // File 1: batch_0_9 (the complete file before crash)
         TickDataChunk chunk1 = createChunk(0, 9, 10);
-        storage.writeChunkBatch(List.of(chunk1), 0, 9);
+        storage.writeChunkBatchStreaming(List.of(chunk1).iterator());
 
         // File 2: batch_0_19 (partial file from crash - simulated by writing directly)
-        // We need to manually create this file since writeChunkBatch would use different folder
+        // We need to manually create this file since writeChunkBatchStreaming would use different folder
         File batchDir = new File(tempDir.toFile(), "test-sim/raw/000/000");
         batchDir.mkdirs();
         File duplicateFile = new File(batchDir, "batch_0000000000000000000_0000000000000000019.pb");
@@ -449,9 +449,9 @@ class FileSystemStorageResourceTest {
         TickDataChunk chunk2 = createChunk(10, 19, 10);
         TickDataChunk chunk3 = createChunk(20, 29, 10);
 
-        storage.writeChunkBatch(List.of(chunk1), 0, 9);
-        storage.writeChunkBatch(List.of(chunk2), 10, 19);
-        storage.writeChunkBatch(List.of(chunk3), 20, 29);
+        storage.writeChunkBatchStreaming(List.of(chunk1).iterator());
+        storage.writeChunkBatchStreaming(List.of(chunk2).iterator());
+        storage.writeChunkBatchStreaming(List.of(chunk3).iterator());
 
         // List batch files - should return all 3
         BatchFileListResult result = storage.listBatchFiles("test-sim/", null, 10);
@@ -470,9 +470,9 @@ class FileSystemStorageResourceTest {
         TickDataChunk chunk2 = createChunk(10, 19, 10);
         TickDataChunk chunk3 = createChunk(100, 109, 10);
 
-        storage.writeChunkBatch(List.of(chunk1), 0, 9);
-        storage.writeChunkBatch(List.of(chunk2), 10, 19);
-        StoragePath lastPath = storage.writeChunkBatch(List.of(chunk3), 100, 109);
+        storage.writeChunkBatchStreaming(List.of(chunk1).iterator());
+        storage.writeChunkBatchStreaming(List.of(chunk2).iterator());
+        StoragePath lastPath = storage.writeChunkBatchStreaming(List.of(chunk3).iterator()).path();
 
         // Find last batch file
         java.util.Optional<org.evochora.datapipeline.api.resources.storage.StoragePath> found =
@@ -518,9 +518,9 @@ class FileSystemStorageResourceTest {
         TickDataChunk chunk2 = createChunk(100_000, 100_009, 10); // -> 000/001
         TickDataChunk chunk3 = createChunk(100_000_000, 100_000_009, 10); // -> 001/000
 
-        storage.writeChunkBatch(List.of(chunk1), 0, 9);
-        storage.writeChunkBatch(List.of(chunk2), 100_000, 100_009);
-        StoragePath lastPath = storage.writeChunkBatch(List.of(chunk3), 100_000_000, 100_000_009);
+        storage.writeChunkBatchStreaming(List.of(chunk1).iterator());
+        storage.writeChunkBatchStreaming(List.of(chunk2).iterator());
+        StoragePath lastPath = storage.writeChunkBatchStreaming(List.of(chunk3).iterator()).path();
 
         // Find last batch file - should be in folder 001/000
         java.util.Optional<org.evochora.datapipeline.api.resources.storage.StoragePath> found =
@@ -535,7 +535,7 @@ class FileSystemStorageResourceTest {
     void testFindLastBatchFile_EmptySubdirectory_BacktracksToNextFolder() throws IOException {
         // Write batch to 000/000
         TickDataChunk chunk = createChunk(0, 9, 10);
-        StoragePath expectedPath = storage.writeChunkBatch(List.of(chunk), 0, 9);
+        StoragePath expectedPath = storage.writeChunkBatchStreaming(List.of(chunk).iterator()).path();
 
         // Create empty folder 000/001 (higher numbered but empty)
         File emptyHigherFolder = new File(tempDir.toFile(), "test-sim/raw/000/001");
@@ -556,7 +556,7 @@ class FileSystemStorageResourceTest {
     void testFindLastBatchFile_Deduplication_PrefersSmallerLastTick() throws IOException {
         // Write a normal batch file
         TickDataChunk chunk1 = createChunk(100, 109, 10);
-        storage.writeChunkBatch(List.of(chunk1), 100, 109);
+        storage.writeChunkBatchStreaming(List.of(chunk1).iterator());
 
         // Manually create a duplicate file with same firstTick but larger lastTick
         // (simulates crash scenario)
@@ -580,7 +580,7 @@ class FileSystemStorageResourceTest {
     void testFindLastBatchFile_IgnoresTmpFiles() throws IOException {
         // Write a normal batch file
         TickDataChunk chunk = createChunk(0, 9, 10);
-        StoragePath normalPath = storage.writeChunkBatch(List.of(chunk), 0, 9);
+        StoragePath normalPath = storage.writeChunkBatchStreaming(List.of(chunk).iterator()).path();
 
         // Create a .tmp file that would sort higher
         File batchDir = new File(tempDir.toFile(), "test-sim/raw/000/000");

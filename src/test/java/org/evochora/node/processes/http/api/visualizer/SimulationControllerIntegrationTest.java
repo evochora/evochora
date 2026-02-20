@@ -378,7 +378,7 @@ class SimulationControllerIntegrationTest {
         var storageWriter = testStorage.getWrappedResource(storageWriteContext);
         var batchWriter = (org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite) storageWriter;
 
-        StoragePath batchPath = batchWriter.writeChunkBatch(chunks, firstTick, lastTick);
+        StoragePath batchPath = batchWriter.writeChunkBatchStreaming(chunks.iterator()).path();
 
         // Send batch notification to topic
         ResourceContext topicWriteContext = new ResourceContext("test", "topic-port", "topic-write", "batch-topic", Map.of());
