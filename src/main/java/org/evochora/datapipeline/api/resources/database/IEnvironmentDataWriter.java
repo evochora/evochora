@@ -1,9 +1,6 @@
 package org.evochora.datapipeline.api.resources.database;
 
 import java.sql.SQLException;
-import java.util.List;
-
-import org.evochora.datapipeline.api.contracts.TickDataChunk;
 
 /**
  * Database capability for writing environment data as chunks.
@@ -56,29 +53,6 @@ public interface IEnvironmentDataWriter extends AutoCloseable {
      * @throws SQLException if table creation fails
      */
     void createEnvironmentDataTable(int dimensions) throws SQLException;
-    
-    /**
-     * Writes environment chunks using MERGE for idempotency.
-     * <p>
-     * All chunks are written in one JDBC batch with one commit for maximum performance.
-     * Each chunk is stored as a serialized BLOB without decompression.
-     * <p>
-     * Each chunk is identified by first_tick and written with MERGE:
-     * <ul>
-     *   <li>If chunk exists: UPDATE (overwrite with new data)</li>
-     *   <li>If chunk missing: INSERT</li>
-     * </ul>
-     * <p>
-     * This ensures 100% idempotency even with topic redeliveries.
-     * <p>
-     * <strong>Performance:</strong> All chunks written in one JDBC batch with one commit.
-     * This reduces commit overhead by ~1000× compared to per-chunk commits.
-     *
-     * @param chunks List of chunks to write
-     * @throws SQLException if database write fails
-     */
-    @Deprecated
-    void writeEnvironmentChunks(List<TickDataChunk> chunks) throws SQLException;
     
     /**
      * Writes a single raw environment chunk (uncompressed protobuf bytes) to storage.

@@ -2,7 +2,6 @@ package org.evochora.datapipeline.resources.database.h2;
 
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.util.List;
 
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
@@ -60,24 +59,6 @@ public interface IH2EnvStorageStrategy {
      */
     String getMergeSql();
     
-    /**
-     * Writes a batch of chunks to the database.
-     * <p>
-     * <strong>Transaction Management:</strong> This method is executed within a transaction
-     * managed by the caller (H2Database). Implementations should <strong>NOT</strong> call
-     * {@code commit()} or {@code rollback()} themselves. If an exception is thrown, the
-     * caller is responsible for rolling back the transaction.
-     * <p>
-     * Each chunk is stored as a single row with the serialized TickDataChunk as BLOB.
-     * The chunk contains snapshot + deltas and is NOT decompressed before storage.
-     *
-     * @param conn Database connection (with autoCommit=false, transaction managed by caller)
-     * @param chunks List of chunks to write
-     * @throws SQLException if write fails (caller will rollback)
-     */
-    @Deprecated
-    void writeChunks(Connection conn, List<TickDataChunk> chunks) throws SQLException;
-
     /**
      * Writes a single raw chunk (uncompressed protobuf bytes) to the filesystem and
      * adds the tick-range entry to the JDBC batch.

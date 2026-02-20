@@ -1,10 +1,8 @@
 package org.evochora.datapipeline.resources.database;
 
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
-import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareEnvironmentDataWriter;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
@@ -79,45 +77,6 @@ public class EnvironmentDataWriterWrapper extends AbstractDatabaseWrapper implem
                 throw (java.sql.SQLException) e.getCause();
             }
             throw new java.sql.SQLException("Failed to create environment data table", e);
-        }
-    }
-
-    @Deprecated
-    @Override
-    public void writeEnvironmentChunks(List<TickDataChunk> chunks) {
-        if (chunks.isEmpty()) {
-            return;  // Nothing to write
-        }
-        
-        long startNanos = System.nanoTime();
-        try {
-            // Ensure environment table exists (idempotent, thread-safe)
-            // Use dimensions from first chunk's metadata if available, otherwise default to 2
-            int dimensions = 2;  // Default for most environments
-            if (!chunks.isEmpty() && chunks.get(0).hasSnapshot() && 
-                chunks.get(0).getSnapshot().hasCellColumns()) {
-                // Dimensions will be validated during table creation anyway
-                dimensions = 2;  // Schema doesn't actually need dimensions for chunk storage
-            }
-            ensureEnvironmentDataTable(dimensions);
-            
-            // Write chunks via database strategy
-            database.doWriteEnvironmentChunks(ensureConnection(), chunks);
-            
-            // Update metrics - O(1) operations
-            chunksWritten.addAndGet(chunks.size());
-            batchesWritten.incrementAndGet();
-            
-            chunkThroughput.recordSum(chunks.size());
-            batchThroughput.recordCount();
-            writeLatency.record(System.nanoTime() - startNanos);
-            
-        } catch (Exception e) {
-            writeErrors.incrementAndGet();
-            log.warn("Failed to write {} chunks: {}", chunks.size(), e.getMessage());
-            recordError("WRITE_ENV_CHUNKS_FAILED", "Failed to write environment chunks",
-                       "Chunks: " + chunks.size() + ", Error: " + e.getMessage());
-            throw new RuntimeException("Failed to write environment chunks for " + chunks.size() + " chunks", e);
         }
     }
 

@@ -13,7 +13,6 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.List;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -187,57 +186,6 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
         return mergeSql;
     }
 
-    @Deprecated
-    @Override
-    public void writeChunks(Connection conn, List<TickDataChunk> chunks) throws SQLException {
-        if (chunks.isEmpty()) {
-            return;
-        }
-
-        // Ensure the schema-specific directory exists
-        Path schemaDir = resolveSchemaDirectory(conn);
-        try {
-            Files.createDirectories(schemaDir);
-        } catch (IOException e) {
-            throw new SQLException("Failed to create chunk directory: " + schemaDir, e);
-        }
-
-        // Ensure metadata exists (computed from first chunk's tickCount)
-        long ticksPerSubdir = ensureChunkMetadata(schemaDir, chunks.get(0));
-
-        try (PreparedStatement stmt = conn.prepareStatement(mergeSql)) {
-            for (TickDataChunk chunk : chunks) {
-                if (!chunk.hasSnapshot()) {
-                    log.warn("Chunk starting at tick {} has no snapshot - skipping",
-                             chunk.getSnapshot().getTickNumber());
-                    continue;
-                }
-
-                long firstTick = chunk.getSnapshot().getTickNumber();
-                long lastTick = calculateLastTick(chunk);
-                byte[] chunkData = serializeChunk(chunk);
-
-                // Resolve subdirectory, ensure it exists, then write file first
-                // (orphan file is harmless; missing file is not)
-                Path subdir = resolveSubdirectory(schemaDir, firstTick, ticksPerSubdir);
-                try {
-                    Files.createDirectories(subdir);
-                } catch (IOException e) {
-                    throw new SQLException("Failed to create chunk subdirectory: " + subdir, e);
-                }
-                writeChunkFile(subdir, firstTick, chunkData);
-
-                stmt.setLong(1, firstTick);
-                stmt.setLong(2, lastTick);
-                stmt.addBatch();
-                Thread.yield();
-            }
-
-            stmt.executeBatch();
-            log.debug("Wrote {} chunks to environment_chunks table and filesystem", chunks.size());
-        }
-    }
-
     /**
      * Returns the chunk filename for the given first tick.
      * <p>
@@ -276,41 +224,6 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
                 e.addSuppressed(suppressed);
             }
             throw new SQLException("Failed to write chunk file: " + targetFile, e);
-        }
-    }
-
-    /**
-     * Calculates the last tick number in the chunk.
-     * <p>
-     * The last tick is either:
-     * <ul>
-     *   <li>The tick number of the last delta (if deltas exist)</li>
-     *   <li>The snapshot tick number (if no deltas)</li>
-     * </ul>
-     */
-    private long calculateLastTick(TickDataChunk chunk) {
-        int deltaCount = chunk.getDeltasCount();
-        if (deltaCount > 0) {
-            return chunk.getDeltas(deltaCount - 1).getTickNumber();
-        }
-        return chunk.getSnapshot().getTickNumber();
-    }
-
-    /**
-     * Serializes the chunk to compressed bytes.
-     * <p>
-     * Uses the configured compression codec to wrap the Protobuf serialization.
-     */
-    private byte[] serializeChunk(TickDataChunk chunk) throws SQLException {
-        try {
-            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-            try (OutputStream compressed = codec.wrapOutputStream(baos)) {
-                chunk.writeTo(compressed);
-            }
-            return baos.toByteArray();
-        } catch (IOException e) {
-            throw new SQLException("Failed to serialize chunk starting at tick: " +
-                                   chunk.getSnapshot().getTickNumber(), e);
         }
     }
 

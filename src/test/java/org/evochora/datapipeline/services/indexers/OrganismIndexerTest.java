@@ -1,7 +1,6 @@
 package org.evochora.datapipeline.services.indexers;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
 import java.nio.file.Path;
@@ -98,12 +97,7 @@ class OrganismIndexerTest {
     }
 
     @Test
-    void testUseStreamingProcessing_ReturnsTrue() {
-        assertThat(indexer.callUseStreamingProcessing()).isTrue();
-    }
-
-    @Test
-    void testGetRequiredComponents_ExcludesBuffering() {
+    void testGetRequiredComponents_ContainsMetadataOnly() {
         Set<AbstractBatchIndexer.ComponentType> components = indexer.callGetRequiredComponents();
         assertThat(components).containsExactly(AbstractBatchIndexer.ComponentType.METADATA);
     }
@@ -111,12 +105,6 @@ class OrganismIndexerTest {
     @Test
     void testGetChunkFieldFilter_ReturnsSkipCells() {
         assertThat(indexer.callGetChunkFieldFilter()).isEqualTo(ChunkFieldFilter.SKIP_CELLS);
-    }
-
-    @Test
-    void testFlushChunks_ThrowsUnsupportedOperation() {
-        assertThatThrownBy(() -> indexer.callFlushChunks(List.of()))
-            .isInstanceOf(UnsupportedOperationException.class);
     }
 
     @Test
@@ -210,20 +198,12 @@ class OrganismIndexerTest {
             super(name, options, resources);
         }
 
-        boolean callUseStreamingProcessing() {
-            return useStreamingProcessing();
-        }
-
         java.util.Set<ComponentType> callGetRequiredComponents() {
             return getRequiredComponents();
         }
 
         ChunkFieldFilter callGetChunkFieldFilter() {
             return getChunkFieldFilter();
-        }
-
-        void callFlushChunks(List<TickDataChunk> chunks) throws Exception {
-            flushChunks(chunks);
         }
 
         void callProcessChunk(TickDataChunk chunk) throws Exception {

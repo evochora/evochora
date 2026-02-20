@@ -167,24 +167,6 @@ public abstract class AbstractDatabaseResource extends AbstractResource
             throws Exception;
 
     /**
-     * Writes environment chunks to database using MERGE for idempotency.
-     * <p>
-     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IEnvironmentDataWriter#writeEnvironmentChunks(java.util.List)}
-     * <p>
-     * <strong>Transaction Handling:</strong> Must commit on success, rollback on failure.
-     * <strong>Performance:</strong> All chunks written in one JDBC batch with one commit.
-     * <p>
-     * Chunks are stored as-is without decompression for maximum storage efficiency.
-     * 
-     * @param connection Database connection (from acquireDedicatedConnection)
-     * @param chunks List of chunks to write
-     * @throws Exception if write fails
-     */
-    @Deprecated
-    protected abstract void doWriteEnvironmentChunks(Object connection,
-            java.util.List<org.evochora.datapipeline.api.contracts.TickDataChunk> chunks) throws Exception;
-
-    /**
      * Writes a single raw environment chunk to the database via the storage strategy.
      * <p>
      * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IEnvironmentDataWriter#writeRawChunk(long, long, int, byte[])}
@@ -231,22 +213,6 @@ public abstract class AbstractDatabaseResource extends AbstractResource
      * @throws Exception if table creation fails
      */
     protected abstract void doCreateOrganismTables(Object connection) throws Exception;
-
-    /**
-     * Writes organism state rows for all ticks to the index database using MERGE for
-     * idempotent upserts.
-     * <p>
-     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IOrganismDataWriter#writeOrganismStates(java.util.List)}.
-     * <p>
-     * <strong>Transaction Handling:</strong> Must commit on success, rollback on failure.
-     *
-     * @param connection Database connection (from {@link #acquireDedicatedConnection()})
-     * @param ticks List of ticks with their organism states to write
-     * @throws Exception if write fails
-     */
-    @Deprecated
-    protected abstract void doWriteOrganismStates(Object connection,
-            java.util.List<org.evochora.datapipeline.api.contracts.TickData> ticks) throws Exception;
 
     /**
      * Adds organism data from a single tick to the write session via the storage strategy.

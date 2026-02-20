@@ -87,16 +87,7 @@ class EnvironmentIndexerTest {
     }
 
     @Test
-    void testUseStreamingProcessing_ReturnsTrue() throws Exception {
-        EnvironmentIndexer<?> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
-
-        Method method = AbstractBatchIndexer.class.getDeclaredMethod("useStreamingProcessing");
-        method.setAccessible(true);
-        assertThat((boolean) method.invoke(indexer)).isTrue();
-    }
-
-    @Test
-    void testGetRequiredComponents_ExcludesBuffering() throws Exception {
+    void testGetRequiredComponents_ContainsMetadataOnly() throws Exception {
         EnvironmentIndexer<?> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
 
         Method method = AbstractBatchIndexer.class.getDeclaredMethod("getRequiredComponents");
@@ -106,7 +97,6 @@ class EnvironmentIndexerTest {
             (Set<AbstractBatchIndexer.ComponentType>) method.invoke(indexer);
 
         assertThat(components).containsExactly(AbstractBatchIndexer.ComponentType.METADATA);
-        assertThat(components).doesNotContain(AbstractBatchIndexer.ComponentType.BUFFERING);
     }
 
     @Test
@@ -116,14 +106,6 @@ class EnvironmentIndexerTest {
         assertThatThrownBy(() -> indexer.getMetadata())
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("Metadata not loaded");
-    }
-
-    @Test
-    void testFlushChunks_ThrowsUnsupportedOperationException() {
-        EnvironmentIndexer<?> indexer = new EnvironmentIndexer<>("test-indexer", config, resources);
-
-        assertThatThrownBy(() -> indexer.flushChunks(List.of()))
-            .isInstanceOf(UnsupportedOperationException.class);
     }
 
     // ==================== Streaming Raw-Byte Delegation ====================

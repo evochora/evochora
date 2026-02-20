@@ -9,7 +9,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.sql.SQLException;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -64,41 +63,6 @@ public class OrganismDataWriterWrapper extends AbstractDatabaseWrapper implement
                 throw (SQLException) e.getCause();
             }
             throw new SQLException("Failed to create organism tables", e);
-        }
-    }
-
-    @Deprecated
-    @Override
-    public void writeOrganismStates(List<TickData> ticks) {
-        if (ticks.isEmpty()) {
-            return; // Nothing to write
-        }
-
-        long startNanos = System.nanoTime();
-        int totalOrganisms = ticks.stream().mapToInt(TickData::getOrganismsCount).sum();
-
-        try {
-            // Ensure tables exist (idempotent, thread-safe)
-            ensureOrganismTables();
-
-            // Delegate to database for actual write
-            database.doWriteOrganismStates(ensureConnection(), ticks);
-
-            // Metrics on success
-            organismsWritten.addAndGet(totalOrganisms);
-            batchesWritten.incrementAndGet();
-
-            organismThroughput.recordSum(totalOrganisms);
-            batchThroughput.recordCount();
-            writeLatency.record(System.nanoTime() - startNanos);
-
-        } catch (Exception e) {
-            writeErrors.incrementAndGet();
-            log.warn("Failed to write {} ticks with {} organisms: {}",
-                    ticks.size(), totalOrganisms, e.getMessage());
-            recordError("WRITE_ORGANISM_STATES_FAILED", "Failed to write organism states",
-                    "Ticks: " + ticks.size() + ", Organisms: " + totalOrganisms + ", Error: " + e.getMessage());
-            throw new RuntimeException("Failed to write organism states for " + ticks.size() + " ticks", e);
         }
     }
 

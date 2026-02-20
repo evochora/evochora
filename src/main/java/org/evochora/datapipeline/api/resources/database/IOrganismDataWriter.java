@@ -3,7 +3,6 @@ package org.evochora.datapipeline.api.resources.database;
 import org.evochora.datapipeline.api.contracts.TickData;
 
 import java.sql.SQLException;
-import java.util.List;
 
 /**
  * Database capability for writing indexed organism data for a single simulation run.
@@ -73,26 +72,6 @@ public interface IOrganismDataWriter extends ISchemaAwareDatabase, AutoCloseable
      * @throws SQLException if schema creation fails
      */
     void createOrganismTables() throws SQLException;
-
-    /**
-     * Writes organism state for all ticks in the given list into the index database.
-     * <p>
-     * For each {@link TickData} in {@code ticks}:
-     * <ul>
-     *   <li>Each contained {@code OrganismState} is used to upsert a static row into
-     *       {@code organisms} (MERGE on {@code organism_id}).</li>
-     *   <li>Exactly one row per pair {@code (tick_number, organism_id)} is upserted
-     *       into {@code organism_states} (MERGE on {@code tick_number, organism_id}).</li>
-     * </ul>
-     * The {@code runtime_state_blob} column contains a serialized (and optionally
-     * compressed) {@code OrganismRuntimeState} built from the remaining fields of
-     * {@code OrganismState} as specified in the organism indexer specification.
-     *
-     * @param ticks the list of sampled ticks to index (must not be null)
-     * @throws SQLException if any database operation fails
-     */
-    @Deprecated
-    void writeOrganismStates(List<TickData> ticks) throws SQLException;
 
     // ========================================================================
     // Streaming write methods (per-tick addBatch / commit)
