@@ -422,4 +422,33 @@ public interface IBatchStorageRead extends IResource {
                               CheckedConsumer<TickDataChunk> consumer) throws Exception {
         forEachChunk(path, ChunkFieldFilter.ALL, consumer);
     }
+
+    /**
+     * Streams parsed chunks with early exit support.
+     * <p>
+     * Iterates chunks via {@link #forEachChunk(StoragePath, CheckedConsumer)} until
+     * the predicate returns {@code false} or all chunks have been processed.
+     * <p>
+     * This is a default method — no implementations need to be changed.
+     *
+     * @param path      The physical storage path (includes compression extension)
+     * @param predicate Callback invoked per chunk; return {@code true} to continue, {@code false} to stop
+     * @throws Exception              If reading, parsing, or the predicate fails
+     * @throws IllegalArgumentException If any parameter is null
+     */
+    default void forEachChunkUntil(StoragePath path,
+                                   CheckedPredicate<TickDataChunk> predicate) throws Exception {
+        class EarlyExit extends RuntimeException {
+            EarlyExit() { super(null, null, true, false); }
+        }
+        try {
+            forEachChunk(path, chunk -> {
+                if (!predicate.test(chunk)) {
+                    throw new EarlyExit();
+                }
+            });
+        } catch (EarlyExit e) {
+            // Early exit requested — normal control flow
+        }
+    }
 }

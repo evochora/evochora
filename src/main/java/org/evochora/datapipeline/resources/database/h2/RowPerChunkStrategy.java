@@ -335,24 +335,6 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
     }
 
     /**
-     * Ensures the {@code .chunk_meta} file exists in the schema directory.
-     * <p>
-     * Thread-safe via {@link ConcurrentHashMap#computeIfAbsent}: only one thread
-     * per schema directory computes and writes the metadata. Cross-process safety
-     * is achieved via atomic file write (temp file + {@code ATOMIC_MOVE}): if another
-     * process wins the race, the loser reads back the winner's value.
-     *
-     * @param schemaDir the schema-specific directory
-     * @param firstChunk the first chunk being written (used to determine tickCount)
-     * @return the ticksPerSubdirectory value
-     * @throws SQLException if metadata cannot be written or read
-     */
-    private long ensureChunkMetadata(Path schemaDir, TickDataChunk firstChunk) throws SQLException {
-        long chunkTickStep = estimateChunkTickStep(firstChunk);
-        return ensureChunkMetadataWithStep(schemaDir, chunkTickStep);
-    }
-
-    /**
      * Ensures the {@code .chunk_meta} file exists, computing {@code chunkTickStep}
      * from raw metadata fields (firstTick, lastTick, tickCount).
      *
@@ -436,30 +418,6 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
         log.debug("Created chunk metadata: ticksPerSubdirectory={} (maxFiles={} × chunkTickStep={})",
                 ticksPerSubdir, maxFilesPerDirectory, chunkTickStep);
         return ticksPerSubdir;
-    }
-
-    /**
-     * Estimates the distance in tick numbers between consecutive chunks' first ticks.
-     * <p>
-     * With {@code samplingInterval > 1}, tick numbers in a chunk are spaced apart
-     * (e.g., 0, 1000, 2000, ...). The chunk's {@code tickCount} only counts sampled
-     * ticks, not the actual tick number range. This method infers the sampling interval
-     * from the chunk's tick range and computes the real spacing.
-     *
-     * @param chunk the first chunk being written
-     * @return estimated tick step between consecutive chunks
-     */
-    private long estimateChunkTickStep(TickDataChunk chunk) {
-        int tickCount = Math.max(chunk.getTickCount(), 1);
-        if (tickCount <= 1 || chunk.getDeltasCount() == 0) {
-            return tickCount;
-        }
-
-        long firstTick = chunk.getSnapshot().getTickNumber();
-        long lastTick = chunk.getDeltas(chunk.getDeltasCount() - 1).getTickNumber();
-        long samplingInterval = (lastTick - firstTick) / (tickCount - 1);
-
-        return tickCount * Math.max(samplingInterval, 1);
     }
 
     /**

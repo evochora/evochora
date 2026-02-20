@@ -33,7 +33,6 @@ import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.PluginState;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
-import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.delta.ChunkCorruptedException;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 import org.evochora.datapipeline.utils.delta.DeltaCodec;
@@ -491,18 +490,5 @@ class RowPerChunkStrategyTest {
         return TickDataChunk.newBuilder()
             .setSnapshot(createSnapshotWithCells(tickNumber, 3))
             .build();
-    }
-
-    private TickDataChunk createChunkWithDeltas(long firstTick, long lastTick) {
-        TickDataChunk.Builder builder = TickDataChunk.newBuilder()
-            .setSnapshot(createSnapshotWithCells(firstTick, 3));
-
-        for (long t = firstTick + 1; t <= lastTick; t++) {
-            builder.addDeltas(TickDelta.newBuilder()
-                .setTickNumber(t)
-                .build());
-        }
-
-        return builder.build();
     }
 }
