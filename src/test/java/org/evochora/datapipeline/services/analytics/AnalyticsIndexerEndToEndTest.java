@@ -393,6 +393,8 @@ class AnalyticsIndexerEndToEndTest {
             runId = "%s"
             metadataPollIntervalMs = 100
             metadataMaxPollDurationMs = 10000
+            insertBatchSize = 25
+            flushTimeoutMs = 500
             tempDirectory = "%s"
             folderStructure {
                 levels = [100000000, 100000]
@@ -455,6 +457,8 @@ class AnalyticsIndexerEndToEndTest {
             runId = "%s"
             metadataPollIntervalMs = 100
             metadataMaxPollDurationMs = 10000
+            insertBatchSize = 1000
+            flushTimeoutMs = 500
             tempDirectory = "%s"
             folderStructure {
                 levels = [100000000, 100000]

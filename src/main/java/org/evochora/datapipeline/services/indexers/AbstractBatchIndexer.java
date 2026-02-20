@@ -825,6 +825,18 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
     }
 
     /**
+     * Returns the configured insert batch size for streaming processing.
+     * <p>
+     * This controls how many chunks are accumulated before a commit is triggered.
+     * Only meaningful when {@link #useStreamingProcessing()} returns {@code true}.
+     *
+     * @return The insert batch size (default: 5), or 0 if not in streaming mode
+     */
+    protected int getInsertBatchSize() {
+        return streamingInsertBatchSize;
+    }
+
+    /**
      * Indicates whether this indexer uses streaming chunk processing.
      * <p>
      * When enabled, chunks are processed one at a time via {@link #processChunk(TickDataChunk)}

@@ -53,16 +53,21 @@ import com.typesafe.config.ConfigObject;
  * Plugins only define schemas and extract row data, keeping them simple and focused
  * on domain logic.
  * <p>
- * <strong>Processing Flow per Batch:</strong>
+ * <strong>Streaming Session Lifecycle:</strong>
  * <ol>
- *   <li>For each plugin: create DuckDB in-memory table from schema</li>
- *   <li>For each tick: call plugin's {@code extractRows()}, insert into table</li>
- *   <li>Export table to Parquet file (ZSTD compressed)</li>
- *   <li>Stream Parquet to storage</li>
- *   <li>Cleanup temporary files</li>
+ *   <li><strong>Lazy init</strong> ({@link #processChunk}): On first chunk, a DuckDB
+ *       in-memory connection is created with tables and PreparedStatements for all
+ *       plugin/LOD combinations.</li>
+ *   <li><strong>Accumulate</strong> ({@link #processChunk}): Each chunk's ticks are
+ *       fed to matching plugin/LOD tasks via {@code extractRows()}, rows are added
+ *       to DuckDB table batches. Tick range is tracked for Parquet filenames.</li>
+ *   <li><strong>Commit + reset</strong> ({@link #commitProcessedChunks}): After
+ *       {@code insertBatchSize} chunks (or on timeout/shutdown), all DuckDB batches
+ *       are executed, exported to ZSTD-compressed Parquet files, streamed to analytics
+ *       storage, and the DuckDB session is closed and reset for the next window.</li>
  * </ol>
  * <p>
- * <strong>Error Handling:</strong> Uses bulkhead pattern - plugin failures don't affect
+ * <strong>Error Handling:</strong> Uses bulkhead pattern — plugin failures don't affect
  * other plugins. IOException from storage causes batch retry.
  */
 public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements IMemoryEstimatable {
@@ -76,17 +81,25 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
     private final List<IAnalyticsPlugin> plugins = new ArrayList<>();
     private final Path tempDirectory;
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
-    private final int insertBatchSize;
-    
+
     /** Hierarchical folder divisors for organizing Parquet files (same as PersistenceService). */
     private final List<Long> folderHierarchyDivisors;
     
     // DuckDB driver loaded flag
     private static volatile boolean duckDbDriverLoaded = false;
-    
+
     // Metrics
     private final AtomicLong ticksProcessed = new AtomicLong(0);
     private final AtomicLong rowsWritten = new AtomicLong(0);
+
+    // Streaming session state (lazily initialized on first processChunk, reset on commitProcessedChunks)
+    private Connection duckDbConn;
+    private List<PluginLodTask> sessionTasks;
+    private Map<PluginLodTask, Integer> sessionRowsPerTask;
+    private Map<IAnalyticsPlugin, List<PluginLodTask>> sessionTasksByPlugin;
+    private DeltaCodec.Decoder sessionDecoder;
+    private long sessionStartTick = Long.MAX_VALUE;
+    private long sessionEndTick = Long.MIN_VALUE;
     
     /**
      * Internal record for tracking plugin processing tasks.
@@ -112,7 +125,6 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
     public AnalyticsIndexer(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
         this.analyticsOutput = getRequiredResource("analyticsOutput", IAnalyticsStorageWrite.class);
-        this.insertBatchSize = options.hasPath("insertBatchSize") ? options.getInt("insertBatchSize") : 5;
         
         // Configure hierarchical folder structure (same as PersistenceService)
         if (options.hasPath("folderStructure.levels")) {
@@ -190,9 +202,12 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
     }
 
     @Override
+    protected boolean useStreamingProcessing() {
+        return true;
+    }
+
+    @Override
     protected Set<ComponentType> getRequiredComponents() {
-        // No BUFFERING: Use batch-passthrough for consistent Parquet file boundaries
-        // Each PersistenceService batch = one Parquet file (no mixing across batches)
         return EnumSet.of(ComponentType.METADATA);
     }
     
@@ -226,106 +241,94 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
 
     @Override
     protected void onShutdown() throws Exception {
-        // 1. Call onFinish() for all plugins
+        // 1. Release DuckDB session if still open (e.g., shutdown before final commit)
+        resetSession();
+
+        // 2. Call onFinish() for all plugins
         for (IAnalyticsPlugin plugin : plugins) {
             try {
                 plugin.onFinish();
             } catch (Exception e) {
-                log.warn("Plugin {} failed during onFinish(): {}", 
+                log.warn("Plugin {} failed during onFinish(): {}",
                     plugin.getMetricId(), e.getMessage());
                 log.debug("Plugin onFinish() error details:", e);
             }
         }
-        
-        // 2. Clean up temp directory
+
+        // 3. Clean up temp directory
         cleanupTempDirectory();
-        
+
         log.debug("AnalyticsIndexer shutdown cleanup completed");
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Lazily initializes a DuckDB session on first call, then processes the chunk
+     * through all plugin/LOD tasks. Session state persists across calls until
+     * {@link #commitProcessedChunks()} exports and resets.
+     */
     @Override
-    protected void flushChunks(List<TickDataChunk> chunks) throws Exception {
-        if (chunks.isEmpty() || plugins.isEmpty()) {
+    protected void processChunk(TickDataChunk chunk) throws Exception {
+        if (plugins.isEmpty()) {
             return;
         }
 
-        // Determine which plugins need environment data (expensive decompression)
-        boolean anyPluginNeedsEnvironment = plugins.stream().anyMatch(IAnalyticsPlugin::needsEnvironmentData);
-        
-        // Create decoder for environment-aware plugins (reused across chunks for efficiency)
-        DeltaCodec.Decoder decoder = anyPluginNeedsEnvironment ? createDecoder() : null;
-        
-        // Calculate tick range for batch naming
-        long startTick = chunks.stream().mapToLong(TickDataChunk::getFirstTick).min().orElse(0);
-        long endTick = chunks.stream().mapToLong(TickDataChunk::getLastTick).max().orElse(0);
+        // Lazy init: DuckDB connection + tables + PreparedStatements + decoder
+        if (duckDbConn == null) {
+            initSession();
+        }
+
+        // Track tick range for Parquet filename
+        sessionStartTick = Math.min(sessionStartTick, chunk.getFirstTick());
+        sessionEndTick = Math.max(sessionEndTick, chunk.getLastTick());
+
+        // Process chunk through all plugins
+        try {
+            processChunkOptimized(chunk, sessionDecoder, sessionTasksByPlugin, sessionRowsPerTask);
+        } catch (ChunkCorruptedException e) {
+            log.warn("Skipping corrupt chunk: {}", e.getMessage());
+            recordError("CORRUPT_CHUNK", e.getMessage(),
+                String.format("firstTick=%d, lastTick=%d", chunk.getFirstTick(), chunk.getLastTick()));
+        }
+
+        ticksProcessed.addAndGet(chunk.getTickCount());
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Executes all accumulated DuckDB batches, exports each plugin/LOD table to
+     * Parquet (ZSTD compressed), streams to analytics storage, then closes the
+     * DuckDB connection and resets session state.
+     */
+    @Override
+    protected void commitProcessedChunks() throws Exception {
+        if (duckDbConn == null || sessionTasks == null) {
+            return;
+        }
+
         String runId = getMetadata().getSimulationRunId();
-        String subPath = calculateFolderPath(startTick);
-        String filename = String.format("batch_%020d_%020d.parquet", startTick, endTick);
+        String subPath = calculateFolderPath(sessionStartTick);
+        String filename = String.format("batch_%020d_%020d.parquet", sessionStartTick, sessionEndTick);
 
-        List<PluginLodTask> tasks = new ArrayList<>();
-        Map<PluginLodTask, Integer> rowsWrittenPerTask = new HashMap<>();
-        Path tempFile = null;
-
-        try (Connection conn = DriverManager.getConnection("jdbc:duckdb:")) {
-            // 1. Setup: Create tasks and prepared statements for all plugins and LODs
-            for (IAnalyticsPlugin plugin : plugins) {
+        try {
+            for (PluginLodTask task : sessionTasks) {
+                Path tempFile = null;
                 try {
-                    int baseSamplingInterval = plugin.getSamplingInterval();
-                    boolean needsEnv = plugin.needsEnvironmentData();
-                    
-                    for (int level = 0; level < plugin.getLodLevels(); level++) {
-                        String lodLevel = "lod" + level;
-                        int effectiveSamplingInterval = baseSamplingInterval * (int) Math.pow(plugin.getLodFactor(), level);
-                        
-                        ParquetSchema schema = plugin.getSchema();
-                        String tableName = plugin.getMetricId() + "_" + lodLevel;
-                        
-                        try (Statement stmt = conn.createStatement()) {
-                            stmt.execute(schema.toCreateTableSql(tableName));
-                        }
-                        
-                        PreparedStatement ps = conn.prepareStatement(schema.toInsertSql(tableName));
-                        PluginLodTask task = new PluginLodTask(plugin, plugin.getMetricId(), lodLevel, 
-                            effectiveSamplingInterval, ps, schema, needsEnv);
-                        tasks.add(task);
-                        rowsWrittenPerTask.put(task, 0);
-                    }
-                } catch (Exception e) {
-                    log.error("Failed to initialize plugin {} for batch {}-{}. It will be skipped.", 
-                        plugin.getMetricId(), startTick, endTick, e);
-                }
-            }
-
-            // 2. Process: Group by plugin to ensure each plugin only processes each tick ONCE
-            Map<IAnalyticsPlugin, List<PluginLodTask>> tasksByPlugin = tasks.stream()
-                .collect(java.util.stream.Collectors.groupingBy(PluginLodTask::plugin));
-            
-            // Process chunks in order (important for stateful decoder efficiency)
-            for (TickDataChunk chunk : chunks) {
-                try {
-                    processChunkOptimized(chunk, decoder, tasksByPlugin, rowsWrittenPerTask);
-                } catch (ChunkCorruptedException e) {
-                    log.warn("Skipping corrupt chunk: {}", e.getMessage());
-                    recordError("CORRUPT_CHUNK", e.getMessage(),
-                        String.format("firstTick=%d, lastTick=%d", chunk.getFirstTick(), chunk.getLastTick()));
-                    // Continue with remaining chunks
-                }
-            }
-
-            // 3. Finalize: Execute batches and export to Parquet
-            for (PluginLodTask task : tasks) {
-                try {
-                    int totalRows = rowsWrittenPerTask.get(task);
+                    int totalRows = sessionRowsPerTask.get(task);
                     if (totalRows == 0) continue;
 
                     task.statement().executeBatch();
-                    
-                    tempFile = Files.createTempFile(tempDirectory, task.metricId() + "_" + task.lodLevel() + "_", ".parquet");
+
+                    tempFile = Files.createTempFile(tempDirectory,
+                        task.metricId() + "_" + task.lodLevel() + "_", ".parquet");
                     String exportPath = tempFile.toAbsolutePath().toString().replace("\\", "/");
                     String tableName = task.metricId() + "_" + task.lodLevel();
-                    String exportSql = String.format("COPY %s TO '%s' (FORMAT PARQUET, CODEC 'ZSTD')", tableName, exportPath);
-                    
-                    try (Statement stmt = conn.createStatement()) {
+                    String exportSql = String.format(
+                        "COPY %s TO '%s' (FORMAT PARQUET, CODEC 'ZSTD')", tableName, exportPath);
+
+                    try (Statement stmt = duckDbConn.createStatement()) {
                         stmt.execute(exportSql);
                     }
 
@@ -334,26 +337,111 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
                              runId, task.metricId(), task.lodLevel(), subPath, filename)) {
                         in.transferTo(out);
                     }
-                    
-                    log.debug("Plugin {} wrote {} rows for {} batch {}-{} to {}/{}", 
-                        task.metricId(), totalRows, task.lodLevel(), startTick, endTick, subPath, filename);
-                    
+
+                    log.debug("Plugin {} wrote {} rows for {} batch {}-{} to {}/{}",
+                        task.metricId(), totalRows, task.lodLevel(),
+                        sessionStartTick, sessionEndTick, subPath, filename);
+
                     rowsWritten.addAndGet(totalRows);
 
                 } catch (Exception e) {
-                    log.error("Failed to process or write batch for plugin {} LOD {}", task.metricId(), task.lodLevel(), e);
-                    recordError("ANALYTICS_IO_ERROR", "Failed to write analytics data", 
+                    log.warn("Failed to export plugin {} LOD {}: {}",
+                        task.metricId(), task.lodLevel(), e.getMessage());
+                    log.debug("Plugin export error details:", e);
+                    recordError("ANALYTICS_IO_ERROR", "Failed to write analytics data",
                         String.format("Plugin: %s, LOD: %s", task.metricId(), task.lodLevel()));
                 } finally {
                     task.statement().close();
                     if (tempFile != null) Files.deleteIfExists(tempFile);
                 }
             }
+        } finally {
+            resetSession();
         }
-        
-        // Count processed ticks from chunks
-        long totalTicksInChunks = chunks.stream().mapToLong(TickDataChunk::getTickCount).sum();
-        ticksProcessed.addAndGet(totalTicksInChunks);
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Not used — AnalyticsIndexer uses streaming via {@link #processChunk} and
+     * {@link #commitProcessedChunks} instead.
+     *
+     * @throws UnsupportedOperationException always
+     */
+    @Override
+    protected void flushChunks(List<TickDataChunk> chunks) throws Exception {
+        throw new UnsupportedOperationException(
+            "AnalyticsIndexer uses streaming processing, not buffered flushChunks");
+    }
+
+    /**
+     * Initializes a DuckDB in-memory session with tables and PreparedStatements
+     * for all plugin/LOD combinations.
+     */
+    private void initSession() throws Exception {
+        duckDbConn = DriverManager.getConnection("jdbc:duckdb:");
+        sessionTasks = new ArrayList<>();
+        sessionRowsPerTask = new HashMap<>();
+
+        boolean anyPluginNeedsEnvironment = plugins.stream()
+            .anyMatch(IAnalyticsPlugin::needsEnvironmentData);
+        sessionDecoder = anyPluginNeedsEnvironment ? createDecoder() : null;
+
+        for (IAnalyticsPlugin plugin : plugins) {
+            try {
+                int baseSamplingInterval = plugin.getSamplingInterval();
+                boolean needsEnv = plugin.needsEnvironmentData();
+
+                for (int level = 0; level < plugin.getLodLevels(); level++) {
+                    String lodLevel = "lod" + level;
+                    int effectiveSamplingInterval = baseSamplingInterval
+                        * (int) Math.pow(plugin.getLodFactor(), level);
+
+                    ParquetSchema schema = plugin.getSchema();
+                    String tableName = plugin.getMetricId() + "_" + lodLevel;
+
+                    try (Statement stmt = duckDbConn.createStatement()) {
+                        stmt.execute(schema.toCreateTableSql(tableName));
+                    }
+
+                    PreparedStatement ps = duckDbConn.prepareStatement(schema.toInsertSql(tableName));
+                    PluginLodTask task = new PluginLodTask(plugin, plugin.getMetricId(), lodLevel,
+                        effectiveSamplingInterval, ps, schema, needsEnv);
+                    sessionTasks.add(task);
+                    sessionRowsPerTask.put(task, 0);
+                }
+            } catch (Exception e) {
+                log.warn("Failed to initialize plugin {}, it will be skipped: {}",
+                    plugin.getMetricId(), e.getMessage());
+                log.debug("Plugin initialization error details:", e);
+            }
+        }
+
+        sessionTasksByPlugin = sessionTasks.stream()
+            .collect(java.util.stream.Collectors.groupingBy(PluginLodTask::plugin));
+
+        sessionStartTick = Long.MAX_VALUE;
+        sessionEndTick = Long.MIN_VALUE;
+    }
+
+    /**
+     * Closes the DuckDB connection and resets all session state.
+     */
+    private void resetSession() {
+        if (duckDbConn != null) {
+            try {
+                duckDbConn.close();
+            } catch (Exception e) {
+                log.debug("Failed to close DuckDB connection: {}", e.getMessage());
+            }
+        }
+        duckDbConn = null;
+        sessionTasks = null;
+        sessionRowsPerTask = null;
+        sessionTasksByPlugin = null;
+        sessionDecoder = null;
+        sessionStartTick = Long.MAX_VALUE;
+        sessionEndTick = Long.MIN_VALUE;
     }
     
     /**
@@ -651,40 +739,55 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
     
     @Override
     public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
-        long bytesPerChunk = params.estimateBytesPerChunk();
-        
         List<MemoryEstimate> estimates = new ArrayList<>();
-        
-        // Base estimate for DuckDB processing and chunk buffering
-        // Note: AnalyticsIndexer does NOT use buffering component (passthrough mode)
-        // but still processes chunks in batches from storage
-        long baseBytes = (long) insertBatchSize * bytesPerChunk;
-        long duckDbOverhead = 10 * 1024 * 1024; // DuckDB in-memory overhead
-        long totalBaseBytes = baseBytes + duckDbOverhead;
-        
-        String baseExplanation = String.format("%d insertBatchSize (chunks) × %s/chunk + DuckDB overhead",
-            insertBatchSize,
-            SimulationParameters.formatBytes(bytesPerChunk));
-        
+
+        // 1. Streaming: one parsed chunk at a time
+        long bytesPerChunk = params.estimateBytesPerChunk();
         estimates.add(new MemoryEstimate(
             serviceName,
-            totalBaseBytes,
-            baseExplanation,
-            MemoryEstimate.Category.SERVICE_BATCH
-        ));
-
-        // Transient byte[] held during readChunkBatch: the full compressed batch file
-        // loaded into heap by getRaw(). Conservative upper bound: uncompressed chunk size.
-        String ioExplanation = String.format("Transient compressed byte[] during batch read ≤ %s (upper bound)",
-            SimulationParameters.formatBytes(bytesPerChunk));
-        estimates.add(new MemoryEstimate(
-            serviceName + " (batch read I/O)",
             bytesPerChunk,
-            ioExplanation,
+            String.format("1 parsed chunk ≤ %s (streaming, no buffering)",
+                SimulationParameters.formatBytes(bytesPerChunk)),
             MemoryEstimate.Category.SERVICE_BATCH
         ));
 
-        // MutableCellState for delta decompression (2 int[] arrays: moleculeData + ownerIds)
+        // 2. DuckDB in-memory tables: rows accumulate across insertBatchSize chunks
+        int insertBatchSize = getInsertBatchSize();
+        int samplesPerChunk = params.samplesPerChunk();
+        long simulationTicksPerChunk = params.simulationTicksPerChunk();
+        long duckDbTableBytes = 0;
+        int totalTasks = 0;
+
+        for (IAnalyticsPlugin plugin : plugins) {
+            int baseSamplingInterval = plugin.getSamplingInterval();
+            long bytesPerRow = estimateRowBytes(plugin.getSchema());
+
+            for (int level = 0; level < plugin.getLodLevels(); level++) {
+                int effectiveInterval = baseSamplingInterval
+                    * (int) Math.pow(plugin.getLodFactor(), level);
+                // Matching ticks per chunk: upper bound (not all simulation ticks are data samples)
+                long matchingTicksPerChunk = Math.min(
+                    Math.max(1, simulationTicksPerChunk / effectiveInterval),
+                    samplesPerChunk);
+                long rowsAccumulated = (long) insertBatchSize * matchingTicksPerChunk;
+                duckDbTableBytes += rowsAccumulated * bytesPerRow;
+                totalTasks++;
+            }
+        }
+
+        // DuckDB engine overhead: connection state + per-table metadata
+        long duckDbEngineOverhead = 2L * 1024 * 1024 + (long) totalTasks * 64 * 1024;
+        long totalDuckDbBytes = duckDbTableBytes + duckDbEngineOverhead;
+
+        estimates.add(new MemoryEstimate(
+            serviceName + " (DuckDB)",
+            totalDuckDbBytes,
+            String.format("DuckDB tables: %d chunks × %d samples/chunk across %d plugin/LOD tasks + engine overhead",
+                insertBatchSize, samplesPerChunk, totalTasks),
+            MemoryEstimate.Category.SERVICE_BATCH
+        ));
+
+        // 3. MutableCellState for delta decompression (2 int[] arrays: moleculeData + ownerIds)
         long envTotalCells = params.totalCells();
         long mutableCellStateBytes = envTotalCells * 8L;  // 2 int arrays × 4 bytes = 8 bytes/cell
         estimates.add(new MemoryEstimate(
@@ -694,11 +797,31 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
             MemoryEstimate.Category.SERVICE_BATCH
         ));
 
-        // Add estimates from each plugin
+        // 4. Plugin-specific internal state estimates
         for (IAnalyticsPlugin plugin : plugins) {
             estimates.addAll(plugin.estimateWorstCaseMemory(params));
         }
-        
+
         return estimates;
+    }
+
+    /**
+     * Estimates in-memory bytes per row for a DuckDB table based on column types.
+     *
+     * @param schema The Parquet schema defining the table columns
+     * @return Estimated bytes per row including per-row overhead
+     */
+    private long estimateRowBytes(ParquetSchema schema) {
+        long bytes = 8; // per-row overhead (null mask, internal metadata)
+        for (ParquetSchema.Column col : schema.getColumns()) {
+            bytes += switch (col.type()) {
+                case BIGINT -> 8;
+                case INTEGER -> 4;
+                case DOUBLE -> 8;
+                case VARCHAR -> 64;
+                case BOOLEAN -> 1;
+            };
+        }
+        return bytes;
     }
 }

@@ -412,11 +412,12 @@ class AbstractBatchIndexerTest {
 
     @Test
     void testStreamingMultipleCommitsPerBatch() throws Exception {
-        // Given: 6 chunks, insertBatchSize=3 → 2 commits during forEachChunk
+        // Given: 7 chunks, insertBatchSize=3 (not a multiple!)
+        // → 2 threshold commits (at chunks 3 and 6) + 1 timeout commit for the remainder (chunk 7)
         String runId = "test-run-s02";
         SimulationMetadata metadata = createTestMetadata(runId);
-        List<TickDataChunk> chunks = createTestChunks(runId, 0, 6);
-        BatchInfo batchInfo = createBatchInfo(runId, "batch_s02.pb", 0, 5);
+        List<TickDataChunk> chunks = createTestChunks(runId, 0, 7);
+        BatchInfo batchInfo = createBatchInfo(runId, "batch_s02.pb", 0, 6);
         TopicMessage<BatchInfo, String> message = new TopicMessage<>(
             batchInfo, System.currentTimeMillis(), "msg-s02", "test-consumer", "ack-s02");
 
@@ -427,31 +428,33 @@ class AbstractBatchIndexerTest {
             .thenReturn(null);
         when(mockStorage.readChunkBatch(StoragePath.of(batchInfo.getStoragePath()))).thenReturn(chunks);
 
-        // When
-        streamingIndexer = createStreamingIndexer(runId, 3);
+        // When: flushTimeoutMs=200 so the remainder chunk commits quickly on timeout
+        streamingIndexer = createStreamingIndexer(runId, 3, 200);
         streamingIndexer.start();
 
         // Then
         await().atMost(5, TimeUnit.SECONDS)
             .untilAsserted(() -> verify(mockTopic, times(1)).ack(message));
 
-        assertEquals(6, streamingProcessedChunks.size(), "All 6 chunks should be processed");
-        assertEquals(2, streamingCommitCount.get(), "Should have 2 commits (at chunks 3 and 6)");
+        assertEquals(7, streamingProcessedChunks.size(), "All 7 chunks should be processed");
+        assertEquals(3, streamingCommitCount.get(),
+            "Should have 3 commits (at chunks 3, 6, and 7 via timeout)");
     }
 
     @Test
     void testStreamingCrossBatchAckOrder() throws Exception {
-        // Given: batch1=2 chunks, batch2=1 chunk, insertBatchSize=3
-        // Commit spans both batches (2 from batch1 + 1 from batch2 = 3)
-        // batch1 ACKed at commit (complete + committed), batch2 ACKed after completeBatch
+        // Given: batch1=5 chunks, batch2=4 chunks, insertBatchSize=3 (not a multiple of either!)
+        // Commit #1 at chunk 3: first 3 of batch1 committed
+        // Commit #2 at chunk 6: remaining 2 of batch1 + first 1 of batch2 → batch1 fully committed → ACK batch1
+        // Commit #3 at chunk 9: remaining 3 of batch2 → batch2 fully committed → ACK batch2 after completeBatch
         String runId = "test-run-s03";
         SimulationMetadata metadata = createTestMetadata(runId);
 
-        List<TickDataChunk> chunks1 = createTestChunks(runId, 0, 2);
-        List<TickDataChunk> chunks2 = createTestChunks(runId, 2, 1);
+        List<TickDataChunk> chunks1 = createTestChunks(runId, 0, 5);
+        List<TickDataChunk> chunks2 = createTestChunks(runId, 5, 4);
 
-        BatchInfo batch1 = createBatchInfo(runId, "batch_s03a.pb", 0, 1);
-        BatchInfo batch2 = createBatchInfo(runId, "batch_s03b.pb", 2, 2);
+        BatchInfo batch1 = createBatchInfo(runId, "batch_s03a.pb", 0, 4);
+        BatchInfo batch2 = createBatchInfo(runId, "batch_s03b.pb", 5, 8);
 
         TopicMessage<BatchInfo, String> msg1 = new TopicMessage<>(
             batch1, System.currentTimeMillis(), "msg-s03a", "test-consumer", "ack-s03a");
@@ -478,8 +481,9 @@ class AbstractBatchIndexerTest {
                 verify(mockTopic, times(1)).ack(msg2);
             });
 
-        assertEquals(3, streamingProcessedChunks.size(), "All 3 chunks should be processed");
-        assertEquals(1, streamingCommitCount.get(), "Should have 1 cross-batch commit");
+        assertEquals(9, streamingProcessedChunks.size(), "All 9 chunks should be processed");
+        assertEquals(3, streamingCommitCount.get(),
+            "Should have 3 commits (cross-batch boundaries, non-multiple of batch sizes)");
     }
 
     @Test
