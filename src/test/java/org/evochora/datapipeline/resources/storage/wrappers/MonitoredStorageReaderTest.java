@@ -108,7 +108,7 @@ class MonitoredStorageReaderTest {
     // }
 
     @Test
-    void testFilteredReadDelegatesAndTracksMetrics() throws Exception {
+    void testForEachChunkDelegatesWithFilterAndTracksMetrics() throws Exception {
         TickDataChunk chunk = TickDataChunk.newBuilder()
             .setSimulationRunId("test-sim")
             .setFirstTick(100)
@@ -116,24 +116,20 @@ class MonitoredStorageReaderTest {
             .setTickCount(1)
             .setSnapshot(TickData.newBuilder().setTickNumber(100).build())
             .build();
-        List<TickDataChunk> chunks = List.of(chunk);
 
         StoragePath testPath = StoragePath.of("batch.pb.zst");
-        // forEachChunk is abstract — provide an answer that iterates from readChunkBatch(path)
         doAnswer(invocation -> {
-            StoragePath p = invocation.getArgument(0);
             CheckedConsumer<TickDataChunk> c = invocation.getArgument(2);
-            for (TickDataChunk ch : mockDelegate.readChunkBatch(p)) {
-                c.accept(ch);
-            }
+            c.accept(chunk);
             return null;
         }).when(mockDelegate).forEachChunk(any(), any(), any());
-        when(mockDelegate.readChunkBatch(any(StoragePath.class))).thenReturn(chunks);
 
-        List<TickDataChunk> result = monitoredReader.readChunkBatch(testPath, ChunkFieldFilter.SKIP_ORGANISMS);
+        List<TickDataChunk> received = new java.util.ArrayList<>();
+        monitoredReader.forEachChunk(testPath, ChunkFieldFilter.SKIP_CELLS, received::add);
 
-        verify(mockDelegate).forEachChunk(eq(testPath), eq(ChunkFieldFilter.SKIP_ORGANISMS), any());
-        assertEquals(1, result.size());
+        verify(mockDelegate).forEachChunk(eq(testPath), eq(ChunkFieldFilter.SKIP_CELLS), any());
+        assertEquals(1, received.size());
+        assertEquals(100, received.get(0).getFirstTick());
 
         Map<String, Number> metrics = monitoredReader.getMetrics();
         assertEquals(1L, metrics.get("batches_read").longValue());

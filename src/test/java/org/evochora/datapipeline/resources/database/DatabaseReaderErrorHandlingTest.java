@@ -18,7 +18,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Phase 1 error handling tests: Database connection failures
+ * Error handling tests for database reader: connection failures and edge cases.
  */
 @Tag("integration")  // Uses database for error simulation
 class DatabaseReaderErrorHandlingTest {

@@ -201,12 +201,6 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
         }
     }
 
-    @Deprecated
-    @Override
-    protected boolean useStreamingProcessing() {
-        return true;
-    }
-
     @Override
     protected Set<ComponentType> getRequiredComponents() {
         return EnumSet.of(ComponentType.METADATA);
@@ -359,21 +353,6 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
         } finally {
             resetSession();
         }
-    }
-
-    /**
-     * {@inheritDoc}
-     * <p>
-     * Not used — AnalyticsIndexer uses streaming via {@link #processChunk} and
-     * {@link #commitProcessedChunks} instead.
-     *
-     * @throws UnsupportedOperationException always
-     */
-    @Deprecated
-    @Override
-    protected void flushChunks(List<TickDataChunk> chunks) throws Exception {
-        throw new UnsupportedOperationException(
-            "AnalyticsIndexer uses streaming processing, not buffered flushChunks");
     }
 
     /**

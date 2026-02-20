@@ -57,12 +57,6 @@ public class OrganismIndexer<ACK> extends AbstractBatchIndexer<ACK> implements I
         this.database = getRequiredResource("database", IResourceSchemaAwareOrganismDataWriter.class);
     }
 
-    @Deprecated
-    @Override
-    protected boolean useStreamingProcessing() {
-        return true;
-    }
-
     @Override
     protected Set<ComponentType> getRequiredComponents() {
         return EnumSet.of(ComponentType.METADATA);
@@ -132,18 +126,6 @@ public class OrganismIndexer<ACK> extends AbstractBatchIndexer<ACK> implements I
     @Override
     protected void commitProcessedChunks() throws Exception {
         database.commitOrganismWrites();
-    }
-
-    /**
-     * {@inheritDoc}
-     *
-     * @throws UnsupportedOperationException always — streaming replaces buffered flushing
-     */
-    @Deprecated
-    @Override
-    protected void flushChunks(List<TickDataChunk> chunks) throws Exception {
-        throw new UnsupportedOperationException(
-            "OrganismIndexer uses streaming processing — flushChunks is not supported");
     }
 
     @Override

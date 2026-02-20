@@ -51,7 +51,7 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 
 /**
- * Integration tests for DummyIndexer Phase 2.5.1 (Metadata Reading).
+ * Integration tests for DummyIndexer metadata reading and batch processing.
  * <p>
  * Tests the complete metadata reading flow with real database and storage.
  */
@@ -332,7 +332,7 @@ class DummyIndexerIntegrationTest {
         sendBatchInfoToTopic(runId, key3.asString(), 20, 29);
         
         // Then: Verify all batches processed
-        // Phase 14.2.5: tick-by-tick processing (30 ticks = 30 flush calls)
+        // Streaming: chunks processed individually (30 ticks total)
         await().atMost(10, TimeUnit.SECONDS)
             .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 30);
         
@@ -344,7 +344,7 @@ class DummyIndexerIntegrationTest {
             "Should have processed 30 ticks (10 per batch)");
     }
     
-    // ========== Buffering Tests (Phase 14.2.6) ==========
+    // ========== Streaming Commit Tests ==========
     
     @Test
     void testBuffering_NormalFlush() throws Exception {
@@ -568,7 +568,7 @@ class DummyIndexerIntegrationTest {
             "topic", List.of(wrappedTopic)
         );
         
-        // Phase 14.2.6 tests: Use regular DummyIndexer WITH buffering
+        // DummyIndexer uses streaming with insertBatchSize-based commits
         return new DummyIndexer<>(name, config, resources);
     }
     
@@ -642,10 +642,9 @@ class DummyIndexerIntegrationTest {
             "topic", List.of(wrappedTopic)  // REAL topic, not mock!
         );
         
-        // Phase 14.2.5 tests: Use indexer without buffering (tick-by-tick)
-        return new TestDummyIndexerWithoutBuffering(name, config, resources);
+        return new DummyIndexer<>(name, config, resources);
     }
-    
+
     private SimulationMetadata createTestMetadata(String runId, int samplingInterval) {
         return SimulationMetadata.newBuilder()
             .setSimulationRunId(runId)
@@ -698,26 +697,7 @@ class DummyIndexerIntegrationTest {
             "topic", List.of(mockTopic)  // Mock topic for batch processing (not tested yet)
         );
         
-        // Phase 14.2.5 tests: Use indexer without buffering (tick-by-tick)
-        return new TestDummyIndexerWithoutBuffering(name, config, resources);
-    }
-    
-    /**
-     * Test implementation of DummyIndexer that disables buffering.
-     * <p>
-     * Used by Phase 14.2.5 tests to test tick-by-tick processing.
-     * Phase 14.2.6 tests will use regular DummyIndexer with buffering.
-     */
-    private static class TestDummyIndexerWithoutBuffering extends DummyIndexer<Object> {
-        public TestDummyIndexerWithoutBuffering(String name, Config options, Map<String, List<IResource>> resources) {
-            super(name, options, resources);
-        }
-        
-        @Override
-        protected java.util.Set<ComponentType> getRequiredComponents() {
-            // Disable buffering for Phase 14.2.5 tests
-            return java.util.EnumSet.of(ComponentType.METADATA);
-        }
+        return new DummyIndexer<>(name, config, resources);
     }
 }
 

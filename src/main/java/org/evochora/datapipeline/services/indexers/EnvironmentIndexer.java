@@ -6,7 +6,6 @@ import java.util.Map;
 import java.util.Set;
 
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
-import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
@@ -88,12 +87,6 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> implement
         return EnumSet.of(ComponentType.DLQ);
     }
 
-    @Deprecated
-    @Override
-    protected boolean useStreamingProcessing() {
-        return true;
-    }
-
     /**
      * Prepares database tables for environment data storage.
      * <p>
@@ -135,6 +128,17 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> implement
     }
 
     /**
+     * Not called — {@link #readAndProcessChunks} uses raw-byte pass-through instead.
+     *
+     * @throws UnsupportedOperationException always
+     */
+    @Override
+    protected void processChunk(org.evochora.datapipeline.api.contracts.TickDataChunk chunk) {
+        throw new UnsupportedOperationException(
+            "EnvironmentIndexer uses raw-byte pass-through via readAndProcessChunks");
+    }
+
+    /**
      * Commits all raw chunks accumulated since the last commit.
      *
      * @throws Exception if commit fails
@@ -142,18 +146,6 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> implement
     @Override
     protected void commitProcessedChunks() throws Exception {
         database.commitRawChunks();
-    }
-
-    /**
-     * Not used in streaming mode.
-     *
-     * @throws UnsupportedOperationException always
-     */
-    @Deprecated
-    @Override
-    protected void flushChunks(List<TickDataChunk> chunks) throws Exception {
-        throw new UnsupportedOperationException(
-            "EnvironmentIndexer uses streaming raw-byte processing, not buffered flushChunks");
     }
 
     /**

@@ -161,34 +161,6 @@ public interface IBatchStorageRead extends IResource {
     }
 
     /**
-     * Reads a chunk batch from storage, skipping heavy protobuf fields at the wire level.
-     * <p>
-     * <strong>Legacy:</strong> This method materializes all filtered chunks into a list.
-     * New consumers should use {@link #forEachChunk} directly to apply wire-level filtering
-     * without O(n) heap allocation. Will be removed once all consumers have migrated to streaming.
-     * <p>
-     * <strong>Default implementation:</strong> Collects chunks from {@code forEachChunk} into a list.
-     *
-     * @param path   The physical storage path (includes compression extension)
-     * @param filter Controls which fields to skip during parsing
-     * @return List of tick data chunks with filtered fields omitted
-     * @throws IOException              If file doesn't exist or read fails
-     * @throws IllegalArgumentException If path or filter is null
-     */
-    @Deprecated
-    default List<TickDataChunk> readChunkBatch(StoragePath path, ChunkFieldFilter filter) throws IOException {
-        List<TickDataChunk> result = new ArrayList<>();
-        try {
-            forEachChunk(path, filter, result::add);
-        } catch (IOException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new IOException("Failed to read chunk batch with filter " + filter + ": " + path, e);
-        }
-        return result;
-    }
-
-    /**
      * Reads a single protobuf message from storage at the specified physical path.
      * <p>
      * This method is designed for reading non-batch data like metadata, configurations,

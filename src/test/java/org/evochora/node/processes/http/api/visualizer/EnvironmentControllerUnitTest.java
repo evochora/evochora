@@ -21,7 +21,7 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 
 /**
- * Phase 3 unit tests: HTTP request parsing and controller construction (no database I/O)
+ * Unit tests for HTTP request parsing and controller construction (no database I/O).
  * <p>
  * Tests focus on data classes and controller construction without database dependencies:
  * <ul>
