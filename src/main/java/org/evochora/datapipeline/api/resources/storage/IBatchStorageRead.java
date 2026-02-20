@@ -33,7 +33,7 @@ import java.util.Optional;
  * <h3>Implementor contract</h3>
  * Implementations must provide these 6 abstract methods:
  * <ol>
- *   <li>{@link #forEachChunk} — streaming chunk read (the primary read primitive)</li>
+ *   <li>{@link #forEachRawChunk} — streaming raw-byte read (the primary read primitive)</li>
  *   <li>{@link #readMessage} — single protobuf message read (metadata, configs)</li>
  *   <li>{@link #listBatchFiles(String, String, int, long, long, SortOrder)} — batch file listing</li>
  *   <li>{@link #listRunIds} — run discovery</li>
@@ -41,17 +41,22 @@ import java.util.Optional;
  *   <li>{@link #findLastBatchFile} — last batch file lookup for resume</li>
  * </ol>
  * All other methods are default convenience overloads that delegate to these primitives.
+ * <p>
+ * {@link #forEachChunk} is a default that delegates to {@link #forEachRawChunk} with full
+ * protobuf parsing. Implementations that need wire-level field filtering (e.g.,
+ * {@link ChunkFieldFilter#SKIP_ORGANISMS}) must override {@code forEachChunk} as well.
  *
  * <h3>Legacy methods (will be removed once all consumers use streaming)</h3>
  * The following methods materialize all chunks into a {@code List} and exist only for
  * backward compatibility with consumers that have not yet migrated to streaming via
- * {@link #forEachChunk}:
+ * {@link #forEachRawChunk} or {@link #forEachChunk}:
  * <ul>
  *   <li>{@link #readChunkBatch(StoragePath)} — collect all chunks into a list</li>
  *   <li>{@link #readChunkBatch(StoragePath, ChunkFieldFilter)} — collect with wire-level filtering</li>
  *   <li>{@link #readLastSnapshot(StoragePath)} — read last snapshot via full materialization</li>
  * </ul>
- * New consumers should use {@link #forEachChunk} directly to avoid O(n) heap allocation.
+ * New consumers should use {@link #forEachRawChunk} or {@link #forEachChunk} directly
+ * to avoid O(n) heap allocation.
  */
 public interface IBatchStorageRead extends IResource {
 
@@ -383,24 +388,54 @@ public interface IBatchStorageRead extends IResource {
     Optional<StoragePath> findLastBatchFile(String runIdPrefix) throws IOException;
 
     /**
-     * Streams chunks from a batch file one at a time, applying wire-level field filtering.
+     * Streams raw chunk bytes from a batch file one at a time.
      * <p>
-     * This is the primary read primitive for chunk data. Each chunk is parsed from the
-     * compressed protobuf stream, passed to the consumer, and discarded before the next
-     * chunk is parsed. Peak heap usage is O(chunkSize) regardless of how many chunks
-     * the batch file contains.
+     * This is the primary read primitive. Each chunk's uncompressed protobuf bytes are read
+     * from storage, wrapped in a {@link RawChunk} with metadata extracted via partial parse
+     * (firstTick, lastTick, tickCount), and passed to the consumer. The raw bytes are discarded
+     * before the next chunk is read. Peak heap usage is O(rawChunkSize) (~25 MB for 4000x3000).
+     * <p>
+     * The raw bytes include all protobuf fields (including organisms). Consumers that need
+     * parsed objects should use {@link #forEachChunk} instead.
+     *
+     * @param path     The physical storage path (includes compression extension)
+     * @param consumer Callback invoked once per chunk with the raw bytes and metadata
+     * @throws Exception              If reading or the consumer callback fails
+     * @throws IllegalArgumentException If any parameter is null
+     */
+    void forEachRawChunk(StoragePath path,
+                         CheckedConsumer<RawChunk> consumer) throws Exception;
+
+    /**
+     * Streams parsed chunks from a batch file one at a time, with optional wire-level filtering.
+     * <p>
+     * <strong>Default implementation:</strong> Delegates to {@link #forEachRawChunk}, parsing
+     * each chunk's raw bytes via {@code TickDataChunk.parseFrom()}. Only supports
+     * {@link ChunkFieldFilter#ALL}; other filters require an implementation override with
+     * wire-level protobuf filtering.
+     * <p>
+     * Implementations that support wire-level field filtering (e.g.,
+     * {@link ChunkFieldFilter#SKIP_ORGANISMS}) must override this method.
      *
      * @param path     The physical storage path (includes compression extension)
      * @param filter   Controls which fields to skip during parsing
      * @param consumer Callback invoked once per chunk with the filtered chunk
      * @throws Exception              If reading, parsing, or the consumer callback fails
+     * @throws UnsupportedOperationException If filter is not {@code ALL} and this method is not overridden
      * @throws IllegalArgumentException If any parameter is null
      */
-    void forEachChunk(StoragePath path, ChunkFieldFilter filter,
-                      CheckedConsumer<TickDataChunk> consumer) throws Exception;
+    default void forEachChunk(StoragePath path, ChunkFieldFilter filter,
+                              CheckedConsumer<TickDataChunk> consumer) throws Exception {
+        if (filter != ChunkFieldFilter.ALL) {
+            throw new UnsupportedOperationException(
+                "ChunkFieldFilter." + filter + " requires an override of forEachChunk with wire-level filtering");
+        }
+        forEachRawChunk(path, rawChunk ->
+            consumer.accept(TickDataChunk.parseFrom(rawChunk.data())));
+    }
 
     /**
-     * Convenience overload: streams all chunks without field filtering.
+     * Convenience overload: streams all parsed chunks without field filtering.
      * <p>
      * Delegates to {@link #forEachChunk(StoragePath, ChunkFieldFilter, CheckedConsumer)}
      * with {@link ChunkFieldFilter#ALL}.

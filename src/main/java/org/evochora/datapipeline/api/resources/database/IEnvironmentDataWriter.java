@@ -80,6 +80,35 @@ public interface IEnvironmentDataWriter extends AutoCloseable {
     void writeEnvironmentChunks(List<TickDataChunk> chunks) throws SQLException;
     
     /**
+     * Writes a single raw environment chunk (uncompressed protobuf bytes) to storage.
+     * <p>
+     * Part of the streaming raw-byte write path: chunks are passed through without
+     * parsing or re-serialization. The storage strategy compresses and writes the
+     * bytes directly.
+     * <p>
+     * Multiple calls accumulate a batch. Call {@link #commitRawChunks()} to persist
+     * the accumulated batch atomically.
+     *
+     * @param firstTick First tick number in the chunk
+     * @param lastTick Last tick number in the chunk
+     * @param tickCount Number of sampled ticks in the chunk
+     * @param rawProtobufData Uncompressed protobuf bytes of one TickDataChunk message
+     * @throws Exception if write fails
+     */
+    void writeRawChunk(long firstTick, long lastTick, int tickCount,
+                       byte[] rawProtobufData) throws Exception;
+
+    /**
+     * Commits all raw chunks accumulated via {@link #writeRawChunk} calls.
+     * <p>
+     * Executes the JDBC batch and commits the transaction atomically.
+     * After this call, the write session is ready for the next batch.
+     *
+     * @throws Exception if commit fails (transaction is rolled back)
+     */
+    void commitRawChunks() throws Exception;
+
+    /**
      * Closes the database wrapper and releases its dedicated connection back to the pool.
      * <p>
      * This method is automatically called when used with try-with-resources.

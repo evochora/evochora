@@ -18,6 +18,7 @@ import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.ChunkFieldFilter;
 import org.evochora.datapipeline.api.resources.storage.IResourceBatchStorageRead;
+import org.evochora.datapipeline.api.resources.storage.RawChunk;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowPercentiles;
@@ -86,15 +87,48 @@ public class MonitoredBatchStorageReader implements IResourceBatchStorageRead, I
      * Delegates to the underlying storage with per-service read metrics (batch count, latency).
      */
     @Override
+    public void forEachRawChunk(StoragePath path,
+                                CheckedConsumer<RawChunk> consumer) throws Exception {
+        long startNanos = System.nanoTime();
+        try {
+            AtomicLong chunkBytes = new AtomicLong(0);
+            delegate.forEachRawChunk(path, rawChunk -> {
+                chunkBytes.addAndGet(rawChunk.data().length);
+                consumer.accept(rawChunk);
+            });
+
+            batchesRead.incrementAndGet();
+            long totalBytes = chunkBytes.get();
+            bytesRead.addAndGet(totalBytes);
+            long latencyNanos = System.nanoTime() - startNanos;
+            recordRead(totalBytes, latencyNanos);
+        } catch (IOException e) {
+            readErrors.incrementAndGet();
+            throw e;
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Delegates to the underlying storage with per-service read metrics (batch count, latency).
+     */
+    @Override
     public void forEachChunk(StoragePath path, ChunkFieldFilter filter,
                              CheckedConsumer<TickDataChunk> consumer) throws Exception {
         long startNanos = System.nanoTime();
         try {
-            delegate.forEachChunk(path, filter, consumer);
+            AtomicLong chunkBytes = new AtomicLong(0);
+            delegate.forEachChunk(path, filter, chunk -> {
+                chunkBytes.addAndGet(chunk.getSerializedSize());
+                consumer.accept(chunk);
+            });
 
             batchesRead.incrementAndGet();
+            long totalBytes = chunkBytes.get();
+            bytesRead.addAndGet(totalBytes);
             long latencyNanos = System.nanoTime() - startNanos;
-            recordRead(0, latencyNanos);
+            recordRead(totalBytes, latencyNanos);
         } catch (IOException e) {
             readErrors.incrementAndGet();
             throw e;

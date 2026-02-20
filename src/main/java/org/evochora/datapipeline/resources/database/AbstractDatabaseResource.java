@@ -183,6 +183,37 @@ public abstract class AbstractDatabaseResource extends AbstractResource
     protected abstract void doWriteEnvironmentChunks(Object connection, 
             java.util.List<org.evochora.datapipeline.api.contracts.TickDataChunk> chunks) throws Exception;
 
+    /**
+     * Writes a single raw environment chunk to the database via the storage strategy.
+     * <p>
+     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IEnvironmentDataWriter#writeRawChunk(long, long, int, byte[])}
+     * <p>
+     * <strong>Transaction Handling:</strong> This method does NOT commit. The caller
+     * accumulates multiple chunks and calls {@link #doCommitRawEnvironmentChunks(Object)}
+     * to commit the batch.
+     *
+     * @param connection Database connection (from acquireDedicatedConnection)
+     * @param firstTick First tick number in the chunk
+     * @param lastTick Last tick number in the chunk
+     * @param tickCount Number of sampled ticks in the chunk
+     * @param rawProtobufData Uncompressed protobuf bytes of one TickDataChunk message
+     * @throws Exception if write fails
+     */
+    protected abstract void doWriteRawEnvironmentChunk(Object connection,
+            long firstTick, long lastTick, int tickCount, byte[] rawProtobufData) throws Exception;
+
+    /**
+     * Commits all raw environment chunks accumulated via {@link #doWriteRawEnvironmentChunk}.
+     * <p>
+     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IEnvironmentDataWriter#commitRawChunks()}
+     * <p>
+     * <strong>Transaction Handling:</strong> Must commit on success, rollback on failure.
+     *
+     * @param connection Database connection (from acquireDedicatedConnection)
+     * @throws Exception if commit fails
+     */
+    protected abstract void doCommitRawEnvironmentChunks(Object connection) throws Exception;
+
     // ========================================================================
     // IOrganismDataWriter Capability
     // ========================================================================

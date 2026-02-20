@@ -6,13 +6,13 @@ import java.util.Map;
 import java.util.Set;
 
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
-import org.evochora.datapipeline.api.resources.storage.ChunkFieldFilter;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareEnvironmentDataWriter;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.slf4j.Logger;
@@ -23,17 +23,25 @@ import com.typesafe.config.Config;
 /**
  * Indexes environment cell states from TickDataChunks for efficient spatial queries.
  * <p>
- * This indexer:
- * <ul>
- *   <li>Reads TickDataChunk batches from storage (via topic notifications)</li>
- *   <li>Stores chunks as BLOBs in the database (no decompression)</li>
- *   <li>Writes to database with MERGE for 100% idempotency</li>
- *   <li>Supports dimension-agnostic schema (1D to N-D)</li>
- * </ul>
+ * This indexer uses streaming raw-byte pass-through: chunks are read as raw protobuf
+ * bytes and written directly to the database without parsing or re-serialization.
+ * This eliminates the parse/serialize round-trip and reduces peak heap from ~10.5 GB
+ * to ~25 MB (one raw chunk at a time).
  * <p>
- * <strong>Delta Compression:</strong> This indexer stores chunks directly without
- * decompression to maximize storage savings. Decompression is deferred to query time
- * in the EnvironmentController, which uses DeltaCodec to reconstruct individual ticks.
+ * <strong>Processing flow:</strong>
+ * <ol>
+ *   <li>Reads raw protobuf bytes via {@code storage.forEachRawChunk()}</li>
+ *   <li>Passes bytes directly to {@code database.writeRawChunk()}</li>
+ *   <li>Commits batch via {@code database.commitRawChunks()}</li>
+ * </ol>
+ * <p>
+ * <strong>Delta Compression:</strong> Chunks are stored as-is without decompression.
+ * Decompression is deferred to query time in the EnvironmentController, which uses
+ * DeltaCodec to reconstruct individual ticks.
+ * <p>
+ * <strong>Organisms:</strong> Raw bytes include organism data. The read path
+ * ({@code RowPerChunkStrategy.parseChunkForEnvironment}) strips organisms at the
+ * wire level during queries.
  * <p>
  * <strong>Resources Required:</strong>
  * <ul>
@@ -43,12 +51,6 @@ import com.typesafe.config.Config;
  *   <li>{@code database} - IEnvironmentDataWriter for writing chunks</li>
  * </ul>
  * <p>
- * <strong>Components Used:</strong>
- * <ul>
- *   <li>MetadataReadingComponent - waits for metadata before processing</li>
- *   <li>ChunkBufferingComponent - buffers chunks for efficient batch writes</li>
- * </ul>
- * <p>
  * <strong>Competing Consumers:</strong> Multiple instances can run in parallel
  * using the same consumer group. Topic distributes batches across instances,
  * and MERGE ensures idempotent writes even with concurrent access.
@@ -56,17 +58,16 @@ import com.typesafe.config.Config;
  * @param <ACK> The acknowledgment token type (implementation-specific)
  */
 public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> implements IMemoryEstimatable {
-    
+
     private static final Logger log = LoggerFactory.getLogger(EnvironmentIndexer.class);
-    
+
     private final IResourceSchemaAwareEnvironmentDataWriter database;
-    private final int insertBatchSize;
     private EnvironmentProperties envProps;
-    
+
     /**
      * Creates a new environment indexer.
      * <p>
-     * Uses default components (METADATA + BUFFERING) from AbstractBatchIndexer.
+     * Uses streaming raw-byte processing (no chunk buffering).
      *
      * @param name Service name (must not be null/blank)
      * @param options Configuration for this indexer (must not be null)
@@ -75,25 +76,21 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> implement
     public EnvironmentIndexer(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
         this.database = getRequiredResource("database", IResourceSchemaAwareEnvironmentDataWriter.class);
-        this.insertBatchSize = options.hasPath("insertBatchSize") ? options.getInt("insertBatchSize") : 5;
     }
-    
-    // Required components: METADATA + BUFFERING (inherited from AbstractBatchIndexer)
+
+    @Override
+    protected Set<ComponentType> getRequiredComponents() {
+        return EnumSet.of(ComponentType.METADATA);
+    }
 
     @Override
     protected Set<ComponentType> getOptionalComponents() {
         return EnumSet.of(ComponentType.DLQ);
     }
 
-    /**
-     * {@inheritDoc}
-     * <p>
-     * Skips organism data at the wire level. The EnvironmentIndexer stores chunks as BLOBs
-     * and never accesses organism fields, saving ~730 MB of heap per chunk.
-     */
     @Override
-    protected ChunkFieldFilter getChunkFieldFilter() {
-        return ChunkFieldFilter.SKIP_ORGANISMS;
+    protected boolean useStreamingProcessing() {
+        return true;
     }
 
     /**
@@ -107,51 +104,58 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> implement
      */
     @Override
     protected void prepareTables(String runId) throws Exception {
-        // Load metadata (provided by MetadataReadingComponent via getMetadata())
         SimulationMetadata metadata = getMetadata();
-        
-        // Extract environment properties for coordinate conversion
         this.envProps = extractEnvironmentProperties(metadata);
-        
-        // Create database table (idempotent)
+
         int dimensions = envProps.getWorldShape().length;
         database.createEnvironmentDataTable(dimensions);
-        
+
         log.debug("Environment tables prepared: {} dimensions", dimensions);
     }
-    
+
     /**
-     * Flushes buffered chunks to the database.
+     * Reads raw chunks from storage and writes them directly to the database.
      * <p>
-     * Writes chunks directly as BLOBs without decompression for maximum storage savings.
-     * <p>
-     * <strong>Idempotency:</strong> MERGE ensures duplicate writes are safe.
+     * Overrides the default template method to use raw-byte pass-through:
+     * chunks are never parsed into Java objects. Each raw chunk is passed
+     * directly to the database strategy for compression and file writing.
      *
-     * @param chunks Chunks to flush (typically 1-10 chunks per flush)
-     * @throws Exception if flush fails
+     * @param path Storage path of the batch file
+     * @param batchId Batch identifier for ACK tracking
+     * @throws Exception if read or write fails
+     */
+    @Override
+    protected void readAndProcessChunks(StoragePath path, String batchId) throws Exception {
+        storage.forEachRawChunk(path, rawChunk -> {
+            database.writeRawChunk(rawChunk.firstTick(), rawChunk.lastTick(),
+                                   rawChunk.tickCount(), rawChunk.data());
+            onChunkStreamed(batchId, rawChunk.tickCount());
+        });
+    }
+
+    /**
+     * Commits all raw chunks accumulated since the last commit.
+     *
+     * @throws Exception if commit fails
+     */
+    @Override
+    protected void commitProcessedChunks() throws Exception {
+        database.commitRawChunks();
+    }
+
+    /**
+     * Not used in streaming mode.
+     *
+     * @throws UnsupportedOperationException always
      */
     @Override
     protected void flushChunks(List<TickDataChunk> chunks) throws Exception {
-        if (chunks.isEmpty()) {
-            log.debug("No chunks to flush");
-            return;
-        }
-
-        // Write ALL chunks directly to database (no decompression)
-        database.writeEnvironmentChunks(chunks);
-        
-        // Calculate total ticks for logging
-        int totalTicks = chunks.stream()
-            .mapToInt(chunk -> 1 + chunk.getDeltasCount())  // 1 snapshot + N deltas
-            .sum();
-        
-        log.debug("Flushed {} chunks ({} ticks total)", chunks.size(), totalTicks);
+        throw new UnsupportedOperationException(
+            "EnvironmentIndexer uses streaming raw-byte processing, not buffered flushChunks");
     }
-    
+
     /**
      * Extracts EnvironmentProperties from SimulationMetadata.
-     * <p>
-     * Parses world shape (dimensions) and topology (toroidal) from metadata.
      *
      * @param metadata Simulation metadata containing environment configuration
      * @return EnvironmentProperties for coordinate conversion
@@ -162,40 +166,32 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> implement
             MetadataConfigHelper.isEnvironmentToroidal(metadata)
         );
     }
-    
+
     // ==================== IMemoryEstimatable ====================
-    
+
     /**
      * {@inheritDoc}
      * <p>
-     * Estimates memory for the EnvironmentIndexer chunk buffer at worst-case.
+     * Estimates memory for the EnvironmentIndexer at worst-case.
      * <p>
-     * <strong>Calculation:</strong> insertBatchSize (chunks) × bytesPerChunk
-     * <p>
-     * The buffer holds List&lt;TickDataChunk&gt; where each chunk contains a snapshot
-     * and deltas. Each chunk is estimated at ~25MB for a 1600×1200 environment.
+     * With streaming raw-byte processing, peak memory is determined by two buffers
+     * that coexist during compression: the uncompressed raw protobuf bytes (input)
+     * and the compressed output. Worst-case assumes compression achieves no reduction
+     * (random data), so both buffers are the same size.
      */
     @Override
     public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
-        // Each chunk contains snapshot + deltas
-        long bytesPerChunk = params.estimateBytesPerChunk();
-        long bufferBytes = (long) insertBatchSize * bytesPerChunk;
+        long bytesPerRawChunk = params.estimateSerializedBytesPerChunk();
+        long peakBytes = 2 * bytesPerRawChunk;
 
-        String bufferExplanation = String.format("%d insertBatchSize (chunks) × %s/chunk (%d samples/chunk, %d ticks)",
-            insertBatchSize,
-            SimulationParameters.formatBytes(bytesPerChunk),
-            params.samplesPerChunk(),
-            params.simulationTicksPerChunk());
-
-        // Transient byte[] held during readChunkBatch: the full compressed batch file
-        // loaded into heap by getRaw(). Conservative upper bound: uncompressed chunk size
-        // (actual compressed size is always smaller).
-        String ioExplanation = String.format("Transient compressed byte[] during batch read ≤ %s (upper bound)",
-            SimulationParameters.formatBytes(bytesPerChunk));
+        String explanation = String.format(
+            "1 raw chunk ≤ %s + compression buffer ≤ %s (streaming, no parse)",
+            SimulationParameters.formatBytes(bytesPerRawChunk),
+            SimulationParameters.formatBytes(bytesPerRawChunk));
 
         return List.of(
-            new MemoryEstimate(serviceName, bufferBytes, bufferExplanation, MemoryEstimate.Category.SERVICE_BATCH),
-            new MemoryEstimate(serviceName + " (batch read I/O)", bytesPerChunk, ioExplanation, MemoryEstimate.Category.SERVICE_BATCH)
+            new MemoryEstimate(serviceName, peakBytes, explanation,
+                               MemoryEstimate.Category.SERVICE_BATCH)
         );
     }
 }

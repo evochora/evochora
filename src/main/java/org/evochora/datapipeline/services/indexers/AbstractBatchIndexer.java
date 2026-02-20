@@ -630,15 +630,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         streamingTracker.registerBatch(batchId, msg);
 
         try {
-            storage.forEachChunk(path, getChunkFieldFilter(), chunk -> {
-                    processChunk(chunk);
-                    streamingTracker.onChunkProcessed(batchId, chunk.getTickCount());
-                    streamingUncommittedChunks++;
-
-                    if (streamingUncommittedChunks >= streamingInsertBatchSize) {
-                        streamingCommitAndAck();
-                    }
-                });
+            readAndProcessChunks(path, batchId);
 
             streamingTracker.completeBatch(batchId);
             ackCompletedBatches();
@@ -648,6 +640,47 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         } catch (Exception e) {
             streamingTracker.removeBatch(batchId);
             throw e;
+        }
+    }
+
+    /**
+     * Reads chunks from storage and processes them one at a time.
+     * <p>
+     * Default implementation uses {@link #forEachChunk} with the configured
+     * {@link #getChunkFieldFilter()}, calling {@link #processChunk} per chunk
+     * and {@link #onChunkStreamed} for tracker/commit bookkeeping.
+     * <p>
+     * Subclasses can override to use a different read strategy (e.g., raw-byte
+     * streaming via {@code forEachRawChunk} for pass-through storage).
+     *
+     * @param path    The resolved storage path
+     * @param batchId The batch identifier for tracker bookkeeping
+     * @throws Exception if reading, processing, or committing fails
+     */
+    protected void readAndProcessChunks(StoragePath path, String batchId) throws Exception {
+        storage.forEachChunk(path, getChunkFieldFilter(), chunk -> {
+            processChunk(chunk);
+            onChunkStreamed(batchId, chunk.getTickCount());
+        });
+    }
+
+    /**
+     * Records a streamed chunk for tracker and commit bookkeeping.
+     * <p>
+     * Must be called once per chunk in {@link #readAndProcessChunks} after the chunk
+     * has been processed. Tracks chunk completion in {@link StreamingAckTracker} and
+     * triggers a commit when {@code insertBatchSize} uncommitted chunks have accumulated.
+     *
+     * @param batchId   The batch identifier
+     * @param tickCount Number of ticks in the processed chunk
+     * @throws Exception if commit fails
+     */
+    protected final void onChunkStreamed(String batchId, int tickCount) throws Exception {
+        streamingTracker.onChunkProcessed(batchId, tickCount);
+        streamingUncommittedChunks++;
+
+        if (streamingUncommittedChunks >= streamingInsertBatchSize) {
+            streamingCommitAndAck();
         }
     }
 

@@ -78,6 +78,40 @@ public interface IH2EnvStorageStrategy {
     void writeChunks(Connection conn, List<TickDataChunk> chunks) throws SQLException;
 
     /**
+     * Writes a single raw chunk (uncompressed protobuf bytes) to the filesystem and
+     * adds the tick-range entry to the JDBC batch.
+     * <p>
+     * This method is part of a stateful write session: the first call lazily initializes
+     * a {@link PreparedStatement} and schema directory. Subsequent calls reuse these.
+     * The statement is kept open across calls for batch efficiency.
+     * <p>
+     * <strong>Transaction Management:</strong> This method does NOT commit or close
+     * the statement. Call {@link #commitRawChunks(Connection)} to execute the batch,
+     * and the caller (H2Database) handles the commit.
+     *
+     * @param conn Database connection (with autoCommit=false, schema already set)
+     * @param firstTick First tick number in the chunk
+     * @param lastTick Last tick number in the chunk
+     * @param tickCount Number of sampled ticks in the chunk
+     * @param rawProtobufData Uncompressed protobuf bytes of one TickDataChunk message
+     * @throws SQLException if file I/O or statement preparation fails
+     */
+    void writeRawChunk(Connection conn, long firstTick, long lastTick,
+                       int tickCount, byte[] rawProtobufData) throws SQLException;
+
+    /**
+     * Executes the accumulated JDBC batch from preceding {@link #writeRawChunk} calls.
+     * <p>
+     * Closes the {@link PreparedStatement} and releases session state after execution.
+     * The next {@link #writeRawChunk} call will create a fresh statement.
+     * Does NOT commit the transaction — the caller handles that.
+     *
+     * @param conn Database connection (same connection used in writeRawChunk calls)
+     * @throws SQLException if batch execution fails
+     */
+    void commitRawChunks(Connection conn) throws SQLException;
+
+    /**
      * Reads the chunk containing the specified tick number.
      * <p>
      * This method returns the raw TickDataChunk without decompression. The caller
@@ -91,7 +125,7 @@ public interface IH2EnvStorageStrategy {
      * <p>
      * <strong>Query Strategy:</strong> Uses {@code first_tick <= ? AND last_tick >= ?} to find
      * the chunk containing the requested tick.
-     * 
+     *
      * @param conn Database connection (schema already set)
      * @param tickNumber Tick number to find (chunk containing this tick will be returned)
      * @return The TickDataChunk containing the requested tick

@@ -112,6 +112,9 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
     /** Cached ticksPerSubdirectory per schema directory (loaded from .chunk_meta). */
     private final ConcurrentHashMap<Path, Long> metadataCache = new ConcurrentHashMap<>();
 
+    /** Per-connection PreparedStatements for raw chunk batching (thread-safe for competing consumers). */
+    private final ConcurrentHashMap<Connection, PreparedStatement> rawChunkStmts = new ConcurrentHashMap<>();
+
     /**
      * Creates RowPerChunkStrategy with file-based chunk storage.
      * <p>
@@ -431,9 +434,39 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
      * @throws SQLException if metadata cannot be written or read
      */
     private long ensureChunkMetadata(Path schemaDir, TickDataChunk firstChunk) throws SQLException {
+        long chunkTickStep = estimateChunkTickStep(firstChunk);
+        return ensureChunkMetadataWithStep(schemaDir, chunkTickStep);
+    }
+
+    /**
+     * Ensures the {@code .chunk_meta} file exists, computing {@code chunkTickStep}
+     * from raw metadata fields (firstTick, lastTick, tickCount).
+     *
+     * @param schemaDir the schema-specific directory
+     * @param firstTick first tick of the first chunk
+     * @param lastTick last tick of the first chunk
+     * @param tickCount sampled tick count of the first chunk
+     * @return the ticksPerSubdirectory value
+     * @throws SQLException if metadata cannot be written or read
+     */
+    private long ensureChunkMetadataFromRaw(Path schemaDir, long firstTick,
+                                            long lastTick, int tickCount) throws SQLException {
+        long chunkTickStep = estimateChunkTickStepFromRaw(firstTick, lastTick, tickCount);
+        return ensureChunkMetadataWithStep(schemaDir, chunkTickStep);
+    }
+
+    /**
+     * Ensures chunk metadata using a pre-computed {@code chunkTickStep}.
+     *
+     * @param schemaDir the schema-specific directory
+     * @param chunkTickStep the pre-computed tick step between consecutive chunks
+     * @return the ticksPerSubdirectory value
+     * @throws SQLException if metadata cannot be written or read
+     */
+    private long ensureChunkMetadataWithStep(Path schemaDir, long chunkTickStep) throws SQLException {
         try {
             return metadataCache.computeIfAbsent(schemaDir,
-                    dir -> computeOrLoadMetadata(dir, firstChunk));
+                    dir -> computeOrLoadMetadata(dir, chunkTickStep));
         } catch (UncheckedSQLException e) {
             throw e.getCause();
         }
@@ -444,11 +477,11 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
      * or loads the existing file if another process created it first.
      *
      * @param schemaDir the schema-specific directory
-     * @param firstChunk the first chunk (used to determine tickCount)
+     * @param chunkTickStep the tick step between consecutive chunks
      * @return the ticksPerSubdirectory value
      * @throws UncheckedSQLException if I/O fails
      */
-    private long computeOrLoadMetadata(Path schemaDir, TickDataChunk firstChunk) {
+    private long computeOrLoadMetadata(Path schemaDir, long chunkTickStep) {
         Path metaFile = schemaDir.resolve(CHUNK_META_FILENAME);
 
         // Another process may have created it already
@@ -456,8 +489,6 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
             return readMetadataFile(metaFile);
         }
 
-        // Compute from first chunk, accounting for sampling interval
-        long chunkTickStep = estimateChunkTickStep(firstChunk);
         long ticksPerSubdir = (long) maxFilesPerDirectory * chunkTickStep;
 
         // Atomic write: temp file + rename
@@ -515,6 +546,26 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
         long samplingInterval = (lastTick - firstTick) / (tickCount - 1);
 
         return tickCount * Math.max(samplingInterval, 1);
+    }
+
+    /**
+     * Estimates chunk tick step from raw metadata fields.
+     * <p>
+     * Equivalent to {@link #estimateChunkTickStep(TickDataChunk)} but uses
+     * pre-extracted firstTick/lastTick/tickCount instead of a parsed chunk.
+     *
+     * @param firstTick first tick of the chunk
+     * @param lastTick last tick of the chunk
+     * @param tickCount sampled tick count
+     * @return estimated tick step between consecutive chunks
+     */
+    private long estimateChunkTickStepFromRaw(long firstTick, long lastTick, int tickCount) {
+        int tc = Math.max(tickCount, 1);
+        if (tc <= 1 || firstTick == lastTick) {
+            return tc;
+        }
+        long samplingInterval = (lastTick - firstTick) / (tc - 1);
+        return tc * Math.max(samplingInterval, 1);
     }
 
     /**
@@ -584,6 +635,137 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
         @Override
         public synchronized SQLException getCause() {
             return (SQLException) super.getCause();
+        }
+    }
+
+    // ========================================================================
+    // Raw chunk write session (stateful: PreparedStatement kept across calls)
+    // ========================================================================
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Uses per-connection {@link PreparedStatement} for thread-safe batching when
+     * multiple indexers share the same strategy (competing consumers).
+     * Compresses raw bytes, writes file atomically, and adds tick-range to JDBC batch.
+     */
+    @Override
+    public void writeRawChunk(Connection conn, long firstTick, long lastTick,
+                              int tickCount, byte[] rawProtobufData) throws SQLException {
+        // Get or create PreparedStatement for this connection
+        PreparedStatement stmt;
+        try {
+            stmt = rawChunkStmts.computeIfAbsent(conn, c -> {
+                try {
+                    return c.prepareStatement(mergeSql);
+                } catch (SQLException e) {
+                    throw new UncheckedSQLException(e);
+                }
+            });
+        } catch (UncheckedSQLException e) {
+            throw e.getCause();
+        }
+
+        // Purge stale entries from closed connections (rare: only after connection failure)
+        if (rawChunkStmts.size() > 1) {
+            purgeClosedConnections(conn);
+        }
+
+        // Resolve schema directory (cheap: conn.getSchema() + Path.resolve())
+        Path schemaDir = resolveSchemaDirectory(conn);
+        try {
+            Files.createDirectories(schemaDir);
+        } catch (IOException e) {
+            throw new SQLException("Failed to create chunk directory: " + schemaDir, e);
+        }
+
+        // Ensure metadata (cached per schema directory after first call)
+        long ticksPerSubdir = ensureChunkMetadataFromRaw(schemaDir, firstTick, lastTick, tickCount);
+
+        // Compress raw protobuf bytes
+        byte[] compressed = compressRawBytes(rawProtobufData);
+
+        // Resolve subdirectory, ensure it exists, then write file first
+        // (orphan file is harmless; missing file is not)
+        Path subdir = resolveSubdirectory(schemaDir, firstTick, ticksPerSubdir);
+        try {
+            Files.createDirectories(subdir);
+        } catch (IOException e) {
+            throw new SQLException("Failed to create chunk subdirectory: " + subdir, e);
+        }
+        writeChunkFile(subdir, firstTick, compressed);
+
+        // Add to JDBC batch
+        stmt.setLong(1, firstTick);
+        stmt.setLong(2, lastTick);
+        stmt.addBatch();
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Executes the accumulated batch for the given connection, then closes the
+     * {@link PreparedStatement} and removes the session entry. The next
+     * {@link #writeRawChunk} call will create a fresh statement.
+     */
+    @Override
+    public void commitRawChunks(Connection conn) throws SQLException {
+        PreparedStatement stmt = rawChunkStmts.remove(conn);
+        if (stmt != null) {
+            try {
+                stmt.executeBatch();
+            } finally {
+                stmt.close();
+            }
+        }
+    }
+
+    /**
+     * Removes entries for closed connections from {@link #rawChunkStmts}.
+     * <p>
+     * Called opportunistically when the map has more than one entry, which only
+     * happens after a connection failure caused the wrapper to acquire a new connection.
+     *
+     * @param currentConn the active connection (not purged)
+     */
+    private void purgeClosedConnections(Connection currentConn) {
+        rawChunkStmts.entrySet().removeIf(entry -> {
+            Connection c = entry.getKey();
+            if (c == currentConn) {
+                return false;
+            }
+            try {
+                if (!c.isClosed()) {
+                    return false;
+                }
+            } catch (SQLException e) {
+                // isClosed() failed — conservatively treat as closed
+            }
+            try {
+                entry.getValue().close();
+            } catch (SQLException ignored) {
+                // Best-effort cleanup
+            }
+            return true;
+        });
+    }
+
+    /**
+     * Compresses raw protobuf bytes using the configured compression codec.
+     *
+     * @param rawProtobufData uncompressed protobuf bytes
+     * @return compressed bytes
+     * @throws SQLException if compression fails
+     */
+    private byte[] compressRawBytes(byte[] rawProtobufData) throws SQLException {
+        try {
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            try (OutputStream compressed = codec.wrapOutputStream(baos)) {
+                compressed.write(rawProtobufData);
+            }
+            return baos.toByteArray();
+        } catch (IOException e) {
+            throw new SQLException("Failed to compress raw chunk data", e);
         }
     }
 

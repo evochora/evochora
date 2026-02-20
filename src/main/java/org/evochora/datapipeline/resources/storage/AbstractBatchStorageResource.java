@@ -31,6 +31,7 @@ import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.ChunkFieldFilter;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
+import org.evochora.datapipeline.api.resources.storage.RawChunk;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
 import org.evochora.datapipeline.api.resources.storage.IResourceBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
@@ -198,6 +199,94 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
 
         return new StreamingWriteResult(StoragePath.of(physicalPath), simulationId, firstTick, lastTick,
             chunkCount, trackingIterable.getTotalTickCount(), tempResult.bytesWritten());
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Efficient implementation that reads raw protobuf bytes without full parsing.
+     * For each chunk in the batch file, reads the raw message bytes and extracts only
+     * the three metadata fields (firstTick, lastTick, tickCount) via partial parse.
+     * Peak heap: one raw chunk (~25 MB for 4000x3000 environment).
+     */
+    @Override
+    public void forEachRawChunk(StoragePath path,
+                                CheckedConsumer<RawChunk> consumer) throws Exception {
+        if (path == null) {
+            throw new IllegalArgumentException("path cannot be null");
+        }
+        if (consumer == null) {
+            throw new IllegalArgumentException("consumer cannot be null");
+        }
+
+        long startNanos = System.nanoTime();
+
+        ICompressionCodec detectedCodec = org.evochora.datapipeline.utils.compression.CompressionCodecFactory
+            .detectFromExtension(path.asString());
+
+        long bytesRead;
+        try (InputStream rawStream = openRawStream(path.asString());
+             CountingInputStream countingStream = new CountingInputStream(rawStream);
+             InputStream decompressedStream = detectedCodec.wrapInputStream(countingStream)) {
+
+            CodedInputStream cis = CodedInputStream.newInstance(decompressedStream);
+            cis.setSizeLimit(Integer.MAX_VALUE);
+
+            while (!cis.isAtEnd()) {
+                int messageSize = cis.readRawVarint32();
+                byte[] rawBytes = cis.readRawBytes(messageSize);
+                RawChunk rawChunk = partialParseRawChunk(rawBytes);
+                consumer.accept(rawChunk);
+            }
+
+            bytesRead = countingStream.getBytesRead();
+        }
+
+        long batchSizeMB = bytesRead / 1_048_576;
+        lastReadBatchSizeMB.set(batchSizeMB);
+        maxReadBatchSizeMB.updateAndGet(current -> Math.max(current, batchSizeMB));
+        recordRead(bytesRead, System.nanoTime() - startNanos);
+    }
+
+    /**
+     * Extracts firstTick, lastTick, and tickCount from raw protobuf bytes via partial parse.
+     * Scans only the top-level fields, skipping snapshot and delta data entirely.
+     *
+     * @param rawBytes raw protobuf bytes of a single TickDataChunk message
+     * @return RawChunk with metadata and the original raw bytes
+     * @throws IOException if parsing fails
+     */
+    private static RawChunk partialParseRawChunk(byte[] rawBytes) throws IOException {
+        CodedInputStream cis = CodedInputStream.newInstance(rawBytes);
+        long firstTick = 0;
+        long lastTick = 0;
+        int tickCount = 0;
+        int fieldsFound = 0;
+
+        while (fieldsFound < 3) {
+            int tag = cis.readTag();
+            if (tag == 0) break;
+
+            switch (WireFormat.getTagFieldNumber(tag)) {
+                case TickDataChunk.FIRST_TICK_FIELD_NUMBER:
+                    firstTick = cis.readInt64();
+                    fieldsFound++;
+                    break;
+                case TickDataChunk.LAST_TICK_FIELD_NUMBER:
+                    lastTick = cis.readInt64();
+                    fieldsFound++;
+                    break;
+                case TickDataChunk.TICK_COUNT_FIELD_NUMBER:
+                    tickCount = cis.readInt32();
+                    fieldsFound++;
+                    break;
+                default:
+                    cis.skipField(tag);
+                    break;
+            }
+        }
+
+        return new RawChunk(firstTick, lastTick, tickCount, rawBytes);
     }
 
     /**

@@ -120,6 +120,33 @@ public class EnvironmentDataWriterWrapper extends AbstractDatabaseWrapper implem
         }
     }
 
+    @Override
+    public void writeRawChunk(long firstTick, long lastTick, int tickCount,
+                              byte[] rawProtobufData) throws Exception {
+        long startNanos = System.nanoTime();
+        database.doWriteRawEnvironmentChunk(ensureConnection(), firstTick, lastTick, tickCount, rawProtobufData);
+        chunksWritten.incrementAndGet();
+        chunkThroughput.recordCount();
+        writeLatency.record(System.nanoTime() - startNanos);
+    }
+
+    @Override
+    public void commitRawChunks() throws Exception {
+        long startNanos = System.nanoTime();
+        try {
+            database.doCommitRawEnvironmentChunks(ensureConnection());
+            batchesWritten.incrementAndGet();
+            batchThroughput.recordCount();
+            writeLatency.record(System.nanoTime() - startNanos);
+        } catch (Exception e) {
+            writeErrors.incrementAndGet();
+            log.warn("Failed to commit raw chunks: {}", e.getMessage());
+            recordError("COMMIT_RAW_CHUNKS_FAILED", "Failed to commit raw environment chunks",
+                       "Error: " + e.getMessage());
+            throw e;
+        }
+    }
+
     /**
      * Ensures environment_chunks table exists.
      * <p>

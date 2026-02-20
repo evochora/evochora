@@ -506,6 +506,50 @@ public class H2Database extends AbstractDatabaseResource
         }
     }
 
+    /**
+     * Delegates a single raw chunk write to the environment storage strategy.
+     * <p>
+     * No commit — chunks are accumulated and committed via
+     * {@link #doCommitRawEnvironmentChunks(Object)}.
+     */
+    @Override
+    protected void doWriteRawEnvironmentChunk(Object connection,
+                                              long firstTick, long lastTick,
+                                              int tickCount, byte[] rawProtobufData) throws Exception {
+        Connection conn = (Connection) connection;
+        getEnvStrategy().writeRawChunk(conn, firstTick, lastTick, tickCount, rawProtobufData);
+    }
+
+    /**
+     * Commits accumulated raw environment chunks via the storage strategy.
+     * <p>
+     * Delegates batch execution to the strategy, then commits the transaction.
+     * Rolls back on failure and restores the interrupt flag if it was set.
+     */
+    @Override
+    protected void doCommitRawEnvironmentChunks(Object connection) throws Exception {
+        Connection conn = (Connection) connection;
+
+        // Clear interrupt flag temporarily to allow H2 operations
+        boolean wasInterrupted = Thread.interrupted();
+
+        try {
+            getEnvStrategy().commitRawChunks(conn);
+            conn.commit();
+        } catch (SQLException e) {
+            try {
+                conn.rollback();
+            } catch (SQLException rollbackEx) {
+                log.warn("Rollback failed (connection may be closed): {}", rollbackEx.getMessage());
+            }
+            throw e;
+        } finally {
+            if (wasInterrupted) {
+                Thread.currentThread().interrupt();
+            }
+        }
+    }
+
     // ========================================================================
     // IOrganismDataWriter Capability
     // ========================================================================
