@@ -17,7 +17,6 @@ import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
-import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareOrganismDataWriter;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataReader;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 import org.evochora.datapipeline.api.resources.storage.ChunkFieldFilter;

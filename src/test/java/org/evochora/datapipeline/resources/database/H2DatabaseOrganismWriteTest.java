@@ -88,9 +88,11 @@ class H2DatabaseOrganismWriteTest {
             database.doCreateOrganismTables(conn);
 
             // First write
-            database.doWriteOrganismStates(conn, java.util.List.of(tick));
+            database.doWriteOrganismTick(conn, tick);
+            database.doCommitOrganismWrites(conn);
             // Idempotent second write
-            database.doWriteOrganismStates(conn, java.util.List.of(tick));
+            database.doWriteOrganismTick(conn, tick);
+            database.doCommitOrganismWrites(conn);
 
             // organisms: single row
             try (ResultSet rs = conn.createStatement().executeQuery("SELECT COUNT(*) AS cnt FROM organisms")) {

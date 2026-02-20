@@ -15,7 +15,6 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
 import java.sql.SQLException;
-import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -65,19 +64,6 @@ class OrganismDataWriterWrapperTest {
 
         // Then
         assertThat(wrapper.isHealthy()).isTrue();
-    }
-
-    @Test
-    void testWriteOrganismStates_EmptyList() {
-        // When
-        wrapper.writeOrganismStates(List.of());
-
-        // Then
-        assertThat(wrapper.isHealthy()).isTrue();
-
-        Map<String, Number> metrics = wrapper.getMetrics();
-        assertThat(metrics.get("organisms_written").longValue()).isEqualTo(0);
-        assertThat(metrics.get("batches_written").longValue()).isEqualTo(0);
     }
 
     @Test
@@ -187,8 +173,7 @@ class OrganismDataWriterWrapperTest {
     }
 
     // NOTE: Wrapper-specific error handling is intentionally not duplicated here;
-    // end-to-end failure handling for writeOrganismStates is covered by dedicated
-    // H2Database and OrganismIndexer tests.
+    // end-to-end failure handling is covered by dedicated H2Database and OrganismIndexer tests.
 }
 
 
