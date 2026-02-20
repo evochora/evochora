@@ -137,6 +137,65 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
         conn.commit();
     }
 
+    // ========================================================================
+    // Streaming write methods (per-tick addBatch / commit)
+    // ========================================================================
+
+    @Override
+    protected String getStreamOrganismsMergeSql() {
+        return ORGANISMS_MERGE_SQL;
+    }
+
+    @Override
+    protected String getStreamStatesMergeSql() {
+        return STATES_MERGE_SQL;
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Writes one row per organism per tick with extracted columns (energy, ip, dv,
+     * data_pointers) and a compressed {@code runtime_state_blob} containing registers,
+     * stacks, and instruction data. Organism metadata deduplication is handled by
+     * {@link AbstractH2OrgStorageStrategy#addOrganismMetadataBatch(TickData)}.
+     */
+    @Override
+    public void addOrganismTick(Connection conn, TickData tick) throws SQLException {
+        ensureStreamingSession(conn);
+        addOrganismMetadataBatch(tick);
+
+        // Per-tick organism states (one row per organism)
+        ICompressionCodec codec = getCodec();
+        long tickNumber = tick.getTickNumber();
+
+        for (OrganismState org : tick.getOrganismsList()) {
+            byte[] runtimeBlob = buildRuntimeStateBlob(org, codec);
+
+            DataPointerList.Builder dpBuilder = DataPointerList.newBuilder();
+            for (Vector dp : org.getDataPointersList()) {
+                dpBuilder.addDataPointers(dp);
+            }
+            byte[] dataPointersBytes = dpBuilder.build().toByteArray();
+
+            streamStatesStmt.setLong(1, tickNumber);
+            streamStatesStmt.setInt(2, org.getOrganismId());
+            streamStatesStmt.setInt(3, org.getEnergy());
+            streamStatesStmt.setBytes(4, org.getIp().toByteArray());
+            streamStatesStmt.setBytes(5, org.getDv().toByteArray());
+            streamStatesStmt.setBytes(6, dataPointersBytes);
+            streamStatesStmt.setInt(7, org.getActiveDpIndex());
+            streamStatesStmt.setBytes(8, runtimeBlob);
+            streamStatesStmt.setInt(9, org.getEntropyRegister());
+            streamStatesStmt.setInt(10, org.getMoleculeMarkerRegister());
+            streamStatesStmt.addBatch();
+        }
+    }
+
+    // ========================================================================
+    // Legacy batch write methods
+    // Stage 7: remove after test migration to addOrganismTick/commitOrganismWrites
+    // ========================================================================
+
     @Override
     public String getOrganismsMergeSql() {
         return ORGANISMS_MERGE_SQL;

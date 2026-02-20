@@ -243,8 +243,37 @@ public abstract class AbstractDatabaseResource extends AbstractResource
      * @param ticks List of ticks with their organism states to write
      * @throws Exception if write fails
      */
+    // Stage 7: remove after test migration to doWriteOrganismTick/doCommitOrganismWrites
     protected abstract void doWriteOrganismStates(Object connection,
             java.util.List<org.evochora.datapipeline.api.contracts.TickData> ticks) throws Exception;
+
+    /**
+     * Adds organism data from a single tick to the write session via the storage strategy.
+     * <p>
+     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IOrganismDataWriter#writeOrganismTick(org.evochora.datapipeline.api.contracts.TickData)}
+     * <p>
+     * <strong>Transaction Handling:</strong> This method does NOT commit. The caller
+     * accumulates multiple ticks and calls {@link #doCommitOrganismWrites(Object)}
+     * to commit the batch.
+     *
+     * @param connection Database connection (from {@link #acquireDedicatedConnection()})
+     * @param tick Tick data containing organism states
+     * @throws Exception if batch addition fails
+     */
+    protected abstract void doWriteOrganismTick(Object connection,
+            org.evochora.datapipeline.api.contracts.TickData tick) throws Exception;
+
+    /**
+     * Commits all organism data accumulated via {@link #doWriteOrganismTick}.
+     * <p>
+     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IOrganismDataWriter#commitOrganismWrites()}
+     * <p>
+     * <strong>Transaction Handling:</strong> Must commit on success, rollback on failure.
+     *
+     * @param connection Database connection (from {@link #acquireDedicatedConnection()})
+     * @throws Exception if commit fails
+     */
+    protected abstract void doCommitOrganismWrites(Object connection) throws Exception;
 
     // ========================================================================
     // IMetadataReader Capability

@@ -67,6 +67,7 @@ public class OrganismDataWriterWrapper extends AbstractDatabaseWrapper implement
         }
     }
 
+    // Stage 7: remove after test migration to writeOrganismTick/commitOrganismWrites
     @Override
     public void writeOrganismStates(List<TickData> ticks) {
         if (ticks.isEmpty()) {
@@ -98,6 +99,71 @@ public class OrganismDataWriterWrapper extends AbstractDatabaseWrapper implement
             recordError("WRITE_ORGANISM_STATES_FAILED", "Failed to write organism states",
                     "Ticks: " + ticks.size() + ", Organisms: " + totalOrganisms + ", Error: " + e.getMessage());
             throw new RuntimeException("Failed to write organism states for " + ticks.size() + " ticks", e);
+        }
+    }
+
+    // ========================================================================
+    // Streaming write methods (per-tick addBatch / commit)
+    // ========================================================================
+
+    /**
+     * Writes organism data for a single tick to the database.
+     * <p>
+     * Ensures organism tables exist (idempotent), then delegates to the underlying
+     * database strategy via {@code doWriteOrganismTick}. Accumulates organisms in
+     * JDBC batch buffers without committing.
+     *
+     * @param tick Tick data containing organism states
+     * @throws SQLException if table creation or batch addition fails
+     */
+    @Override
+    public void writeOrganismTick(TickData tick) throws SQLException {
+        try {
+            ensureOrganismTables();
+            database.doWriteOrganismTick(ensureConnection(), tick);
+
+            organismsWritten.addAndGet(tick.getOrganismsCount());
+            organismThroughput.recordSum(tick.getOrganismsCount());
+        } catch (Exception e) {
+            writeErrors.incrementAndGet();
+            log.warn("Failed to write organism tick {}: {}", tick.getTickNumber(), e.getMessage());
+            recordError("WRITE_ORGANISM_TICK_FAILED", "Failed to write organism tick",
+                    "Tick: " + tick.getTickNumber() + ", Organisms: " + tick.getOrganismsCount()
+                    + ", Error: " + e.getMessage());
+            if (e instanceof SQLException) {
+                throw (SQLException) e;
+            }
+            throw new SQLException("Failed to write organism tick " + tick.getTickNumber(), e);
+        }
+    }
+
+    /**
+     * Commits all organism data accumulated since the last commit.
+     * <p>
+     * Delegates to {@code doCommitOrganismWrites} which executes JDBC batches,
+     * commits the transaction, and resets strategy session state. Records batch
+     * count and write latency metrics on success.
+     *
+     * @throws SQLException if batch execution or commit fails
+     */
+    @Override
+    public void commitOrganismWrites() throws SQLException {
+        long startNanos = System.nanoTime();
+        try {
+            database.doCommitOrganismWrites(ensureConnection());
+
+            batchesWritten.incrementAndGet();
+            batchThroughput.recordCount();
+            writeLatency.record(System.nanoTime() - startNanos);
+        } catch (Exception e) {
+            writeErrors.incrementAndGet();
+            log.warn("Failed to commit organism writes: {}", e.getMessage());
+            recordError("COMMIT_ORGANISM_WRITES_FAILED", "Failed to commit organism writes",
+                    "Error: " + e.getMessage());
+            if (e instanceof SQLException) {
+                throw (SQLException) e;
+            }
+            throw new SQLException("Failed to commit organism writes", e);
         }
     }
 

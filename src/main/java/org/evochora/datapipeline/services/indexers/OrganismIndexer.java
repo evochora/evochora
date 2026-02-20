@@ -1,6 +1,5 @@
 package org.evochora.datapipeline.services.indexers;
 
-import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
@@ -21,22 +20,22 @@ import org.slf4j.LoggerFactory;
 import com.typesafe.config.Config;
 
 /**
- * Indexer for organism data (static and per-tick state) based on TickDataChunks.
+ * Streaming indexer for organism data (static and per-tick state).
  * <p>
- * Responsibilities:
- * <ul>
- *   <li>Consumes BatchInfo messages from batch-topic via AbstractBatchIndexer.</li>
- *   <li>Reads TickDataChunk batches from storage.</li>
- *   <li>Extracts organism states from both snapshots and deltas.</li>
- *   <li>Writes organism tables via {@link IResourceSchemaAwareOrganismDataWriter}.</li>
- * </ul>
+ * <strong>Streaming Session Lifecycle:</strong>
+ * <ol>
+ *   <li>{@link #processChunk} — extracts ticks from snapshot+deltas, calls
+ *       {@code writeOrganismTick} per tick (JDBC addBatch, no commit)</li>
+ *   <li>{@link #commitProcessedChunks} — delegates to {@code commitOrganismWrites}
+ *       (executeBatch + commit), resets deduplication state</li>
+ * </ol>
  * <p>
- * <strong>Chunk Processing:</strong> Organisms are always complete in both snapshots
- * and deltas (they change almost entirely every tick), so this indexer extracts
- * organism data from all ticks within each chunk.
+ * Each parsed chunk is GC-eligible immediately after {@code processChunk} returns.
+ * Peak heap is dominated by JDBC batch buffers with compressed BLOBs (~5 MB),
+ * not by buffered parsed chunks.
  * <p>
- * Read-path (HTTP API, visualizer) is implemented in later phases; this indexer
- * focuses exclusively on the write path.
+ * <strong>Wire-level filtering:</strong> {@link ChunkFieldFilter#SKIP_CELLS} avoids
+ * parsing ~550 MB of environment cell data per snapshot at the protobuf wire level.
  *
  * @param <ACK> Topic acknowledgment token type
  */
@@ -45,7 +44,6 @@ public class OrganismIndexer<ACK> extends AbstractBatchIndexer<ACK> implements I
     private static final Logger log = LoggerFactory.getLogger(OrganismIndexer.class);
 
     private final IResourceSchemaAwareOrganismDataWriter database;
-    private final int insertBatchSize;
 
     /**
      * Creates a new OrganismIndexer.
@@ -57,7 +55,16 @@ public class OrganismIndexer<ACK> extends AbstractBatchIndexer<ACK> implements I
     public OrganismIndexer(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
         this.database = getRequiredResource("database", IResourceSchemaAwareOrganismDataWriter.class);
-        this.insertBatchSize = options.hasPath("insertBatchSize") ? options.getInt("insertBatchSize") : 5;
+    }
+
+    @Override
+    protected boolean useStreamingProcessing() {
+        return true;
+    }
+
+    @Override
+    protected Set<ComponentType> getRequiredComponents() {
+        return EnumSet.of(ComponentType.METADATA);
     }
 
     @Override
@@ -89,89 +96,53 @@ public class OrganismIndexer<ACK> extends AbstractBatchIndexer<ACK> implements I
     }
 
     /**
-     * Flushes buffered chunks to the organism tables.
+     * Processes a single chunk by extracting ticks and writing each to the database.
      * <p>
-     * Extracts organism states from both snapshots and deltas in each chunk.
-     * All ticks are written in a single JDBC batch by the underlying database
-     * implementation. MERGE ensures idempotent upserts.
+     * Extracts organism data from the snapshot and all deltas, creating a lightweight
+     * {@link TickData} for each and calling {@code writeOrganismTick}. The database
+     * strategy performs {@code addBatch()} internally — no commit happens here.
      *
-     * @param chunks Chunks to flush (typically 1-10 chunks per flush)
+     * @param chunk The filtered chunk (cells already stripped by SKIP_CELLS)
      * @throws Exception if write fails
      */
     @Override
-    protected void flushChunks(List<TickDataChunk> chunks) throws Exception {
-        if (chunks.isEmpty()) {
-            log.debug("No chunks to flush for OrganismIndexer");
-            return;
+    protected void processChunk(TickDataChunk chunk) throws Exception {
+        // Snapshot tick
+        database.writeOrganismTick(chunk.getSnapshot());
+
+        // Delta ticks (converted to TickData — database only needs tickNumber + organisms)
+        for (TickDelta delta : chunk.getDeltasList()) {
+            TickData deltaAsTick = TickData.newBuilder()
+                .setTickNumber(delta.getTickNumber())
+                .addAllOrganisms(delta.getOrganismsList())
+                .build();
+            database.writeOrganismTick(deltaAsTick);
         }
-
-        // Extract all ticks (snapshots + deltas) from chunks
-        List<TickData> allTicks = new ArrayList<>();
-        for (TickDataChunk chunk : chunks) {
-            // Add snapshot
-            allTicks.add(chunk.getSnapshot());
-            
-            // Add deltas (converted to TickData-like structure for database writer)
-            // Note: OrganismStates are identical in structure for both snapshot and delta
-            for (TickDelta delta : chunk.getDeltasList()) {
-                // Create a minimal TickData for organism extraction
-                // The database writer only needs tickNumber and organisms
-                TickData deltaAsTick = TickData.newBuilder()
-                    .setTickNumber(delta.getTickNumber())
-                    .addAllOrganisms(delta.getOrganismsList())
-                    .build();
-                allTicks.add(deltaAsTick);
-            }
-        }
-
-        database.writeOrganismStates(allTicks);
-
-        int totalOrganisms = allTicks.stream()
-                .mapToInt(TickData::getOrganismsCount)
-                .sum();
-        int totalTicks = allTicks.size();
-
-        log.debug("Flushed {} organisms from {} chunks ({} ticks)", 
-                  totalOrganisms, chunks.size(), totalTicks);
     }
 
     /**
-     * Strips environment cell data from chunks before buffering.
+     * Commits all organism data accumulated since the last commit.
      * <p>
-     * The OrganismIndexer only needs organism states and tick metadata.
-     * Stripping {@code CellDataColumns} from the snapshot and all deltas
-     * dramatically reduces buffer memory for large environments
-     * (e.g., 4000x3000 = 12M cells: ~672 MB/snapshot → ~0.4 MB organisms-only).
+     * Delegates to {@code commitOrganismWrites} which executes JDBC batches,
+     * commits the transaction, and resets deduplication state.
+     *
+     * @throws Exception if commit fails
      */
     @Override
-    protected TickDataChunk transformChunkForBuffering(TickDataChunk chunk) {
-        // Rebuild snapshot without cell_columns, rng_state, plugin_states
-        TickData originalSnapshot = chunk.getSnapshot();
-        TickData strippedSnapshot = TickData.newBuilder()
-            .setSimulationRunId(originalSnapshot.getSimulationRunId())
-            .setTickNumber(originalSnapshot.getTickNumber())
-            .setCaptureTimeMs(originalSnapshot.getCaptureTimeMs())
-            .addAllOrganisms(originalSnapshot.getOrganismsList())
-            .build();
+    protected void commitProcessedChunks() throws Exception {
+        database.commitOrganismWrites();
+    }
 
-        // Rebuild deltas without changed_cells, rng_state, plugin_states
-        TickDataChunk.Builder builder = TickDataChunk.newBuilder()
-            .setSimulationRunId(chunk.getSimulationRunId())
-            .setFirstTick(chunk.getFirstTick())
-            .setLastTick(chunk.getLastTick())
-            .setTickCount(chunk.getTickCount())
-            .setSnapshot(strippedSnapshot);
-
-        for (TickDelta delta : chunk.getDeltasList()) {
-            builder.addDeltas(TickDelta.newBuilder()
-                .setTickNumber(delta.getTickNumber())
-                .setCaptureTimeMs(delta.getCaptureTimeMs())
-                .setDeltaType(delta.getDeltaType())
-                .addAllOrganisms(delta.getOrganismsList())
-                .build());
-        }
-
-        return builder.build();
+    /**
+     * {@inheritDoc}
+     *
+     * @throws UnsupportedOperationException always — streaming replaces buffered flushing
+     */
+    // Stage 7: remove after test migration to processChunk/commitProcessedChunks
+    @Override
+    protected void flushChunks(List<TickDataChunk> chunks) throws Exception {
+        throw new UnsupportedOperationException(
+            "OrganismIndexer uses streaming processing — flushChunks is not supported");
     }
 
     @Override
@@ -181,42 +152,47 @@ public class OrganismIndexer<ACK> extends AbstractBatchIndexer<ACK> implements I
                 indexerOptions.hasPath("metadataMaxPollDurationMs") ? indexerOptions.getInt("metadataMaxPollDurationMs") : "default",
                 indexerOptions.hasPath("topicPollTimeoutMs") ? indexerOptions.getInt("topicPollTimeoutMs") : 5000);
     }
-    
+
     // ==================== IMemoryEstimatable ====================
-    
+
     /**
      * {@inheritDoc}
      * <p>
-     * Estimates memory for the OrganismIndexer chunk buffer at worst-case.
+     * Estimates memory for the OrganismIndexer streaming session.
      * <p>
-     * After {@link #transformChunkForBuffering}, buffered chunks contain only organism
-     * states (environment cells are stripped). Each sample holds up to maxOrganisms
-     * organism states.
+     * With streaming, no parsed chunks are buffered. Peak heap consists of:
+     * <ul>
+     *   <li>JDBC batch buffers: {@code insertBatchSize × samplesPerChunk × estimatedBytesPerTickBlob}</li>
+     *   <li>One parsed chunk transient: organisms-only (SKIP_CELLS) per tick</li>
+     * </ul>
      */
     @Override
     public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
-        // After stripping, each sample only contains organisms + wrapper overhead
-        long bytesPerSample = params.estimateOrganismBytesPerTick() + SimulationParameters.TICKDATA_WRAPPER_OVERHEAD;
-        long bytesPerChunk = (long) params.samplesPerChunk() * bytesPerSample;
-        long bufferBytes = (long) insertBatchSize * bytesPerChunk;
+        int batchSize = getInsertBatchSize();
 
-        String bufferExplanation = String.format(
-            "%d insertBatchSize × %d samples/chunk × %s/sample (organisms-only, cells stripped)",
-            insertBatchSize,
+        // JDBC batch buffers: compressed BLOBs accumulated between commits
+        // Each tick produces one compressed BLOB (~20 KB for SingleBlobOrgStrategy)
+        long estimatedBlobBytesPerTick = 20L * 1024; // Conservative upper bound
+        long batchBufferBytes = (long) batchSize * params.samplesPerChunk() * estimatedBlobBytesPerTick;
+
+        String batchExplanation = String.format(
+            "%d insertBatchSize × %d samples/chunk × %s/tick BLOB (JDBC batch buffers)",
+            batchSize,
+            params.samplesPerChunk(),
+            SimulationParameters.formatBytes(estimatedBlobBytesPerTick));
+
+        // One parsed chunk transient: organisms-only (SKIP_CELLS strips cells at wire level)
+        long bytesPerSample = params.estimateOrganismBytesPerTick() + SimulationParameters.TICKDATA_WRAPPER_OVERHEAD;
+        long transientChunkBytes = (long) params.samplesPerChunk() * bytesPerSample;
+
+        String transientExplanation = String.format(
+            "One parsed chunk transient: %d samples/chunk × %s/sample (organisms-only, SKIP_CELLS)",
             params.samplesPerChunk(),
             SimulationParameters.formatBytes(bytesPerSample));
 
-        // Transient byte[] held during readChunkBatch: the full compressed batch file
-        // (before wire-level filtering). Uses full chunk estimate, not organisms-only,
-        // because the compressed file contains all fields.
-        long fullChunkBytes = params.estimateBytesPerChunk();
-        String ioExplanation = String.format(
-            "Transient compressed byte[] during batch read ≤ %s (full chunk, upper bound)",
-            SimulationParameters.formatBytes(fullChunkBytes));
-
         return List.of(
-            new MemoryEstimate(serviceName, bufferBytes, bufferExplanation, MemoryEstimate.Category.SERVICE_BATCH),
-            new MemoryEstimate(serviceName + " (batch read I/O)", fullChunkBytes, ioExplanation, MemoryEstimate.Category.SERVICE_BATCH)
+            new MemoryEstimate(serviceName, batchBufferBytes, batchExplanation, MemoryEstimate.Category.SERVICE_BATCH),
+            new MemoryEstimate(serviceName + " (chunk transient)", transientChunkBytes, transientExplanation, MemoryEstimate.Category.SERVICE_BATCH)
         );
     }
 }

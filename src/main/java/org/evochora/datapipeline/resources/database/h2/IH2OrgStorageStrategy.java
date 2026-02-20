@@ -48,6 +48,57 @@ public interface IH2OrgStorageStrategy {
      */
     void createTables(Connection conn) throws SQLException;
     
+    // ========================================================================
+    // Streaming write methods (per-tick addBatch / commit)
+    // ========================================================================
+
+    /**
+     * Adds organism data from a single tick to the write session.
+     * <p>
+     * The strategy manages its own session state (PreparedStatements, deduplication,
+     * compression). Implementations should call {@code addBatch()} on their internal
+     * statements but must NOT call {@code executeBatch()} or {@code commit()}.
+     * <p>
+     * Called once per tick during streaming chunk processing. The connection is stable
+     * across calls within a session.
+     *
+     * @param conn Database connection (autoCommit=false, transaction managed by caller)
+     * @param tick Tick data containing organism states
+     * @throws SQLException if batch addition fails
+     */
+    void addOrganismTick(Connection conn, TickData tick) throws SQLException;
+
+    /**
+     * Executes all accumulated batches from previous {@link #addOrganismTick} calls.
+     * <p>
+     * Implementations should call {@code executeBatch()} on their internal statements
+     * and reset per-commit state (e.g., organism deduplication sets). Statements should
+     * remain open for reuse in the next commit window.
+     * <p>
+     * Must NOT call {@code commit()} — the caller (H2Database) handles transaction commit.
+     *
+     * @param conn Database connection (same connection used in addOrganismTick calls)
+     * @throws SQLException if batch execution fails
+     */
+    void commitOrganismWrites(Connection conn) throws SQLException;
+
+    /**
+     * Resets all streaming session state (PreparedStatements, deduplication sets).
+     * <p>
+     * Called by the database layer after a failed {@link #commitOrganismWrites} to ensure
+     * the strategy does not retain stale batch state from the failed transaction. The next
+     * {@link #addOrganismTick} call will lazily re-initialize all session resources.
+     * <p>
+     * Implementations should close open PreparedStatements (suppressing errors) and
+     * clear any accumulated state.
+     */
+    void resetStreamingState();
+
+    // ========================================================================
+    // Legacy batch write methods
+    // Stage 7: remove after test migration to addOrganismTick/commitOrganismWrites
+    // ========================================================================
+
     /**
      * Returns the SQL string for the organisms (static) table MERGE statement.
      * <p>
@@ -55,8 +106,9 @@ public interface IH2OrgStorageStrategy {
      *
      * @return SQL string for MERGE operation on organisms table
      */
+    // Stage 7: remove after test migration to addOrganismTick/commitOrganismWrites
     String getOrganismsMergeSql();
-    
+
     /**
      * Returns the SQL string for the organism states (per-tick) MERGE statement.
      * <p>
@@ -64,8 +116,9 @@ public interface IH2OrgStorageStrategy {
      *
      * @return SQL string for MERGE operation on organism states table
      */
+    // Stage 7: remove after test migration to addOrganismTick/commitOrganismWrites
     String getStatesMergeSql();
-    
+
     /**
      * Writes static organism metadata (organisms table) for all ticks.
      * <p>
@@ -77,9 +130,10 @@ public interface IH2OrgStorageStrategy {
      * @param ticks List of ticks containing organism data
      * @throws SQLException if write fails (caller will rollback)
      */
-    void writeOrganisms(Connection conn, PreparedStatement stmt, List<TickData> ticks) 
+    // Stage 7: remove after test migration to addOrganismTick/commitOrganismWrites
+    void writeOrganisms(Connection conn, PreparedStatement stmt, List<TickData> ticks)
             throws SQLException;
-    
+
     /**
      * Writes per-tick organism states using this storage strategy.
      * <p>
@@ -92,7 +146,8 @@ public interface IH2OrgStorageStrategy {
      * @param ticks List of ticks with organism data to write
      * @throws SQLException if write fails (caller will rollback)
      */
-    void writeStates(Connection conn, PreparedStatement stmt, List<TickData> ticks) 
+    // Stage 7: remove after test migration to addOrganismTick/commitOrganismWrites
+    void writeStates(Connection conn, PreparedStatement stmt, List<TickData> ticks)
             throws SQLException;
     
     /**

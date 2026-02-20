@@ -91,7 +91,40 @@ public interface IOrganismDataWriter extends ISchemaAwareDatabase, AutoCloseable
      * @param ticks the list of sampled ticks to index (must not be null)
      * @throws SQLException if any database operation fails
      */
+    // Stage 7: remove after test migration to writeOrganismTick/commitOrganismWrites
     void writeOrganismStates(List<TickData> ticks) throws SQLException;
+
+    // ========================================================================
+    // Streaming write methods (per-tick addBatch / commit)
+    // ========================================================================
+
+    /**
+     * Adds organism data from a single tick to the write session.
+     * <p>
+     * Implementations extract static organism metadata (for the {@code organisms} table)
+     * and per-tick state (for the strategy-specific state table), adding both to internal
+     * JDBC batches via {@code addBatch()}. Must NOT call {@code executeBatch()} or
+     * {@code commit()} — those are handled by {@link #commitOrganismWrites()}.
+     * <p>
+     * Called once per tick during streaming chunk processing. Each parsed tick is
+     * GC-eligible immediately after this method returns.
+     *
+     * @param tick Tick data containing organism states (must not be null)
+     * @throws SQLException if batch addition fails
+     */
+    void writeOrganismTick(TickData tick) throws SQLException;
+
+    /**
+     * Executes all accumulated batches from previous {@link #writeOrganismTick} calls
+     * and commits the transaction.
+     * <p>
+     * After this call, all organism data added since the last commit (or session start)
+     * is durably persisted. Internal deduplication state is reset for the next commit window,
+     * but prepared statements remain open for reuse.
+     *
+     * @throws SQLException if batch execution or commit fails
+     */
+    void commitOrganismWrites() throws SQLException;
 
     /**
      * Releases any dedicated database resources (e.g. connections) held by this

@@ -56,8 +56,9 @@ public class H2Database extends AbstractDatabaseResource
     // Organism storage strategy (loaded via reflection)
     private final IH2OrgStorageStrategy orgStorageStrategy;
     
-    // PreparedStatement caches for organism writes (per connection)
+    // Stage 7: remove after test migration to doWriteOrganismTick/doCommitOrganismWrites
     private final Map<Connection, PreparedStatement> orgStaticStmtCache = new ConcurrentHashMap<>();
+    // Stage 7: remove after test migration to doWriteOrganismTick/doCommitOrganismWrites
     private final Map<Connection, PreparedStatement> orgStatesStmtCache = new ConcurrentHashMap<>();
     
     // Metadata cache (LRU with automatic eviction)
@@ -567,12 +568,7 @@ public class H2Database extends AbstractDatabaseResource
         conn.commit();
     }
 
-    /**
-     * Writes organism static and per-tick state using the configured storage strategy.
-     * <p>
-     * Delegates to {@link IH2OrgStorageStrategy} for strategy-specific write logic
-     * (BLOB per tick vs row per organism per tick).
-     */
+    // Stage 7: remove after test migration to doWriteOrganismTick/doCommitOrganismWrites
     @Override
     protected void doWriteOrganismStates(Object connection, List<TickData> ticks) throws Exception {
         Connection conn = (Connection) connection;
@@ -618,6 +614,56 @@ public class H2Database extends AbstractDatabaseResource
                 throw (SQLException) e;
             }
             throw new SQLException("Failed to write organism states", e);
+        }
+    }
+
+    /**
+     * Delegates a single organism tick write to the storage strategy.
+     * <p>
+     * No commit — ticks are accumulated and committed via
+     * {@link #doCommitOrganismWrites(Object)}.
+     *
+     * @param connection JDBC connection (cast to {@link Connection})
+     * @param tick       Tick data containing organism states
+     * @throws SQLException if batch addition fails
+     */
+    @Override
+    protected void doWriteOrganismTick(Object connection, TickData tick) throws Exception {
+        Connection conn = (Connection) connection;
+        orgStorageStrategy.addOrganismTick(conn, tick);
+    }
+
+    /**
+     * Commits accumulated organism tick writes via the storage strategy.
+     * <p>
+     * Delegates batch execution to the strategy, then commits the transaction.
+     * Rolls back on failure and restores the interrupt flag if it was set.
+     *
+     * @param connection JDBC connection (cast to {@link Connection})
+     * @throws SQLException if batch execution, commit, or rollback fails
+     */
+    @Override
+    protected void doCommitOrganismWrites(Object connection) throws Exception {
+        Connection conn = (Connection) connection;
+
+        boolean wasInterrupted = Thread.interrupted();
+
+        try {
+            orgStorageStrategy.commitOrganismWrites(conn);
+            conn.commit();
+        } catch (SQLException e) {
+            // Reset strategy session state to prevent reuse of stale batch buffers
+            orgStorageStrategy.resetStreamingState();
+            try {
+                conn.rollback();
+            } catch (SQLException rollbackEx) {
+                log.warn("Rollback failed during organism writes commit: {}", rollbackEx.getMessage());
+            }
+            throw e;
+        } finally {
+            if (wasInterrupted) {
+                Thread.currentThread().interrupt();
+            }
         }
     }
 
