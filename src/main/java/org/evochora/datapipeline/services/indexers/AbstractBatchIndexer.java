@@ -788,6 +788,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      * @param chunks Chunks to flush (typically 1-10 chunks per flush with default settings)
      * @throws Exception if flush fails
      */
+    @Deprecated
     protected abstract void flushChunks(List<TickDataChunk> chunks) throws Exception;
 
     /**
@@ -805,6 +806,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      * @param chunk The original chunk read from storage
      * @return The (possibly stripped) chunk to buffer or flush
      */
+    @Deprecated
     protected TickDataChunk transformChunkForBuffering(TickDataChunk chunk) {
         return chunk;
     }
@@ -851,6 +853,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      *
      * @return {@code true} to use streaming processing, {@code false} for traditional processing
      */
+    @Deprecated
     protected boolean useStreamingProcessing() {
         return false;
     }

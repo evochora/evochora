@@ -106,7 +106,7 @@ public interface IH2OrgStorageStrategy {
      *
      * @return SQL string for MERGE operation on organisms table
      */
-    // Stage 7: remove after test migration to addOrganismTick/commitOrganismWrites
+    @Deprecated
     String getOrganismsMergeSql();
 
     /**
@@ -116,7 +116,7 @@ public interface IH2OrgStorageStrategy {
      *
      * @return SQL string for MERGE operation on organism states table
      */
-    // Stage 7: remove after test migration to addOrganismTick/commitOrganismWrites
+    @Deprecated
     String getStatesMergeSql();
 
     /**
@@ -130,7 +130,7 @@ public interface IH2OrgStorageStrategy {
      * @param ticks List of ticks containing organism data
      * @throws SQLException if write fails (caller will rollback)
      */
-    // Stage 7: remove after test migration to addOrganismTick/commitOrganismWrites
+    @Deprecated
     void writeOrganisms(Connection conn, PreparedStatement stmt, List<TickData> ticks)
             throws SQLException;
 
@@ -146,7 +146,7 @@ public interface IH2OrgStorageStrategy {
      * @param ticks List of ticks with organism data to write
      * @throws SQLException if write fails (caller will rollback)
      */
-    // Stage 7: remove after test migration to addOrganismTick/commitOrganismWrites
+    @Deprecated
     void writeStates(Connection conn, PreparedStatement stmt, List<TickData> ticks)
             throws SQLException;
     

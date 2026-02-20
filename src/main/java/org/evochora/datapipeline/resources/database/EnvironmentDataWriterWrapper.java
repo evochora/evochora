@@ -82,6 +82,7 @@ public class EnvironmentDataWriterWrapper extends AbstractDatabaseWrapper implem
         }
     }
 
+    @Deprecated
     @Override
     public void writeEnvironmentChunks(List<TickDataChunk> chunks) {
         if (chunks.isEmpty()) {

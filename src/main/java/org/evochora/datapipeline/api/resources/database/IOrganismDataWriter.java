@@ -91,7 +91,7 @@ public interface IOrganismDataWriter extends ISchemaAwareDatabase, AutoCloseable
      * @param ticks the list of sampled ticks to index (must not be null)
      * @throws SQLException if any database operation fails
      */
-    // Stage 7: remove after test migration to writeOrganismTick/commitOrganismWrites
+    @Deprecated
     void writeOrganismStates(List<TickData> ticks) throws SQLException;
 
     // ========================================================================

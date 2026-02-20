@@ -56,9 +56,9 @@ public class H2Database extends AbstractDatabaseResource
     // Organism storage strategy (loaded via reflection)
     private final IH2OrgStorageStrategy orgStorageStrategy;
     
-    // Stage 7: remove after test migration to doWriteOrganismTick/doCommitOrganismWrites
+    @Deprecated
     private final Map<Connection, PreparedStatement> orgStaticStmtCache = new ConcurrentHashMap<>();
-    // Stage 7: remove after test migration to doWriteOrganismTick/doCommitOrganismWrites
+    @Deprecated
     private final Map<Connection, PreparedStatement> orgStatesStmtCache = new ConcurrentHashMap<>();
     
     // Metadata cache (LRU with automatic eviction)
@@ -474,8 +474,9 @@ public class H2Database extends AbstractDatabaseResource
      * <p>
      * Chunks are stored as-is without decompression for maximum storage efficiency.
      */
+    @Deprecated
     @Override
-    protected void doWriteEnvironmentChunks(Object connection, 
+    protected void doWriteEnvironmentChunks(Object connection,
                                             List<org.evochora.datapipeline.api.contracts.TickDataChunk> chunks) throws Exception {
         Connection conn = (Connection) connection;
         
@@ -568,7 +569,7 @@ public class H2Database extends AbstractDatabaseResource
         conn.commit();
     }
 
-    // Stage 7: remove after test migration to doWriteOrganismTick/doCommitOrganismWrites
+    @Deprecated
     @Override
     protected void doWriteOrganismStates(Object connection, List<TickData> ticks) throws Exception {
         Connection conn = (Connection) connection;

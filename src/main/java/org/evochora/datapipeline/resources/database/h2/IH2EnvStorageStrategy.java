@@ -75,6 +75,7 @@ public interface IH2EnvStorageStrategy {
      * @param chunks List of chunks to write
      * @throws SQLException if write fails (caller will rollback)
      */
+    @Deprecated
     void writeChunks(Connection conn, List<TickDataChunk> chunks) throws SQLException;
 
     /**

@@ -201,6 +201,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
         }
     }
 
+    @Deprecated
     @Override
     protected boolean useStreamingProcessing() {
         return true;
@@ -368,6 +369,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
      *
      * @throws UnsupportedOperationException always
      */
+    @Deprecated
     @Override
     protected void flushChunks(List<TickDataChunk> chunks) throws Exception {
         throw new UnsupportedOperationException(

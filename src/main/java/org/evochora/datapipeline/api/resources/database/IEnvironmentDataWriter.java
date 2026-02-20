@@ -77,6 +77,7 @@ public interface IEnvironmentDataWriter extends AutoCloseable {
      * @param chunks List of chunks to write
      * @throws SQLException if database write fails
      */
+    @Deprecated
     void writeEnvironmentChunks(List<TickDataChunk> chunks) throws SQLException;
     
     /**

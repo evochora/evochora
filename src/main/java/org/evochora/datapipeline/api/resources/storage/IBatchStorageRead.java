@@ -175,6 +175,7 @@ public interface IBatchStorageRead extends IResource {
      * @throws IOException              If file doesn't exist or read fails
      * @throws IllegalArgumentException If path or filter is null
      */
+    @Deprecated
     default List<TickDataChunk> readChunkBatch(StoragePath path, ChunkFieldFilter filter) throws IOException {
         List<TickDataChunk> result = new ArrayList<>();
         try {

@@ -187,6 +187,7 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
         return mergeSql;
     }
 
+    @Deprecated
     @Override
     public void writeChunks(Connection conn, List<TickDataChunk> chunks) throws SQLException {
         if (chunks.isEmpty()) {

@@ -52,6 +52,7 @@ public interface IBatchStorageWrite extends IResource {
      * @throws IOException If write fails
      * @throws IllegalArgumentException If batch is empty
      */
+    @Deprecated
     default StoragePath writeChunkBatch(List<TickDataChunk> batch, long firstTick, long lastTick) throws IOException {
         if (batch == null || batch.isEmpty()) {
             throw new IllegalArgumentException("batch must be non-empty");

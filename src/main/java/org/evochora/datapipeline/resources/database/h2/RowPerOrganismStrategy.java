@@ -193,19 +193,21 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
 
     // ========================================================================
     // Legacy batch write methods
-    // Stage 7: remove after test migration to addOrganismTick/commitOrganismWrites
     // ========================================================================
 
+    @Deprecated
     @Override
     public String getOrganismsMergeSql() {
         return ORGANISMS_MERGE_SQL;
     }
 
+    @Deprecated
     @Override
     public String getStatesMergeSql() {
         return STATES_MERGE_SQL;
     }
 
+    @Deprecated
     @Override
     public void writeOrganisms(Connection conn, PreparedStatement stmt, List<TickData> ticks)
             throws SQLException {
@@ -238,6 +240,7 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
         }
     }
 
+    @Deprecated
     @Override
     public void writeStates(Connection conn, PreparedStatement stmt, List<TickData> ticks)
             throws SQLException {

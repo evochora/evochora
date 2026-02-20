@@ -88,6 +88,7 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> implement
         return EnumSet.of(ComponentType.DLQ);
     }
 
+    @Deprecated
     @Override
     protected boolean useStreamingProcessing() {
         return true;
@@ -148,6 +149,7 @@ public class EnvironmentIndexer<ACK> extends AbstractBatchIndexer<ACK> implement
      *
      * @throws UnsupportedOperationException always
      */
+    @Deprecated
     @Override
     protected void flushChunks(List<TickDataChunk> chunks) throws Exception {
         throw new UnsupportedOperationException(

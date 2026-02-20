@@ -180,7 +180,8 @@ public abstract class AbstractDatabaseResource extends AbstractResource
      * @param chunks List of chunks to write
      * @throws Exception if write fails
      */
-    protected abstract void doWriteEnvironmentChunks(Object connection, 
+    @Deprecated
+    protected abstract void doWriteEnvironmentChunks(Object connection,
             java.util.List<org.evochora.datapipeline.api.contracts.TickDataChunk> chunks) throws Exception;
 
     /**
@@ -243,7 +244,7 @@ public abstract class AbstractDatabaseResource extends AbstractResource
      * @param ticks List of ticks with their organism states to write
      * @throws Exception if write fails
      */
-    // Stage 7: remove after test migration to doWriteOrganismTick/doCommitOrganismWrites
+    @Deprecated
     protected abstract void doWriteOrganismStates(Object connection,
             java.util.List<org.evochora.datapipeline.api.contracts.TickData> ticks) throws Exception;
 

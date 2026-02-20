@@ -140,21 +140,23 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
 
     // ========================================================================
     // Legacy batch write methods
-    // Stage 7: remove after test migration to addOrganismTick/commitOrganismWrites
     // ========================================================================
 
+    @Deprecated
     @Override
     public String getOrganismsMergeSql() {
         return organismsMergeSql;
     }
     
+    @Deprecated
     @Override
     public String getStatesMergeSql() {
         return statesMergeSql;
     }
-    
+
+    @Deprecated
     @Override
-    public void writeOrganisms(Connection conn, PreparedStatement stmt, List<TickData> ticks) 
+    public void writeOrganisms(Connection conn, PreparedStatement stmt, List<TickData> ticks)
             throws SQLException {
         // Extract unique organisms from all ticks and write static metadata
         // Use a set to track which organisms we've already added to the batch
@@ -189,8 +191,9 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
         }
     }
     
+    @Deprecated
     @Override
-    public void writeStates(Connection conn, PreparedStatement stmt, List<TickData> ticks) 
+    public void writeStates(Connection conn, PreparedStatement stmt, List<TickData> ticks)
             throws SQLException {
         if (ticks.isEmpty()) {
             return;

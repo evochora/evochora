@@ -67,7 +67,7 @@ public class OrganismDataWriterWrapper extends AbstractDatabaseWrapper implement
         }
     }
 
-    // Stage 7: remove after test migration to writeOrganismTick/commitOrganismWrites
+    @Deprecated
     @Override
     public void writeOrganismStates(List<TickData> ticks) {
         if (ticks.isEmpty()) {
