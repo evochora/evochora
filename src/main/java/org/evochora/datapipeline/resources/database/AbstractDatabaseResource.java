@@ -1,5 +1,6 @@
 package org.evochora.datapipeline.resources.database;
 
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -180,10 +181,10 @@ public abstract class AbstractDatabaseResource extends AbstractResource
      * @param lastTick Last tick number in the chunk
      * @param tickCount Number of sampled ticks in the chunk
      * @param rawProtobufData Uncompressed protobuf bytes of one TickDataChunk message
-     * @throws Exception if write fails
+     * @throws SQLException if write fails
      */
     protected abstract void doWriteRawEnvironmentChunk(Object connection,
-            long firstTick, long lastTick, int tickCount, byte[] rawProtobufData) throws Exception;
+            long firstTick, long lastTick, int tickCount, byte[] rawProtobufData) throws SQLException;
 
     /**
      * Commits all raw environment chunks accumulated via {@link #doWriteRawEnvironmentChunk}.
@@ -193,9 +194,9 @@ public abstract class AbstractDatabaseResource extends AbstractResource
      * <strong>Transaction Handling:</strong> Must commit on success, rollback on failure.
      *
      * @param connection Database connection (from acquireDedicatedConnection)
-     * @throws Exception if commit fails
+     * @throws SQLException if commit fails
      */
-    protected abstract void doCommitRawEnvironmentChunks(Object connection) throws Exception;
+    protected abstract void doCommitRawEnvironmentChunks(Object connection) throws SQLException;
 
     // ========================================================================
     // IOrganismDataWriter Capability

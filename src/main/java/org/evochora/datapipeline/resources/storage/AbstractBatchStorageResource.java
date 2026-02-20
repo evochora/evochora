@@ -1414,6 +1414,13 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
             return n;
         }
 
+        @Override
+        public long skip(long n) throws IOException {
+            long skipped = super.skip(n);
+            if (skipped > 0) bytesRead += skipped;
+            return skipped;
+        }
+
         long getBytesRead() {
             return bytesRead;
         }

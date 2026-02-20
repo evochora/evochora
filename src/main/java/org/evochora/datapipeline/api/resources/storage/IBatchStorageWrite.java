@@ -31,12 +31,6 @@ import java.util.Iterator;
 public interface IBatchStorageWrite extends IResource {
 
     /**
-     * Writes a batch of tick data chunks to storage with automatic folder organization.
-     * <p>
-     * Delegates to {@link #writeChunkBatchStreaming(Iterator)} which handles folder path
-     * calculation, compression, and atomic write. The {@code firstTick} and {@code lastTick}
-     * parameters are ignored — tick range is derived from the chunks during iteration.
-    /**
      * Writes a single protobuf message to storage at the specified key.
      * <p>
      * This method is designed for non-batch data like metadata, configurations, or
@@ -74,9 +68,8 @@ public interface IBatchStorageWrite extends IResource {
     /**
      * Writes chunks from an iterator to storage, streaming one chunk at a time.
      * <p>
-     * Unlike {@link #writeChunkBatch(List, long, long)}, this method does not require all
-     * chunks to be in memory simultaneously. The tick range and folder path are derived from
-     * the chunks during iteration:
+     * Chunks are not required to be in memory simultaneously. The tick range and folder path
+     * are derived from the chunks during iteration:
      * <ol>
      *   <li>First chunk provides {@code firstTick} and {@code simulationRunId}</li>
      *   <li>Chunks are streamed through compression to a temp file</li>

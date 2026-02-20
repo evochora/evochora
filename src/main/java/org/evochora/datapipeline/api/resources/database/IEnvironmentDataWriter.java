@@ -68,10 +68,10 @@ public interface IEnvironmentDataWriter extends AutoCloseable {
      * @param lastTick Last tick number in the chunk
      * @param tickCount Number of sampled ticks in the chunk
      * @param rawProtobufData Uncompressed protobuf bytes of one TickDataChunk message
-     * @throws Exception if write fails
+     * @throws SQLException if write fails
      */
     void writeRawChunk(long firstTick, long lastTick, int tickCount,
-                       byte[] rawProtobufData) throws Exception;
+                       byte[] rawProtobufData) throws SQLException;
 
     /**
      * Commits all raw chunks accumulated via {@link #writeRawChunk} calls.
@@ -79,9 +79,9 @@ public interface IEnvironmentDataWriter extends AutoCloseable {
      * Executes the JDBC batch and commits the transaction atomically.
      * After this call, the write session is ready for the next batch.
      *
-     * @throws Exception if commit fails (transaction is rolled back)
+     * @throws SQLException if commit fails (transaction is rolled back)
      */
-    void commitRawChunks() throws Exception;
+    void commitRawChunks() throws SQLException;
 
     /**
      * Closes the database wrapper and releases its dedicated connection back to the pool.

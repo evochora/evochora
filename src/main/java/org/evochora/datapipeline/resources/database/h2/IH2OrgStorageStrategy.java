@@ -82,16 +82,18 @@ public interface IH2OrgStorageStrategy {
     void commitOrganismWrites(Connection conn) throws SQLException;
 
     /**
-     * Resets all streaming session state (PreparedStatements, deduplication sets).
+     * Resets streaming session state for the given connection.
      * <p>
      * Called by the database layer after a failed {@link #commitOrganismWrites} to ensure
      * the strategy does not retain stale batch state from the failed transaction. The next
      * {@link #addOrganismTick} call will lazily re-initialize all session resources.
      * <p>
      * Implementations should close open PreparedStatements (suppressing errors) and
-     * clear any accumulated state.
+     * clear any accumulated state for the given connection.
+     *
+     * @param conn The connection whose session state should be reset
      */
-    void resetStreamingState();
+    void resetStreamingState(Connection conn);
 
     /**
      * Reads all organisms that have state for the given tick.

@@ -803,8 +803,6 @@ public class ServiceManager implements IMonitorable {
             return;
         }
         
-        log.info("\u001B[34m========== Memory Estimation (WORST-CASE: 100%% occupancy) ==========\u001B[0m");
-        
         // Collect estimates from all IMemoryEstimatable components
         List<MemoryEstimate> allEstimates = new ArrayList<>();
         Map<MemoryEstimate.Category, Long> categoryTotals = new EnumMap<>(MemoryEstimate.Category.class);

@@ -1,5 +1,6 @@
 package org.evochora.datapipeline.resources.database;
 
+import java.sql.SQLException;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -82,23 +83,31 @@ public class EnvironmentDataWriterWrapper extends AbstractDatabaseWrapper implem
 
     @Override
     public void writeRawChunk(long firstTick, long lastTick, int tickCount,
-                              byte[] rawProtobufData) throws Exception {
+                              byte[] rawProtobufData) throws SQLException {
         long startNanos = System.nanoTime();
-        database.doWriteRawEnvironmentChunk(ensureConnection(), firstTick, lastTick, tickCount, rawProtobufData);
-        chunksWritten.incrementAndGet();
-        chunkThroughput.recordCount();
-        writeLatency.record(System.nanoTime() - startNanos);
+        try {
+            database.doWriteRawEnvironmentChunk(ensureConnection(), firstTick, lastTick, tickCount, rawProtobufData);
+            chunksWritten.incrementAndGet();
+            chunkThroughput.recordCount();
+            writeLatency.record(System.nanoTime() - startNanos);
+        } catch (SQLException e) {
+            writeErrors.incrementAndGet();
+            log.warn("Failed to write raw chunk [{}-{}]: {}", firstTick, lastTick, e.getMessage());
+            recordError("WRITE_RAW_CHUNK_FAILED", "Failed to write raw environment chunk",
+                       "Ticks: " + firstTick + "-" + lastTick + ", Error: " + e.getMessage());
+            throw e;
+        }
     }
 
     @Override
-    public void commitRawChunks() throws Exception {
+    public void commitRawChunks() throws SQLException {
         long startNanos = System.nanoTime();
         try {
             database.doCommitRawEnvironmentChunks(ensureConnection());
             batchesWritten.incrementAndGet();
             batchThroughput.recordCount();
             writeLatency.record(System.nanoTime() - startNanos);
-        } catch (Exception e) {
+        } catch (SQLException e) {
             writeErrors.incrementAndGet();
             log.warn("Failed to commit raw chunks: {}", e.getMessage());
             recordError("COMMIT_RAW_CHUNKS_FAILED", "Failed to commit raw environment chunks",

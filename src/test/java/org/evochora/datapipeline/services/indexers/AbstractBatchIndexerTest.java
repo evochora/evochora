@@ -4,6 +4,8 @@ import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -15,6 +17,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -62,6 +65,7 @@ class AbstractBatchIndexerTest {
     private StreamingTestBatchIndexer streamingIndexer;
     private List<TickDataChunk> streamingProcessedChunks;
     private AtomicInteger streamingCommitCount;
+    private Map<StoragePath, List<TickDataChunk>> storedChunks;
 
     @BeforeEach
     void setup() throws Exception {
@@ -75,22 +79,20 @@ class AbstractBatchIndexerTest {
 
         streamingProcessedChunks = Collections.synchronizedList(new ArrayList<>());
         streamingCommitCount = new AtomicInteger(0);
+        storedChunks = new HashMap<>();
 
         // All tests use configured runIds — stub storage validation to pass
         lenient().when(mockStorage.findMetadataPath(any(String.class)))
             .thenReturn(Optional.of(StoragePath.of("dummy/raw/metadata.pb")));
 
-        // Support multi-arg readChunkBatch: delegate to interface default methods,
-        // which ultimately call the 1-arg version (stubbed per-test).
-        stubReadChunkBatchOverloads();
+        stubForEachChunk();
     }
     
-    private void stubReadChunkBatchOverloads() throws Exception {
-        // forEachChunk is abstract — provide an answer that iterates from readChunkBatch(path)
+    private void stubForEachChunk() throws Exception {
         lenient().doAnswer(invocation -> {
             StoragePath p = invocation.getArgument(0);
             CheckedConsumer<TickDataChunk> c = invocation.getArgument(2);
-            for (TickDataChunk chunk : mockStorage.readChunkBatch(p)) {
+            for (TickDataChunk chunk : storedChunks.getOrDefault(p, List.of())) {
                 c.accept(chunk);
             }
             return null;
@@ -131,7 +133,7 @@ class AbstractBatchIndexerTest {
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(message)
             .thenReturn(null);
-        when(mockStorage.readChunkBatch(StoragePath.of(batchInfo.getStoragePath()))).thenReturn(chunks);
+        storedChunks.put(StoragePath.of(batchInfo.getStoragePath()), chunks);
 
         // When
         streamingIndexer = createStreamingIndexer(runId, 3);
@@ -161,7 +163,7 @@ class AbstractBatchIndexerTest {
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(message)
             .thenReturn(null);
-        when(mockStorage.readChunkBatch(StoragePath.of(batchInfo.getStoragePath()))).thenReturn(chunks);
+        storedChunks.put(StoragePath.of(batchInfo.getStoragePath()), chunks);
 
         // When: flushTimeoutMs=200 so the remainder chunk commits quickly on timeout
         streamingIndexer = createStreamingIndexer(runId, 3, 200);
@@ -202,8 +204,8 @@ class AbstractBatchIndexerTest {
             .thenReturn(msg1)
             .thenReturn(msg2)
             .thenReturn(null);
-        when(mockStorage.readChunkBatch(StoragePath.of(batch1.getStoragePath()))).thenReturn(chunks1);
-        when(mockStorage.readChunkBatch(StoragePath.of(batch2.getStoragePath()))).thenReturn(chunks2);
+        storedChunks.put(StoragePath.of(batch1.getStoragePath()), chunks1);
+        storedChunks.put(StoragePath.of(batch2.getStoragePath()), chunks2);
 
         // When
         streamingIndexer = createStreamingIndexer(runId, 3);
@@ -224,7 +226,7 @@ class AbstractBatchIndexerTest {
     @Test
     @AllowLog(level = LogLevel.WARN, messagePattern = "Failed to process batch.*")
     void testStreamingNoAckOnStorageReadError() throws Exception {
-        // Given: forEachChunk fails (via readChunkBatch throwing in mock answer)
+        // Given: forEachChunk fails with IOException
         String runId = "test-run-s04";
         SimulationMetadata metadata = createTestMetadata(runId);
         BatchInfo batchInfo = createBatchInfo(runId, "batch_s04.pb", 0, 2);
@@ -236,8 +238,8 @@ class AbstractBatchIndexerTest {
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(message)
             .thenReturn(null);
-        when(mockStorage.readChunkBatch(StoragePath.of(batchInfo.getStoragePath())))
-            .thenThrow(new IOException("Storage read failed"));
+        doThrow(new IOException("Storage read failed"))
+            .when(mockStorage).forEachChunk(eq(StoragePath.of(batchInfo.getStoragePath())), any(), any());
 
         // When
         streamingIndexer = createStreamingIndexer(runId, 3);
@@ -268,7 +270,7 @@ class AbstractBatchIndexerTest {
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(message)
             .thenReturn(null);
-        when(mockStorage.readChunkBatch(StoragePath.of(batchInfo.getStoragePath()))).thenReturn(chunks);
+        storedChunks.put(StoragePath.of(batchInfo.getStoragePath()), chunks);
 
         // When: processChunk error
         streamingIndexer = createStreamingIndexerWithError(runId, true, false);
@@ -299,7 +301,7 @@ class AbstractBatchIndexerTest {
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(message)
             .thenReturn(null);
-        when(mockStorage.readChunkBatch(StoragePath.of(batchInfo.getStoragePath()))).thenReturn(chunks);
+        storedChunks.put(StoragePath.of(batchInfo.getStoragePath()), chunks);
 
         // When: commit error (insertBatchSize=3 triggers commit after all 3 chunks processed)
         streamingIndexer = createStreamingIndexerWithError(runId, false, true);
@@ -330,7 +332,7 @@ class AbstractBatchIndexerTest {
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(message)
             .thenReturn(null);
-        when(mockStorage.readChunkBatch(StoragePath.of(batchInfo.getStoragePath()))).thenReturn(chunks);
+        storedChunks.put(StoragePath.of(batchInfo.getStoragePath()), chunks);
 
         // When: insertBatchSize too large to trigger during processing, timeout will trigger
         streamingIndexer = createStreamingIndexer(runId, 100, 100);
@@ -367,8 +369,8 @@ class AbstractBatchIndexerTest {
             .thenReturn(msg1)
             .thenReturn(msg2)
             .thenReturn(null);
-        when(mockStorage.readChunkBatch(StoragePath.of(batch1.getStoragePath()))).thenReturn(chunks1);
-        when(mockStorage.readChunkBatch(StoragePath.of(batch2.getStoragePath()))).thenReturn(chunks2);
+        storedChunks.put(StoragePath.of(batch1.getStoragePath()), chunks1);
+        storedChunks.put(StoragePath.of(batch2.getStoragePath()), chunks2);
 
         // When
         streamingIndexer = createStreamingIndexer(runId, 3);

@@ -156,6 +156,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
                 Class.forName("org.duckdb.DuckDBDriver");
                 duckDbDriverLoaded = true;
             } catch (ClassNotFoundException e) {
+                log.error("DuckDB driver not found on classpath");
                 throw new RuntimeException("DuckDB driver not found on classpath", e);
             }
         }
@@ -195,7 +196,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
                     className, plugin.getMetricId(), schema.getColumnCount());
                 
             } catch (Exception e) {
-                // Fatal error on startup if config is wrong
+                log.error("Failed to load analytics plugin: {}", className);
                 throw new RuntimeException("Failed to load plugin: " + className, e);
             }
         }
@@ -227,6 +228,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
                 writePluginMetadata(runId, plugin);
                 
             } catch (Exception e) {
+                log.error("Failed to initialize analytics plugin: {}", plugin.getMetricId());
                 throw new RuntimeException("Failed to initialize plugin: " + plugin.getMetricId(), e);
             }
         }

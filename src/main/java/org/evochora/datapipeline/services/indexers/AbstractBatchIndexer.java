@@ -716,6 +716,10 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         /**
          * Records that a commit has occurred, advancing the committed chunk count
          * for all pending batches to match their processed chunk count.
+         * <p>
+         * <strong>Invariant:</strong> This assumes a single {@code commitProcessedChunks()} call
+         * atomically commits data for all pending batches (single JDBC connection, single commit).
+         * If the commit model ever changes to per-batch commits, this method must be revised.
          */
         void onCommit() {
             for (PendingBatch<ACK> b : pending) {

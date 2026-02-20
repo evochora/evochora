@@ -76,7 +76,6 @@ class MonitoredStorageReaderTest {
         List<TickDataChunk> chunks = Arrays.asList(chunk1, chunk2);
 
         StoragePath testPath = StoragePath.of("batch.pb.zst");
-        // readChunkBatch(path) is a default that delegates through forEachChunk
         doAnswer(invocation -> {
             CheckedConsumer<TickDataChunk> c = invocation.getArgument(2);
             for (TickDataChunk ch : chunks) {
@@ -85,7 +84,8 @@ class MonitoredStorageReaderTest {
             return null;
         }).when(mockDelegate).forEachChunk(any(), any(), any());
 
-        List<TickDataChunk> result = monitoredReader.readChunkBatch(testPath);
+        List<TickDataChunk> result = new java.util.ArrayList<>();
+        monitoredReader.forEachChunk(testPath, result::add);
 
         assertEquals(2, result.size());
         verify(mockDelegate).forEachChunk(eq(testPath), eq(ChunkFieldFilter.ALL), any());
@@ -138,11 +138,10 @@ class MonitoredStorageReaderTest {
     @Test
     void testReadErrorTracked() throws Exception {
         StoragePath testPath = StoragePath.of("batch.pb.zst");
-        // readChunkBatch(path) routes through forEachChunk
         doThrow(new IOException("Read failed"))
             .when(mockDelegate).forEachChunk(any(), any(), any());
 
-        assertThrows(IOException.class, () -> monitoredReader.readChunkBatch(testPath));
+        assertThrows(IOException.class, () -> monitoredReader.forEachChunk(testPath, chunk -> {}));
 
         Map<String, Number> metrics = monitoredReader.getMetrics();
         assertEquals(1L, metrics.get("read_errors").longValue());

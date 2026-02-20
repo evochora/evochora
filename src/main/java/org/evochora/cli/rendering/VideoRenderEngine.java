@@ -331,7 +331,8 @@ public class VideoRenderEngine {
                 continue;
             }
 
-            List<TickDataChunk> chunks = storage.readChunkBatch(batchPath);
+            List<TickDataChunk> chunks = new ArrayList<>();
+            storage.forEachChunk(batchPath, chunks::add);
 
             for (TickDataChunk chunk : chunks) {
                 if (shutdownRequested.get()) break;
@@ -458,7 +459,8 @@ public class VideoRenderEngine {
                 continue;
             }
 
-            List<TickDataChunk> chunks = storage.readChunkBatch(batchPath);
+            List<TickDataChunk> chunks = new ArrayList<>();
+            storage.forEachChunk(batchPath, chunks::add);
 
             for (TickDataChunk chunk : chunks) {
                 if (shutdownRequested.get()) break;

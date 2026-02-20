@@ -161,10 +161,11 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
      */
     @Override
     public void addOrganismTick(Connection conn, TickData tick) throws SQLException {
-        ensureStreamingSession(conn);
-        addOrganismMetadataBatch(tick);
+        StreamingSession session = ensureStreamingSession(conn);
+        addOrganismMetadataBatch(session, tick);
 
         // Per-tick organism states (one row per organism)
+        PreparedStatement statesStmt = session.statesStmt();
         ICompressionCodec codec = getCodec();
         long tickNumber = tick.getTickNumber();
 
@@ -177,17 +178,17 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
             }
             byte[] dataPointersBytes = dpBuilder.build().toByteArray();
 
-            streamStatesStmt.setLong(1, tickNumber);
-            streamStatesStmt.setInt(2, org.getOrganismId());
-            streamStatesStmt.setInt(3, org.getEnergy());
-            streamStatesStmt.setBytes(4, org.getIp().toByteArray());
-            streamStatesStmt.setBytes(5, org.getDv().toByteArray());
-            streamStatesStmt.setBytes(6, dataPointersBytes);
-            streamStatesStmt.setInt(7, org.getActiveDpIndex());
-            streamStatesStmt.setBytes(8, runtimeBlob);
-            streamStatesStmt.setInt(9, org.getEntropyRegister());
-            streamStatesStmt.setInt(10, org.getMoleculeMarkerRegister());
-            streamStatesStmt.addBatch();
+            statesStmt.setLong(1, tickNumber);
+            statesStmt.setInt(2, org.getOrganismId());
+            statesStmt.setInt(3, org.getEnergy());
+            statesStmt.setBytes(4, org.getIp().toByteArray());
+            statesStmt.setBytes(5, org.getDv().toByteArray());
+            statesStmt.setBytes(6, dataPointersBytes);
+            statesStmt.setInt(7, org.getActiveDpIndex());
+            statesStmt.setBytes(8, runtimeBlob);
+            statesStmt.setInt(9, org.getEntropyRegister());
+            statesStmt.setInt(10, org.getMoleculeMarkerRegister());
+            statesStmt.addBatch();
         }
     }
 

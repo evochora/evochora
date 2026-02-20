@@ -8,7 +8,6 @@ import org.evochora.datapipeline.api.resources.IResource;
 
 import java.io.IOException;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -46,17 +45,10 @@ import java.util.Optional;
  * protobuf parsing. Implementations that need wire-level field filtering (e.g.,
  * {@link ChunkFieldFilter#SKIP_ORGANISMS}) must override {@code forEachChunk} as well.
  *
- * <h3>Legacy methods (will be removed once all consumers use streaming)</h3>
- * The following methods materialize all chunks into a {@code List} and exist only for
- * backward compatibility with consumers that have not yet migrated to streaming via
- * {@link #forEachRawChunk} or {@link #forEachChunk}:
- * <ul>
- *   <li>{@link #readChunkBatch(StoragePath)} — collect all chunks into a list</li>
- *   <li>{@link #readChunkBatch(StoragePath, ChunkFieldFilter)} — collect with wire-level filtering</li>
- *   <li>{@link #readLastSnapshot(StoragePath)} — read last snapshot via full materialization</li>
- * </ul>
- * New consumers should use {@link #forEachRawChunk} or {@link #forEachChunk} directly
- * to avoid O(n) heap allocation.
+ * <h3>Convenience methods</h3>
+ * {@link #readLastSnapshot(StoragePath)} materializes chunks to extract the last snapshot.
+ * New consumers should prefer {@link #forEachRawChunk} or {@link #forEachChunk} for
+ * streaming processing, and {@link #forEachChunkUntil} when early exit is needed.
  */
 public interface IBatchStorageRead extends IResource {
 
@@ -104,33 +96,6 @@ public interface IBatchStorageRead extends IResource {
      * @throws IOException if storage access fails
      */
     List<String> listRunIds(Instant afterTimestamp) throws IOException;
-
-    /**
-     * Reads a chunk batch file by its physical storage path, returning all chunks as a list.
-     * <p>
-     * <strong>Legacy:</strong> This method materializes all chunks into memory. New consumers
-     * should use {@link #forEachChunk} to process chunks one at a time without O(n) heap.
-     * Will be removed once all consumers have migrated to streaming.
-     * <p>
-     * <strong>Default implementation:</strong> Collects all chunks from {@link #forEachChunk}
-     * into a list.
-     *
-     * @param path The physical storage path (includes compression extension)
-     * @return List of all tick data chunks in the batch
-     * @throws IOException If file doesn't exist or read fails
-     * @throws IllegalArgumentException If path is null
-     */
-    default List<TickDataChunk> readChunkBatch(StoragePath path) throws IOException {
-        List<TickDataChunk> result = new ArrayList<>();
-        try {
-            forEachChunk(path, ChunkFieldFilter.ALL, result::add);
-        } catch (IOException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new IOException("Failed to read chunk batch: " + path, e);
-        }
-        return result;
-    }
 
     /**
      * Reads the snapshot from the last chunk in a batch file.

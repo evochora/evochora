@@ -479,7 +479,7 @@ public class H2Database extends AbstractDatabaseResource
     @Override
     protected void doWriteRawEnvironmentChunk(Object connection,
                                               long firstTick, long lastTick,
-                                              int tickCount, byte[] rawProtobufData) throws Exception {
+                                              int tickCount, byte[] rawProtobufData) throws SQLException {
         Connection conn = (Connection) connection;
         getEnvStrategy().writeRawChunk(conn, firstTick, lastTick, tickCount, rawProtobufData);
     }
@@ -491,7 +491,7 @@ public class H2Database extends AbstractDatabaseResource
      * Rolls back on failure and restores the interrupt flag if it was set.
      */
     @Override
-    protected void doCommitRawEnvironmentChunks(Object connection) throws Exception {
+    protected void doCommitRawEnvironmentChunks(Object connection) throws SQLException {
         Connection conn = (Connection) connection;
 
         // Clear interrupt flag temporarily to allow H2 operations
@@ -567,7 +567,7 @@ public class H2Database extends AbstractDatabaseResource
             conn.commit();
         } catch (SQLException e) {
             // Reset strategy session state to prevent reuse of stale batch buffers
-            orgStorageStrategy.resetStreamingState();
+            orgStorageStrategy.resetStreamingState(conn);
             try {
                 conn.rollback();
             } catch (SQLException rollbackEx) {

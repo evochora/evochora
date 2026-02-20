@@ -102,7 +102,7 @@ public class MonitoredBatchStorageReader implements IResourceBatchStorageRead, I
             bytesRead.addAndGet(totalBytes);
             long latencyNanos = System.nanoTime() - startNanos;
             recordRead(totalBytes, latencyNanos);
-        } catch (IOException e) {
+        } catch (Exception e) {
             readErrors.incrementAndGet();
             throw e;
         }
@@ -129,13 +129,13 @@ public class MonitoredBatchStorageReader implements IResourceBatchStorageRead, I
             bytesRead.addAndGet(totalBytes);
             long latencyNanos = System.nanoTime() - startNanos;
             recordRead(totalBytes, latencyNanos);
-        } catch (IOException e) {
+        } catch (Exception e) {
             readErrors.incrementAndGet();
             throw e;
         }
     }
 
-    // readChunkBatch overloads are defaults that delegate to forEachChunk, which IS monitored above.
+    // Default methods (forEachChunkUntil, listBatchFiles overloads) delegate to the monitored methods above.
 
     /**
      * {@inheritDoc}

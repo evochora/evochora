@@ -380,7 +380,7 @@ class FileSystemStorageResourceCompressionTest {
 
         @Test
         @DisplayName("Different compression levels work correctly")
-        void differentCompressionLevels() throws IOException {
+        void differentCompressionLevels() throws Exception {
             // Level 1 (fast, lower ratio)
             Config configLevel1 = ConfigFactory.parseString(String.format("""
                 rootDirectory = "%s"
@@ -428,8 +428,10 @@ class FileSystemStorageResourceCompressionTest {
             assertThat((double) size9).isLessThanOrEqualTo(size1 + tolerance);
 
             // Both should be readable - verify all 50 chunks
-            List<TickDataChunk> readBatch1 = storageLevel1.readChunkBatch(batchPath1);
-            List<TickDataChunk> readBatch9 = storageLevel9.readChunkBatch(batchPath9);
+            List<TickDataChunk> readBatch1 = new ArrayList<>();
+            storageLevel1.forEachChunk(batchPath1, readBatch1::add);
+            List<TickDataChunk> readBatch9 = new ArrayList<>();
+            storageLevel9.forEachChunk(batchPath9, readBatch9::add);
 
             assertThat(readBatch1).hasSize(50);
             assertThat(readBatch9).hasSize(50);

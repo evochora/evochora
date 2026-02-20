@@ -7,6 +7,7 @@ import java.sql.SQLException;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
@@ -65,17 +66,23 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
     }
 
     // ========================================================================
-    // Streaming session state (instance fields — competing-consumer safe)
+    // Per-connection streaming session state (thread-safe for competing consumers)
     // ========================================================================
 
-    /** Cached PreparedStatement for static organism metadata MERGE. */
-    protected PreparedStatement streamOrganismsStmt;
+    /**
+     * Per-connection streaming session holding PreparedStatements and deduplication state.
+     * <p>
+     * Each competing consumer uses its own database connection, so keying by connection
+     * ensures complete isolation between concurrent indexer instances.
+     */
+    protected record StreamingSession(
+            PreparedStatement organismsStmt,
+            PreparedStatement statesStmt,
+            Set<Integer> seenOrganisms
+    ) {}
 
-    /** Cached PreparedStatement for per-tick organism state writes. */
-    protected PreparedStatement streamStatesStmt;
-
-    /** Tracks organism IDs already batched within the current commit window. */
-    protected Set<Integer> streamSeenOrganisms;
+    /** Per-connection sessions (thread-safe for competing consumers sharing this strategy instance). */
+    private final ConcurrentHashMap<Connection, StreamingSession> sessions = new ConcurrentHashMap<>();
 
     /**
      * Returns the SQL string used for the organisms (static metadata) MERGE statement
@@ -98,18 +105,34 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
     protected abstract String getStreamStatesMergeSql();
 
     /**
-     * Initializes streaming session state (PreparedStatements, deduplication set)
-     * on first call. Subsequent calls are no-ops.
+     * Returns the streaming session for the given connection, creating it lazily.
+     * <p>
+     * Each connection gets its own PreparedStatements and deduplication set,
+     * ensuring competing consumers sharing this strategy instance are fully isolated.
      *
      * @param conn Database connection (autoCommit=false)
+     * @return The streaming session for this connection
      * @throws SQLException if statement preparation fails
      */
-    protected void ensureStreamingSession(Connection conn) throws SQLException {
-        if (streamOrganismsStmt == null) {
-            streamOrganismsStmt = conn.prepareStatement(getStreamOrganismsMergeSql());
-            streamStatesStmt = conn.prepareStatement(getStreamStatesMergeSql());
-            streamSeenOrganisms = new HashSet<>();
+    protected StreamingSession ensureStreamingSession(Connection conn) throws SQLException {
+        StreamingSession session = sessions.get(conn);
+        if (session == null) {
+            try {
+                session = new StreamingSession(
+                        conn.prepareStatement(getStreamOrganismsMergeSql()),
+                        conn.prepareStatement(getStreamStatesMergeSql()),
+                        new HashSet<>()
+                );
+                sessions.put(conn, session);
+            } catch (SQLException e) {
+                throw e;
+            }
         }
+        // Purge stale entries from closed connections (rare: only after connection failure)
+        if (sessions.size() > 1) {
+            purgeClosedConnections(conn);
+        }
+        return session;
     }
 
     /**
@@ -119,24 +142,27 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
      * Sets 6 parameters: organism_id, parent_id, birth_tick, program_id,
      * initial_position, genome_hash.
      *
+     * @param session The streaming session for the current connection
      * @param tick Tick data containing organism states
      * @throws SQLException if parameter setting or addBatch fails
      */
-    protected void addOrganismMetadataBatch(TickData tick) throws SQLException {
+    protected void addOrganismMetadataBatch(StreamingSession session, TickData tick) throws SQLException {
+        PreparedStatement stmt = session.organismsStmt();
+        Set<Integer> seen = session.seenOrganisms();
         for (OrganismState org : tick.getOrganismsList()) {
             int organismId = org.getOrganismId();
-            if (streamSeenOrganisms.add(organismId)) {
-                streamOrganismsStmt.setInt(1, organismId);
+            if (seen.add(organismId)) {
+                stmt.setInt(1, organismId);
                 if (org.hasParentId()) {
-                    streamOrganismsStmt.setInt(2, org.getParentId());
+                    stmt.setInt(2, org.getParentId());
                 } else {
-                    streamOrganismsStmt.setNull(2, java.sql.Types.INTEGER);
+                    stmt.setNull(2, java.sql.Types.INTEGER);
                 }
-                streamOrganismsStmt.setLong(3, org.getBirthTick());
-                streamOrganismsStmt.setString(4, org.getProgramId());
-                streamOrganismsStmt.setBytes(5, org.getInitialPosition().toByteArray());
-                streamOrganismsStmt.setLong(6, org.getGenomeHash());
-                streamOrganismsStmt.addBatch();
+                stmt.setLong(3, org.getBirthTick());
+                stmt.setString(4, org.getProgramId());
+                stmt.setBytes(5, org.getInitialPosition().toByteArray());
+                stmt.setLong(6, org.getGenomeHash());
+                stmt.addBatch();
             }
         }
     }
@@ -149,33 +175,61 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
      */
     @Override
     public void commitOrganismWrites(Connection conn) throws SQLException {
-        if (streamOrganismsStmt == null) {
-            return; // No data was added
+        StreamingSession session = sessions.get(conn);
+        if (session == null) {
+            return; // No data was added for this connection
         }
 
-        if (!streamSeenOrganisms.isEmpty()) {
-            streamOrganismsStmt.executeBatch();
+        if (!session.seenOrganisms().isEmpty()) {
+            session.organismsStmt().executeBatch();
         }
-        streamStatesStmt.executeBatch();
+        session.statesStmt().executeBatch();
 
         // Reset per-commit state; statements stay open for reuse
-        streamSeenOrganisms.clear();
+        session.seenOrganisms().clear();
     }
 
     /**
      * {@inheritDoc}
      * <p>
-     * Closes open PreparedStatements (suppressing errors) and clears
-     * accumulated deduplication state. The next {@link #addOrganismTick}
-     * call will lazily re-initialize all session resources.
+     * Closes open PreparedStatements (suppressing errors) and removes the session
+     * for the given connection. The next {@link #addOrganismTick} call will lazily
+     * re-initialize all session resources.
      */
     @Override
-    public void resetStreamingState() {
-        closeQuietly(streamOrganismsStmt);
-        closeQuietly(streamStatesStmt);
-        streamOrganismsStmt = null;
-        streamStatesStmt = null;
-        streamSeenOrganisms = null;
+    public void resetStreamingState(Connection conn) {
+        StreamingSession session = sessions.remove(conn);
+        if (session != null) {
+            closeQuietly(session.organismsStmt());
+            closeQuietly(session.statesStmt());
+        }
+    }
+
+    /**
+     * Removes entries for closed connections from {@link #sessions}.
+     * <p>
+     * Called opportunistically when the map has more than one entry, which only
+     * happens after a connection failure caused the wrapper to acquire a new connection.
+     *
+     * @param currentConn the active connection (not purged)
+     */
+    private void purgeClosedConnections(Connection currentConn) {
+        sessions.entrySet().removeIf(entry -> {
+            Connection c = entry.getKey();
+            if (c == currentConn) {
+                return false;
+            }
+            try {
+                if (c.isClosed()) {
+                    closeQuietly(entry.getValue().organismsStmt());
+                    closeQuietly(entry.getValue().statesStmt());
+                    return true;
+                }
+            } catch (SQLException e) {
+                return true;
+            }
+            return false;
+        });
     }
 
     /**

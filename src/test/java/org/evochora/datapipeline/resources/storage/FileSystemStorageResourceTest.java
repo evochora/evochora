@@ -134,7 +134,8 @@ class FileSystemStorageResourceTest {
         for (int i = 0; i < numThreads; i++) {
             executor.submit(() -> {
                 try {
-                    List<TickDataChunk> readBatch = storage.readChunkBatch(batchPath);
+                    List<TickDataChunk> readBatch = new ArrayList<>();
+                    storage.forEachChunk(batchPath, readBatch::add);
                     assertEquals(batch.size(), readBatch.size());
                     assertEquals(batch, readBatch);
                 } catch (Exception e) {
@@ -375,7 +376,7 @@ class FileSystemStorageResourceTest {
     }
 
     @Test
-    void testWriteChunkBatch_ReadChunkBatch_RoundTrip() throws IOException {
+    void testWriteChunkBatch_ReadChunkBatch_RoundTrip() throws Exception {
         // Create chunks
         TickDataChunk chunk1 = createChunk(0, 9, 10);
         TickDataChunk chunk2 = createChunk(10, 19, 10);
@@ -388,7 +389,8 @@ class FileSystemStorageResourceTest {
         assertTrue(path.asString().contains("batch_"));
 
         // Read
-        List<TickDataChunk> readBatch = storage.readChunkBatch(path);
+        List<TickDataChunk> readBatch = new ArrayList<>();
+        storage.forEachChunk(path, readBatch::add);
         assertEquals(2, readBatch.size());
         assertEquals(chunk1, readBatch.get(0));
         assertEquals(chunk2, readBatch.get(1));
@@ -401,9 +403,9 @@ class FileSystemStorageResourceTest {
     }
 
     @Test
-    void testReadChunkBatch_NotFound() {
+    void testForEachChunk_NotFound() {
         StoragePath nonExistentPath = StoragePath.of("test-sim/raw/000/000/batch_not_found.pb");
-        assertThrows(IOException.class, () -> storage.readChunkBatch(nonExistentPath));
+        assertThrows(IOException.class, () -> storage.forEachChunk(nonExistentPath, chunk -> {}));
     }
 
     // ========================================================================

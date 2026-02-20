@@ -126,15 +126,16 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
      */
     @Override
     public void addOrganismTick(Connection conn, TickData tick) throws SQLException {
-        ensureStreamingSession(conn);
-        addOrganismMetadataBatch(tick);
+        StreamingSession session = ensureStreamingSession(conn);
+        addOrganismMetadataBatch(session, tick);
 
         // Per-tick BLOB (all organisms serialized + compressed)
         if (!tick.getOrganismsList().isEmpty()) {
             byte[] blob = serializeOrganisms(tick);
-            streamStatesStmt.setLong(1, tick.getTickNumber());
-            streamStatesStmt.setBytes(2, blob);
-            streamStatesStmt.addBatch();
+            PreparedStatement statesStmt = session.statesStmt();
+            statesStmt.setLong(1, tick.getTickNumber());
+            statesStmt.setBytes(2, blob);
+            statesStmt.addBatch();
         }
     }
 

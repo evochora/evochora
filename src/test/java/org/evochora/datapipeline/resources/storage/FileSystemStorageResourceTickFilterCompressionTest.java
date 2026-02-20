@@ -199,7 +199,7 @@ class FileSystemStorageResourceTickFilterCompressionTest {
     }
 
     @Test
-    void testReadChunkBatchWorksWithTickFilteredResults() throws IOException {
+    void testReadChunkBatchWorksWithTickFilteredResults() throws Exception {
         // Write compressed chunk batch
         List<TickDataChunk> originalBatch = List.of(createChunk(1000, 1020, 21));
         storageCompressed.writeChunkBatchStreaming(originalBatch.iterator());
@@ -211,8 +211,9 @@ class FileSystemStorageResourceTickFilterCompressionTest {
         StoragePath path = result.getFilenames().get(0);
         
         // Read the batch using the path
-        List<TickDataChunk> readBatch = storageCompressed.readChunkBatch(path);
-        
+        List<TickDataChunk> readBatch = new java.util.ArrayList<>();
+        storageCompressed.forEachChunk(path, readBatch::add);
+
         assertEquals(originalBatch.size(), readBatch.size(), "Should read all chunks");
         assertEquals(originalBatch, readBatch, "Data should be preserved through compression round-trip");
     }
