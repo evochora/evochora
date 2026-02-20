@@ -178,6 +178,103 @@ class EnvironmentDataWriterWrapperTest {
         );
     }
     
+    // ========================================================================
+    // writeRawChunk + commitRawChunks tests
+    // ========================================================================
+
+    @Test
+    void testWriteRawChunk_Success() throws Exception {
+        // Given: A raw protobuf chunk
+        wrapper.createEnvironmentDataTable(2);
+
+        TickData snapshot = TickData.newBuilder()
+            .setTickNumber(1L)
+            .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
+            )))
+            .build();
+        TickDataChunk chunk = TickDataChunk.newBuilder()
+            .setFirstTick(1L).setLastTick(1L).setTickCount(1)
+            .setSnapshot(snapshot)
+            .build();
+        byte[] rawBytes = chunk.toByteArray();
+
+        // When: Write raw chunk and commit
+        wrapper.writeRawChunk(1L, 1L, 1, rawBytes);
+        wrapper.commitRawChunks();
+
+        // Then: Metrics reflect the write
+        Map<String, Number> metrics = wrapper.getMetrics();
+        assertThat(metrics.get("chunks_written").longValue()).isEqualTo(1);
+        assertThat(metrics.get("batches_written").longValue()).isEqualTo(1);
+        assertThat(metrics.get("write_errors").longValue()).isEqualTo(0);
+    }
+
+    @Test
+    void testWriteRawChunk_MultipleChunks_MetricsAccumulate() throws Exception {
+        // Given: Multiple raw chunks
+        wrapper.createEnvironmentDataTable(2);
+
+        TickData snap1 = TickData.newBuilder()
+            .setTickNumber(0L)
+            .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
+            )))
+            .build();
+        TickData snap2 = TickData.newBuilder()
+            .setTickNumber(100L)
+            .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                CellStateTestHelper.createCellStateBuilder(1, 101, 1, 60, 0).build()
+            )))
+            .build();
+
+        byte[] raw1 = TickDataChunk.newBuilder()
+            .setFirstTick(0L).setLastTick(0L).setTickCount(1)
+            .setSnapshot(snap1).build().toByteArray();
+        byte[] raw2 = TickDataChunk.newBuilder()
+            .setFirstTick(100L).setLastTick(100L).setTickCount(1)
+            .setSnapshot(snap2).build().toByteArray();
+
+        // When: Write 2 raw chunks and commit
+        wrapper.writeRawChunk(0L, 0L, 1, raw1);
+        wrapper.writeRawChunk(100L, 100L, 1, raw2);
+        wrapper.commitRawChunks();
+
+        // Then: 2 chunks written, 1 batch committed
+        Map<String, Number> metrics = wrapper.getMetrics();
+        assertThat(metrics.get("chunks_written").longValue()).isEqualTo(2);
+        assertThat(metrics.get("batches_written").longValue()).isEqualTo(1);
+        assertThat(metrics.get("write_errors").longValue()).isEqualTo(0);
+        assertThat(metrics.get("write_latency_avg_ms").doubleValue()).isGreaterThanOrEqualTo(0.0);
+    }
+
+    @Test
+    void testWriteRawChunk_LatencyTracked() throws Exception {
+        // Given
+        wrapper.createEnvironmentDataTable(2);
+
+        TickData snapshot = TickData.newBuilder()
+            .setTickNumber(1L)
+            .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                CellStateTestHelper.createCellStateBuilder(0, 100, 1, 50, 0).build()
+            )))
+            .build();
+        byte[] rawBytes = TickDataChunk.newBuilder()
+            .setFirstTick(1L).setLastTick(1L).setTickCount(1)
+            .setSnapshot(snapshot).build().toByteArray();
+
+        // When
+        wrapper.writeRawChunk(1L, 1L, 1, rawBytes);
+
+        // Then: Latency should be recorded
+        Map<String, Number> metrics = wrapper.getMetrics();
+        assertThat(metrics.get("write_latency_p50_ms").doubleValue()).isGreaterThanOrEqualTo(0.0);
+    }
+
+    // ========================================================================
+    // createEnvironmentDataTable tests
+    // ========================================================================
+
     @Test
     void testCreateEnvironmentDataTable_Explicit() throws Exception {
         // Given: Wrapper

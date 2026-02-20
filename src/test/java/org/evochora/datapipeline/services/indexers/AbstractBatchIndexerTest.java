@@ -646,6 +646,69 @@ class AbstractBatchIndexerTest {
             });
     }
 
+    // ========== readAndProcessChunks Override Test ==========
+
+    @Test
+    void testStreamingReadAndProcessChunks_OverrideDispatchesToSubclass() throws Exception {
+        // Verify that a subclass can override readAndProcessChunks to bypass
+        // the default forEachChunk path (e.g., EnvironmentIndexer's raw-byte path).
+        // Uses direct reflection invocation to avoid lifecycle overhead.
+        String runId = "test-run-override";
+        List<TickDataChunk> chunks = createTestChunks(runId, 0, 3);
+
+        Config config = ConfigFactory.parseString("""
+            runId = "%s"
+            metadataPollIntervalMs = 100
+            metadataMaxPollDurationMs = 5000
+            insertBatchSize = 100
+            flushTimeoutMs = 5000
+            """.formatted(runId));
+
+        Map<String, List<IResource>> resources = new java.util.HashMap<>();
+        resources.put("storage", List.of((IResource) mockStorage));
+        resources.put("topic", List.of((IResource) mockTopic));
+        resources.put("metadata", List.of((IResource) mockMetadataReader));
+
+        AtomicInteger customReadCount = new AtomicInteger(0);
+
+        StreamingTestBatchIndexer customIndexer = new StreamingTestBatchIndexer(
+                "test-override-indexer", config, resources, false, false) {
+            @Override
+            protected void readAndProcessChunks(StoragePath path, String batchId) throws Exception {
+                customReadCount.incrementAndGet();
+                for (TickDataChunk chunk : chunks) {
+                    processChunk(chunk);
+                    onChunkStreamed(batchId, chunk.getTickCount());
+                }
+            }
+        };
+
+        // Register batch in tracker (required for onChunkStreamed)
+        java.lang.reflect.Field trackerField =
+            AbstractBatchIndexer.class.getDeclaredField("streamingTracker");
+        trackerField.setAccessible(true);
+        Object tracker = trackerField.get(customIndexer);
+        java.lang.reflect.Method registerMethod = tracker.getClass()
+            .getDeclaredMethod("registerBatch", String.class,
+                org.evochora.datapipeline.api.resources.topics.TopicMessage.class);
+        registerMethod.setAccessible(true);
+        registerMethod.invoke(tracker, "batch-override",
+            mock(org.evochora.datapipeline.api.resources.topics.TopicMessage.class));
+
+        // Invoke readAndProcessChunks directly
+        java.lang.reflect.Method method = AbstractBatchIndexer.class.getDeclaredMethod(
+            "readAndProcessChunks", StoragePath.class, String.class);
+        method.setAccessible(true);
+        method.invoke(customIndexer, StoragePath.of("batch_override.pb"), "batch-override");
+
+        // Override was called (not the default forEachChunk path)
+        assertEquals(1, customReadCount.get(), "Custom readAndProcessChunks should be called");
+        assertEquals(3, streamingProcessedChunks.size(), "All 3 chunks should be processed");
+
+        // forEachChunk was NOT called (override bypassed it)
+        verify(mockStorage, never()).forEachChunk(any(), any(), any());
+    }
+
     // ========== Helper Methods ==========
     
     private TestBatchIndexer createIndexer(String runId, boolean withMetadata) {

@@ -264,6 +264,115 @@ class RowPerChunkStrategyTest {
     }
 
     // ========================================================================
+    // writeRawChunk / commitRawChunks round-trip
+    // ========================================================================
+
+    @Test
+    void testWriteRawChunk_WritesFileAndAddsToJdbcBatch() throws SQLException, IOException {
+        strategy = new RowPerChunkStrategy(configWithChunkDir());
+        strategy.createTables(mockConnection, 2);
+
+        TickDataChunk chunk = createChunkWithSnapshot(1000L);
+        byte[] rawBytes = chunk.toByteArray();
+
+        strategy.writeRawChunk(mockConnection, 1000L, 1000L, 1, rawBytes);
+
+        // Verify file exists on disk
+        Path chunkFile = tempDir.resolve(TEST_SCHEMA).resolve("0000").resolve("chunk_1000.pb");
+        assertThat(chunkFile).exists();
+        assertThat(Files.size(chunkFile)).isGreaterThan(0);
+
+        // Verify H2 batch parameters
+        verify(mockPreparedStatement).setLong(eq(1), eq(1000L));
+        verify(mockPreparedStatement).setLong(eq(2), eq(1000L));
+        verify(mockPreparedStatement).addBatch();
+    }
+
+    @Test
+    void testCommitRawChunks_ExecutesBatchAndClosesStatement() throws SQLException {
+        strategy = new RowPerChunkStrategy(configWithChunkDir());
+        strategy.createTables(mockConnection, 2);
+
+        TickDataChunk chunk = createChunkWithSnapshot(500L);
+        strategy.writeRawChunk(mockConnection, 500L, 500L, 1, chunk.toByteArray());
+
+        strategy.commitRawChunks(mockConnection);
+
+        verify(mockPreparedStatement).executeBatch();
+        verify(mockPreparedStatement).close();
+    }
+
+    @Test
+    void testCommitRawChunks_NoWritesPreceding_NoOp() throws SQLException {
+        strategy = new RowPerChunkStrategy(configWithChunkDir());
+        strategy.createTables(mockConnection, 2);
+
+        // Commit without any preceding writes
+        strategy.commitRawChunks(mockConnection);
+
+        // No interactions — map entry was never created
+        verify(mockPreparedStatement, times(0)).executeBatch();
+    }
+
+    @Test
+    void testWriteRawChunk_MultipleChunks_BatchedTogether() throws SQLException {
+        strategy = new RowPerChunkStrategy(configWithChunkDir());
+        strategy.createTables(mockConnection, 2);
+
+        TickDataChunk chunk1 = createChunkWithSnapshot(0L);
+        TickDataChunk chunk2 = createChunkWithSnapshot(100L);
+
+        strategy.writeRawChunk(mockConnection, 0L, 0L, 1, chunk1.toByteArray());
+        strategy.writeRawChunk(mockConnection, 100L, 100L, 1, chunk2.toByteArray());
+
+        // Both should be batched (addBatch called twice)
+        verify(mockPreparedStatement, times(2)).addBatch();
+
+        // Commit executes both in one batch
+        strategy.commitRawChunks(mockConnection);
+        verify(mockPreparedStatement).executeBatch();
+    }
+
+    @Test
+    void testWriteRawChunk_RoundTrip_DataMatchesAfterReadback() throws Exception {
+        strategy = new RowPerChunkStrategy(configWithChunkDirAndZstd());
+        strategy.createTables(mockConnection, 2);
+
+        TickDataChunk originalChunk = buildChunkWithOrganisms();
+        byte[] rawBytes = originalChunk.toByteArray();
+
+        long firstTick = originalChunk.getFirstTick();
+        long lastTick = originalChunk.getLastTick();
+        int tickCount = originalChunk.getTickCount();
+
+        strategy.writeRawChunk(mockConnection, firstTick, lastTick, tickCount, rawBytes);
+
+        // Read back via readChunkContaining (uses mock H2 query + real filesystem)
+        when(mockResultSet.next()).thenReturn(true);
+        when(mockResultSet.getLong("first_tick")).thenReturn(firstTick);
+
+        TickDataChunk readback = strategy.readChunkContaining(mockConnection, firstTick);
+
+        // Verify metadata matches
+        assertEquals(originalChunk.getSimulationRunId(), readback.getSimulationRunId());
+        assertEquals(originalChunk.getFirstTick(), readback.getFirstTick());
+        assertEquals(originalChunk.getLastTick(), readback.getLastTick());
+        assertEquals(originalChunk.getTickCount(), readback.getTickCount());
+
+        // Verify cell data preserved (organisms stripped by readChunkContaining is expected)
+        assertCellColumnsEqual(
+            originalChunk.getSnapshot().getCellColumns(),
+            readback.getSnapshot().getCellColumns());
+
+        assertEquals(originalChunk.getDeltasCount(), readback.getDeltasCount());
+        for (int i = 0; i < originalChunk.getDeltasCount(); i++) {
+            assertCellColumnsEqual(
+                originalChunk.getDeltas(i).getChangedCells(),
+                readback.getDeltas(i).getChangedCells());
+        }
+    }
+
+    // ========================================================================
     // Partial parse: organisms stripped, CellDataColumns preserved
     // ========================================================================
 
