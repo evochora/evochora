@@ -362,7 +362,15 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
                     // Timeout-based commit (streaming) or flush (buffering)
                     if (streamingTracker != null && streamingUncommittedChunks > 0
                         && (System.currentTimeMillis() - streamingLastCommitTime) >= streamingFlushTimeoutMs) {
-                        streamingCommitAndAck();
+                        try {
+                            streamingCommitAndAck();
+                        } catch (Exception e) {
+                            log.warn("Streaming commit failed (uncommitted chunks discarded, will be reprocessed on redelivery): {}", e.getMessage());
+                            recordError("STREAMING_COMMIT_FAILED", "Streaming commit failed",
+                                "Error: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+                            streamingUncommittedChunks = 0;
+                            streamingLastCommitTime = System.currentTimeMillis();
+                        }
                     } else if (components != null && components.buffering != null
                         && components.buffering.shouldFlush()) {
                         flushAndAcknowledge();
@@ -379,7 +387,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
                 try {
                     streamingCommitAndAck();
                 } catch (Exception e) {
-                    throw e;
+                    log.warn("Final streaming commit failed during shutdown: {}", e.getMessage());
                 } finally {
                     if (wasInterrupted) {
                         Thread.currentThread().interrupt();
@@ -633,6 +641,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
                 });
 
             streamingTracker.completeBatch(batchId);
+            ackCompletedBatches();
 
             log.debug("Streamed batch: {}, ticks=[{}-{}]",
                 batch.getStoragePath(), batch.getTickStart(), batch.getTickEnd());
@@ -654,9 +663,26 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
     private void streamingCommitAndAck() throws Exception {
         commitProcessedChunks();
         streamingTracker.onCommit();
+        ackCompletedBatches();
 
+        streamingUncommittedChunks = 0;
+        streamingLastCommitTime = System.currentTimeMillis();
+
+        Thread.yield();
+    }
+
+    /**
+     * Drains and ACKs all fully committed and completed batches from the streaming tracker.
+     * <p>
+     * A batch is eligible for ACK when all its chunks have been both processed (streamed
+     * from storage) and committed (written to database). Called after every commit in
+     * {@link #streamingCommitAndAck()}, and also after {@link StreamingAckTracker#completeBatch}
+     * to handle the case where all chunks were already committed before the batch finished
+     * streaming (chunk count is exact multiple of {@code insertBatchSize}).
+     */
+    @SuppressWarnings("unchecked")
+    private void ackCompletedBatches() {
         for (StreamingAckTracker.CompletedBatch<ACK> completed : streamingTracker.drainCompleted()) {
-            @SuppressWarnings("unchecked")
             TopicMessage<BatchInfo, ACK> batchMsg = (TopicMessage<BatchInfo, ACK>) completed.message();
             topic.ack(batchMsg);
             batchesProcessed.incrementAndGet();
@@ -669,11 +695,6 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
                 components.dlq.resetRetryCount(completed.batchId());
             }
         }
-
-        streamingUncommittedChunks = 0;
-        streamingLastCommitTime = System.currentTimeMillis();
-
-        Thread.yield();
     }
 
     /**

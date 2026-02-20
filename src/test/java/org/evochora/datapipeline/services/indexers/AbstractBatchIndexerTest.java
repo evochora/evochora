@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
@@ -65,6 +66,11 @@ class AbstractBatchIndexerTest {
     private CountDownLatch flushLatch;
     private AtomicInteger flushCount;
 
+    // Streaming test state
+    private StreamingTestBatchIndexer streamingIndexer;
+    private List<TickDataChunk> streamingProcessedChunks;
+    private AtomicInteger streamingCommitCount;
+
     @BeforeEach
     void setup() throws Exception {
         // Create mocks that implement both capability interfaces AND IResource
@@ -78,6 +84,9 @@ class AbstractBatchIndexerTest {
         flushedBatches = new ArrayList<>();
         flushCount = new AtomicInteger(0);
         flushLatch = new CountDownLatch(0);
+
+        streamingProcessedChunks = Collections.synchronizedList(new ArrayList<>());
+        streamingCommitCount = new AtomicInteger(0);
 
         // All tests use configured runIds — stub storage validation to pass
         lenient().when(mockStorage.findMetadataPath(any(String.class)))
@@ -105,13 +114,18 @@ class AbstractBatchIndexerTest {
 
     @org.junit.jupiter.api.AfterEach
     void cleanup() throws Exception {
-        // Stop indexer if still running
-        if (indexer != null && indexer.getCurrentState() != org.evochora.datapipeline.api.services.IService.State.STOPPED
-            && indexer.getCurrentState() != org.evochora.datapipeline.api.services.IService.State.ERROR) {
-            indexer.stop();
+        stopIfRunning(indexer);
+        stopIfRunning(streamingIndexer);
+    }
+
+    private void stopIfRunning(AbstractBatchIndexer<?> idx) {
+        if (idx != null
+                && idx.getCurrentState() != org.evochora.datapipeline.api.services.IService.State.STOPPED
+                && idx.getCurrentState() != org.evochora.datapipeline.api.services.IService.State.ERROR) {
+            idx.stop();
             await().atMost(5, TimeUnit.SECONDS)
-                .until(() -> indexer.getCurrentState() == org.evochora.datapipeline.api.services.IService.State.STOPPED 
-                    || indexer.getCurrentState() == org.evochora.datapipeline.api.services.IService.State.ERROR);
+                .until(() -> idx.getCurrentState() == org.evochora.datapipeline.api.services.IService.State.STOPPED
+                    || idx.getCurrentState() == org.evochora.datapipeline.api.services.IService.State.ERROR);
         }
     }
     
@@ -364,6 +378,274 @@ class AbstractBatchIndexerTest {
             });
     }
     
+    // ========== Streaming Processing Tests ==========
+
+    @Test
+    void testStreamingAckAfterSuccessfulProcessing() throws Exception {
+        // Given: 3 chunks, insertBatchSize=3 (exactly one commit during forEachChunk,
+        // then completeBatch triggers ackCompletedBatches → ACK)
+        String runId = "test-run-s01";
+        SimulationMetadata metadata = createTestMetadata(runId);
+        List<TickDataChunk> chunks = createTestChunks(runId, 0, 3);
+        BatchInfo batchInfo = createBatchInfo(runId, "batch_s01.pb", 0, 2);
+        TopicMessage<BatchInfo, String> message = new TopicMessage<>(
+            batchInfo, System.currentTimeMillis(), "msg-s01", "test-consumer", "ack-s01");
+
+        lenient().when(mockMetadataReader.hasMetadata(runId)).thenReturn(true);
+        lenient().when(mockMetadataReader.getMetadata(runId)).thenReturn(metadata);
+        when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
+            .thenReturn(message)
+            .thenReturn(null);
+        when(mockStorage.readChunkBatch(StoragePath.of(batchInfo.getStoragePath()))).thenReturn(chunks);
+
+        // When
+        streamingIndexer = createStreamingIndexer(runId, 3);
+        streamingIndexer.start();
+
+        // Then: ACK after all chunks committed
+        await().atMost(5, TimeUnit.SECONDS)
+            .untilAsserted(() -> verify(mockTopic, times(1)).ack(message));
+
+        assertEquals(3, streamingProcessedChunks.size(), "All 3 chunks should be processed");
+        assertEquals(1, streamingCommitCount.get(), "Should have 1 commit");
+    }
+
+    @Test
+    void testStreamingMultipleCommitsPerBatch() throws Exception {
+        // Given: 6 chunks, insertBatchSize=3 → 2 commits during forEachChunk
+        String runId = "test-run-s02";
+        SimulationMetadata metadata = createTestMetadata(runId);
+        List<TickDataChunk> chunks = createTestChunks(runId, 0, 6);
+        BatchInfo batchInfo = createBatchInfo(runId, "batch_s02.pb", 0, 5);
+        TopicMessage<BatchInfo, String> message = new TopicMessage<>(
+            batchInfo, System.currentTimeMillis(), "msg-s02", "test-consumer", "ack-s02");
+
+        lenient().when(mockMetadataReader.hasMetadata(runId)).thenReturn(true);
+        lenient().when(mockMetadataReader.getMetadata(runId)).thenReturn(metadata);
+        when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
+            .thenReturn(message)
+            .thenReturn(null);
+        when(mockStorage.readChunkBatch(StoragePath.of(batchInfo.getStoragePath()))).thenReturn(chunks);
+
+        // When
+        streamingIndexer = createStreamingIndexer(runId, 3);
+        streamingIndexer.start();
+
+        // Then
+        await().atMost(5, TimeUnit.SECONDS)
+            .untilAsserted(() -> verify(mockTopic, times(1)).ack(message));
+
+        assertEquals(6, streamingProcessedChunks.size(), "All 6 chunks should be processed");
+        assertEquals(2, streamingCommitCount.get(), "Should have 2 commits (at chunks 3 and 6)");
+    }
+
+    @Test
+    void testStreamingCrossBatchAckOrder() throws Exception {
+        // Given: batch1=2 chunks, batch2=1 chunk, insertBatchSize=3
+        // Commit spans both batches (2 from batch1 + 1 from batch2 = 3)
+        // batch1 ACKed at commit (complete + committed), batch2 ACKed after completeBatch
+        String runId = "test-run-s03";
+        SimulationMetadata metadata = createTestMetadata(runId);
+
+        List<TickDataChunk> chunks1 = createTestChunks(runId, 0, 2);
+        List<TickDataChunk> chunks2 = createTestChunks(runId, 2, 1);
+
+        BatchInfo batch1 = createBatchInfo(runId, "batch_s03a.pb", 0, 1);
+        BatchInfo batch2 = createBatchInfo(runId, "batch_s03b.pb", 2, 2);
+
+        TopicMessage<BatchInfo, String> msg1 = new TopicMessage<>(
+            batch1, System.currentTimeMillis(), "msg-s03a", "test-consumer", "ack-s03a");
+        TopicMessage<BatchInfo, String> msg2 = new TopicMessage<>(
+            batch2, System.currentTimeMillis(), "msg-s03b", "test-consumer", "ack-s03b");
+
+        lenient().when(mockMetadataReader.hasMetadata(runId)).thenReturn(true);
+        lenient().when(mockMetadataReader.getMetadata(runId)).thenReturn(metadata);
+        when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
+            .thenReturn(msg1)
+            .thenReturn(msg2)
+            .thenReturn(null);
+        when(mockStorage.readChunkBatch(StoragePath.of(batch1.getStoragePath()))).thenReturn(chunks1);
+        when(mockStorage.readChunkBatch(StoragePath.of(batch2.getStoragePath()))).thenReturn(chunks2);
+
+        // When
+        streamingIndexer = createStreamingIndexer(runId, 3);
+        streamingIndexer.start();
+
+        // Then: Both batches ACKed
+        await().atMost(5, TimeUnit.SECONDS)
+            .untilAsserted(() -> {
+                verify(mockTopic, times(1)).ack(msg1);
+                verify(mockTopic, times(1)).ack(msg2);
+            });
+
+        assertEquals(3, streamingProcessedChunks.size(), "All 3 chunks should be processed");
+        assertEquals(1, streamingCommitCount.get(), "Should have 1 cross-batch commit");
+    }
+
+    @Test
+    @AllowLog(level = LogLevel.WARN, messagePattern = "Failed to process batch.*")
+    void testStreamingNoAckOnStorageReadError() throws Exception {
+        // Given: forEachChunk fails (via readChunkBatch throwing in mock answer)
+        String runId = "test-run-s04";
+        SimulationMetadata metadata = createTestMetadata(runId);
+        BatchInfo batchInfo = createBatchInfo(runId, "batch_s04.pb", 0, 2);
+        TopicMessage<BatchInfo, String> message = new TopicMessage<>(
+            batchInfo, System.currentTimeMillis(), "msg-s04", "test-consumer", "ack-s04");
+
+        lenient().when(mockMetadataReader.hasMetadata(runId)).thenReturn(true);
+        lenient().when(mockMetadataReader.getMetadata(runId)).thenReturn(metadata);
+        when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
+            .thenReturn(message)
+            .thenReturn(null);
+        when(mockStorage.readChunkBatch(StoragePath.of(batchInfo.getStoragePath())))
+            .thenThrow(new IOException("Storage read failed"));
+
+        // When
+        streamingIndexer = createStreamingIndexer(runId, 3);
+        streamingIndexer.start();
+
+        // Then: Error tracked, no ACK, indexer continues
+        await().atMost(3, TimeUnit.SECONDS)
+            .until(() -> !streamingIndexer.getErrors().isEmpty());
+
+        assertEquals("BATCH_PROCESSING_FAILED", streamingIndexer.getErrors().get(0).errorType());
+        verify(mockTopic, never()).ack(any());
+        assertEquals(0, streamingProcessedChunks.size(), "No chunks should be processed");
+    }
+
+    @Test
+    @AllowLog(level = LogLevel.WARN, messagePattern = "Failed to process batch.*")
+    void testStreamingNoAckOnProcessChunkError() throws Exception {
+        // Given: processChunk throws on first chunk
+        String runId = "test-run-s05";
+        SimulationMetadata metadata = createTestMetadata(runId);
+        List<TickDataChunk> chunks = createTestChunks(runId, 0, 3);
+        BatchInfo batchInfo = createBatchInfo(runId, "batch_s05.pb", 0, 2);
+        TopicMessage<BatchInfo, String> message = new TopicMessage<>(
+            batchInfo, System.currentTimeMillis(), "msg-s05", "test-consumer", "ack-s05");
+
+        lenient().when(mockMetadataReader.hasMetadata(runId)).thenReturn(true);
+        lenient().when(mockMetadataReader.getMetadata(runId)).thenReturn(metadata);
+        when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
+            .thenReturn(message)
+            .thenReturn(null);
+        when(mockStorage.readChunkBatch(StoragePath.of(batchInfo.getStoragePath()))).thenReturn(chunks);
+
+        // When: processChunk error
+        streamingIndexer = createStreamingIndexerWithError(runId, true, false);
+        streamingIndexer.start();
+
+        // Then
+        await().atMost(3, TimeUnit.SECONDS)
+            .until(() -> !streamingIndexer.getErrors().isEmpty());
+
+        assertEquals("BATCH_PROCESSING_FAILED", streamingIndexer.getErrors().get(0).errorType());
+        verify(mockTopic, never()).ack(any());
+    }
+
+    @Test
+    @AllowLog(level = LogLevel.WARN, messagePattern = "Failed to process batch.*")
+    @AllowLog(level = LogLevel.WARN, messagePattern = "Final streaming commit failed.*")
+    void testStreamingNoAckOnCommitError() throws Exception {
+        // Given: 3 chunks, insertBatchSize=3 → commit triggered after chunk 3 but fails
+        String runId = "test-run-s06";
+        SimulationMetadata metadata = createTestMetadata(runId);
+        List<TickDataChunk> chunks = createTestChunks(runId, 0, 3);
+        BatchInfo batchInfo = createBatchInfo(runId, "batch_s06.pb", 0, 2);
+        TopicMessage<BatchInfo, String> message = new TopicMessage<>(
+            batchInfo, System.currentTimeMillis(), "msg-s06", "test-consumer", "ack-s06");
+
+        lenient().when(mockMetadataReader.hasMetadata(runId)).thenReturn(true);
+        lenient().when(mockMetadataReader.getMetadata(runId)).thenReturn(metadata);
+        when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
+            .thenReturn(message)
+            .thenReturn(null);
+        when(mockStorage.readChunkBatch(StoragePath.of(batchInfo.getStoragePath()))).thenReturn(chunks);
+
+        // When: commit error (insertBatchSize=3 triggers commit after all 3 chunks processed)
+        streamingIndexer = createStreamingIndexerWithError(runId, false, true);
+        streamingIndexer.start();
+
+        // Then
+        await().atMost(3, TimeUnit.SECONDS)
+            .until(() -> !streamingIndexer.getErrors().isEmpty());
+
+        assertEquals("BATCH_PROCESSING_FAILED", streamingIndexer.getErrors().get(0).errorType());
+        verify(mockTopic, never()).ack(any());
+        assertEquals(3, streamingProcessedChunks.size(), "All 3 chunks processed before commit failed");
+    }
+
+    @Test
+    void testStreamingTimeoutBasedCommit() throws Exception {
+        // Given: 2 chunks, insertBatchSize=100 (never reached), flushTimeoutMs=100
+        // No commit during processing → timeout triggers commit → ACK
+        String runId = "test-run-s07";
+        SimulationMetadata metadata = createTestMetadata(runId);
+        List<TickDataChunk> chunks = createTestChunks(runId, 0, 2);
+        BatchInfo batchInfo = createBatchInfo(runId, "batch_s07.pb", 0, 1);
+        TopicMessage<BatchInfo, String> message = new TopicMessage<>(
+            batchInfo, System.currentTimeMillis(), "msg-s07", "test-consumer", "ack-s07");
+
+        lenient().when(mockMetadataReader.hasMetadata(runId)).thenReturn(true);
+        lenient().when(mockMetadataReader.getMetadata(runId)).thenReturn(metadata);
+        when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
+            .thenReturn(message)
+            .thenReturn(null);
+        when(mockStorage.readChunkBatch(StoragePath.of(batchInfo.getStoragePath()))).thenReturn(chunks);
+
+        // When: insertBatchSize too large to trigger during processing, timeout will trigger
+        streamingIndexer = createStreamingIndexer(runId, 100, 100);
+        streamingIndexer.start();
+
+        // Then: ACK after timeout-based commit
+        await().atMost(5, TimeUnit.SECONDS)
+            .untilAsserted(() -> verify(mockTopic, times(1)).ack(message));
+
+        assertEquals(2, streamingProcessedChunks.size(), "All 2 chunks should be processed");
+        assertEquals(1, streamingCommitCount.get(), "Should have 1 timeout-triggered commit");
+    }
+
+    @Test
+    void testStreamingMetricsTracking() throws Exception {
+        // Given: 2 batches × 3 chunks each, insertBatchSize=3
+        String runId = "test-run-s08";
+        SimulationMetadata metadata = createTestMetadata(runId);
+
+        List<TickDataChunk> chunks1 = createTestChunks(runId, 0, 3);
+        List<TickDataChunk> chunks2 = createTestChunks(runId, 3, 3);
+
+        BatchInfo batch1 = createBatchInfo(runId, "batch_s08a.pb", 0, 2);
+        BatchInfo batch2 = createBatchInfo(runId, "batch_s08b.pb", 3, 5);
+
+        TopicMessage<BatchInfo, String> msg1 = new TopicMessage<>(
+            batch1, System.currentTimeMillis(), "msg-s08a", "test-consumer", "ack-s08a");
+        TopicMessage<BatchInfo, String> msg2 = new TopicMessage<>(
+            batch2, System.currentTimeMillis(), "msg-s08b", "test-consumer", "ack-s08b");
+
+        lenient().when(mockMetadataReader.hasMetadata(runId)).thenReturn(true);
+        lenient().when(mockMetadataReader.getMetadata(runId)).thenReturn(metadata);
+        when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
+            .thenReturn(msg1)
+            .thenReturn(msg2)
+            .thenReturn(null);
+        when(mockStorage.readChunkBatch(StoragePath.of(batch1.getStoragePath()))).thenReturn(chunks1);
+        when(mockStorage.readChunkBatch(StoragePath.of(batch2.getStoragePath()))).thenReturn(chunks2);
+
+        // When
+        streamingIndexer = createStreamingIndexer(runId, 3);
+        streamingIndexer.start();
+
+        // Then: Metrics track both batches
+        await().atMost(5, TimeUnit.SECONDS)
+            .untilAsserted(() -> {
+                Map<String, Number> metrics = streamingIndexer.getMetrics();
+                assertEquals(2, metrics.get("batches_processed").intValue(),
+                    "Should track 2 batches");
+                assertEquals(6, metrics.get("ticks_processed").intValue(),
+                    "Should track 6 ticks total");
+            });
+    }
+
     // ========== Helper Methods ==========
     
     private TestBatchIndexer createIndexer(String runId, boolean withMetadata) {
@@ -405,6 +687,46 @@ class AbstractBatchIndexerTest {
         return new TestBatchIndexer("test-indexer", config, resources, true, true);
     }
     
+    private StreamingTestBatchIndexer createStreamingIndexer(String runId, int insertBatchSize) {
+        return createStreamingIndexer(runId, insertBatchSize, 5000);
+    }
+
+    private StreamingTestBatchIndexer createStreamingIndexer(String runId, int insertBatchSize, long flushTimeoutMs) {
+        Config config = ConfigFactory.parseString("""
+            runId = "%s"
+            metadataPollIntervalMs = 100
+            metadataMaxPollDurationMs = 5000
+            insertBatchSize = %d
+            flushTimeoutMs = %d
+            """.formatted(runId, insertBatchSize, flushTimeoutMs));
+
+        Map<String, List<IResource>> resources = new java.util.HashMap<>();
+        resources.put("storage", List.of((IResource) mockStorage));
+        resources.put("topic", List.of((IResource) mockTopic));
+        resources.put("metadata", List.of((IResource) mockMetadataReader));
+
+        return new StreamingTestBatchIndexer("test-streaming-indexer", config, resources, false, false);
+    }
+
+    private StreamingTestBatchIndexer createStreamingIndexerWithError(String runId,
+                                                                      boolean throwOnProcess,
+                                                                      boolean throwOnCommit) {
+        Config config = ConfigFactory.parseString("""
+            runId = "%s"
+            metadataPollIntervalMs = 100
+            metadataMaxPollDurationMs = 5000
+            insertBatchSize = 3
+            flushTimeoutMs = 5000
+            """.formatted(runId));
+
+        Map<String, List<IResource>> resources = new java.util.HashMap<>();
+        resources.put("storage", List.of((IResource) mockStorage));
+        resources.put("topic", List.of((IResource) mockTopic));
+        resources.put("metadata", List.of((IResource) mockMetadataReader));
+
+        return new StreamingTestBatchIndexer("test-streaming-indexer", config, resources, throwOnProcess, throwOnCommit);
+    }
+
     private SimulationMetadata createTestMetadata(String runId) {
         return SimulationMetadata.newBuilder()
             .setSimulationRunId(runId)
@@ -446,6 +768,54 @@ class AbstractBatchIndexerTest {
             .build();
     }
     
+    /**
+     * Streaming test implementation of AbstractBatchIndexer.
+     * Uses processChunk/commitProcessedChunks instead of flushChunks.
+     */
+    private class StreamingTestBatchIndexer extends AbstractBatchIndexer<String> {
+
+        private final boolean throwOnProcessChunk;
+        private final boolean throwOnCommit;
+
+        StreamingTestBatchIndexer(String name, Config options, Map<String, List<IResource>> resources,
+                                  boolean throwOnProcessChunk, boolean throwOnCommit) {
+            super(name, options, resources);
+            this.throwOnProcessChunk = throwOnProcessChunk;
+            this.throwOnCommit = throwOnCommit;
+        }
+
+        @Override
+        protected boolean useStreamingProcessing() {
+            return true;
+        }
+
+        @Override
+        protected Set<ComponentType> getRequiredComponents() {
+            return EnumSet.of(ComponentType.METADATA);
+        }
+
+        @Override
+        protected void processChunk(TickDataChunk chunk) throws Exception {
+            if (throwOnProcessChunk) {
+                throw new RuntimeException("Simulated processChunk error");
+            }
+            streamingProcessedChunks.add(chunk);
+        }
+
+        @Override
+        protected void commitProcessedChunks() throws Exception {
+            if (throwOnCommit) {
+                throw new RuntimeException("Simulated commit error");
+            }
+            streamingCommitCount.incrementAndGet();
+        }
+
+        @Override
+        protected void flushChunks(List<TickDataChunk> chunks) throws Exception {
+            throw new UnsupportedOperationException("Streaming indexer should not call flushChunks");
+        }
+    }
+
     /**
      * Concrete test implementation of AbstractBatchIndexer.
      */
