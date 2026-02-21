@@ -51,19 +51,23 @@ import com.typesafe.config.Config;
  * @see AbstractH2OrgStorageStrategy
  */
 public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
-    
-    private String organismsMergeSql;
-    private String statesMergeSql;
-    
+
+    private static final String ORGANISMS_MERGE_SQL = "MERGE INTO organisms (" +
+            "organism_id, parent_id, birth_tick, program_id, initial_position, genome_hash" +
+            ") KEY (organism_id) VALUES (?, ?, ?, ?, ?, ?)";
+
+    private static final String STATES_MERGE_SQL = "MERGE INTO organism_ticks (tick_number, organisms_blob) " +
+            "KEY (tick_number) VALUES (?, ?)";
+
     /**
      * Creates SingleBlobOrgStrategy with optional compression.
-     * 
+     *
      * @param options Config with optional compression block
      */
     public SingleBlobOrgStrategy(Config options) {
         super(options);
     }
-    
+
     @Override
     public void createTables(Connection conn) throws SQLException {
         try (Statement stmt = conn.createStatement()) {
@@ -80,9 +84,8 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
                 ")",
                 "organisms"
             );
-            
+
             // Per-tick organism states table (BLOB strategy: one row per tick)
-            // Note: Table name changed from organism_states to organism_ticks
             H2SchemaUtil.executeDdlIfNotExists(
                 stmt,
                 "CREATE TABLE IF NOT EXISTS organism_ticks (" +
@@ -91,94 +94,48 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
                 ")",
                 "organism_ticks"
             );
-            // No additional index needed - tick_number is PRIMARY KEY
         }
-        
-        // Cache SQL strings
-        this.organismsMergeSql = "MERGE INTO organisms (" +
-                "organism_id, parent_id, birth_tick, program_id, initial_position, genome_hash" +
-                ") KEY (organism_id) VALUES (?, ?, ?, ?, ?, ?)";
-        
-        this.statesMergeSql = "MERGE INTO organism_ticks (tick_number, organisms_blob) " +
-                "KEY (tick_number) VALUES (?, ?)";
-        
+
+        markTablesCreated();
         log.debug("Organism tables created with BLOB strategy");
     }
-    
-    @Override
-    public String getOrganismsMergeSql() {
-        return organismsMergeSql;
-    }
-    
-    @Override
-    public String getStatesMergeSql() {
-        return statesMergeSql;
-    }
-    
-    @Override
-    public void writeOrganisms(Connection conn, PreparedStatement stmt, List<TickData> ticks) 
-            throws SQLException {
-        // Extract unique organisms from all ticks and write static metadata
-        // Use a set to track which organisms we've already added to the batch
-        java.util.Set<Integer> seenOrganisms = new java.util.HashSet<>();
-        
-        for (TickData tick : ticks) {
-            for (OrganismState org : tick.getOrganismsList()) {
-                int organismId = org.getOrganismId();
-                if (seenOrganisms.contains(organismId)) {
-                    continue;  // Already in batch
-                }
-                seenOrganisms.add(organismId);
 
-                stmt.setInt(1, organismId);
-                if (org.hasParentId()) {
-                    stmt.setInt(2, org.getParentId());
-                } else {
-                    stmt.setNull(2, java.sql.Types.INTEGER);
-                }
-                stmt.setLong(3, org.getBirthTick());
-                stmt.setString(4, org.getProgramId());
-                stmt.setBytes(5, org.getInitialPosition().toByteArray());
-                stmt.setLong(6, org.getGenomeHash());
-                stmt.addBatch();
-            }
-            Thread.yield();
-        }
-        
-        if (!seenOrganisms.isEmpty()) {
-            stmt.executeBatch();
-            log.debug("Wrote {} unique organisms to organisms table", seenOrganisms.size());
-        }
-    }
-    
-    @Override
-    public void writeStates(Connection conn, PreparedStatement stmt, List<TickData> ticks) 
-            throws SQLException {
-        if (ticks.isEmpty()) {
-            return;
-        }
-        
-        int writtenCount = 0;
-        for (TickData tick : ticks) {
-            if (tick.getOrganismsList().isEmpty()) {
-                log.debug("Tick {} has no organisms - skipping organism_ticks write", tick.getTickNumber());
-                continue;
-            }
+    // ========================================================================
+    // Streaming write methods (per-tick addBatch / commit)
+    // ========================================================================
 
+    @Override
+    protected String getStreamOrganismsMergeSql() {
+        return ORGANISMS_MERGE_SQL;
+    }
+
+    @Override
+    protected String getStreamStatesMergeSql() {
+        return STATES_MERGE_SQL;
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Serializes all organisms of the tick into a single compressed BLOB via
+     * {@link #serializeOrganisms(TickData)}. Organism metadata deduplication is
+     * handled by {@link AbstractH2OrgStorageStrategy#addOrganismMetadataBatch(TickData)}.
+     */
+    @Override
+    public void addOrganismTick(Connection conn, TickData tick) throws SQLException {
+        StreamingSession session = ensureStreamingSession(conn);
+        addOrganismMetadataBatch(session, tick);
+
+        // Per-tick BLOB (all organisms serialized + compressed)
+        if (!tick.getOrganismsList().isEmpty()) {
             byte[] blob = serializeOrganisms(tick);
-            stmt.setLong(1, tick.getTickNumber());
-            stmt.setBytes(2, blob);
-            stmt.addBatch();
-            writtenCount++;
-            Thread.yield();
-        }
-        
-        if (writtenCount > 0) {
-            stmt.executeBatch();
-            log.debug("Wrote {} ticks to organism_ticks table (BLOB strategy)", writtenCount);
+            PreparedStatement statesStmt = session.statesStmt();
+            statesStmt.setLong(1, tick.getTickNumber());
+            statesStmt.setBytes(2, blob);
+            statesStmt.addBatch();
         }
     }
-    
+
     /**
      * Serializes all organisms of a tick to compressed BLOB.
      */

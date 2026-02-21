@@ -110,12 +110,14 @@ class H2DatabaseReaderTest {
                 .build();
             
             TickDataChunk chunk = TickDataChunk.newBuilder()
+                .setFirstTick(10L).setLastTick(30L).setTickCount(3)
                 .setSnapshot(snapshot)
                 .addDeltas(org.evochora.datapipeline.api.contracts.TickDelta.newBuilder().setTickNumber(20L).build())
                 .addDeltas(org.evochora.datapipeline.api.contracts.TickDelta.newBuilder().setTickNumber(30L).build())
                 .build();
 
-            strategy.writeChunks(conn, List.of(chunk));
+            strategy.writeRawChunk(conn, 10L, 30L, 3, chunk.toByteArray());
+            strategy.commitRawChunks(conn);
             conn.commit();
         }
 
@@ -191,10 +193,12 @@ class H2DatabaseReaderTest {
                 .build();
             
             TickDataChunk chunk = TickDataChunk.newBuilder()
+                .setFirstTick(42L).setLastTick(42L).setTickCount(1)
                 .setSnapshot(snapshot)
                 .build();
 
-            strategy.writeChunks(conn, List.of(chunk));
+            strategy.writeRawChunk(conn, 42L, 42L, 1, chunk.toByteArray());
+            strategy.commitRawChunks(conn);
             conn.commit();
         }
 
@@ -274,8 +278,8 @@ class H2DatabaseReaderTest {
                     .addOrganisms(orgState)
                     .build();
 
-            database.doWriteOrganismStates(conn, java.util.List.of(tick));
-            conn.commit();
+            database.doWriteOrganismTick(conn, tick);
+            database.doCommitOrganismWrites(conn);
         }
 
         // When: Read organism details

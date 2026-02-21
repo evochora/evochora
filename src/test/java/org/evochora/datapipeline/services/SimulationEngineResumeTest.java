@@ -19,6 +19,9 @@ import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
+import org.evochora.datapipeline.api.resources.storage.CheckedConsumer;
+import org.evochora.datapipeline.api.resources.storage.ChunkFieldFilter;
+import org.evochora.datapipeline.api.resources.storage.RawChunk;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.resume.ResumeException;
@@ -287,31 +290,27 @@ class SimulationEngineResumeTest {
         }
 
         @Override
-        public BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults) {
+        public BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults,
+                long startTick, long endTick, SortOrder sortOrder) {
             return new BatchFileListResult(batchPath != null ? List.of(batchPath) : List.of(), null, false);
         }
 
         @Override
-        public BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults,
-                long startTick) {
-            return listBatchFiles(prefix, continuationToken, maxResults);
+        public void forEachRawChunk(StoragePath path,
+                                    CheckedConsumer<RawChunk> consumer) throws Exception {
+            if (chunk != null) {
+                consumer.accept(new RawChunk(
+                    chunk.getFirstTick(), chunk.getLastTick(),
+                    chunk.getTickCount(), chunk.toByteArray()));
+            }
         }
 
         @Override
-        public BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults,
-                long startTick, long endTick) {
-            return listBatchFiles(prefix, continuationToken, maxResults);
-        }
-
-        @Override
-        public BatchFileListResult listBatchFiles(String prefix, String continuationToken, int maxResults,
-                SortOrder sortOrder) {
-            return listBatchFiles(prefix, continuationToken, maxResults);
-        }
-
-        @Override
-        public List<TickDataChunk> readChunkBatch(StoragePath path) {
-            return chunk != null ? List.of(chunk) : List.of();
+        public void forEachChunk(StoragePath path, ChunkFieldFilter filter,
+                                 CheckedConsumer<TickDataChunk> consumer) throws Exception {
+            if (chunk != null) {
+                consumer.accept(chunk);
+            }
         }
 
         @Override

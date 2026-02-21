@@ -23,7 +23,7 @@ import io.javalin.Javalin;
 import java.nio.file.Path;
 
 /**
- * Phase 3 error handling tests: HTTP error responses and edge cases.
+ * Error handling tests for EnvironmentController: HTTP error responses and edge cases.
  * <p>
  * Tests various error conditions in the EnvironmentController:
  * - Invalid parameters (region, tick, runId)

@@ -94,8 +94,8 @@ class FileSystemStorageResourceTickFilterCompressionTest {
     @Test
     void testPhysicalPathsReturnedWithCompression() throws IOException {
         // Write batches with compression
-        storageCompressed.writeChunkBatch(List.of(createChunk(0, 10, 1)), 0, 10);
-        storageCompressed.writeChunkBatch(List.of(createChunk(100, 200, 1)), 100, 200);
+        storageCompressed.writeChunkBatchStreaming(List.of(createChunk(0, 10, 1)).iterator());
+        storageCompressed.writeChunkBatchStreaming(List.of(createChunk(100, 200, 1)).iterator());
 
         // List all batches (no tick filter)
         BatchFileListResult result = storageCompressed.listBatchFiles("test-sim/", null, 100);
@@ -114,9 +114,9 @@ class FileSystemStorageResourceTickFilterCompressionTest {
     @Test
     void testTickFilteringWorksWithCompression() throws IOException {
         // Write batches at different tick ranges with compression
-        storageCompressed.writeChunkBatch(List.of(createChunk(0, 10, 1)), 0, 10);
-        storageCompressed.writeChunkBatch(List.of(createChunk(100, 200, 1)), 100, 200);
-        storageCompressed.writeChunkBatch(List.of(createChunk(1000, 2000, 1)), 1000, 2000);
+        storageCompressed.writeChunkBatchStreaming(List.of(createChunk(0, 10, 1)).iterator());
+        storageCompressed.writeChunkBatchStreaming(List.of(createChunk(100, 200, 1)).iterator());
+        storageCompressed.writeChunkBatchStreaming(List.of(createChunk(1000, 2000, 1)).iterator());
 
         // Filter by start tick with compression
         BatchFileListResult result = storageCompressed.listBatchFiles("test-sim/", null, 100, 100L);
@@ -138,10 +138,10 @@ class FileSystemStorageResourceTickFilterCompressionTest {
     @Test
     void testTickRangeFilteringWorksWithCompression() throws IOException {
         // Write batches with compression
-        storageCompressed.writeChunkBatch(List.of(createChunk(0, 99, 1)), 0, 99);
-        storageCompressed.writeChunkBatch(List.of(createChunk(500, 599, 1)), 500, 599);
-        storageCompressed.writeChunkBatch(List.of(createChunk(1000, 1099, 1)), 1000, 1099);
-        storageCompressed.writeChunkBatch(List.of(createChunk(2000, 2099, 1)), 2000, 2099);
+        storageCompressed.writeChunkBatchStreaming(List.of(createChunk(0, 99, 1)).iterator());
+        storageCompressed.writeChunkBatchStreaming(List.of(createChunk(500, 599, 1)).iterator());
+        storageCompressed.writeChunkBatchStreaming(List.of(createChunk(1000, 1099, 1)).iterator());
+        storageCompressed.writeChunkBatchStreaming(List.of(createChunk(2000, 2099, 1)).iterator());
 
         // Filter by tick range
         BatchFileListResult result = storageCompressed.listBatchFiles("test-sim/", null, 100, 500L, 1000L);
@@ -175,8 +175,8 @@ class FileSystemStorageResourceTickFilterCompressionTest {
         for (int i = 0; i < 5; i++) {
             long start = i * 1000L;
             long end = start + 999;
-            storageCompressed.writeChunkBatch(List.of(createChunk(start, end, 1)), start, end);
-            storageUncompressed.writeChunkBatch(List.of(createChunk(start, end, 1)), start, end);
+            storageCompressed.writeChunkBatchStreaming(List.of(createChunk(start, end, 1)).iterator());
+            storageUncompressed.writeChunkBatchStreaming(List.of(createChunk(start, end, 1)).iterator());
         }
 
         // Query both with same tick filter
@@ -199,10 +199,10 @@ class FileSystemStorageResourceTickFilterCompressionTest {
     }
 
     @Test
-    void testReadChunkBatchWorksWithTickFilteredResults() throws IOException {
+    void testReadChunkBatchWorksWithTickFilteredResults() throws Exception {
         // Write compressed chunk batch
         List<TickDataChunk> originalBatch = List.of(createChunk(1000, 1020, 21));
-        storageCompressed.writeChunkBatch(originalBatch, 1000, 1020);
+        storageCompressed.writeChunkBatchStreaming(originalBatch.iterator());
 
         // Filter to find this batch
         BatchFileListResult result = storageCompressed.listBatchFiles("test-sim/", null, 100, 1000L, 1000L);
@@ -211,8 +211,9 @@ class FileSystemStorageResourceTickFilterCompressionTest {
         StoragePath path = result.getFilenames().get(0);
         
         // Read the batch using the path
-        List<TickDataChunk> readBatch = storageCompressed.readChunkBatch(path);
-        
+        List<TickDataChunk> readBatch = new java.util.ArrayList<>();
+        storageCompressed.forEachChunk(path, readBatch::add);
+
         assertEquals(originalBatch.size(), readBatch.size(), "Should read all chunks");
         assertEquals(originalBatch, readBatch, "Data should be preserved through compression round-trip");
     }

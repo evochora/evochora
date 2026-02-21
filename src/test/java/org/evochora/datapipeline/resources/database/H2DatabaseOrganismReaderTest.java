@@ -72,7 +72,8 @@ class H2DatabaseOrganismReaderTest {
 
         try (Connection conn = getConnectionWithSchema("run-reader-1")) {
             database.doCreateOrganismTables(conn);
-            database.doWriteOrganismStates(conn, java.util.List.of(tick));
+            database.doWriteOrganismTick(conn, tick);
+            database.doCommitOrganismWrites(conn);
         }
 
         try (IDatabaseReader reader = database.createReader("run-reader-1")) {
@@ -102,7 +103,8 @@ class H2DatabaseOrganismReaderTest {
 
         try (Connection conn = getConnectionWithSchema("run-reader-2")) {
             database.doCreateOrganismTables(conn);
-            database.doWriteOrganismStates(conn, java.util.List.of(tick));
+            database.doWriteOrganismTick(conn, tick);
+            database.doCommitOrganismWrites(conn);
         }
 
         try (IDatabaseReader reader = database.createReader("run-reader-2")) {
@@ -137,7 +139,8 @@ class H2DatabaseOrganismReaderTest {
                     metadataJson.replace("'", "''") + "')");
 
             database.doCreateOrganismTables(conn);
-            database.doWriteOrganismStates(conn, java.util.List.of(tick));
+            database.doWriteOrganismTick(conn, tick);
+            database.doCommitOrganismWrites(conn);
             conn.commit();
         }
 

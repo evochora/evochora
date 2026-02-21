@@ -2,13 +2,8 @@ package org.evochora.datapipeline.resources.database.h2;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -139,133 +134,84 @@ class RowPerOrganismStrategyTest {
     }
 
     @Test
-    void testSqlStrings_CorrectFormat() {
-        // Given: Strategy
-        strategy = new RowPerOrganismStrategy(ConfigFactory.empty());
-
-        // Then: MERGE SQL should have correct format
-        assertThat(strategy.getOrganismsMergeSql())
-                .contains("MERGE INTO organisms")
-                .contains("KEY (organism_id)")
-                .contains("organism_id, parent_id, birth_tick, program_id, initial_position");
-
-        assertThat(strategy.getStatesMergeSql())
-                .contains("MERGE INTO organism_states")
-                .contains("KEY (tick_number, organism_id)")
-                .contains("tick_number, organism_id, energy, ip, dv, data_pointers, active_dp_index, runtime_state_blob, entropy, molecule_marker")
-                .contains("VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-    }
-
-    @Test
-    void testWriteStates_EmptyList() throws SQLException {
-        // Given: Strategy with empty tick list
-        strategy = new RowPerOrganismStrategy(ConfigFactory.empty());
-
-        // When: Write empty list
-        strategy.writeStates(mockConnection, mockPreparedStatement, List.of());
-
-        // Then: Should not execute any database operations
-        verify(mockPreparedStatement, never()).setLong(anyInt(), anyLong());
-        verify(mockPreparedStatement, never()).executeBatch();
-    }
-
-    @Test
-    void testWriteStates_SingleTickWithMultipleOrganisms() throws SQLException {
+    void testAddOrganismTick_SingleTickWithMultipleOrganisms() throws SQLException {
         // Given: Strategy with one tick containing 3 organisms
         strategy = new RowPerOrganismStrategy(ConfigFactory.empty());
+        strategy.createTables(mockConnection);
 
         TickData tick = createTickWithOrganisms(1000L, 3);
 
-        // When: Write single tick
-        strategy.writeStates(mockConnection, mockPreparedStatement, List.of(tick));
+        // When: Add tick and commit
+        strategy.addOrganismTick(mockConnection, tick);
+        strategy.commitOrganismWrites(mockConnection);
 
-        // Then: Should write one row per organism (3 rows)
-        verify(mockPreparedStatement, times(3)).setLong(eq(1), eq(1000L)); // tick_number
-        verify(mockPreparedStatement, times(3)).setInt(eq(2), anyInt());   // organism_id
-        verify(mockPreparedStatement, times(3)).setInt(eq(3), anyInt());   // energy
-        verify(mockPreparedStatement, times(3)).setBytes(eq(4), any(byte[].class)); // ip
-        verify(mockPreparedStatement, times(3)).setBytes(eq(5), any(byte[].class)); // dv
-        verify(mockPreparedStatement, times(3)).setBytes(eq(6), any(byte[].class)); // data_pointers
-        verify(mockPreparedStatement, times(3)).setInt(eq(7), anyInt());   // active_dp_index
-        verify(mockPreparedStatement, times(3)).setBytes(eq(8), any(byte[].class)); // runtime_state_blob
-        verify(mockPreparedStatement, times(3)).setInt(eq(9), anyInt()); // entropy
-        verify(mockPreparedStatement, times(3)).setInt(eq(10), anyInt()); // molecule_marker
-        verify(mockPreparedStatement, times(3)).addBatch();
-        verify(mockPreparedStatement, times(1)).executeBatch();
+        // Then: addBatch for 3 organism metadata + 3 state rows = 6
+        verify(mockPreparedStatement, times(6)).addBatch();
+        verify(mockPreparedStatement, times(2)).executeBatch();
     }
 
     @Test
-    void testWriteStates_MultipleTicks() throws SQLException {
-        // Given: Strategy with multiple ticks
+    void testAddOrganismTick_MultipleTicks() throws SQLException {
+        // Given: Strategy with multiple ticks (organism IDs overlap: {0,1}, {0,1,2}, {0})
         strategy = new RowPerOrganismStrategy(ConfigFactory.empty());
+        strategy.createTables(mockConnection);
 
         TickData tick1 = createTickWithOrganisms(1000L, 2);
         TickData tick2 = createTickWithOrganisms(1001L, 3);
         TickData tick3 = createTickWithOrganisms(1002L, 1);
 
-        // When: Write multiple ticks
-        strategy.writeStates(mockConnection, mockPreparedStatement, List.of(tick1, tick2, tick3));
+        // When: Add all ticks and commit
+        strategy.addOrganismTick(mockConnection, tick1);
+        strategy.addOrganismTick(mockConnection, tick2);
+        strategy.addOrganismTick(mockConnection, tick3);
+        strategy.commitOrganismWrites(mockConnection);
 
-        // Then: Should add all organism rows to batch (2 + 3 + 1 = 6 rows)
-        verify(mockPreparedStatement, times(6)).addBatch();
-        verify(mockPreparedStatement, times(1)).executeBatch();
+        // Then: addBatch for 3 unique organism metadata (deduped) + 6 state rows = 9
+        verify(mockPreparedStatement, times(9)).addBatch();
+        verify(mockPreparedStatement, times(2)).executeBatch();
     }
 
     @Test
-    void testWriteStates_VerifyOrganismIds() throws SQLException {
-        // Given: Strategy with tick containing organisms
+    void testCommitOrganismWrites_PropagatesSqlException() throws SQLException {
+        // Given: Strategy where executeBatch will fail
         strategy = new RowPerOrganismStrategy(ConfigFactory.empty());
-
-        TickData tick = createTickWithOrganisms(1000L, 2);
-
-        // When: Write tick
-        strategy.writeStates(mockConnection, mockPreparedStatement, List.of(tick));
-
-        // Then: Should set correct organism IDs
-        ArgumentCaptor<Integer> organismIdCaptor = ArgumentCaptor.forClass(Integer.class);
-        verify(mockPreparedStatement, times(2)).setInt(eq(2), organismIdCaptor.capture());
-
-        List<Integer> capturedIds = organismIdCaptor.getAllValues();
-        assertThat(capturedIds).containsExactly(0, 1);
-    }
-
-    @Test
-    void testWriteStates_SQLException() throws SQLException {
-        // Given: Strategy that will throw SQLException
-        strategy = new RowPerOrganismStrategy(ConfigFactory.empty());
+        strategy.createTables(mockConnection);
 
         when(mockPreparedStatement.executeBatch()).thenThrow(new SQLException("Database error"));
 
         TickData tick = createTickWithOrganisms(1000L, 1);
+        strategy.addOrganismTick(mockConnection, tick);
 
-        // When/Then: Should propagate SQLException
-        assertThatThrownBy(() -> strategy.writeStates(mockConnection, mockPreparedStatement, List.of(tick)))
+        // When/Then: commitOrganismWrites should propagate SQLException
+        assertThatThrownBy(() -> strategy.commitOrganismWrites(mockConnection))
                 .isInstanceOf(SQLException.class)
                 .hasMessageContaining("Database error");
     }
 
     @Test
-    void testWriteOrganisms_ExtractsUniqueOrganisms() throws SQLException {
-        // Given: Strategy with multiple ticks containing same organism
+    void testAddOrganismTick_DeduplicatesOrganismMetadata() throws SQLException {
+        // Given: Strategy with same organism appearing in multiple ticks
         strategy = new RowPerOrganismStrategy(ConfigFactory.empty());
+        strategy.createTables(mockConnection);
 
-        // Same organism appears in both ticks
         OrganismState org1 = createOrganism(1, 100);
         TickData tick1 = TickData.newBuilder().setTickNumber(1L).addOrganisms(org1).build();
         TickData tick2 = TickData.newBuilder().setTickNumber(2L).addOrganisms(org1).build();
 
-        // When: Write organisms
-        strategy.writeOrganisms(mockConnection, mockPreparedStatement, List.of(tick1, tick2));
+        // When: Add both ticks
+        strategy.addOrganismTick(mockConnection, tick1);
+        strategy.addOrganismTick(mockConnection, tick2);
+        strategy.commitOrganismWrites(mockConnection);
 
-        // Then: Should only add organism once (deduplication)
-        verify(mockPreparedStatement, times(1)).addBatch();
-        verify(mockPreparedStatement, times(1)).executeBatch();
+        // Then: addBatch 1 (organism metadata, deduped) + 2 (state rows) = 3
+        verify(mockPreparedStatement, times(3)).addBatch();
     }
 
     @Test
-    void testWriteOrganisms_MultipleUniqueOrganisms() throws SQLException {
+    void testAddOrganismTick_MultipleUniqueOrganisms() throws SQLException {
         // Given: Strategy with ticks containing different organisms
         strategy = new RowPerOrganismStrategy(ConfigFactory.empty());
+        strategy.createTables(mockConnection);
 
         OrganismState org1 = createOrganism(1, 100);
         OrganismState org2 = createOrganism(2, 200);
@@ -276,12 +222,13 @@ class RowPerOrganismStrategyTest {
         TickData tick2 = TickData.newBuilder().setTickNumber(2L)
                 .addOrganisms(org2).addOrganisms(org3).build(); // org2 appears again
 
-        // When: Write organisms
-        strategy.writeOrganisms(mockConnection, mockPreparedStatement, List.of(tick1, tick2));
+        // When: Add both ticks
+        strategy.addOrganismTick(mockConnection, tick1);
+        strategy.addOrganismTick(mockConnection, tick2);
+        strategy.commitOrganismWrites(mockConnection);
 
-        // Then: Should add 3 unique organisms
-        verify(mockPreparedStatement, times(3)).addBatch();
-        verify(mockPreparedStatement, times(1)).executeBatch();
+        // Then: 3 unique organism metadata + 4 state rows (2+2) = 7 addBatch calls
+        verify(mockPreparedStatement, times(7)).addBatch();
     }
 
     @Test

@@ -5,8 +5,6 @@ import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
-import org.evochora.datapipeline.api.contracts.TickDataChunk;
-
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
@@ -86,23 +84,22 @@ public class DummyReaderService extends AbstractService {
                         }
 
                         try {
-                            List<TickDataChunk> chunks = storage.readChunkBatch(path);
-
-                            long expectedFirstTick = -1;
-                            for (TickDataChunk chunk : chunks) {
+                            long[] state = {-1, 0}; // [expectedFirstTick, chunksInBatch]
+                            storage.forEachChunk(path, chunk -> {
                                 // Filter by simulation run ID
                                 if (!chunk.getSimulationRunId().equals(keyPrefix + "_run")) {
-                                    continue;
+                                    return;
                                 }
 
                                 totalChunksRead.incrementAndGet();
                                 totalBytesRead.addAndGet(chunk.getSerializedSize());
+                                state[1]++;
 
                                 // Validate sequential order within batch (chunk first_tick should increase)
-                                if (validateData && expectedFirstTick >= 0) {
-                                    if (chunk.getFirstTick() < expectedFirstTick) {
+                                if (validateData && state[0] >= 0) {
+                                    if (chunk.getFirstTick() < state[0]) {
                                         log.warn("Chunk sequence error in {}: expected first_tick >= {}, got {}",
-                                            path, expectedFirstTick, chunk.getFirstTick());
+                                            path, state[0], chunk.getFirstTick());
                                         validationErrors.incrementAndGet();
                                     }
                                 }
@@ -115,17 +112,17 @@ public class DummyReaderService extends AbstractService {
                                     maxTickSeen = chunk.getLastTick();
                                 }
 
-                                expectedFirstTick = chunk.getLastTick() + 1;
-                            }
+                                state[0] = chunk.getLastTick() + 1;
+                            });
 
                             readOperations.incrementAndGet();
                             processedFiles.add(path);
                             filesFoundThisIteration++;
                             filesProcessed++;
 
-                            log.debug("Read chunk batch {} with {} chunks", path, chunks.size());
+                            log.debug("Read chunk batch {} with {} chunks", path, state[1]);
 
-                        } catch (IOException e) {
+                        } catch (Exception e) {
                             log.warn("Failed to read chunk batch {}", path);
                             readErrors.incrementAndGet();
                             recordError(

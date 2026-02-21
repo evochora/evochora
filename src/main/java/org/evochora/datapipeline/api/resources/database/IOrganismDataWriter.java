@@ -3,7 +3,6 @@ package org.evochora.datapipeline.api.resources.database;
 import org.evochora.datapipeline.api.contracts.TickData;
 
 import java.sql.SQLException;
-import java.util.List;
 
 /**
  * Database capability for writing indexed organism data for a single simulation run.
@@ -74,24 +73,43 @@ public interface IOrganismDataWriter extends ISchemaAwareDatabase, AutoCloseable
      */
     void createOrganismTables() throws SQLException;
 
+    // ========================================================================
+    // Streaming write methods (per-tick addBatch / commit)
+    // ========================================================================
+
     /**
-     * Writes organism state for all ticks in the given list into the index database.
+     * Adds organism data from a single tick to the write session.
      * <p>
-     * For each {@link TickData} in {@code ticks}:
-     * <ul>
-     *   <li>Each contained {@code OrganismState} is used to upsert a static row into
-     *       {@code organisms} (MERGE on {@code organism_id}).</li>
-     *   <li>Exactly one row per pair {@code (tick_number, organism_id)} is upserted
-     *       into {@code organism_states} (MERGE on {@code tick_number, organism_id}).</li>
-     * </ul>
-     * The {@code runtime_state_blob} column contains a serialized (and optionally
-     * compressed) {@code OrganismRuntimeState} built from the remaining fields of
-     * {@code OrganismState} as specified in the organism indexer specification.
+     * Implementations extract static organism metadata (for the {@code organisms} table)
+     * and per-tick state (for the strategy-specific state table), adding both to internal
+     * JDBC batches via {@code addBatch()}. Must NOT call {@code executeBatch()} or
+     * {@code commit()} — those are handled by {@link #commitOrganismWrites()}.
+     * <p>
+     * Called once per tick during streaming chunk processing. Each parsed tick is
+     * GC-eligible immediately after this method returns.
      *
-     * @param ticks the list of sampled ticks to index (must not be null)
-     * @throws SQLException if any database operation fails
+     * <strong>Thread Safety:</strong> Not thread-safe. Callers must ensure sequential access
+     * per write session (one connection = one thread).
+     *
+     * @param tick Tick data containing organism states (must not be null)
+     * @throws SQLException if batch addition fails
      */
-    void writeOrganismStates(List<TickData> ticks) throws SQLException;
+    void writeOrganismTick(TickData tick) throws SQLException;
+
+    /**
+     * Executes all accumulated batches from previous {@link #writeOrganismTick} calls
+     * and commits the transaction.
+     * <p>
+     * After this call, all organism data added since the last commit (or session start)
+     * is durably persisted. Internal deduplication state is reset for the next commit window,
+     * but prepared statements remain open for reuse.
+     * <p>
+     * <strong>Thread Safety:</strong> Not thread-safe. Callers must ensure sequential access
+     * per write session (one connection = one thread).
+     *
+     * @throws SQLException if batch execution or commit fails
+     */
+    void commitOrganismWrites() throws SQLException;
 
     /**
      * Releases any dedicated database resources (e.g. connections) held by this

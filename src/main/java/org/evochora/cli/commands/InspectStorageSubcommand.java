@@ -1,6 +1,7 @@
 package org.evochora.cli.commands;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.Callable;
@@ -13,7 +14,6 @@ import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.delta.ChunkCorruptedException;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
-import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
 import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.evochora.datapipeline.utils.MoleculeDataUtils;
 import org.evochora.datapipeline.utils.delta.DeltaCodec;
@@ -104,21 +104,23 @@ public class InspectStorageSubcommand implements Callable<Integer> {
             
             spec.commandLine().getOut().println("Found batch file: " + batchPath.asString());
             
-            // Read chunk batch
-            List<TickDataChunk> chunks = storage.readChunkBatch(batchPath);
-            
-            // Find the chunk containing the target tick
-            TickDataChunk targetChunk = null;
-            for (TickDataChunk chunk : chunks) {
+            // Find the chunk containing the target tick (early exit on match)
+            TickDataChunk[] found = {null};
+            List<String> chunkRanges = new ArrayList<>();
+            storage.forEachChunkUntil(batchPath, chunk -> {
+                chunkRanges.add(String.format("  Chunk: ticks %d to %d (%d ticks)",
+                    chunk.getFirstTick(), chunk.getLastTick(), chunk.getTickCount()));
                 if (tickNumber >= chunk.getFirstTick() && tickNumber <= chunk.getLastTick()) {
-                    targetChunk = chunk;
-                    break;
+                    found[0] = chunk;
+                    return false;
                 }
-            }
-            
+                return true;
+            });
+            TickDataChunk targetChunk = found[0];
+
             if (targetChunk == null) {
                 spec.commandLine().getOut().println("Tick " + tickNumber + " not found in any chunk in batch " + batchPath);
-                printChunkRanges(chunks);
+                printChunkRanges(chunkRanges);
                 return 1;
             }
             
@@ -189,7 +191,7 @@ public class InspectStorageSubcommand implements Callable<Integer> {
             : ConfigFactory.empty();
         
         // Create storage resource
-        FileSystemStorageResource storage = (FileSystemStorageResource) Class.forName(className)
+        IBatchStorageRead storage = (IBatchStorageRead) Class.forName(className)
             .getConstructor(String.class, com.typesafe.config.Config.class)
             .newInstance(storageName, options);
         
@@ -239,12 +241,9 @@ public class InspectStorageSubcommand implements Callable<Integer> {
         return null;
     }
 
-    private void printChunkRanges(List<TickDataChunk> chunks) {
+    private void printChunkRanges(List<String> chunkRanges) {
         spec.commandLine().getOut().println("Available chunks in batch:");
-        for (TickDataChunk chunk : chunks) {
-            spec.commandLine().getOut().printf("  Chunk: ticks %d to %d (%d ticks)%n",
-                chunk.getFirstTick(), chunk.getLastTick(), chunk.getTickCount());
-        }
+        chunkRanges.forEach(range -> spec.commandLine().getOut().println(range));
     }
 
     private void outputTickData(TickData tick, TickDataChunk chunk, TickDelta delta, String format) {

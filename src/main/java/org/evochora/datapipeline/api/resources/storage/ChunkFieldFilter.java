@@ -12,7 +12,7 @@ package org.evochora.datapipeline.api.resources.storage;
  * objects. For a 4000x3000 environment with ~580 organisms, skipping organisms saves ~730 MB
  * per chunk and skipping cells saves ~550 MB per snapshot.
  *
- * @see IBatchStorageRead#readChunkBatch(StoragePath, ChunkFieldFilter)
+ * @see IBatchStorageRead#forEachChunk(StoragePath, ChunkFieldFilter, CheckedConsumer)
  */
 public enum ChunkFieldFilter {
 
@@ -35,5 +35,14 @@ public enum ChunkFieldFilter {
      * Use this for indexers that only need organism data (e.g., OrganismIndexer).
      * Skips {@code TickData.cell_columns} (field 5) and {@code TickDelta.changed_cells} (field 4).
      */
-    SKIP_CELLS
+    SKIP_CELLS,
+
+    /**
+     * Skip all delta messages entirely. Only chunk metadata and the snapshot are parsed.
+     * <p>
+     * Use this for resume operations that only need the final snapshot from a batch.
+     * Skips {@code TickDataChunk.deltas} (field 3) at the wire level — delta bytes are
+     * discarded without deserialization.
+     */
+    SNAPSHOT_ONLY
 }

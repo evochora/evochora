@@ -4,8 +4,13 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
+import org.evochora.datapipeline.api.contracts.OrganismState;
+import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.utils.compression.CompressionCodecFactory;
 import org.evochora.datapipeline.utils.compression.ICompressionCodec;
 import org.slf4j.Logger;
@@ -34,6 +39,7 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
     protected final Logger log = LoggerFactory.getLogger(getClass());
     protected final Config options;
     protected final ICompressionCodec codec;
+    private volatile boolean tablesCreated;
     
     /**
      * Creates storage strategy with configuration.
@@ -58,6 +64,209 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
      */
     protected ICompressionCodec getCodec() {
         return codec;
+    }
+
+    /**
+     * Marks tables as created, enabling streaming writes.
+     * <p>
+     * Subclasses MUST call this at the end of their {@link #createTables(Connection)} implementation.
+     * Without this, {@link #ensureStreamingSession(Connection)} will throw {@link IllegalStateException}.
+     */
+    protected void markTablesCreated() {
+        this.tablesCreated = true;
+    }
+
+    // ========================================================================
+    // Per-connection streaming session state (thread-safe for competing consumers)
+    // ========================================================================
+
+    /**
+     * Per-connection streaming session holding PreparedStatements and deduplication state.
+     * <p>
+     * Each competing consumer uses its own database connection, so keying by connection
+     * ensures complete isolation between concurrent indexer instances.
+     */
+    protected record StreamingSession(
+            PreparedStatement organismsStmt,
+            PreparedStatement statesStmt,
+            Set<Integer> seenOrganisms
+    ) {}
+
+    /** Per-connection sessions (thread-safe for competing consumers sharing this strategy instance). */
+    private final ConcurrentHashMap<Connection, StreamingSession> sessions = new ConcurrentHashMap<>();
+
+    /**
+     * Returns the SQL string used for the organisms (static metadata) MERGE statement
+     * during streaming writes.
+     * <p>
+     * Called once per connection during lazy initialization of {@link StreamingSession}.
+     *
+     * @return SQL string for MERGE operation on organisms table
+     */
+    protected abstract String getStreamOrganismsMergeSql();
+
+    /**
+     * Returns the SQL string used for the per-tick state MERGE statement
+     * during streaming writes.
+     * <p>
+     * Called once per connection during lazy initialization of {@link StreamingSession}.
+     *
+     * @return SQL string for MERGE operation on organism states table
+     */
+    protected abstract String getStreamStatesMergeSql();
+
+    /**
+     * Returns the streaming session for the given connection, creating it lazily.
+     * <p>
+     * Each connection gets its own PreparedStatements and deduplication set,
+     * ensuring competing consumers sharing this strategy instance are fully isolated.
+     *
+     * @param conn Database connection (autoCommit=false)
+     * @return The streaming session for this connection
+     * @throws SQLException if statement preparation fails
+     */
+    protected StreamingSession ensureStreamingSession(Connection conn) throws SQLException {
+        if (!tablesCreated) {
+            throw new IllegalStateException("createTables() must be called before writing organism data");
+        }
+        try {
+            StreamingSession session = sessions.computeIfAbsent(conn, c -> {
+                try {
+                    return new StreamingSession(
+                            c.prepareStatement(getStreamOrganismsMergeSql()),
+                            c.prepareStatement(getStreamStatesMergeSql()),
+                            new HashSet<>()
+                    );
+                } catch (SQLException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            // Purge stale entries from closed connections (rare: only after connection failure)
+            if (sessions.size() > 1) {
+                purgeClosedConnections(conn);
+            }
+            return session;
+        } catch (RuntimeException e) {
+            if (e.getCause() instanceof SQLException) {
+                throw (SQLException) e.getCause();
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * Adds static organism metadata to the batch, deduplicating by organism ID.
+     * <p>
+     * Organisms already seen within the current commit window are skipped.
+     * Sets 6 parameters: organism_id, parent_id, birth_tick, program_id,
+     * initial_position, genome_hash.
+     *
+     * @param session The streaming session for the current connection
+     * @param tick Tick data containing organism states
+     * @throws SQLException if parameter setting or addBatch fails
+     */
+    protected void addOrganismMetadataBatch(StreamingSession session, TickData tick) throws SQLException {
+        PreparedStatement stmt = session.organismsStmt();
+        Set<Integer> seen = session.seenOrganisms();
+        for (OrganismState org : tick.getOrganismsList()) {
+            int organismId = org.getOrganismId();
+            if (seen.add(organismId)) {
+                stmt.setInt(1, organismId);
+                if (org.hasParentId()) {
+                    stmt.setInt(2, org.getParentId());
+                } else {
+                    stmt.setNull(2, java.sql.Types.INTEGER);
+                }
+                stmt.setLong(3, org.getBirthTick());
+                stmt.setString(4, org.getProgramId());
+                stmt.setBytes(5, org.getInitialPosition().toByteArray());
+                stmt.setLong(6, org.getGenomeHash());
+                stmt.addBatch();
+            }
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Executes organism metadata and state batches, then clears the deduplication set.
+     * Statements remain open for reuse in the next commit window.
+     */
+    @Override
+    public void commitOrganismWrites(Connection conn) throws SQLException {
+        StreamingSession session = sessions.get(conn);
+        if (session == null) {
+            return; // No data was added for this connection
+        }
+
+        if (!session.seenOrganisms().isEmpty()) {
+            session.organismsStmt().executeBatch();
+        }
+        session.statesStmt().executeBatch();
+
+        // Reset per-commit state; statements stay open for reuse
+        session.seenOrganisms().clear();
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Closes open PreparedStatements (suppressing errors) and removes the session
+     * for the given connection. The next {@link #addOrganismTick} call will lazily
+     * re-initialize all session resources.
+     */
+    @Override
+    public void resetStreamingState(Connection conn) {
+        StreamingSession session = sessions.remove(conn);
+        if (session != null) {
+            closeQuietly(session.organismsStmt());
+            closeQuietly(session.statesStmt());
+        }
+    }
+
+    /**
+     * Removes entries for closed connections from {@link #sessions}.
+     * <p>
+     * Called opportunistically when the map has more than one entry, which only
+     * happens after a connection failure caused the wrapper to acquire a new connection.
+     *
+     * @param currentConn the active connection (not purged)
+     */
+    private void purgeClosedConnections(Connection currentConn) {
+        sessions.entrySet().removeIf(entry -> {
+            Connection c = entry.getKey();
+            if (c == currentConn) {
+                return false;
+            }
+            try {
+                if (c.isClosed()) {
+                    closeQuietly(entry.getValue().organismsStmt());
+                    closeQuietly(entry.getValue().statesStmt());
+                    return true;
+                }
+            } catch (SQLException e) {
+                closeQuietly(entry.getValue().organismsStmt());
+                closeQuietly(entry.getValue().statesStmt());
+                return true;
+            }
+            return false;
+        });
+    }
+
+    /**
+     * Closes a PreparedStatement, suppressing any exceptions.
+     *
+     * @param stmt Statement to close (may be null)
+     */
+    private void closeQuietly(PreparedStatement stmt) {
+        if (stmt != null) {
+            try {
+                stmt.close();
+            } catch (SQLException e) {
+                log.debug("{}: failed to close streaming statement: {}",
+                    getClass().getSimpleName(), e.getMessage());
+            }
+        }
     }
 
     @Override

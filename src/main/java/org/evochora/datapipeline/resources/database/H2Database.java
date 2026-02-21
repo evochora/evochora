@@ -56,10 +56,6 @@ public class H2Database extends AbstractDatabaseResource
     // Organism storage strategy (loaded via reflection)
     private final IH2OrgStorageStrategy orgStorageStrategy;
     
-    // PreparedStatement caches for organism writes (per connection)
-    private final Map<Connection, PreparedStatement> orgStaticStmtCache = new ConcurrentHashMap<>();
-    private final Map<Connection, PreparedStatement> orgStatesStmtCache = new ConcurrentHashMap<>();
-    
     // Metadata cache (LRU with automatic eviction)
     private final Map<String, SimulationMetadata> metadataCache;
     private final int maxCacheSize;
@@ -438,7 +434,7 @@ public class H2Database extends AbstractDatabaseResource
             try {
                 conn.rollback();
             } catch (SQLException rollbackEx) {
-                log.warn("Rollback failed (connection may be closed): {}", rollbackEx.getMessage());
+                log.warn("{}: rollback failed (connection may be closed): {}", getResourceName(), rollbackEx.getMessage());
             }
             throw e;  // Re-throw for wrapper to handle (wrapper will log + recordError)
         }
@@ -473,33 +469,47 @@ public class H2Database extends AbstractDatabaseResource
      * <p>
      * Chunks are stored as-is without decompression for maximum storage efficiency.
      */
+
+    /**
+     * Delegates a single raw chunk write to the environment storage strategy.
+     * <p>
+     * No commit — chunks are accumulated and committed via
+     * {@link #doCommitRawEnvironmentChunks(Object)}.
+     */
     @Override
-    protected void doWriteEnvironmentChunks(Object connection, 
-                                            List<org.evochora.datapipeline.api.contracts.TickDataChunk> chunks) throws Exception {
+    protected void doWriteRawEnvironmentChunk(Object connection,
+                                              long firstTick, long lastTick,
+                                              int tickCount, byte[] rawProtobufData) throws SQLException {
         Connection conn = (Connection) connection;
-        
+        getEnvStrategy().writeRawChunk(conn, firstTick, lastTick, tickCount, rawProtobufData);
+    }
+
+    /**
+     * Commits accumulated raw environment chunks via the storage strategy.
+     * <p>
+     * Delegates batch execution to the strategy, then commits the transaction.
+     * Rolls back on failure and restores the interrupt flag if it was set.
+     */
+    @Override
+    protected void doCommitRawEnvironmentChunks(Object connection) throws SQLException {
+        Connection conn = (Connection) connection;
+
         // Clear interrupt flag temporarily to allow H2 operations
-        // H2 Database's internal locking mechanism (MVMap.tryLock()) uses Thread.sleep()
-        // which throws InterruptedException if thread is interrupted
         boolean wasInterrupted = Thread.interrupted();
-        
+
         try {
-            // Delegate to storage strategy for SQL operations
-            getEnvStrategy().writeChunks(conn, chunks);
-            
-            // Commit transaction on success
+            getEnvStrategy().commitRawChunks(conn);
             conn.commit();
-            
         } catch (SQLException e) {
-            // Rollback transaction on failure to keep connection clean
+            // Reset strategy session state to prevent reuse of stale batch buffers
+            getEnvStrategy().resetStreamingState(conn);
             try {
                 conn.rollback();
             } catch (SQLException rollbackEx) {
-                log.warn("Rollback failed (connection may be closed): {}", rollbackEx.getMessage());
+                log.warn("{}: rollback failed (connection may be closed): {}", getResourceName(), rollbackEx.getMessage());
             }
             throw e;
         } finally {
-            // Restore interrupt flag for proper shutdown handling
             if (wasInterrupted) {
                 Thread.currentThread().interrupt();
             }
@@ -524,56 +534,52 @@ public class H2Database extends AbstractDatabaseResource
     }
 
     /**
-     * Writes organism static and per-tick state using the configured storage strategy.
+     * Delegates a single organism tick write to the storage strategy.
      * <p>
-     * Delegates to {@link IH2OrgStorageStrategy} for strategy-specific write logic
-     * (BLOB per tick vs row per organism per tick).
+     * No commit — ticks are accumulated and committed via
+     * {@link #doCommitOrganismWrites(Object)}.
+     *
+     * @param connection JDBC connection (cast to {@link Connection})
+     * @param tick       Tick data containing organism states
+     * @throws SQLException if batch addition fails
      */
     @Override
-    protected void doWriteOrganismStates(Object connection, List<TickData> ticks) throws Exception {
+    protected void doWriteOrganismTick(Object connection, TickData tick) throws Exception {
+        Connection conn = (Connection) connection;
+        orgStorageStrategy.addOrganismTick(conn, tick);
+    }
+
+    /**
+     * Commits accumulated organism tick writes via the storage strategy.
+     * <p>
+     * Delegates batch execution to the strategy, then commits the transaction.
+     * Rolls back on failure and restores the interrupt flag if it was set.
+     *
+     * @param connection JDBC connection (cast to {@link Connection})
+     * @throws SQLException if batch execution, commit, or rollback fails
+     */
+    @Override
+    protected void doCommitOrganismWrites(Object connection) throws Exception {
         Connection conn = (Connection) connection;
 
-        if (ticks.isEmpty()) {
-            return;
-        }
+        boolean wasInterrupted = Thread.interrupted();
 
-        // Note: Cached statements are intentionally NOT closed in finally block.
-        // Their lifecycle is tied to the connection - HikariCP closes all open
-        // statements when the connection is returned to the pool.
         try {
-            // Get or create cached PreparedStatements for this connection
-            PreparedStatement organismsStmt = orgStaticStmtCache.computeIfAbsent(conn, c -> {
-                try {
-                    return c.prepareStatement(orgStorageStrategy.getOrganismsMergeSql());
-                } catch (SQLException e) {
-                    throw new RuntimeException("Failed to prepare organisms statement", e);
-                }
-            });
-            
-            PreparedStatement statesStmt = orgStatesStmtCache.computeIfAbsent(conn, c -> {
-                try {
-                    return c.prepareStatement(orgStorageStrategy.getStatesMergeSql());
-                } catch (SQLException e) {
-                    throw new RuntimeException("Failed to prepare organism states statement", e);
-                }
-            });
-            
-            // Delegate to strategy
-            orgStorageStrategy.writeOrganisms(conn, organismsStmt, ticks);
-            orgStorageStrategy.writeStates(conn, statesStmt, ticks);
-            
+            orgStorageStrategy.commitOrganismWrites(conn);
             conn.commit();
-
-        } catch (Exception e) {
+        } catch (SQLException e) {
+            // Reset strategy session state to prevent reuse of stale batch buffers
+            orgStorageStrategy.resetStreamingState(conn);
             try {
                 conn.rollback();
             } catch (SQLException rollbackEx) {
-                log.warn("Rollback failed during organism state write: {}", rollbackEx.getMessage());
+                log.warn("{}: rollback failed during organism writes commit: {}", getResourceName(), rollbackEx.getMessage());
             }
-            if (e instanceof SQLException) {
-                throw (SQLException) e;
+            throw e;
+        } finally {
+            if (wasInterrupted) {
+                Thread.currentThread().interrupt();
             }
-            throw new SQLException("Failed to write organism states", e);
         }
     }
 

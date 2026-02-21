@@ -146,10 +146,10 @@ class FileSystemStorageResourceCompressionTest {
             }
 
             // Act: Write compressed batch
-            StoragePath batchPath = storage.writeChunkBatch(batch, 0, 999);
+            StoragePath batchPath = storage.writeChunkBatchStreaming(batch.iterator()).path();
 
             // Assert: Compressed file is smaller than uncompressed would be
-            // Note: writeChunkBatch() now returns physical path including compression extension
+            // Note: writeChunkBatchStreaming() returns physical path including compression extension
             Path compressedFile = tempDir.resolve(batchPath.asString());
             long compressedSize = Files.size(compressedFile);
 
@@ -380,7 +380,7 @@ class FileSystemStorageResourceCompressionTest {
 
         @Test
         @DisplayName("Different compression levels work correctly")
-        void differentCompressionLevels() throws IOException {
+        void differentCompressionLevels() throws Exception {
             // Level 1 (fast, lower ratio)
             Config configLevel1 = ConfigFactory.parseString(String.format("""
                 rootDirectory = "%s"
@@ -409,12 +409,12 @@ class FileSystemStorageResourceCompressionTest {
                 batch.add(createChunk(i * 10, i * 10 + 9, 10));
             }
 
-            // Act: Write with both levels using writeChunkBatch
-            StoragePath batchPath1 = storageLevel1.writeChunkBatch(batch, 0, 499);
-            StoragePath batchPath9 = storageLevel9.writeChunkBatch(batch, 0, 499);
+            // Act: Write with both levels using writeChunkBatchStreaming
+            StoragePath batchPath1 = storageLevel1.writeChunkBatchStreaming(batch.iterator()).path();
+            StoragePath batchPath9 = storageLevel9.writeChunkBatchStreaming(batch.iterator()).path();
 
             // Assert: Both create valid compressed files
-            // Note: writeChunkBatch() returns physical path including compression extension
+            // Note: writeChunkBatchStreaming() returns physical path including compression extension
             Path file1 = tempDir.resolve("level1/" + batchPath1.asString());
             Path file9 = tempDir.resolve("level9/" + batchPath9.asString());
             assertThat(file1).exists();
@@ -428,8 +428,10 @@ class FileSystemStorageResourceCompressionTest {
             assertThat((double) size9).isLessThanOrEqualTo(size1 + tolerance);
 
             // Both should be readable - verify all 50 chunks
-            List<TickDataChunk> readBatch1 = storageLevel1.readChunkBatch(batchPath1);
-            List<TickDataChunk> readBatch9 = storageLevel9.readChunkBatch(batchPath9);
+            List<TickDataChunk> readBatch1 = new ArrayList<>();
+            storageLevel1.forEachChunk(batchPath1, readBatch1::add);
+            List<TickDataChunk> readBatch9 = new ArrayList<>();
+            storageLevel9.forEachChunk(batchPath9, readBatch9::add);
 
             assertThat(readBatch1).hasSize(50);
             assertThat(readBatch9).hasSize(50);

@@ -2,11 +2,8 @@ package org.evochora.datapipeline.resources.database.h2;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -124,96 +121,68 @@ class SingleBlobOrgStrategyTest {
     }
     
     @Test
-    void testCreateTables_CachesSqlStrings() throws SQLException {
-        // Given: Strategy
-        strategy = new SingleBlobOrgStrategy(ConfigFactory.empty());
-        
-        // When: Create tables
-        strategy.createTables(mockConnection);
-        
-        // Then: SQL strings should be cached
-        assertThat(strategy.getOrganismsMergeSql())
-            .contains("MERGE INTO organisms")
-            .contains("KEY (organism_id)");
-        
-        assertThat(strategy.getStatesMergeSql())
-            .isEqualTo("MERGE INTO organism_ticks (tick_number, organisms_blob) " +
-                      "KEY (tick_number) VALUES (?, ?)");
-    }
-    
-    @Test
-    void testWriteStates_EmptyList() throws SQLException {
-        // Given: Strategy with empty tick list
+    void testAddOrganismTick_SingleTick() throws SQLException {
+        // Given: Strategy with one tick containing 3 organisms
         strategy = new SingleBlobOrgStrategy(ConfigFactory.empty());
         strategy.createTables(mockConnection);
-        
-        // When: Write empty list
-        strategy.writeStates(mockConnection, mockPreparedStatement, List.of());
-        
-        // Then: Should not execute any database operations
-        verify(mockPreparedStatement, never()).setLong(anyInt(), anyLong());
-        verify(mockPreparedStatement, never()).executeBatch();
-    }
-    
-    @Test
-    void testWriteStates_SingleTick() throws SQLException {
-        // Given: Strategy with one tick
-        strategy = new SingleBlobOrgStrategy(ConfigFactory.empty());
-        strategy.createTables(mockConnection);
-        
+
         TickData tick = createTickWithOrganisms(1000L, 3);
-        
-        // When: Write single tick
-        strategy.writeStates(mockConnection, mockPreparedStatement, List.of(tick));
-        
-        // Then: Should use PreparedStatement and execute batch
-        verify(mockPreparedStatement).setLong(eq(1), eq(1000L));
-        verify(mockPreparedStatement).setBytes(eq(2), any(byte[].class));
-        verify(mockPreparedStatement).addBatch();
-        verify(mockPreparedStatement).executeBatch();
+
+        // When: Add tick and commit
+        strategy.addOrganismTick(mockConnection, tick);
+        strategy.commitOrganismWrites(mockConnection);
+
+        // Then: addBatch called for 3 organism metadata + 1 state blob = 4
+        verify(mockPreparedStatement, times(4)).addBatch();
+        // executeBatch called for organisms batch + states batch
+        verify(mockPreparedStatement, times(2)).executeBatch();
     }
-    
+
     @Test
-    void testWriteStates_MultipleTicks() throws SQLException {
-        // Given: Strategy with multiple ticks
+    void testAddOrganismTick_MultipleTicks() throws SQLException {
+        // Given: Strategy with multiple ticks (organism IDs overlap: {0,1}, {0,1,2}, {0})
         strategy = new SingleBlobOrgStrategy(ConfigFactory.empty());
         strategy.createTables(mockConnection);
-        
+
         TickData tick1 = createTickWithOrganisms(1000L, 2);
         TickData tick2 = createTickWithOrganisms(1001L, 3);
         TickData tick3 = createTickWithOrganisms(1002L, 1);
-        
-        // When: Write multiple ticks
-        strategy.writeStates(mockConnection, mockPreparedStatement, List.of(tick1, tick2, tick3));
-        
-        // Then: Should add all ticks to batch and execute once
-        verify(mockPreparedStatement, times(3)).setLong(eq(1), anyLong());
-        verify(mockPreparedStatement, times(3)).setBytes(eq(2), any(byte[].class));
-        verify(mockPreparedStatement, times(3)).addBatch();
-        verify(mockPreparedStatement, times(1)).executeBatch();
+
+        // When: Add all ticks and commit
+        strategy.addOrganismTick(mockConnection, tick1);
+        strategy.addOrganismTick(mockConnection, tick2);
+        strategy.addOrganismTick(mockConnection, tick3);
+        strategy.commitOrganismWrites(mockConnection);
+
+        // Then: addBatch for 3 unique organism metadata (deduped) + 3 state blobs = 6
+        verify(mockPreparedStatement, times(6)).addBatch();
+        verify(mockPreparedStatement, times(2)).executeBatch();
     }
-    
+
     @Test
-    void testSerializeOrganisms_WithoutCompression() throws SQLException {
+    void testAddOrganismTick_SerializesWithoutCompression() throws SQLException {
         // Given: Strategy with no compression
         strategy = new SingleBlobOrgStrategy(ConfigFactory.empty());
         strategy.createTables(mockConnection);
-        
+
         TickData tick = createTickWithOrganisms(1000L, 2);
-        
-        // When: Write tick
-        strategy.writeStates(mockConnection, mockPreparedStatement, List.of(tick));
-        
-        // Then: Should serialize organisms to protobuf
+
+        // When: Add tick
+        strategy.addOrganismTick(mockConnection, tick);
+
+        // Then: Should serialize organisms to protobuf (no compression = raw protobuf)
         ArgumentCaptor<byte[]> blobCaptor = ArgumentCaptor.forClass(byte[].class);
-        verify(mockPreparedStatement).setBytes(eq(2), blobCaptor.capture());
-        
-        byte[] serializedBlob = blobCaptor.getValue();
-        assertThat(serializedBlob).isNotEmpty();
-        
+        // setBytes called for organism metadata initial_position + state blob
+        verify(mockPreparedStatement, times(3)).setBytes(anyInt(), blobCaptor.capture());
+
+        // The last setBytes call is the state blob (organisms_blob)
+        List<byte[]> captured = blobCaptor.getAllValues();
+        byte[] stateBlob = captured.get(captured.size() - 1);
+        assertThat(stateBlob).isNotEmpty();
+
         // Verify it's valid protobuf by deserializing
         try {
-            OrganismStateList deserialized = OrganismStateList.parseFrom(serializedBlob);
+            OrganismStateList deserialized = OrganismStateList.parseFrom(stateBlob);
             assertThat(deserialized.getOrganismsList()).hasSize(2);
             assertThat(deserialized.getOrganisms(0).getOrganismId()).isEqualTo(0);
             assertThat(deserialized.getOrganisms(1).getOrganismId()).isEqualTo(1);
@@ -221,9 +190,9 @@ class SingleBlobOrgStrategyTest {
             throw new RuntimeException("Failed to deserialize protobuf", e);
         }
     }
-    
+
     @Test
-    void testSerializeOrganisms_WithCompression() throws SQLException {
+    void testAddOrganismTick_SerializesWithCompression() throws SQLException {
         // Given: Strategy with zstd compression
         Config config = ConfigFactory.parseString("""
             compression {
@@ -234,74 +203,76 @@ class SingleBlobOrgStrategyTest {
             """);
         strategy = new SingleBlobOrgStrategy(config);
         strategy.createTables(mockConnection);
-        
+
         TickData tick = createTickWithOrganisms(1000L, 5);
-        
-        // When: Write tick
-        strategy.writeStates(mockConnection, mockPreparedStatement, List.of(tick));
-        
+
+        // When: Add tick
+        strategy.addOrganismTick(mockConnection, tick);
+
         // Then: Should serialize and compress organisms
         ArgumentCaptor<byte[]> blobCaptor = ArgumentCaptor.forClass(byte[].class);
-        verify(mockPreparedStatement).setBytes(eq(2), blobCaptor.capture());
-        
-        byte[] serializedBlob = blobCaptor.getValue();
-        assertThat(serializedBlob).isNotEmpty();
-        
-        // With compression, the blob should be reasonable size
-        assertThat(serializedBlob.length).isLessThan(5000); // Reasonable upper bound
+        verify(mockPreparedStatement, times(6)).setBytes(anyInt(), blobCaptor.capture());
+
+        // Last setBytes call is the compressed state blob
+        List<byte[]> captured = blobCaptor.getAllValues();
+        byte[] stateBlob = captured.get(captured.size() - 1);
+        assertThat(stateBlob).isNotEmpty();
+        assertThat(stateBlob.length).isLessThan(5000);
     }
-    
+
     @Test
-    void testWriteStates_TickWithoutOrganisms() throws SQLException {
+    void testAddOrganismTick_SkipsTickWithoutOrganisms() throws SQLException {
         // Given: Strategy with tick that has no organisms
         strategy = new SingleBlobOrgStrategy(ConfigFactory.empty());
         strategy.createTables(mockConnection);
-        
+
         TickData emptyTick = TickData.newBuilder()
             .setTickNumber(1000L)
             .build(); // No organisms
-        
-        // When: Write empty tick
-        strategy.writeStates(mockConnection, mockPreparedStatement, List.of(emptyTick));
-        
-        // Then: Should skip empty tick (no database operations)
-        verify(mockPreparedStatement, never()).setBytes(anyInt(), any(byte[].class));
-        verify(mockPreparedStatement, never()).executeBatch();
+
+        // When: Add empty tick and commit
+        strategy.addOrganismTick(mockConnection, emptyTick);
+        strategy.commitOrganismWrites(mockConnection);
+
+        // Then: No organism metadata and no state blob (only executeBatch for states)
+        verify(mockPreparedStatement, never()).addBatch();
+        verify(mockPreparedStatement).executeBatch();
     }
-    
+
     @Test
-    void testWriteStates_SQLException() throws SQLException {
-        // Given: Strategy that will throw SQLException
+    void testCommitOrganismWrites_PropagatesSqlException() throws SQLException {
+        // Given: Strategy where executeBatch will fail
         strategy = new SingleBlobOrgStrategy(ConfigFactory.empty());
         strategy.createTables(mockConnection);
-        
+
         when(mockPreparedStatement.executeBatch()).thenThrow(new SQLException("Database error"));
-        
+
         TickData tick = createTickWithOrganisms(1000L, 1);
-        
-        // When/Then: Should propagate SQLException
-        assertThatThrownBy(() -> strategy.writeStates(mockConnection, mockPreparedStatement, List.of(tick)))
+        strategy.addOrganismTick(mockConnection, tick);
+
+        // When/Then: commitOrganismWrites should propagate SQLException
+        assertThatThrownBy(() -> strategy.commitOrganismWrites(mockConnection))
             .isInstanceOf(SQLException.class)
             .hasMessageContaining("Database error");
     }
-    
+
     @Test
-    void testWriteOrganisms_ExtractsUniqueOrganisms() throws SQLException {
-        // Given: Strategy with multiple ticks containing same organism
+    void testAddOrganismTick_DeduplicatesOrganismMetadata() throws SQLException {
+        // Given: Strategy with same organism appearing in multiple ticks
         strategy = new SingleBlobOrgStrategy(ConfigFactory.empty());
         strategy.createTables(mockConnection);
-        
-        // Same organism appears in both ticks
+
         OrganismState org1 = createOrganism(1, 100);
         TickData tick1 = TickData.newBuilder().setTickNumber(1L).addOrganisms(org1).build();
         TickData tick2 = TickData.newBuilder().setTickNumber(2L).addOrganisms(org1).build();
-        
-        // When: Write organisms
-        strategy.writeOrganisms(mockConnection, mockPreparedStatement, List.of(tick1, tick2));
-        
-        // Then: Should only add organism once (deduplication)
-        verify(mockPreparedStatement, times(1)).addBatch();
-        verify(mockPreparedStatement, times(1)).executeBatch();
+
+        // When: Add both ticks
+        strategy.addOrganismTick(mockConnection, tick1);
+        strategy.addOrganismTick(mockConnection, tick2);
+        strategy.commitOrganismWrites(mockConnection);
+
+        // Then: addBatch called 1 (organism metadata, deduped) + 2 (state blobs) = 3
+        verify(mockPreparedStatement, times(3)).addBatch();
     }
     
     @Test

@@ -4,8 +4,10 @@ import com.typesafe.config.Config;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.IResource;
 
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Test indexer for validating batch indexing infrastructure.
@@ -28,7 +30,7 @@ import java.util.Map;
  * @param <ACK> The acknowledgment token type (implementation-specific, e.g., H2's AckToken)
  */
 public class DummyIndexer<ACK> extends AbstractBatchIndexer<ACK> {
-    
+
     /**
      * Creates a new DummyIndexer.
      *
@@ -39,18 +41,23 @@ public class DummyIndexer<ACK> extends AbstractBatchIndexer<ACK> {
     public DummyIndexer(String name, Config options, Map<String, List<IResource>> resources) {
         super(name, options, resources);
     }
-    
-    // No need to override getRequiredComponents() - default is METADATA + BUFFERING
-    
+
     @Override
-    protected void flushChunks(List<TickDataChunk> chunks) {
-        // Log-only test implementation
-        // Metrics are tracked by AbstractBatchIndexer
-        
-        int totalTicks = chunks.stream().mapToInt(TickDataChunk::getTickCount).sum();
-        log.debug("Flushed {} chunks ({} ticks) (DummyIndexer: no DB writes)", chunks.size(), totalTicks);
+    protected Set<ComponentType> getRequiredComponents() {
+        return EnumSet.of(ComponentType.METADATA);
     }
-    
+
+    @Override
+    protected void processChunk(TickDataChunk chunk) {
+        log.debug("Processed chunk: ticks=[{}-{}], tickCount={} (DummyIndexer: no DB writes)",
+            chunk.getFirstTick(), chunk.getLastTick(), chunk.getTickCount());
+    }
+
+    @Override
+    protected void commitProcessedChunks() {
+        log.debug("Committed processed chunks (DummyIndexer: no-op)");
+    }
+
     @Override
     protected void logStarted() {
         log.info("DummyIndexer started: metadata=[pollInterval={}ms, maxPollDuration={}ms], topicPollTimeout={}ms",

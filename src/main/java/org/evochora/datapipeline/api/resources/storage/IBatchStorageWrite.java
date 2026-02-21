@@ -6,7 +6,6 @@ import org.evochora.datapipeline.api.resources.IResource;
 
 import java.io.IOException;
 import java.util.Iterator;
-import java.util.List;
 
 /**
  * Write-only interface for storage resources that support batch write operations
@@ -30,34 +29,6 @@ import java.util.List;
  * "storage-write:resourceName" to ensure type safety and proper metric isolation.
  */
 public interface IBatchStorageWrite extends IResource {
-
-    /**
-     * Writes a batch of tick data chunks to storage with automatic folder organization.
-     * <p>
-     * Delegates to {@link #writeChunkBatchStreaming(Iterator)} which handles folder path
-     * calculation, compression, and atomic write. The {@code firstTick} and {@code lastTick}
-     * parameters are ignored — tick range is derived from the chunks during iteration.
-     * <p>
-     * The returned {@link StoragePath} represents the physical path including compression
-     * extension (e.g., ".zst" for Zstandard). This path can be passed directly to
-     * {@link IBatchStorageRead#readChunkBatch(StoragePath)} for reading.
-     *
-     * <p>
-     * <strong>Thread Safety:</strong> See interface-level documentation.
-     *
-     * @param batch The tick data chunks to persist (must be non-empty)
-     * @param firstTick ignored (derived from chunks)
-     * @param lastTick ignored (derived from chunks)
-     * @return The physical storage path where batch was written (includes compression extension)
-     * @throws IOException If write fails
-     * @throws IllegalArgumentException If batch is empty
-     */
-    default StoragePath writeChunkBatch(List<TickDataChunk> batch, long firstTick, long lastTick) throws IOException {
-        if (batch == null || batch.isEmpty()) {
-            throw new IllegalArgumentException("batch must be non-empty");
-        }
-        return writeChunkBatchStreaming(batch.iterator()).path();
-    }
 
     /**
      * Writes a single protobuf message to storage at the specified key.
@@ -97,9 +68,8 @@ public interface IBatchStorageWrite extends IResource {
     /**
      * Writes chunks from an iterator to storage, streaming one chunk at a time.
      * <p>
-     * Unlike {@link #writeChunkBatch(List, long, long)}, this method does not require all
-     * chunks to be in memory simultaneously. The tick range and folder path are derived from
-     * the chunks during iteration:
+     * Chunks are not required to be in memory simultaneously. The tick range and folder path
+     * are derived from the chunks during iteration:
      * <ol>
      *   <li>First chunk provides {@code firstTick} and {@code simulationRunId}</li>
      *   <li>Chunks are streamed through compression to a temp file</li>

@@ -12,8 +12,7 @@ import org.junit.jupiter.api.Test;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 /**
- * Phase 1 unit tests: Interface contracts and data classes
- * No database I/O - pure unit tests
+ * Unit tests for database reader interfaces and data classes (no database I/O).
  */
 @Tag("unit")  // <0.2s runtime, no I/O
 class DatabaseReaderUnitTest {

@@ -1,9 +1,6 @@
 package org.evochora.datapipeline.api.resources.database;
 
 import java.sql.SQLException;
-import java.util.List;
-
-import org.evochora.datapipeline.api.contracts.TickDataChunk;
 
 /**
  * Database capability for writing environment data as chunks.
@@ -58,27 +55,37 @@ public interface IEnvironmentDataWriter extends AutoCloseable {
     void createEnvironmentDataTable(int dimensions) throws SQLException;
     
     /**
-     * Writes environment chunks using MERGE for idempotency.
+     * Writes a single raw environment chunk (uncompressed protobuf bytes) to storage.
      * <p>
-     * All chunks are written in one JDBC batch with one commit for maximum performance.
-     * Each chunk is stored as a serialized BLOB without decompression.
+     * Part of the streaming raw-byte write path: chunks are passed through without
+     * parsing or re-serialization. The storage strategy compresses and writes the
+     * bytes directly.
      * <p>
-     * Each chunk is identified by first_tick and written with MERGE:
-     * <ul>
-     *   <li>If chunk exists: UPDATE (overwrite with new data)</li>
-     *   <li>If chunk missing: INSERT</li>
-     * </ul>
+     * Multiple calls accumulate a batch. Call {@link #commitRawChunks()} to persist
+     * the accumulated batch atomically.
      * <p>
-     * This ensures 100% idempotency even with topic redeliveries.
-     * <p>
-     * <strong>Performance:</strong> All chunks written in one JDBC batch with one commit.
-     * This reduces commit overhead by ~1000× compared to per-chunk commits.
+     * <strong>Precondition:</strong> {@link #createEnvironmentDataTable(int)} must have been
+     * called before the first write. Implementations enforce this at runtime.
      *
-     * @param chunks List of chunks to write
-     * @throws SQLException if database write fails
+     * @param firstTick First tick number in the chunk
+     * @param lastTick Last tick number in the chunk
+     * @param tickCount Number of sampled ticks in the chunk
+     * @param rawProtobufData Uncompressed protobuf bytes of one TickDataChunk message
+     * @throws SQLException if write fails
      */
-    void writeEnvironmentChunks(List<TickDataChunk> chunks) throws SQLException;
-    
+    void writeRawChunk(long firstTick, long lastTick, int tickCount,
+                       byte[] rawProtobufData) throws SQLException;
+
+    /**
+     * Commits all raw chunks accumulated via {@link #writeRawChunk} calls.
+     * <p>
+     * Executes the JDBC batch and commits the transaction atomically.
+     * After this call, the write session is ready for the next batch.
+     *
+     * @throws SQLException if commit fails (transaction is rolled back)
+     */
+    void commitRawChunks() throws SQLException;
+
     /**
      * Closes the database wrapper and releases its dedicated connection back to the pool.
      * <p>

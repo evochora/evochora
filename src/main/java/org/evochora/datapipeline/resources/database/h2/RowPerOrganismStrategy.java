@@ -135,94 +135,61 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
         }
 
         conn.commit();
+        markTablesCreated();
     }
 
+    // ========================================================================
+    // Streaming write methods (per-tick addBatch / commit)
+    // ========================================================================
+
     @Override
-    public String getOrganismsMergeSql() {
+    protected String getStreamOrganismsMergeSql() {
         return ORGANISMS_MERGE_SQL;
     }
 
     @Override
-    public String getStatesMergeSql() {
+    protected String getStreamStatesMergeSql() {
         return STATES_MERGE_SQL;
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Writes one row per organism per tick with extracted columns (energy, ip, dv,
+     * data_pointers) and a compressed {@code runtime_state_blob} containing registers,
+     * stacks, and instruction data. Organism metadata deduplication is handled by
+     * {@link AbstractH2OrgStorageStrategy#addOrganismMetadataBatch(TickData)}.
+     */
     @Override
-    public void writeOrganisms(Connection conn, PreparedStatement stmt, List<TickData> ticks)
-            throws SQLException {
-        // Extract unique organisms from all ticks and write to static table
-        java.util.Set<Integer> seenOrganisms = new java.util.HashSet<>();
+    public void addOrganismTick(Connection conn, TickData tick) throws SQLException {
+        StreamingSession session = ensureStreamingSession(conn);
+        addOrganismMetadataBatch(session, tick);
 
-        for (TickData tick : ticks) {
-            for (OrganismState org : tick.getOrganismsList()) {
-                int organismId = org.getOrganismId();
-                if (seenOrganisms.add(organismId)) {
-                    stmt.setInt(1, organismId);
-                    if (org.hasParentId()) {
-                        stmt.setInt(2, org.getParentId());
-                    } else {
-                        stmt.setNull(2, java.sql.Types.INTEGER);
-                    }
-                    stmt.setLong(3, org.getBirthTick());
-                    stmt.setString(4, org.getProgramId());
-                    stmt.setBytes(5, org.getInitialPosition().toByteArray());
-                    stmt.setLong(6, org.getGenomeHash());
-                    stmt.addBatch();
-                }
-            }
-            Thread.yield();
-        }
-
-        if (!seenOrganisms.isEmpty()) {
-            stmt.executeBatch();
-            log.debug("Wrote {} unique organisms to organisms table", seenOrganisms.size());
-        }
-    }
-
-    @Override
-    public void writeStates(Connection conn, PreparedStatement stmt, List<TickData> ticks)
-            throws SQLException {
-        if (ticks.isEmpty()) {
-            return;
-        }
-
+        // Per-tick organism states (one row per organism)
+        PreparedStatement statesStmt = session.statesStmt();
         ICompressionCodec codec = getCodec();
-        int writtenCount = 0;
+        long tickNumber = tick.getTickNumber();
 
-        for (TickData tick : ticks) {
-            long tickNumber = tick.getTickNumber();
+        for (OrganismState org : tick.getOrganismsList()) {
+            byte[] runtimeBlob = buildRuntimeStateBlob(org, codec);
 
-            for (OrganismState org : tick.getOrganismsList()) {
-                // Build runtime_state_blob from OrganismState fields
-                byte[] runtimeBlob = buildRuntimeStateBlob(org, codec);
-
-                // Build data_pointers blob
-                DataPointerList.Builder dpBuilder = DataPointerList.newBuilder();
-                for (Vector dp : org.getDataPointersList()) {
-                    dpBuilder.addDataPointers(dp);
-                }
-                byte[] dataPointersBytes = dpBuilder.build().toByteArray();
-
-                stmt.setLong(1, tickNumber);
-                stmt.setInt(2, org.getOrganismId());
-                stmt.setInt(3, org.getEnergy());
-                stmt.setBytes(4, org.getIp().toByteArray());
-                stmt.setBytes(5, org.getDv().toByteArray());
-                stmt.setBytes(6, dataPointersBytes);
-                stmt.setInt(7, org.getActiveDpIndex());
-                stmt.setBytes(8, runtimeBlob);
-                stmt.setInt(9, org.getEntropyRegister());
-                stmt.setInt(10, org.getMoleculeMarkerRegister());
-                stmt.addBatch();
-                writtenCount++;
+            DataPointerList.Builder dpBuilder = DataPointerList.newBuilder();
+            for (Vector dp : org.getDataPointersList()) {
+                dpBuilder.addDataPointers(dp);
             }
-            Thread.yield();
-        }
+            byte[] dataPointersBytes = dpBuilder.build().toByteArray();
 
-        if (writtenCount > 0) {
-            stmt.executeBatch();
-            log.debug("Wrote {} organism states to organism_states table (row-per-organism strategy)",
-                    writtenCount);
+            statesStmt.setLong(1, tickNumber);
+            statesStmt.setInt(2, org.getOrganismId());
+            statesStmt.setInt(3, org.getEnergy());
+            statesStmt.setBytes(4, org.getIp().toByteArray());
+            statesStmt.setBytes(5, org.getDv().toByteArray());
+            statesStmt.setBytes(6, dataPointersBytes);
+            statesStmt.setInt(7, org.getActiveDpIndex());
+            statesStmt.setBytes(8, runtimeBlob);
+            statesStmt.setInt(9, org.getEntropyRegister());
+            statesStmt.setInt(10, org.getMoleculeMarkerRegister());
+            statesStmt.addBatch();
         }
     }
 

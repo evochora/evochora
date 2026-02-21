@@ -1,5 +1,6 @@
 package org.evochora.datapipeline.resources.database;
 
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -167,21 +168,35 @@ public abstract class AbstractDatabaseResource extends AbstractResource
             throws Exception;
 
     /**
-     * Writes environment chunks to database using MERGE for idempotency.
+     * Writes a single raw environment chunk to the database via the storage strategy.
      * <p>
-     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IEnvironmentDataWriter#writeEnvironmentChunks(java.util.List)}
+     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IEnvironmentDataWriter#writeRawChunk(long, long, int, byte[])}
+     * <p>
+     * <strong>Transaction Handling:</strong> This method does NOT commit. The caller
+     * accumulates multiple chunks and calls {@link #doCommitRawEnvironmentChunks(Object)}
+     * to commit the batch.
+     *
+     * @param connection Database connection (from acquireDedicatedConnection)
+     * @param firstTick First tick number in the chunk
+     * @param lastTick Last tick number in the chunk
+     * @param tickCount Number of sampled ticks in the chunk
+     * @param rawProtobufData Uncompressed protobuf bytes of one TickDataChunk message
+     * @throws SQLException if write fails
+     */
+    protected abstract void doWriteRawEnvironmentChunk(Object connection,
+            long firstTick, long lastTick, int tickCount, byte[] rawProtobufData) throws SQLException;
+
+    /**
+     * Commits all raw environment chunks accumulated via {@link #doWriteRawEnvironmentChunk}.
+     * <p>
+     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IEnvironmentDataWriter#commitRawChunks()}
      * <p>
      * <strong>Transaction Handling:</strong> Must commit on success, rollback on failure.
-     * <strong>Performance:</strong> All chunks written in one JDBC batch with one commit.
-     * <p>
-     * Chunks are stored as-is without decompression for maximum storage efficiency.
-     * 
+     *
      * @param connection Database connection (from acquireDedicatedConnection)
-     * @param chunks List of chunks to write
-     * @throws Exception if write fails
+     * @throws SQLException if commit fails
      */
-    protected abstract void doWriteEnvironmentChunks(Object connection, 
-            java.util.List<org.evochora.datapipeline.api.contracts.TickDataChunk> chunks) throws Exception;
+    protected abstract void doCommitRawEnvironmentChunks(Object connection) throws SQLException;
 
     // ========================================================================
     // IOrganismDataWriter Capability
@@ -201,19 +216,32 @@ public abstract class AbstractDatabaseResource extends AbstractResource
     protected abstract void doCreateOrganismTables(Object connection) throws Exception;
 
     /**
-     * Writes organism state rows for all ticks to the index database using MERGE for
-     * idempotent upserts.
+     * Adds organism data from a single tick to the write session via the storage strategy.
      * <p>
-     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IOrganismDataWriter#writeOrganismStates(java.util.List)}.
+     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IOrganismDataWriter#writeOrganismTick(org.evochora.datapipeline.api.contracts.TickData)}
+     * <p>
+     * <strong>Transaction Handling:</strong> This method does NOT commit. The caller
+     * accumulates multiple ticks and calls {@link #doCommitOrganismWrites(Object)}
+     * to commit the batch.
+     *
+     * @param connection Database connection (from {@link #acquireDedicatedConnection()})
+     * @param tick Tick data containing organism states
+     * @throws Exception if batch addition fails
+     */
+    protected abstract void doWriteOrganismTick(Object connection,
+            org.evochora.datapipeline.api.contracts.TickData tick) throws Exception;
+
+    /**
+     * Commits all organism data accumulated via {@link #doWriteOrganismTick}.
+     * <p>
+     * <strong>Capability:</strong> {@link org.evochora.datapipeline.api.resources.database.IOrganismDataWriter#commitOrganismWrites()}
      * <p>
      * <strong>Transaction Handling:</strong> Must commit on success, rollback on failure.
      *
      * @param connection Database connection (from {@link #acquireDedicatedConnection()})
-     * @param ticks List of ticks with their organism states to write
-     * @throws Exception if write fails
+     * @throws Exception if commit fails
      */
-    protected abstract void doWriteOrganismStates(Object connection,
-            java.util.List<org.evochora.datapipeline.api.contracts.TickData> ticks) throws Exception;
+    protected abstract void doCommitOrganismWrites(Object connection) throws Exception;
 
     // ========================================================================
     // IMetadataReader Capability

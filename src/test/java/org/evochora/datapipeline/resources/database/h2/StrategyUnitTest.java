@@ -10,8 +10,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Phase 2 unit tests: Strategy interface and data conversion
- * No database I/O - pure unit tests
+ * Unit tests for strategy interfaces and data conversion (no database I/O).
  */
 @Tag("unit")  // <0.2s runtime, no I/O
 class StrategyUnitTest {

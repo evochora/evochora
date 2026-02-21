@@ -256,7 +256,7 @@ class OrganismIndexerIntegrationTest {
         IResource storageWriter = testStorage.getWrappedResource(storageWriteContext);
         IBatchStorageWrite batchWriter = (IBatchStorageWrite) storageWriter;
 
-        StoragePath batchPath = batchWriter.writeChunkBatch(chunks, firstTick, lastTick);
+        StoragePath batchPath = batchWriter.writeChunkBatchStreaming(chunks.iterator()).path();
 
         ResourceContext topicWriteContext = new ResourceContext("test", "topic-port", "topic-write", "batch-topic", Map.of());
         IResource topicWriterResource = testBatchTopic.getWrappedResource(topicWriteContext);

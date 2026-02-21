@@ -1,7 +1,6 @@
 package org.evochora.datapipeline.resources.database.h2;
 
 import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.util.List;
 
@@ -22,7 +21,7 @@ import org.evochora.datapipeline.api.resources.database.dto.TickRange;
  * <p>
  * <strong>Static Table:</strong> The {@code organisms} table (static metadata)
  * is NOT affected by this strategy - it remains row-per-organism and is handled
- * separately in {@link #createTables(Connection)} and {@link #writeOrganisms(Connection, PreparedStatement, List)}.
+ * separately in {@link #createTables(Connection)} and {@link #addOrganismTick(Connection, TickData)}.
  */
 public interface IH2OrgStorageStrategy {
     
@@ -48,53 +47,62 @@ public interface IH2OrgStorageStrategy {
      */
     void createTables(Connection conn) throws SQLException;
     
+    // ========================================================================
+    // Streaming write methods (per-tick addBatch / commit)
+    // ========================================================================
+
     /**
-     * Returns the SQL string for the organisms (static) table MERGE statement.
+     * Adds organism data from a single tick to the write session.
      * <p>
-     * This SQL is used by H2Database to create a cached PreparedStatement for performance.
+     * The strategy manages its own session state (PreparedStatements, deduplication,
+     * compression). Implementations should call {@code addBatch()} on their internal
+     * statements but must NOT call {@code executeBatch()} or {@code commit()}.
+     * <p>
+     * Called once per tick during streaming chunk processing. The connection is stable
+     * across calls within a session.
+     * <p>
+     * <strong>Thread Safety:</strong> Thread-safe across different connections (each connection
+     * has an isolated session). Not thread-safe for concurrent calls with the same connection.
      *
-     * @return SQL string for MERGE operation on organisms table
+     * @param conn Database connection (autoCommit=false, transaction managed by caller)
+     * @param tick Tick data containing organism states
+     * @throws SQLException if batch addition fails
      */
-    String getOrganismsMergeSql();
-    
+    void addOrganismTick(Connection conn, TickData tick) throws SQLException;
+
     /**
-     * Returns the SQL string for the organism states (per-tick) MERGE statement.
+     * Executes all accumulated batches from previous {@link #addOrganismTick} calls.
      * <p>
-     * This SQL is used by H2Database to create a cached PreparedStatement for performance.
+     * Implementations should call {@code executeBatch()} on their internal statements
+     * and reset per-commit state (e.g., organism deduplication sets). Statements should
+     * remain open for reuse in the next commit window.
+     * <p>
+     * Must NOT call {@code commit()} — the caller (H2Database) handles transaction commit.
+     * <p>
+     * <strong>Thread Safety:</strong> Thread-safe across different connections (each connection
+     * has an isolated session). Not thread-safe for concurrent calls with the same connection.
      *
-     * @return SQL string for MERGE operation on organism states table
+     * @param conn Database connection (same connection used in addOrganismTick calls)
+     * @throws SQLException if batch execution fails
      */
-    String getStatesMergeSql();
-    
+    void commitOrganismWrites(Connection conn) throws SQLException;
+
     /**
-     * Writes static organism metadata (organisms table) for all ticks.
+     * Resets streaming session state for the given connection.
      * <p>
-     * Extracts unique organisms from all ticks and upserts into organisms table.
-     * This is always row-per-organism regardless of strategy.
-     *
-     * @param conn Database connection (with autoCommit=false, transaction managed by caller)
-     * @param stmt Cached PreparedStatement for MERGE operation (from getOrganismsMergeSql())
-     * @param ticks List of ticks containing organism data
-     * @throws SQLException if write fails (caller will rollback)
-     */
-    void writeOrganisms(Connection conn, PreparedStatement stmt, List<TickData> ticks) 
-            throws SQLException;
-    
-    /**
-     * Writes per-tick organism states using this storage strategy.
+     * Called by the database layer after a failed {@link #commitOrganismWrites} to ensure
+     * the strategy does not retain stale batch state from the failed transaction. The next
+     * {@link #addOrganismTick} call will lazily re-initialize all session resources.
      * <p>
-     * <strong>Transaction Management:</strong> This method is executed within a transaction
-     * managed by the caller (H2Database). Implementations should <strong>NOT</strong> call
-     * {@code commit()} or {@code rollback()} themselves.
+     * Implementations should close open PreparedStatements (suppressing errors) and
+     * clear any accumulated state for the given connection.
+     * <p>
+     * <strong>Thread Safety:</strong> Thread-safe across different connections.
      *
-     * @param conn Database connection (with autoCommit=false, transaction managed by caller)
-     * @param stmt Cached PreparedStatement for MERGE operation (from getStatesMergeSql())
-     * @param ticks List of ticks with organism data to write
-     * @throws SQLException if write fails (caller will rollback)
+     * @param conn The connection whose session state should be reset
      */
-    void writeStates(Connection conn, PreparedStatement stmt, List<TickData> ticks) 
-            throws SQLException;
-    
+    void resetStreamingState(Connection conn);
+
     /**
      * Reads all organisms that have state for the given tick.
      *

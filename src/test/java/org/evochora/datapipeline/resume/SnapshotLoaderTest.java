@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.when;
 
 import java.io.IOException;
@@ -14,6 +15,8 @@ import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
+import org.evochora.datapipeline.api.resources.storage.CheckedConsumer;
+import org.evochora.datapipeline.api.resources.storage.ChunkFieldFilter;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.junit.extensions.logging.AllowLog;
@@ -70,7 +73,7 @@ class SnapshotLoaderTest {
     // ==================== Happy Path Tests ====================
 
     @Test
-    void loadLatestCheckpoint_ReturnsSnapshotFromLastChunk() throws IOException {
+    void loadLatestCheckpoint_ReturnsSnapshotFromLastChunk() throws Exception {
         // Setup: Metadata exists
         StoragePath metadataPath = StoragePath.of(TEST_RUN_ID + "/raw/metadata.pb");
         SimulationMetadata metadata = createMetadata(TEST_RUN_ID);
@@ -82,7 +85,7 @@ class SnapshotLoaderTest {
         when(storageRead.findLastBatchFile(TEST_RUN_ID + "/raw/")).thenReturn(Optional.of(batchPath));
 
         TickData snapshot = createSnapshot(1000);
-        when(storageRead.readLastSnapshot(batchPath)).thenReturn(snapshot);
+        stubSnapshotRead(batchPath, snapshot);
 
         // Execute
         ResumeCheckpoint checkpoint = loader.loadLatestCheckpoint(TEST_RUN_ID);
@@ -94,7 +97,7 @@ class SnapshotLoaderTest {
     }
 
     @Test
-    void loadLatestCheckpoint_MultipleChunks_ReturnsSnapshotFromLastChunk() throws IOException {
+    void loadLatestCheckpoint_MultipleChunks_ReturnsSnapshotFromLastChunk() throws Exception {
         // Setup: Metadata exists
         StoragePath metadataPath = StoragePath.of(TEST_RUN_ID + "/raw/metadata.pb");
         SimulationMetadata metadata = createMetadata(TEST_RUN_ID);
@@ -105,9 +108,9 @@ class SnapshotLoaderTest {
         StoragePath batchPath = StoragePath.of(TEST_RUN_ID + "/raw/000/000/batch.pb");
         when(storageRead.findLastBatchFile(TEST_RUN_ID + "/raw/")).thenReturn(Optional.of(batchPath));
 
-        // readLastSnapshot returns the snapshot from the last chunk in the batch
+        // forEachChunk with SNAPSHOT_ONLY invokes consumer for each chunk; last one wins
         TickData lastSnapshot = createSnapshot(1200);
-        when(storageRead.readLastSnapshot(batchPath)).thenReturn(lastSnapshot);
+        stubSnapshotRead(batchPath, lastSnapshot);
 
         // Execute
         ResumeCheckpoint checkpoint = loader.loadLatestCheckpoint(TEST_RUN_ID);
@@ -152,10 +155,9 @@ class SnapshotLoaderTest {
         when(storageRead.findMetadataPath(TEST_RUN_ID)).thenReturn(Optional.of(metadataPath));
         when(storageRead.readMessage(eq(metadataPath), any())).thenReturn(metadata);
 
-        // Batch file exists but is empty
+        // Batch file exists but is empty (consumer never invoked → last[0] stays null)
         StoragePath batchPath = StoragePath.of(TEST_RUN_ID + "/raw/batch.pb");
         when(storageRead.findLastBatchFile(TEST_RUN_ID + "/raw/")).thenReturn(Optional.of(batchPath));
-        when(storageRead.readLastSnapshot(batchPath)).thenThrow(new IOException("Empty batch file: " + batchPath));
 
         assertThatThrownBy(() -> loader.loadLatestCheckpoint(TEST_RUN_ID))
             .isInstanceOf(IOException.class)
@@ -176,6 +178,17 @@ class SnapshotLoaderTest {
     }
 
     // ==================== Helper Methods ====================
+
+    private void stubSnapshotRead(StoragePath path, TickData snapshot) throws Exception {
+        TickDataChunk chunk = TickDataChunk.newBuilder()
+            .setSnapshot(snapshot)
+            .build();
+        doAnswer(invocation -> {
+            CheckedConsumer<TickDataChunk> consumer = invocation.getArgument(2);
+            consumer.accept(chunk);
+            return null;
+        }).when(storageRead).forEachChunk(eq(path), eq(ChunkFieldFilter.SNAPSHOT_ONLY), any());
+    }
 
     private SimulationMetadata createMetadata(String runId) {
         return SimulationMetadata.newBuilder()

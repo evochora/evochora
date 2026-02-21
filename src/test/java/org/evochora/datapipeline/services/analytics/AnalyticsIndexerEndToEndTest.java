@@ -393,6 +393,8 @@ class AnalyticsIndexerEndToEndTest {
             runId = "%s"
             metadataPollIntervalMs = 100
             metadataMaxPollDurationMs = 10000
+            insertBatchSize = 25
+            flushTimeoutMs = 500
             tempDirectory = "%s"
             folderStructure {
                 levels = [100000000, 100000]
@@ -455,6 +457,8 @@ class AnalyticsIndexerEndToEndTest {
             runId = "%s"
             metadataPollIntervalMs = 100
             metadataMaxPollDurationMs = 10000
+            insertBatchSize = 1000
+            flushTimeoutMs = 500
             tempDirectory = "%s"
             folderStructure {
                 levels = [100000000, 100000]
@@ -587,7 +591,7 @@ class AnalyticsIndexerEndToEndTest {
             chunks.add(chunk);
         }
         
-        return testStorage.writeChunkBatch(chunks, firstTick, lastTick);
+        return testStorage.writeChunkBatchStreaming(chunks.iterator()).path();
     }
 
     private void sendBatchInfoToTopic(String runId, String storageKey, long tickStart, long tickEnd) throws Exception {

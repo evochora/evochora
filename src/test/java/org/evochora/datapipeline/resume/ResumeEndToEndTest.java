@@ -117,7 +117,7 @@ class ResumeEndToEndTest {
         storage.writeMessage(runId + "/raw/metadata.pb", metadata);
 
         for (TickDataChunk chunk : tickQueue.getCaptured()) {
-            storage.writeChunkBatch(List.of(chunk), chunk.getFirstTick(), chunk.getLastTick());
+            storage.writeChunkBatchStreaming(List.of(chunk).iterator());
         }
 
         // Load checkpoint the same way SnapshotLoader does to get the expected resume tick

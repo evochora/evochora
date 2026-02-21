@@ -51,7 +51,7 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 
 /**
- * Integration tests for DummyIndexer Phase 2.5.1 (Metadata Reading).
+ * Integration tests for DummyIndexer metadata reading and batch processing.
  * <p>
  * Tests the complete metadata reading flow with real database and storage.
  */
@@ -305,9 +305,9 @@ class DummyIndexerIntegrationTest {
         List<TickDataChunk> chunks2 = createTestChunks(runId, 10, 10);
         List<TickDataChunk> chunks3 = createTestChunks(runId, 20, 10);
         
-        StoragePath key1 = testStorage.writeChunkBatch(chunks1, 0, 9);
-        StoragePath key2 = testStorage.writeChunkBatch(chunks2, 10, 19);
-        StoragePath key3 = testStorage.writeChunkBatch(chunks3, 20, 29);
+        StoragePath key1 = testStorage.writeChunkBatchStreaming(chunks1.iterator()).path();
+        StoragePath key2 = testStorage.writeChunkBatchStreaming(chunks2.iterator()).path();
+        StoragePath key3 = testStorage.writeChunkBatchStreaming(chunks3.iterator()).path();
         
         // Create indexer with real topic (not mock!)
         Config config = ConfigFactory.parseString("""
@@ -332,7 +332,7 @@ class DummyIndexerIntegrationTest {
         sendBatchInfoToTopic(runId, key3.asString(), 20, 29);
         
         // Then: Verify all batches processed
-        // Phase 14.2.5: tick-by-tick processing (30 ticks = 30 flush calls)
+        // Streaming: chunks processed individually (30 ticks total)
         await().atMost(10, TimeUnit.SECONDS)
             .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 30);
         
@@ -344,7 +344,7 @@ class DummyIndexerIntegrationTest {
             "Should have processed 30 ticks (10 per batch)");
     }
     
-    // ========== Buffering Tests (Phase 14.2.6) ==========
+    // ========== Streaming Commit Tests ==========
     
     @Test
     void testBuffering_NormalFlush() throws Exception {
@@ -358,9 +358,9 @@ class DummyIndexerIntegrationTest {
         List<TickDataChunk> chunks2 = createTestChunks(runId, 100, 100);
         List<TickDataChunk> chunks3 = createTestChunks(runId, 200, 100);
         
-        StoragePath key1 = testStorage.writeChunkBatch(chunks1, 0, 99);
-        StoragePath key2 = testStorage.writeChunkBatch(chunks2, 100, 199);
-        StoragePath key3 = testStorage.writeChunkBatch(chunks3, 200, 299);
+        StoragePath key1 = testStorage.writeChunkBatchStreaming(chunks1.iterator()).path();
+        StoragePath key2 = testStorage.writeChunkBatchStreaming(chunks2.iterator()).path();
+        StoragePath key3 = testStorage.writeChunkBatchStreaming(chunks3.iterator()).path();
         
         // Create indexer WITH buffering (insertBatchSize=3 chunks)
         Config config = ConfigFactory.parseString("""
@@ -401,7 +401,7 @@ class DummyIndexerIntegrationTest {
         
         // Write one chunk (< insertBatchSize of 10 chunks)
         List<TickDataChunk> chunks1 = createTestChunks(runId, 0, 50);
-        StoragePath key1 = testStorage.writeChunkBatch(chunks1, 0, 49);
+        StoragePath key1 = testStorage.writeChunkBatchStreaming(chunks1.iterator()).path();
         
         // Create indexer with short flush timeout (insertBatchSize=10 chunks, but only 1 chunk sent)
         Config config = ConfigFactory.parseString("""
@@ -443,11 +443,11 @@ class DummyIndexerIntegrationTest {
         List<TickDataChunk> chunks4 = createTestChunks(runId, 300, 100);
         List<TickDataChunk> chunks5 = createTestChunks(runId, 400, 100);
         
-        StoragePath key1 = testStorage.writeChunkBatch(chunks1, 0, 99);
-        StoragePath key2 = testStorage.writeChunkBatch(chunks2, 100, 199);
-        StoragePath key3 = testStorage.writeChunkBatch(chunks3, 200, 299);
-        StoragePath key4 = testStorage.writeChunkBatch(chunks4, 300, 399);
-        StoragePath key5 = testStorage.writeChunkBatch(chunks5, 400, 499);
+        StoragePath key1 = testStorage.writeChunkBatchStreaming(chunks1.iterator()).path();
+        StoragePath key2 = testStorage.writeChunkBatchStreaming(chunks2.iterator()).path();
+        StoragePath key3 = testStorage.writeChunkBatchStreaming(chunks3.iterator()).path();
+        StoragePath key4 = testStorage.writeChunkBatchStreaming(chunks4.iterator()).path();
+        StoragePath key5 = testStorage.writeChunkBatchStreaming(chunks5.iterator()).path();
         
         Config config = ConfigFactory.parseString("""
             runId = "%s"
@@ -499,9 +499,9 @@ class DummyIndexerIntegrationTest {
         List<TickDataChunk> chunks2 = createTestChunks(runId, 100, 100);
         List<TickDataChunk> chunks3 = createTestChunks(runId, 200, 100);
         
-        StoragePath key1 = testStorage.writeChunkBatch(chunks1, 0, 99);
-        StoragePath key2 = testStorage.writeChunkBatch(chunks2, 100, 199);
-        StoragePath key3 = testStorage.writeChunkBatch(chunks3, 200, 299);
+        StoragePath key1 = testStorage.writeChunkBatchStreaming(chunks1.iterator()).path();
+        StoragePath key2 = testStorage.writeChunkBatchStreaming(chunks2.iterator()).path();
+        StoragePath key3 = testStorage.writeChunkBatchStreaming(chunks3.iterator()).path();
         
         Config config = ConfigFactory.parseString("""
             runId = "%s"
@@ -568,7 +568,7 @@ class DummyIndexerIntegrationTest {
             "topic", List.of(wrappedTopic)
         );
         
-        // Phase 14.2.6 tests: Use regular DummyIndexer WITH buffering
+        // DummyIndexer uses streaming with insertBatchSize-based commits
         return new DummyIndexer<>(name, config, resources);
     }
     
@@ -642,10 +642,9 @@ class DummyIndexerIntegrationTest {
             "topic", List.of(wrappedTopic)  // REAL topic, not mock!
         );
         
-        // Phase 14.2.5 tests: Use indexer without buffering (tick-by-tick)
-        return new TestDummyIndexerWithoutBuffering(name, config, resources);
+        return new DummyIndexer<>(name, config, resources);
     }
-    
+
     private SimulationMetadata createTestMetadata(String runId, int samplingInterval) {
         return SimulationMetadata.newBuilder()
             .setSimulationRunId(runId)
@@ -698,26 +697,7 @@ class DummyIndexerIntegrationTest {
             "topic", List.of(mockTopic)  // Mock topic for batch processing (not tested yet)
         );
         
-        // Phase 14.2.5 tests: Use indexer without buffering (tick-by-tick)
-        return new TestDummyIndexerWithoutBuffering(name, config, resources);
-    }
-    
-    /**
-     * Test implementation of DummyIndexer that disables buffering.
-     * <p>
-     * Used by Phase 14.2.5 tests to test tick-by-tick processing.
-     * Phase 14.2.6 tests will use regular DummyIndexer with buffering.
-     */
-    private static class TestDummyIndexerWithoutBuffering extends DummyIndexer<Object> {
-        public TestDummyIndexerWithoutBuffering(String name, Config options, Map<String, List<IResource>> resources) {
-            super(name, options, resources);
-        }
-        
-        @Override
-        protected java.util.Set<ComponentType> getRequiredComponents() {
-            // Disable buffering for Phase 14.2.5 tests
-            return java.util.EnumSet.of(ComponentType.METADATA);
-        }
+        return new DummyIndexer<>(name, config, resources);
     }
 }
 

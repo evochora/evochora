@@ -32,7 +32,7 @@ import org.junit.jupiter.api.io.TempDir;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Phase 2 error handling tests: Strategy failures and edge cases.
+ * Error handling tests for chunk-based environment storage strategies.
  * <p>
  * Tests error handling for chunk-based environment storage (RowPerChunkStrategy).
  */

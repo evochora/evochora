@@ -60,7 +60,7 @@ class MonitoredStorageWriterTest {
             StoragePath.of("001/batch.pb"), "test-sim", 100, 129, 3, 30, expectedBytes);
         when(mockDelegate.writeChunkBatchStreaming(any())).thenReturn(result);
 
-        monitoredWriter.writeChunkBatch(batch, 100, 129);
+        monitoredWriter.writeChunkBatchStreaming(batch.iterator());
 
         verify(mockDelegate).writeChunkBatchStreaming(any());
 
@@ -76,7 +76,7 @@ class MonitoredStorageWriterTest {
         when(mockDelegate.writeChunkBatchStreaming(any()))
             .thenThrow(new IOException("Storage failure"));
 
-        assertThrows(IOException.class, () -> monitoredWriter.writeChunkBatch(batch, 1, 10));
+        assertThrows(IOException.class, () -> monitoredWriter.writeChunkBatchStreaming(batch.iterator()));
 
         Map<String, Number> metrics = monitoredWriter.getMetrics();
         assertEquals(1L, metrics.get("write_errors").longValue());
@@ -97,8 +97,8 @@ class MonitoredStorageWriterTest {
             .thenReturn(new StreamingWriteResult(StoragePath.of("batch1.pb"), "test-sim", 1, 20, 2, 20, bytes1))
             .thenReturn(new StreamingWriteResult(StoragePath.of("batch2.pb"), "test-sim", 21, 30, 1, 10, bytes2));
 
-        monitoredWriter.writeChunkBatch(batch1, 1, 20);
-        monitoredWriter.writeChunkBatch(batch2, 21, 30);
+        monitoredWriter.writeChunkBatchStreaming(batch1.iterator());
+        monitoredWriter.writeChunkBatchStreaming(batch2.iterator());
 
         Map<String, Number> metrics = monitoredWriter.getMetrics();
         assertEquals(2L, metrics.get("batches_written").longValue());

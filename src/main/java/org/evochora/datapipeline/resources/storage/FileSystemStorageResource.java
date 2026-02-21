@@ -1,7 +1,9 @@
 package org.evochora.datapipeline.resources.storage;
 
+import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -150,13 +152,13 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
     }
 
     @Override
-    protected byte[] getRaw(String physicalPath) throws IOException {
+    protected InputStream openRawStream(String physicalPath) throws IOException {
         validateKey(physicalPath);
         File file = new File(rootDirectory, physicalPath);
         if (!file.exists()) {
             throw new IOException("File does not exist: " + physicalPath);
         }
-        return Files.readAllBytes(file.toPath());
+        return new BufferedInputStream(new FileInputStream(file));
     }
 
     @Override
