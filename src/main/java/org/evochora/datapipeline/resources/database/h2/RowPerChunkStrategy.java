@@ -524,6 +524,10 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
     @Override
     public void writeRawChunk(Connection conn, long firstTick, long lastTick,
                               int tickCount, byte[] rawProtobufData) throws SQLException {
+        if (mergeSql == null) {
+            throw new IllegalStateException(
+                "createEnvironmentDataTable() must be called before writeRawChunk()");
+        }
         // Get or create PreparedStatement for this connection
         PreparedStatement stmt;
         try {

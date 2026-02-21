@@ -63,6 +63,9 @@ public interface IEnvironmentDataWriter extends AutoCloseable {
      * <p>
      * Multiple calls accumulate a batch. Call {@link #commitRawChunks()} to persist
      * the accumulated batch atomically.
+     * <p>
+     * <strong>Precondition:</strong> {@link #createEnvironmentDataTable(int)} must have been
+     * called before the first write. Implementations enforce this at runtime.
      *
      * @param firstTick First tick number in the chunk
      * @param lastTick Last tick number in the chunk

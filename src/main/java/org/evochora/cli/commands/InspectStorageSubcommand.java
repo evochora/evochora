@@ -14,7 +14,6 @@ import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.delta.ChunkCorruptedException;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
-import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
 import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.evochora.datapipeline.utils.MoleculeDataUtils;
 import org.evochora.datapipeline.utils.delta.DeltaCodec;
@@ -192,7 +191,7 @@ public class InspectStorageSubcommand implements Callable<Integer> {
             : ConfigFactory.empty();
         
         // Create storage resource
-        FileSystemStorageResource storage = (FileSystemStorageResource) Class.forName(className)
+        IBatchStorageRead storage = (IBatchStorageRead) Class.forName(className)
             .getConstructor(String.class, com.typesafe.config.Config.class)
             .newInstance(storageName, options);
         

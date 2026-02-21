@@ -640,6 +640,8 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
             }
         } catch (IOException e) {
             log.warn("Failed to clean temp directory: {}", e.getMessage());
+            recordError("TEMP_CLEANUP_FAILED", "Failed to clean analytics temp directory",
+                       "Path: " + tempDirectory + ", Error: " + e.getMessage());
         }
     }
     
