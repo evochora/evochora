@@ -353,111 +353,6 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
     }
 
     /**
-     * {@inheritDoc}
-     * <p>
-     * Optimized implementation that skips delta fields at the protobuf wire level.
-     * Only metadata fields and the snapshot are parsed; delta bytes are discarded
-     * directly from the decompressed stream without deserialization.
-     * <p>
-     * Memory profile: compressed bytes (~100 MB) + snapshot TickData (~400 MB heap)
-     * instead of full chunk parse (~4-8 GB heap).
-     */
-    @Override
-    public TickData readLastSnapshot(StoragePath path) throws IOException {
-        if (path == null) {
-            throw new IllegalArgumentException("path cannot be null");
-        }
-
-        long readStart = System.nanoTime();
-        byte[] compressed = getRaw(path.asString());
-        long readLatency = System.nanoTime() - readStart;
-
-        ICompressionCodec detectedCodec = org.evochora.datapipeline.utils.compression.CompressionCodecFactory.detectFromExtension(path.asString());
-
-        TickDataChunk lastChunk = null;
-        try (InputStream decompressedStream = detectedCodec.wrapInputStream(new ByteArrayInputStream(compressed))) {
-            CodedInputStream cis = CodedInputStream.newInstance(decompressedStream);
-            cis.setSizeLimit(Integer.MAX_VALUE);
-
-            while (!cis.isAtEnd()) {
-                int messageSize = cis.readRawVarint32();
-                int limit = cis.pushLimit(messageSize);
-                lastChunk = parseChunkSkippingDeltas(cis);
-                cis.skipRawBytes(cis.getBytesUntilLimit());
-                cis.popLimit(limit);
-            }
-        } catch (Exception e) {
-            throw new IOException("Failed to read last snapshot from: " + path.asString(), e);
-        }
-
-        if (lastChunk == null) {
-            throw new IOException("Empty batch file: " + path.asString());
-        }
-
-        long batchSizeMB = compressed.length / 1_048_576;
-        lastReadBatchSizeMB.set(batchSizeMB);
-        maxReadBatchSizeMB.updateAndGet(current -> Math.max(current, batchSizeMB));
-        recordRead(compressed.length, readLatency);
-
-        log.debug("Read snapshot-only from {}: tick {}, skipped deltas",
-            path, lastChunk.getSnapshot().getTickNumber());
-
-        return lastChunk.getSnapshot();
-    }
-
-    /**
-     * Parses a TickDataChunk from a CodedInputStream, skipping the {@code deltas} field entirely.
-     * <p>
-     * Only metadata fields (simulation_run_id, first_tick, last_tick, tick_count) and the
-     * snapshot are deserialized. Delta bytes are discarded via {@link CodedInputStream#skipField}
-     * which reads and discards data in small buffer chunks without allocating large arrays.
-     *
-     * @param input CodedInputStream positioned at the start of a TickDataChunk message
-     * @return TickDataChunk with snapshot only (no deltas)
-     * @throws IOException if parsing fails
-     */
-    private static TickDataChunk parseChunkSkippingDeltas(CodedInputStream input) throws IOException {
-        TickDataChunk.Builder builder = TickDataChunk.newBuilder();
-
-        while (true) {
-            int tag = input.readTag();
-            if (tag == 0) break;
-
-            switch (WireFormat.getTagFieldNumber(tag)) {
-                case TickDataChunk.SIMULATION_RUN_ID_FIELD_NUMBER:
-                    builder.setSimulationRunId(input.readString());
-                    break;
-                case TickDataChunk.FIRST_TICK_FIELD_NUMBER:
-                    builder.setFirstTick(input.readInt64());
-                    break;
-                case TickDataChunk.LAST_TICK_FIELD_NUMBER:
-                    builder.setLastTick(input.readInt64());
-                    break;
-                case TickDataChunk.TICK_COUNT_FIELD_NUMBER:
-                    builder.setTickCount(input.readInt32());
-                    break;
-                case TickDataChunk.SNAPSHOT_FIELD_NUMBER:
-                    int length = input.readRawVarint32();
-                    int oldLimit = input.pushLimit(length);
-                    builder.setSnapshot(TickData.parseFrom(input));
-                    input.popLimit(oldLimit);
-                    break;
-                case TickDataChunk.DELTAS_FIELD_NUMBER:
-                    // Skip delta data — not needed for resume. Bytes are discarded
-                    // from the stream in small chunks, not loaded into memory.
-                    input.skipField(tag);
-                    break;
-                default:
-                    input.skipField(tag);
-                    break;
-            }
-        }
-
-        return builder.build();
-    }
-
-
-    /**
      * Parses a TickDataChunk from a CodedInputStream, applying the given field filter to
      * the snapshot and each delta.
      *
@@ -495,6 +390,10 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
                     break;
                 }
                 case TickDataChunk.DELTAS_FIELD_NUMBER: {
+                    if (filter == ChunkFieldFilter.SNAPSHOT_ONLY) {
+                        input.skipField(tag);
+                        break;
+                    }
                     int length = input.readRawVarint32();
                     int oldLimit = input.pushLimit(length);
                     builder.addDeltas(parseTickDeltaWithFilter(input, filter));
@@ -1269,8 +1168,8 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      * Reads all raw bytes from the given physical path into memory.
      * <p>
      * Delegates to {@link #openRawStream(String)} and reads the full content.
-     * Used by methods that need the complete byte array (e.g., {@link #readMessage},
-     * {@link #readLastSnapshot}). For streaming chunk processing, prefer
+     * Used by methods that need the complete byte array (e.g., {@link #readMessage}).
+     * For streaming chunk processing, prefer
      * {@link #openRawStream(String)} directly.
      *
      * @param physicalPath physical path including compression extension

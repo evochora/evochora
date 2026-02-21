@@ -2,7 +2,6 @@ package org.evochora.datapipeline.api.resources.storage;
 
 import com.google.protobuf.MessageLite;
 import com.google.protobuf.Parser;
-import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.IResource;
 
@@ -45,10 +44,9 @@ import java.util.Optional;
  * protobuf parsing. Implementations that need wire-level field filtering (e.g.,
  * {@link ChunkFieldFilter#SKIP_ORGANISMS}) must override {@code forEachChunk} as well.
  *
- * <h3>Convenience methods</h3>
- * {@link #readLastSnapshot(StoragePath)} materializes chunks to extract the last snapshot.
- * New consumers should prefer {@link #forEachRawChunk} or {@link #forEachChunk} for
- * streaming processing, and {@link #forEachChunkUntil} when early exit is needed.
+ * <h3>Streaming consumers</h3>
+ * Use {@link #forEachRawChunk} or {@link #forEachChunk} for streaming processing,
+ * and {@link #forEachChunkUntil} when early exit is needed.
  */
 public interface IBatchStorageRead extends IResource {
 
@@ -96,34 +94,6 @@ public interface IBatchStorageRead extends IResource {
      * @throws IOException if storage access fails
      */
     List<String> listRunIds(Instant afterTimestamp) throws IOException;
-
-    /**
-     * Reads the snapshot from the last chunk in a batch file.
-     * <p>
-     * <strong>Legacy:</strong> This default implementation streams all chunks via
-     * {@link #forEachChunk} and returns the last snapshot. Will be removed once all
-     * consumers have migrated to streaming. Resume operations should use
-     * {@link #forEachChunk} with a snapshot-only filter instead.
-     *
-     * @param path The physical storage path (includes compression extension)
-     * @return The snapshot TickData from the last chunk in the batch
-     * @throws IOException              If file doesn't exist, is empty, or read fails
-     * @throws IllegalArgumentException If path is null
-     */
-    default TickData readLastSnapshot(StoragePath path) throws IOException {
-        TickData[] last = new TickData[1];
-        try {
-            forEachChunk(path, ChunkFieldFilter.ALL, chunk -> last[0] = chunk.getSnapshot());
-        } catch (IOException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new IOException("Failed to read last snapshot: " + path, e);
-        }
-        if (last[0] == null) {
-            throw new IOException("Empty batch file: " + path);
-        }
-        return last[0];
-    }
 
     /**
      * Reads a single protobuf message from storage at the specified physical path.
@@ -313,8 +283,10 @@ public interface IBatchStorageRead extends IResource {
      * <pre>
      * Optional&lt;StoragePath&gt; lastBatch = storage.findLastBatchFile("sim123/raw/");
      * if (lastBatch.isPresent()) {
-     *     TickData snapshot = storage.readLastSnapshot(lastBatch.get());
-     *     // Resume from snapshot...
+     *     TickData[] last = new TickData[1];
+     *     storage.forEachChunk(lastBatch.get(), ChunkFieldFilter.SNAPSHOT_ONLY,
+     *         chunk -&gt; last[0] = chunk.getSnapshot());
+     *     // Resume from last[0]...
      * }
      * </pre>
      *

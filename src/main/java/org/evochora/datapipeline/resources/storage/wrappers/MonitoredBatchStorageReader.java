@@ -8,7 +8,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
 import org.evochora.datapipeline.api.resources.storage.CheckedConsumer;
-import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
@@ -140,33 +139,6 @@ public class MonitoredBatchStorageReader implements IResourceBatchStorageRead, I
     }
 
     // Default methods (forEachChunkUntil, listBatchFiles overloads) delegate to the monitored methods above.
-
-    /**
-     * {@inheritDoc}
-     * <p>
-     * Explicit override to route through the delegate's optimized implementation, which
-     * skips delta bytes at the wire level. The interface default would stream all chunks
-     * through {@link #forEachChunk}, parsing all fields unnecessarily.
-     */
-    @Override
-    public TickData readLastSnapshot(StoragePath path) throws IOException {
-        long startNanos = System.nanoTime();
-        try {
-            TickData snapshot = delegate.readLastSnapshot(path);
-
-            batchesRead.incrementAndGet();
-            long bytes = snapshot.getSerializedSize();
-            bytesRead.addAndGet(bytes);
-
-            long latencyNanos = System.nanoTime() - startNanos;
-            recordRead(bytes, latencyNanos);
-
-            return snapshot;
-        } catch (IOException e) {
-            readErrors.incrementAndGet();
-            throw e;
-        }
-    }
 
     @Override
     public <T extends MessageLite> T readMessage(StoragePath path, Parser<T> parser) throws IOException {

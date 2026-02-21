@@ -34,7 +34,6 @@ class OrganismDataWriterWrapperTest {
 
     @BeforeEach
     void setUp() throws Exception {
-        String dbPath = tempDir.toString().replace("\\", "/");
         var config = ConfigFactory.parseString("""
             jdbcUrl = "jdbc:h2:mem:test-organism-wrapper;MODE=PostgreSQL"
             """);

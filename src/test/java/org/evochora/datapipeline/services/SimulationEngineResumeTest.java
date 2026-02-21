@@ -20,6 +20,7 @@ import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.CheckedConsumer;
+import org.evochora.datapipeline.api.resources.storage.ChunkFieldFilter;
 import org.evochora.datapipeline.api.resources.storage.RawChunk;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
@@ -301,6 +302,14 @@ class SimulationEngineResumeTest {
                 consumer.accept(new RawChunk(
                     chunk.getFirstTick(), chunk.getLastTick(),
                     chunk.getTickCount(), chunk.toByteArray()));
+            }
+        }
+
+        @Override
+        public void forEachChunk(StoragePath path, ChunkFieldFilter filter,
+                                 CheckedConsumer<TickDataChunk> consumer) throws Exception {
+            if (chunk != null) {
+                consumer.accept(chunk);
             }
         }
 
