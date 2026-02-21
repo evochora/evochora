@@ -90,14 +90,8 @@ public class OrganismDataWriterWrapper extends AbstractDatabaseWrapper implement
             organismThroughput.recordSum(tick.getOrganismsCount());
         } catch (Exception e) {
             writeErrors.incrementAndGet();
-            log.warn("Failed to write organism tick {}: {}", tick.getTickNumber(), e.getMessage());
-            recordError("WRITE_ORGANISM_TICK_FAILED", "Failed to write organism tick",
-                    "Tick: " + tick.getTickNumber() + ", Organisms: " + tick.getOrganismsCount()
-                    + ", Error: " + e.getMessage());
-            if (e instanceof SQLException) {
-                throw (SQLException) e;
-            }
-            throw new SQLException("Failed to write organism tick " + tick.getTickNumber(), e);
+            throw new SQLException("Failed to write organism tick " + tick.getTickNumber()
+                + " (" + tick.getOrganismsCount() + " organisms)", e);
         }
     }
 
@@ -121,9 +115,6 @@ public class OrganismDataWriterWrapper extends AbstractDatabaseWrapper implement
             writeLatency.record(System.nanoTime() - startNanos);
         } catch (Exception e) {
             writeErrors.incrementAndGet();
-            log.warn("Failed to commit organism writes: {}", e.getMessage());
-            recordError("COMMIT_ORGANISM_WRITES_FAILED", "Failed to commit organism writes",
-                    "Error: " + e.getMessage());
             if (e instanceof SQLException) {
                 throw (SQLException) e;
             }

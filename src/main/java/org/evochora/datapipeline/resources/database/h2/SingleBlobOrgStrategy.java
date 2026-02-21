@@ -96,6 +96,7 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
             );
         }
 
+        markTablesCreated();
         log.debug("Organism tables created with BLOB strategy");
     }
 

@@ -92,10 +92,7 @@ public class EnvironmentDataWriterWrapper extends AbstractDatabaseWrapper implem
             writeLatency.record(System.nanoTime() - startNanos);
         } catch (SQLException e) {
             writeErrors.incrementAndGet();
-            log.warn("Failed to write raw chunk [{}-{}]: {}", firstTick, lastTick, e.getMessage());
-            recordError("WRITE_RAW_CHUNK_FAILED", "Failed to write raw environment chunk",
-                       "Ticks: " + firstTick + "-" + lastTick + ", Error: " + e.getMessage());
-            throw e;
+            throw new SQLException("Failed to write raw chunk [" + firstTick + "-" + lastTick + "]", e);
         }
     }
 
@@ -109,9 +106,6 @@ public class EnvironmentDataWriterWrapper extends AbstractDatabaseWrapper implem
             writeLatency.record(System.nanoTime() - startNanos);
         } catch (SQLException e) {
             writeErrors.incrementAndGet();
-            log.warn("Failed to commit raw chunks: {}", e.getMessage());
-            recordError("COMMIT_RAW_CHUNKS_FAILED", "Failed to commit raw environment chunks",
-                       "Error: " + e.getMessage());
             throw e;
         }
     }

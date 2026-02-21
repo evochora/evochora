@@ -338,7 +338,7 @@ public interface IBatchStorageRead extends IResource {
      *
      * @param path     The physical storage path (includes compression extension)
      * @param consumer Callback invoked once per chunk with the raw bytes and metadata
-     * @throws Exception              If reading or the consumer callback fails
+     * @throws Exception              If reading (IOException) or the consumer callback fails (e.g. SQLException)
      * @throws IllegalArgumentException If any parameter is null
      */
     void forEachRawChunk(StoragePath path,
@@ -358,7 +358,7 @@ public interface IBatchStorageRead extends IResource {
      * @param path     The physical storage path (includes compression extension)
      * @param filter   Controls which fields to skip during parsing
      * @param consumer Callback invoked once per chunk with the filtered chunk
-     * @throws Exception              If reading, parsing, or the consumer callback fails
+     * @throws Exception              If reading (IOException), parsing, or the consumer callback fails (e.g. SQLException)
      * @throws UnsupportedOperationException If filter is not {@code ALL} and this method is not overridden
      * @throws IllegalArgumentException If any parameter is null
      */
@@ -398,7 +398,7 @@ public interface IBatchStorageRead extends IResource {
      *
      * @param path      The physical storage path (includes compression extension)
      * @param predicate Callback invoked per chunk; return {@code true} to continue, {@code false} to stop
-     * @throws Exception              If reading, parsing, or the predicate fails
+     * @throws Exception              If reading (IOException), parsing, or the predicate fails (e.g. SQLException)
      * @throws IllegalArgumentException If any parameter is null
      */
     default void forEachChunkUntil(StoragePath path,

@@ -147,6 +147,8 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      * }
      * </pre>
      *
+     * <strong>Thread Safety:</strong> Called once during construction from the single service thread.
+     *
      * @return set of required component types (never null)
      */
     protected Set<ComponentType> getRequiredComponents() {
@@ -179,6 +181,8 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      *     return EnumSet.of(ComponentType.IDEMPOTENCY, ComponentType.DLQ);
      * }
      * </pre>
+     *
+     * <strong>Thread Safety:</strong> Called once during construction from the single service thread.
      *
      * @return set of optional component types (never null)
      */
@@ -516,6 +520,8 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
         if (streamingUncommittedChunks >= streamingInsertBatchSize) {
             streamingCommitAndAck();
         }
+
+        Thread.yield();
     }
 
     /**
@@ -534,8 +540,6 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
 
         streamingUncommittedChunks = 0;
         streamingLastCommitTime = System.currentTimeMillis();
-
-        Thread.yield();
     }
 
     /**
@@ -614,6 +618,8 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      * <p>
      * <strong>Default:</strong> {@link ChunkFieldFilter#ALL} (no fields skipped).
      *
+     * <strong>Thread Safety:</strong> Called from the single service thread only.
+     *
      * @return The field filter to apply during chunk parsing
      */
     protected ChunkFieldFilter getChunkFieldFilter() {
@@ -624,6 +630,8 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      * Returns the configured insert batch size for streaming processing.
      * <p>
      * This controls how many chunks are accumulated before a commit is triggered.
+     *
+     * <strong>Thread Safety:</strong> Called from the single service thread only.
      *
      * @return The insert batch size (default: 5)
      */
@@ -638,6 +646,8 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      * write the chunk's data to the database without committing — commits are handled by
      * {@link #commitProcessedChunks()} based on {@code insertBatchSize}.
      *
+     * <strong>Thread Safety:</strong> Called from the single service thread only.
+     *
      * @param chunk The filtered and transformed chunk to process
      * @throws Exception if processing fails
      */
@@ -648,6 +658,8 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      * <p>
      * Called when {@code insertBatchSize} chunks have been processed, on timeout, or
      * during shutdown. Implementations should commit all accumulated database writes.
+     *
+     * <strong>Thread Safety:</strong> Called from the single service thread only.
      *
      * @throws Exception if commit fails
      */
@@ -782,6 +794,8 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
          * Completed batch information for ACK processing.
          *
          * @param batchId        The batch identifier
+         * <strong>Thread Safety:</strong> Immutable record, inherently thread-safe.
+         *
          * @param message        The topic message to ACK
          * @param ticksProcessed Total ticks processed in this batch
          * @param <ACK>          The acknowledgment token type
@@ -901,6 +915,8 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
 
             /**
              * Builds the component configuration.
+             * <p>
+             * <strong>Thread Safety:</strong> Not thread-safe. Builder is used during construction only.
              *
              * @return new BatchIndexerComponents instance
              */

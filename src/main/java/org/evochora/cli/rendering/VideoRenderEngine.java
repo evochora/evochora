@@ -331,6 +331,7 @@ public class VideoRenderEngine {
                 continue;
             }
 
+            // Collect all chunks: render loop needs random-access control flow (shutdown checks, progress tracking)
             List<TickDataChunk> chunks = new ArrayList<>();
             storage.forEachChunk(batchPath, chunks::add);
 
@@ -459,6 +460,7 @@ public class VideoRenderEngine {
                 continue;
             }
 
+            // Collect all chunks: render loop needs random-access control flow (shutdown checks, progress tracking)
             List<TickDataChunk> chunks = new ArrayList<>();
             storage.forEachChunk(batchPath, chunks::add);
 

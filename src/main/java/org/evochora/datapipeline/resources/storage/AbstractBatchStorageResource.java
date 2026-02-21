@@ -952,6 +952,10 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         if (maxResults <= 0) {
             throw new IllegalArgumentException("maxResults must be > 0");
         }
+        if (sortOrder == IBatchStorageRead.SortOrder.DESCENDING && continuationToken != null) {
+            throw new IllegalArgumentException(
+                "continuationToken is not supported with DESCENDING sortOrder (underlying storage only paginates ascending)");
+        }
 
         // Delegate to subclass to get all files with prefix
         // listRaw returns PHYSICAL paths (with compression extensions)

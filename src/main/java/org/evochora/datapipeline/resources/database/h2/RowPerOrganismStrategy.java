@@ -135,6 +135,7 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
         }
 
         conn.commit();
+        markTablesCreated();
     }
 
     // ========================================================================

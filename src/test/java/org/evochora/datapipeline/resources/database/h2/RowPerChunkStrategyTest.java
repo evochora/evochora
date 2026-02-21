@@ -54,7 +54,7 @@ import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
  * Tests file-based chunk storage: H2 holds only the tick-range index,
  * chunk data is written to and read from the filesystem.
  */
-@Tag("unit")
+@Tag("integration")
 class RowPerChunkStrategyTest {
 
     private static final String TEST_SCHEMA = "TEST_SCHEMA";

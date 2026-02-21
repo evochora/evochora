@@ -103,6 +103,9 @@ public interface IOrganismDataWriter extends ISchemaAwareDatabase, AutoCloseable
      * After this call, all organism data added since the last commit (or session start)
      * is durably persisted. Internal deduplication state is reset for the next commit window,
      * but prepared statements remain open for reuse.
+     * <p>
+     * <strong>Thread Safety:</strong> Not thread-safe. Callers must ensure sequential access
+     * per write session (one connection = one thread).
      *
      * @throws SQLException if batch execution or commit fails
      */

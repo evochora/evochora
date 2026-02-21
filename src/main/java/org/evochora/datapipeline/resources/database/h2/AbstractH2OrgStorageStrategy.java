@@ -39,6 +39,7 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
     protected final Logger log = LoggerFactory.getLogger(getClass());
     protected final Config options;
     protected final ICompressionCodec codec;
+    private volatile boolean tablesCreated;
     
     /**
      * Creates storage strategy with configuration.
@@ -63,6 +64,16 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
      */
     protected ICompressionCodec getCodec() {
         return codec;
+    }
+
+    /**
+     * Marks tables as created, enabling streaming writes.
+     * <p>
+     * Subclasses MUST call this at the end of their {@link #createTables(Connection)} implementation.
+     * Without this, {@link #ensureStreamingSession(Connection)} will throw {@link IllegalStateException}.
+     */
+    protected void markTablesCreated() {
+        this.tablesCreated = true;
     }
 
     // ========================================================================
@@ -115,6 +126,9 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
      * @throws SQLException if statement preparation fails
      */
     protected StreamingSession ensureStreamingSession(Connection conn) throws SQLException {
+        if (!tablesCreated) {
+            throw new IllegalStateException("createTables() must be called before writing organism data");
+        }
         try {
             StreamingSession session = sessions.computeIfAbsent(conn, c -> {
                 try {

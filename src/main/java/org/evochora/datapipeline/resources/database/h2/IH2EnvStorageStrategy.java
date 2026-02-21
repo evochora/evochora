@@ -71,6 +71,9 @@ public interface IH2EnvStorageStrategy {
      * the statement. Call {@link #commitRawChunks(Connection)} to execute the batch,
      * and the caller (H2Database) handles the commit.
      *
+     * <strong>Thread Safety:</strong> Not thread-safe for the same connection. Each connection
+     * has an isolated session; concurrent calls with different connections are safe.
+     *
      * @param conn Database connection (with autoCommit=false, schema already set)
      * @param firstTick First tick number in the chunk
      * @param lastTick Last tick number in the chunk
@@ -89,6 +92,9 @@ public interface IH2EnvStorageStrategy {
      * and release session resources (e.g., after a commit failure).
      * Does NOT commit the transaction — the caller handles that.
      *
+     * <strong>Thread Safety:</strong> Not thread-safe for the same connection. Each connection
+     * has an isolated session; concurrent calls with different connections are safe.
+     *
      * @param conn Database connection (same connection used in writeRawChunk calls)
      * @throws SQLException if batch execution fails
      */
@@ -101,6 +107,8 @@ public interface IH2EnvStorageStrategy {
      * Called by H2Database after a commit failure to prevent stale batch state
      * from contaminating the next write session. The next {@link #writeRawChunk}
      * call will create a fresh statement.
+     *
+     * <strong>Thread Safety:</strong> Thread-safe across different connections.
      *
      * @param conn The connection whose session state should be cleared
      */
