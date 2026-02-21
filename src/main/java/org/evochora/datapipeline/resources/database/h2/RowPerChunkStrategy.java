@@ -580,18 +580,33 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
     /**
      * {@inheritDoc}
      * <p>
-     * Executes the accumulated batch for the given connection, then closes the
-     * {@link PreparedStatement} and removes the session entry. The next
-     * {@link #writeRawChunk} call will create a fresh statement.
+     * Executes the accumulated batch for the given connection. The
+     * {@link PreparedStatement} is kept open for reuse by subsequent
+     * {@link #writeRawChunk} calls. Call {@link #resetStreamingState(Connection)}
+     * to close the statement and release session resources.
      */
     @Override
     public void commitRawChunks(Connection conn) throws SQLException {
+        PreparedStatement stmt = rawChunkStmts.get(conn);
+        if (stmt != null) {
+            stmt.executeBatch();
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Closes the cached {@link PreparedStatement} for this connection and removes
+     * the session entry from {@link #rawChunkStmts}.
+     */
+    @Override
+    public void resetStreamingState(Connection conn) {
         PreparedStatement stmt = rawChunkStmts.remove(conn);
         if (stmt != null) {
             try {
-                stmt.executeBatch();
-            } finally {
                 stmt.close();
+            } catch (SQLException ignored) {
+                // Best-effort cleanup
             }
         }
     }

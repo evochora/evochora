@@ -85,6 +85,8 @@ public class MonitoredBatchStorageReader implements IResourceBatchStorageRead, I
      * {@inheritDoc}
      * <p>
      * Delegates to the underlying storage with per-service read metrics (batch count, latency).
+     * <p>
+     * <strong>Thread Safety:</strong> Thread-safe. Metrics use atomic counters; delegates to thread-safe storage.
      */
     @Override
     public void forEachRawChunk(StoragePath path,
@@ -112,6 +114,8 @@ public class MonitoredBatchStorageReader implements IResourceBatchStorageRead, I
      * {@inheritDoc}
      * <p>
      * Delegates to the underlying storage with per-service read metrics (batch count, latency).
+     * <p>
+     * <strong>Thread Safety:</strong> Thread-safe. Metrics use atomic counters; delegates to thread-safe storage.
      */
     @Override
     public void forEachChunk(StoragePath path, ChunkFieldFilter filter,

@@ -88,6 +88,9 @@ public interface IOrganismDataWriter extends ISchemaAwareDatabase, AutoCloseable
      * Called once per tick during streaming chunk processing. Each parsed tick is
      * GC-eligible immediately after this method returns.
      *
+     * <strong>Thread Safety:</strong> Not thread-safe. Callers must ensure sequential access
+     * per write session (one connection = one thread).
+     *
      * @param tick Tick data containing organism states (must not be null)
      * @throws SQLException if batch addition fails
      */

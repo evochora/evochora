@@ -60,6 +60,9 @@ public interface IH2OrgStorageStrategy {
      * <p>
      * Called once per tick during streaming chunk processing. The connection is stable
      * across calls within a session.
+     * <p>
+     * <strong>Thread Safety:</strong> Thread-safe across different connections (each connection
+     * has an isolated session). Not thread-safe for concurrent calls with the same connection.
      *
      * @param conn Database connection (autoCommit=false, transaction managed by caller)
      * @param tick Tick data containing organism states
@@ -75,6 +78,9 @@ public interface IH2OrgStorageStrategy {
      * remain open for reuse in the next commit window.
      * <p>
      * Must NOT call {@code commit()} — the caller (H2Database) handles transaction commit.
+     * <p>
+     * <strong>Thread Safety:</strong> Thread-safe across different connections (each connection
+     * has an isolated session). Not thread-safe for concurrent calls with the same connection.
      *
      * @param conn Database connection (same connection used in addOrganismTick calls)
      * @throws SQLException if batch execution fails
@@ -90,6 +96,8 @@ public interface IH2OrgStorageStrategy {
      * <p>
      * Implementations should close open PreparedStatements (suppressing errors) and
      * clear any accumulated state for the given connection.
+     * <p>
+     * <strong>Thread Safety:</strong> Thread-safe across different connections.
      *
      * @param conn The connection whose session state should be reset
      */

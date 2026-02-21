@@ -84,14 +84,27 @@ public interface IH2EnvStorageStrategy {
     /**
      * Executes the accumulated JDBC batch from preceding {@link #writeRawChunk} calls.
      * <p>
-     * Closes the {@link PreparedStatement} and releases session state after execution.
-     * The next {@link #writeRawChunk} call will create a fresh statement.
+     * The {@link java.sql.PreparedStatement} is kept open for reuse by subsequent
+     * write calls. Call {@link #resetStreamingState(Connection)} to close the statement
+     * and release session resources (e.g., after a commit failure).
      * Does NOT commit the transaction — the caller handles that.
      *
      * @param conn Database connection (same connection used in writeRawChunk calls)
      * @throws SQLException if batch execution fails
      */
     void commitRawChunks(Connection conn) throws SQLException;
+
+    /**
+     * Resets streaming state for the given connection, closing any cached
+     * {@link java.sql.PreparedStatement} and releasing session resources.
+     * <p>
+     * Called by H2Database after a commit failure to prevent stale batch state
+     * from contaminating the next write session. The next {@link #writeRawChunk}
+     * call will create a fresh statement.
+     *
+     * @param conn The connection whose session state should be cleared
+     */
+    void resetStreamingState(Connection conn);
 
     /**
      * Reads the chunk containing the specified tick number.

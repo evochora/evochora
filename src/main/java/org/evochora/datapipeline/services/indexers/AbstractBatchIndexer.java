@@ -321,6 +321,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
                             log.warn("Streaming commit failed (uncommitted chunks discarded, will be reprocessed on redelivery): {}", e.getMessage());
                             recordError("STREAMING_COMMIT_FAILED", "Streaming commit failed",
                                 "Error: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+                            streamingTracker.clear();
                             streamingUncommittedChunks = 0;
                             streamingLastCommitTime = System.currentTimeMillis();
                         }
@@ -725,6 +726,17 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
             for (PendingBatch<ACK> b : pending) {
                 b.chunksCommitted = b.chunksProcessed;
             }
+        }
+
+        /**
+         * Removes all pending batches from the tracker.
+         * <p>
+         * Called after a commit failure to discard stale state. Without this,
+         * redelivered messages would create duplicate entries that block
+         * {@link #drainCompleted()}.
+         */
+        void clear() {
+            pending.clear();
         }
 
         /**

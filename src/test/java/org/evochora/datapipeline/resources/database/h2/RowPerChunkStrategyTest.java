@@ -223,7 +223,7 @@ class RowPerChunkStrategyTest {
     }
 
     @Test
-    void testCommitRawChunks_ExecutesBatchAndClosesStatement() throws SQLException {
+    void testCommitRawChunks_ExecutesBatchAndKeepsStatementOpen() throws SQLException {
         strategy = new RowPerChunkStrategy(configWithChunkDir());
         strategy.createTables(mockConnection, 2);
 
@@ -233,6 +233,10 @@ class RowPerChunkStrategyTest {
         strategy.commitRawChunks(mockConnection);
 
         verify(mockPreparedStatement).executeBatch();
+        verify(mockPreparedStatement, times(0)).close();
+
+        // Statement is closed by resetStreamingState
+        strategy.resetStreamingState(mockConnection);
         verify(mockPreparedStatement).close();
     }
 

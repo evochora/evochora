@@ -52,8 +52,12 @@ import com.typesafe.config.Config;
  */
 public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
 
-    private String organismsMergeSql;
-    private String statesMergeSql;
+    private static final String ORGANISMS_MERGE_SQL = "MERGE INTO organisms (" +
+            "organism_id, parent_id, birth_tick, program_id, initial_position, genome_hash" +
+            ") KEY (organism_id) VALUES (?, ?, ?, ?, ?, ?)";
+
+    private static final String STATES_MERGE_SQL = "MERGE INTO organism_ticks (tick_number, organisms_blob) " +
+            "KEY (tick_number) VALUES (?, ?)";
 
     /**
      * Creates SingleBlobOrgStrategy with optional compression.
@@ -92,14 +96,6 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
             );
         }
 
-        // Cache SQL strings
-        this.organismsMergeSql = "MERGE INTO organisms (" +
-                "organism_id, parent_id, birth_tick, program_id, initial_position, genome_hash" +
-                ") KEY (organism_id) VALUES (?, ?, ?, ?, ?, ?)";
-
-        this.statesMergeSql = "MERGE INTO organism_ticks (tick_number, organisms_blob) " +
-                "KEY (tick_number) VALUES (?, ?)";
-
         log.debug("Organism tables created with BLOB strategy");
     }
 
@@ -109,12 +105,12 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
 
     @Override
     protected String getStreamOrganismsMergeSql() {
-        return organismsMergeSql;
+        return ORGANISMS_MERGE_SQL;
     }
 
     @Override
     protected String getStreamStatesMergeSql() {
-        return statesMergeSql;
+        return STATES_MERGE_SQL;
     }
 
     /**

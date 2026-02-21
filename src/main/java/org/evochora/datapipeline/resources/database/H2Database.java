@@ -434,7 +434,7 @@ public class H2Database extends AbstractDatabaseResource
             try {
                 conn.rollback();
             } catch (SQLException rollbackEx) {
-                log.warn("Rollback failed (connection may be closed): {}", rollbackEx.getMessage());
+                log.warn("{}: rollback failed (connection may be closed): {}", getResourceName(), rollbackEx.getMessage());
             }
             throw e;  // Re-throw for wrapper to handle (wrapper will log + recordError)
         }
@@ -501,10 +501,12 @@ public class H2Database extends AbstractDatabaseResource
             getEnvStrategy().commitRawChunks(conn);
             conn.commit();
         } catch (SQLException e) {
+            // Reset strategy session state to prevent reuse of stale batch buffers
+            getEnvStrategy().resetStreamingState(conn);
             try {
                 conn.rollback();
             } catch (SQLException rollbackEx) {
-                log.warn("Rollback failed (connection may be closed): {}", rollbackEx.getMessage());
+                log.warn("{}: rollback failed (connection may be closed): {}", getResourceName(), rollbackEx.getMessage());
             }
             throw e;
         } finally {
@@ -571,7 +573,7 @@ public class H2Database extends AbstractDatabaseResource
             try {
                 conn.rollback();
             } catch (SQLException rollbackEx) {
-                log.warn("Rollback failed during organism writes commit: {}", rollbackEx.getMessage());
+                log.warn("{}: rollback failed during organism writes commit: {}", getResourceName(), rollbackEx.getMessage());
             }
             throw e;
         } finally {

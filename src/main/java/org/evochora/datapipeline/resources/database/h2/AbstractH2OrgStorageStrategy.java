@@ -88,7 +88,7 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
      * Returns the SQL string used for the organisms (static metadata) MERGE statement
      * during streaming writes.
      * <p>
-     * Called once during lazy initialization of {@link #streamOrganismsStmt}.
+     * Called once per connection during lazy initialization of {@link StreamingSession}.
      *
      * @return SQL string for MERGE operation on organisms table
      */
@@ -98,7 +98,7 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
      * Returns the SQL string used for the per-tick state MERGE statement
      * during streaming writes.
      * <p>
-     * Called once during lazy initialization of {@link #streamStatesStmt}.
+     * Called once per connection during lazy initialization of {@link StreamingSession}.
      *
      * @return SQL string for MERGE operation on organism states table
      */
@@ -115,24 +115,29 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
      * @throws SQLException if statement preparation fails
      */
     protected StreamingSession ensureStreamingSession(Connection conn) throws SQLException {
-        StreamingSession session = sessions.get(conn);
-        if (session == null) {
-            try {
-                session = new StreamingSession(
-                        conn.prepareStatement(getStreamOrganismsMergeSql()),
-                        conn.prepareStatement(getStreamStatesMergeSql()),
-                        new HashSet<>()
-                );
-                sessions.put(conn, session);
-            } catch (SQLException e) {
-                throw e;
+        try {
+            StreamingSession session = sessions.computeIfAbsent(conn, c -> {
+                try {
+                    return new StreamingSession(
+                            c.prepareStatement(getStreamOrganismsMergeSql()),
+                            c.prepareStatement(getStreamStatesMergeSql()),
+                            new HashSet<>()
+                    );
+                } catch (SQLException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+            // Purge stale entries from closed connections (rare: only after connection failure)
+            if (sessions.size() > 1) {
+                purgeClosedConnections(conn);
             }
+            return session;
+        } catch (RuntimeException e) {
+            if (e.getCause() instanceof SQLException) {
+                throw (SQLException) e.getCause();
+            }
+            throw e;
         }
-        // Purge stale entries from closed connections (rare: only after connection failure)
-        if (sessions.size() > 1) {
-            purgeClosedConnections(conn);
-        }
-        return session;
     }
 
     /**
@@ -226,6 +231,8 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
                     return true;
                 }
             } catch (SQLException e) {
+                closeQuietly(entry.getValue().organismsStmt());
+                closeQuietly(entry.getValue().statesStmt());
                 return true;
             }
             return false;
@@ -242,7 +249,8 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
             try {
                 stmt.close();
             } catch (SQLException e) {
-                log.debug("Failed to close streaming statement: {}", e.getMessage());
+                log.debug("{}: failed to close streaming statement: {}",
+                    getClass().getSimpleName(), e.getMessage());
             }
         }
     }

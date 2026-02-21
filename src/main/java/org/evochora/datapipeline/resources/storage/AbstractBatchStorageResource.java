@@ -208,6 +208,8 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      * For each chunk in the batch file, reads the raw message bytes and extracts only
      * the three metadata fields (firstTick, lastTick, tickCount) via partial parse.
      * Peak heap: one raw chunk (~25 MB for 4000x3000 environment).
+     * <p>
+     * <strong>Thread Safety:</strong> Thread-safe. Multiple callers can read concurrently.
      */
     @Override
     public void forEachRawChunk(StoragePath path,
@@ -295,6 +297,8 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      * Streaming implementation that parses one chunk at a time from the compressed protobuf
      * stream, applies the filter and transformer, and passes each chunk to the consumer before
      * parsing the next. Only one parsed chunk is held in memory at any time.
+     * <p>
+     * <strong>Thread Safety:</strong> Thread-safe. Multiple callers can read concurrently.
      */
     @Override
     public void forEachChunk(StoragePath path, ChunkFieldFilter filter,

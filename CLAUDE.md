@@ -43,7 +43,7 @@ Evochora is an artificial life simulator for research into digital evolution. It
 
 3. **Data Pipeline** (`src/main/java/org/evochora/datapipeline/`)
    - Flow: SimulationEngine → Queue → PersistenceService → Storage → Indexers → Database
-   - Services extend `AbstractService` with constructor: `(String serviceName, Map<String, List<IResource>> resources, Config options)`
+   - Services extend `AbstractService` with constructor: `(String serviceName, Config options, Map<String, List<IResource>> resources)`
    - Resources abstract I/O (IQueueResource, IStorageResource, IDatabaseResource, ITopicResource)
    - Supports dual-mode deployment: in-process (InMemoryBlockingQueue, H2/SQLite) and cloud (message buses, PostgreSQL, S3)
    - All services expect SimulationEngine must have the capability to operate as a competing consumers
