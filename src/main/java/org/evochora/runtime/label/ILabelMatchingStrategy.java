@@ -9,8 +9,8 @@ import java.util.Collection;
  * Strategy interface for label matching algorithms.
  * <p>
  * This interface enables different label matching strategies to be used interchangeably,
- * following the Strategy pattern. The default implementation uses pre-expanded Hamming
- * distance for O(1) lookup.
+ * following the Strategy pattern. The default implementation uses query-expansion with
+ * staged Hamming distance search and pruning.
  * <p>
  * Thread Safety: Implementations must be thread-safe for read operations.
  * Write operations (add/remove) are called from the main simulation thread only.
@@ -41,8 +41,6 @@ public interface ILabelMatchingStrategy {
 
     /**
      * Adds a label entry to the index.
-     * <p>
-     * For pre-expanded strategies, this also adds entries for all Hamming neighbors.
      *
      * @param labelValue The label's value (20-bit hash)
      * @param entry The label entry containing position and ownership info
@@ -51,8 +49,6 @@ public interface ILabelMatchingStrategy {
 
     /**
      * Removes a label entry from the index.
-     * <p>
-     * For pre-expanded strategies, this also removes entries from all Hamming neighbors.
      *
      * @param labelValue The label's value (20-bit hash)
      * @param flatIndex The flat index of the label to remove

@@ -12,17 +12,23 @@ import java.util.List;
 import java.util.function.IntConsumer;
 
 /**
- * Pre-expanded Hamming distance matching strategy for O(1) label lookup.
+ * Query-expansion Hamming distance matching strategy for fuzzy label lookup.
  * <p>
- * This strategy pre-expands the index: for each label with value V, entries are stored
- * under V and all ~210 Hamming neighbors (for tolerance=2). This enables O(1) lookup
- * at the cost of increased memory usage (~211 entries per label).
- * <p>
- * Memory usage for tolerance=2:
+ * Each label is stored only under its exact value. At search time, the query is expanded
+ * to check Hamming neighbors in stages with increasing distance, enabling early exit
+ * and pruning:
  * <ul>
- *   <li>10,000 labels: ~50 MB</li>
- *   <li>100,000 labels: ~500 MB</li>
+ *   <li>Stage 0: exact value (1 lookup)</li>
+ *   <li>Stage 1: single-bit flips, hamming=1 (20 lookups)</li>
+ *   <li>Stage 2: double-bit flips, hamming=2 (190 lookups)</li>
+ *   <li>Stage 3: triple-bit flips, hamming=3 (1140 lookups)</li>
  * </ul>
+ * <p>
+ * Pruning skips stage K entirely when the current best score is already below
+ * {@code K * hammingWeight}, since no candidate at that distance can improve the result.
+ * <p>
+ * Memory usage is proportional to the number of labels (one entry per label),
+ * independent of tolerance. Insert, remove, and update operations are O(1).
  * <p>
  * Thread Safety: Not thread-safe. All operations are expected to be called from
  * the main simulation thread.
@@ -87,21 +93,10 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
     private IRandomProvider randomProvider;
 
     /**
-     * Maps label value -> set of LabelEntry objects.
-     * Pre-expanded: each label appears under its own value AND all Hamming neighbors.
+     * Maps label value to its entries. Each label is stored only under its exact value.
+     * Query-expansion at search time checks neighbor values via Hamming distance iteration.
      */
     private final Int2ObjectOpenHashMap<List<LabelEntry>> valueToLabels;
-
-    /**
-     * Maps flatIndex -> (labelValue, LabelEntry) for efficient updates.
-     * Enables O(1) lookup when owner/marker changes.
-     */
-    private final Int2ObjectOpenHashMap<LabelEntryWithValue> indexToEntry;
-
-    /**
-     * Helper record to track original label value for index updates.
-     */
-    private record LabelEntryWithValue(int labelValue, LabelEntry entry) {}
 
     /** Default Hamming distance tolerance. */
     public static final int DEFAULT_TOLERANCE = 2;
@@ -122,14 +117,14 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
     private static final int WEIGHT_PRECISION = 10000;
 
     /**
-     * Creates a new pre-expanded Hamming strategy with default settings.
+     * Creates a new Hamming strategy with default settings.
      */
     public PreExpandedHammingStrategy() {
         this(DEFAULT_TOLERANCE, DEFAULT_FOREIGN_PENALTY, DEFAULT_HAMMING_WEIGHT);
     }
 
     /**
-     * Creates a new pre-expanded Hamming strategy from configuration.
+     * Creates a new Hamming strategy from configuration.
      * <p>
      * Reads "tolerance", "foreignPenalty", "hammingWeight", and "selectionSpread" from the config,
      * using defaults if not specified.
@@ -146,7 +141,7 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
     }
 
     /**
-     * Creates a new pre-expanded Hamming strategy with specified settings and deterministic selection.
+     * Creates a new Hamming strategy with specified settings and deterministic selection.
      *
      * @param tolerance The Hamming distance tolerance (2 = ~211 neighbors, 3 = ~1351 neighbors)
      * @param foreignPenalty The score penalty for foreign labels
@@ -157,7 +152,7 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
     }
 
     /**
-     * Creates a new pre-expanded Hamming strategy with specified settings.
+     * Creates a new Hamming strategy with specified settings.
      *
      * @param tolerance The Hamming distance tolerance (2 = ~211 neighbors, 3 = ~1351 neighbors)
      * @param foreignPenalty The score penalty for foreign labels
@@ -173,105 +168,130 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
         this.hammingWeight = hammingWeight;
         this.selectionSpread = selectionSpread;
         this.valueToLabels = new Int2ObjectOpenHashMap<>();
-        this.indexToEntry = new Int2ObjectOpenHashMap<>();
     }
 
     @Override
     public int findTarget(int searchValue, int codeOwner, int[] callerCoords, Environment environment) {
-        List<LabelEntry> candidates = valueToLabels.get(searchValue);
-        if (candidates == null || candidates.isEmpty()) {
-            return -1;
-        }
-
-        // Get environment shape for toroidal distance calculation
         int[] shape = environment.getShape();
 
-        // === PHASE 1: Early exit - find best own label with Hamming=0 ===
-        // Own exact match always wins, so we can skip full scoring if one exists.
-        // When selectionSpread > 0, uses weighted reservoir sampling among own exact matches
-        // to enable "duplication + divergence": after gene duplication, both label copies
-        // get a chance to be jumped to, weighted by inverse distance.
         if (selectionSpread > 0 && randomProvider == null) {
             throw new IllegalStateException(
                 "selectionSpread > 0 requires a random provider to be set via setRandomProvider()");
         }
 
-        int bestOwnExactDistance = Integer.MAX_VALUE;
-        int bestOwnExactIndex = -1;
-        int bestOwnExactOwner = Integer.MAX_VALUE;
-        long totalWeight = 0;
+        int bestScore = Integer.MAX_VALUE;
+        int bestFlatIndex = -1;
+        int bestOwner = Integer.MAX_VALUE;
 
-        for (LabelEntry entry : candidates) {
-            LabelEntryWithValue entryWithValue = indexToEntry.get(entry.flatIndex());
-            if (entryWithValue == null) {
-                continue;
-            }
+        // === Stage 0: Exact match (hamming = 0) ===
+        List<LabelEntry> exactList = valueToLabels.get(searchValue);
+        if (exactList != null) {
+            // Own exact match always wins — check first with early exit.
+            // When selectionSpread > 0, uses weighted reservoir sampling among own exact matches
+            // to enable "duplication + divergence": after gene duplication, both label copies
+            // get a chance to be jumped to, weighted by inverse distance.
+            int bestOwnExactIndex = -1;
+            int bestOwnExactDistance = Integer.MAX_VALUE;
+            int bestOwnExactOwner = Integer.MAX_VALUE;
+            long totalWeight = 0;
 
-            int actualValue = entryWithValue.labelValue();
-            int hamming = hammingDistance(searchValue, actualValue);
-
-            // Only consider own labels with exact match
-            if (hamming == 0 && !entry.isForeign(codeOwner)) {
+            for (int i = 0; i < exactList.size(); i++) {
+                LabelEntry entry = exactList.get(i);
                 int[] labelCoords = environment.getCoordinateFromIndex(entry.flatIndex());
                 int distance = toroidalManhattanDistance(callerCoords, labelCoords, shape);
 
-                if (selectionSpread > 0) {
-                    // Weighted reservoir sampling: weight = K * S / (d + S)
-                    // Closer labels have higher weight but distant ones still get a chance.
-                    long weight = (long) WEIGHT_PRECISION * selectionSpread / (distance + selectionSpread);
-                    if (weight < 1) {
-                        weight = 1;
+                if (!entry.isForeign(codeOwner)) {
+                    if (selectionSpread > 0) {
+                        long weight = (long) WEIGHT_PRECISION * selectionSpread / (distance + selectionSpread);
+                        if (weight < 1) weight = 1;
+                        totalWeight += weight;
+                        if (randomProvider.nextInt((int) Math.min(totalWeight, Integer.MAX_VALUE)) < weight) {
+                            bestOwnExactIndex = entry.flatIndex();
+                        }
+                    } else {
+                        if (distance < bestOwnExactDistance ||
+                            (distance == bestOwnExactDistance && entry.owner() < bestOwnExactOwner)) {
+                            bestOwnExactDistance = distance;
+                            bestOwnExactIndex = entry.flatIndex();
+                            bestOwnExactOwner = entry.owner();
+                        }
                     }
-                    totalWeight += weight;
-                    if (randomProvider.nextInt((int) Math.min(totalWeight, Integer.MAX_VALUE)) < weight) {
-                        bestOwnExactIndex = entry.flatIndex();
-                    }
-                } else {
-                    // Deterministic: closest wins, tie-break by owner ID
-                    if (distance < bestOwnExactDistance ||
-                        (distance == bestOwnExactDistance && entry.owner() < bestOwnExactOwner)) {
-                        bestOwnExactDistance = distance;
-                        bestOwnExactIndex = entry.flatIndex();
-                        bestOwnExactOwner = entry.owner();
+                }
+
+                // Score all exact entries (own and foreign) for the general best tracking
+                int score = distance + (entry.isForeign(codeOwner) ? foreignPenalty : 0);
+                if (score < bestScore || (score == bestScore && entry.owner() < bestOwner)) {
+                    bestScore = score;
+                    bestFlatIndex = entry.flatIndex();
+                    bestOwner = entry.owner();
+                }
+            }
+
+            if (bestOwnExactIndex != -1) {
+                return bestOwnExactIndex;
+            }
+        }
+
+        // === Stage 1: Hamming distance 1 (single-bit flips, 20 lookups) ===
+        if (tolerance >= 1 && bestScore >= hammingWeight) {
+            int stageBaseScore = hammingWeight;
+            for (int mask : SINGLE_BIT_MASKS) {
+                List<LabelEntry> bucket = valueToLabels.get(searchValue ^ mask);
+                if (bucket != null) {
+                    for (int i = 0; i < bucket.size(); i++) {
+                        LabelEntry entry = bucket.get(i);
+                        int[] labelCoords = environment.getCoordinateFromIndex(entry.flatIndex());
+                        int distance = toroidalManhattanDistance(callerCoords, labelCoords, shape);
+                        int score = stageBaseScore + distance + (entry.isForeign(codeOwner) ? foreignPenalty : 0);
+                        if (score < bestScore || (score == bestScore && entry.owner() < bestOwner)) {
+                            bestScore = score;
+                            bestFlatIndex = entry.flatIndex();
+                            bestOwner = entry.owner();
+                        }
                     }
                 }
             }
         }
 
-        // If we found an own exact match, it always wins
-        if (bestOwnExactIndex != -1) {
-            return bestOwnExactIndex;
+        // === Stage 2: Hamming distance 2 (double-bit flips, 190 lookups) ===
+        if (tolerance >= 2 && bestScore >= 2 * hammingWeight) {
+            int stageBaseScore = 2 * hammingWeight;
+            for (int mask : DOUBLE_BIT_MASKS) {
+                List<LabelEntry> bucket = valueToLabels.get(searchValue ^ mask);
+                if (bucket != null) {
+                    for (int i = 0; i < bucket.size(); i++) {
+                        LabelEntry entry = bucket.get(i);
+                        int[] labelCoords = environment.getCoordinateFromIndex(entry.flatIndex());
+                        int distance = toroidalManhattanDistance(callerCoords, labelCoords, shape);
+                        int score = stageBaseScore + distance + (entry.isForeign(codeOwner) ? foreignPenalty : 0);
+                        if (score < bestScore || (score == bestScore && entry.owner() < bestOwner)) {
+                            bestScore = score;
+                            bestFlatIndex = entry.flatIndex();
+                            bestOwner = entry.owner();
+                        }
+                    }
+                }
+            }
         }
 
-        // === PHASE 2: Full scoring with combined formula ===
-        // score = (hamming × hammingWeight) + distance + (foreign ? foreignPenalty : 0)
-        int bestScore = Integer.MAX_VALUE;
-        int bestFlatIndex = -1;
-        int bestOwner = Integer.MAX_VALUE;
-
-        for (LabelEntry entry : candidates) {
-            LabelEntryWithValue entryWithValue = indexToEntry.get(entry.flatIndex());
-            if (entryWithValue == null) {
-                continue;
-            }
-
-            int actualValue = entryWithValue.labelValue();
-            int hamming = hammingDistance(searchValue, actualValue);
-
-            if (hamming > tolerance) {
-                continue;
-            }
-
-            int[] labelCoords = environment.getCoordinateFromIndex(entry.flatIndex());
-            int distance = toroidalManhattanDistance(callerCoords, labelCoords, shape);
-
-            // Combined score formula
-            int score = (hamming * hammingWeight) + distance + (entry.isForeign(codeOwner) ? foreignPenalty : 0);
-
-            if (score < bestScore || (score == bestScore && entry.owner() < bestOwner)) {
-                bestScore = score;
-                bestFlatIndex = entry.flatIndex();
-                bestOwner = entry.owner();
+        // === Stage 3: Hamming distance 3 (triple-bit flips, 1140 lookups) ===
+        if (tolerance >= 3 && bestScore >= 3 * hammingWeight) {
+            int stageBaseScore = 3 * hammingWeight;
+            for (int mask : TRIPLE_BIT_MASKS) {
+                List<LabelEntry> bucket = valueToLabels.get(searchValue ^ mask);
+                if (bucket != null) {
+                    for (int i = 0; i < bucket.size(); i++) {
+                        LabelEntry entry = bucket.get(i);
+                        int[] labelCoords = environment.getCoordinateFromIndex(entry.flatIndex());
+                        int distance = toroidalManhattanDistance(callerCoords, labelCoords, shape);
+                        int score = stageBaseScore + distance + (entry.isForeign(codeOwner) ? foreignPenalty : 0);
+                        if (score < bestScore || (score == bestScore && entry.owner() < bestOwner)) {
+                            bestScore = score;
+                            bestFlatIndex = entry.flatIndex();
+                            bestOwner = entry.owner();
+                        }
+                    }
+                }
             }
         }
 
@@ -300,92 +320,58 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
 
     @Override
     public void addLabel(int labelValue, LabelEntry entry) {
-        // Store in the flat index lookup
-        indexToEntry.put(entry.flatIndex(), new LabelEntryWithValue(labelValue, entry));
-
-        // Add to the value and all Hamming neighbors (no allocation)
-        forEachNeighborValue(labelValue, tolerance, neighborValue ->
-            valueToLabels.computeIfAbsent(neighborValue, k -> new ArrayList<>()).add(entry)
-        );
+        valueToLabels.computeIfAbsent(labelValue, k -> new ArrayList<>()).add(entry);
     }
 
     @Override
     public void removeLabel(int labelValue, int flatIndex) {
-        LabelEntryWithValue entryWithValue = indexToEntry.remove(flatIndex);
-        if (entryWithValue == null) {
-            return;
-        }
-
-        // Remove from the value and all Hamming neighbors (no allocation)
-        forEachNeighborValue(labelValue, tolerance, neighborValue -> {
-            List<LabelEntry> list = valueToLabels.get(neighborValue);
-            if (list != null) {
-                list.removeIf(e -> e.flatIndex() == flatIndex);
-                if (list.isEmpty()) {
-                    valueToLabels.remove(neighborValue);
-                }
+        List<LabelEntry> list = valueToLabels.get(labelValue);
+        if (list != null) {
+            list.removeIf(e -> e.flatIndex() == flatIndex);
+            if (list.isEmpty()) {
+                valueToLabels.remove(labelValue);
             }
-        });
+        }
     }
 
     @Override
     public void updateOwner(int labelValue, int flatIndex, int newOwner) {
-        LabelEntryWithValue oldEntryWithValue = indexToEntry.get(flatIndex);
-        if (oldEntryWithValue == null) {
-            return;
-        }
-
-        LabelEntry oldEntry = oldEntryWithValue.entry();
-        LabelEntry newEntry = new LabelEntry(flatIndex, newOwner, oldEntry.marker());
-
-        // Update the flat index lookup
-        indexToEntry.put(flatIndex, new LabelEntryWithValue(labelValue, newEntry));
-
-        // Update in all neighbor lists (no allocation)
-        forEachNeighborValue(labelValue, tolerance, neighborValue -> {
-            List<LabelEntry> list = valueToLabels.get(neighborValue);
-            if (list != null) {
-                for (int i = 0; i < list.size(); i++) {
-                    if (list.get(i).flatIndex() == flatIndex) {
-                        list.set(i, newEntry);
-                        break;
-                    }
+        List<LabelEntry> list = valueToLabels.get(labelValue);
+        if (list != null) {
+            for (int i = 0; i < list.size(); i++) {
+                if (list.get(i).flatIndex() == flatIndex) {
+                    LabelEntry old = list.get(i);
+                    list.set(i, new LabelEntry(flatIndex, newOwner, old.marker()));
+                    return;
                 }
             }
-        });
+        }
     }
 
     @Override
     public void updateMarker(int labelValue, int flatIndex, int newMarker) {
-        LabelEntryWithValue oldEntryWithValue = indexToEntry.get(flatIndex);
-        if (oldEntryWithValue == null) {
-            return;
-        }
-
-        LabelEntry oldEntry = oldEntryWithValue.entry();
-        LabelEntry newEntry = new LabelEntry(flatIndex, oldEntry.owner(), newMarker);
-
-        // Update the flat index lookup
-        indexToEntry.put(flatIndex, new LabelEntryWithValue(labelValue, newEntry));
-
-        // Update in all neighbor lists (no allocation)
-        forEachNeighborValue(labelValue, tolerance, neighborValue -> {
-            List<LabelEntry> list = valueToLabels.get(neighborValue);
-            if (list != null) {
-                for (int i = 0; i < list.size(); i++) {
-                    if (list.get(i).flatIndex() == flatIndex) {
-                        list.set(i, newEntry);
-                        break;
-                    }
+        List<LabelEntry> list = valueToLabels.get(labelValue);
+        if (list != null) {
+            for (int i = 0; i < list.size(); i++) {
+                if (list.get(i).flatIndex() == flatIndex) {
+                    LabelEntry old = list.get(i);
+                    list.set(i, new LabelEntry(flatIndex, old.owner(), newMarker));
+                    return;
                 }
             }
-        });
+        }
     }
 
     @Override
     public Collection<LabelEntry> getCandidates(int searchValue) {
-        List<LabelEntry> candidates = valueToLabels.get(searchValue);
-        return candidates != null ? Collections.unmodifiableList(candidates) : Collections.emptyList();
+        List<LabelEntry> result = new ArrayList<>();
+        forEachNeighborValue(searchValue, tolerance, neighborValue -> {
+            List<LabelEntry> list = valueToLabels.get(neighborValue);
+            if (list != null) {
+                result.addAll(list);
+            }
+        });
+        return Collections.unmodifiableList(result);
     }
 
     @Override
@@ -422,18 +408,10 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
     }
 
     /**
-     * Calculates the Hamming distance between two values.
-     *
-     * @param a First value
-     * @param b Second value
-     * @return Number of differing bits
-     */
-    private static int hammingDistance(int a, int b) {
-        return Integer.bitCount(a ^ b);
-    }
-
-    /**
      * Iterates over a value and all its Hamming neighbors within the given tolerance.
+     * <p>
+     * Used for query-expansion in {@link #getCandidates}. The main {@link #findTarget}
+     * method uses inline staged iteration with pruning instead.
      * <p>
      * Uses pre-computed bit masks to avoid any heap allocation.
      * For tolerance=2, this calls the consumer 211 times (1 + 20 + 190).
