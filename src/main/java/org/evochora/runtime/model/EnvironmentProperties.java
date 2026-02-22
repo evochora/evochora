@@ -205,6 +205,29 @@ public class EnvironmentProperties {
     public int getDimensions() {
         return worldShape.length;
     }
+
+    /**
+     * Gets the flat-index stride for a specific dimension.
+     * <p>
+     * The stride is the change in flat index when advancing by 1 in this dimension.
+     * For a 3D world with shape [W, H, D], strides are [H*D, D, 1].
+     *
+     * @param dimension The dimension index (0-based)
+     * @return The stride for the given dimension
+     */
+    public int getStride(int dimension) {
+        return strides[dimension];
+    }
+
+    /**
+     * Gets the size of a specific dimension.
+     *
+     * @param dimension The dimension index (0-based)
+     * @return The size of the given dimension
+     */
+    public int getDimensionSize(int dimension) {
+        return worldShape[dimension];
+    }
     
     /**
      * Gets the total number of cells in the environment.

@@ -122,7 +122,8 @@ public class Organism {
     private final Random random;
     private final int maxEnergy;
     private final int maxEntropy;
-    
+    private final int nopOpcodeId;
+    private final int maxSkipsPerTick;
 
     /**
      * Constructs a new Organism. This constructor should only be called via the static factory {@link #create}.
@@ -141,10 +142,13 @@ public class Organism {
             this.dps.add(Arrays.copyOf(startIp, startIp.length));
         }
         
-        // Load limits from simulation config (required, no fallback)
+        // Load limits and constants from simulation config (required, no fallback)
         com.typesafe.config.Config orgConfig = simulation.getOrganismConfig();
         this.maxEnergy = orgConfig.getInt("max-energy");
         this.maxEntropy = orgConfig.getInt("max-entropy");
+        this.nopOpcodeId = Instruction.getInstructionIdByName("NOP");
+        this.maxSkipsPerTick = orgConfig.hasPath("max-skips-per-tick")
+                ? orgConfig.getInt("max-skips-per-tick") : 100;
 
         this.er = initialEnergy;
         this.sr = 0;
@@ -260,10 +264,13 @@ public class Organism {
         this.logger = null; // Restored organisms don't have individual loggers
         this.loggingEnabled = false;
 
-        // Load limits from simulation config
+        // Load limits and constants from simulation config
         com.typesafe.config.Config orgConfig = simulation.getOrganismConfig();
         this.maxEnergy = orgConfig.getInt("max-energy");
         this.maxEntropy = orgConfig.getInt("max-entropy");
+        this.nopOpcodeId = Instruction.getInstructionIdByName("NOP");
+        this.maxSkipsPerTick = orgConfig.hasPath("max-skips-per-tick")
+                ? orgConfig.getInt("max-skips-per-tick") : 100;
 
         // Preserve original birth position from checkpoint data
         this.initialPosition = Arrays.copyOf(b.initialPosition, b.initialPosition.length);
@@ -635,19 +642,55 @@ public class Organism {
      * @param environment The simulation environment.
      */
     public void skipNopCells(Environment environment) {
-        int nopOpcodeId = Instruction.getInstructionIdByName("NOP");
-        int maxSkips = simulation != null && simulation.getOrganismConfig().hasPath("max-skips-per-tick")
-                ? simulation.getOrganismConfig().getInt("max-skips-per-tick") : 100;
+        EnvironmentProperties props = environment.properties;
+        boolean isToroidal = props.isToroidal();
 
-        for (int skips = 0; skips < maxSkips && !isDead; skips++) {
-            Molecule m = environment.getMolecule(ip);
-            if (m.type() == Config.TYPE_CODE && m.value() != nopOpcodeId) {
+        // Determine active dimension and sign from dvBeforeFetch (unit vector: exactly one component is ±1)
+        int dim = 0;
+        int sign = 1;
+        for (int i = 0; i < dvBeforeFetch.length; i++) {
+            if (dvBeforeFetch[i] != 0) {
+                dim = i;
+                sign = dvBeforeFetch[i];
+                break;
+            }
+        }
+
+        int dimStride = props.getStride(dim);
+        int dimSize = props.getDimensionSize(dim);
+        int dimPos = ip[dim];
+
+        // Compute flat index: ip[0]*stride[0] + ip[1]*stride[1] + ...
+        int flatIp = 0;
+        for (int i = 0; i < ip.length; i++) {
+            flatIp += ip[i] * props.getStride(i);
+        }
+        // Base flat index = flat index contribution of all dimensions except the active one
+        int baseFlatIp = flatIp - dimPos * dimStride;
+
+        for (int skips = 0; skips < maxSkipsPerTick && !isDead; skips++) {
+            // In bounded topology, out-of-bounds reads as empty (CODE:0 = skippable)
+            int mol = (dimPos >= 0 && dimPos < dimSize)
+                    ? environment.getMoleculeInt(flatIp)
+                    : 0;
+            if ((mol & Config.TYPE_MASK) == Config.TYPE_CODE
+                    && (mol & Config.VALUE_MASK) != nopOpcodeId) {
+                ip[dim] = dimPos;
                 return;
             }
-            advanceIpBy(1, environment);
+            dimPos += sign;
+            if (isToroidal) {
+                if (dimPos < 0) {
+                    dimPos = dimSize - 1;
+                } else if (dimPos >= dimSize) {
+                    dimPos = 0;
+                }
+            }
+            flatIp = baseFlatIp + dimPos * dimStride;
         }
+        ip[dim] = dimPos;
         recoverFromStall();
-        instructionFailed("Max skips exceeded (" + maxSkips + ")");
+        instructionFailed("Max skips exceeded (" + maxSkipsPerTick + ")");
     }
 
     /**
