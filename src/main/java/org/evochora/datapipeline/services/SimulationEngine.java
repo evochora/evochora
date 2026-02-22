@@ -38,6 +38,7 @@ import org.evochora.datapipeline.api.contracts.TokenInfo;
 import org.evochora.datapipeline.api.contracts.TokenMapEntry;
 import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
+import org.evochora.datapipeline.api.memory.ISimulationParameterSource;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IResource;
@@ -66,7 +67,7 @@ import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigRenderOptions;
 
-public class SimulationEngine extends AbstractService implements IMemoryEstimatable {
+public class SimulationEngine extends AbstractService implements IMemoryEstimatable, ISimulationParameterSource {
 
     private final IOutputQueueResource<TickDataChunk> tickDataOutput;
     private final IOutputQueueResource<SimulationMetadata> metadataOutput;
@@ -88,6 +89,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     private final long seed;
     private final long startTimeMs;
     private final boolean isResume;
+    private final SimulationParameters simulationParameters;
     private final AtomicLong currentTick = new AtomicLong(-1);
     private final AtomicLong messagesSent = new AtomicLong(0);
     private long lastMetricTime = System.currentTimeMillis();
@@ -118,6 +120,10 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      * This record allows both initialization paths to produce the same output structure.
      * Includes delta compression intervals to ensure resume uses original values from metadata.
      *
+     * @param organismDensityFactor Fraction of totalCells used to derive maxOrganisms for memory
+     *                              estimation. Read from the config that governs this run.
+     * @param estimatedDeltaRatio Expected per-tick change rate for memory estimation, read from
+     *                            the config that governs this run (current config or checkpoint metadata).
      * @param resumeSnapshot checkpoint snapshot for resume mode (null for new simulations).
      *                       When present, the encoder is initialized with this snapshot so
      *                       subsequent ticks are treated as deltas within the same chunk.
@@ -138,6 +144,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         int accumulatedDeltaInterval,
         int snapshotInterval,
         int chunkInterval,
+        double organismDensityFactor,
+        double estimatedDeltaRatio,
         TickData resumeSnapshot
     ) {}
 
@@ -181,6 +189,15 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         this.snapshotInterval = state.snapshotInterval();
         this.chunkInterval = state.chunkInterval();
 
+        // Build SimulationParameters from the actual runtime state (correct for both new and resume)
+        int[] shape = this.simulation.getEnvironment().getShape();
+        int maxOrganisms = Math.max(1, (int) (this.simulation.getEnvironment().getTotalCells() * state.organismDensityFactor()));
+        this.simulationParameters = SimulationParameters.of(
+            shape, maxOrganisms,
+            this.samplingInterval, this.accumulatedDeltaInterval,
+            this.snapshotInterval, this.chunkInterval, state.estimatedDeltaRatio()
+        );
+
         // Common finalization - pass resume snapshot for proper encoder initialization
         this.chunkEncoder = createChunkEncoder(state.resumeSnapshot());
     }
@@ -203,6 +220,10 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         int value = readInt(options, path, defaultValue);
         if (value < 1) throw new IllegalArgumentException(path + " must be >= 1");
         return value;
+    }
+
+    private double readDouble(Config config, String path, double defaultValue) {
+        return config.hasPath(path) ? config.getDouble(path) : defaultValue;
     }
 
     private DeltaCodec.Encoder createChunkEncoder(TickData resumeSnapshot) {
@@ -283,7 +304,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
             log.debug("Restored {} organisms from checkpoint", restored.simulation().getOrganisms().size());
 
-            // Read intervals from original config (must match original simulation!)
+            // Read intervals and estimation parameters from original config (must match original simulation!)
             return new InitializedState(
                 restored.simulation(),
                 randomProvider,
@@ -300,6 +321,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 readInt(originalConfig, "accumulatedDeltaInterval", SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL),
                 readInt(originalConfig, "snapshotInterval", SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL),
                 readInt(originalConfig, "chunkInterval", SimulationParameters.DEFAULT_CHUNK_INTERVAL),
+                readDouble(originalConfig, "organismDensityFactor", SimulationParameters.DEFAULT_ORGANISM_DENSITY_FACTOR),
+                readDouble(originalConfig, "estimatedDeltaRatio", SimulationParameters.DEFAULT_ESTIMATED_DELTA_RATIO),
                 checkpoint.snapshot()  // Pass snapshot to prime the encoder
             );
         } catch (IOException e) {
@@ -428,6 +451,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             readInt(options, "accumulatedDeltaInterval", SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL),
             readInt(options, "snapshotInterval", SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL),
             readInt(options, "chunkInterval", SimulationParameters.DEFAULT_CHUNK_INTERVAL),
+            readDouble(options, "organismDensityFactor", SimulationParameters.DEFAULT_ORGANISM_DENSITY_FACTOR),
+            readDouble(options, "estimatedDeltaRatio", SimulationParameters.DEFAULT_ESTIMATED_DELTA_RATIO),
             null  // No resume snapshot for new simulations
         );
     }
@@ -1005,6 +1030,14 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         }
     }
     
+    // ==================== ISimulationParameterSource ====================
+
+    /** {@inheritDoc} */
+    @Override
+    public SimulationParameters getSimulationParameters() {
+        return simulationParameters;
+    }
+
     // ==================== IMemoryEstimatable ====================
     
     /**

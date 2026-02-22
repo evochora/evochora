@@ -149,7 +149,14 @@ public record SimulationParameters(
     
     /** Default estimated delta ratio (1% of cells change per tick). */
     public static final double DEFAULT_ESTIMATED_DELTA_RATIO = 0.01;
-    
+
+    /**
+     * Default organism density factor for deriving maxOrganisms from totalCells.
+     * <p>
+     * Formula: {@code maxOrganisms = max(1, (int)(totalCells * organismDensityFactor))}
+     */
+    public static final double DEFAULT_ORGANISM_DENSITY_FACTOR = 0.0005;
+
     // ========================================================================
     // Factory Methods
     // ========================================================================

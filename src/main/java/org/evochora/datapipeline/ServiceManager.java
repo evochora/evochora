@@ -19,6 +19,7 @@ import java.util.stream.Collectors;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.datapipeline.resume.ResumeException;
 import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
+import org.evochora.datapipeline.api.memory.ISimulationParameterSource;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IContextualResource;
@@ -796,8 +797,14 @@ public class ServiceManager implements IMonitorable {
      * @param config Pipeline configuration containing simulation parameters
      */
     private void performMemoryEstimation(Config config) {
-        // Extract simulation parameters from config
-        SimulationParameters params = extractSimulationParameters(config);
+        // Prefer runtime parameters from a started service (correct for both new and resume mode)
+        SimulationParameters params = findSimulationParameters();
+
+        // Fallback to config parsing (e.g., when SimulationEngine runs in a separate process)
+        if (params == null) {
+            params = extractSimulationParameters(config);
+        }
+
         if (params == null) {
             log.debug("Memory estimation skipped: simulation-engine not configured");
             return;
@@ -895,11 +902,31 @@ public class ServiceManager implements IMonitorable {
     /**
      * Extracts simulation parameters from pipeline configuration.
      * <p>
+     * Queries started services for an {@link ISimulationParameterSource} that provides
+     * the definitive simulation parameters. In resume mode, these reflect the original
+     * run's configuration from checkpoint metadata rather than the current config file.
+     *
+     * @return SimulationParameters from the source service, or null if no source is available
+     */
+    private SimulationParameters findSimulationParameters() {
+        for (IService service : services.values()) {
+            if (service instanceof ISimulationParameterSource source) {
+                log.debug("Using simulation parameters from service: {}", service.getClass().getSimpleName());
+                return source.getSimulationParameters();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Extracts simulation parameters from pipeline configuration by scanning for a SimulationEngine.
+     * <p>
+     * This is the fallback path used when no {@link ISimulationParameterSource} service is available
+     * (e.g., in distributed deployments where SimulationEngine runs in a separate process).
+     * <p>
      * Searches all configured services for a SimulationEngine class and extracts
      * environment shape from its configuration. This approach works regardless of
      * the service name used in the configuration.
-     * <p>
-     * Estimates maxOrganisms based on environment size (since there's no explicit config for it).
      *
      * @param config Pipeline configuration
      * @return SimulationParameters or null if no SimulationEngine service is configured
@@ -936,11 +963,12 @@ public class ServiceManager implements IMonitorable {
                         totalCells *= dim;
                     }
                     
-                    // Read maxOrganisms from config (default: 5000)
-                    int maxOrganisms = serviceConfig.hasPath("options.maxOrganisms")
-                        ? serviceConfig.getInt("options.maxOrganisms")
-                        : 5000; // Default: 5000 organisms (memory-optimized)
-                    
+                    // Derive maxOrganisms from environment size and density factor
+                    double organismDensityFactor = serviceConfig.hasPath("options.organismDensityFactor")
+                        ? serviceConfig.getDouble("options.organismDensityFactor")
+                        : SimulationParameters.DEFAULT_ORGANISM_DENSITY_FACTOR;
+                    int maxOrganisms = Math.max(1, (int) (totalCells * organismDensityFactor));
+
                     // Read delta compression parameters
                     int samplingInterval = serviceConfig.hasPath("options.samplingInterval")
                         ? serviceConfig.getInt("options.samplingInterval")
