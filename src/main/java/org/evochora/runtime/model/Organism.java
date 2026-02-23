@@ -49,11 +49,13 @@ public class Organism {
      */
     public record InstructionExecutionData(
         int opcodeId,
-        List<Integer> rawArguments,
+        int[] rawArguments,
         int energyCost,
         int entropyDelta,
         java.util.Map<Integer, Object> registerValuesBefore
     ) {}
+
+    private static final int[] EMPTY_INT_ARRAY = new int[0];
 
     private final int id;
     private Integer parentId = null;
@@ -522,9 +524,32 @@ public class Organism {
      * @param environment The simulation environment.
      */
     public void advanceIpBy(int steps, Environment environment) {
-        for (int i = 0; i < steps; i++) {
-            this.ip = getNextInstructionPosition(this.ip, this.dvBeforeFetch, environment);
+        EnvironmentProperties props = environment.properties;
+        boolean isToroidal = props.isToroidal();
+
+        // DV is a unit vector: exactly one component is ±1, rest 0
+        int dim = 0;
+        int sign = 1;
+        for (int i = 0; i < dvBeforeFetch.length; i++) {
+            if (dvBeforeFetch[i] != 0) {
+                dim = i;
+                sign = dvBeforeFetch[i];
+                break;
+            }
         }
+
+        int dimSize = props.getDimensionSize(dim);
+        int dimPos = ip[dim];
+
+        for (int i = 0; i < steps; i++) {
+            dimPos += sign;
+            if (isToroidal) {
+                if (dimPos < 0) dimPos = dimSize - 1;
+                else if (dimPos >= dimSize) dimPos = 0;
+            }
+        }
+
+        ip[dim] = dimPos;
     }
 
     /**
@@ -535,26 +560,61 @@ public class Organism {
      * @param environment The simulation environment.
      * @return A list of raw integer values representing the arguments.
      */
-    public List<Integer> getRawArgumentsFromEnvironment(int instructionLength, Environment environment) {
+    public int[] getRawArgumentsFromEnvironment(int instructionLength, Environment environment) {
         return getRawArgumentsFromEnvironment(instructionLength, environment, this.ipBeforeFetch, this.dvBeforeFetch);
     }
 
     /**
      * Retrieves the raw integer values of an instruction's arguments from the environment,
      * starting from an explicit position and advancing along an explicit direction vector.
+     * <p>
+     * Uses flat-index arithmetic along the unit-vector DV to avoid coordinate array allocations.
      *
      * @param instructionLength The total length of the instruction (opcode + arguments).
      * @param environment The simulation environment.
      * @param fromIp The starting position (opcode location).
      * @param withDv The direction vector for advancing to argument slots.
-     * @return A list of raw integer values representing the arguments.
+     * @return Raw integer values representing the arguments.
      */
-    public List<Integer> getRawArgumentsFromEnvironment(int instructionLength, Environment environment, int[] fromIp, int[] withDv) {
-        List<Integer> rawArgs = new ArrayList<>();
-        int[] tempIp = Arrays.copyOf(fromIp, fromIp.length);
-        for (int i = 0; i < instructionLength - 1; i++) {
-            tempIp = getNextInstructionPosition(tempIp, withDv, environment);
-            rawArgs.add(environment.getMolecule(tempIp).toInt());
+    public int[] getRawArgumentsFromEnvironment(int instructionLength, Environment environment, int[] fromIp, int[] withDv) {
+        int argCount = instructionLength - 1;
+        if (argCount <= 0) return EMPTY_INT_ARRAY;
+
+        EnvironmentProperties props = environment.properties;
+        boolean isToroidal = props.isToroidal();
+
+        // DV is a unit vector: exactly one component is ±1, rest 0
+        int dim = 0;
+        int sign = 1;
+        for (int i = 0; i < withDv.length; i++) {
+            if (withDv[i] != 0) {
+                dim = i;
+                sign = withDv[i];
+                break;
+            }
+        }
+
+        int dimStride = props.getStride(dim);
+        int dimSize = props.getDimensionSize(dim);
+        int dimPos = fromIp[dim];
+
+        // Compute base flat index (all dimensions except active)
+        int flatIp = 0;
+        for (int i = 0; i < fromIp.length; i++) {
+            flatIp += fromIp[i] * props.getStride(i);
+        }
+        int baseFlatIp = flatIp - dimPos * dimStride;
+
+        int[] rawArgs = new int[argCount];
+        for (int a = 0; a < argCount; a++) {
+            dimPos += sign;
+            if (isToroidal) {
+                if (dimPos < 0) dimPos = dimSize - 1;
+                else if (dimPos >= dimSize) dimPos = 0;
+            }
+            rawArgs[a] = (dimPos >= 0 && dimPos < dimSize)
+                    ? environment.getMoleculeInt(baseFlatIp + dimPos * dimStride)
+                    : 0;
         }
         return rawArgs;
     }

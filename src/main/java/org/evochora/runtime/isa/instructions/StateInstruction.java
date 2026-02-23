@@ -662,21 +662,6 @@ public class StateInstruction extends Instruction {
         }
     }
 
-    @Override
-    public int getCost(Organism organism, Environment environment, List<Integer> rawArguments) {
-        String name = getName();
-        if (name.equals("FORK")) {
-            // FORK has base cost 1, energy deduction is handled separately in the instruction
-            return 1;
-        }
-        if (name.equals("FRKI") || name.equals("FRKS")) {
-            // FRKI and FRKS have base cost 1, energy deduction is handled separately in the instruction
-            return 1;
-        }
-        // New state ops have base cost 1; return default (1) via super
-        return super.getCost(organism, environment, rawArguments);
-    }
-
     /**
      * Handles the GDVR and GDVS instructions (Get DV to Register/Stack).
      * Places the current DV value into the specified register or on the data stack.

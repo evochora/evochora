@@ -733,7 +733,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         Organism.InstructionExecutionData executionData = o.getLastInstructionExecution();
         if (executionData != null) {
             organismStateBuilder.setInstructionOpcodeId(executionData.opcodeId());
-            for (Integer arg : executionData.rawArguments()) {
+            for (int arg : executionData.rawArguments()) {
                 organismStateBuilder.addInstructionRawArguments(arg);
             }
             organismStateBuilder.setInstructionEnergyCost(executionData.energyCost());
@@ -755,7 +755,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         Organism.InstructionExecutionData nextData = simulation.getVirtualMachine().peekNextInstruction(o);
         if (nextData != null) {
             organismStateBuilder.setNextInstructionOpcodeId(nextData.opcodeId());
-            for (Integer arg : nextData.rawArguments()) {
+            for (int arg : nextData.rawArguments()) {
                 organismStateBuilder.addNextInstructionRawArguments(arg);
             }
             if (nextData.registerValuesBefore() != null && !nextData.registerValuesBefore().isEmpty()) {

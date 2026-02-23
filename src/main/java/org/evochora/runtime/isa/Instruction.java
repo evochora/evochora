@@ -61,13 +61,23 @@ public abstract class Instruction {
      */
     public record Operand(Object value, int rawSourceId) {}
 
-    // Runtime Registries
+    // Runtime Registries (HashMaps for cold-path usage: registration, introspection, mutation plugins)
     private static final Map<Integer, Class<? extends Instruction>> REGISTERED_INSTRUCTIONS_BY_ID = new HashMap<>();
     private static final Map<String, Integer> NAME_TO_ID = new HashMap<>();
     private static final Map<Integer, String> ID_TO_NAME = new HashMap<>();
     private static final Map<Integer, BiFunction<Organism, Environment, Instruction>> REGISTERED_PLANNERS_BY_ID = new HashMap<>();
     protected static final Map<Integer, List<OperandSource>> OPERAND_SOURCES = new HashMap<>();
     private static final Map<Integer, InstructionSignature> SIGNATURES_BY_ID = new HashMap<>();
+
+    // Array-based registries for O(1) hot-path lookups (populated from HashMaps during init())
+    // Opcode range: Family 0-9, max opcode = 9*4096 + 63*64 + 63 = 40959
+    private static final int REGISTRY_SIZE = 41000;
+    @SuppressWarnings("unchecked")
+    private static BiFunction<Organism, Environment, Instruction>[] PLANNERS_ARRAY = new BiFunction[0];
+    @SuppressWarnings("unchecked")
+    private static List<OperandSource>[] OPERAND_SOURCES_ARRAY = new List[0];
+    private static int[] INSTRUCTION_LENGTHS_BASE = new int[0];
+    private static int[] INSTRUCTION_LENGTHS_DIMS_MULTIPLIER = new int[0];
 
     /**
      * Returns a list of public information records for all registered instructions.
@@ -160,79 +170,131 @@ public abstract class Instruction {
             return this.cachedOperands;
         }
 
-        List<Operand> resolved = new ArrayList<>();
-        List<OperandSource> sources = OPERAND_SOURCES.get(fullOpcodeId);
+        List<OperandSource> sources = (fullOpcodeId >= 0 && fullOpcodeId < REGISTRY_SIZE)
+                ? OPERAND_SOURCES_ARRAY[fullOpcodeId]
+                : OPERAND_SOURCES.get(fullOpcodeId);
         if (sources == null) {
-            this.cachedOperands = resolved;
-            return resolved;
+            this.cachedOperands = List.of();
+            return this.cachedOperands;
         }
 
-        int[] currentIp = organism.getIpBeforeFetch();
+        List<Operand> resolved = new ArrayList<>(sources.size());
+        org.evochora.runtime.model.EnvironmentProperties props = environment.properties;
+        int dims = props.getDimensions();
+
+        // Setup flat-index tracking (DV is a unit vector: exactly one component is ±1)
+        int[] ipBefore = organism.getIpBeforeFetch();
+        int[] dvBefore = organism.getDvBeforeFetch();
+        int dim = 0;
+        int sign = 1;
+        for (int i = 0; i < dvBefore.length; i++) {
+            if (dvBefore[i] != 0) {
+                dim = i;
+                sign = dvBefore[i];
+                break;
+            }
+        }
+        int dimStride = props.getStride(dim);
+        int dimSize = props.getDimensionSize(dim);
+        boolean isToroidal = props.isToroidal();
+        int dimPos = ipBefore[dim];
+
+        int flatIp = 0;
+        for (int i = 0; i < ipBefore.length; i++) {
+            flatIp += ipBefore[i] * props.getStride(i);
+        }
+        int baseFlatIp = flatIp - dimPos * dimStride;
 
         // For STACK operands: use iterator to peek without popping
         Iterator<Object> stackIterator = organism.getDataStack().iterator();
 
         for (OperandSource source : sources) {
+            if (source == OperandSource.STACK) {
+                // PEEK via iterator - no side effects!
+                // The actual pop() happens in commitStackReads() during Execute phase
+                if (!stackIterator.hasNext()) {
+                    this.cachedOperands = new ArrayList<>();
+                    return this.cachedOperands;
+                }
+                resolved.add(new Operand(stackIterator.next(), -1));
+                this.stackPeekCount++;
+                continue;
+            }
+
+            // Advance one step along DV
+            dimPos += sign;
+            if (isToroidal) {
+                if (dimPos < 0) dimPos = dimSize - 1;
+                else if (dimPos >= dimSize) dimPos = 0;
+            }
+            int rawMol = (dimPos >= 0 && dimPos < dimSize)
+                    ? environment.getMoleculeInt(baseFlatIp + dimPos * dimStride)
+                    : 0;
+
             switch (source) {
-                case STACK:
-                    // PEEK via iterator - no side effects!
-                    // The actual pop() happens in commitStackReads() during Execute phase
-                    if (!stackIterator.hasNext()) {
-                        // Stack underflow - return empty list, instruction will handle error later
-                        this.cachedOperands = new ArrayList<>();
-                        return this.cachedOperands;
-                    }
-                    Object val = stackIterator.next();
-                    resolved.add(new Operand(val, -1));
-                    this.stackPeekCount++;
-                    break;
-                case REGISTER: {
-                    Organism.FetchResult arg = organism.fetchArgument(currentIp, environment);
-                    int regId = Molecule.fromInt(arg.value()).toScalarValue();
+                case REGISTER -> {
+                    int regId = extractSignedValue(rawMol);
                     resolved.add(new Operand(organism.readOperand(regId), regId));
-                    currentIp = arg.nextIp();
-                    break;
                 }
-                case IMMEDIATE: {
-                    Organism.FetchResult arg = organism.fetchArgument(currentIp, environment);
-                    resolved.add(new Operand(arg.value(), -1));
-                    currentIp = arg.nextIp();
-                    break;
+                case IMMEDIATE -> {
+                    resolved.add(new Operand(rawMol, -1));
                 }
-                case VECTOR: {
-                    int dims = environment.getShape().length;
+                case LOCATION_REGISTER -> {
+                    int regId = extractSignedValue(rawMol);
+                    resolved.add(new Operand(null, regId));
+                }
+                case VECTOR -> {
                     int[] vec = new int[dims];
-                    for(int i=0; i<dims; i++) {
-                        Organism.FetchResult res = organism.fetchSignedArgument(currentIp, environment);
-                        vec[i] = res.value();
-                        currentIp = res.nextIp();
+                    vec[0] = extractSignedValue(rawMol);
+                    for (int d = 1; d < dims; d++) {
+                        dimPos += sign;
+                        if (isToroidal) {
+                            if (dimPos < 0) dimPos = dimSize - 1;
+                            else if (dimPos >= dimSize) dimPos = 0;
+                        }
+                        rawMol = (dimPos >= 0 && dimPos < dimSize)
+                                ? environment.getMoleculeInt(baseFlatIp + dimPos * dimStride)
+                                : 0;
+                        vec[d] = extractSignedValue(rawMol);
                     }
                     resolved.add(new Operand(vec, -1));
-                    break;
                 }
-                case LABEL: {
-                    int dims = environment.getShape().length;
+                case LABEL -> {
                     int[] delta = new int[dims];
-                    for(int i=0; i<dims; i++) {
-                        Organism.FetchResult res = organism.fetchSignedArgument(currentIp, environment);
-                        delta[i] = res.value();
-                        currentIp = res.nextIp();
+                    delta[0] = extractSignedValue(rawMol);
+                    for (int d = 1; d < dims; d++) {
+                        dimPos += sign;
+                        if (isToroidal) {
+                            if (dimPos < 0) dimPos = dimSize - 1;
+                            else if (dimPos >= dimSize) dimPos = 0;
+                        }
+                        rawMol = (dimPos >= 0 && dimPos < dimSize)
+                                ? environment.getMoleculeInt(baseFlatIp + dimPos * dimStride)
+                                : 0;
+                        delta[d] = extractSignedValue(rawMol);
                     }
                     resolved.add(new Operand(delta, -1));
-                    break;
                 }
-                case LOCATION_REGISTER: {
-                    Organism.FetchResult arg = organism.fetchArgument(currentIp, environment);
-                    int regId = Molecule.fromInt(arg.value()).toScalarValue();
-                    // LOCATION_REGISTER operands use rawSourceId() directly (no readOperand)
-                    resolved.add(new Operand(null, regId)); // Value resolved in LocationInstruction
-                    currentIp = arg.nextIp();
-                    break;
-                }
+                default -> {}
             }
         }
         this.cachedOperands = resolved;
         return resolved;
+    }
+
+    /**
+     * Extracts the signed scalar value from a packed molecule integer.
+     * Equivalent to {@code Molecule.fromInt(moleculeInt).toScalarValue()}.
+     *
+     * @param moleculeInt The packed molecule integer.
+     * @return The sign-extended value component.
+     */
+    private static int extractSignedValue(int moleculeInt) {
+        int raw = moleculeInt & Config.VALUE_MASK;
+        if ((raw & (1 << (Config.VALUE_BITS - 1))) != 0) {
+            raw |= ~((1 << Config.VALUE_BITS) - 1);
+        }
+        return raw;
     }
 
     /**
@@ -304,17 +366,6 @@ public abstract class Instruction {
     public abstract void execute(ExecutionContext context, ProgramArtifact artifact);
 
     /**
-     * Gets the energy cost of executing this instruction.
-     * @param organism The organism executing the instruction.
-     * @param environment The environment.
-     * @param rawArguments The raw arguments of the instruction.
-     * @return The energy cost.
-     */
-    public int getCost(Organism organism, Environment environment, List<Integer> rawArguments) {
-        return 1;
-    }
-
-    /**
      * Initializes the instruction set by registering all instruction families.
      * Each instruction class is responsible for registering its own opcodes.
      */
@@ -330,6 +381,47 @@ public abstract class Instruction {
         StateInstruction.register(STATE);
         LocationInstruction.register(LOCATION);
         VectorInstruction.register(VECTOR);
+
+        buildArrayRegistries();
+    }
+
+    /**
+     * Populates array-based registries from the HashMaps for O(1) hot-path lookups.
+     * Called once at the end of {@link #init()}.
+     */
+    @SuppressWarnings("unchecked")
+    private static void buildArrayRegistries() {
+        PLANNERS_ARRAY = new BiFunction[REGISTRY_SIZE];
+        OPERAND_SOURCES_ARRAY = new List[REGISTRY_SIZE];
+        INSTRUCTION_LENGTHS_BASE = new int[REGISTRY_SIZE];
+        INSTRUCTION_LENGTHS_DIMS_MULTIPLIER = new int[REGISTRY_SIZE];
+
+        for (var entry : REGISTERED_PLANNERS_BY_ID.entrySet()) {
+            int id = entry.getKey();
+            if (id >= 0 && id < REGISTRY_SIZE) {
+                PLANNERS_ARRAY[id] = entry.getValue();
+            }
+        }
+
+        for (var entry : OPERAND_SOURCES.entrySet()) {
+            int id = entry.getKey();
+            if (id >= 0 && id < REGISTRY_SIZE) {
+                List<OperandSource> sources = entry.getValue();
+                OPERAND_SOURCES_ARRAY[id] = sources;
+
+                int base = 1;
+                int dimsMultiplier = 0;
+                for (OperandSource s : sources) {
+                    if (s == OperandSource.VECTOR) {
+                        dimsMultiplier++;
+                    } else if (s != OperandSource.STACK) {
+                        base++;
+                    }
+                }
+                INSTRUCTION_LENGTHS_BASE[id] = base;
+                INSTRUCTION_LENGTHS_DIMS_MULTIPLIER[id] = dimsMultiplier;
+            }
+        }
     }
 
     // ========== Registration API for Instruction Subclasses ==========
@@ -443,7 +535,15 @@ public abstract class Instruction {
      * @param env The environment (required for dimension-dependent length calculation).
      * @return The length of the instruction in memory slots.
      */
-    public int getLength(Environment env) { return getInstructionLengthById(this.fullOpcodeId, env); }
+    /** Cached instruction length (-1 = not yet computed). */
+    private int cachedLength = -1;
+
+    public int getLength(Environment env) {
+        if (cachedLength == -1) {
+            cachedLength = getInstructionLengthById(this.fullOpcodeId, env);
+        }
+        return cachedLength;
+    }
 
     /**
      * Gets the organism executing this instruction.
@@ -492,21 +592,11 @@ public abstract class Instruction {
      * @return The length of the instruction.
      */
     public static int getInstructionLengthById(int id, Environment env) {
-        List<OperandSource> sources = OPERAND_SOURCES.get(id);
-        if (sources == null) return 1;
-        int length = 1;
-        int dims = env.getShape().length;
-        for (OperandSource s : sources) {
-            if (s == OperandSource.REGISTER || s == OperandSource.IMMEDIATE || s == OperandSource.LOCATION_REGISTER || s == OperandSource.STACK || s == OperandSource.LABEL) {
-                // For STACK we assume no encoded operand in code
-                // LOCATION_REGISTER is encoded like REGISTER (one slot)
-                // LABEL is a scalar hash value (one slot), not a vector
-                if (s != OperandSource.STACK) length++;
-            } else if (s == OperandSource.VECTOR) {
-                length += dims;
-            }
+        if (id >= 0 && id < REGISTRY_SIZE && INSTRUCTION_LENGTHS_BASE[id] > 0) {
+            return INSTRUCTION_LENGTHS_BASE[id]
+                 + INSTRUCTION_LENGTHS_DIMS_MULTIPLIER[id] * env.properties.getDimensions();
         }
-        return length;
+        return 1;
     }
 
     /**
@@ -536,7 +626,12 @@ public abstract class Instruction {
      * @param id The instruction ID.
      * @return The planner function.
      */
-    public static BiFunction<Organism, Environment, Instruction> getPlannerById(int id) { return REGISTERED_PLANNERS_BY_ID.get(id); }
+    public static BiFunction<Organism, Environment, Instruction> getPlannerById(int id) {
+        if (id >= 0 && id < REGISTRY_SIZE) {
+            return PLANNERS_ARRAY[id];
+        }
+        return null;
+    }
 
     /**
      * Gets the signature of an instruction by its ID.

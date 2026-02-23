@@ -213,9 +213,7 @@ tasks.withType<Tar> {
 }
 
 tasks.test {
-    useJUnitPlatform {
-        excludeTags("benchmark") // Exclude benchmark tests from regular test runs
-    }
+    useJUnitPlatform()
     maxHeapSize = "2g" // Increase heap size for tests
     jvmArgs("-Duser.language=en", "-Duser.country=US")
     jvmArgs("-XX:+EnableDynamicAgentLoading")
@@ -272,28 +270,6 @@ tasks.register<Test>("integration") {
         showCauses = true
         showStackTraces = true
     }
-    // Explicitly configure classpath and test classes for Gradle 9 compatibility
-    classpath = sourceSets.test.get().runtimeClasspath
-    testClassesDirs = sourceSets.test.get().output.classesDirs
-}
-
-// Benchmark Tests - Performance tests, run only when explicitly requested
-tasks.register<Test>("benchmark") {
-    group = "verification"
-    description = "Run benchmark tests for performance measurement"
-    useJUnitPlatform {
-        includeTags("benchmark")
-    }
-    maxParallelForks = 1 // Benchmarks should run sequentially for accurate measurements
-    jvmArgs("-Duser.language=en", "-Duser.country=US", "-Xmx2g") // Increased heap size for benchmarks
-    jvmArgs("-Xshare:off")
-    testLogging {
-        events("passed", "skipped", "failed")
-        showStandardStreams = true
-    }
-    // Disable test caching to ensure benchmarks always run
-    outputs.upToDateWhen { false }
-    // Benchmarks are excluded from regular test runs and CI/CD
     // Explicitly configure classpath and test classes for Gradle 9 compatibility
     classpath = sourceSets.test.get().runtimeClasspath
     testClassesDirs = sourceSets.test.get().output.classesDirs

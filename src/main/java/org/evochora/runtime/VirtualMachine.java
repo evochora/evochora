@@ -91,7 +91,7 @@ public class VirtualMachine {
 
         try {
             // Logic moved from Organism.processTickAction() here
-            java.util.List<Integer> rawArgs = organism.getRawArgumentsFromEnvironment(instruction.getLength(this.environment), this.environment);
+            int[] rawArgs = organism.getRawArgumentsFromEnvironment(instruction.getLength(this.environment), this.environment);
 
             // Collect register values BEFORE execution (for annotation display)
             Map<Integer, Object> registerValuesBefore = collectRegisterValues(organism, instruction.getFullOpcodeId(), rawArgs);
@@ -233,7 +233,7 @@ public class VirtualMachine {
         }
 
         int length = Instruction.getInstructionLengthById(opcodeId, this.environment);
-        java.util.List<Integer> rawArgs = organism.getRawArgumentsFromEnvironment(
+        int[] rawArgs = organism.getRawArgumentsFromEnvironment(
                 length, this.environment, organism.getIp(), organism.getDv());
         Map<Integer, Object> registerValues = collectRegisterValues(organism, opcodeId, rawArgs);
 
@@ -250,7 +250,7 @@ public class VirtualMachine {
      * @param rawArgs  The raw argument values from the environment.
      * @return A map from register ID to register value for all register arguments.
      */
-    private Map<Integer, Object> collectRegisterValues(Organism organism, int opcodeId, java.util.List<Integer> rawArgs) {
+    private Map<Integer, Object> collectRegisterValues(Organism organism, int opcodeId, int[] rawArgs) {
         Map<Integer, Object> registerValues = new HashMap<>();
         Optional<InstructionSignature> signatureOpt = Instruction.getSignatureById(opcodeId);
         if (signatureOpt.isEmpty()) {
@@ -263,8 +263,8 @@ public class VirtualMachine {
 
         for (InstructionArgumentType argType : argTypes) {
             if (argType == InstructionArgumentType.REGISTER) {
-                if (argIndex < rawArgs.size()) {
-                    int rawArg = rawArgs.get(argIndex);
+                if (argIndex < rawArgs.length) {
+                    int rawArg = rawArgs[argIndex];
                     Molecule molecule = Molecule.fromInt(rawArg);
                     int registerId = molecule.toScalarValue();
 
@@ -278,8 +278,8 @@ public class VirtualMachine {
                     argIndex++;
                 }
             } else if (argType == InstructionArgumentType.LOCATION_REGISTER) {
-                if (argIndex < rawArgs.size()) {
-                    int rawArg = rawArgs.get(argIndex);
+                if (argIndex < rawArgs.length) {
+                    int rawArg = rawArgs[argIndex];
                     Molecule molecule = Molecule.fromInt(rawArg);
                     int registerId = molecule.toScalarValue();
 
@@ -292,7 +292,7 @@ public class VirtualMachine {
                             registerValues.put(registerId, lrValue);
                         } else {
                             // LR is null - store empty vector with correct dimensions
-                            int dims = this.environment.getShape().length;
+                            int dims = this.environment.properties.getDimensions();
                             registerValues.put(registerId, new int[dims]);
                         }
                     }
@@ -303,7 +303,7 @@ public class VirtualMachine {
                        argType == InstructionArgumentType.LABEL) {
                 // VECTOR/LABEL are encoded as multiple arguments in rawArgs (one per dimension)
                 // Skip over all dimension slots to maintain correct argIndex for subsequent arguments
-                int dims = this.environment.getShape().length;
+                int dims = this.environment.properties.getDimensions();
                 argIndex += dims;
             } else {
                 // IMMEDIATE, LITERAL - no register arguments

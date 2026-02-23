@@ -83,18 +83,6 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
         }
     }
 
-    @Override
-    public int getCost(Organism organism, Environment environment, java.util.List<Integer> rawArguments) {
-        // Base cost 1 for env interactions only if the instruction will actually execute (winner or no conflict)
-        if (getConflictStatus() == ConflictResolutionStatus.LOST_TARGET_OCCUPIED
-                || getConflictStatus() == ConflictResolutionStatus.LOST_TARGET_EMPTY
-                || getConflictStatus() == ConflictResolutionStatus.LOST_OTHER_REASON
-                || getConflictStatus() == ConflictResolutionStatus.LOST_LOWER_ID_WON) {
-            return 0;
-        }
-        return 1;
-    }
-
     private void handlePoke(ExecutionContext context) {
         Organism organism = context.getOrganism();
         Environment environment = context.getWorld();

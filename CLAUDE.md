@@ -15,10 +15,9 @@ Evochora is an artificial life simulator for research into digital evolution. It
 
 ```bash
 ./gradlew build              # Full build with tests
-./gradlew test               # All tests (excludes benchmarks)
+./gradlew test               # All tests
 ./gradlew unit               # Fast unit tests only (@Tag("unit"))
 ./gradlew integration        # Integration tests only (@Tag("integration"))
-./gradlew benchmark          # Performance benchmarks (@Tag("benchmark"))
 ./gradlew run --args="node run"  # Run simulation node
 ./gradlew run --args="--help"    # Show CLI help
 ./gradlew distZip distTar    # Create distribution archives
@@ -69,7 +68,6 @@ Evochora is an artificial life simulator for research into digital evolution. It
 **Test Tags:**
 - `@Tag("unit")` - <0.2s, no I/O
 - `@Tag("integration")` - <1s, may use I/O
-- `@Tag("benchmark")` - Performance tests, excluded from regular runs
 
 **LogWatchExtension:** Automatically fails tests on WARN/ERROR logs. Use `@ExpectLog(level=WARN, messagePattern="...")` only for logs you explicitly provoke.
 
