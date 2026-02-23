@@ -4,6 +4,7 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.concurrent.TimeUnit;
 
 import org.evochora.compiler.Compiler;
@@ -55,15 +56,16 @@ public class SimulationBenchmark {
     private static final int MAX_ENERGY = 32767;
 
     /**
-     * Thermodynamic configuration matching production defaults.
-     * Inline to isolate benchmarks from evochora.conf changes.
+     * Thermodynamic configuration with zero costs to prevent organism death
+     * during measurement. Isolates pure instruction-execution throughput from
+     * energy/entropy bookkeeping.
      */
     private static final String THERMODYNAMIC_CONFIG = """
             default {
               className = "org.evochora.runtime.thermodynamics.impl.UniversalThermodynamicPolicy"
               options {
-                base-energy = 1
-                base-entropy = 1
+                base-energy = 0
+                base-entropy = 0
               }
             }
             overrides {
@@ -75,14 +77,14 @@ public class SimulationBenchmark {
                     base-entropy = 0
                     read-rules {
                       own:       { _default: { energy = 0, entropy = 0 }, ENERGY: { energy = 0, entropy = 0 }, STRUCTURE: { energy = 0, entropy = 0 }, CODE: { energy = 0, entropy = 0 }, DATA: { energy = 0, entropy = 0 } }
-                      foreign:   { _default: { energy = 5, entropy = 5 }, ENERGY: { energy-permille = -1000, entropy = 0 }, STRUCTURE: { energy-permille = 1000, entropy-permille = 1000 }, CODE: { energy = 5, entropy = 5 }, DATA: { energy = 5, entropy = 5 } }
-                      unowned:   { _default: { energy = 0, entropy = 0 }, ENERGY: { energy-permille = -1000, entropy = 0 }, STRUCTURE: { energy = 0, entropy = 0 }, CODE: { energy = 0, entropy = 0 }, DATA: { energy = 0, entropy = 0 } }
+                      foreign:   { _default: { energy = 0, entropy = 0 }, ENERGY: { energy = 0, entropy = 0 }, STRUCTURE: { energy = 0, entropy = 0 }, CODE: { energy = 0, entropy = 0 }, DATA: { energy = 0, entropy = 0 } }
+                      unowned:   { _default: { energy = 0, entropy = 0 }, ENERGY: { energy = 0, entropy = 0 }, STRUCTURE: { energy = 0, entropy = 0 }, CODE: { energy = 0, entropy = 0 }, DATA: { energy = 0, entropy = 0 } }
                     }
                     write-rules {
-                      ENERGY    { energy-permille = 1000, entropy-permille = 1000 }
-                      STRUCTURE { energy-permille = 1000, entropy-permille = 1000 }
-                      CODE      { energy = 6, entropy-permille = -1000 }
-                      DATA      { energy = 6, entropy-permille = -1000 }
+                      ENERGY    { energy = 0, entropy = 0 }
+                      STRUCTURE { energy = 0, entropy = 0 }
+                      CODE      { energy = 0, entropy = 0 }
+                      DATA      { energy = 0, entropy = 0 }
                     }
                   }
                 }
@@ -110,7 +112,7 @@ public class SimulationBenchmark {
     );
 
     /** Parallelism level for the simulation's Plan and Execute phases. */
-    @Param({"1", "2", "4", "8"})
+    @Param({"1", "4", "8"})
     private int parallelism;
 
     /** Assembly program to execute. */
@@ -188,7 +190,9 @@ public class SimulationBenchmark {
 
     /**
      * Places multiple copies of a compiled program into the environment and
-     * creates one organism per copy.
+     * creates one organism per copy. Each organism gets ownership of its
+     * molecules and unique label hashes (XOR-rewritten like LabelRewritePlugin
+     * does on FORK in production) to avoid O(n²) label resolution.
      */
     private void placeOrganisms(Environment env, ProgramArtifact artifact) {
         Map<int[], Integer> layout = artifact.machineCodeLayout();
@@ -200,11 +204,19 @@ public class SimulationBenchmark {
         int spacing = maxExtent + 5;
         int organismsPerRow = ENV_SIZE / spacing;
 
+        Random random = new Random(42);
+
         for (int i = 0; i < organismCount; i++) {
             int col = i % organismsPerRow;
             int row = i / organismsPerRow;
             int offsetX = col * spacing;
             int offsetY = row * spacing;
+
+            int[] startIp = new int[]{offsetX, offsetY};
+            Organism organism = Organism.create(simulation, startIp, MAX_ENERGY,
+                    LoggerFactory.getLogger(SimulationBenchmark.class));
+
+            int labelMask = random.nextInt(0x7FFFF) + 1;
 
             for (Map.Entry<int[], Integer> entry : layout.entrySet()) {
                 int[] coord = entry.getKey();
@@ -212,13 +224,23 @@ public class SimulationBenchmark {
                         (coord[0] + offsetX) % ENV_SIZE,
                         (coord.length > 1 ? coord[1] + offsetY : offsetY) % ENV_SIZE
                 };
-                env.setMolecule(Molecule.fromInt(entry.getValue()), placed);
+                int moleculeInt = entry.getValue();
+                Molecule mol = Molecule.fromInt(moleculeInt);
+                int type = moleculeInt & org.evochora.runtime.Config.TYPE_MASK;
+
+                if (type == org.evochora.runtime.Config.TYPE_LABEL
+                        || type == org.evochora.runtime.Config.TYPE_LABELREF) {
+                    int oldValue = moleculeInt & org.evochora.runtime.Config.VALUE_MASK;
+                    int newValue = oldValue ^ labelMask;
+                    int marker = (moleculeInt & org.evochora.runtime.Config.MARKER_MASK)
+                            >>> org.evochora.runtime.Config.MARKER_SHIFT;
+                    mol = new Molecule(type, newValue, marker);
+                }
+
+                env.setMolecule(mol, organism.getId(), placed);
             }
 
-            int[] startIp = new int[]{offsetX, offsetY};
-            Organism org = Organism.create(simulation, startIp, MAX_ENERGY,
-                    LoggerFactory.getLogger(SimulationBenchmark.class));
-            simulation.addOrganism(org);
+            simulation.addOrganism(organism);
         }
     }
 }
