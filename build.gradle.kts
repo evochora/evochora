@@ -16,6 +16,7 @@ plugins {
     jacoco
     `java-test-fixtures`
     id("com.google.protobuf") version "0.9.6"
+    id("me.champeau.jmh") version "0.7.3"
 }
 
 group = "org.evochora"
@@ -293,4 +294,11 @@ protobuf {
     protoc {
         artifact = "com.google.protobuf:protoc:4.33.0"
     }
+}
+
+jmh {
+    warmupIterations.set(3)
+    iterations.set(5)
+    fork.set(2)
+    jvmArgs.set(listOf("-Xmx4g"))
 }
