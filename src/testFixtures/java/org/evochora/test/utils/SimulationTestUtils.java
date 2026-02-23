@@ -126,6 +126,6 @@ public class SimulationTestUtils {
         Config thermoConfig = ConfigFactory.parseString(THERMODYNAMIC_CONFIG);
         ThermodynamicPolicyManager policyManager = new ThermodynamicPolicyManager(thermoConfig);
 
-        return new Simulation(environment, policyManager, organismConfig);
+        return new Simulation(environment, policyManager, organismConfig, 1);
     }
 }

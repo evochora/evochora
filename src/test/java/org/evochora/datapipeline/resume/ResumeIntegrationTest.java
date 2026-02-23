@@ -106,7 +106,7 @@ class ResumeIntegrationTest {
 
         // Restore simulation
         IRandomProvider randomProvider = new SeededRandomProvider(TEST_SEED);
-        SimulationRestorer.RestoredState resumeState = SimulationRestorer.restore(checkpoint, randomProvider);
+        SimulationRestorer.RestoredState resumeState = SimulationRestorer.restore(checkpoint, randomProvider, 1);
 
         assertThat(resumeState.simulation()).isNotNull();
         assertThat(resumeState.runId()).isEqualTo(TEST_RUN_ID);
@@ -181,7 +181,7 @@ class ResumeIntegrationTest {
         ResumeCheckpoint checkpoint = loader.loadLatestCheckpoint(TEST_RUN_ID);
 
         IRandomProvider randomProvider = new SeededRandomProvider(TEST_SEED);
-        SimulationRestorer.RestoredState resumeState = SimulationRestorer.restore(checkpoint, randomProvider);
+        SimulationRestorer.RestoredState resumeState = SimulationRestorer.restore(checkpoint, randomProvider, 1);
 
         // Verify organisms are restored
         assertThat(resumeState.simulation().getOrganisms()).isNotEmpty();

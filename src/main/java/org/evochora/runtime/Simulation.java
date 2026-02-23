@@ -6,7 +6,9 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ForkJoinPool;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.isa.IEnvironmentModifyingInstruction;
@@ -53,6 +55,8 @@ public class Simulation {
     private final List<IBirthHandler> birthHandlers = new ArrayList<>();
     private final InterceptionContext interceptContext = new InterceptionContext();  // Reusable, zero allocation
     private final DeathContext deathContext = new DeathContext();  // Reusable, zero allocation
+    private final ForkJoinPool planPool;
+    private final int effectiveParallelism;
     private int nextOrganismId = 1;
     private final LongOpenHashSet allGenomesEverSeen = new LongOpenHashSet();
     private IRandomProvider randomProvider;
@@ -77,16 +81,24 @@ public class Simulation {
 
     /**
      * Constructs a new Simulation instance.
+     *
      * @param environment The simulation environment.
      * @param policyManager The manager for thermodynamic policies.
      * @param organismConfig Configuration for organisms (energy limits, etc.).
+     * @param parallelism ForkJoinPool parallelism for the Plan phase.
+     *                    0 = auto ({@code max(1, availableProcessors - 2)}),
+     *                    1 = single-threaded (sequential code path, useful for debugging),
+     *                    N &gt; 1 = exactly N worker threads.
+     *                    Determinism is guaranteed in every mode.
      */
-    public Simulation(Environment environment, ThermodynamicPolicyManager policyManager, Config organismConfig) {
+    public Simulation(Environment environment, ThermodynamicPolicyManager policyManager, Config organismConfig, int parallelism) {
         this.environment = environment;
         this.policyManager = policyManager;
         this.organismConfig = organismConfig;
         this.organisms = new ArrayList<>();
         this.vm = new VirtualMachine(this);
+        this.effectiveParallelism = resolveParallelism(parallelism);
+        this.planPool = (effectiveParallelism > 1) ? new ForkJoinPool(effectiveParallelism) : null;
     }
 
     /**
@@ -106,6 +118,7 @@ public class Simulation {
      *                           May be {@code null} or empty for new simulations or old checkpoints.
      * @param policyManager Thermodynamic policy manager (from Metadata config)
      * @param organismConfig Organism configuration (from Metadata config)
+     * @param parallelism ForkJoinPool parallelism for the Plan phase (see constructor for semantics)
      * @return Simulation ready for organism addition and resumption
      */
     public static Simulation forResume(
@@ -114,9 +127,10 @@ public class Simulation {
             long totalOrganismsCreated,
             LongOpenHashSet allGenomesEverSeen,
             ThermodynamicPolicyManager policyManager,
-            Config organismConfig) {
+            Config organismConfig,
+            int parallelism) {
 
-        Simulation sim = new Simulation(environment, policyManager, organismConfig);
+        Simulation sim = new Simulation(environment, policyManager, organismConfig, parallelism);
         sim.currentTick = currentTick;
         sim.nextOrganismId = (int) totalOrganismsCreated + 1;
         if (allGenomesEverSeen != null && !allGenomesEverSeen.isEmpty()) {
@@ -306,33 +320,11 @@ public class Simulation {
 
         // PHASE 1: Plan - each organism plans their next instruction
         // Operands are resolved in vm.plan() for conflict resolution and interception
-        List<Instruction> plannedInstructions = new ArrayList<>();
-        for (Organism organism : this.organisms) {
-            if (organism.isDead()) continue;
-
-            Instruction instruction = vm.plan(organism);
-
-            // INSTRUCTION INCEPTION: Allow interceptors to inspect/modify planned instruction
-            // Early-exit when no interceptors registered (zero overhead in common case)
-            if (!instructionInterceptors.isEmpty()) {
-                interceptContext.reset(organism, instruction);
-
-                for (IInstructionInterceptor interceptor : instructionInterceptors) {
-                    try {
-                        interceptor.intercept(interceptContext);
-                    } catch (Exception e) {
-                        LOG.warn("Interceptor '{}' failed for organism {} at tick {}: {}",
-                                interceptor.getClass().getSimpleName(), organism.getId(), currentTick, e.getMessage());
-                    }
-                }
-
-                // Instruction may have been replaced by interceptor
-                instruction = interceptContext.getInstruction();
-            }
-
-            instruction.setExecutedInTick(false);
-            instruction.setConflictStatus(Instruction.ConflictResolutionStatus.NOT_APPLICABLE);
-            plannedInstructions.add(instruction);
+        List<Instruction> plannedInstructions;
+        if (planPool != null && organisms.size() > 1) {
+            plannedInstructions = planParallel();
+        } else {
+            plannedInstructions = planSequential();
         }
 
         resolveConflicts(plannedInstructions);
@@ -411,6 +403,129 @@ public class Simulation {
 
         this.organisms.addAll(newOrganismsThisTick);
         this.currentTick++;
+    }
+
+    /**
+     * Plans instructions sequentially on the calling thread.
+     * <p>
+     * Reuses the single {@link #interceptContext} field (zero allocation).
+     * Used when {@code parallelism <= 1} or when there is only one organism.
+     *
+     * @return List of planned instructions for all living organisms
+     */
+    private List<Instruction> planSequential() {
+        List<Instruction> plannedInstructions = new ArrayList<>();
+        for (Organism organism : this.organisms) {
+            if (organism.isDead()) continue;
+
+            Instruction instruction = vm.plan(organism);
+
+            if (!instructionInterceptors.isEmpty()) {
+                interceptContext.reset(organism, instruction);
+
+                for (IInstructionInterceptor interceptor : instructionInterceptors) {
+                    try {
+                        interceptor.intercept(interceptContext);
+                    } catch (Exception e) {
+                        LOG.warn("Interceptor '{}' failed for organism {} at tick {}: {}",
+                                interceptor.getClass().getSimpleName(), organism.getId(), currentTick, e.getMessage());
+                    }
+                }
+
+                instruction = interceptContext.getInstruction();
+            }
+
+            instruction.setExecutedInTick(false);
+            instruction.setConflictStatus(Instruction.ConflictResolutionStatus.NOT_APPLICABLE);
+            plannedInstructions.add(instruction);
+        }
+        return plannedInstructions;
+    }
+
+    /**
+     * Plans instructions in parallel using the {@link #planPool}.
+     * <p>
+     * Each organism writes to a pre-allocated slot in a result array indexed by its
+     * position in the {@link #organisms} list, guaranteeing deterministic output order
+     * regardless of thread scheduling. Each worker allocates its own
+     * {@link InterceptionContext} to avoid shared mutable state.
+     *
+     * @return List of planned instructions for all living organisms
+     */
+    private List<Instruction> planParallel() {
+        int size = organisms.size();
+        Instruction[] results = new Instruction[size];
+
+        planPool.submit(() ->
+            IntStream.range(0, size).parallel().forEach(i -> {
+                Organism organism = organisms.get(i);
+                if (organism.isDead()) {
+                    return;
+                }
+
+                Instruction instruction = vm.plan(organism);
+
+                if (!instructionInterceptors.isEmpty()) {
+                    InterceptionContext ctx = new InterceptionContext();
+                    ctx.reset(organism, instruction);
+                    for (IInstructionInterceptor interceptor : instructionInterceptors) {
+                        try {
+                            interceptor.intercept(ctx);
+                        } catch (Exception e) {
+                            LOG.warn("Interceptor '{}' failed for organism {} at tick {}: {}",
+                                    interceptor.getClass().getSimpleName(), organism.getId(), currentTick, e.getMessage());
+                        }
+                    }
+                    instruction = ctx.getInstruction();
+                }
+
+                instruction.setExecutedInTick(false);
+                instruction.setConflictStatus(Instruction.ConflictResolutionStatus.NOT_APPLICABLE);
+                results[i] = instruction;
+            })
+        ).join();
+
+        List<Instruction> planned = new ArrayList<>(size);
+        for (Instruction instr : results) {
+            if (instr != null) {
+                planned.add(instr);
+            }
+        }
+        return planned;
+    }
+
+    /**
+     * Resolves the configured parallelism value to an effective thread count.
+     *
+     * @param configured The configured value (0 = auto, 1 = sequential, N = explicit)
+     * @return The effective parallelism (always &gt;= 1)
+     */
+    private static int resolveParallelism(int configured) {
+        if (configured == 0) {
+            return Math.max(1, Runtime.getRuntime().availableProcessors() - 2);
+        }
+        return configured;
+    }
+
+    /**
+     * Shuts down the ForkJoinPool used for parallel planning.
+     * <p>
+     * Must be called when the simulation is no longer needed to release thread resources.
+     * Safe to call multiple times or when no pool was created (parallelism &lt;= 1).
+     */
+    public void shutdown() {
+        if (planPool != null) {
+            planPool.shutdown();
+        }
+    }
+
+    /**
+     * Returns the effective parallelism level for the Plan phase.
+     *
+     * @return The number of worker threads (1 = sequential, &gt; 1 = parallel)
+     */
+    public int getEffectiveParallelism() {
+        return effectiveParallelism;
     }
 
     /**

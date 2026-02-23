@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 import com.typesafe.config.ConfigFactory;
 
 /**
- * Unit tests for {@link Simulation#forResume(Environment, long, long, LongOpenHashSet, ThermodynamicPolicyManager, com.typesafe.config.Config)}.
+ * Unit tests for {@link Simulation#forResume(Environment, long, long, LongOpenHashSet, ThermodynamicPolicyManager, com.typesafe.config.Config, int)}.
  * <p>
  * Tests the factory method used for resuming simulations from checkpoints.
  */
@@ -71,7 +71,8 @@ class SimulationResumeTest {
             100L,       // totalOrganismsCreated
             new LongOpenHashSet(),
             policyManager,
-            organismConfig
+            organismConfig,
+            1
         );
 
         assertThat(sim.getCurrentTick()).isEqualTo(5000L);
@@ -86,7 +87,8 @@ class SimulationResumeTest {
             50L,        // totalOrganismsCreated
             new LongOpenHashSet(),
             policyManager,
-            organismConfig
+            organismConfig,
+            1
         );
 
         // Next organism ID should be totalOrganismsCreated + 1
@@ -107,7 +109,8 @@ class SimulationResumeTest {
             0L,
             new LongOpenHashSet(),
             policyManager,
-            organismConfig
+            organismConfig,
+            1
         );
 
         assertThat(sim.getEnvironment()).isSameAs(environment);
@@ -122,7 +125,8 @@ class SimulationResumeTest {
             0L,
             new LongOpenHashSet(),
             policyManager,
-            organismConfig
+            organismConfig,
+            1
         );
 
         assertThat(sim.getPolicyManager()).isSameAs(policyManager);
@@ -137,7 +141,8 @@ class SimulationResumeTest {
             0L,
             new LongOpenHashSet(),
             policyManager,
-            organismConfig
+            organismConfig,
+            1
         );
 
         assertThat(sim.getOrganismConfig()).isSameAs(organismConfig);
@@ -152,7 +157,8 @@ class SimulationResumeTest {
             50L,
             new LongOpenHashSet(),
             policyManager,
-            organismConfig
+            organismConfig,
+            1
         );
 
         assertThat(sim.getOrganisms()).isEmpty();
@@ -167,7 +173,8 @@ class SimulationResumeTest {
             50L,
             new LongOpenHashSet(),
             policyManager,
-            organismConfig
+            organismConfig,
+            1
         );
 
         assertThat(sim.getTickPlugins()).isEmpty();
@@ -184,7 +191,8 @@ class SimulationResumeTest {
             50L,
             new LongOpenHashSet(),
             policyManager,
-            organismConfig
+            organismConfig,
+            1
         );
 
         // Use RestoreBuilder to create an organism
@@ -210,7 +218,8 @@ class SimulationResumeTest {
             50L,  // 50 organisms were created in original run
             new LongOpenHashSet(),
             policyManager,
-            organismConfig
+            organismConfig,
+            1
         );
 
         // Create a new organism using normal factory (as if born after resume)
@@ -229,7 +238,8 @@ class SimulationResumeTest {
             100L,
             new LongOpenHashSet(),
             policyManager,
-            organismConfig
+            organismConfig,
+            1
         );
 
         // Before creating any new organisms, count should be 100
@@ -251,7 +261,8 @@ class SimulationResumeTest {
             0L,  // No organisms created yet
             new LongOpenHashSet(),
             policyManager,
-            organismConfig
+            organismConfig,
+            1
         );
 
         // First organism should get ID 1
@@ -268,7 +279,8 @@ class SimulationResumeTest {
             1_000_000L,      // 1 million organisms
             new LongOpenHashSet(),
             policyManager,
-            organismConfig
+            organismConfig,
+            1
         );
 
         assertThat(sim.getCurrentTick()).isEqualTo(1_000_000_000L);
@@ -289,7 +301,8 @@ class SimulationResumeTest {
             50L,
             genomeHashes,
             policyManager,
-            organismConfig
+            organismConfig,
+            1
         );
 
         assertThat(sim.getTotalUniqueGenomesCount()).isEqualTo(3);
@@ -305,7 +318,8 @@ class SimulationResumeTest {
             50L,
             null,
             policyManager,
-            organismConfig
+            organismConfig,
+            1
         );
 
         assertThat(sim.getTotalUniqueGenomesCount()).isEqualTo(0);

@@ -77,7 +77,7 @@ class GeneInsertionPluginTest {
                 "error-penalty-cost", 10
         ));
 
-        simulation = new Simulation(environment, policyManager, organismConfig);
+        simulation = new Simulation(environment, policyManager, organismConfig, 1);
 
         Organism parent = Organism.create(simulation, new int[]{0, 0}, 10000, null);
         simulation.addOrganism(parent);
