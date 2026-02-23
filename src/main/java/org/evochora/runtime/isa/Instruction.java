@@ -25,7 +25,6 @@ import org.evochora.runtime.isa.instructions.StackInstruction;
 import org.evochora.runtime.isa.instructions.StateInstruction;
 import org.evochora.runtime.isa.instructions.VectorInstruction;
 import org.evochora.runtime.model.Environment;
-import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 
 import static org.evochora.runtime.isa.Family.*;
@@ -82,6 +81,7 @@ public abstract class Instruction {
     private static final Map<Integer, InstructionFactory> REGISTERED_PLANNERS_BY_ID = new HashMap<>();
     protected static final Map<Integer, List<OperandSource>> OPERAND_SOURCES = new HashMap<>();
     private static final Map<Integer, InstructionSignature> SIGNATURES_BY_ID = new HashMap<>();
+    private static final Map<Integer, Boolean> PARALLEL_EXECUTE_SAFE_MAP = new HashMap<>();
 
     // Array-based registries for O(1) hot-path lookups (populated from HashMaps during init())
     // Opcode range: Family 0-9, max opcode = 9*4096 + 63*64 + 63 = 40959
@@ -91,6 +91,7 @@ public abstract class Instruction {
     private static List<OperandSource>[] OPERAND_SOURCES_ARRAY = new List[0];
     private static int[] INSTRUCTION_LENGTHS_BASE = new int[0];
     private static int[] INSTRUCTION_LENGTHS_DIMS_MULTIPLIER = new int[0];
+    private static boolean[] PARALLEL_EXECUTE_SAFE = new boolean[0];
 
     /**
      * Returns a list of public information records for all registered instructions.
@@ -435,12 +436,44 @@ public abstract class Instruction {
                 INSTRUCTION_LENGTHS_DIMS_MULTIPLIER[id] = dimsMultiplier;
             }
         }
+
+        PARALLEL_EXECUTE_SAFE = new boolean[REGISTRY_SIZE];
+        java.util.Arrays.fill(PARALLEL_EXECUTE_SAFE, true);
+        for (var entry : PARALLEL_EXECUTE_SAFE_MAP.entrySet()) {
+            int id = entry.getKey();
+            if (id >= 0 && id < REGISTRY_SIZE) {
+                PARALLEL_EXECUTE_SAFE[id] = entry.getValue();
+            }
+        }
     }
 
     // ========== Registration API for Instruction Subclasses ==========
 
     /**
+     * Registers an instruction opcode with explicit parallel-execute safety.
+     * Instructions marked as unsafe will be executed sequentially in wave 2 of the execute phase.
+     *
+     * @param familyClass the instruction class (e.g., ArithmeticInstruction.class)
+     * @param factory the factory for creating instruction instances (e.g., {@code ArithmeticInstruction::new})
+     * @param family the family ID from {@link Family}
+     * @param operation the operation number within the family
+     * @param variant the variant from {@link Variant}
+     * @param name the instruction mnemonic (e.g., "ADDR")
+     * @param parallelExecuteSafe whether this instruction can safely execute in parallel (no shared environment writes)
+     * @param sources the operand sources for this instruction
+     */
+    protected static void registerOp(Class<? extends Instruction> familyClass, InstructionFactory factory,
+                                     int family, int operation,
+                                     int variant, String name,
+                                     boolean parallelExecuteSafe, OperandSource... sources) {
+        int fullId = OpcodeId.compute(family, operation, variant) | Config.TYPE_CODE;
+        PARALLEL_EXECUTE_SAFE_MAP.put(fullId, parallelExecuteSafe);
+        registerOp(familyClass, factory, family, operation, variant, name, sources);
+    }
+
+    /**
      * Registers an instruction opcode. Called by instruction subclasses in their register() method.
+     * Defaults to parallel-execute safe ({@code true}) unless overridden by the explicit overload.
      *
      * @param familyClass the instruction class (e.g., ArithmeticInstruction.class)
      * @param factory the factory for creating instruction instances (e.g., {@code ArithmeticInstruction::new})
@@ -454,6 +487,8 @@ public abstract class Instruction {
                                      int family, int operation,
                                      int variant, String name, OperandSource... sources) {
         int opcodeId = OpcodeId.compute(family, operation, variant);
+        int fullId = opcodeId | Config.TYPE_CODE;
+        PARALLEL_EXECUTE_SAFE_MAP.putIfAbsent(fullId, true);
         registerFamily(familyClass, factory, java.util.Map.of(opcodeId, name), java.util.List.of(sources));
     }
 
@@ -638,6 +673,20 @@ public abstract class Instruction {
      */
     public static Optional<InstructionSignature> getSignatureById(int id) { return Optional.ofNullable(SIGNATURES_BY_ID.get(id)); }
 
+    /**
+     * Returns whether the instruction with the given opcode can safely execute in parallel.
+     * <p>
+     * Instructions that only modify organism-local state and perform read-only environment
+     * access are parallel-safe. Instructions that write to shared environment structures
+     * (PEEK/POKE/PPK, FORK, CMR) are not.
+     *
+     * @param fullOpcodeId The full opcode ID (including TYPE_CODE bits).
+     * @return {@code true} if the instruction is safe for parallel execution, {@code false} otherwise.
+     */
+    public static boolean isParallelExecuteSafe(int fullOpcodeId) {
+        return fullOpcodeId >= 0 && fullOpcodeId < PARALLEL_EXECUTE_SAFE.length
+                && PARALLEL_EXECUTE_SAFE[fullOpcodeId];
+    }
 
     // --- Conflict Resolution Logic ---
 

@@ -329,60 +329,11 @@ public class Simulation {
 
         resolveConflicts(plannedInstructions);
 
-        // PHASE 3: Execute - run winning instructions, then instant-skip NOPs
-        for (Instruction instruction : plannedInstructions) {
-            Organism organism = instruction.getOrganism();
-            boolean wasAlive = !organism.isDead();
-
-            if (instruction.isExecutedInTick()) {
-                vm.execute(instruction);
-
-                // Instant-skip: advance past any NOP/LABEL/empty cells
-                boolean failedInExecution = organism.isInstructionFailed();
-                organism.skipNopCells(environment);
-
-                // Apply error penalty for post-execution failures (e.g., max-skip)
-                // not already penalized inside vm.execute()
-                if (!failedInExecution && organism.isInstructionFailed()) {
-                    int penalty = organismConfig.getInt("error-penalty-cost");
-                    organism.takeEr(penalty);
-                    if (organism.getEr() <= 0) {
-                        organism.kill("Ran out of energy");
-                    }
-                }
-            }
-
-            // Handle organism death: call death handlers, then clear ownership
-            if (wasAlive && organism.isDead()) {
-                deathContext.reset(environment, organism.getId());
-                for (IDeathHandler handler : deathHandlers) {
-                    try {
-                        handler.onDeath(deathContext);
-                    } catch (Exception e) {
-                        LOG.warn("Death handler '{}' failed for organism {}: {}",
-                                handler.getClass().getSimpleName(), organism.getId(), e.getMessage());
-                    }
-                }
-                environment.clearOwnershipFor(organism.getId());
-            }
-
-            if (organism.isLoggingEnabled()) {
-                LOG.debug("Tick={} Org={} Instr={} Status={}",
-                        currentTick,
-                        organism.getId(),
-                        instruction.getName(),
-                        instruction.getConflictStatus());
-                LOG.debug("  IP={} DP={} DV={} ER={}",
-                        java.util.Arrays.toString(organism.getIp()),
-                        java.util.Arrays.toString(organism.getDp(0)), // CORRECTED
-                        java.util.Arrays.toString(organism.getDv()),
-                        organism.getEr());
-                LOG.debug("  DR={} PR={} DS={} CS={}",
-                        organism.getDrs(),
-                        organism.getPrs(),
-                        organism.getDataStack(),
-                        organism.getCallStack());
-            }
+        // PHASE 3: Execute
+        if (planPool != null && plannedInstructions.size() > 1) {
+            executeParallel(plannedInstructions);
+        } else {
+            executeSequential(plannedInstructions);
         }
 
         // Post-Execute: birth handlers + genome hash for newborns
@@ -492,6 +443,159 @@ public class Simulation {
             }
         }
         return planned;
+    }
+
+    /**
+     * Executes all planned instructions sequentially on the calling thread.
+     * Used when {@code parallelism <= 1} or when there is only one organism.
+     *
+     * @param plannedInstructions The instructions planned for the current tick
+     */
+    private void executeSequential(List<Instruction> plannedInstructions) {
+        for (Instruction instruction : plannedInstructions) {
+            executeSingleInstruction(instruction);
+
+            Organism organism = instruction.getOrganism();
+            if (organism.isDead()) {
+                handleDeath(organism);
+            }
+
+            logInstruction(instruction);
+        }
+    }
+
+    /**
+     * Executes planned instructions using a two-wave approach for parallelism.
+     * <p>
+     * <b>Wave 1 (parallel):</b> Instructions whose opcode is registered as
+     * {@link Instruction#isParallelExecuteSafe parallel-safe} — they only modify
+     * organism-local state and perform read-only environment access.
+     * <p>
+     * <b>Wave 2 (sequential):</b> Instructions that write to shared environment
+     * structures (PEEK/POKE/PPK, FORK, CMR).
+     * <p>
+     * Death handling runs sequentially after both waves in stable order
+     * (wave 1 index order, then wave 2 index order) to preserve determinism.
+     *
+     * @param plannedInstructions The instructions planned for the current tick
+     */
+    private void executeParallel(List<Instruction> plannedInstructions) {
+        int size = plannedInstructions.size();
+
+        // Partition into parallel-safe (wave 1) and unsafe (wave 2)
+        List<Instruction> wave1 = new ArrayList<>(size);
+        List<Instruction> wave2 = new ArrayList<>();
+        for (Instruction instr : plannedInstructions) {
+            if (Instruction.isParallelExecuteSafe(instr.getFullOpcodeId())) {
+                wave1.add(instr);
+            } else {
+                wave2.add(instr);
+            }
+        }
+
+        // Wave 1: parallel execution of safe instructions
+        boolean[] diedInWave1 = new boolean[wave1.size()];
+        planPool.submit(() ->
+            IntStream.range(0, wave1.size()).parallel().forEach(i -> {
+                executeSingleInstruction(wave1.get(i));
+                if (wave1.get(i).getOrganism().isDead()) {
+                    diedInWave1[i] = true;
+                }
+            })
+        ).join();
+
+        // Wave 2: sequential execution of unsafe instructions (PEEK/POKE/PPK, FORK, CMR)
+        boolean[] diedInWave2 = new boolean[wave2.size()];
+        for (int i = 0; i < wave2.size(); i++) {
+            executeSingleInstruction(wave2.get(i));
+            if (wave2.get(i).getOrganism().isDead()) {
+                diedInWave2[i] = true;
+            }
+        }
+
+        // Death handling: sequential, after both waves, in stable order
+        for (int i = 0; i < wave1.size(); i++) {
+            if (diedInWave1[i]) handleDeath(wave1.get(i).getOrganism());
+        }
+        for (int i = 0; i < wave2.size(); i++) {
+            if (diedInWave2[i]) handleDeath(wave2.get(i).getOrganism());
+        }
+
+        // Debug logging: sequential
+        for (Instruction instr : plannedInstructions) {
+            logInstruction(instr);
+        }
+    }
+
+    /**
+     * Executes a single instruction: runs {@code vm.execute()}, advances past NOP cells,
+     * and applies error penalty if a post-execution failure occurred.
+     *
+     * @param instruction The instruction to execute
+     */
+    private void executeSingleInstruction(Instruction instruction) {
+        if (!instruction.isExecutedInTick()) return;
+        Organism organism = instruction.getOrganism();
+
+        vm.execute(instruction);
+
+        boolean failedInExecution = organism.isInstructionFailed();
+        organism.skipNopCells(environment);
+
+        // Apply error penalty for post-execution failures (e.g., max-skip)
+        // not already penalized inside vm.execute()
+        if (!failedInExecution && organism.isInstructionFailed()) {
+            int penalty = organismConfig.getInt("error-penalty-cost");
+            organism.takeEr(penalty);
+            if (organism.getEr() <= 0) {
+                organism.kill("Ran out of energy");
+            }
+        }
+    }
+
+    /**
+     * Handles organism death: invokes all registered death handlers, then clears
+     * the organism's ownership from the environment.
+     *
+     * @param organism The organism that has died
+     */
+    private void handleDeath(Organism organism) {
+        deathContext.reset(environment, organism.getId());
+        for (IDeathHandler handler : deathHandlers) {
+            try {
+                handler.onDeath(deathContext);
+            } catch (Exception e) {
+                LOG.warn("Death handler '{}' failed for organism {}: {}",
+                        handler.getClass().getSimpleName(), organism.getId(), e.getMessage());
+            }
+        }
+        environment.clearOwnershipFor(organism.getId());
+    }
+
+    /**
+     * Logs debug information for a single instruction execution.
+     *
+     * @param instruction The instruction to log
+     */
+    private void logInstruction(Instruction instruction) {
+        Organism organism = instruction.getOrganism();
+        if (organism.isLoggingEnabled()) {
+            LOG.debug("Tick={} Org={} Instr={} Status={}",
+                    currentTick,
+                    organism.getId(),
+                    instruction.getName(),
+                    instruction.getConflictStatus());
+            LOG.debug("  IP={} DP={} DV={} ER={}",
+                    java.util.Arrays.toString(organism.getIp()),
+                    java.util.Arrays.toString(organism.getDp(0)),
+                    java.util.Arrays.toString(organism.getDv()),
+                    organism.getEr());
+            LOG.debug("  DR={} PR={} DS={} CS={}",
+                    organism.getDrs(),
+                    organism.getPrs(),
+                    organism.getDataStack(),
+                    organism.getCallStack());
+        }
     }
 
     /**

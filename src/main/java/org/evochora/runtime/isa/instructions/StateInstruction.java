@@ -59,10 +59,10 @@ public class StateInstruction extends Instruction {
         // Operation 8: RAND (random number)
         reg(8, Variant.R, "RAND", REGISTER);
         reg(8, Variant.S, "RNDS", STACK);
-        // Operation 9: FORK (replicate organism)
-        reg(9, Variant.RRR, "FORK", REGISTER, REGISTER, REGISTER);
-        reg(9, Variant.VIV, "FRKI", VECTOR, IMMEDIATE, VECTOR);
-        reg(9, Variant.SSS, "FRKS", STACK, STACK, STACK);
+        // Operation 9: FORK (replicate organism) — writes to shared environment
+        regUnsafe(9, Variant.RRR, "FORK", REGISTER, REGISTER, REGISTER);
+        regUnsafe(9, Variant.VIV, "FRKI", VECTOR, IMMEDIATE, VECTOR);
+        regUnsafe(9, Variant.SSS, "FRKS", STACK, STACK, STACK);
         // Operation 10: ADP (active data pointer selection)
         reg(10, Variant.R, "ADPR", REGISTER);
         reg(10, Variant.I, "ADPI", IMMEDIATE);
@@ -88,14 +88,19 @@ public class StateInstruction extends Instruction {
         // Operation 16: GMR (get molecule marker register)
         reg(16, Variant.R, "GMR", REGISTER);
         reg(16, Variant.NONE, "GMRS");
-        // Operation 17: CMR (clear markers - remove own molecules with matching marker)
-        reg(17, Variant.R, "CMR", REGISTER);
-        reg(17, Variant.I, "CMRI", IMMEDIATE);
-        reg(17, Variant.S, "CMRS", STACK);
+        // Operation 17: CMR (clear markers - remove own molecules with matching marker) — writes to shared environment
+        regUnsafe(17, Variant.R, "CMR", REGISTER);
+        regUnsafe(17, Variant.I, "CMRI", IMMEDIATE);
+        regUnsafe(17, Variant.S, "CMRS", STACK);
     }
 
     private static void reg(int op, int variant, String name, OperandSource... sources) {
         Instruction.registerOp(StateInstruction.class, StateInstruction::new, family, op, variant, name, sources);
+    }
+
+    private static void regUnsafe(int op, int variant, String name, OperandSource... sources) {
+        Instruction.registerOp(StateInstruction.class, StateInstruction::new,
+                family, op, variant, name, false, sources);
     }
 
     /**
