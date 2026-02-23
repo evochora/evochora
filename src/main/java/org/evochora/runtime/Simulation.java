@@ -7,8 +7,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.ForkJoinTask;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.isa.IEnvironmentModifyingInstruction;
@@ -396,9 +396,13 @@ public class Simulation {
     /**
      * Plans instructions in parallel using the {@link #planPool}.
      * <p>
+     * Organisms are divided into {@link #effectiveParallelism} chunks, each submitted
+     * as a single ForkJoinTask. This bounds task-submission overhead to O(P) instead
+     * of O(N), eliminating the per-organism submission cost that dominates at small N.
+     * <p>
      * Each organism writes to a pre-allocated slot in a result array indexed by its
      * position in the {@link #organisms} list, guaranteeing deterministic output order
-     * regardless of thread scheduling. Each worker allocates its own
+     * regardless of thread scheduling. Each chunk allocates its own
      * {@link InterceptionContext} to avoid shared mutable state.
      *
      * @return List of planned instructions for all living organisms
@@ -406,35 +410,45 @@ public class Simulation {
     private List<Instruction> planParallel() {
         int size = organisms.size();
         Instruction[] results = new Instruction[size];
+        boolean hasInterceptors = !instructionInterceptors.isEmpty();
 
-        planPool.submit(() ->
-            IntStream.range(0, size).parallel().forEach(i -> {
-                Organism organism = organisms.get(i);
-                if (organism.isDead()) {
-                    return;
-                }
+        int chunkSize = Math.max(1, (size + effectiveParallelism - 1) / effectiveParallelism);
+        List<ForkJoinTask<?>> tasks = new ArrayList<>(effectiveParallelism);
 
-                Instruction instruction = vm.plan(organism);
+        for (int start = 0; start < size; start += chunkSize) {
+            int from = start;
+            int to = Math.min(start + chunkSize, size);
+            tasks.add(planPool.submit(() -> {
+                InterceptionContext ctx = hasInterceptors ? new InterceptionContext() : null;
+                for (int i = from; i < to; i++) {
+                    Organism organism = organisms.get(i);
+                    if (organism.isDead()) continue;
 
-                if (!instructionInterceptors.isEmpty()) {
-                    InterceptionContext ctx = new InterceptionContext();
-                    ctx.reset(organism, instruction);
-                    for (IInstructionInterceptor interceptor : instructionInterceptors) {
-                        try {
-                            interceptor.intercept(ctx);
-                        } catch (Exception e) {
-                            LOG.warn("Interceptor '{}' failed for organism {} at tick {}: {}",
-                                    interceptor.getClass().getSimpleName(), organism.getId(), currentTick, e.getMessage());
+                    Instruction instruction = vm.plan(organism);
+
+                    if (ctx != null) {
+                        ctx.reset(organism, instruction);
+                        for (IInstructionInterceptor interceptor : instructionInterceptors) {
+                            try {
+                                interceptor.intercept(ctx);
+                            } catch (Exception e) {
+                                LOG.warn("Interceptor '{}' failed for organism {} at tick {}: {}",
+                                        interceptor.getClass().getSimpleName(), organism.getId(), currentTick, e.getMessage());
+                            }
                         }
+                        instruction = ctx.getInstruction();
                     }
-                    instruction = ctx.getInstruction();
-                }
 
-                instruction.setExecutedInTick(false);
-                instruction.setConflictStatus(Instruction.ConflictResolutionStatus.NOT_APPLICABLE);
-                results[i] = instruction;
-            })
-        ).join();
+                    instruction.setExecutedInTick(false);
+                    instruction.setConflictStatus(Instruction.ConflictResolutionStatus.NOT_APPLICABLE);
+                    results[i] = instruction;
+                }
+            }));
+        }
+
+        for (ForkJoinTask<?> task : tasks) {
+            task.join();
+        }
 
         List<Instruction> planned = new ArrayList<>(size);
         for (Instruction instr : results) {
@@ -493,16 +507,28 @@ public class Simulation {
             }
         }
 
-        // Wave 1: parallel execution of safe instructions
-        boolean[] diedInWave1 = new boolean[wave1.size()];
-        planPool.submit(() ->
-            IntStream.range(0, wave1.size()).parallel().forEach(i -> {
-                executeSingleInstruction(wave1.get(i));
-                if (wave1.get(i).getOrganism().isDead()) {
-                    diedInWave1[i] = true;
+        // Wave 1: chunked parallel execution of safe instructions
+        int w1Size = wave1.size();
+        boolean[] diedInWave1 = new boolean[w1Size];
+        int w1ChunkSize = Math.max(1, (w1Size + effectiveParallelism - 1) / effectiveParallelism);
+        List<ForkJoinTask<?>> wave1Tasks = new ArrayList<>(effectiveParallelism);
+
+        for (int start = 0; start < w1Size; start += w1ChunkSize) {
+            int from = start;
+            int to = Math.min(start + w1ChunkSize, w1Size);
+            wave1Tasks.add(planPool.submit(() -> {
+                for (int i = from; i < to; i++) {
+                    executeSingleInstruction(wave1.get(i));
+                    if (wave1.get(i).getOrganism().isDead()) {
+                        diedInWave1[i] = true;
+                    }
                 }
-            })
-        ).join();
+            }));
+        }
+
+        for (ForkJoinTask<?> task : wave1Tasks) {
+            task.join();
+        }
 
         // Wave 2: sequential execution of unsafe instructions (PEEK/POKE/PPK, FORK, CMR)
         boolean[] diedInWave2 = new boolean[wave2.size()];

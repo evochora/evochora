@@ -297,8 +297,5 @@ protobuf {
 }
 
 jmh {
-    warmupIterations.set(3)
-    iterations.set(5)
-    fork.set(2)
     jvmArgs.set(listOf("-Xmx4g"))
 }

@@ -49,7 +49,7 @@ import com.typesafe.config.ConfigFactory;
 @OutputTimeUnit(TimeUnit.SECONDS)
 @Fork(2)
 @Warmup(iterations = 3, time = 3)
-@Measurement(iterations = 5, time = 3)
+@Measurement(iterations = 3, time = 10)
 public class SimulationBenchmark {
 
     private static final int ENV_SIZE = 1024;
@@ -108,20 +108,50 @@ public class SimulationBenchmark {
                       POKI %DR0 0|1
                       PEKI %DR1 0|1
                       JMPI START
+                    """,
+            "REALISTIC", """
+                    MAIN:
+                      SETI %DR2 DATA:0
+                      IFI %DR2 DATA:0
+                      SCNI %DR4 0|1
+                      INI %DR2 DATA:99
+                      NRG %DR1
+                      GTI %DR1 DATA:0
+                      JMPI SEC_B
+                    SEC_B:
+                      LTI %DR2 DATA:50
+                      ADDI %DR0 DATA:1
+                      GETI %DR1 DATA:0
+                      SETI %DR5 DATA:42
+                      LETI %DR2 DATA:50
+                      JMPI SEC_C
+                    SEC_C:
+                      IFTI %DR2 DATA:0
+                      NTR %DR6
+                      IFI %DR2 DATA:0
+                      PPKI %DR5 0|1
+                      INI %DR2 DATA:1
+                      JMPI SEC_D
+                    SEC_D:
+                      GTI %DR1 DATA:0
+                      ADDI %DR0 DATA:1
+                      LTI %DR2 DATA:100
+                      SCNI %DR4 0|-1
+                      JMPI MAIN
                     """
     );
+
+    /** Assembly program to execute. */
+    @Param({/*"ARITHMETIC", "ENVIRONMENT",*/ "REALISTIC"})
+    private String assembly;
+
+    /** Number of organisms in the simulation. */
+    @Param({"50", "200", "500", "2000"})
+    private int organisms;
 
     /** Parallelism level for the simulation's Plan and Execute phases. */
     @Param({"1", "4", "8"})
     private int parallelism;
-
-    /** Assembly program to execute. */
-    @Param({"ARITHMETIC", "ENVIRONMENT"})
-    private String program;
-
-    /** Number of organisms in the simulation. */
-    @Param({"500", "2000"})
-    private int organismCount;
 
     private Map<String, ProgramArtifact> compiledPrograms;
     private EnvironmentProperties envProps;
@@ -165,7 +195,7 @@ public class SimulationBenchmark {
 
         simulation = new Simulation(env, policyManager, organismConfig, parallelism);
 
-        ProgramArtifact artifact = compiledPrograms.get(program);
+        ProgramArtifact artifact = compiledPrograms.get(assembly);
         placeOrganisms(env, artifact);
     }
 
@@ -201,16 +231,17 @@ public class SimulationBenchmark {
         for (int[] coord : layout.keySet()) {
             maxExtent = Math.max(maxExtent, coord[0]);
         }
-        int spacing = maxExtent + 5;
-        int organismsPerRow = ENV_SIZE / spacing;
+        int xSpacing = maxExtent + 5;
+        int ySpacing = 3;
+        int organismsPerRow = ENV_SIZE / xSpacing;
 
         Random random = new Random(42);
 
-        for (int i = 0; i < organismCount; i++) {
+        for (int i = 0; i < organisms; i++) {
             int col = i % organismsPerRow;
             int row = i / organismsPerRow;
-            int offsetX = col * spacing;
-            int offsetY = row * spacing;
+            int offsetX = col * xSpacing;
+            int offsetY = row * ySpacing;
 
             int[] startIp = new int[]{offsetX, offsetY};
             Organism organism = Organism.create(simulation, startIp, MAX_ENERGY,
@@ -232,6 +263,10 @@ public class SimulationBenchmark {
                         || type == org.evochora.runtime.Config.TYPE_LABELREF) {
                     int oldValue = moleculeInt & org.evochora.runtime.Config.VALUE_MASK;
                     int newValue = oldValue ^ labelMask;
+                    if (type == org.evochora.runtime.Config.TYPE_LABELREF
+                            && "REALISTIC".equals(assembly) && random.nextBoolean()) {
+                        newValue = newValue ^ (1 << random.nextInt(19));
+                    }
                     int marker = (moleculeInt & org.evochora.runtime.Config.MARKER_MASK)
                             >>> org.evochora.runtime.Config.MARKER_SHIFT;
                     mol = new Molecule(type, newValue, marker);
