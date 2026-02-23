@@ -607,6 +607,37 @@ class ArtemisQueueResourceTest {
     }
 
     // =========================================================================
+    // Startup Purge Tests
+    // =========================================================================
+
+    @Test
+    @DisplayName("Should purge stale messages from previous run on startup")
+    void shouldPurgeStaleMessagesOnStartup() throws Exception {
+        String queueName = "test-purge-startup";
+
+        // Phase 1: Create queue and send a message, then close (message persists in journal)
+        var firstQueue = new ArtemisQueueResource<BatchInfo>(queueName, baseConfig);
+        firstQueue.put(BatchInfo.newBuilder().setTickStart(999).build());
+        firstQueue.close();
+
+        // Phase 2: Recreate — stale message should be purged automatically
+        queue = new ArtemisQueueResource<>(queueName, baseConfig);
+
+        // Verify queue is empty (stale message was purged)
+        try (StreamingBatch<BatchInfo> batch = queue.receiveBatch(1, 0, TimeUnit.MILLISECONDS)) {
+            assertThat(batch.size()).isZero();
+        }
+
+        // Verify normal operation: new messages work fine
+        queue.put(BatchInfo.newBuilder().setTickStart(1000).build());
+        try (StreamingBatch<BatchInfo> batch = queue.receiveBatch(1, 5, TimeUnit.SECONDS)) {
+            assertThat(batch.size()).isEqualTo(1);
+            assertThat(batch.iterator().next().getTickStart()).isEqualTo(1000);
+            batch.commit();
+        }
+    }
+
+    // =========================================================================
     // Helpers
     // =========================================================================
 

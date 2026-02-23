@@ -190,6 +190,10 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
         // Configure queue-specific address settings (BLOCK policy with byte-based limit)
         configureQueueAddressSettings();
 
+        // Purge stale messages from a previous run (broker persistence survives restarts,
+        // but downstream consumers expect a fresh simulationRunId per run)
+        purgeStaleMessages();
+
         try {
             this.connectionFactory = new ActiveMQConnectionFactory(brokerUrl);
             if (producerWindowSize > 0) {
@@ -266,6 +270,35 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
 
         log.debug("Address settings configured: data queue '{}' (BLOCK, maxSizeBytes={})",
             queueName, maxSizeBytes);
+    }
+
+    /**
+     * Purges all persisted messages from the data queue.
+     * <p>
+     * When the broker uses persistent storage, messages from a previous simulation run
+     * may still be in the queue after a restart. These stale messages would cause
+     * {@code simulationRunId} mismatch errors in downstream consumers.
+     * <p>
+     * Only purges the data queue, not the drain-lock token queue
+     * (which is handled independently by {@link #seedTokenIfEmpty}).
+     */
+    private void purgeStaleMessages() {
+        ActiveMQServer server = EmbeddedBrokerProcess.getServer(serverId);
+        if (server == null) {
+            log.warn("Cannot purge stale messages from queue '{}': no embedded server available "
+                + "(purgeOnStartup requires an embedded broker)", queueName);
+            return;
+        }
+        try {
+            var queue = server.locateQueue(SimpleString.of(queueName));
+            if (queue != null && queue.getMessageCount() > 0) {
+                int deleted = queue.deleteAllReferences();
+                log.info("Purged {} stale messages from queue '{}'", deleted, queueName);
+            }
+        } catch (Exception e) {
+            log.error("Failed to purge stale messages from queue '{}'", queueName);
+            throw new RuntimeException("Failed to purge stale messages from queue: " + queueName, e);
+        }
     }
 
     /**

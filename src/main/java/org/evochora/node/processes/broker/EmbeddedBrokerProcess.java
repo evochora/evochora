@@ -364,6 +364,10 @@ public class EmbeddedBrokerProcess extends AbstractProcess implements IServicePr
             artemisConfig.setBindingsDirectory(dataDir + "/bindings");
             artemisConfig.setLargeMessagesDirectory(dataDir + "/largemessages");
             artemisConfig.setPagingDirectory(dataDir + "/paging");
+
+            // Async large message writes: the queue purges stale messages on startup,
+            // so crash-durability is not needed and sync I/O would block producers
+            artemisConfig.setLargeMessageSync(false);
         }
     }
 
