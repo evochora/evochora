@@ -316,22 +316,10 @@ public class Simulation {
             }
         }
 
-        // PHASE 1: Plan - each organism plans their next instruction
-        // Operands are resolved in vm.plan() for conflict resolution and interception
-        List<Instruction> plannedInstructions;
         if (workerPool != null && organisms.size() > 1) {
-            plannedInstructions = planParallel();
+            tickParallel();
         } else {
-            plannedInstructions = planSequential();
-        }
-
-        resolveConflicts(plannedInstructions);
-
-        // PHASE 3: Execute
-        if (workerPool != null && plannedInstructions.size() > 1) {
-            executeParallel(plannedInstructions);
-        } else {
-            executeSequential(plannedInstructions);
+            tickSequential();
         }
 
         // Post-Execute: birth handlers + genome hash for newborns
@@ -355,14 +343,12 @@ public class Simulation {
     }
 
     /**
-     * Plans instructions sequentially on the calling thread.
+     * Executes the full Plan-Resolve-Execute cycle sequentially on the calling thread.
      * <p>
-     * Reuses the single {@link #interceptContext} field (zero allocation).
      * Used when {@code parallelism <= 1} or when there is only one organism.
-     *
-     * @return List of planned instructions for all living organisms
+     * Reuses the single {@link #interceptContext} field (zero allocation).
      */
-    private List<Instruction> planSequential() {
+    private void tickSequential() {
         List<Instruction> plannedInstructions = new ArrayList<>();
         for (Organism organism : this.organisms) {
             if (organism.isDead()) continue;
@@ -388,23 +374,44 @@ public class Simulation {
             instruction.setConflictStatus(Instruction.ConflictResolutionStatus.NOT_APPLICABLE);
             plannedInstructions.add(instruction);
         }
-        return plannedInstructions;
+
+        resolveConflicts(plannedInstructions);
+
+        for (Instruction instruction : plannedInstructions) {
+            executeSingleInstruction(instruction);
+
+            Organism organism = instruction.getOrganism();
+            if (organism.isDead()) {
+                handleDeath(organism);
+            }
+
+            logInstruction(instruction);
+        }
     }
 
     /**
-     * Plans instructions in parallel using the {@link #workerPool}.
+     * Executes the full Plan-Resolve-Execute cycle using a single parallel dispatch.
      * <p>
-     * The organism list is divided into P chunks (one per thread in the pool).
-     * Each thread writes to pre-allocated slots in a result array indexed by
-     * organism position, guaranteeing deterministic output order regardless of
-     * thread scheduling. Each thread uses its own {@link InterceptionContext}
-     * to avoid shared mutable state.
-     *
-     * @return List of planned instructions for all living organisms
+     * Fuses Plan and Execute Wave 1 into one dispatch to halve the synchronization
+     * overhead (one park/unpark cycle instead of two). For each organism, the thread:
+     * <ol>
+     *   <li>Plans the instruction ({@code vm.plan()})</li>
+     *   <li>Runs interceptors</li>
+     *   <li>If the instruction is {@link Instruction#isParallelExecuteSafe parallel-safe},
+     *       executes it immediately (wave 1)</li>
+     *   <li>Otherwise, stores it for sequential conflict resolution (wave 2)</li>
+     * </ol>
+     * <p>
+     * Wave 1 instructions only modify organism-local state and cannot affect other
+     * organisms' planning, so fusing plan and execute is safe.
+     * <p>
+     * After the dispatch, conflict resolution and wave 2 execution run sequentially.
+     * Death handling runs after both waves in stable index order to preserve determinism.
      */
-    private List<Instruction> planParallel() {
+    private void tickParallel() {
         int size = organisms.size();
-        Instruction[] results = new Instruction[size];
+        Instruction[] allInstructions = new Instruction[size];
+        boolean[] diedInWave1 = new boolean[size];
         boolean hasInterceptors = !instructionInterceptors.isEmpty();
 
         InterceptionContext[] contexts = hasInterceptors
@@ -415,6 +422,7 @@ public class Simulation {
             }
         }
 
+        // Single dispatch: Plan all organisms, execute wave 1 immediately
         workerPool.dispatch(size, (from, to) -> {
             InterceptionContext ctx = contexts != null
                     ? contexts[TickWorkerPool.getThreadIndex()] : null;
@@ -439,83 +447,36 @@ public class Simulation {
                     instruction = ctx.getInstruction();
                 }
 
-                instruction.setExecutedInTick(false);
-                instruction.setConflictStatus(Instruction.ConflictResolutionStatus.NOT_APPLICABLE);
-                results[i] = instruction;
+                if (Instruction.isParallelExecuteSafe(instruction.getFullOpcodeId())) {
+                    // Wave 1: execute immediately (organism-local state only)
+                    instruction.setExecutedInTick(true);
+                    instruction.setConflictStatus(Instruction.ConflictResolutionStatus.NOT_APPLICABLE);
+                    executeSingleInstruction(instruction);
+                    if (organism.isDead()) {
+                        diedInWave1[i] = true;
+                    }
+                } else {
+                    // Wave 2: defer for conflict resolution
+                    instruction.setExecutedInTick(false);
+                    instruction.setConflictStatus(Instruction.ConflictResolutionStatus.NOT_APPLICABLE);
+                }
+
+                allInstructions[i] = instruction;
             }
         });
 
-        List<Instruction> planned = new ArrayList<>(size);
-        for (Instruction instr : results) {
-            if (instr != null) {
-                planned.add(instr);
-            }
-        }
-        return planned;
-    }
-
-    /**
-     * Executes all planned instructions sequentially on the calling thread.
-     * Used when {@code parallelism <= 1} or when there is only one organism.
-     *
-     * @param plannedInstructions The instructions planned for the current tick
-     */
-    private void executeSequential(List<Instruction> plannedInstructions) {
-        for (Instruction instruction : plannedInstructions) {
-            executeSingleInstruction(instruction);
-
-            Organism organism = instruction.getOrganism();
-            if (organism.isDead()) {
-                handleDeath(organism);
-            }
-
-            logInstruction(instruction);
-        }
-    }
-
-    /**
-     * Executes planned instructions using a two-wave approach for parallelism.
-     * <p>
-     * <b>Wave 1 (parallel):</b> Instructions whose opcode is registered as
-     * {@link Instruction#isParallelExecuteSafe parallel-safe} — they only modify
-     * organism-local state and perform read-only environment access.
-     * <p>
-     * <b>Wave 2 (sequential):</b> Instructions that write to shared environment
-     * structures (PEEK/POKE/PPK, FORK, CMR).
-     * <p>
-     * Death handling runs sequentially after both waves in stable order
-     * (wave 1 index order, then wave 2 index order) to preserve determinism.
-     *
-     * @param plannedInstructions The instructions planned for the current tick
-     */
-    private void executeParallel(List<Instruction> plannedInstructions) {
-        int size = plannedInstructions.size();
-
-        // Partition into parallel-safe (wave 1) and unsafe (wave 2)
-        List<Instruction> wave1 = new ArrayList<>(size);
+        // Collect wave 2 instructions for conflict resolution
         List<Instruction> wave2 = new ArrayList<>();
-        for (Instruction instr : plannedInstructions) {
-            if (Instruction.isParallelExecuteSafe(instr.getFullOpcodeId())) {
-                wave1.add(instr);
-            } else {
+        for (Instruction instr : allInstructions) {
+            if (instr != null && !Instruction.isParallelExecuteSafe(instr.getFullOpcodeId())) {
                 wave2.add(instr);
             }
         }
 
-        // Wave 1: parallel execution of safe instructions via TickWorkerPool
-        int w1Size = wave1.size();
-        boolean[] diedInWave1 = new boolean[w1Size];
+        // Resolve conflicts among wave 2 instructions
+        resolveConflicts(wave2);
 
-        workerPool.dispatch(w1Size, (from, to) -> {
-            for (int i = from; i < to; i++) {
-                executeSingleInstruction(wave1.get(i));
-                if (wave1.get(i).getOrganism().isDead()) {
-                    diedInWave1[i] = true;
-                }
-            }
-        });
-
-        // Wave 2: sequential execution of unsafe instructions (PEEK/POKE/PPK, FORK, CMR)
+        // Execute wave 2 sequentially, track deaths
         boolean[] diedInWave2 = new boolean[wave2.size()];
         for (int i = 0; i < wave2.size(); i++) {
             executeSingleInstruction(wave2.get(i));
@@ -524,17 +485,17 @@ public class Simulation {
             }
         }
 
-        // Death handling: sequential, after both waves, in stable order
-        for (int i = 0; i < wave1.size(); i++) {
-            if (diedInWave1[i]) handleDeath(wave1.get(i).getOrganism());
+        // Death handling: sequential, stable index order (wave 1 first, then wave 2)
+        for (int i = 0; i < allInstructions.length; i++) {
+            if (diedInWave1[i]) handleDeath(allInstructions[i].getOrganism());
         }
         for (int i = 0; i < wave2.size(); i++) {
             if (diedInWave2[i]) handleDeath(wave2.get(i).getOrganism());
         }
 
-        // Debug logging: sequential
-        for (Instruction instr : plannedInstructions) {
-            logInstruction(instr);
+        // Debug logging: sequential, in original organism order
+        for (Instruction instr : allInstructions) {
+            if (instr != null) logInstruction(instr);
         }
     }
 
