@@ -6,8 +6,6 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ForkJoinPool;
-import java.util.concurrent.ForkJoinTask;
 import java.util.stream.Collectors;
 
 import org.evochora.compiler.api.ProgramArtifact;
@@ -55,7 +53,7 @@ public class Simulation {
     private final List<IBirthHandler> birthHandlers = new ArrayList<>();
     private final InterceptionContext interceptContext = new InterceptionContext();  // Reusable, zero allocation
     private final DeathContext deathContext = new DeathContext();  // Reusable, zero allocation
-    private final ForkJoinPool planPool;
+    private final TickWorkerPool workerPool;
     private final int effectiveParallelism;
     private int nextOrganismId = 1;
     private final LongOpenHashSet allGenomesEverSeen = new LongOpenHashSet();
@@ -85,10 +83,10 @@ public class Simulation {
      * @param environment The simulation environment.
      * @param policyManager The manager for thermodynamic policies.
      * @param organismConfig Configuration for organisms (energy limits, etc.).
-     * @param parallelism ForkJoinPool parallelism for the Plan phase.
+     * @param parallelism Thread parallelism for the Plan and Execute phases.
      *                    0 = auto ({@code max(1, availableProcessors - 2)}),
      *                    1 = single-threaded (sequential code path, useful for debugging),
-     *                    N &gt; 1 = exactly N worker threads.
+     *                    N &gt; 1 = exactly N threads via {@link TickWorkerPool}.
      *                    Determinism is guaranteed in every mode.
      */
     public Simulation(Environment environment, ThermodynamicPolicyManager policyManager, Config organismConfig, int parallelism) {
@@ -98,7 +96,7 @@ public class Simulation {
         this.organisms = new ArrayList<>();
         this.vm = new VirtualMachine(this);
         this.effectiveParallelism = resolveParallelism(parallelism);
-        this.planPool = (effectiveParallelism > 1) ? new ForkJoinPool(effectiveParallelism) : null;
+        this.workerPool = (effectiveParallelism > 1) ? new TickWorkerPool(effectiveParallelism) : null;
     }
 
     /**
@@ -118,7 +116,7 @@ public class Simulation {
      *                           May be {@code null} or empty for new simulations or old checkpoints.
      * @param policyManager Thermodynamic policy manager (from Metadata config)
      * @param organismConfig Organism configuration (from Metadata config)
-     * @param parallelism ForkJoinPool parallelism for the Plan phase (see constructor for semantics)
+     * @param parallelism Thread parallelism for the Plan phase (see constructor for semantics)
      * @return Simulation ready for organism addition and resumption
      */
     public static Simulation forResume(
@@ -321,7 +319,7 @@ public class Simulation {
         // PHASE 1: Plan - each organism plans their next instruction
         // Operands are resolved in vm.plan() for conflict resolution and interception
         List<Instruction> plannedInstructions;
-        if (planPool != null && organisms.size() > 1) {
+        if (workerPool != null && organisms.size() > 1) {
             plannedInstructions = planParallel();
         } else {
             plannedInstructions = planSequential();
@@ -330,7 +328,7 @@ public class Simulation {
         resolveConflicts(plannedInstructions);
 
         // PHASE 3: Execute
-        if (planPool != null && plannedInstructions.size() > 1) {
+        if (workerPool != null && plannedInstructions.size() > 1) {
             executeParallel(plannedInstructions);
         } else {
             executeSequential(plannedInstructions);
@@ -394,16 +392,13 @@ public class Simulation {
     }
 
     /**
-     * Plans instructions in parallel using the {@link #planPool}.
+     * Plans instructions in parallel using the {@link #workerPool}.
      * <p>
-     * Organisms are divided into {@link #effectiveParallelism} chunks, each submitted
-     * as a single ForkJoinTask. This bounds task-submission overhead to O(P) instead
-     * of O(N), eliminating the per-organism submission cost that dominates at small N.
-     * <p>
-     * Each organism writes to a pre-allocated slot in a result array indexed by its
-     * position in the {@link #organisms} list, guaranteeing deterministic output order
-     * regardless of thread scheduling. Each chunk allocates its own
-     * {@link InterceptionContext} to avoid shared mutable state.
+     * The organism list is divided into P chunks (one per thread in the pool).
+     * Each thread writes to pre-allocated slots in a result array indexed by
+     * organism position, guaranteeing deterministic output order regardless of
+     * thread scheduling. Each thread uses its own {@link InterceptionContext}
+     * to avoid shared mutable state.
      *
      * @return List of planned instructions for all living organisms
      */
@@ -412,43 +407,43 @@ public class Simulation {
         Instruction[] results = new Instruction[size];
         boolean hasInterceptors = !instructionInterceptors.isEmpty();
 
-        int chunkSize = Math.max(1, (size + effectiveParallelism - 1) / effectiveParallelism);
-        List<ForkJoinTask<?>> tasks = new ArrayList<>(effectiveParallelism);
+        InterceptionContext[] contexts = hasInterceptors
+                ? new InterceptionContext[effectiveParallelism] : null;
+        if (contexts != null) {
+            for (int i = 0; i < contexts.length; i++) {
+                contexts[i] = new InterceptionContext();
+            }
+        }
 
-        for (int start = 0; start < size; start += chunkSize) {
-            int from = start;
-            int to = Math.min(start + chunkSize, size);
-            tasks.add(planPool.submit(() -> {
-                InterceptionContext ctx = hasInterceptors ? new InterceptionContext() : null;
-                for (int i = from; i < to; i++) {
-                    Organism organism = organisms.get(i);
-                    if (organism.isDead()) continue;
+        workerPool.dispatch(size, (from, to) -> {
+            InterceptionContext ctx = contexts != null
+                    ? contexts[TickWorkerPool.getThreadIndex()] : null;
 
-                    Instruction instruction = vm.plan(organism);
+            for (int i = from; i < to; i++) {
+                Organism organism = organisms.get(i);
+                if (organism.isDead()) continue;
 
-                    if (ctx != null) {
-                        ctx.reset(organism, instruction);
-                        for (IInstructionInterceptor interceptor : instructionInterceptors) {
-                            try {
-                                interceptor.intercept(ctx);
-                            } catch (Exception e) {
-                                LOG.warn("Interceptor '{}' failed for organism {} at tick {}: {}",
-                                        interceptor.getClass().getSimpleName(), organism.getId(), currentTick, e.getMessage());
-                            }
+                Instruction instruction = vm.plan(organism);
+
+                if (ctx != null) {
+                    ctx.reset(organism, instruction);
+                    for (IInstructionInterceptor interceptor : instructionInterceptors) {
+                        try {
+                            interceptor.intercept(ctx);
+                        } catch (Exception e) {
+                            LOG.warn("Interceptor '{}' failed for organism {} at tick {}: {}",
+                                    interceptor.getClass().getSimpleName(), organism.getId(),
+                                    currentTick, e.getMessage());
                         }
-                        instruction = ctx.getInstruction();
                     }
-
-                    instruction.setExecutedInTick(false);
-                    instruction.setConflictStatus(Instruction.ConflictResolutionStatus.NOT_APPLICABLE);
-                    results[i] = instruction;
+                    instruction = ctx.getInstruction();
                 }
-            }));
-        }
 
-        for (ForkJoinTask<?> task : tasks) {
-            task.join();
-        }
+                instruction.setExecutedInTick(false);
+                instruction.setConflictStatus(Instruction.ConflictResolutionStatus.NOT_APPLICABLE);
+                results[i] = instruction;
+            }
+        });
 
         List<Instruction> planned = new ArrayList<>(size);
         for (Instruction instr : results) {
@@ -507,28 +502,18 @@ public class Simulation {
             }
         }
 
-        // Wave 1: chunked parallel execution of safe instructions
+        // Wave 1: parallel execution of safe instructions via TickWorkerPool
         int w1Size = wave1.size();
         boolean[] diedInWave1 = new boolean[w1Size];
-        int w1ChunkSize = Math.max(1, (w1Size + effectiveParallelism - 1) / effectiveParallelism);
-        List<ForkJoinTask<?>> wave1Tasks = new ArrayList<>(effectiveParallelism);
 
-        for (int start = 0; start < w1Size; start += w1ChunkSize) {
-            int from = start;
-            int to = Math.min(start + w1ChunkSize, w1Size);
-            wave1Tasks.add(planPool.submit(() -> {
-                for (int i = from; i < to; i++) {
-                    executeSingleInstruction(wave1.get(i));
-                    if (wave1.get(i).getOrganism().isDead()) {
-                        diedInWave1[i] = true;
-                    }
+        workerPool.dispatch(w1Size, (from, to) -> {
+            for (int i = from; i < to; i++) {
+                executeSingleInstruction(wave1.get(i));
+                if (wave1.get(i).getOrganism().isDead()) {
+                    diedInWave1[i] = true;
                 }
-            }));
-        }
-
-        for (ForkJoinTask<?> task : wave1Tasks) {
-            task.join();
-        }
+            }
+        });
 
         // Wave 2: sequential execution of unsafe instructions (PEEK/POKE/PPK, FORK, CMR)
         boolean[] diedInWave2 = new boolean[wave2.size()];
@@ -638,14 +623,14 @@ public class Simulation {
     }
 
     /**
-     * Shuts down the ForkJoinPool used for parallel planning.
+     * Shuts down the worker pool used for parallel planning and execution.
      * <p>
      * Must be called when the simulation is no longer needed to release thread resources.
      * Safe to call multiple times or when no pool was created (parallelism &lt;= 1).
      */
     public void shutdown() {
-        if (planPool != null) {
-            planPool.shutdown();
+        if (workerPool != null) {
+            workerPool.shutdown();
         }
     }
 
