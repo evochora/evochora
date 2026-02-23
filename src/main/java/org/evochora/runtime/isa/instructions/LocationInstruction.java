@@ -68,7 +68,7 @@ public class LocationInstruction extends Instruction {
     }
 
     private static void reg(int op, int variant, String name, OperandSource... sources) {
-        Instruction.registerOp(LocationInstruction.class, family, op, variant, name, sources);
+        Instruction.registerOp(LocationInstruction.class, LocationInstruction::new, family, op, variant, name, sources);
     }
 
     /**

@@ -46,7 +46,7 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
     }
 
     private static void reg(int op, int variant, String name, OperandSource... sources) {
-        Instruction.registerOp(EnvironmentInteractionInstruction.class, family, op, variant, name, sources);
+        Instruction.registerOp(EnvironmentInteractionInstruction.class, EnvironmentInteractionInstruction::new, family, op, variant, name, sources);
     }
 
     private int[] targetCoordinate;

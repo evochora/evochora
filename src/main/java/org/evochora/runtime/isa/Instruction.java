@@ -2,7 +2,6 @@
 
 package org.evochora.runtime.isa;
 
-import java.lang.reflect.Constructor;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -10,7 +9,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.BiFunction;
 
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
@@ -55,6 +53,22 @@ public abstract class Instruction {
     public enum OperandSource { REGISTER, IMMEDIATE, STACK, VECTOR, LABEL, LOCATION_REGISTER }
 
     /**
+     * Factory for creating instruction instances without reflection.
+     * Each instruction family provides a method reference to its constructor (e.g., {@code ArithmeticInstruction::new}).
+     */
+    @FunctionalInterface
+    public interface InstructionFactory {
+        /**
+         * Creates a new instruction instance.
+         *
+         * @param organism The organism executing the instruction.
+         * @param opcodeId The opcode ID of the instruction.
+         * @return The new instruction instance.
+         */
+        Instruction create(Organism organism, int opcodeId);
+    }
+
+    /**
      * Represents a resolved operand, containing its value and raw source ID.
      * @param value The resolved value of the operand.
      * @param rawSourceId The raw source ID (e.g., register number).
@@ -65,15 +79,14 @@ public abstract class Instruction {
     private static final Map<Integer, Class<? extends Instruction>> REGISTERED_INSTRUCTIONS_BY_ID = new HashMap<>();
     private static final Map<String, Integer> NAME_TO_ID = new HashMap<>();
     private static final Map<Integer, String> ID_TO_NAME = new HashMap<>();
-    private static final Map<Integer, BiFunction<Organism, Environment, Instruction>> REGISTERED_PLANNERS_BY_ID = new HashMap<>();
+    private static final Map<Integer, InstructionFactory> REGISTERED_PLANNERS_BY_ID = new HashMap<>();
     protected static final Map<Integer, List<OperandSource>> OPERAND_SOURCES = new HashMap<>();
     private static final Map<Integer, InstructionSignature> SIGNATURES_BY_ID = new HashMap<>();
 
     // Array-based registries for O(1) hot-path lookups (populated from HashMaps during init())
     // Opcode range: Family 0-9, max opcode = 9*4096 + 63*64 + 63 = 40959
     private static final int REGISTRY_SIZE = 41000;
-    @SuppressWarnings("unchecked")
-    private static BiFunction<Organism, Environment, Instruction>[] PLANNERS_ARRAY = new BiFunction[0];
+    private static InstructionFactory[] PLANNERS_ARRAY = new InstructionFactory[0];
     @SuppressWarnings("unchecked")
     private static List<OperandSource>[] OPERAND_SOURCES_ARRAY = new List[0];
     private static int[] INSTRUCTION_LENGTHS_BASE = new int[0];
@@ -289,7 +302,7 @@ public abstract class Instruction {
      * @param moleculeInt The packed molecule integer.
      * @return The sign-extended value component.
      */
-    private static int extractSignedValue(int moleculeInt) {
+    public static int extractSignedValue(int moleculeInt) {
         int raw = moleculeInt & Config.VALUE_MASK;
         if ((raw & (1 << (Config.VALUE_BITS - 1))) != 0) {
             raw |= ~((1 << Config.VALUE_BITS) - 1);
@@ -391,7 +404,7 @@ public abstract class Instruction {
      */
     @SuppressWarnings("unchecked")
     private static void buildArrayRegistries() {
-        PLANNERS_ARRAY = new BiFunction[REGISTRY_SIZE];
+        PLANNERS_ARRAY = new InstructionFactory[REGISTRY_SIZE];
         OPERAND_SOURCES_ARRAY = new List[REGISTRY_SIZE];
         INSTRUCTION_LENGTHS_BASE = new int[REGISTRY_SIZE];
         INSTRUCTION_LENGTHS_DIMS_MULTIPLIER = new int[REGISTRY_SIZE];
@@ -430,64 +443,49 @@ public abstract class Instruction {
      * Registers an instruction opcode. Called by instruction subclasses in their register() method.
      *
      * @param familyClass the instruction class (e.g., ArithmeticInstruction.class)
+     * @param factory the factory for creating instruction instances (e.g., {@code ArithmeticInstruction::new})
      * @param family the family ID from {@link Family}
      * @param operation the operation number within the family
      * @param variant the variant from {@link Variant}
      * @param name the instruction mnemonic (e.g., "ADDR")
      * @param sources the operand sources for this instruction
      */
-    protected static void registerOp(Class<? extends Instruction> familyClass, int family, int operation,
+    protected static void registerOp(Class<? extends Instruction> familyClass, InstructionFactory factory,
+                                     int family, int operation,
                                      int variant, String name, OperandSource... sources) {
         int opcodeId = OpcodeId.compute(family, operation, variant);
-        registerFamily(familyClass, java.util.Map.of(opcodeId, name), java.util.List.of(sources));
+        registerFamily(familyClass, factory, java.util.Map.of(opcodeId, name), java.util.List.of(sources));
     }
 
-
-
-
-
-    private static void registerFamily(Class<? extends Instruction> familyClass, Map<Integer, String> variants, List<OperandSource> sources) {
-        try {
-            Constructor<? extends Instruction> constructor = familyClass.getConstructor(Organism.class, int.class);
-            List<InstructionArgumentType> argTypesForSignature = new ArrayList<>();
-            for (OperandSource s : sources) {
-                switch (s) {
-                    case REGISTER -> argTypesForSignature.add(InstructionArgumentType.REGISTER);
-                    case LOCATION_REGISTER -> argTypesForSignature.add(InstructionArgumentType.LOCATION_REGISTER);
-                    case IMMEDIATE -> argTypesForSignature.add(InstructionArgumentType.LITERAL);
-                    case VECTOR -> argTypesForSignature.add(InstructionArgumentType.VECTOR);
-                    case LABEL -> argTypesForSignature.add(InstructionArgumentType.LABEL);
-                    case STACK -> { /* STACK operands don't appear in signature */ }
-                }
+    private static void registerFamily(Class<? extends Instruction> familyClass, InstructionFactory factory,
+                                       Map<Integer, String> variants, List<OperandSource> sources) {
+        List<InstructionArgumentType> argTypesForSignature = new ArrayList<>();
+        for (OperandSource s : sources) {
+            switch (s) {
+                case REGISTER -> argTypesForSignature.add(InstructionArgumentType.REGISTER);
+                case LOCATION_REGISTER -> argTypesForSignature.add(InstructionArgumentType.LOCATION_REGISTER);
+                case IMMEDIATE -> argTypesForSignature.add(InstructionArgumentType.LITERAL);
+                case VECTOR -> argTypesForSignature.add(InstructionArgumentType.VECTOR);
+                case LABEL -> argTypesForSignature.add(InstructionArgumentType.LABEL);
+                case STACK -> { /* STACK operands don't appear in signature */ }
             }
-            InstructionSignature signature = new InstructionSignature(argTypesForSignature);
+        }
+        InstructionSignature signature = new InstructionSignature(argTypesForSignature);
 
-            for (Map.Entry<Integer, String> entry : variants.entrySet()) {
-                int id = entry.getKey();
-                String name = entry.getValue();
-
-                BiFunction<Organism, Environment, Instruction> planner = (org, world) -> {
-                    try {
-                        return constructor.newInstance(org, world.getMolecule(org.getIp()).value());
-                    } catch (Exception e) { throw new RuntimeException("Failed to plan instruction " + name, e); }
-                };
-
-                registerInstruction(familyClass, id, name, planner, signature);
-                OPERAND_SOURCES.put(id | Config.TYPE_CODE, sources);
-            }
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to register instruction family " + familyClass.getSimpleName(), e);
+        for (Map.Entry<Integer, String> entry : variants.entrySet()) {
+            registerInstruction(familyClass, entry.getKey(), entry.getValue(), factory, signature);
+            OPERAND_SOURCES.put(entry.getKey() | Config.TYPE_CODE, sources);
         }
     }
 
     private static void registerInstruction(Class<? extends Instruction> instructionClass, int id, String name,
-                                            BiFunction<Organism, Environment, Instruction> planner, InstructionSignature signature) {
+                                            InstructionFactory factory, InstructionSignature signature) {
         String upperCaseName = name.toUpperCase();
         int fullId = id | Config.TYPE_CODE;
         REGISTERED_INSTRUCTIONS_BY_ID.put(fullId, instructionClass);
         NAME_TO_ID.put(upperCaseName, fullId);
         ID_TO_NAME.put(fullId, name);
-        REGISTERED_PLANNERS_BY_ID.put(fullId, planner);
+        REGISTERED_PLANNERS_BY_ID.put(fullId, factory);
         SIGNATURES_BY_ID.put(fullId, signature);
     }
 
@@ -622,11 +620,11 @@ public abstract class Instruction {
     }
 
     /**
-     * Gets the planner function for an instruction by its ID.
+     * Gets the factory for an instruction by its ID.
      * @param id The instruction ID.
-     * @return The planner function.
+     * @return The instruction factory, or null if unknown.
      */
-    public static BiFunction<Organism, Environment, Instruction> getPlannerById(int id) {
+    public static InstructionFactory getPlannerById(int id) {
         if (id >= 0 && id < REGISTRY_SIZE) {
             return PLANNERS_ARRAY[id];
         }

@@ -43,7 +43,7 @@ public class DataInstruction extends Instruction {
     }
 
     private static void reg(int op, int variant, String name, OperandSource... sources) {
-        Instruction.registerOp(DataInstruction.class, family, op, variant, name, sources);
+        Instruction.registerOp(DataInstruction.class, DataInstruction::new, family, op, variant, name, sources);
     }
 
     /**

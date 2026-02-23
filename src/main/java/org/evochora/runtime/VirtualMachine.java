@@ -48,12 +48,20 @@ public class VirtualMachine {
      */
     public Instruction plan(Organism organism) {
         organism.resetTickState();
-        Molecule molecule = this.environment.getMolecule(organism.getIp());
+
+        // Flat-index molecule lookup to avoid coordinate-based getNormalizedCoordinate
+        int[] ip = organism.getIp();
+        int flatIp = 0;
+        for (int i = 0; i < ip.length; i++) {
+            flatIp += ip[i] * this.environment.properties.getStride(i);
+        }
+        int rawMol = this.environment.getMoleculeInt(flatIp);
 
         Instruction instruction;
 
         if (Config.STRICT_TYPING) {
-            if (molecule.type() != Config.TYPE_CODE && !molecule.isEmpty()) {
+            int type = rawMol & Config.TYPE_MASK;
+            if (type != Config.TYPE_CODE && rawMol != 0) {
                 // Non-CODE molecules: treat as NOP (will be skipped by skipNopCells)
                 int nopOpcodeId = Instruction.getInstructionIdByName("NOP");
                 instruction = new org.evochora.runtime.isa.instructions.NopInstruction(organism, nopOpcodeId);
@@ -62,10 +70,10 @@ public class VirtualMachine {
             }
         }
 
-        int opcodeId = molecule.value();  // Use value only, not packed int (which includes marker)
-        java.util.function.BiFunction<Organism, Environment, Instruction> planner = Instruction.getPlannerById(opcodeId);
-        if (planner != null) {
-            instruction = planner.apply(organism, this.environment);
+        int opcodeId = Instruction.extractSignedValue(rawMol);
+        Instruction.InstructionFactory factory = Instruction.getPlannerById(opcodeId);
+        if (factory != null) {
+            instruction = factory.create(organism, opcodeId);
             // Resolve operands in Plan phase for conflict resolution and interception
             instruction.resolveOperands(this.environment);
             return instruction;
@@ -219,15 +227,20 @@ public class VirtualMachine {
             return null;
         }
 
-        Molecule molecule = this.environment.getMolecule(organism.getIp());
-        if (molecule.isEmpty()) {
+        int[] ip = organism.getIp();
+        int flatIp = 0;
+        for (int i = 0; i < ip.length; i++) {
+            flatIp += ip[i] * this.environment.properties.getStride(i);
+        }
+        int rawMol = this.environment.getMoleculeInt(flatIp);
+        if (rawMol == 0) {
             return null;
         }
-        if (Config.STRICT_TYPING && molecule.type() != Config.TYPE_CODE) {
+        if (Config.STRICT_TYPING && (rawMol & Config.TYPE_MASK) != Config.TYPE_CODE) {
             return null;
         }
 
-        int opcodeId = molecule.value();
+        int opcodeId = Instruction.extractSignedValue(rawMol);
         if (Instruction.getPlannerById(opcodeId) == null) {
             return null;
         }

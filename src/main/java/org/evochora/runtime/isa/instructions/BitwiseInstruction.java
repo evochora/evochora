@@ -87,7 +87,7 @@ public class BitwiseInstruction extends Instruction {
     }
 
     private static void reg(int op, int variant, String name, OperandSource... sources) {
-        Instruction.registerOp(BitwiseInstruction.class, family, op, variant, name, sources);
+        Instruction.registerOp(BitwiseInstruction.class, BitwiseInstruction::new, family, op, variant, name, sources);
     }
 
     /**

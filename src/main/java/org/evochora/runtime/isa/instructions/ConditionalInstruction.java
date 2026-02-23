@@ -101,7 +101,7 @@ public class ConditionalInstruction extends Instruction {
     }
 
     private static void reg(int op, int variant, String name, OperandSource... sources) {
-        Instruction.registerOp(ConditionalInstruction.class, family, op, variant, name, sources);
+        Instruction.registerOp(ConditionalInstruction.class, ConditionalInstruction::new, family, op, variant, name, sources);
     }
 
     /**

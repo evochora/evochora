@@ -40,7 +40,7 @@ public class ControlFlowInstruction extends Instruction {
     }
 
     private static void reg(int op, int variant, String name, OperandSource... sources) {
-        Instruction.registerOp(ControlFlowInstruction.class, family, op, variant, name, sources);
+        Instruction.registerOp(ControlFlowInstruction.class, ControlFlowInstruction::new, family, op, variant, name, sources);
     }
 
     /**
@@ -177,16 +177,5 @@ public class ControlFlowInstruction extends Instruction {
             return arr[0] & Config.VALUE_MASK;
         }
         return -1;
-    }
-
-    /**
-     * Plans the execution of a control flow instruction.
-     * @param organism The organism that will execute the instruction.
-     * @param environment The environment in which the instruction will be executed.
-     * @return The planned instruction.
-     */
-    public static Instruction plan(Organism organism, Environment environment) {
-        int fullOpcodeId = environment.getMolecule(organism.getIp()).value();
-        return new ControlFlowInstruction(organism, fullOpcodeId);
     }
 }
