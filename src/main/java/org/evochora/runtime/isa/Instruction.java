@@ -438,7 +438,7 @@ public abstract class Instruction {
         }
 
         PARALLEL_EXECUTE_SAFE = new boolean[REGISTRY_SIZE];
-        java.util.Arrays.fill(PARALLEL_EXECUTE_SAFE, true);
+        // Default false (conservative): instructions must explicitly opt in to parallel execution
         for (var entry : PARALLEL_EXECUTE_SAFE_MAP.entrySet()) {
             int id = entry.getKey();
             if (id >= 0 && id < REGISTRY_SIZE) {
@@ -476,7 +476,7 @@ public abstract class Instruction {
 
     /**
      * Registers an instruction opcode. Called by instruction subclasses in their register() method.
-     * Defaults to parallel-execute safe ({@code true}) unless overridden by the explicit overload.
+     * Defaults to parallel-execute unsafe ({@code false}). Use the explicit overload to mark safe instructions.
      *
      * @param familyClass the instruction class (e.g., ArithmeticInstruction.class)
      * @param factory the factory for creating instruction instances (e.g., {@code ArithmeticInstruction::new})
@@ -491,7 +491,7 @@ public abstract class Instruction {
                                      int variant, String name, OperandSource... sources) {
         int opcodeId = OpcodeId.compute(family, operation, variant);
         int fullId = opcodeId | Config.TYPE_CODE;
-        PARALLEL_EXECUTE_SAFE_MAP.putIfAbsent(fullId, true);
+        PARALLEL_EXECUTE_SAFE_MAP.putIfAbsent(fullId, false);
         registerFamily(familyClass, factory, java.util.Map.of(opcodeId, name), java.util.List.of(sources));
     }
 

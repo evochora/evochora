@@ -565,17 +565,15 @@ public class Simulation {
     private void logInstruction(Instruction instruction) {
         Organism organism = instruction.getOrganism();
         if (organism.isLoggingEnabled()) {
-            LOG.debug("Tick={} Org={} Instr={} Status={}",
+            LOG.debug("Tick={} Org={} Instr={} Status={} IP={} DP={} DV={} ER={} DR={} PR={} DS={} CS={}",
                     currentTick,
                     organism.getId(),
                     instruction.getName(),
-                    instruction.getConflictStatus());
-            LOG.debug("  IP={} DP={} DV={} ER={}",
+                    instruction.getConflictStatus(),
                     java.util.Arrays.toString(organism.getIp()),
                     java.util.Arrays.toString(organism.getDp(0)),
                     java.util.Arrays.toString(organism.getDv()),
-                    organism.getEr());
-            LOG.debug("  DR={} PR={} DS={} CS={}",
+                    organism.getEr(),
                     organism.getDrs(),
                     organism.getPrs(),
                     organism.getDataStack(),

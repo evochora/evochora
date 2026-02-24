@@ -97,7 +97,7 @@ public class StateInstruction extends Instruction {
     }
 
     private static void reg(int op, int variant, String name, OperandSource... sources) {
-        Instruction.registerOp(StateInstruction.class, StateInstruction::new, family, op, variant, name, sources);
+        Instruction.registerOp(StateInstruction.class, StateInstruction::new, family, op, variant, name, true, sources);
     }
 
     private static void regUnsafe(int op, int variant, String name, OperandSource... sources) {

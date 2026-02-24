@@ -524,40 +524,43 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         }
 
         // Check isStopRequested() for graceful shutdown (in addition to state and interrupt)
-        while ((getCurrentState() == State.RUNNING || getCurrentState() == State.PAUSED)
-                && !isStopRequested() && !Thread.currentThread().isInterrupted()) {
-            checkPause();
+        try {
+            while ((getCurrentState() == State.RUNNING || getCurrentState() == State.PAUSED)
+                    && !isStopRequested() && !Thread.currentThread().isInterrupted()) {
+                checkPause();
 
-            simulation.tick();
-            long tick = currentTick.incrementAndGet();
+                simulation.tick();
+                long tick = currentTick.incrementAndGet();
 
-            // Yield to other threads/processes to prevent system freezing
-            Thread.yield();
+                // Yield to other threads/processes to prevent system freezing
+                Thread.yield();
 
-            if (tick % samplingInterval == 0) {
-                try {
-                    captureSampledTick(tick);
-                } catch (InterruptedException e) {
-                    // Shutdown signal received while sending tick data - this is expected
-                    log.debug("Interrupted while sending tick data for tick {} during shutdown", tick);
-                    throw e; // Re-throw to exit cleanly
-                } catch (Exception e) {
-                    log.warn("Failed to capture or send tick data for tick {}", tick);
-                    recordError("SEND_ERROR", "Failed to send tick data", String.format("Tick: %d", tick));
+                if (tick % samplingInterval == 0) {
+                    try {
+                        captureSampledTick(tick);
+                    } catch (InterruptedException e) {
+                        // Shutdown signal received while sending tick data - this is expected
+                        log.debug("Interrupted while sending tick data for tick {} during shutdown", tick);
+                        throw e; // Re-throw to exit cleanly
+                    } catch (Exception e) {
+                        log.warn("Failed to capture or send tick data for tick {}", tick);
+                        recordError("SEND_ERROR", "Failed to send tick data", String.format("Tick: %d", tick));
+                    }
+                }
+
+                if (shouldAutoPause(tick)) {
+                    log.info("{} auto-paused at tick {} due to pauseTicks configuration", getClass().getSimpleName(), tick);
+                    pause();
+                    continue;
                 }
             }
-
-            if (shouldAutoPause(tick)) {
-                log.info("{} auto-paused at tick {} due to pauseTicks configuration", getClass().getSimpleName(), tick);
-                pause();
-                continue;
-            }
+        } finally {
+            simulation.shutdown();
         }
 
         // Note: No flushPartialChunk() - partial chunks cause duplicate/shifted boundaries on resume.
         // Only complete chunks are persisted; partial data is discarded and regenerated on resume.
 
-        simulation.shutdown();
         log.info("Simulation loop finished.");
     }
 
