@@ -21,6 +21,9 @@ import org.slf4j.LoggerFactory;
  * An Organism is a virtual machine with its own set of registers, pointers, and stacks.
  * It executes a program defined by {@code CODE} molecules in the environment to interact
  * with the world, consume resources, and reproduce.
+ * <p>
+ * <b>Thread safety:</b> Not thread-safe. During parallel dispatch, each organism is processed
+ * by exactly one thread. No organism may be accessed by multiple threads concurrently.
  */
 public class Organism {
     private static final Logger LOG = LoggerFactory.getLogger(Organism.class);

@@ -72,7 +72,7 @@ class GeneSubstitutionPluginTest {
                 "error-penalty-cost", 10
         ));
 
-        Simulation simulation = new Simulation(environment, policyManager, organismConfig);
+        Simulation simulation = new Simulation(environment, policyManager, organismConfig, 1);
 
         Organism parent = Organism.create(simulation, new int[]{0, 0}, 10000, null);
         simulation.addOrganism(parent);

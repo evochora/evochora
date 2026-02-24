@@ -26,7 +26,7 @@ public class NopInstruction extends Instruction {
     }
 
     private static void reg(int op, int variant, String name, OperandSource... sources) {
-        Instruction.registerOp(NopInstruction.class, NopInstruction::new, family, op, variant, name, sources);
+        Instruction.registerOp(NopInstruction.class, NopInstruction::new, family, op, variant, name, true, sources);
     }
 
     /**

@@ -65,7 +65,7 @@ class SimulationRestorerTest {
         ResumeCheckpoint checkpoint = new ResumeCheckpoint(metadata, snapshot);
 
         // Restore
-        SimulationRestorer.RestoredState state = SimulationRestorer.restore(checkpoint, randomProvider);
+        SimulationRestorer.RestoredState state = SimulationRestorer.restore(checkpoint, randomProvider, 1);
         Simulation simulation = state.simulation();
 
         // Verify simulation state
@@ -109,7 +109,7 @@ class SimulationRestorerTest {
             .build();
 
         ResumeCheckpoint checkpoint = new ResumeCheckpoint(metadata, snapshot);
-        SimulationRestorer.RestoredState state = SimulationRestorer.restore(checkpoint, randomProvider);
+        SimulationRestorer.RestoredState state = SimulationRestorer.restore(checkpoint, randomProvider, 1);
         Simulation simulation = state.simulation();
 
         assertThat(simulation.getOrganisms()).hasSize(1);
@@ -157,7 +157,7 @@ class SimulationRestorerTest {
             .build();
 
         ResumeCheckpoint checkpoint = new ResumeCheckpoint(metadata, snapshot);
-        SimulationRestorer.RestoredState state = SimulationRestorer.restore(checkpoint, randomProvider);
+        SimulationRestorer.RestoredState state = SimulationRestorer.restore(checkpoint, randomProvider, 1);
         Simulation simulation = state.simulation();
 
         // Both organisms should be restored (dead organisms are pruned after serialization, not on restore)
@@ -196,7 +196,7 @@ class SimulationRestorerTest {
             .build();
 
         ResumeCheckpoint checkpoint = new ResumeCheckpoint(metadata, snapshot);
-        SimulationRestorer.RestoredState state = SimulationRestorer.restore(checkpoint, randomProvider);
+        SimulationRestorer.RestoredState state = SimulationRestorer.restore(checkpoint, randomProvider, 1);
         Simulation simulation = state.simulation();
 
         // Verify cell was set at coord [5, 10]
@@ -226,7 +226,7 @@ class SimulationRestorerTest {
             .build();
 
         ResumeCheckpoint checkpoint = new ResumeCheckpoint(metadata, snapshot);
-        SimulationRestorer.RestoredState state = SimulationRestorer.restore(checkpoint, randomProvider);
+        SimulationRestorer.RestoredState state = SimulationRestorer.restore(checkpoint, randomProvider, 1);
         Simulation simulation = state.simulation();
 
         assertThat(simulation.getTotalUniqueGenomesCount()).isEqualTo(3);
@@ -272,7 +272,7 @@ class SimulationRestorerTest {
             .build();
 
         ResumeCheckpoint checkpoint = new ResumeCheckpoint(metadata, snapshot);
-        SimulationRestorer.RestoredState state = SimulationRestorer.restore(checkpoint, randomProvider);
+        SimulationRestorer.RestoredState state = SimulationRestorer.restore(checkpoint, randomProvider, 1);
         Simulation simulation = state.simulation();
 
         // Fallback: reconstructed from living organisms

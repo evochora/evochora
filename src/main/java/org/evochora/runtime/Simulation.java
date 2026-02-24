@@ -51,8 +51,13 @@ public class Simulation {
     private final List<IInstructionInterceptor> instructionInterceptors = new ArrayList<>();
     private final List<IDeathHandler> deathHandlers = new ArrayList<>();
     private final List<IBirthHandler> birthHandlers = new ArrayList<>();
-    private final InterceptionContext interceptContext = new InterceptionContext();  // Reusable, zero allocation
-    private final DeathContext deathContext = new DeathContext();  // Reusable, zero allocation
+    private final InterceptionContext interceptContext = new InterceptionContext();  // Sequential path, reused across ticks
+    private final InterceptionContext[] parallelInterceptContexts;  // Parallel path, one per thread
+    private final DeathContext deathContext = new DeathContext();  // Main thread only, reused across ticks
+    private final TickWorkerPool workerPool;
+    private final int effectiveParallelism;
+    private int[] scalingOrganisms = {};
+    private int[] scalingMaxThreads = {};
     private int nextOrganismId = 1;
     private final LongOpenHashSet allGenomesEverSeen = new LongOpenHashSet();
     private IRandomProvider randomProvider;
@@ -77,16 +82,32 @@ public class Simulation {
 
     /**
      * Constructs a new Simulation instance.
+     *
      * @param environment The simulation environment.
      * @param policyManager The manager for thermodynamic policies.
      * @param organismConfig Configuration for organisms (energy limits, etc.).
+     * @param parallelism Thread parallelism for the Plan and Execute phases.
+     *                    0 = auto ({@code max(1, availableProcessors - 2)}),
+     *                    1 = single-threaded (sequential code path, useful for debugging),
+     *                    N &gt; 1 = exactly N threads via {@link TickWorkerPool}.
+     *                    Determinism is guaranteed in every mode.
      */
-    public Simulation(Environment environment, ThermodynamicPolicyManager policyManager, Config organismConfig) {
+    public Simulation(Environment environment, ThermodynamicPolicyManager policyManager, Config organismConfig, int parallelism) {
         this.environment = environment;
         this.policyManager = policyManager;
         this.organismConfig = organismConfig;
         this.organisms = new ArrayList<>();
         this.vm = new VirtualMachine(this);
+        this.effectiveParallelism = resolveParallelism(parallelism);
+        this.workerPool = (effectiveParallelism > 1) ? new TickWorkerPool(effectiveParallelism) : null;
+        if (workerPool != null) {
+            this.parallelInterceptContexts = new InterceptionContext[effectiveParallelism];
+            for (int i = 0; i < effectiveParallelism; i++) {
+                parallelInterceptContexts[i] = new InterceptionContext();
+            }
+        } else {
+            this.parallelInterceptContexts = null;
+        }
     }
 
     /**
@@ -106,6 +127,7 @@ public class Simulation {
      *                           May be {@code null} or empty for new simulations or old checkpoints.
      * @param policyManager Thermodynamic policy manager (from Metadata config)
      * @param organismConfig Organism configuration (from Metadata config)
+     * @param parallelism Thread parallelism for the Plan phase (see constructor for semantics)
      * @return Simulation ready for organism addition and resumption
      */
     public static Simulation forResume(
@@ -114,9 +136,10 @@ public class Simulation {
             long totalOrganismsCreated,
             LongOpenHashSet allGenomesEverSeen,
             ThermodynamicPolicyManager policyManager,
-            Config organismConfig) {
+            Config organismConfig,
+            int parallelism) {
 
-        Simulation sim = new Simulation(environment, policyManager, organismConfig);
+        Simulation sim = new Simulation(environment, policyManager, organismConfig, parallelism);
         sim.currentTick = currentTick;
         sim.nextOrganismId = (int) totalOrganismsCreated + 1;
         if (allGenomesEverSeen != null && !allGenomesEverSeen.isEmpty()) {
@@ -304,93 +327,12 @@ public class Simulation {
             }
         }
 
-        // PHASE 1: Plan - each organism plans their next instruction
-        // Operands are resolved in vm.plan() for conflict resolution and interception
-        List<Instruction> plannedInstructions = new ArrayList<>();
-        for (Organism organism : this.organisms) {
-            if (organism.isDead()) continue;
-
-            Instruction instruction = vm.plan(organism);
-
-            // INSTRUCTION INCEPTION: Allow interceptors to inspect/modify planned instruction
-            // Early-exit when no interceptors registered (zero overhead in common case)
-            if (!instructionInterceptors.isEmpty()) {
-                interceptContext.reset(organism, instruction);
-
-                for (IInstructionInterceptor interceptor : instructionInterceptors) {
-                    try {
-                        interceptor.intercept(interceptContext);
-                    } catch (Exception e) {
-                        LOG.warn("Interceptor '{}' failed for organism {} at tick {}: {}",
-                                interceptor.getClass().getSimpleName(), organism.getId(), currentTick, e.getMessage());
-                    }
-                }
-
-                // Instruction may have been replaced by interceptor
-                instruction = interceptContext.getInstruction();
-            }
-
-            instruction.setExecutedInTick(false);
-            instruction.setConflictStatus(Instruction.ConflictResolutionStatus.NOT_APPLICABLE);
-            plannedInstructions.add(instruction);
-        }
-
-        resolveConflicts(plannedInstructions);
-
-        // PHASE 3: Execute - run winning instructions, then instant-skip NOPs
-        for (Instruction instruction : plannedInstructions) {
-            Organism organism = instruction.getOrganism();
-            boolean wasAlive = !organism.isDead();
-
-            if (instruction.isExecutedInTick()) {
-                vm.execute(instruction);
-
-                // Instant-skip: advance past any NOP/LABEL/empty cells
-                boolean failedInExecution = organism.isInstructionFailed();
-                organism.skipNopCells(environment);
-
-                // Apply error penalty for post-execution failures (e.g., max-skip)
-                // not already penalized inside vm.execute()
-                if (!failedInExecution && organism.isInstructionFailed()) {
-                    int penalty = organismConfig.getInt("error-penalty-cost");
-                    organism.takeEr(penalty);
-                    if (organism.getEr() <= 0) {
-                        organism.kill("Ran out of energy");
-                    }
-                }
-            }
-
-            // Handle organism death: call death handlers, then clear ownership
-            if (wasAlive && organism.isDead()) {
-                deathContext.reset(environment, organism.getId());
-                for (IDeathHandler handler : deathHandlers) {
-                    try {
-                        handler.onDeath(deathContext);
-                    } catch (Exception e) {
-                        LOG.warn("Death handler '{}' failed for organism {}: {}",
-                                handler.getClass().getSimpleName(), organism.getId(), e.getMessage());
-                    }
-                }
-                environment.clearOwnershipFor(organism.getId());
-            }
-
-            if (organism.isLoggingEnabled()) {
-                LOG.debug("Tick={} Org={} Instr={} Status={}",
-                        currentTick,
-                        organism.getId(),
-                        instruction.getName(),
-                        instruction.getConflictStatus());
-                LOG.debug("  IP={} DP={} DV={} ER={}",
-                        java.util.Arrays.toString(organism.getIp()),
-                        java.util.Arrays.toString(organism.getDp(0)), // CORRECTED
-                        java.util.Arrays.toString(organism.getDv()),
-                        organism.getEr());
-                LOG.debug("  DR={} PR={} DS={} CS={}",
-                        organism.getDrs(),
-                        organism.getPrs(),
-                        organism.getDataStack(),
-                        organism.getCallStack());
-            }
+        int activeP = (workerPool != null && organisms.size() > 1)
+                ? resolveActiveParallelism(organisms.size()) : 1;
+        if (activeP > 1) {
+            tickParallel(activeP);
+        } else {
+            tickSequential();
         }
 
         // Post-Execute: birth handlers + genome hash for newborns
@@ -411,6 +353,332 @@ public class Simulation {
 
         this.organisms.addAll(newOrganismsThisTick);
         this.currentTick++;
+    }
+
+    /**
+     * Executes the full Plan-Resolve-Execute cycle sequentially on the calling thread.
+     * <p>
+     * Used when {@code parallelism <= 1} or when there is only one organism.
+     * Reuses the single {@link #interceptContext} field (zero allocation).
+     */
+    private void tickSequential() {
+        List<Instruction> plannedInstructions = new ArrayList<>();
+        for (Organism organism : this.organisms) {
+            if (organism.isDead()) continue;
+
+            Instruction instruction = vm.plan(organism);
+
+            if (!instructionInterceptors.isEmpty()) {
+                interceptContext.reset(organism, instruction);
+
+                for (IInstructionInterceptor interceptor : instructionInterceptors) {
+                    try {
+                        interceptor.intercept(interceptContext);
+                    } catch (Exception e) {
+                        LOG.warn("Interceptor '{}' failed for organism {} at tick {}: {}",
+                                interceptor.getClass().getSimpleName(), organism.getId(), currentTick, e.getMessage());
+                    }
+                }
+
+                instruction = interceptContext.getInstruction();
+            }
+
+            instruction.setExecutedInTick(false);
+            instruction.setConflictStatus(Instruction.ConflictResolutionStatus.NOT_APPLICABLE);
+            plannedInstructions.add(instruction);
+        }
+
+        resolveConflicts(plannedInstructions);
+
+        for (Instruction instruction : plannedInstructions) {
+            executeSingleInstruction(instruction);
+        }
+
+        for (Instruction instruction : plannedInstructions) {
+            Organism organism = instruction.getOrganism();
+            if (organism.isDead()) {
+                handleDeath(organism);
+            }
+        }
+
+        for (Instruction instruction : plannedInstructions) {
+            logInstruction(instruction);
+        }
+    }
+
+    /**
+     * Executes the full Plan-Resolve-Execute cycle using a single parallel dispatch.
+     * <p>
+     * Fuses Plan and Execute Wave 1 into one dispatch to halve the synchronization
+     * overhead (one park/unpark cycle instead of two). For each organism, the thread:
+     * <ol>
+     *   <li>Plans the instruction ({@code vm.plan()})</li>
+     *   <li>Runs interceptors</li>
+     *   <li>If the instruction is {@link Instruction#isParallelExecuteSafe parallel-safe},
+     *       executes it immediately (wave 1)</li>
+     *   <li>Otherwise, stores it for sequential conflict resolution (wave 2)</li>
+     * </ol>
+     * <p>
+     * Wave 1 instructions only modify organism-local state and cannot affect other
+     * organisms' planning, so fusing plan and execute is safe.
+     * <p>
+     * After the dispatch, conflict resolution and wave 2 execution run sequentially.
+     * Death handling runs after both waves in stable index order to preserve determinism.
+     *
+     * @param activeP the number of active threads to use for this tick
+     */
+    private void tickParallel(int activeP) {
+        int size = organisms.size();
+        Instruction[] allInstructions = new Instruction[size];
+        boolean[] diedInWave1 = new boolean[size];
+        boolean hasInterceptors = !instructionInterceptors.isEmpty();
+
+        InterceptionContext[] contexts = hasInterceptors ? parallelInterceptContexts : null;
+
+        // Single dispatch: Plan all organisms, execute wave 1 immediately
+        workerPool.dispatch(size, activeP, (from, to) -> {
+            InterceptionContext ctx = contexts != null
+                    ? contexts[TickWorkerPool.getThreadIndex()] : null;
+
+            for (int i = from; i < to; i++) {
+                Organism organism = organisms.get(i);
+                if (organism.isDead()) continue;
+
+                Instruction instruction = vm.plan(organism);
+
+                if (ctx != null) {
+                    ctx.reset(organism, instruction);
+                    for (IInstructionInterceptor interceptor : instructionInterceptors) {
+                        try {
+                            interceptor.intercept(ctx);
+                        } catch (Exception e) {
+                            LOG.warn("Interceptor '{}' failed for organism {} at tick {}: {}",
+                                    interceptor.getClass().getSimpleName(), organism.getId(),
+                                    currentTick, e.getMessage());
+                        }
+                    }
+                    instruction = ctx.getInstruction();
+                }
+
+                if (Instruction.isParallelExecuteSafe(instruction.getFullOpcodeId())) {
+                    // Wave 1: execute immediately (organism-local state only)
+                    instruction.setExecutedInTick(true);
+                    instruction.setConflictStatus(Instruction.ConflictResolutionStatus.NOT_APPLICABLE);
+                    executeSingleInstruction(instruction);
+                    if (organism.isDead()) {
+                        diedInWave1[i] = true;
+                    }
+                } else {
+                    // Wave 2: defer for conflict resolution
+                    instruction.setExecutedInTick(false);
+                    instruction.setConflictStatus(Instruction.ConflictResolutionStatus.NOT_APPLICABLE);
+                }
+
+                allInstructions[i] = instruction;
+            }
+        });
+
+        // Collect wave 2 instructions for conflict resolution
+        List<Instruction> wave2 = new ArrayList<>();
+        for (Instruction instr : allInstructions) {
+            if (instr != null && !Instruction.isParallelExecuteSafe(instr.getFullOpcodeId())) {
+                wave2.add(instr);
+            }
+        }
+
+        // Resolve conflicts among wave 2 instructions
+        resolveConflicts(wave2);
+
+        // Execute wave 2 sequentially, track deaths
+        boolean[] diedInWave2 = new boolean[wave2.size()];
+        for (int i = 0; i < wave2.size(); i++) {
+            executeSingleInstruction(wave2.get(i));
+            if (wave2.get(i).getOrganism().isDead()) {
+                diedInWave2[i] = true;
+            }
+        }
+
+        // Death handling: sequential, stable index order (wave 1 first, then wave 2)
+        for (int i = 0; i < allInstructions.length; i++) {
+            if (diedInWave1[i]) handleDeath(allInstructions[i].getOrganism());
+        }
+        for (int i = 0; i < wave2.size(); i++) {
+            if (diedInWave2[i]) handleDeath(wave2.get(i).getOrganism());
+        }
+
+        // Debug logging: sequential, in original organism order
+        for (Instruction instr : allInstructions) {
+            if (instr != null) logInstruction(instr);
+        }
+    }
+
+    /**
+     * Executes a single instruction: runs {@code vm.execute()}, advances past NOP cells,
+     * and applies error penalty if a post-execution failure occurred.
+     *
+     * @param instruction The instruction to execute
+     */
+    private void executeSingleInstruction(Instruction instruction) {
+        if (!instruction.isExecutedInTick()) return;
+        Organism organism = instruction.getOrganism();
+
+        vm.execute(instruction);
+
+        boolean failedInExecution = organism.isInstructionFailed();
+        organism.skipNopCells(environment);
+
+        // Apply error penalty for post-execution failures (e.g., max-skip)
+        // not already penalized inside vm.execute()
+        if (!failedInExecution && organism.isInstructionFailed()) {
+            int penalty = organismConfig.getInt("error-penalty-cost");
+            organism.takeEr(penalty);
+            if (organism.getEr() <= 0) {
+                organism.kill("Ran out of energy");
+            }
+        }
+    }
+
+    /**
+     * Handles organism death: invokes all registered death handlers, then clears
+     * the organism's ownership from the environment.
+     *
+     * @param organism The organism that has died
+     */
+    private void handleDeath(Organism organism) {
+        deathContext.reset(environment, organism.getId());
+        for (IDeathHandler handler : deathHandlers) {
+            try {
+                handler.onDeath(deathContext);
+            } catch (Exception e) {
+                LOG.warn("Death handler '{}' failed for organism {}: {}",
+                        handler.getClass().getSimpleName(), organism.getId(), e.getMessage());
+            }
+        }
+        environment.clearOwnershipFor(organism.getId());
+    }
+
+    /**
+     * Logs debug information for a single instruction execution.
+     *
+     * @param instruction The instruction to log
+     */
+    private void logInstruction(Instruction instruction) {
+        Organism organism = instruction.getOrganism();
+        if (organism.isLoggingEnabled()) {
+            LOG.debug("Tick={} Org={} Instr={} Status={} IP={} DP={} DV={} ER={} DR={} PR={} DS={} CS={}",
+                    currentTick,
+                    organism.getId(),
+                    instruction.getName(),
+                    instruction.getConflictStatus(),
+                    java.util.Arrays.toString(organism.getIp()),
+                    java.util.Arrays.toString(organism.getDp(0)),
+                    java.util.Arrays.toString(organism.getDv()),
+                    organism.getEr(),
+                    organism.getDrs(),
+                    organism.getPrs(),
+                    organism.getDataStack(),
+                    organism.getCallStack());
+        }
+    }
+
+    /**
+     * Configures dynamic parallelism scaling based on organism count.
+     * <p>
+     * Each entry maps an organism count threshold to a maximum thread count.
+     * During each tick, the highest threshold not exceeding the current organism
+     * count determines the active thread count. Below the lowest threshold,
+     * the simulation runs sequentially (P=1).
+     * <p>
+     * A {@code maxThreads} value of 0 means "use full parallelism"
+     * ({@link #effectiveParallelism}). All values are capped by
+     * {@link #effectiveParallelism}.
+     * <p>
+     * Entries are sorted by ascending organism count automatically.
+     * If not set or empty, all ticks use full parallelism.
+     *
+     * @param organisms  array of organism count thresholds
+     * @param maxThreads corresponding maximum thread counts (0 = full parallelism)
+     * @throws IllegalArgumentException if arrays have different lengths
+     */
+    public void setParallelismScaling(int[] organisms, int[] maxThreads) {
+        if (organisms.length != maxThreads.length) {
+            throw new IllegalArgumentException("organisms and maxThreads arrays must have the same length");
+        }
+        for (int i = 0; i < organisms.length; i++) {
+            if (organisms[i] < 0) throw new IllegalArgumentException("organisms[" + i + "] must be >= 0, got " + organisms[i]);
+            if (maxThreads[i] < 0) throw new IllegalArgumentException("maxThreads[" + i + "] must be >= 0, got " + maxThreads[i]);
+        }
+        // Sort by ascending organism count
+        Integer[] indices = new Integer[organisms.length];
+        for (int i = 0; i < indices.length; i++) indices[i] = i;
+        java.util.Arrays.sort(indices, java.util.Comparator.comparingInt(i -> organisms[i]));
+        this.scalingOrganisms = new int[organisms.length];
+        this.scalingMaxThreads = new int[maxThreads.length];
+        for (int i = 0; i < indices.length; i++) {
+            this.scalingOrganisms[i] = organisms[indices[i]];
+            this.scalingMaxThreads[i] = maxThreads[indices[i]];
+        }
+    }
+
+    /**
+     * Resolves the active thread count for the current tick based on organism count
+     * and the configured scaling thresholds.
+     *
+     * @param organismCount the current number of organisms
+     * @return the number of active threads to use (1 = sequential, &gt; 1 = parallel)
+     */
+    private int resolveActiveParallelism(int organismCount) {
+        if (scalingOrganisms.length == 0) {
+            return effectiveParallelism;
+        }
+        // Find the highest threshold <= organismCount (scan from end)
+        for (int i = scalingOrganisms.length - 1; i >= 0; i--) {
+            if (organismCount >= scalingOrganisms[i]) {
+                int maxThreads = scalingMaxThreads[i];
+                return (maxThreads == 0) ? effectiveParallelism : Math.min(maxThreads, effectiveParallelism);
+            }
+        }
+        // Below lowest threshold → sequential
+        return 1;
+    }
+
+    /**
+     * Resolves the configured parallelism value to an effective thread count.
+     *
+     * @param configured The configured value (0 = auto, 1 = sequential, N = explicit)
+     * @return The effective parallelism (always &gt;= 1)
+     */
+    private static int resolveParallelism(int configured) {
+        if (configured < 0) {
+            throw new IllegalArgumentException("runtime.parallelism must be >= 0, got " + configured);
+        }
+        if (configured == 0) {
+            return Math.max(1, Runtime.getRuntime().availableProcessors() - 2);
+        }
+        return configured;
+    }
+
+    /**
+     * Shuts down the worker pool used for parallel planning and execution.
+     * <p>
+     * Must be called when the simulation is no longer needed to release thread resources.
+     * Safe to call multiple times or when no pool was created (parallelism &lt;= 1).
+     * Must not be called concurrently with {@link #tick()}.
+     */
+    public void shutdown() {
+        if (workerPool != null) {
+            workerPool.shutdown();
+        }
+    }
+
+    /**
+     * Returns the effective parallelism level for the Plan phase.
+     * Thread-safe: returns an immutable value set at construction time.
+     *
+     * @return The number of worker threads (1 = sequential, &gt; 1 = parallel)
+     */
+    public int getEffectiveParallelism() {
+        return effectiveParallelism;
     }
 
     /**

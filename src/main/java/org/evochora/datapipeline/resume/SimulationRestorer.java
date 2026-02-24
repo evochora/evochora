@@ -152,10 +152,12 @@ public class SimulationRestorer {
      *
      * @param checkpoint The loaded checkpoint data
      * @param randomProvider A fresh IRandomProvider instance (state will be loaded into it)
+     * @param parallelism Thread parallelism for the Plan and Execute phases (deployment-specific, not from checkpoint).
+     *                    0 = auto, 1 = sequential, N = explicit.
      * @return A RestoredState ready for SimulationEngine initialization
      * @throws ResumeException if restoration fails
      */
-    public static RestoredState restore(ResumeCheckpoint checkpoint, IRandomProvider randomProvider) {
+    public static RestoredState restore(ResumeCheckpoint checkpoint, IRandomProvider randomProvider, int parallelism) {
         SimulationMetadata metadata = checkpoint.metadata();
         TickData snapshot = checkpoint.snapshot();
 
@@ -219,7 +221,8 @@ public class SimulationRestorer {
             totalOrganismsCreated,
             allGenomesEverSeen,
             policyManager,
-            organismConfig
+            organismConfig,
+            parallelism
         );
 
         // 8. Restore RNG state

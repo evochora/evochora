@@ -222,6 +222,26 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         return value;
     }
 
+    /**
+     * Reads the {@code parallelism-scaling} config list and applies it to the simulation.
+     *
+     * @param simulation the simulation to configure
+     * @param runtimeConfig the runtime config block (may or may not contain parallelism-scaling)
+     */
+    private void applyParallelismScaling(Simulation simulation, Config runtimeConfig) {
+        if (!runtimeConfig.hasPath("parallelism-scaling")) return;
+        List<? extends com.typesafe.config.ConfigObject> entries =
+                runtimeConfig.getObjectList("parallelism-scaling");
+        int[] scalingOrganisms = new int[entries.size()];
+        int[] scalingMaxThreads = new int[entries.size()];
+        for (int i = 0; i < entries.size(); i++) {
+            com.typesafe.config.Config entry = entries.get(i).toConfig();
+            scalingOrganisms[i] = entry.getInt("organisms");
+            scalingMaxThreads[i] = entry.getInt("max-threads");
+        }
+        simulation.setParallelismScaling(scalingOrganisms, scalingMaxThreads);
+    }
+
     private double readDouble(Config config, String path, double defaultValue) {
         return config.hasPath(path) ? config.getDouble(path) : defaultValue;
     }
@@ -276,10 +296,14 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             Config originalConfig = com.typesafe.config.ConfigFactory.parseString(
                 metadata.getResolvedConfigJson());
 
+            // Parallelism is deployment-specific, read from current options (not checkpoint metadata)
+            Config currentRuntimeConfig = options.hasPath("runtime") ? options.getConfig("runtime") : com.typesafe.config.ConfigFactory.empty();
+            int parallelism = currentRuntimeConfig.hasPath("parallelism") ? currentRuntimeConfig.getInt("parallelism") : 0;
+
             // Restore state using original config
             long seed = metadata.getInitialSeed();
             IRandomProvider randomProvider = new SeededRandomProvider(seed);
-            SimulationRestorer.RestoredState restored = SimulationRestorer.restore(checkpoint, randomProvider);
+            SimulationRestorer.RestoredState restored = SimulationRestorer.restore(checkpoint, randomProvider, parallelism);
 
             // Convert to internal format (SimulationRestorer already separates by type)
             List<PluginWithConfig> plugins = restored.tickPlugins().stream()
@@ -303,6 +327,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 programInfo.put(id, new ProgramInfo(id, id, artifact)));
 
             log.debug("Restored {} organisms from checkpoint", restored.simulation().getOrganisms().size());
+
+            applyParallelismScaling(restored.simulation(), currentRuntimeConfig);
 
             // Read intervals and estimation parameters from original config (must match original simulation!)
             return new InitializedState(
@@ -386,8 +412,12 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             Environment.createLabelMatchingStrategy(
                 runtimeConfig.hasPath("label-matching") ? runtimeConfig.getConfig("label-matching") : null);
 
+        int parallelism = runtimeConfig.hasPath("parallelism") ? runtimeConfig.getInt("parallelism") : 0;
+
         Environment environment = new Environment(envProps, labelMatchingStrategy);
-        Simulation simulation = new Simulation(environment, policyManager, organismConfig);
+        Simulation simulation = new Simulation(environment, policyManager, organismConfig, parallelism);
+
+        applyParallelismScaling(simulation, runtimeConfig);
         simulation.setRandomProvider(randomProvider);
         labelMatchingStrategy.setRandomProvider(randomProvider.deriveFor("labelMatching", 0));
         simulation.setProgramArtifacts(compiledPrograms);
@@ -467,12 +497,14 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 .collect(java.util.stream.Collectors.joining(", "));
 
         int ticksPerChunk = chunkEncoder.getSamplesPerChunk();
+        int parallelism = simulation.getEffectiveParallelism();
+        String parallelismStr = parallelism > 1 ? parallelism + " workers" : "sequential";
         if (isResume) {
-            log.info("SimulationEngine RESUMED: world=[{}, {}], organisms={}, tickPlugins={} ({}), seed={}, sampling={}, ticksPerChunk={}, runId={}, resumeFromTick={}",
-                    worldDims, topology, simulation.getOrganisms().size(), tickPlugins.size(), pluginNames, seed, samplingInterval, ticksPerChunk, runId, currentTick.get() + 1);
+            log.info("SimulationEngine RESUMED: world=[{}, {}], organisms={}, tickPlugins={} ({}), seed={}, sampling={}, ticksPerChunk={}, parallelism={}, runId={}, resumeFromTick={}",
+                    worldDims, topology, simulation.getOrganisms().size(), tickPlugins.size(), pluginNames, seed, samplingInterval, ticksPerChunk, parallelismStr, runId, currentTick.get() + 1);
         } else {
-            log.info("SimulationEngine started: world=[{}, {}], organisms={}, tickPlugins={} ({}), seed={}, sampling={}, ticksPerChunk={}, runId={}",
-                    worldDims, topology, simulation.getOrganisms().size(), tickPlugins.size(), pluginNames, seed, samplingInterval, ticksPerChunk, runId);
+            log.info("SimulationEngine started: world=[{}, {}], organisms={}, tickPlugins={} ({}), seed={}, sampling={}, ticksPerChunk={}, parallelism={}, runId={}",
+                    worldDims, topology, simulation.getOrganisms().size(), tickPlugins.size(), pluginNames, seed, samplingInterval, ticksPerChunk, parallelismStr, runId);
         }
     }
 
@@ -492,34 +524,38 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         }
 
         // Check isStopRequested() for graceful shutdown (in addition to state and interrupt)
-        while ((getCurrentState() == State.RUNNING || getCurrentState() == State.PAUSED)
-                && !isStopRequested() && !Thread.currentThread().isInterrupted()) {
-            checkPause();
+        try {
+            while ((getCurrentState() == State.RUNNING || getCurrentState() == State.PAUSED)
+                    && !isStopRequested() && !Thread.currentThread().isInterrupted()) {
+                checkPause();
 
-            simulation.tick();
-            long tick = currentTick.incrementAndGet();
+                simulation.tick();
+                long tick = currentTick.incrementAndGet();
 
-            // Yield to other threads/processes to prevent system freezing
-            Thread.yield();
+                // Yield to other threads/processes to prevent system freezing
+                Thread.yield();
 
-            if (tick % samplingInterval == 0) {
-                try {
-                    captureSampledTick(tick);
-                } catch (InterruptedException e) {
-                    // Shutdown signal received while sending tick data - this is expected
-                    log.debug("Interrupted while sending tick data for tick {} during shutdown", tick);
-                    throw e; // Re-throw to exit cleanly
-                } catch (Exception e) {
-                    log.warn("Failed to capture or send tick data for tick {}", tick);
-                    recordError("SEND_ERROR", "Failed to send tick data", String.format("Tick: %d", tick));
+                if (tick % samplingInterval == 0) {
+                    try {
+                        captureSampledTick(tick);
+                    } catch (InterruptedException e) {
+                        // Shutdown signal received while sending tick data - this is expected
+                        log.debug("Interrupted while sending tick data for tick {} during shutdown", tick);
+                        throw e; // Re-throw to exit cleanly
+                    } catch (Exception e) {
+                        log.warn("Failed to capture or send tick data for tick {}", tick);
+                        recordError("SEND_ERROR", "Failed to send tick data", String.format("Tick: %d", tick));
+                    }
+                }
+
+                if (shouldAutoPause(tick)) {
+                    log.info("{} auto-paused at tick {} due to pauseTicks configuration", getClass().getSimpleName(), tick);
+                    pause();
+                    continue;
                 }
             }
-
-            if (shouldAutoPause(tick)) {
-                log.info("{} auto-paused at tick {} due to pauseTicks configuration", getClass().getSimpleName(), tick);
-                pause();
-                continue;
-            }
+        } finally {
+            simulation.shutdown();
         }
 
         // Note: No flushPartialChunk() - partial chunks cause duplicate/shifted boundaries on resume.

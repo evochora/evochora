@@ -4,9 +4,12 @@ package org.evochora.runtime.spi;
  * Interface for plugins that intercept and potentially modify instructions
  * during the Plan phase, before conflict resolution and execution.
  * <p>
- * Interceptors run as part of the Plan phase and are parallelizable.
- * They have read-write access to the organism and can modify or replace
- * the planned instruction and its operands.
+ * Interceptors run as part of the Plan phase and are invoked concurrently
+ * from multiple worker threads on the same instance. Implementations must
+ * be thread-safe (e.g. no shared mutable state, or proper synchronization).
+ * Each thread receives its own {@link InterceptionContext}, but the interceptor
+ * instance is shared. Interceptors have read-write access to the organism
+ * and can modify or replace the planned instruction and its operands.
  * <p>
  * Multiple interceptors are called in configuration order (chaining).
  * Each interceptor sees the result of the previous one.

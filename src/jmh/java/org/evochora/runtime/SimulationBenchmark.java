@@ -1,0 +1,283 @@
+package org.evochora.runtime;
+
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.concurrent.TimeUnit;
+
+import org.evochora.compiler.Compiler;
+import org.evochora.compiler.api.CompilationException;
+import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.EnvironmentProperties;
+import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
+import org.openjdk.jmh.annotations.Benchmark;
+import org.openjdk.jmh.annotations.BenchmarkMode;
+import org.openjdk.jmh.annotations.Fork;
+import org.openjdk.jmh.annotations.Level;
+import org.openjdk.jmh.annotations.Measurement;
+import org.openjdk.jmh.annotations.Mode;
+import org.openjdk.jmh.annotations.OutputTimeUnit;
+import org.openjdk.jmh.annotations.Param;
+import org.openjdk.jmh.annotations.Scope;
+import org.openjdk.jmh.annotations.Setup;
+import org.openjdk.jmh.annotations.State;
+import org.openjdk.jmh.annotations.TearDown;
+import org.openjdk.jmh.annotations.Warmup;
+import org.slf4j.LoggerFactory;
+
+import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
+
+/**
+ * JMH benchmark for {@link Simulation#tick()}.
+ * <p>
+ * Measures simulation throughput (ticks per second) across different
+ * parallelism levels and assembly programs. Each iteration starts with
+ * a fresh simulation containing a configurable number of organisms, each
+ * running the selected program.
+ * <p>
+ * Run with: {@code ./gradlew jmh}
+ */
+@State(Scope.Benchmark)
+@BenchmarkMode(Mode.Throughput)
+@OutputTimeUnit(TimeUnit.SECONDS)
+@Fork(1)
+@Warmup(iterations = 2, time = 3)
+@Measurement(iterations = 3, time = 3)
+public class SimulationBenchmark {
+
+    private static final int ENV_SIZE = 1024;
+    private static final int MAX_ENERGY = 32767;
+
+    /**
+     * Thermodynamic configuration with zero costs to prevent organism death
+     * during measurement. Isolates pure instruction-execution throughput from
+     * energy/entropy bookkeeping.
+     */
+    private static final String THERMODYNAMIC_CONFIG = """
+            default {
+              className = "org.evochora.runtime.thermodynamics.impl.UniversalThermodynamicPolicy"
+              options {
+                base-energy = 0
+                base-entropy = 0
+              }
+            }
+            overrides {
+              instructions {
+                "PEEK, PEKI, PEKS, POKE, POKI, POKS, PPKR, PPKI, PPKS" {
+                  className = "org.evochora.runtime.thermodynamics.impl.UniversalThermodynamicPolicy"
+                  options {
+                    base-energy = 0
+                    base-entropy = 0
+                    read-rules {
+                      own:       { _default: { energy = 0, entropy = 0 }, ENERGY: { energy = 0, entropy = 0 }, STRUCTURE: { energy = 0, entropy = 0 }, CODE: { energy = 0, entropy = 0 }, DATA: { energy = 0, entropy = 0 } }
+                      foreign:   { _default: { energy = 0, entropy = 0 }, ENERGY: { energy = 0, entropy = 0 }, STRUCTURE: { energy = 0, entropy = 0 }, CODE: { energy = 0, entropy = 0 }, DATA: { energy = 0, entropy = 0 } }
+                      unowned:   { _default: { energy = 0, entropy = 0 }, ENERGY: { energy = 0, entropy = 0 }, STRUCTURE: { energy = 0, entropy = 0 }, CODE: { energy = 0, entropy = 0 }, DATA: { energy = 0, entropy = 0 } }
+                    }
+                    write-rules {
+                      ENERGY    { energy = 0, entropy = 0 }
+                      STRUCTURE { energy = 0, entropy = 0 }
+                      CODE      { energy = 0, entropy = 0 }
+                      DATA      { energy = 0, entropy = 0 }
+                    }
+                  }
+                }
+              }
+              families {}
+            }
+            """;
+
+    private static final Map<String, String> PROGRAMS = Map.of(
+            "ARITHMETIC", """
+                    START:
+                      SETI %DR0 DATA:1
+                      ADDI %DR0 DATA:1
+                      SUBI %DR0 DATA:1
+                      MULI %DR0 DATA:2
+                      JMPI START
+                    """,
+            "ENVIRONMENT", """
+                    START:
+                      SETI %DR0 DATA:5
+                      POKI %DR0 0|1
+                      PEKI %DR1 0|1
+                      JMPI START
+                    """,
+            "REALISTIC", """
+                    MAIN:
+                      SETI %DR2 DATA:0
+                      IFI %DR2 DATA:0
+                      SCNI %DR4 0|1
+                      INI %DR2 DATA:99
+                      NRG %DR1
+                      GTI %DR1 DATA:0
+                      JMPI SEC_B
+                    SEC_B:
+                      LTI %DR2 DATA:50
+                      ADDI %DR0 DATA:1
+                      GETI %DR1 DATA:0
+                      SETI %DR5 DATA:42
+                      LETI %DR2 DATA:50
+                      JMPI SEC_C
+                    SEC_C:
+                      IFTI %DR2 DATA:0
+                      NTR %DR6
+                      IFI %DR2 DATA:0
+                      PPKI %DR5 0|1
+                      INI %DR2 DATA:1
+                      JMPI SEC_D
+                    SEC_D:
+                      GTI %DR1 DATA:0
+                      ADDI %DR0 DATA:1
+                      LTI %DR2 DATA:100
+                      SCNI %DR4 0|-1
+                      JMPI MAIN
+                    """
+    );
+
+    /** Assembly program to execute. */
+    @Param({/* "ARITHMETIC", "ENVIRONMENT", */ "REALISTIC"})  // uncomment others for targeted benchmarks
+    private String assembly;
+
+    /** Number of organisms in the simulation. */
+    @Param({"24", "32", "40"})
+    private int organisms;
+
+    /** Parallelism level for the simulation's Plan and Execute phases. */
+    @Param({"1", "2", "4", "8"})
+    private int parallelism;
+
+    private Map<String, ProgramArtifact> compiledPrograms;
+    private EnvironmentProperties envProps;
+    private Simulation simulation;
+
+    /**
+     * Compiles all assembly programs once per JMH fork.
+     */
+    @Setup(Level.Trial)
+    public void compilePrograms() {
+        Instruction.init();
+        envProps = new EnvironmentProperties(new int[]{ENV_SIZE, ENV_SIZE}, true);
+        Compiler compiler = new Compiler();
+        compiledPrograms = new HashMap<>();
+        for (Map.Entry<String, String> entry : PROGRAMS.entrySet()) {
+            List<String> sourceLines = Arrays.asList(entry.getValue().split("\\r?\\n"));
+            try {
+                compiledPrograms.put(
+                        entry.getKey(),
+                        compiler.compile(sourceLines, "bench_" + entry.getKey() + ".s", envProps));
+            } catch (CompilationException e) {
+                throw new RuntimeException("Failed to compile benchmark program: " + entry.getKey(), e);
+            }
+        }
+    }
+
+    /**
+     * Creates a fresh simulation with organisms for each measurement iteration.
+     */
+    @Setup(Level.Iteration)
+    public void setupSimulation() {
+        Environment env = new Environment(envProps);
+
+        Config organismConfig = ConfigFactory.parseMap(Map.of(
+                "max-energy", MAX_ENERGY,
+                "max-entropy", 8191,
+                "error-penalty-cost", 10
+        ));
+        ThermodynamicPolicyManager policyManager =
+                new ThermodynamicPolicyManager(ConfigFactory.parseString(THERMODYNAMIC_CONFIG));
+
+        // No parallelism-scaling set: parallelism @Param is used directly to isolate per-P throughput
+        simulation = new Simulation(env, policyManager, organismConfig, parallelism);
+        simulation.setRandomProvider(new org.evochora.runtime.internal.services.SeededRandomProvider(42));
+
+        ProgramArtifact artifact = compiledPrograms.get(assembly);
+        placeOrganisms(env, artifact);
+    }
+
+    /**
+     * Measures the throughput of a single simulation tick.
+     *
+     * @return the current tick count (prevents dead-code elimination)
+     */
+    @Benchmark
+    public long tick() {
+        simulation.tick();
+        return simulation.getCurrentTick();
+    }
+
+    /**
+     * Shuts down the simulation's worker pool after each iteration.
+     */
+    @TearDown(Level.Iteration)
+    public void teardown() {
+        simulation.shutdown();
+    }
+
+    /**
+     * Places multiple copies of a compiled program into the environment and
+     * creates one organism per copy. Each organism gets ownership of its
+     * molecules and unique label hashes (XOR-rewritten like LabelRewritePlugin
+     * does on FORK in production) to avoid O(n²) label resolution.
+     */
+    private void placeOrganisms(Environment env, ProgramArtifact artifact) {
+        Map<int[], Integer> layout = artifact.machineCodeLayout();
+
+        int maxExtent = 0;
+        for (int[] coord : layout.keySet()) {
+            maxExtent = Math.max(maxExtent, coord[0]);
+        }
+        int xSpacing = maxExtent + 5;
+        int ySpacing = 3;
+        int organismsPerRow = ENV_SIZE / xSpacing;
+
+        Random random = new Random(42);
+
+        for (int i = 0; i < organisms; i++) {
+            int col = i % organismsPerRow;
+            int row = i / organismsPerRow;
+            int offsetX = col * xSpacing;
+            int offsetY = row * ySpacing;
+
+            int[] startIp = new int[]{offsetX, offsetY};
+            Organism organism = Organism.create(simulation, startIp, MAX_ENERGY,
+                    LoggerFactory.getLogger(SimulationBenchmark.class));
+
+            int labelMask = random.nextInt(0x7FFFF) + 1;
+
+            for (Map.Entry<int[], Integer> entry : layout.entrySet()) {
+                int[] coord = entry.getKey();
+                int[] placed = new int[]{
+                        (coord[0] + offsetX) % ENV_SIZE,
+                        (coord.length > 1 ? coord[1] + offsetY : offsetY) % ENV_SIZE
+                };
+                int moleculeInt = entry.getValue();
+                Molecule mol = Molecule.fromInt(moleculeInt);
+                int type = moleculeInt & org.evochora.runtime.Config.TYPE_MASK;
+
+                if (type == org.evochora.runtime.Config.TYPE_LABEL
+                        || type == org.evochora.runtime.Config.TYPE_LABELREF) {
+                    int oldValue = moleculeInt & org.evochora.runtime.Config.VALUE_MASK;
+                    int newValue = oldValue ^ labelMask;
+                    if (type == org.evochora.runtime.Config.TYPE_LABELREF
+                            && "REALISTIC".equals(assembly) && random.nextBoolean()) {
+                        newValue = newValue ^ (1 << random.nextInt(19));
+                    }
+                    int marker = (moleculeInt & org.evochora.runtime.Config.MARKER_MASK)
+                            >>> org.evochora.runtime.Config.MARKER_SHIFT;
+                    mol = new Molecule(type, newValue, marker);
+                }
+
+                env.setMolecule(mol, organism.getId(), placed);
+            }
+
+            simulation.addOrganism(organism);
+        }
+    }
+}
