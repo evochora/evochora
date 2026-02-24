@@ -31,7 +31,8 @@ jobs:
           # The new Caddyfile is now included here.
           scp -o StrictHostKeyChecking=no infrastructure/docker/docker-compose.yml ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/app/docker-compose.yml
           scp -o StrictHostKeyChecking=no infrastructure/docker/Caddyfile ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/app/Caddyfile
-          scp -o StrictHostKeyChecking=no evochora.conf ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/app/evochora.conf
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "mkdir -p ~/app/config"
+          scp -o StrictHostKeyChecking=no config/evochora.conf ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:~/app/config/evochora.conf
 
       - name: Create .env file and Deploy with Docker Compose
         run: |

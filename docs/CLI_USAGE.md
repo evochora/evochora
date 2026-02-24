@@ -54,7 +54,7 @@ The node will:
 
 - Load the configuration from the specified file  
   - With `--config`: the file you pass (e.g. `config/my-config.conf`)  
-  - Without `--config`: `config/evochora.conf` in a distribution, or `./evochora.conf` in a dev checkout
+  - Without `--config`: `config/evochora.conf`
 - Start all configured services (simulation engine, persistence, indexers, HTTP server, etc.)
 - Expose the HTTP API for monitoring and control
 - Run until interrupted (Ctrl+C)
@@ -307,13 +307,11 @@ bin/evochora --config my-config.conf node run
 - The `--config` parameter must come **before** the command (e.g., before `node run`).
 - If the file is not found, the CLI will log an ERROR and exit.
 - If the file has invalid syntax, the CLI will log an ERROR with details and exit.
-- Default configuration files:
-  - In a distribution: `config/evochora.conf`
-  - In a development checkout: `./evochora.conf`
+- Default configuration file: `config/evochora.conf`
 
 ### Configuration File Format
 
-The configuration file uses HOCON format (`.conf` extension). See `evochora.conf` in the repository root for a complete example.
+The configuration file uses HOCON format (`.conf` extension). See `config/evochora.conf` for the experiment template and `src/main/resources/reference.conf` for all defaults.
 
 ## Running with JAR (Developers)
 
@@ -360,7 +358,7 @@ java -jar build/libs/evochora.jar video --run-id my-simulation-run --out simulat
 ### Configuration errors
 - Verify the configuration file uses valid HOCON syntax
 - Check that all required configuration keys are present
-- See `evochora.conf` for a complete configuration example
+- See `config/evochora.conf` for the experiment template and `src/main/resources/reference.conf` for all defaults
 
 ### Inspect storage fails
 - Verify the simulation run ID exists in storage

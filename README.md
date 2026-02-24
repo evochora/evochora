@@ -142,23 +142,14 @@ For the full scientific motivation, see the [Scientific Overview](docs/SCIENTIFI
 
 ### Configuration
 
-Evochora is configured via [HOCON](https://github.com/lightbend/config/blob/main/HOCON.md) configuration files. The main configuration file [`config/evochora.conf`](./evochora.conf) is extensively documented with inline comments and included in the distribution.
+Evochora is configured via [HOCON](https://github.com/lightbend/config/blob/main/HOCON.md) configuration files. The main configuration file [`config/evochora.conf`](./config/evochora.conf) serves as an experiment template with the most common parameters. All defaults are defined in [`reference.conf`](./src/main/resources/reference.conf) (embedded in JAR, loaded automatically).
 
-For custom experiments, create a `config/local.conf` to override specific settings without modifying the default configuration:
-
-```hocon
-include "evochora.conf"
-
-simulation-engine.options.environment {
-  shape = [1024, 800]
-  topology = "TORUS"
-}
-```
-
-Start the node with your custom configuration:
+For custom experiments, copy the template and adjust parameters:
 
 ```bash
-bin/evochora -c config/local.conf node run
+cp config/evochora.conf config/my-experiment.conf
+# Edit config/my-experiment.conf
+bin/evochora -c config/my-experiment.conf node run
 ```
 
 ### Writing Your Own Organisms
@@ -174,7 +165,7 @@ This design leaves room for experimentation. For example:
 To create your own organism:
 
 1. Edit or create a `.evo` file in `assembly/`
-2. Configure it in `evochora.conf` (see `simulation-engine.options.organisms`)
+2. Configure it in `config/evochora.conf` (see `simulation-engine.options.organisms`)
 3. Run `bin/evochora node run` — the engine compiles automatically
 
 **Resources:**

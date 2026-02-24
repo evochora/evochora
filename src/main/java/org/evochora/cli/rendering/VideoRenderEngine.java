@@ -29,7 +29,8 @@ import org.evochora.runtime.model.EnvironmentProperties;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigException;
-import com.typesafe.config.ConfigFactory;
+
+import org.evochora.cli.config.ConfigLoader;
 
 /**
  * Video rendering engine that orchestrates the rendering pipeline.
@@ -38,8 +39,6 @@ import com.typesafe.config.ConfigFactory;
  * and single/multi-threaded rendering loops with optimized sampling support.
  */
 public class VideoRenderEngine {
-
-    private static final String CONFIG_FILE_NAME = "evochora.conf";
 
     private final VideoRenderOptions options;
     private final IVideoFrameRenderer frameRenderer;
@@ -579,35 +578,15 @@ public class VideoRenderEngine {
 
     private Config loadConfig() {
         try {
-            if (options.configFile != null) {
-                if (!options.configFile.exists()) {
-                    System.err.println("Configuration file not found: " + options.configFile.getAbsolutePath());
-                    return null;
+            return ConfigLoader.resolve(options.configFile, (level, message) -> {
+                switch (level) {
+                    case INFO -> System.out.println(message);
+                    case WARN -> System.out.println("Warning: " + message);
                 }
-                System.out.println("Using configuration file: " + options.configFile.getAbsolutePath());
-                return ConfigFactory.systemProperties()
-                    .withFallback(ConfigFactory.systemEnvironment())
-                    .withFallback(ConfigFactory.parseFile(options.configFile))
-                    .withFallback(ConfigFactory.load())
-                    .resolve();
-            }
-
-            File defaultConf = new File(CONFIG_FILE_NAME);
-            if (defaultConf.exists()) {
-                System.out.println("Using configuration file: " + defaultConf.getAbsolutePath());
-                return ConfigFactory.systemProperties()
-                    .withFallback(ConfigFactory.systemEnvironment())
-                    .withFallback(ConfigFactory.parseFile(defaultConf))
-                    .withFallback(ConfigFactory.load())
-                    .resolve();
-            }
-
-            System.out.println("Warning: No 'evochora.conf' found. Using defaults.");
-            return ConfigFactory.systemProperties()
-                .withFallback(ConfigFactory.systemEnvironment())
-                .withFallback(ConfigFactory.load())
-                .resolve();
-
+            });
+        } catch (IllegalArgumentException e) {
+            System.err.println(e.getMessage());
+            return null;
         } catch (ConfigException e) {
             System.err.println("Failed to load configuration: " + e.getMessage());
             return null;

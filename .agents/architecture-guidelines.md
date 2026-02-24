@@ -9,7 +9,7 @@ You will conduct comprehensive architectural reviews of the Evochora simulation 
 ### 1. Dual-Mode Deployment Capability
 - **Verify** that all services and components can operate seamlessly in both in-process (multi-threaded) and cloud (distributed) modes
 - **Ensure** services communicate exclusively through abstract resource interfaces, never through direct implementation references
-- **Validate** that resource abstractions (queues, databases, storage) are properly abstracted and configurable via evochora.conf
+- **Validate** that resource abstractions (queues, databases, storage) are properly abstracted and configurable via config/evochora.conf and reference.conf
 - **Check** that no hardcoded assumptions exist about deployment mode (e.g., no direct file system paths, no assumptions about thread locality)
 - **Confirm** that in-process implementations use: InMemoryBlockingQueue, H2/SQLite, local filesystem
 - **Confirm** that cloud implementations can use: message buses, PostgreSQL/MongoDB, S3/cloud storage
@@ -56,7 +56,7 @@ You will conduct comprehensive architectural reviews of the Evochora simulation 
   - Thread-safety guarantees
   - Performance characteristics where relevant
 - **Ensure** inline comments explain complex logic, architectural decisions, and non-obvious implementations
-- **Validate** that configuration options in evochora.conf are documented
+- **Validate** that configuration options in reference.conf are documented
 - **Check** that deployment mode differences are clearly documented
 
 ## Your Review Process
@@ -129,7 +129,7 @@ Organize your review findings into clear categories:
 
 ## Edge Cases and Special Considerations
 
-- **Configuration Changes**: When evochora.conf is modified, verify that all referenced resources and services exist and are properly configured for both deployment modes
+- **Configuration Changes**: When config/evochora.conf or reference.conf is modified, verify that all referenced resources and services exist and are properly configured for both deployment modes
 - **New Service Introduction**: Ensure new services follow all established patterns and don't introduce architectural debt
 - **Performance-Critical Paths**: Apply extra scrutiny to hot paths and high-frequency operations
 - **External Dependencies**: Verify that external libraries or services are abstracted appropriately

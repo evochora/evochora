@@ -118,8 +118,9 @@ public class MinimapFrameRenderer extends AbstractFrameRenderer {
         super.init(envProps);
         this.worldWidth = envProps.getWorldShape()[0];
         this.worldHeight = envProps.getWorldShape()[1];
-        this.outputWidth = Math.max(1, (int) (worldWidth * scale));
-        this.outputHeight = Math.max(1, (int) (worldHeight * scale));
+        // Round down to even dimensions (required by H.264/H.265 macroblock alignment)
+        this.outputWidth = Math.max(2, (int) (worldWidth * scale) & ~1);
+        this.outputHeight = Math.max(2, (int) (worldHeight * scale) & ~1);  
 
         // Frame buffer
         this.frame = new BufferedImage(outputWidth, outputHeight, BufferedImage.TYPE_INT_RGB);

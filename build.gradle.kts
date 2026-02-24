@@ -206,7 +206,7 @@ distributions {
             from("assembly") {
                 into("assembly")
             }
-            from("evochora.conf") {
+            from("config") {
                 into("config")
             }
             from("README.md")
