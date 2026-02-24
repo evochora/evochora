@@ -604,6 +604,10 @@ public class Simulation {
         if (organisms.length != maxThreads.length) {
             throw new IllegalArgumentException("organisms and maxThreads arrays must have the same length");
         }
+        for (int i = 0; i < organisms.length; i++) {
+            if (organisms[i] < 0) throw new IllegalArgumentException("organisms[" + i + "] must be >= 0, got " + organisms[i]);
+            if (maxThreads[i] < 0) throw new IllegalArgumentException("maxThreads[" + i + "] must be >= 0, got " + maxThreads[i]);
+        }
         // Sort by ascending organism count
         Integer[] indices = new Integer[organisms.length];
         for (int i = 0; i < indices.length; i++) indices[i] = i;
@@ -659,6 +663,7 @@ public class Simulation {
      * <p>
      * Must be called when the simulation is no longer needed to release thread resources.
      * Safe to call multiple times or when no pool was created (parallelism &lt;= 1).
+     * Must not be called concurrently with {@link #tick()}.
      */
     public void shutdown() {
         if (workerPool != null) {
@@ -668,6 +673,7 @@ public class Simulation {
 
     /**
      * Returns the effective parallelism level for the Plan phase.
+     * Thread-safe: returns an immutable value set at construction time.
      *
      * @return The number of worker threads (1 = sequential, &gt; 1 = parallel)
      */
