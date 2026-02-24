@@ -1,9 +1,16 @@
 # AGENTS.md
 
-## Project overview
-Simulate evolution of organisms in n-D worlds, written in Assembly.
+## Project Overview
 
-## Repository layout
+Evochora is an artificial life simulator for research into digital evolution. It features:
+- Custom n-dimensional simulation environment with thermodynamic constraints
+- Multi-pass EvoASM compiler converting assembly to VM machine code
+- High-performance runtime with embodied virtual organisms
+- Modular data pipeline separating hot execution from cold data processing
+- Web-based visualization and analysis frontends
+
+## Repository Layout
+
 - `src/main/java/` – Application code (compiler, runtime, datapipeline, CLI, node)
 - `src/main/proto/` – Protobuf definitions for data pipeline communication
 - `src/main/resources/` – Configuration files, compiler messages, reference.conf
@@ -12,15 +19,24 @@ Simulate evolution of organisms in n-D worlds, written in Assembly.
 - `src/testFixtures/` – JUnit extensions and test utilities
 - `docs/` – Documentation (ASSEMBLY_SPEC.md, CLI_USAGE.md, proposals)
 - `assembly/` – Assembly code examples and test files
+- `config/` – User-facing configuration (evochora.conf, local.conf)
 - `build.gradle.kts` – Gradle build configuration
 - `gradlew`, `gradlew.bat`, `gradle/wrapper/` – Gradle wrapper
 
-## Build & run (Java/Gradle)
-- Build (all): `./gradlew clean build`
-- Assemble (no tests): `./gradlew clean assemble`
-- Unit tests: `./gradlew test`
-- Java toolchain: **21** (configured in `build.gradle(.kts)`)
-- Packaging/outputs: `jar` (+ `distZip`/`distTar` if application plugin)
+## Build & Run (Java/Gradle)
+
+**Java 21 required.** Configure in IDE or use `JAVA_HOME`.
+
+```bash
+./gradlew build              # Full build with tests
+./gradlew clean assemble     # Assemble without tests
+./gradlew test               # All tests
+./gradlew unit               # Fast unit tests only (@Tag("unit"))
+./gradlew integration        # Integration tests only (@Tag("integration"))
+./gradlew run --args="node run"  # Run simulation node
+./gradlew run --args="--help"    # Show CLI help
+./gradlew distZip distTar    # Create distribution archives
+```
 
 ## Running the Application
 
@@ -69,10 +85,37 @@ When the node is running, it exposes a REST API for controlling and monitoring t
 The compiler can be invoked in multiple equivalent ways. For details and examples, see the **Compile** section in `docs/CLI_USAGE.md`.
 
 - Primary user-facing entry point: `bin/evochora compile --file=<path> [--env=<dimensions>[:<toroidal>]]`
-- Developer entry point via JAR (after `./gradlew jar`):  
+- Developer entry point via JAR (after `./gradlew jar`):
   `java -jar build/libs/evochora.jar compile --file=<path> [--env=<dimensions>[:<toroidal>]]`
 
 The compiler produces a JSON `ProgramArtifact` with machine code layout, labels, registers, procedures, environment properties, and source/ token maps that can be used for debugging and analysis.
+
+## Configuration
+
+### File Layout
+
+- `config/evochora.conf` — User-facing experiment template (overrides selected defaults)
+- `src/main/resources/reference.conf` — All defaults with documentation (embedded in JAR, loaded automatically)
+- `config/local.conf` — Local development overrides (not checked in)
+
+### Config Resolution Cascade (in `ConfigLoader.resolve()`)
+
+1. `--config` CLI option
+2. `-Dconfig.file` system property
+3. `config/evochora.conf` in CWD
+4. `APP_HOME/config/evochora.conf` (detected from JAR location)
+5. Classpath `reference.conf` only (fallback)
+
+### Tuning Profiles
+
+Services share pipeline tuning parameters via HOCON substitutions:
+- `pipeline.tuning = ${profiles.detailed}` (or `sampled`, `sparse`)
+- Services consume via `${pipeline.tuning.samplingInterval}`, `${pipeline.tuning.insertBatchSize}`, etc.
+- Override in experiment config or `local.conf`: `pipeline.tuning = ${profiles.sampled}`
+
+### Config Priority (within a single file)
+
+System properties > Environment variables > User config file > reference.conf defaults
 
 ## Agent Guidelines
 
@@ -86,25 +129,30 @@ There is a central document for AI agent guidelines that defines architectural p
 - **Code quality**: Prefer minimal diffs, write comprehensive tests, maintain existing code style
 - **Communication**: Explain reasoning for changes, ask when uncertain about architectural decisions
 
-# Architectural principles
+# Architectural Principles
 
-## Compiler
+## Compiler (`src/main/java/org/evochora/compiler/`)
+
 - **Immutability**: Compiler phases are immutable - each phase creates an immutable object and passes it to the next
 - **Single Execution**: Every compiler phase runs exactly once; no phase may access a previous phase
 - **No Direct Calls**: Compiler phases never call other compiler phases directly
+- **Multi-Pass Pipeline**: Preprocessor → Lexer → Parser → Semantic Analyzer → IR Generator → Layout Engine → Linker → Emitter
 - **Handler Pattern**: Phase main classes (PreProcessor, Parser, SemanticAnalyzer, IrGenerator, LayoutEngine, Linker, Emitter) must use their corresponding handlers/plugins system
 - **Thin Orchestrators**: All logic goes into handlers/plugins; main classes stay clean as distributors
 - **Registry-Based**: Use DirectiveHandlerRegistry, IrConverterRegistry, LayoutDirectiveRegistry, LinkingRegistry, EmissionRegistry for extensibility
 
-## Runtime
+## Runtime (`src/main/java/org/evochora/runtime/`)
+
 - **Plan-Execute Separation**: VM separates instruction planning from execution to enable future multithreading
 - **Conflict Resolution**: Simulation tick follows: plan → resolve conflicts → execute winning instructions
 - **Organism Autonomy**: Each Organism is a self-contained VM with own registers, stacks, and energy
+- **Embodied Organisms**: Organisms have an instruction pointer (IP) and data pointers (DPs) navigating the n-D grid
 - **Instruction Registry**: All instructions register via `Instruction.init()` with unique IDs and planners
 - **Immutable Environment**: Environment is read-only during conflict resolution
 - **Energy-First**: Every action costs energy; zero energy = organism death
 
-## Data Pipeline
+## Data Pipeline (`src/main/java/org/evochora/datapipeline/`)
+
 **Architecture**: Services use Resources to communicate with each other. Resources abstract away the underlying transport (queues, storage, databases), allowing services to focus on business logic.
 
 **Core Concepts**:
@@ -114,14 +162,17 @@ There is a central document for AI agent guidelines that defines architectural p
 - **Flow**: SimulationEngine → Queue → PersistenceService → Storage → IndexerService → Database
 
 **Design Principles**:
+- **Dual-Mode Deployment**: Supports in-process (InMemoryBlockingQueue, H2/SQLite) and cloud (message buses, PostgreSQL, S3)
 - **Service Lifecycle**: All services implement `IService` with states: STOPPED, RUNNING, PAUSED, ERROR
 - **Resource Abstraction**: Resources implement `IResource` with usage-specific states (ACTIVE, WAITING, FAILED)
-- **Constructor DI**: Services receive `(String serviceName, Map<String, List<IResource>> resources, Config options)` 
+- **Constructor DI**: Services receive `(String serviceName, Map<String, List<IResource>> resources, Config options)`
 - **Abstract Base**: Services extend `AbstractService` for common lifecycle, thread management, error tracking
 - **Resource Helpers**: Use `getRequiredResource()` and `getOptionalResource()` from AbstractService
 - **Config Validation**: Validate all config parameters in constructor with clear error messages
 - **Contextual Resources**: Resources may implement `IContextualResource` for service-specific wrapping
 - **Monitoring**: All services and resources expose operational state via `IMonitorable`
+- **Competing Consumers**: All services except SimulationEngine must have the capability to operate as competing consumers
+- **Atomic Artifacts**: All created artifacts must be created atomically to ensure resume functionality can always start from final artifacts
 
 **Error Handling & Logging**:
 - **Transient Errors** (service/resource continues): `log.warn("msg", args)` + `recordError(code, msg, details)` - NO exception thrown
@@ -130,6 +181,7 @@ There is a central document for AI agent guidelines that defines architectural p
 - **Retry Logic**: Use `log.debug()` during retries, then follow transient/fatal rules after exhaustion
 - **Stack Traces**: NEVER use `log.error(..., exception)` - stack traces logged at DEBUG level by framework
 - **Health Status**: Services/Resources are unhealthy if `errors.isEmpty() == false` or state == ERROR
+- **No Fallbacks**: Never hide problematic states or errors with fallback behavior — always fail early!
 
 **Monitoring & Metrics**:
 - **O(1) Recording**: All metric recording MUST be O(1) - no lists, no sorting, no iteration
@@ -137,7 +189,8 @@ There is a central document for AI agent guidelines that defines architectural p
 - **AtomicLong Counters**: For simple counts (messages processed, bytes transferred, errors)
 - **No Overhead**: Metric collection must not impact critical path performance
 
-## Node
+## Node (`src/main/java/org/evochora/node/`)
+
 - **Process Pattern**: All long-running components implement `IProcess` (start/stop methods)
 - **Dependency Injection**: Node resolves process dependencies via topological sort and constructor injection
 - **Constructor Signature**: Processes receive `(String processName, Map<String, Object> dependencies, Config options)`
@@ -146,22 +199,34 @@ There is a central document for AI agent guidelines that defines architectural p
 - **Service Registry**: Use ServiceRegistry for sharing services between processes
 - **Abstract Base**: Processes extend `AbstractProcess` for common dependency resolution
 - **HTTP Controllers**: Controllers extend `AbstractController`, register routes via `registerRoutes(Javalin, String basePath)`
+- **HTTP API**: Endpoints at `/api/visualizer/*`, `/api/analyzer/*`, `/api/pipeline/*`
 
-## CLI
+## CLI (`src/main/java/org/evochora/cli/`)
+
+- **Entry Point**: `CommandLineInterface.main()`
 - **PicoCLI**: Use PicoCLI annotations for commands and options
 - **Command Pattern**: Each command implements `Callable<Integer>` with exit codes (0=success, 1=error, 2=system error)
-- **Subcommands**: Organize as `evochora [--config] [COMMAND]` with `node`, `compile`, etc.
-- **Config Priority**: Command-line > Config File > Defaults
+- **Subcommands**: `node run`, `compile`, `inspect`, `video`, `cleanup`
 - **Help System**: Support `--help`, `help [command]` for all commands
 
-## Key Libraries for Agent Development
+## Architectural Review
+
+For significant changes, an architecture review agent is available. Key principles enforced:
+- Dual-mode deployment compatibility (in-process and cloud)
+- Services communicate through abstract resource interfaces only
+- All data-consuming services must be idempotent
+- Serialization happens at resource layer, not in services
+
+See `.agents/architecture-guidelines.md` for full review criteria.
+
+## Key Libraries
+
 - **Typesafe Config**: Application configuration with environment variable support (`Config` objects)
 - **SLF4J + Logback**: Structured logging (`LoggerFactory.getLogger()` instead of `System.out.println`)
 - **PicoCLI**: CLI framework with annotations (`@Command`, `@Option`, `@Parameters`)
 - **Javalin**: HTTP server for REST APIs (`Javalin.create().start()`)
 - **Protobuf**: Data pipeline communication (binary serialization)
-- **JUnit 5**: Testing with tags (`@Tag("unit")` or `@Tag("integration")`) 
-    
+- **JUnit 5**: Testing with tags (`@Tag("unit")` or `@Tag("integration")`)
 
 ## Testing Guidelines
 
@@ -208,7 +273,7 @@ There is a central document for AI agent guidelines that defines architectural p
 - `DEBUG`: Process initialization details, topology sorting, dependency injection
 
 **Services (INFO only for user-visible events):**
-- `INFO`: 
+- `INFO`:
   - Service started with configuration (via `logStarted()` override - each service logs its own config)
   - User-visible events: DLQ writes, auto-pause, max limit reached, simulation loop finished
   - Explicit runId configuration
@@ -238,7 +303,7 @@ There is a central document for AI agent guidelines that defines architectural p
   - `log.warn("msg", args)` or `log.error("msg", args)` without exception parameter
   - Stack trace available at DEBUG level if needed for support
 - **Unexpected errors / Bugs** (invariant violations, should-never-happen conditions): WITH stack trace
-  - `log.error("msg", args, new IllegalStateException("Invariant violation"))` 
+  - `log.error("msg", args, new IllegalStateException("Invariant violation"))`
   - These indicate bugs that need immediate attention and debugging
 - For transient errors: `log.warn("msg", args)` without exception parameter
 - For fatal errors: `log.error("msg", args)` then throw exception
@@ -252,7 +317,7 @@ log.info("Closed resource: {}", resourceName);
 
 // Good - Service startup (INFO, via logStarted())
 log.info("PersistenceService started: batch=[size={}, timeout={}s], retry=[max={}, backoff={}ms], dlq={}, idempotency={}",
-    maxBatchSize, batchTimeoutSeconds, maxRetries, retryBackoffMs, dlq != null ? "configured" : "none", 
+    maxBatchSize, batchTimeoutSeconds, maxRetries, retryBackoffMs, dlq != null ? "configured" : "none",
     idempotencyTracker != null ? "enabled" : "disabled");
 
 // Good - Service operation (DEBUG)
@@ -324,8 +389,9 @@ throw new InterruptedException();
  */
 void send(T message) throws InterruptedException;
 ```
-    
-## CI & PR expectations
+
+## CI & PR Expectations
+
 - CI: GitHub Actions that run `./gradlew build` on Ubuntu & Windows.
 - PR must include: summary, changelog, follow-up suggestions, green CI.
 - Branch naming: `jules/<short-purpose>`.

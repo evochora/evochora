@@ -19,7 +19,7 @@ services:
       - ./evochora-data/topic:/home/appuser/app/data/topic
       - ./evochora-data/queue:/home/appuser/app/data/queue
       # Mount the configuration file into the container's config directory (read-only)
-      - ./evochora.conf:/home/appuser/app/config/evochora.conf:ro
+      - ./config/evochora.conf:/home/appuser/app/config/evochora.conf:ro
     environment:
       # === JVM Options & Configuration Overrides via System Properties (-D) ===
       # Note: Most application config is now in local.conf on the server,

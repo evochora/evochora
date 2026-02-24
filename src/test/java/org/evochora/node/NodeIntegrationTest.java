@@ -10,7 +10,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-import org.evochora.cli.config.ConfigLoader;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
@@ -27,6 +26,7 @@ import org.junit.jupiter.api.TestMethodOrder;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import com.typesafe.config.Config;
+import com.typesafe.config.ConfigFactory;
 
 import io.restassured.RestAssured;
 
@@ -38,9 +38,76 @@ import io.restassured.RestAssured;
 @AllowLog(level = LogLevel.WARN, messagePattern = "Could not perform action on service.*")
 class NodeIntegrationTest {
 
-    private static final String TEST_CONFIG_FILE = "org/evochora/node/evochora-test.conf";
     private static final int TEST_PORT = 58081;
     private static final String BASE_PATH = "/pipeline/api";
+
+    // @formatter:off
+    private static final String TEST_CONFIG = """
+            pipeline {
+              autoStart = false
+              startupSequence = ["test-producer", "test-consumer"]
+
+              resources {
+                test-queue {
+                  className = "org.evochora.datapipeline.resources.queues.InMemoryBlockingQueue"
+                  options { capacity = 10 }
+                }
+                test-consumer-dlq {
+                  className = "org.evochora.datapipeline.resources.queues.InMemoryDeadLetterQueue"
+                  options { capacity = 50, primaryQueueName = "test-queue" }
+                }
+                test-idempotency-tracker {
+                  className = "org.evochora.datapipeline.resources.idempotency.InMemoryIdempotencyTracker"
+                  options { ttlSeconds = 3600, cleanupThresholdMessages = 100, cleanupIntervalSeconds = 60 }
+                }
+              }
+
+              services {
+                test-consumer {
+                  className = "org.evochora.datapipeline.services.DummyConsumerService"
+                  resources {
+                    input = "queue-in:test-queue"
+                    idempotencyTracker = "tracker:test-idempotency-tracker"
+                    dlq = "queue-out:test-consumer-dlq"
+                  }
+                }
+                test-producer {
+                  className = "org.evochora.datapipeline.services.DummyProducerService"
+                  resources { output = "queue-out:test-queue" }
+                  options { intervalMs = 1000 }
+                }
+              }
+            }
+
+            node {
+              processes {
+                pipeline {
+                  className = "org.evochora.datapipeline.ServiceManagerProcess"
+                  options = ${pipeline}
+                }
+                httpServer {
+                  className = "org.evochora.node.processes.http.HttpServerProcess"
+                  require = { serviceManager = "pipeline" }
+                  options {
+                    network { host = "127.0.0.1", port = 58081 }
+                    routes {
+                      pipeline {
+                        api {
+                          "$controller" {
+                            className = "org.evochora.node.processes.http.api.pipeline.PipelineController"
+                            options {}
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+
+            logging { level = "INFO" }
+            """;
+    // @formatter:on
 
     private Node testNode;
     private final ExecutorService executor = Executors.newSingleThreadExecutor();
@@ -50,7 +117,7 @@ class NodeIntegrationTest {
         RestAssured.baseURI = "http://127.0.0.1";
         RestAssured.port = TEST_PORT;
 
-        final Config testConfig = ConfigLoader.load(TEST_CONFIG_FILE);
+        final Config testConfig = ConfigFactory.parseString(TEST_CONFIG).resolve();
         testNode = new Node(testConfig);
 
         executor.submit(testNode::start);

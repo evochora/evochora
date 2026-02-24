@@ -2,8 +2,6 @@ package org.evochora.cli.config;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
-import org.evochora.junit.extensions.logging.AllowLog;
-import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -12,14 +10,20 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
+import java.io.File;
+import java.net.URISyntaxException;
+import java.net.URL;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Unit tests for ConfigLoader to verify the configuration priority hierarchy:
- * 1. System Properties (highest priority)
- * 2. Environment Variables (mapped to dot-notation)
- * 3. Configuration File
- * 4. Default reference configuration (lowest priority)
+ * Unit tests for {@link ConfigLoader} to verify the configuration priority hierarchy:
+ * <ol>
+ *   <li>System Properties (highest priority)</li>
+ *   <li>Environment Variables</li>
+ *   <li>Configuration File</li>
+ *   <li>Default reference configuration (lowest priority)</li>
+ * </ol>
  */
 @Tag("unit")
 @ExtendWith(LogWatchExtension.class)
@@ -27,30 +31,24 @@ class ConfigLoaderTest {
 
     @BeforeEach
     void setUp() {
-        // Invalidate the cache before each test to ensure a clean slate
         ConfigFactory.invalidateCaches();
     }
 
     @AfterEach
     void tearDown() {
-        // Clean up all system properties used in tests
         System.clearProperty("test.value");
         System.clearProperty("test.priority");
         System.clearProperty("test.nested.setting");
         System.clearProperty("test.base-value");
         System.clearProperty("test.referenced-value");
-        
-        // Invalidate ConfigFactory cache to ensure test isolation
         ConfigFactory.invalidateCaches();
     }
 
     @Test
-    @DisplayName("Should load configuration file with defaults when no overrides present")
-    void load_shouldLoadConfigFileWithDefaults() {
-        // Act
-        Config config = ConfigLoader.load("org/evochora/cli/config/test-config.conf");
+    @DisplayName("loadFromFile should load configuration file with defaults when no overrides present")
+    void loadFromFile_shouldLoadConfigFileWithDefaults() {
+        Config config = ConfigLoader.loadFromFile(testResource("test-config.conf"));
 
-        // Assert
         assertNotNull(config);
         assertTrue(config.hasPath("test.value"));
         assertEquals("file-value", config.getString("test.value"));
@@ -60,95 +58,101 @@ class ConfigLoaderTest {
 
     @Test
     @DisplayName("System property should override file configuration")
-    void load_systemPropertyShouldOverrideFileConfig() {
-        // Arrange - Set system property to override file configuration
+    void loadFromFile_systemPropertyShouldOverrideFileConfig() {
         System.setProperty("test.value", "system-value");
-        // Invalidate cache after setting system property to ensure it's picked up
         ConfigFactory.invalidateCaches();
 
-        // Act
-        Config config = ConfigLoader.load("org/evochora/cli/config/test-config.conf");
+        Config config = ConfigLoader.loadFromFile(testResource("test-config.conf"));
 
-        // Assert - System property should override file config
         assertEquals("system-value", config.getString("test.value"));
-        // File config should still be used for other values
         assertEquals("file-priority", config.getString("test.priority"));
     }
 
     @Test
     @DisplayName("System property should override nested configuration values")
-    void load_systemPropertyShouldOverrideNestedConfig() {
-        // Arrange
+    void loadFromFile_systemPropertyShouldOverrideNestedConfig() {
         System.setProperty("test.nested.setting", "system-nested");
-        // Invalidate cache after setting system property to ensure it's picked up
         ConfigFactory.invalidateCaches();
 
-        // Act
-        Config config = ConfigLoader.load("org/evochora/cli/config/test-config.conf");
+        Config config = ConfigLoader.loadFromFile(testResource("test-config.conf"));
 
-        // Assert
         assertEquals("system-nested", config.getString("test.nested.setting"));
-        assertEquals("file-value", config.getString("test.value")); // Other values unchanged
+        assertEquals("file-value", config.getString("test.value"));
     }
 
     @Test
-    @AllowLog(level = LogLevel.WARN, messagePattern = "Configuration file 'non-existent-config.conf' not found or is empty. Using defaults.")
-    @DisplayName("Should handle missing configuration file gracefully")
-    void load_shouldHandleMissingConfigFile() {
-        // Act
-        Config config = ConfigLoader.load("non-existent-config.conf");
+    @DisplayName("loadDefaults should return valid config without a config file")
+    void loadDefaults_shouldReturnValidConfig() {
+        Config config = ConfigLoader.loadDefaults();
 
-        // Assert
         assertNotNull(config);
-        // Should still have access to reference configuration defaults
-        // (assuming reference.conf exists with some default values)
-    }
-
-    @Test
-    @AllowLog(level = LogLevel.WARN, messagePattern = "Configuration file.*not found or is empty. Using defaults.")
-    @DisplayName("Should handle empty configuration file")
-    void load_shouldHandleEmptyConfigFile() {
-        // Act
-        Config config = ConfigLoader.load("org/evochora/cli/config/empty-config");
-
-        // Assert
-        assertNotNull(config);
-        // Should still have access to reference configuration defaults
     }
 
     @Test
     @DisplayName("Should preserve configuration hierarchy order")
-    void load_shouldPreserveConfigurationHierarchyOrder() {
-        // Arrange - Set system properties to override file configuration
+    void loadFromFile_shouldPreserveConfigurationHierarchyOrder() {
         System.setProperty("test.priority", "system-priority");
         System.setProperty("test.value", "system-value");
-        // Invalidate cache after setting system properties to ensure they're picked up
         ConfigFactory.invalidateCaches();
-        
-        // File already has: test.value = "file-value", test.priority = "file-priority"
 
-        // Act
-        Config config = ConfigLoader.load("org/evochora/cli/config/test-config.conf");
+        Config config = ConfigLoader.loadFromFile(testResource("test-config.conf"));
 
-        // Assert - Verify priority order: System > File > Defaults
-        assertEquals("system-priority", config.getString("test.priority")); // System wins
-        assertEquals("system-value", config.getString("test.value")); // System wins over file
-        assertEquals("file-nested", config.getString("test.nested.setting")); // File value (no override)
+        assertEquals("system-priority", config.getString("test.priority"));
+        assertEquals("system-value", config.getString("test.value"));
+        assertEquals("file-nested", config.getString("test.nested.setting"));
     }
 
     @Test
     @DisplayName("Should resolve configuration references correctly")
-    void load_shouldResolveConfigurationReferences() {
-        // Arrange - Set system property to override
+    void loadFromFile_shouldResolveConfigurationReferences() {
         System.setProperty("test.priority", "system-override");
-        // Invalidate cache after setting system property to ensure it's picked up
         ConfigFactory.invalidateCaches();
 
-        // Act
-        Config config = ConfigLoader.load("org/evochora/cli/config/references-config.conf");
+        Config config = ConfigLoader.loadFromFile(testResource("references-config.conf"));
 
-        // Assert
         assertEquals("base-suffix", config.getString("test.referenced-value"));
-        assertEquals("system-override", config.getString("test.priority")); // System should still override
+        assertEquals("system-override", config.getString("test.priority"));
+    }
+
+    @Test
+    @DisplayName("Profile override should propagate through substitution chain to downstream services")
+    void loadFromFile_profileOverrideShouldPropagateToServices() {
+        Config userConfig = ConfigFactory.parseString("pipeline.tuning = ${profiles.sampled}");
+        Config config = ConfigFactory.systemProperties()
+                .withFallback(userConfig)
+                .withFallback(ConfigFactory.defaultReferenceUnresolved())
+                .resolve();
+
+        // Tuning level: profile values applied
+        assertEquals(5000, config.getInt("pipeline.tuning.samplingInterval"));
+        assertEquals(3, config.getInt("pipeline.tuning.insertBatchSize"));
+        assertEquals(10000, config.getInt("pipeline.tuning.flushTimeoutMs"));
+
+        // Downstream: simulation-engine picks up tuning via ${pipeline.tuning.xxx}
+        assertEquals(5000, config.getInt("pipeline.services.simulation-engine.options.samplingInterval"));
+        assertEquals(5, config.getInt("pipeline.services.simulation-engine.options.accumulatedDeltaInterval"));
+
+        // Downstream: persistence-service picks up tuning via ${pipeline.tuning.xxx}
+        assertEquals(1, config.getInt("pipeline.services.persistence-service-1.options.maxBatchSize"));
+        assertEquals(60, config.getInt("pipeline.services.persistence-service-1.options.batchTimeoutSeconds"));
+
+        // Downstream: indexer picks up tuning via ${pipeline.tuning.xxx}
+        assertEquals(3, config.getInt("pipeline.services.environment-indexer-1.options.insertBatchSize"));
+    }
+
+    /**
+     * Locates a test resource file on the classpath.
+     *
+     * @param name the resource file name (relative to this test class's package).
+     * @return the {@link File} pointing to the test resource.
+     */
+    private File testResource(final String name) {
+        final URL url = getClass().getResource(name);
+        assertNotNull(url, "Test resource not found: " + name);
+        try {
+            return new File(url.toURI());
+        } catch (URISyntaxException e) {
+            throw new IllegalArgumentException("Invalid test resource URI: " + url, e);
+        }
     }
 }

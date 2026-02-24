@@ -14,7 +14,7 @@ cd evochora
 # Build & test
 ./gradlew build
 
-# Run the node in dev mode (uses ./evochora.conf by default)
+# Run the node in dev mode (uses config/evochora.conf by default)
 ./gradlew run --args="node run"
 ```
 
@@ -24,9 +24,7 @@ Open the web frontend in your browser:
 
 ## Configuration Overview
 
-Evochora is configured via a HOCON configuration file, typically named [`./evochora.conf`](./evochora.conf).
-
-A complete example configuration is provided as [`./evochora.conf`](./evochora.conf) in the repository and included in the distribution.
+Evochora is configured via HOCON configuration files. The experiment template [`config/evochora.conf`](./config/evochora.conf) contains the most common parameters; all defaults are defined in [`reference.conf`](./src/main/resources/reference.conf) (embedded in JAR).
 
 ## Writing Your Own Organisms
 
@@ -34,7 +32,7 @@ Organisms are programmed in **EvoASM**, Evochora's custom assembly language. The
 
 **Quick Start:**
 1. Edit or create a `.evo` file in `assembly/`
-2. Configure it in `evochora.conf` (see `simulation-engine.options.organisms`)
+2. Configure it in `config/evochora.conf` (see `simulation-engine.options.organisms`)
 3. Run `./gradlew run --args="node run"` - the engine compiles the organisms evoASM code automatically
 
 **Resources:**

@@ -14,7 +14,7 @@ These files are **not** automatically deployed by the GitHub Actions workflow to
 
 1. Copy the files to the server (e.g., via `scp`):
    ```bash
-   scp infrastructure/docker/evochora-node/local.conf user@server:~/app/local.conf
+   scp infrastructure/docker/evochora-node/local.conf user@server:~/app/config/local.conf
    scp infrastructure/docker/evochora-node/docker-compose.override.yml user@server:~/app/docker-compose.override.yml
    # Copy env.template to .env (or merge with existing .env)
    scp infrastructure/docker/evochora-node/env.template user@server:~/app/.env
@@ -30,9 +30,9 @@ These files are **not** automatically deployed by the GitHub Actions workflow to
 
 ## How it works
 
-- The `deploy.yml` workflow only updates `docker-compose.yml` and `evochora.conf`.
+- The `deploy.yml` workflow only updates `docker-compose.yml` and `config/evochora.conf`.
 - `docker compose` automatically merges `docker-compose.yml` and `docker-compose.override.yml`.
 - `docker compose` automatically loads variables from `.env` in the same directory.
 - The `override` file mounts `local.conf` and changes the startup command to use it.
-- `local.conf` includes `evochora.conf` via `include "evochora.conf"`, ensuring it inherits the base configuration.
+- `local.conf` includes `evochora.conf` via `include file("evochora.conf")`, ensuring it inherits the base configuration.
 - Memory usage is controlled via `JAVA_MAX_MEM` in `.env` (defaults to 8g if not set).
