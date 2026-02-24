@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.io.File;
+import java.net.URISyntaxException;
 import java.net.URL;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -148,6 +149,10 @@ class ConfigLoaderTest {
     private File testResource(final String name) {
         final URL url = getClass().getResource(name);
         assertNotNull(url, "Test resource not found: " + name);
-        return new File(url.getFile());
+        try {
+            return new File(url.toURI());
+        } catch (URISyntaxException e) {
+            throw new IllegalArgumentException("Invalid test resource URI: " + url, e);
+        }
     }
 }

@@ -10,6 +10,7 @@ Evochora is an artificial life simulator for research into digital evolution. It
 - Web-based visualization and analysis frontends
 
 ## Repository Layout
+
 - `src/main/java/` – Application code (compiler, runtime, datapipeline, CLI, node)
 - `src/main/proto/` – Protobuf definitions for data pipeline communication
 - `src/main/resources/` – Configuration files, compiler messages, reference.conf
@@ -92,11 +93,13 @@ The compiler produces a JSON `ProgramArtifact` with machine code layout, labels,
 ## Configuration
 
 ### File Layout
+
 - `config/evochora.conf` — User-facing experiment template (overrides selected defaults)
 - `src/main/resources/reference.conf` — All defaults with documentation (embedded in JAR, loaded automatically)
 - `config/local.conf` — Local development overrides (not checked in)
 
 ### Config Resolution Cascade (in `ConfigLoader.resolve()`)
+
 1. `--config` CLI option
 2. `-Dconfig.file` system property
 3. `config/evochora.conf` in CWD
@@ -104,12 +107,14 @@ The compiler produces a JSON `ProgramArtifact` with machine code layout, labels,
 5. Classpath `reference.conf` only (fallback)
 
 ### Tuning Profiles
+
 Services share pipeline tuning parameters via HOCON substitutions:
 - `pipeline.tuning = ${profiles.detailed}` (or `sampled`, `sparse`)
 - Services consume via `${pipeline.tuning.samplingInterval}`, `${pipeline.tuning.insertBatchSize}`, etc.
 - Override in experiment config or `local.conf`: `pipeline.tuning = ${profiles.sampled}`
 
 ### Config Priority (within a single file)
+
 System properties > Environment variables > User config file > reference.conf defaults
 
 ## Agent Guidelines
@@ -127,6 +132,7 @@ There is a central document for AI agent guidelines that defines architectural p
 # Architectural Principles
 
 ## Compiler (`src/main/java/org/evochora/compiler/`)
+
 - **Immutability**: Compiler phases are immutable - each phase creates an immutable object and passes it to the next
 - **Single Execution**: Every compiler phase runs exactly once; no phase may access a previous phase
 - **No Direct Calls**: Compiler phases never call other compiler phases directly
@@ -136,6 +142,7 @@ There is a central document for AI agent guidelines that defines architectural p
 - **Registry-Based**: Use DirectiveHandlerRegistry, IrConverterRegistry, LayoutDirectiveRegistry, LinkingRegistry, EmissionRegistry for extensibility
 
 ## Runtime (`src/main/java/org/evochora/runtime/`)
+
 - **Plan-Execute Separation**: VM separates instruction planning from execution to enable future multithreading
 - **Conflict Resolution**: Simulation tick follows: plan → resolve conflicts → execute winning instructions
 - **Organism Autonomy**: Each Organism is a self-contained VM with own registers, stacks, and energy
@@ -145,6 +152,7 @@ There is a central document for AI agent guidelines that defines architectural p
 - **Energy-First**: Every action costs energy; zero energy = organism death
 
 ## Data Pipeline (`src/main/java/org/evochora/datapipeline/`)
+
 **Architecture**: Services use Resources to communicate with each other. Resources abstract away the underlying transport (queues, storage, databases), allowing services to focus on business logic.
 
 **Core Concepts**:
@@ -182,6 +190,7 @@ There is a central document for AI agent guidelines that defines architectural p
 - **No Overhead**: Metric collection must not impact critical path performance
 
 ## Node (`src/main/java/org/evochora/node/`)
+
 - **Process Pattern**: All long-running components implement `IProcess` (start/stop methods)
 - **Dependency Injection**: Node resolves process dependencies via topological sort and constructor injection
 - **Constructor Signature**: Processes receive `(String processName, Map<String, Object> dependencies, Config options)`
@@ -193,6 +202,7 @@ There is a central document for AI agent guidelines that defines architectural p
 - **HTTP API**: Endpoints at `/api/visualizer/*`, `/api/analyzer/*`, `/api/pipeline/*`
 
 ## CLI (`src/main/java/org/evochora/cli/`)
+
 - **Entry Point**: `CommandLineInterface.main()`
 - **PicoCLI**: Use PicoCLI annotations for commands and options
 - **Command Pattern**: Each command implements `Callable<Integer>` with exit codes (0=success, 1=error, 2=system error)
@@ -210,6 +220,7 @@ For significant changes, an architecture review agent is available. Key principl
 See `.agents/architecture-guidelines.md` for full review criteria.
 
 ## Key Libraries
+
 - **Typesafe Config**: Application configuration with environment variable support (`Config` objects)
 - **SLF4J + Logback**: Structured logging (`LoggerFactory.getLogger()` instead of `System.out.println`)
 - **PicoCLI**: CLI framework with annotations (`@Command`, `@Option`, `@Parameters`)
@@ -380,6 +391,7 @@ void send(T message) throws InterruptedException;
 ```
 
 ## CI & PR Expectations
+
 - CI: GitHub Actions that run `./gradlew build` on Ubuntu & Windows.
 - PR must include: summary, changelog, follow-up suggestions, green CI.
 - Branch naming: `jules/<short-purpose>`.

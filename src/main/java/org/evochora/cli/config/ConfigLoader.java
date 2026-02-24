@@ -15,10 +15,14 @@ import java.security.ProtectionDomain;
  * (highest to lowest):
  * <ol>
  *   <li>Java system properties ({@code -Dkey=value})</li>
- *   <li>Environment variables (mapped to dot-notation)</li>
+ *   <li>Environment variables (raw names, available for {@code ${?ENV_VAR}} substitutions)</li>
  *   <li>User configuration file (e.g., {@code config/evochora.conf} or {@code config/local.conf})</li>
  *   <li>Default reference configuration ({@code reference.conf} on the classpath)</li>
  * </ol>
+ * <p>
+ * The above describes <em>source priority</em> within a resolved config. See
+ * {@link #resolve(File, ConfigMessageHandler)} for how the user config file itself is discovered
+ * (5-level file discovery cascade).
  * <p>
  * Uses {@link ConfigFactory#defaultReferenceUnresolved()} to defer substitution resolution
  * until after all layers are composed. This ensures that user overrides of values referenced
@@ -49,6 +53,9 @@ public final class ConfigLoader {
      * Callback for receiving progress messages during configuration file resolution.
      * <p>
      * Implementations choose how to present messages (e.g., SLF4J logging, console output).
+     * <p>
+     * <strong>Thread Safety:</strong> Implementations do not need to be thread-safe;
+     * the callback is invoked only from the thread calling {@link #resolve}.
      */
     @FunctionalInterface
     public interface ConfigMessageHandler {
@@ -76,8 +83,11 @@ public final class ConfigLoader {
      * At each level, system properties and environment variables still take precedence over
      * the discovered config file (see class-level documentation for the full priority hierarchy).
      *
+     * <strong>Thread Safety:</strong> This method is not thread-safe. It is intended to be called
+     * once during application startup from the main thread.
+     *
      * @param explicitConfigFile config file from CLI option, or {@code null} for auto-discovery.
-     * @param handler            callback for resolution progress messages.
+     * @param handler            callback for resolution progress messages (must not be {@code null}).
      * @return the fully resolved application {@link Config}.
      * @throws IllegalArgumentException                if an explicitly specified config file
      *                                                 (via parameter or {@code -Dconfig.file}) does not exist.
