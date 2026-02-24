@@ -463,6 +463,7 @@ public abstract class Instruction {
      * @param name the instruction mnemonic (e.g., "ADDR")
      * @param parallelExecuteSafe whether this instruction can safely execute in parallel (no shared environment writes)
      * @param sources the operand sources for this instruction
+     * @throws IllegalArgumentException if family, operation, or variant values are out of range
      */
     protected static void registerOp(Class<? extends Instruction> familyClass, InstructionFactory factory,
                                      int family, int operation,

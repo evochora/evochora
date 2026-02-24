@@ -25,6 +25,8 @@ public class StateInstruction extends Instruction {
 
     /**
      * Registers all state instructions with the instruction registry.
+     * <p>
+     * <b>Thread safety:</b> Must only be called during single-threaded initialization ({@link Instruction#init()}).
      *
      * @param f the family ID for this instruction family
      */

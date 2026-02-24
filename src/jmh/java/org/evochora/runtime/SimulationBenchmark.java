@@ -142,7 +142,7 @@ public class SimulationBenchmark {
     );
 
     /** Assembly program to execute. */
-    @Param({/*"ARITHMETIC", "ENVIRONMENT",*/ "REALISTIC"})
+    @Param({/* "ARITHMETIC", "ENVIRONMENT", */ "REALISTIC"})  // uncomment others for targeted benchmarks
     private String assembly;
 
     /** Number of organisms in the simulation. */

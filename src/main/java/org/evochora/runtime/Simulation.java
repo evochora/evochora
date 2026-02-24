@@ -392,12 +392,16 @@ public class Simulation {
 
         for (Instruction instruction : plannedInstructions) {
             executeSingleInstruction(instruction);
+        }
 
+        for (Instruction instruction : plannedInstructions) {
             Organism organism = instruction.getOrganism();
             if (organism.isDead()) {
                 handleDeath(organism);
             }
+        }
 
+        for (Instruction instruction : plannedInstructions) {
             logInstruction(instruction);
         }
     }
