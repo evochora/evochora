@@ -193,7 +193,9 @@ public class SimulationBenchmark {
         ThermodynamicPolicyManager policyManager =
                 new ThermodynamicPolicyManager(ConfigFactory.parseString(THERMODYNAMIC_CONFIG));
 
+        // No parallelism-scaling set: parallelism @Param is used directly to isolate per-P throughput
         simulation = new Simulation(env, policyManager, organismConfig, parallelism);
+        simulation.setRandomProvider(new org.evochora.runtime.internal.services.SeededRandomProvider(42));
 
         ProgramArtifact artifact = compiledPrograms.get(assembly);
         placeOrganisms(env, artifact);

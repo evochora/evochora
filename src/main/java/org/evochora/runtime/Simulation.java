@@ -100,9 +100,13 @@ public class Simulation {
         this.vm = new VirtualMachine(this);
         this.effectiveParallelism = resolveParallelism(parallelism);
         this.workerPool = (effectiveParallelism > 1) ? new TickWorkerPool(effectiveParallelism) : null;
-        this.parallelInterceptContexts = new InterceptionContext[effectiveParallelism];
-        for (int i = 0; i < effectiveParallelism; i++) {
-            parallelInterceptContexts[i] = new InterceptionContext();
+        if (workerPool != null) {
+            this.parallelInterceptContexts = new InterceptionContext[effectiveParallelism];
+            for (int i = 0; i < effectiveParallelism; i++) {
+                parallelInterceptContexts[i] = new InterceptionContext();
+            }
+        } else {
+            this.parallelInterceptContexts = null;
         }
     }
 
@@ -416,8 +420,7 @@ public class Simulation {
      * <p>
      * After the dispatch, conflict resolution and wave 2 execution run sequentially.
      * Death handling runs after both waves in stable index order to preserve determinism.
-     */
-    /**
+     *
      * @param activeP the number of active threads to use for this tick
      */
     private void tickParallel(int activeP) {
@@ -588,10 +591,10 @@ public class Simulation {
      * ({@link #effectiveParallelism}). All values are capped by
      * {@link #effectiveParallelism}.
      * <p>
-     * Entries must be sorted by ascending organism count. If not set or empty,
-     * all ticks use full parallelism.
+     * Entries are sorted by ascending organism count automatically.
+     * If not set or empty, all ticks use full parallelism.
      *
-     * @param organisms  sorted array of organism count thresholds
+     * @param organisms  array of organism count thresholds
      * @param maxThreads corresponding maximum thread counts (0 = full parallelism)
      * @throws IllegalArgumentException if arrays have different lengths
      */
@@ -599,8 +602,16 @@ public class Simulation {
         if (organisms.length != maxThreads.length) {
             throw new IllegalArgumentException("organisms and maxThreads arrays must have the same length");
         }
-        this.scalingOrganisms = organisms;
-        this.scalingMaxThreads = maxThreads;
+        // Sort by ascending organism count
+        Integer[] indices = new Integer[organisms.length];
+        for (int i = 0; i < indices.length; i++) indices[i] = i;
+        java.util.Arrays.sort(indices, java.util.Comparator.comparingInt(i -> organisms[i]));
+        this.scalingOrganisms = new int[organisms.length];
+        this.scalingMaxThreads = new int[maxThreads.length];
+        for (int i = 0; i < indices.length; i++) {
+            this.scalingOrganisms[i] = organisms[indices[i]];
+            this.scalingMaxThreads[i] = maxThreads[indices[i]];
+        }
     }
 
     /**

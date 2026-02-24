@@ -452,6 +452,8 @@ public abstract class Instruction {
     /**
      * Registers an instruction opcode with explicit parallel-execute safety.
      * Instructions marked as unsafe are environment-modifying and will be executed sequentially.
+     * <p>
+     * <b>Thread safety:</b> Must only be called during single-threaded initialization ({@link #init()}).
      *
      * @param familyClass the instruction class (e.g., ArithmeticInstruction.class)
      * @param factory the factory for creating instruction instances (e.g., {@code ArithmeticInstruction::new})
@@ -679,6 +681,8 @@ public abstract class Instruction {
      * Instructions that only modify organism-local state and perform read-only environment
      * access are parallel-safe. Instructions that write to shared environment structures
      * (PEEK/POKE/PPK, FORK, CMR) are not.
+     * <p>
+     * <b>Thread safety:</b> Safe for concurrent use. The backing array is read-only after {@link #init()}.
      *
      * @param fullOpcodeId The full opcode ID (including TYPE_CODE bits).
      * @return {@code true} if the instruction is safe for parallel execution, {@code false} otherwise.

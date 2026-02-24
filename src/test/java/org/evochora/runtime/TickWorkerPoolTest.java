@@ -7,11 +7,14 @@ import java.util.concurrent.atomic.AtomicIntegerArray;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 
 @Tag("unit")
+@ExtendWith(LogWatchExtension.class)
 class TickWorkerPoolTest {
 
     private TickWorkerPool pool;

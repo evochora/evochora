@@ -137,6 +137,8 @@ public class TickWorkerPool {
      */
     public void dispatch(int totalSize, int activeThreads, ChunkTask task) {
         if (totalSize <= 0) return;
+        if (stopped) throw new IllegalStateException("Cannot dispatch after shutdown");
+
 
         int active = Math.max(1, Math.min(activeThreads, totalThreads));
         int activeWorkers = active - 1;
@@ -251,9 +253,9 @@ public class TickWorkerPool {
                 }
             } catch (Throwable t) {
                 workerException.compareAndSet(null, t);
+            } finally {
+                workersCompleted.incrementAndGet();
             }
-
-            workersCompleted.incrementAndGet();
         }
     }
 }

@@ -152,7 +152,7 @@ public class SimulationRestorer {
      *
      * @param checkpoint The loaded checkpoint data
      * @param randomProvider A fresh IRandomProvider instance (state will be loaded into it)
-     * @param parallelism ForkJoinPool parallelism for the Plan phase (deployment-specific, not from checkpoint).
+     * @param parallelism Thread parallelism for the Plan and Execute phases (deployment-specific, not from checkpoint).
      *                    0 = auto, 1 = sequential, N = explicit.
      * @return A RestoredState ready for SimulationEngine initialization
      * @throws ResumeException if restoration fails

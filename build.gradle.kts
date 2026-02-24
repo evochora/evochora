@@ -19,6 +19,12 @@ plugins {
     id("me.champeau.jmh") version "0.7.3"
 }
 
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
 group = "org.evochora"
 version = project.findProperty("RELEASE_TAG")?.toString() ?: "latest"
 

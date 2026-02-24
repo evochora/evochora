@@ -59,24 +59,23 @@ public class ThermodynamicPolicyManager {
     public IThermodynamicPolicy getPolicy(Instruction instruction) {
         // Extract opcode value from fullOpcodeId (remove TYPE_CODE bits)
         int opcodeId = instruction.getFullOpcodeId() & org.evochora.runtime.Config.VALUE_MASK;
-        
-        // Ensure array is large enough (grow if necessary)
-        if (opcodeId >= policyByOpcodeId.length) {
+
+        // Local snapshot prevents JIT from reloading the field between length check and array access
+        IThermodynamicPolicy[] cache = policyByOpcodeId;
+
+        if (opcodeId >= cache.length) {
             growArray(opcodeId + 1);
+            cache = policyByOpcodeId;
         }
-        
-        // Fast path: Direct array access (O(1))
-        IThermodynamicPolicy cached = policyByOpcodeId[opcodeId];
+
+        IThermodynamicPolicy cached = cache[opcodeId];
         if (cached != null) {
             return cached;
         }
 
-        // Slow path: Resolve policy and cache it
         IThermodynamicPolicy policy = resolvePolicy(instruction);
-        
-        // Cache for next time
-        policyByOpcodeId[opcodeId] = policy;
-        
+        cache[opcodeId] = policy;
+
         return policy;
     }
     
