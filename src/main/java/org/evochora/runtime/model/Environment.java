@@ -17,6 +17,10 @@ import org.evochora.runtime.label.PreExpandedHammingStrategy;
 
 /**
  * Represents the simulation environment, managing the grid of molecules and their owners.
+ * <p>
+ * <b>Thread safety:</b> Concurrent reads are safe. Writes (e.g. {@code setMolecule},
+ * {@code clearOwnershipFor}) must be serialized — in the tick loop, environment-modifying
+ * instructions and death handling always run sequentially on the main thread.
  */
 public class Environment implements IEnvironmentReader {
     private final int[] shape;

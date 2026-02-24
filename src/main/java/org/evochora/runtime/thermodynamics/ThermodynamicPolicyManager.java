@@ -28,8 +28,8 @@ public class ThermodynamicPolicyManager {
     private final Map<String, IThermodynamicPolicy> instructionPolicies = new HashMap<>();
     private final Map<Class<? extends Instruction>, IThermodynamicPolicy> familyPolicies = new HashMap<>();
     
-    // Dynamically growing array for fast O(1) lookup by opcode ID
-    // Grows as needed to support any opcode up to VALUE_BITS limit
+    // Non-volatile to avoid per-call overhead on ARM (~1-5ns × hundreds of millions of ticks).
+    // Concurrent first-tick population may cause redundant resolves, which is benign (idempotent).
     private IThermodynamicPolicy[] policyByOpcodeId = new IThermodynamicPolicy[INITIAL_ARRAY_SIZE];
 
     /**

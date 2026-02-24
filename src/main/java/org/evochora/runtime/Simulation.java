@@ -51,10 +51,13 @@ public class Simulation {
     private final List<IInstructionInterceptor> instructionInterceptors = new ArrayList<>();
     private final List<IDeathHandler> deathHandlers = new ArrayList<>();
     private final List<IBirthHandler> birthHandlers = new ArrayList<>();
-    private final InterceptionContext interceptContext = new InterceptionContext();  // Reusable, zero allocation
-    private final DeathContext deathContext = new DeathContext();  // Reusable, zero allocation
+    private final InterceptionContext interceptContext = new InterceptionContext();  // Sequential path, reused across ticks
+    private final InterceptionContext[] parallelInterceptContexts;  // Parallel path, one per thread
+    private final DeathContext deathContext = new DeathContext();  // Main thread only, reused across ticks
     private final TickWorkerPool workerPool;
     private final int effectiveParallelism;
+    private int[] scalingOrganisms = {};
+    private int[] scalingMaxThreads = {};
     private int nextOrganismId = 1;
     private final LongOpenHashSet allGenomesEverSeen = new LongOpenHashSet();
     private IRandomProvider randomProvider;
@@ -97,6 +100,10 @@ public class Simulation {
         this.vm = new VirtualMachine(this);
         this.effectiveParallelism = resolveParallelism(parallelism);
         this.workerPool = (effectiveParallelism > 1) ? new TickWorkerPool(effectiveParallelism) : null;
+        this.parallelInterceptContexts = new InterceptionContext[effectiveParallelism];
+        for (int i = 0; i < effectiveParallelism; i++) {
+            parallelInterceptContexts[i] = new InterceptionContext();
+        }
     }
 
     /**
@@ -316,8 +323,10 @@ public class Simulation {
             }
         }
 
-        if (workerPool != null && organisms.size() > 1) {
-            tickParallel();
+        int activeP = (workerPool != null && organisms.size() > 1)
+                ? resolveActiveParallelism(organisms.size()) : 1;
+        if (activeP > 1) {
+            tickParallel(activeP);
         } else {
             tickSequential();
         }
@@ -408,22 +417,19 @@ public class Simulation {
      * After the dispatch, conflict resolution and wave 2 execution run sequentially.
      * Death handling runs after both waves in stable index order to preserve determinism.
      */
-    private void tickParallel() {
+    /**
+     * @param activeP the number of active threads to use for this tick
+     */
+    private void tickParallel(int activeP) {
         int size = organisms.size();
         Instruction[] allInstructions = new Instruction[size];
         boolean[] diedInWave1 = new boolean[size];
         boolean hasInterceptors = !instructionInterceptors.isEmpty();
 
-        InterceptionContext[] contexts = hasInterceptors
-                ? new InterceptionContext[effectiveParallelism] : null;
-        if (contexts != null) {
-            for (int i = 0; i < contexts.length; i++) {
-                contexts[i] = new InterceptionContext();
-            }
-        }
+        InterceptionContext[] contexts = hasInterceptors ? parallelInterceptContexts : null;
 
         // Single dispatch: Plan all organisms, execute wave 1 immediately
-        workerPool.dispatch(size, (from, to) -> {
+        workerPool.dispatch(size, activeP, (from, to) -> {
             InterceptionContext ctx = contexts != null
                     ? contexts[TickWorkerPool.getThreadIndex()] : null;
 
@@ -571,12 +577,64 @@ public class Simulation {
     }
 
     /**
+     * Configures dynamic parallelism scaling based on organism count.
+     * <p>
+     * Each entry maps an organism count threshold to a maximum thread count.
+     * During each tick, the highest threshold not exceeding the current organism
+     * count determines the active thread count. Below the lowest threshold,
+     * the simulation runs sequentially (P=1).
+     * <p>
+     * A {@code maxThreads} value of 0 means "use full parallelism"
+     * ({@link #effectiveParallelism}). All values are capped by
+     * {@link #effectiveParallelism}.
+     * <p>
+     * Entries must be sorted by ascending organism count. If not set or empty,
+     * all ticks use full parallelism.
+     *
+     * @param organisms  sorted array of organism count thresholds
+     * @param maxThreads corresponding maximum thread counts (0 = full parallelism)
+     * @throws IllegalArgumentException if arrays have different lengths
+     */
+    public void setParallelismScaling(int[] organisms, int[] maxThreads) {
+        if (organisms.length != maxThreads.length) {
+            throw new IllegalArgumentException("organisms and maxThreads arrays must have the same length");
+        }
+        this.scalingOrganisms = organisms;
+        this.scalingMaxThreads = maxThreads;
+    }
+
+    /**
+     * Resolves the active thread count for the current tick based on organism count
+     * and the configured scaling thresholds.
+     *
+     * @param organismCount the current number of organisms
+     * @return the number of active threads to use (1 = sequential, &gt; 1 = parallel)
+     */
+    private int resolveActiveParallelism(int organismCount) {
+        if (scalingOrganisms.length == 0) {
+            return effectiveParallelism;
+        }
+        // Find the highest threshold <= organismCount (scan from end)
+        for (int i = scalingOrganisms.length - 1; i >= 0; i--) {
+            if (organismCount >= scalingOrganisms[i]) {
+                int maxThreads = scalingMaxThreads[i];
+                return (maxThreads == 0) ? effectiveParallelism : Math.min(maxThreads, effectiveParallelism);
+            }
+        }
+        // Below lowest threshold → sequential
+        return 1;
+    }
+
+    /**
      * Resolves the configured parallelism value to an effective thread count.
      *
      * @param configured The configured value (0 = auto, 1 = sequential, N = explicit)
      * @return The effective parallelism (always &gt;= 1)
      */
     private static int resolveParallelism(int configured) {
+        if (configured < 0) {
+            throw new IllegalArgumentException("runtime.parallelism must be >= 0, got " + configured);
+        }
         if (configured == 0) {
             return Math.max(1, Runtime.getRuntime().availableProcessors() - 2);
         }

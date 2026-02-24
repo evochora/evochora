@@ -50,6 +50,7 @@ public class TickWorkerPool {
 
     private volatile int phase;
     private volatile int workSize;
+    private volatile int activeThreadCount;
     private volatile ChunkTask task;
     private volatile boolean stopped;
     private final AtomicInteger workersCompleted = new AtomicInteger();
@@ -104,10 +105,23 @@ public class TickWorkerPool {
 
     /**
      * Dispatches work across all threads and blocks until completion.
+     * Equivalent to {@code dispatch(totalSize, totalThreads, task)}.
+     *
+     * @param totalSize the total number of work items (must be &gt;= 0)
+     * @param task      the task to execute on each chunk
+     * @throws RuntimeException wrapping any exception thrown by a worker thread
+     */
+    public void dispatch(int totalSize, ChunkTask task) {
+        dispatch(totalSize, totalThreads, task);
+    }
+
+    /**
+     * Dispatches work across a subset of threads and blocks until completion.
      * <p>
-     * The work range [0, {@code totalSize}) is divided into {@link #totalThreads}
+     * The work range [0, {@code totalSize}) is divided into {@code activeThreads}
      * roughly equal chunks. The main thread processes chunk 0 while worker
-     * threads process chunks 1 through P-1.
+     * threads 1 through {@code activeThreads - 1} process the remaining chunks.
+     * Workers with index &gt;= {@code activeThreads} stay parked.
      * <p>
      * If any thread (including the main thread) throws an exception, it is
      * propagated to the caller after all other threads have finished their
@@ -115,14 +129,20 @@ public class TickWorkerPool {
      * <p>
      * Must be called from the main thread only. Not reentrant.
      *
-     * @param totalSize the total number of work items (must be &gt;= 0)
-     * @param task      the task to execute on each chunk
+     * @param totalSize     the total number of work items (must be &gt;= 0)
+     * @param activeThreads how many threads to use (1 = main only, up to {@code totalThreads}).
+     *                      Clamped to [1, totalThreads].
+     * @param task          the task to execute on each chunk
      * @throws RuntimeException wrapping any exception thrown by a worker thread
      */
-    public void dispatch(int totalSize, ChunkTask task) {
+    public void dispatch(int totalSize, int activeThreads, ChunkTask task) {
         if (totalSize <= 0) return;
 
+        int active = Math.max(1, Math.min(activeThreads, totalThreads));
+        int activeWorkers = active - 1;
+
         this.workSize = totalSize;
+        this.activeThreadCount = active;
         this.task = task;
         workerException.set(null);
         workersCompleted.set(0);
@@ -130,24 +150,24 @@ public class TickWorkerPool {
         // Volatile write — happens-before for all workers reading phase
         phase++;
 
-        // Unpark all workers
-        for (Thread worker : workers) {
-            LockSupport.unpark(worker);
+        // Unpark only active workers
+        for (int i = 0; i < activeWorkers; i++) {
+            LockSupport.unpark(workers[i]);
         }
 
         // Main thread executes chunk 0
         THREAD_INDEX.set(0);
         Throwable mainException = null;
         try {
-            int chunkSize = (totalSize + totalThreads - 1) / totalThreads;
+            int chunkSize = (totalSize + active - 1) / active;
             int to = Math.min(chunkSize, totalSize);
             task.run(0, to);
         } catch (Throwable t) {
             mainException = t;
         }
 
-        // Wait for all workers to finish
-        while (workersCompleted.get() < workers.length) {
+        // Wait for active workers to finish
+        while (workersCompleted.get() < activeWorkers) {
             Thread.onSpinWait();
         }
 
@@ -216,8 +236,14 @@ public class TickWorkerPool {
             }
             lastPhase = currentPhase;
 
+            // Skip if not active in this dispatch (spurious unpark from OS)
+            int active = activeThreadCount;
+            if (workerIndex >= active) {
+                continue;
+            }
+
             try {
-                int chunkSize = (workSize + totalThreads - 1) / totalThreads;
+                int chunkSize = (workSize + active - 1) / active;
                 int from = workerIndex * chunkSize;
                 int to = Math.min(from + chunkSize, workSize);
                 if (from < workSize) {

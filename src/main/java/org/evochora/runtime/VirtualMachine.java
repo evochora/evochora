@@ -21,7 +21,10 @@ import org.evochora.runtime.spi.thermodynamics.ThermodynamicContext;
  * The core of the execution environment.
  * This class is responsible for orchestrating the execution of organism code
  * within an environment. It respects the separation of planning and execution
- * to allow for future multithreading.
+ * to allow for multithreading.
+ * <p>
+ * <b>Thread safety:</b> Stateless after construction. Safe for concurrent use from multiple
+ * threads, provided each organism is only accessed by one thread at a time.
  */
 public class VirtualMachine {
 

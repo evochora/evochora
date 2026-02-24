@@ -48,7 +48,7 @@ import com.typesafe.config.ConfigFactory;
 @BenchmarkMode(Mode.Throughput)
 @OutputTimeUnit(TimeUnit.SECONDS)
 @Fork(1)
-@Warmup(iterations = 3, time = 3)
+@Warmup(iterations = 2, time = 3)
 @Measurement(iterations = 3, time = 3)
 public class SimulationBenchmark {
 
@@ -146,7 +146,7 @@ public class SimulationBenchmark {
     private String assembly;
 
     /** Number of organisms in the simulation. */
-    @Param({"20", "50", "100", "150", "200", "250", "500", "2000"})
+    @Param({"24", "32", "40"})
     private int organisms;
 
     /** Parallelism level for the simulation's Plan and Execute phases. */
@@ -211,7 +211,7 @@ public class SimulationBenchmark {
     }
 
     /**
-     * Shuts down the simulation's ForkJoinPool after each iteration.
+     * Shuts down the simulation's worker pool after each iteration.
      */
     @TearDown(Level.Iteration)
     public void teardown() {

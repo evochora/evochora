@@ -136,4 +136,85 @@ class TickWorkerPoolTest {
         assertThatThrownBy(() -> new TickWorkerPool(1))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void dispatchWithActiveThreadsSubset() {
+        pool = new TickWorkerPool(8);
+        int[] data = new int[100];
+
+        // Use only 2 of 8 threads
+        pool.dispatch(data.length, 2, (from, to) -> {
+            for (int i = from; i < to; i++) {
+                data[i] = 1;
+            }
+        });
+
+        for (int value : data) {
+            assertThat(value).isEqualTo(1);
+        }
+    }
+
+    @Test
+    void activeThreadsOnlyUsesRequestedThreads() {
+        pool = new TickWorkerPool(8);
+        Set<Integer> observedIndices = ConcurrentHashMap.newKeySet();
+
+        pool.dispatch(100, 3, (from, to) -> {
+            observedIndices.add(TickWorkerPool.getThreadIndex());
+        });
+
+        assertThat(observedIndices).containsExactlyInAnyOrder(0, 1, 2);
+    }
+
+    @Test
+    void activeThreadsClampedToPoolSize() {
+        pool = new TickWorkerPool(4);
+        int[] data = new int[100];
+
+        // Request 16 threads, but pool only has 4
+        pool.dispatch(data.length, 16, (from, to) -> {
+            for (int i = from; i < to; i++) {
+                data[i] = 1;
+            }
+        });
+
+        for (int value : data) {
+            assertThat(value).isEqualTo(1);
+        }
+    }
+
+    @Test
+    void dispatchWithSingleActiveThread() {
+        pool = new TickWorkerPool(4);
+        int[] data = new int[50];
+
+        pool.dispatch(data.length, 1, (from, to) -> {
+            for (int i = from; i < to; i++) {
+                data[i] = 1;
+            }
+        });
+
+        for (int value : data) {
+            assertThat(value).isEqualTo(1);
+        }
+    }
+
+    @Test
+    void varyingActiveThreadsAcrossDispatches() {
+        pool = new TickWorkerPool(8);
+        AtomicIntegerArray counters = new AtomicIntegerArray(100);
+
+        for (int round = 0; round < 500; round++) {
+            int active = (round % 4) + 1; // cycles 1, 2, 3, 4
+            pool.dispatch(counters.length(), active, (from, to) -> {
+                for (int i = from; i < to; i++) {
+                    counters.incrementAndGet(i);
+                }
+            });
+        }
+
+        for (int i = 0; i < counters.length(); i++) {
+            assertThat(counters.get(i)).isEqualTo(500);
+        }
+    }
 }

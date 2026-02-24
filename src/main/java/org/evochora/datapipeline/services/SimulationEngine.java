@@ -222,6 +222,26 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         return value;
     }
 
+    /**
+     * Reads the {@code parallelism-scaling} config list and applies it to the simulation.
+     *
+     * @param simulation the simulation to configure
+     * @param runtimeConfig the runtime config block (may or may not contain parallelism-scaling)
+     */
+    private void applyParallelismScaling(Simulation simulation, Config runtimeConfig) {
+        if (!runtimeConfig.hasPath("parallelism-scaling")) return;
+        List<? extends com.typesafe.config.ConfigObject> entries =
+                runtimeConfig.getObjectList("parallelism-scaling");
+        int[] scalingOrganisms = new int[entries.size()];
+        int[] scalingMaxThreads = new int[entries.size()];
+        for (int i = 0; i < entries.size(); i++) {
+            com.typesafe.config.Config entry = entries.get(i).toConfig();
+            scalingOrganisms[i] = entry.getInt("organisms");
+            scalingMaxThreads[i] = entry.getInt("max-threads");
+        }
+        simulation.setParallelismScaling(scalingOrganisms, scalingMaxThreads);
+    }
+
     private double readDouble(Config config, String path, double defaultValue) {
         return config.hasPath(path) ? config.getDouble(path) : defaultValue;
     }
@@ -307,6 +327,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 programInfo.put(id, new ProgramInfo(id, id, artifact)));
 
             log.debug("Restored {} organisms from checkpoint", restored.simulation().getOrganisms().size());
+
+            applyParallelismScaling(restored.simulation(), currentRuntimeConfig);
 
             // Read intervals and estimation parameters from original config (must match original simulation!)
             return new InitializedState(
@@ -394,6 +416,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
         Environment environment = new Environment(envProps, labelMatchingStrategy);
         Simulation simulation = new Simulation(environment, policyManager, organismConfig, parallelism);
+
+        applyParallelismScaling(simulation, runtimeConfig);
         simulation.setRandomProvider(randomProvider);
         labelMatchingStrategy.setRandomProvider(randomProvider.deriveFor("labelMatching", 0));
         simulation.setProgramArtifacts(compiledPrograms);

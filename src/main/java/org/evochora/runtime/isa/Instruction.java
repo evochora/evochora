@@ -451,7 +451,7 @@ public abstract class Instruction {
 
     /**
      * Registers an instruction opcode with explicit parallel-execute safety.
-     * Instructions marked as unsafe will be executed sequentially in wave 2 of the execute phase.
+     * Instructions marked as unsafe are environment-modifying and will be executed sequentially.
      *
      * @param familyClass the instruction class (e.g., ArithmeticInstruction.class)
      * @param factory the factory for creating instruction instances (e.g., {@code ArithmeticInstruction::new})
