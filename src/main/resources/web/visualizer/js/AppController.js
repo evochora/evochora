@@ -268,8 +268,9 @@ export class AppController {
             return;
         }
 
-        // Update state
+        // Update state and URL
         this.state.selectedOrganismId = numericId ? String(numericId) : null;
+        this.updateUrlState();
 
         // Update organism list selection in panel
         this.updateOrganismListSelection();
@@ -837,15 +838,22 @@ export class AppController {
     updateUrlState() {
         try {
             const url = new URL(window.location.href);
+
+            // Rebuild params in desired order: tick, organism, runId
+            url.searchParams.delete('tick');
+            url.searchParams.delete('organism');
+            url.searchParams.delete('runId');
+
+            if (this.state.currentTick !== null && this.state.currentTick !== undefined) {
+                url.searchParams.set('tick', this.state.currentTick);
+            }
+            if (this.state.selectedOrganismId) {
+                url.searchParams.set('organism', this.state.selectedOrganismId);
+            }
             if (this.state.runId) {
                 url.searchParams.set('runId', this.state.runId);
             }
-            if (this.state.currentTick !== null && this.state.currentTick !== undefined) {
-                url.searchParams.set('tick', this.state.currentTick);
-            } else {
-                url.searchParams.delete('tick');
-            }
-            
+
             // Use replaceState to avoid cluttering the browser history with every tick change
             window.history.replaceState({}, '', url);
         } catch (error) {
@@ -1372,6 +1380,14 @@ export class AppController {
                 const tickNumber = parseInt(tick, 10);
                 if (!Number.isNaN(tickNumber) && tickNumber >= 0) {
                     this.state.currentTick = tickNumber;
+                }
+            }
+
+            const organism = urlParams.get('organism');
+            if (organism !== null) {
+                const organismNumber = parseInt(organism, 10);
+                if (!Number.isNaN(organismNumber) && organismNumber > 0) {
+                    this.state.selectedOrganismId = String(organismNumber);
                 }
             }
         } catch (error) {

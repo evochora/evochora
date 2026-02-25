@@ -1032,10 +1032,15 @@
             const container = document.getElementById('app-switcher-container');
             const response = await fetch('/shared/app-switcher/apps.json');
             const apps = await response.json();
+            const params = new URLSearchParams(window.location.search);
             new AppSwitcher({
                 element: container,
                 apps: apps,
-                getState: () => ({})
+                getState: () => ({
+                    tick: params.get('tick'),
+                    organism: params.get('organism'),
+                    runId: params.get('runId')
+                })
             });
         } catch (e) {
             console.error('Failed to initialize AppSwitcher:', e);
@@ -1197,10 +1202,17 @@
             h += '<th>Started</th><th>Environment</th><th>Sampling</th><th>Ticks</th><th>Organisms</th><th></th>';
             h += '</tr></thead><tbody>';
 
+            var urlParams = new URLSearchParams(window.location.search);
+            var urlTick = urlParams.get('tick');
+            var urlOrganism = urlParams.get('organism');
+
             runs.forEach(function(run) {
                 var isActive = run.runId === activeRunId;
                 var cls = isActive ? ' class="run-active"' : '';
-                var encodedId = encodeURIComponent(run.runId);
+                var qs = (urlTick ? '?tick=' + encodeURIComponent(urlTick) : '?')
+                       + (urlOrganism ? '&organism=' + encodeURIComponent(urlOrganism) : '')
+                       + '&runId=' + encodeURIComponent(run.runId);
+                qs = qs.replace('?&', '?');
                 h += '<tr' + cls + '>';
                 h += '<td>' + fmtTimestamp(run.runId);
                 if (isActive && pipelineStatus && pipelineStatus !== 'STOPPED') {
@@ -1215,9 +1227,9 @@
                 h += '<td>' + fmt(run.maxTick) + '</td>';
                 h += '<td>' + fmt(run.organismsAlive) + (run.organismsTotal !== undefined ? ' / ' + fmt(run.organismsTotal) : '') + '</td>';
                 h += '<td>';
-                h += '<a href="/analyzer?runId=' + encodedId + '" class="run-viz-link">Analyzer</a>';
+                h += '<a href="/analyzer' + qs + '" class="run-viz-link">Analyzer</a>';
                 h += ' <span class="run-link-sep">|</span> ';
-                h += '<a href="/visualizer?runId=' + encodedId + '" class="run-viz-link">Visualizer</a>';
+                h += '<a href="/visualizer' + qs + '" class="run-viz-link">Visualizer</a>';
                 h += '</td></tr>';
             });
 

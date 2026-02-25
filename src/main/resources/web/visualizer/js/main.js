@@ -67,8 +67,9 @@ async function initAppSwitcher() {
             element: container,
             apps: apps,
             getState: () => ({
-                runId: appController?.state?.runId,
-                tick: appController?.state?.currentTick
+                tick: appController?.state?.currentTick,
+                organism: appController?.state?.selectedOrganismId,
+                runId: appController?.state?.runId
             })
         });
 

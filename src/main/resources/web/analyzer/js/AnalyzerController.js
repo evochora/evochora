@@ -130,11 +130,18 @@ function extractTimestamp(runId) {
      */
     function updateUrlRunId(runId) {
         const url = new URL(window.location.href);
-        if (runId) {
-            url.searchParams.set('runId', runId);
-        } else {
-            url.searchParams.delete('runId');
-        }
+
+        // Preserve other params and ensure runId is last
+        const tick = url.searchParams.get('tick');
+        const organism = url.searchParams.get('organism');
+        url.searchParams.delete('tick');
+        url.searchParams.delete('organism');
+        url.searchParams.delete('runId');
+
+        if (tick) url.searchParams.set('tick', tick);
+        if (organism) url.searchParams.set('organism', organism);
+        if (runId) url.searchParams.set('runId', runId);
+
         window.history.replaceState({}, '', url.toString());
     }
     

@@ -60,8 +60,9 @@ function initAppSwitcher() {
     function getAppState() {
         const params = new URLSearchParams(window.location.search);
         return {
-            runId: params.get('runId'),
-            tick: params.get('tick')
+            tick: params.get('tick'),
+            organism: params.get('organism'),
+            runId: params.get('runId')
         };
     }
     
