@@ -280,9 +280,7 @@ public class VirtualMachine {
         for (InstructionArgumentType argType : argTypes) {
             if (argType == InstructionArgumentType.REGISTER) {
                 if (argIndex < rawArgs.length) {
-                    int rawArg = rawArgs[argIndex];
-                    Molecule molecule = Molecule.fromInt(rawArg);
-                    int registerId = molecule.toScalarValue();
+                    int registerId = Instruction.extractSignedValue(rawArgs[argIndex]);
 
                     // Read register value (DR/PR/FPR)
                     Object registerValue = organism.readOperand(registerId);
@@ -295,9 +293,7 @@ public class VirtualMachine {
                 }
             } else if (argType == InstructionArgumentType.LOCATION_REGISTER) {
                 if (argIndex < rawArgs.length) {
-                    int rawArg = rawArgs[argIndex];
-                    Molecule molecule = Molecule.fromInt(rawArg);
-                    int registerId = molecule.toScalarValue();
+                    int registerId = Instruction.extractSignedValue(rawArgs[argIndex]);
 
                     // Read location register value (LR - always int[])
                     // Safely check bounds to avoid failing the instruction during debug data collection

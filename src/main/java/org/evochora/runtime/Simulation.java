@@ -1,12 +1,10 @@
 package org.evochora.runtime;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.isa.IEnvironmentModifyingInstruction;
@@ -27,6 +25,7 @@ import org.slf4j.LoggerFactory;
 
 import com.typesafe.config.Config;
 
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 
 /**
@@ -61,6 +60,7 @@ public class Simulation {
     private int nextOrganismId = 1;
     private final LongOpenHashSet allGenomesEverSeen = new LongOpenHashSet();
     private IRandomProvider randomProvider;
+    private int loggingEnabledCount = 0;
 
     private Map<String, ProgramArtifact> programArtifacts = new HashMap<>();
 
@@ -404,8 +404,10 @@ public class Simulation {
             }
         }
 
-        for (Instruction instruction : plannedInstructions) {
-            logInstruction(instruction);
+        if (hasLoggingEnabledOrganisms()) {
+            for (Instruction instruction : plannedInstructions) {
+                logInstruction(instruction);
+            }
         }
     }
 
@@ -513,9 +515,10 @@ public class Simulation {
             if (diedInWave2[i]) handleDeath(wave2.get(i).getOrganism());
         }
 
-        // Debug logging: sequential, in original organism order
-        for (Instruction instr : allInstructions) {
-            if (instr != null) logInstruction(instr);
+        if (hasLoggingEnabledOrganisms()) {
+            for (Instruction instr : allInstructions) {
+                if (instr != null) logInstruction(instr);
+            }
         }
     }
 
@@ -694,18 +697,18 @@ public class Simulation {
      * @param allPlannedInstructions A list of all instructions planned for the current tick.
      */
     private void resolveConflicts(List<Instruction> allPlannedInstructions) {
-        Map<List<Integer>, List<IEnvironmentModifyingInstruction>> actionsByCoordinate = new HashMap<>();
+        Int2ObjectOpenHashMap<List<IEnvironmentModifyingInstruction>> actionsByFlatIndex = new Int2ObjectOpenHashMap<>();
 
         for (Instruction instruction : allPlannedInstructions) {
             if (instruction instanceof IEnvironmentModifyingInstruction modInstruction) {
                 List<int[]> targetCoords = modInstruction.getTargetCoordinates();
                 if (targetCoords != null && !targetCoords.isEmpty()) {
                     for (int[] coord : targetCoords) {
-                        List<Integer> coordAsList = Arrays.stream(coord).boxed().collect(Collectors.toList());
-                        actionsByCoordinate.computeIfAbsent(coordAsList, k -> new ArrayList<>()).add(modInstruction);
+                        int flatIndex = this.environment.properties.toFlatIndex(coord);
+                        actionsByFlatIndex.computeIfAbsent(flatIndex, k -> new ArrayList<>()).add(modInstruction);
                     }
                 } else {
-                    // FIX: Always execute if no targets are specified (e.g. invalid arguments).
+                    // Always execute if no targets are specified (e.g. invalid arguments).
                     // The instruction's execute() method will then run, detect the error, and fail gracefully.
                     instruction.setExecutedInTick(true);
                 }
@@ -714,7 +717,7 @@ public class Simulation {
             }
         }
 
-        for (Map.Entry<List<Integer>, List<IEnvironmentModifyingInstruction>> entry : actionsByCoordinate.entrySet()) {
+        for (var entry : actionsByFlatIndex.int2ObjectEntrySet()) {
             List<IEnvironmentModifyingInstruction> actionsAtCoord = entry.getValue();
             if (actionsAtCoord.isEmpty()) continue;
 
@@ -775,5 +778,25 @@ public class Simulation {
      */
     public void addNewOrganism(Organism organism) {
         this.newOrganismsThisTick.add(organism);
+    }
+
+    /**
+     * Notifies the simulation that an organism's logging state has changed.
+     * Maintains a count of organisms with logging enabled so that the
+     * per-tick logging loop can be skipped entirely when no organism is being logged.
+     *
+     * @param enabled true if logging was enabled, false if disabled
+     */
+    public void onOrganismLoggingChanged(boolean enabled) {
+        loggingEnabledCount += enabled ? 1 : -1;
+    }
+
+    /**
+     * Returns whether any organism currently has logging enabled.
+     *
+     * @return true if at least one organism has logging enabled
+     */
+    boolean hasLoggingEnabledOrganisms() {
+        return loggingEnabledCount > 0;
     }
 }

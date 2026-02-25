@@ -515,8 +515,8 @@ public class Organism {
         this.failureReason = null;
         this.failureCallStack = null;
         this.skipIpAdvance = false;
-        this.ipBeforeFetch = java.util.Arrays.copyOf(this.ip, this.ip.length);
-        this.dvBeforeFetch = java.util.Arrays.copyOf(this.dv, this.dv.length);
+        System.arraycopy(this.ip, 0, this.ipBeforeFetch, 0, this.ip.length);
+        System.arraycopy(this.dv, 0, this.dvBeforeFetch, 0, this.dv.length);
         this.lastInstructionExecution = null;
     }
 
@@ -630,6 +630,10 @@ public class Organism {
     public void kill(String reason) {
         this.isDead = true;
         this.deathTick = simulation.getCurrentTick();
+        if (this.loggingEnabled) {
+            this.loggingEnabled = false;
+            this.simulation.onOrganismLoggingChanged(false);
+        }
         if (!this.instructionFailed) {
             instructionFailed(reason);
         }
@@ -1125,7 +1129,12 @@ public class Organism {
     /** Enables or disables detailed logging for this organism.
      * @param loggingEnabled true to enable logging, false to disable.
      */
-    public void setLoggingEnabled(boolean loggingEnabled) { this.loggingEnabled = loggingEnabled; }
+    public void setLoggingEnabled(boolean loggingEnabled) {
+        if (this.loggingEnabled != loggingEnabled) {
+            this.loggingEnabled = loggingEnabled;
+            this.simulation.onOrganismLoggingChanged(loggingEnabled);
+        }
+    }
     /** @return true if the current instruction has failed. */
     public boolean isInstructionFailed() { return instructionFailed; }
     /** @return true if the previous tick's instruction failed. Used by IFER/INER conditionals. */

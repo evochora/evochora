@@ -92,6 +92,8 @@ public abstract class Instruction {
     private static int[] INSTRUCTION_LENGTHS_BASE = new int[0];
     private static int[] INSTRUCTION_LENGTHS_DIMS_MULTIPLIER = new int[0];
     private static boolean[] PARALLEL_EXECUTE_SAFE = new boolean[0];
+    private static String[] NAMES_ARRAY = new String[0];
+    private static InstructionSignature[] SIGNATURES_ARRAY = new InstructionSignature[0];
 
     /**
      * Returns a list of public information records for all registered instructions.
@@ -445,6 +447,22 @@ public abstract class Instruction {
                 PARALLEL_EXECUTE_SAFE[id] = entry.getValue();
             }
         }
+
+        NAMES_ARRAY = new String[REGISTRY_SIZE];
+        for (var entry : ID_TO_NAME.entrySet()) {
+            int id = entry.getKey();
+            if (id >= 0 && id < REGISTRY_SIZE) {
+                NAMES_ARRAY[id] = entry.getValue();
+            }
+        }
+
+        SIGNATURES_ARRAY = new InstructionSignature[REGISTRY_SIZE];
+        for (var entry : SIGNATURES_BY_ID.entrySet()) {
+            int id = entry.getKey();
+            if (id >= 0 && id < REGISTRY_SIZE) {
+                SIGNATURES_ARRAY[id] = entry.getValue();
+            }
+        }
     }
 
     // ========== Registration API for Instruction Subclasses ==========
@@ -591,7 +609,13 @@ public abstract class Instruction {
      * Gets the name of this instruction.
      * @return The instruction's name.
      */
-    public final String getName() { return ID_TO_NAME.getOrDefault(this.fullOpcodeId, "UNKNOWN"); }
+    public final String getName() {
+        if (fullOpcodeId >= 0 && fullOpcodeId < REGISTRY_SIZE) {
+            String name = NAMES_ARRAY[fullOpcodeId];
+            if (name != null) return name;
+        }
+        return ID_TO_NAME.getOrDefault(this.fullOpcodeId, "UNKNOWN");
+    }
 
     /**
      * Gets the full opcode ID of this instruction.
@@ -604,7 +628,13 @@ public abstract class Instruction {
      * @param id The instruction ID.
      * @return The name of the instruction.
      */
-    public static String getInstructionNameById(int id) { return ID_TO_NAME.getOrDefault(id, "UNKNOWN"); }
+    public static String getInstructionNameById(int id) {
+        if (id >= 0 && id < REGISTRY_SIZE) {
+            String name = NAMES_ARRAY[id];
+            if (name != null) return name;
+        }
+        return ID_TO_NAME.getOrDefault(id, "UNKNOWN");
+    }
     
     /**
      * Returns an unmodifiable view of all registered instruction IDs and names.
@@ -674,7 +704,12 @@ public abstract class Instruction {
      * @param id The instruction ID.
      * @return An Optional containing the instruction signature.
      */
-    public static Optional<InstructionSignature> getSignatureById(int id) { return Optional.ofNullable(SIGNATURES_BY_ID.get(id)); }
+    public static Optional<InstructionSignature> getSignatureById(int id) {
+        if (id >= 0 && id < REGISTRY_SIZE) {
+            return Optional.ofNullable(SIGNATURES_ARRAY[id]);
+        }
+        return Optional.ofNullable(SIGNATURES_BY_ID.get(id));
+    }
 
     /**
      * Returns whether the instruction with the given opcode can safely execute in parallel.

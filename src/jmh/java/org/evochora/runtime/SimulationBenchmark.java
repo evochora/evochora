@@ -47,9 +47,9 @@ import com.typesafe.config.ConfigFactory;
 @State(Scope.Benchmark)
 @BenchmarkMode(Mode.Throughput)
 @OutputTimeUnit(TimeUnit.SECONDS)
-@Fork(1)
+@Fork(2)
 @Warmup(iterations = 2, time = 3)
-@Measurement(iterations = 3, time = 3)
+@Measurement(iterations = 5, time = 3)
 public class SimulationBenchmark {
 
     private static final int ENV_SIZE = 1024;
@@ -146,11 +146,11 @@ public class SimulationBenchmark {
     private String assembly;
 
     /** Number of organisms in the simulation. */
-    @Param({"24", "32", "40"})
+    @Param({"20", "100", "500", "2000"})
     private int organisms;
 
     /** Parallelism level for the simulation's Plan and Execute phases. */
-    @Param({"1", "2", "4", "8"})
+    @Param({"1", "4"})
     private int parallelism;
 
     private Map<String, ProgramArtifact> compiledPrograms;

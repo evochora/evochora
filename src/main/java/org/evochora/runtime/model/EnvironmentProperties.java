@@ -198,6 +198,22 @@ public class EnvironmentProperties {
     }
     
     /**
+     * Converts N-dimensional coordinates to a flat index.
+     * <p>
+     * Computes: coord[0]*strides[0] + coord[1]*strides[1] + ...
+     *
+     * @param coord The coordinate array (must have length == worldShape.length)
+     * @return The flat index
+     */
+    public int toFlatIndex(int[] coord) {
+        int flatIndex = 0;
+        for (int i = 0; i < coord.length; i++) {
+            flatIndex += coord[i] * strides[i];
+        }
+        return flatIndex;
+    }
+
+    /**
      * Gets the number of dimensions.
      *
      * @return Number of dimensions
