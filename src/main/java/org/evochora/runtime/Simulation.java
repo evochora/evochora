@@ -315,6 +315,8 @@ public class Simulation {
      * instructions are executed.
      */
     public void tick() {
+        if (Thread.currentThread().isInterrupted()) return;
+
         newOrganismsThisTick.clear();
 
         // Execute tick plugins before Plan-Resolve-Execute cycle
@@ -364,6 +366,7 @@ public class Simulation {
     private void tickSequential() {
         List<Instruction> plannedInstructions = new ArrayList<>();
         for (Organism organism : this.organisms) {
+            if (Thread.currentThread().isInterrupted()) return;
             if (organism.isDead()) continue;
 
             Instruction instruction = vm.plan(organism);
@@ -435,12 +438,16 @@ public class Simulation {
 
         InterceptionContext[] contexts = hasInterceptors ? parallelInterceptContexts : null;
 
+        // Capture main thread reference so worker threads can check its interrupt status
+        Thread mainThread = Thread.currentThread();
+
         // Single dispatch: Plan all organisms, execute wave 1 immediately
         workerPool.dispatch(size, activeP, (from, to) -> {
             InterceptionContext ctx = contexts != null
                     ? contexts[TickWorkerPool.getThreadIndex()] : null;
 
             for (int i = from; i < to; i++) {
+                if (mainThread.isInterrupted()) return;
                 Organism organism = organisms.get(i);
                 if (organism.isDead()) continue;
 

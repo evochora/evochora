@@ -319,8 +319,6 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
                     // Timeout-based commit
                     if (streamingUncommittedChunks > 0
                         && (System.currentTimeMillis() - streamingLastCommitTime) >= streamingFlushTimeoutMs) {
-                        setShutdownPhase(ShutdownPhase.PROCESSING);
-                        Thread.interrupted();
                         try {
                             streamingCommitAndAck();
                         } catch (Exception e) {
@@ -330,32 +328,22 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
                             streamingTracker.clear();
                             streamingUncommittedChunks = 0;
                             streamingLastCommitTime = System.currentTimeMillis();
-                        } finally {
-                            setShutdownPhase(ShutdownPhase.WAITING);
                         }
                     }
                     continue;
                 }
 
-                setShutdownPhase(ShutdownPhase.PROCESSING);
-                Thread.interrupted();
-                try {
-                    processBatchMessage(msg);
-                } finally {
-                    setShutdownPhase(ShutdownPhase.WAITING);
-                }
+                processBatchMessage(msg);
             }
         } finally {
             // Final commit of remaining data (always executed, even on interrupt!)
             if (streamingUncommittedChunks > 0) {
-                setShutdownPhase(ShutdownPhase.PROCESSING);
                 boolean wasInterrupted = Thread.interrupted();
                 try {
                     streamingCommitAndAck();
                 } catch (Exception e) {
                     log.warn("Final streaming commit failed during shutdown: {}", e.getMessage());
                 } finally {
-                    setShutdownPhase(ShutdownPhase.WAITING);
                     if (wasInterrupted) {
                         Thread.currentThread().interrupt();
                     }
@@ -546,12 +534,18 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
      * @throws Exception if commit or ACK fails
      */
     private void streamingCommitAndAck() throws Exception {
-        commitProcessedChunks();
-        streamingTracker.onCommit();
-        ackCompletedBatches();
+        setShutdownPhase(ShutdownPhase.PROCESSING);
+        Thread.interrupted();
+        try {
+            commitProcessedChunks();
+            streamingTracker.onCommit();
+            ackCompletedBatches();
 
-        streamingUncommittedChunks = 0;
-        streamingLastCommitTime = System.currentTimeMillis();
+            streamingUncommittedChunks = 0;
+            streamingLastCommitTime = System.currentTimeMillis();
+        } finally {
+            setShutdownPhase(ShutdownPhase.WAITING);
+        }
     }
 
     /**
