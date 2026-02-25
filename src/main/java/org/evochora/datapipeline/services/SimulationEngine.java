@@ -373,9 +373,20 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         Map<String, ProgramInfo> programInfo = new HashMap<>();
         Compiler compiler = new Compiler();
 
-        boolean isToroidal = "TORUS".equalsIgnoreCase(options.getString("environment.topology"));
-        EnvironmentProperties envProps = new EnvironmentProperties(
-            options.getIntList("environment.shape").stream().mapToInt(i -> i).toArray(), isToroidal);
+        String topology = options.getString("environment.topology");
+        if (!"TORUS".equalsIgnoreCase(topology) && !"BOUND".equalsIgnoreCase(topology)) {
+            throw new IllegalArgumentException(
+                "Invalid environment.topology: \"" + topology + "\". Must be \"TORUS\" or \"BOUND\".");
+        }
+        boolean isToroidal = "TORUS".equalsIgnoreCase(topology);
+        int[] shape = options.getIntList("environment.shape").stream().mapToInt(i -> i).toArray();
+        for (int i = 0; i < shape.length; i++) {
+            if (shape[i] < 1) {
+                throw new IllegalArgumentException(
+                    "environment.shape[" + i + "] must be >= 1, got " + shape[i]);
+            }
+        }
+        EnvironmentProperties envProps = new EnvironmentProperties(shape, isToroidal);
 
         for (Config orgConfig : organismConfigs) {
             String programPath = orgConfig.getString("program");

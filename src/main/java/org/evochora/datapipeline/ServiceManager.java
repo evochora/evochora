@@ -566,8 +566,8 @@ public class ServiceManager implements IMonitorable {
                 return;
             }
 
-            // Check if this is a configuration error (IllegalArgumentException, ResumeException, or NegativeArraySizeException)
-            if (cause instanceof IllegalArgumentException) {
+            // Check if this is a configuration error (IllegalArgumentException, ConfigException, ResumeException, or NegativeArraySizeException)
+            if (cause instanceof IllegalArgumentException || cause instanceof com.typesafe.config.ConfigException) {
                 String errorMsg = "Configuration error for service '" + name + "': " + cause.getMessage();
                 log.error(errorMsg);
                 // Don't throw - just log and return. Service remains in stopped state.
