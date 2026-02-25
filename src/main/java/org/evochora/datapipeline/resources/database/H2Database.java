@@ -1168,26 +1168,26 @@ public class H2Database extends AbstractDatabaseResource
         long cacheSizeKb = parseCacheSizeFromUrl(getJdbcUrl(options));
         
         // Worst-case heap estimation:
-        // 1. Connection overhead: ~10 MB per connection (active query with large ResultSet)
-        long connectionOverhead = (long) poolSize * 10 * 1024 * 1024;
+        // 1. Connection overhead: ~5 MB per connection (most idle, active ones hold PreparedStatement cache + ResultSet)
+        long connectionOverhead = (long) poolSize * 5 * 1024 * 1024;
         
-        // 2. MVStore base overhead: ~150 MB (internal structures, maps, indexes)
-        long mvStoreBase = 150L * 1024 * 1024;
+        // 2. MVStore base overhead: ~80 MB (internal structures, maps, indexes)
+        long mvStoreBase = 80L * 1024 * 1024;
         
         // 3. CACHE_SIZE on-heap portion: ~30% of CACHE_SIZE
         // H2 uses DirectByteBuffer for most cache, but metadata is on-heap
         long cacheOnHeap = (cacheSizeKb * 1024 * 3) / 10;
         
-        // 4. Query buffer: ~100 MB (concurrent queries, parsing, execution)
-        long queryBuffer = 100L * 1024 * 1024;
+        // 4. Query buffer: ~50 MB (concurrent queries, parsing, execution)
+        long queryBuffer = 50L * 1024 * 1024;
         
-        // 5. BLOB decompression buffer: ~50 MB per concurrent read (assume 4 concurrent HTTP reads)
-        long blobBuffer = 4L * 50 * 1024 * 1024;
+        // 5. BLOB decompression buffer: ~50 MB per concurrent read (assume 2 concurrent reads)
+        long blobBuffer = 2L * 50 * 1024 * 1024;
         
         long totalEstimate = connectionOverhead + mvStoreBase + cacheOnHeap + queryBuffer + blobBuffer;
         
         String description = String.format(
-            "%d conn × 10MB + 150MB MVStore + %.0fMB cache-heap (30%% of %dMB) + 100MB query + 200MB BLOB",
+            "%d conn × 5MB + 80MB MVStore + %.0fMB cache-heap (30%% of %dMB) + 50MB query + 100MB BLOB",
             poolSize, 
             (double) cacheOnHeap / (1024 * 1024),
             cacheSizeKb / 1024);

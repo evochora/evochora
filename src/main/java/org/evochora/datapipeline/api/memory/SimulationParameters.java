@@ -157,6 +157,15 @@ public record SimulationParameters(
      */
     public static final double DEFAULT_ORGANISM_DENSITY_FACTOR = 0.0005;
 
+    /**
+     * Default expected cell occupancy for realistic memory estimation.
+     * <p>
+     * Typical simulations occupy roughly 25% of environment cells with molecules.
+     * Used alongside the 100% worst-case estimate to provide a more realistic
+     * "expected peak" number.
+     */
+    public static final double DEFAULT_EXPECTED_CELL_OCCUPANCY = 0.25;
+
     // ========================================================================
     // Factory Methods
     // ========================================================================
@@ -210,6 +219,26 @@ public record SimulationParameters(
         );
     }
     
+    /**
+     * Returns a copy with totalCells scaled by the given occupancy factor.
+     * <p>
+     * Used to create a realistic "expected peak" estimation alongside the
+     * worst-case (100% occupancy) estimation. All helper methods
+     * ({@link #estimateBytesPerTick()}, {@link #estimateBytesPerChunk()}, etc.)
+     * automatically reflect the reduced cell count.
+     *
+     * @param occupancy Fraction of cells expected to be occupied (0.0–1.0).
+     * @return New SimulationParameters with adjusted totalCells.
+     */
+    public SimulationParameters withCellOccupancy(double occupancy) {
+        long adjustedCells = Math.max(1, (long) (totalCells * occupancy));
+        return new SimulationParameters(
+            environmentShape, adjustedCells, maxOrganisms,
+            samplingInterval, accumulatedDeltaInterval,
+            snapshotInterval, chunkInterval, estimatedDeltaRatio
+        );
+    }
+
     /**
      * Returns the worst-case cells per tick.
      * <p>

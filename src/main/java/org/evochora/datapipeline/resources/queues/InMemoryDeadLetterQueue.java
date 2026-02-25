@@ -229,12 +229,11 @@ public class InMemoryDeadLetterQueue<T> extends AbstractResource implements IDea
      */
     @Override
     public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
-        // DeadLetterMessage contains: original batch reference (~2KB), error info (~1KB), timestamps (~100B)
-        // Conservative estimate: ~5 KB per dead letter message
-        long bytesPerMessage = 5 * 1024;
+        // DeadLetterMessage contains: original batch reference (~2KB), error info (~500B), timestamps (~100B)
+        long bytesPerMessage = 3 * 1024;
         long totalBytes = capacityLimit * bytesPerMessage;
-        
-        String explanation = String.format("%d capacity × ~5 KB/message (DeadLetterMessage wrapper)",
+
+        String explanation = String.format("%d capacity × ~3 KB/message (DeadLetterMessage wrapper)",
             capacityLimit);
         
         return List.of(new MemoryEstimate(

@@ -809,94 +809,93 @@ public class ServiceManager implements IMonitorable {
             log.debug("Memory estimation skipped: simulation-engine not configured");
             return;
         }
-        
-        // Collect estimates from all IMemoryEstimatable components
-        List<MemoryEstimate> allEstimates = new ArrayList<>();
-        Map<MemoryEstimate.Category, Long> categoryTotals = new EnumMap<>(MemoryEstimate.Category.class);
-        
-        // 1. Resources (queues, trackers, databases)
-        for (Map.Entry<String, IResource> entry : resources.entrySet()) {
-            if (entry.getValue() instanceof IMemoryEstimatable) {
-                List<MemoryEstimate> estimates = ((IMemoryEstimatable) entry.getValue()).estimateWorstCaseMemory(params);
-                allEstimates.addAll(estimates);
-                for (MemoryEstimate estimate : estimates) {
-                    categoryTotals.merge(estimate.category(), estimate.estimatedBytes(), Long::sum);
-                }
-            }
-        }
-        
-        // 2. Services (PersistenceService, Indexers, SimulationEngine, etc.)
-        for (Map.Entry<String, IService> entry : services.entrySet()) {
-            if (entry.getValue() instanceof IMemoryEstimatable) {
-                List<MemoryEstimate> estimates = ((IMemoryEstimatable) entry.getValue()).estimateWorstCaseMemory(params);
-                allEstimates.addAll(estimates);
-                for (MemoryEstimate estimate : estimates) {
-                    categoryTotals.merge(estimate.category(), estimate.estimatedBytes(), Long::sum);
-                }
-            }
-        }
-        
-        // 3. Add JVM baseline overhead (thread stacks, class metadata, GC overhead)
-        long jvmOverhead = 512 * 1024 * 1024; // ~512 MB baseline
-        allEstimates.add(new MemoryEstimate(
-            "JVM-overhead",
-            jvmOverhead,
+
+        // Fixed overhead (independent of simulation parameters)
+        long jvmOverhead = 300L * 1024 * 1024; // ~300 MB baseline
+        // - HttpServerProcess: Jetty thread pool (mostly idle, stack-only) + request buffers = ~100 MB
+        // - H2ConsoleProcess: Small embedded HTTP server = ~20 MB
+        // - H2TcpServerProcess: TCP server for DB connections = ~30 MB
+        long nodeProcessOverhead = 150L * 1024 * 1024; // 150 MB for Node processes
+        long fixedOverhead = jvmOverhead + nodeProcessOverhead;
+
+        // 1. Worst-case estimation (100% cell occupancy) — used for WARN threshold
+        List<MemoryEstimate> worstCaseEstimates = collectEstimates(params);
+        worstCaseEstimates.add(new MemoryEstimate(
+            "JVM-overhead", jvmOverhead,
             "Thread stacks, class metadata, GC overhead, native memory",
             MemoryEstimate.Category.JVM_OVERHEAD
         ));
-        categoryTotals.merge(MemoryEstimate.Category.JVM_OVERHEAD, jvmOverhead, Long::sum);
-        
-        // Calculate total from services and resources
-        long serviceEstimatedBytes = allEstimates.stream().mapToLong(MemoryEstimate::estimatedBytes).sum();
-        
-        // Add fixed overhead for Node processes (HttpServerProcess, H2ConsoleProcess, H2TcpServerProcess)
-        // These are not part of ServiceManager but consume significant heap:
-        // - HttpServerProcess: Jetty thread pool (200 threads × ~1MB) + request buffers = ~250 MB
-        // - H2ConsoleProcess: Small embedded HTTP server = ~20 MB
-        // - H2TcpServerProcess: TCP server for DB connections = ~30 MB
-        long nodeProcessOverhead = 300L * 1024 * 1024; // 300 MB for Node processes
-        
-        long totalEstimatedBytes = serviceEstimatedBytes + nodeProcessOverhead;
+        long worstCaseTotal = worstCaseEstimates.stream().mapToLong(MemoryEstimate::estimatedBytes).sum()
+                            + nodeProcessOverhead;
+
+        // 2. Expected-peak estimation (25% cell occupancy)
+        SimulationParameters expectedParams = params.withCellOccupancy(
+            SimulationParameters.DEFAULT_EXPECTED_CELL_OCCUPANCY);
+        long expectedComponentTotal = collectEstimates(expectedParams).stream()
+            .mapToLong(MemoryEstimate::estimatedBytes).sum();
+        long expectedTotal = expectedComponentTotal + fixedOverhead;
+
         long maxHeapBytes = Runtime.getRuntime().maxMemory();
-        
-        // Log detailed breakdown at DEBUG level
+
+        // Log detailed worst-case breakdown at DEBUG level
+        Map<MemoryEstimate.Category, Long> categoryTotals = new EnumMap<>(MemoryEstimate.Category.class);
         log.debug("Memory estimation breakdown (WORST-CASE: 100%% environment, {} max organisms):", params.maxOrganisms());
-        for (MemoryEstimate estimate : allEstimates) {
+        for (MemoryEstimate estimate : worstCaseEstimates) {
             log.debug("  {} → {}: {}", estimate.componentName(), estimate.formattedBytes(), estimate.explanation());
+            categoryTotals.merge(estimate.category(), estimate.estimatedBytes(), Long::sum);
         }
         log.debug("  Node processes (fixed overhead) → {}", SimulationParameters.formatBytes(nodeProcessOverhead));
-        
-        // Log category totals
+
         log.debug("Category totals:");
         for (Map.Entry<MemoryEstimate.Category, Long> entry : categoryTotals.entrySet()) {
             log.debug("  {}: {}", entry.getKey().getDisplayName(), SimulationParameters.formatBytes(entry.getValue()));
         }
         log.debug("  Node processes: {}", SimulationParameters.formatBytes(nodeProcessOverhead));
-        
-        // Calculate recommended heap with 30% safety margin
-        long recommendedHeapBytes = (long) (totalEstimatedBytes * 1.3);
-        
-        // Log summary with INFO or WARN depending on heap availability
-        if (totalEstimatedBytes <= maxHeapBytes) {
-            log.info("Memory estimate: {} (peak: {} services + {} Node overhead), available heap: {} (-Xmx)",
-                SimulationParameters.formatBytes(totalEstimatedBytes),
-                services.size(),
-                SimulationParameters.formatBytes(nodeProcessOverhead),
-                SimulationParameters.formatBytes(maxHeapBytes));
-        } else {
-            // Build compact top-N offenders string for single-line warning
-            String topOffenders = allEstimates.stream()
+
+        // Always log expected peak at INFO level
+        log.info("Memory estimate: {} expected peak ({}%% occupancy), {} worst-case ceiling (100%%), heap: {} (-Xmx)",
+            SimulationParameters.formatBytes(expectedTotal),
+            (int) (SimulationParameters.DEFAULT_EXPECTED_CELL_OCCUPANCY * 100),
+            SimulationParameters.formatBytes(worstCaseTotal),
+            SimulationParameters.formatBytes(maxHeapBytes));
+
+        // WARN if worst-case exceeds available heap
+        if (worstCaseTotal > maxHeapBytes) {
+            long recommendedHeapBytes = (long) (worstCaseTotal * 1.3);
+
+            String topOffenders = worstCaseEstimates.stream()
                 .sorted((a, b) -> Long.compare(b.estimatedBytes(), a.estimatedBytes()))
                 .limit(3)
                 .map(e -> e.componentName() + " " + e.formattedBytes())
                 .collect(Collectors.joining(", "));
 
-            log.warn("Estimated peak {} exceeds available heap {}. Largest: {}. Recommended: -Xmx{}",
-                SimulationParameters.formatBytes(totalEstimatedBytes),
+            log.warn("Worst-case estimate {} exceeds heap {}. Largest: {}. Recommended: -Xmx{}",
+                SimulationParameters.formatBytes(worstCaseTotal),
                 SimulationParameters.formatBytes(maxHeapBytes),
                 topOffenders,
                 formatHeapRecommendation(recommendedHeapBytes));
         }
+    }
+
+    /**
+     * Collects memory estimates from all {@link IMemoryEstimatable} resources and services.
+     *
+     * @param params Simulation parameters for estimation (may use reduced occupancy).
+     * @return Mutable list of estimates from all components.
+     */
+    private List<MemoryEstimate> collectEstimates(SimulationParameters params) {
+        List<MemoryEstimate> estimates = new ArrayList<>();
+        for (IResource resource : resources.values()) {
+            if (resource instanceof IMemoryEstimatable estimatable) {
+                estimates.addAll(estimatable.estimateWorstCaseMemory(params));
+            }
+        }
+        for (IService service : services.values()) {
+            if (service instanceof IMemoryEstimatable estimatable) {
+                estimates.addAll(estimatable.estimateWorstCaseMemory(params));
+            }
+        }
+        return estimates;
     }
     
     /**
