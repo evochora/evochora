@@ -256,11 +256,16 @@ public abstract class AbstractService implements IService, IMonitorable {
             log.debug("Service thread interrupted, shutting down.");
             Thread.currentThread().interrupt();
         } catch (Exception e) {
-            log.error("{} stopped with ERROR due to {}", 
-                this.getClass().getSimpleName(), 
-                e.getClass().getSimpleName());
-            log.debug("Exception details:", e);
-            currentState.set(State.ERROR);
+            if (isInterruptInduced(e)) {
+                log.debug("Service thread interrupted, shutting down.");
+                Thread.currentThread().interrupt();
+            } else {
+                log.error("{} stopped with ERROR due to {}",
+                    this.getClass().getSimpleName(),
+                    e.getClass().getSimpleName());
+                log.debug("Exception details:", e);
+                currentState.set(State.ERROR);
+            }
         } finally {
             // If the service stopped for any reason other than an error, set state to STOPPED.
             if (getCurrentState() != State.ERROR) {
@@ -268,6 +273,22 @@ public abstract class AbstractService implements IService, IMonitorable {
             }
             log.debug("Service thread for {} has terminated.", this.getClass().getSimpleName());
         }
+    }
+
+    /**
+     * Checks whether an exception was induced by a Thread.interrupt() call by walking
+     * the cause chain for interrupt-specific types. Libraries like Artemis wrap
+     * InterruptedException in RuntimeExceptions (e.g., ActiveMQInterruptedException),
+     * and NIO throws ClosedByInterruptException when a channel is interrupted mid-IO.
+     */
+    private static boolean isInterruptInduced(Throwable t) {
+        for (Throwable current = t; current != null; current = current.getCause()) {
+            if (current instanceof InterruptedException
+                    || current instanceof java.nio.channels.ClosedByInterruptException) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.datapipeline.resume.ResumeException;
 import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
-import org.evochora.datapipeline.api.memory.ISimulationParameterSource;
+import org.evochora.datapipeline.api.services.ISimulationSource;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IContextualResource;
@@ -53,6 +53,8 @@ public class ServiceManager implements IMonitorable {
     private final Map<String, List<PendingBinding>> pendingBindingsMap = new ConcurrentHashMap<>();
     // Stores the wrapped resources currently being created for a service (used to coordinate between factory and bindings)
     private final Map<String, Map<String, List<IResource>>> activeWrappedResources = new ConcurrentHashMap<>();
+    // Cached reference to the service that owns the current simulation run (set during startService)
+    private volatile ISimulationSource simulationSource;
 
     public ServiceManager(Config rootConfig) {
         this.pipelineConfig = loadPipelineConfig(rootConfig);
@@ -456,6 +458,9 @@ public class ServiceManager implements IMonitorable {
             // Services that have finished (STOPPED/ERROR) can be restarted
             if (state == IService.State.STOPPED || state == IService.State.ERROR) {
                 log.debug("Removing previous instance of service '{}' (state: {}) before creating new instance", name, state);
+                if (existing == simulationSource) {
+                    simulationSource = null;
+                }
                 services.remove(name);
                 serviceResourceBindings.remove(name);
             } else {
@@ -499,6 +504,9 @@ public class ServiceManager implements IMonitorable {
                 serviceResourceBindings.put(name, Collections.unmodifiableList(finalBindings));
 
                 services.put(name, newServiceInstance);
+                if (newServiceInstance instanceof ISimulationSource source) {
+                    simulationSource = source;
+                }
 
                 newServiceInstance.start();
             } finally {
@@ -507,6 +515,7 @@ public class ServiceManager implements IMonitorable {
             }
         } catch (OutOfMemoryError e) {
             // Clean up maps in case of a startup failure.
+            clearSimulationSourceIfMatch(services.get(name));
             services.remove(name);
             serviceResourceBindings.remove(name);
             activeWrappedResources.remove(name);
@@ -533,6 +542,7 @@ public class ServiceManager implements IMonitorable {
             return;
         } catch (RuntimeException e) {
             // Clean up maps in case of a startup failure.
+            clearSimulationSourceIfMatch(services.get(name));
             services.remove(name);
             serviceResourceBindings.remove(name);
             activeWrappedResources.remove(name);
@@ -603,6 +613,7 @@ public class ServiceManager implements IMonitorable {
         } catch (Exception e) {
             log.error("Failed to create and start a new instance for service '{}'.", name, e);
             // Clean up maps in case of a startup failure.
+            clearSimulationSourceIfMatch(services.get(name));
             services.remove(name);
             serviceResourceBindings.remove(name);
             activeWrappedResources.remove(name);
@@ -820,7 +831,8 @@ public class ServiceManager implements IMonitorable {
      */
     private void performMemoryEstimation(Config config) {
         // Prefer runtime parameters from a started service (correct for both new and resume mode)
-        SimulationParameters params = findSimulationParameters();
+        ISimulationSource source = simulationSource;
+        SimulationParameters params = source != null ? source.getMemoryEstimationParameters() : null;
 
         // Fallback to config parsing (e.g., when SimulationEngine runs in a separate process)
         if (params == null) {
@@ -921,28 +933,26 @@ public class ServiceManager implements IMonitorable {
     }
     
     /**
-     * Extracts simulation parameters from pipeline configuration.
-     * <p>
-     * Queries started services for an {@link ISimulationParameterSource} that provides
-     * the definitive simulation parameters. In resume mode, these reflect the original
-     * run's configuration from checkpoint metadata rather than the current config file.
+     * Returns the run ID of the currently active simulation, or {@code null} if no
+     * simulation source service is running.
      *
-     * @return SimulationParameters from the source service, or null if no source is available
+     * @return the active run ID, or null
      */
-    private SimulationParameters findSimulationParameters() {
-        for (IService service : services.values()) {
-            if (service instanceof ISimulationParameterSource source) {
-                log.debug("Using simulation parameters from service: {}", service.getClass().getSimpleName());
-                return source.getSimulationParameters();
-            }
+    public String getActiveRunId() {
+        ISimulationSource source = simulationSource;
+        return source != null ? source.getRunId() : null;
+    }
+
+    private void clearSimulationSourceIfMatch(IService service) {
+        if (service != null && service == simulationSource) {
+            simulationSource = null;
         }
-        return null;
     }
 
     /**
      * Extracts simulation parameters from pipeline configuration by scanning for a SimulationEngine.
      * <p>
-     * This is the fallback path used when no {@link ISimulationParameterSource} service is available
+     * This is the fallback path used when no {@link ISimulationSource} service is available
      * (e.g., in distributed deployments where SimulationEngine runs in a separate process).
      * <p>
      * Searches all configured services for a SimulationEngine class and extracts

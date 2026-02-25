@@ -173,8 +173,6 @@ public class AbstractServiceTest {
      */
     private static class WaitingPhaseService extends AbstractService {
         private final CountDownLatch runningLatch = new CountDownLatch(1);
-        private final CountDownLatch terminatedLatch = new CountDownLatch(1);
-        volatile long stopDurationMs = -1;
 
         protected WaitingPhaseService(String name, Config options, Map<String, List<IResource>> resources) {
             super(name, options, resources);

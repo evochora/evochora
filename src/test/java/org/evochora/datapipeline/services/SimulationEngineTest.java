@@ -247,7 +247,7 @@ class SimulationEngineTest {
     void constructor_shouldAcceptBoundedTopology() {
         Config config = createValidConfig().withValue(
                 "environment.topology",
-                ConfigValueFactory.fromAnyRef("BOUNDED")
+                ConfigValueFactory.fromAnyRef("BOUND")
         );
         assertDoesNotThrow(() -> new SimulationEngine("test-engine", config, resources));
     }

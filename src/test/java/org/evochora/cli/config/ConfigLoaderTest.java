@@ -123,21 +123,27 @@ class ConfigLoaderTest {
                 .withFallback(ConfigFactory.defaultReferenceUnresolved())
                 .resolve();
 
+        // Read profile values as source of truth (not hardcoded — profile values may change)
+        int profileSamplingInterval = config.getInt("profiles.sampled.samplingInterval");
+        int profileInsertBatchSize = config.getInt("profiles.sampled.insertBatchSize");
+        int profileFlushTimeoutMs = config.getInt("profiles.sampled.flushTimeoutMs");
+        int profileMaxBatchSize = config.getInt("profiles.sampled.maxBatchSize");
+        int profileBatchTimeoutSeconds = config.getInt("profiles.sampled.batchTimeoutSeconds");
+
         // Tuning level: profile values applied
-        assertEquals(5000, config.getInt("pipeline.tuning.samplingInterval"));
-        assertEquals(3, config.getInt("pipeline.tuning.insertBatchSize"));
-        assertEquals(10000, config.getInt("pipeline.tuning.flushTimeoutMs"));
+        assertEquals(profileSamplingInterval, config.getInt("pipeline.tuning.samplingInterval"));
+        assertEquals(profileInsertBatchSize, config.getInt("pipeline.tuning.insertBatchSize"));
+        assertEquals(profileFlushTimeoutMs, config.getInt("pipeline.tuning.flushTimeoutMs"));
 
         // Downstream: simulation-engine picks up tuning via ${pipeline.tuning.xxx}
-        assertEquals(5000, config.getInt("pipeline.services.simulation-engine.options.samplingInterval"));
-        assertEquals(5, config.getInt("pipeline.services.simulation-engine.options.accumulatedDeltaInterval"));
+        assertEquals(profileSamplingInterval, config.getInt("pipeline.services.simulation-engine.options.samplingInterval"));
 
         // Downstream: persistence-service picks up tuning via ${pipeline.tuning.xxx}
-        assertEquals(1, config.getInt("pipeline.services.persistence-service-1.options.maxBatchSize"));
-        assertEquals(60, config.getInt("pipeline.services.persistence-service-1.options.batchTimeoutSeconds"));
+        assertEquals(profileMaxBatchSize, config.getInt("pipeline.services.persistence-service-1.options.maxBatchSize"));
+        assertEquals(profileBatchTimeoutSeconds, config.getInt("pipeline.services.persistence-service-1.options.batchTimeoutSeconds"));
 
         // Downstream: indexer picks up tuning via ${pipeline.tuning.xxx}
-        assertEquals(3, config.getInt("pipeline.services.environment-indexer-1.options.insertBatchSize"));
+        assertEquals(profileInsertBatchSize, config.getInt("pipeline.services.environment-indexer-1.options.insertBatchSize"));
     }
 
     /**

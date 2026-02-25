@@ -38,7 +38,7 @@ import org.evochora.datapipeline.api.contracts.TokenInfo;
 import org.evochora.datapipeline.api.contracts.TokenMapEntry;
 import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.api.memory.IMemoryEstimatable;
-import org.evochora.datapipeline.api.memory.ISimulationParameterSource;
+import org.evochora.datapipeline.api.services.ISimulationSource;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IResource;
@@ -67,7 +67,7 @@ import com.google.protobuf.ByteString;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigRenderOptions;
 
-public class SimulationEngine extends AbstractService implements IMemoryEstimatable, ISimulationParameterSource {
+public class SimulationEngine extends AbstractService implements IMemoryEstimatable, ISimulationSource {
 
     private final IOutputQueueResource<TickDataChunk> tickDataOutput;
     private final IOutputQueueResource<SimulationMetadata> metadataOutput;
@@ -1077,11 +1077,17 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         }
     }
     
-    // ==================== ISimulationParameterSource ====================
+    // ==================== ISimulationSource ====================
 
     /** {@inheritDoc} */
     @Override
-    public SimulationParameters getSimulationParameters() {
+    public String getRunId() {
+        return runId;
+    }
+
+    /** {@inheritDoc} */
+    @Override
+    public SimulationParameters getMemoryEstimationParameters() {
         return simulationParameters;
     }
 

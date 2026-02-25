@@ -120,7 +120,7 @@ class NodeTest {
     }
 
     @Test
-    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to initialize process 'invalid-process'. Skipping this process.")
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to initialize process 'invalid-process': .*. Skipping this process.")
     @DisplayName("Should handle invalid process class name")
     void constructor_shouldHandleInvalidProcessClassName() {
         // Arrange - Config with invalid class name
@@ -142,7 +142,7 @@ class NodeTest {
     }
 
     @Test
-    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to initialize process 'invalid-process'. Skipping this process.")
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to initialize process 'invalid-process': .*. Skipping this process.")
     @DisplayName("Should handle process that doesn't implement IProcess")
     void constructor_shouldHandleProcessThatDoesNotImplementIProcess() {
         // Arrange - Config with class that doesn't implement IProcess
@@ -164,7 +164,7 @@ class NodeTest {
     }
 
     @Test
-    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to initialize process 'failing-process'. Skipping this process.")
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to initialize process 'failing-process': .*. Skipping this process.")
     @DisplayName("Should handle process that throws exception in constructor gracefully")
     void constructor_shouldHandleProcessConstructorException() {
         // Arrange - Config with process that throws exception in constructor
@@ -186,7 +186,7 @@ class NodeTest {
     }
 
     @Test
-    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to initialize process 'failing-start-process'. Skipping this process.")
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to initialize process 'failing-start-process': .*. Skipping this process.")
     @DisplayName("Should handle process that throws exception in start method")
     void constructor_shouldHandleProcessStartException() {
         // Arrange - Config with process that throws exception in start
@@ -234,7 +234,7 @@ class NodeTest {
     }
 
     @Test
-    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to initialize process 'invalid-process'. Skipping this process.")
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "Failed to initialize process 'invalid-process': .*. Skipping this process.")
     @DisplayName("Should handle mixed valid and invalid processes")
     void constructor_shouldHandleMixedValidAndInvalidProcesses() {
         // Arrange - Config with both valid and invalid processes

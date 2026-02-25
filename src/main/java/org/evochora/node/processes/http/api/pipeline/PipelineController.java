@@ -117,7 +117,8 @@ public class PipelineController extends AbstractController {
             .collect(Collectors.toList());
 
         final String overallStatus = determineOverallStatus(serviceStatuses);
-        ctx.status(HttpStatus.OK).json(new PipelineStatusDto(nodeId, overallStatus, serviceStatuses, resourceStatuses));
+        final String activeRunId = serviceManager.getActiveRunId();
+        ctx.status(HttpStatus.OK).json(new PipelineStatusDto(nodeId, overallStatus, activeRunId, serviceStatuses, resourceStatuses));
     }
 
     @OpenApi(

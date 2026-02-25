@@ -683,7 +683,7 @@ class SimulationEngineIntegrationTest {
     @Test
     void engine_shouldRunInBoundedTopology() {
         Config boundedConfig = baseConfig
-                .withValue("environment.topology", ConfigValueFactory.fromAnyRef("BOUNDED"))
+                .withValue("environment.topology", ConfigValueFactory.fromAnyRef("BOUND"))
                 .withValue("pauseTicks", ConfigValueFactory.fromAnyRef(List.of(15L)));
 
         SimulationEngine engine = new SimulationEngine("test-engine", boundedConfig, resources);
