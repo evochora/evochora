@@ -1,3 +1,5 @@
+import { TimelineLoadingOverlay } from '../TimelineLoadingOverlay.js';
+
 /**
  * Manages the timeline panel with interactive canvas track, tick input, and keyboard shortcuts.
  * The canvas displays sampled tick marks, a current-tick marker, and a hover preview.
@@ -73,6 +75,11 @@ export class TickPanelManager {
 
         // Timeline hover state
         this._hoverTick = null;
+
+        // Loading overlay state
+        this._loadingOverlay = new TimelineLoadingOverlay();
+        this._isLoading = false;
+        this._rafId = null;
 
         this.init();
     }
@@ -579,6 +586,73 @@ export class TickPanelManager {
         this.keyRepeatTimeout = null;
         this.keyRepeatInterval = null;
         this._flushPendingNavigation();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────
+    // Loading Overlay
+    // ─────────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Activates the loading overlay animation on the timeline canvas.
+     * @param {string} text - Status text to display (e.g. "Loading metadata").
+     */
+    showLoading(text) {
+        this._loadingOverlay.setStatusText(text);
+        if (!this._isLoading) {
+            this._isLoading = true;
+            this._startAnimationLoop();
+        }
+    }
+
+    /**
+     * Updates the status text while the loading overlay is active.
+     * @param {string} text - New status text.
+     */
+    updateLoadingText(text) {
+        this._loadingOverlay.setStatusText(text);
+    }
+
+    /**
+     * Deactivates the loading overlay and renders one final clean frame.
+     */
+    hideLoading() {
+        if (!this._isLoading) return;
+        this._isLoading = false;
+        this._stopAnimationLoop();
+        this._renderTimeline();
+    }
+
+    /**
+     * @private
+     */
+    _startAnimationLoop() {
+        if (this._rafId !== null) return;
+        const loop = (timestamp) => {
+            if (!this._isLoading) return;
+            this._renderTimeline();
+            const state = this.getState();
+            const currentTick = this._pendingTick !== null ? this._pendingTick : (state.currentTick || 0);
+            const cx = this._tickToPosition(currentTick);
+            this._loadingOverlay.render(
+                this._ctx,
+                this._canvasWidth || 0,
+                this._canvasHeight || 0,
+                cx,
+                timestamp
+            );
+            this._rafId = requestAnimationFrame(loop);
+        };
+        this._rafId = requestAnimationFrame(loop);
+    }
+
+    /**
+     * @private
+     */
+    _stopAnimationLoop() {
+        if (this._rafId !== null) {
+            cancelAnimationFrame(this._rafId);
+            this._rafId = null;
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────────────

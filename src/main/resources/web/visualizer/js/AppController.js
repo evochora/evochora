@@ -33,11 +33,6 @@ export class AppController {
         this.environmentApi = new EnvironmentApi();
         this.organismApi = new OrganismApi();
 
-        this.waitingOverlay = new WaitingOverlay({
-            environmentApi: this.environmentApi,
-            organismApi: this.organismApi
-        });
-
         // Request controllers for cancellation
         this.simulationRequestController = null;
         this.organismSummaryRequestController = null;
@@ -112,6 +107,13 @@ export class AppController {
 
         // Initialize panel managers
         this.initPanelManagers();
+
+        // Wire loading infrastructure to timeline canvas
+        loadingManager.setTickPanelManager(this.tickPanelManager);
+        this.waitingOverlay = new WaitingOverlay({
+            environmentApi: this.environmentApi,
+            organismApi: this.organismApi
+        });
 
         // Organism details views (render into organism-details container in the panel)
         const detailsRoot = document.getElementById('organism-details');
