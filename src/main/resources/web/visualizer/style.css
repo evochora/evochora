@@ -1034,6 +1034,38 @@ main.container {
     background-color: #4a4a6a;
 }
 
+/* Waiting-for-data overlay - centered panel with backdrop */
+.waiting-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.45);
+}
+
+.waiting-overlay-box {
+    background: rgba(25, 25, 35, 0.95);
+    border: 1px solid #3a3a5a;
+    border-radius: 8px;
+    padding: 24px 32px;
+    text-align: center;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.waiting-overlay-title {
+    font-size: 14px;
+    color: #e0e0e0;
+}
+
+.waiting-overlay-status {
+    margin-top: 10px;
+    font-size: 13px;
+    color: #a0a0a8;
+    min-height: 1.3em;
+}
+
 .header-bar {
     display: flex;
     justify-content: space-between;
@@ -1607,6 +1639,7 @@ main.container {
     padding: 6px 10px;
     cursor: pointer;
     border-bottom: 1px solid #222;
+    border-left: 2px solid transparent;
     font-size: 11px;
     color: #e0e0e0;
 }
@@ -1619,6 +1652,21 @@ main.container {
     border-bottom: none;
 }
 
+/* Viewer-selected run: left border accent */
+.run-selector-item.current {
+    border-left-color: #4a9eff;
+}
+
+/* Pipeline-active run: visible background tint */
+.run-selector-item.pipeline-running {
+    background: rgba(80, 200, 120, 0.15);
+}
+
+.run-selector-item.pipeline-degraded {
+    background: rgba(224, 80, 80, 0.15);
+}
+
+/* Hover/keyboard focus: overlays pipeline background */
 .run-selector-item:hover,
 .run-selector-item.selected {
     background: #1a2a3a;
@@ -1628,6 +1676,17 @@ main.container {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+/* Collapsed value: pipeline status tint */
+.run-selector-value.pipeline-running {
+    border-color: rgba(80, 200, 120, 0.5);
+    background: rgba(80, 200, 120, 0.12);
+}
+
+.run-selector-value.pipeline-degraded {
+    border-color: rgba(224, 80, 80, 0.5);
+    background: rgba(224, 80, 80, 0.12);
 }
 
 .run-selector-empty {

@@ -1,3 +1,5 @@
+import { PipelineStatusPoller } from '../pipeline/PipelineStatusPoller.js';
+
 export class Footer {
     /**
      * Creates a new Footer.
@@ -17,8 +19,13 @@ export class Footer {
         this.onRunChange = onRunChange;
         this.runs = [];
         this.isOpen = false;
+
+        this._poller = new PipelineStatusPoller();
+        this._poller.onChange(() => this._onPipelineStatusChange());
+
         this.render();
         this.attachEvents();
+        this._poller.start();
     }
 
     render() {
@@ -95,11 +102,18 @@ export class Footer {
     renderOverlay(filterText) {
         const term = (filterText || '').toLowerCase();
         const matches = this.runs.filter(r => r.runId && r.runId.toLowerCase().includes(term));
-        const listItems = matches.map(r => `
-            <div class="footer-run-item" data-run="${r.runId}">
-                <span class="run-id" title="${r.runId}">${this.formatDisplay(r.runId)}</span>
-            </div>
-        `).join('') || `<div class="footer-empty">No runs available</div>`;
+
+        const currentRunId = this.getCurrentRunId?.() || null;
+        const { activeRunId, status } = this._pipelineState();
+
+        const listItems = matches.map(r => {
+            const classes = ['footer-run-item'];
+            if (r.runId === currentRunId) classes.push('current');
+            if (r.runId === activeRunId) classes.push(this._statusClass(status));
+            return `<div class="${classes.join(' ')}" data-run="${r.runId}">` +
+                `<span class="run-id" title="${r.runId}">${this.formatDisplay(r.runId)}</span>` +
+                `</div>`;
+        }).join('') || `<div class="footer-empty">No runs available</div>`;
 
         this.overlayEl.innerHTML = `
             <div class="footer-run-list">${listItems}</div>
@@ -154,6 +168,7 @@ export class Footer {
         if (this.runEl) {
             this.runEl.title = current;
         }
+        this._updateValueStatus();
     }
 
     short(id) {
@@ -247,5 +262,38 @@ export class Footer {
         });
     }
 
-}
+    // ── Pipeline status ──────────────────────────────────────
 
+    /** @returns {{ activeRunId: string|null, status: string|null }} */
+    _pipelineState() {
+        return { activeRunId: this._poller.activeRunId, status: this._poller.status };
+    }
+
+    /** Maps pipeline status to a CSS class for a list item. */
+    _statusClass(status) {
+        if (status === 'RUNNING') return 'pipeline-running';
+        if (status === 'DEGRADED') return 'pipeline-degraded';
+        return '';
+    }
+
+    /** Updates the collapsed value element's status class. */
+    _updateValueStatus() {
+        if (!this.valueEl) return;
+        this.valueEl.classList.remove('pipeline-running', 'pipeline-degraded');
+        const currentRunId = this.getCurrentRunId?.() || null;
+        const { activeRunId, status } = this._pipelineState();
+        if (currentRunId && currentRunId === activeRunId) {
+            const cls = this._statusClass(status);
+            if (cls) this.valueEl.classList.add(cls);
+        }
+    }
+
+    /** Called by the poller whenever pipeline status changes. */
+    _onPipelineStatusChange() {
+        this._updateValueStatus();
+        if (this.isOpen) {
+            const filterText = this.inputEl?.value || '';
+            this.renderOverlay(filterText);
+        }
+    }
+}

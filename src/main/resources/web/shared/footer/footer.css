@@ -132,14 +132,41 @@
     padding: 4px 6px;
     cursor: pointer;
     border-bottom: 1px solid #222;
+    border-left: 2px solid transparent;
 }
 
 .footer-run-item:last-child {
     border-bottom: none;
 }
 
+/* Viewer-selected run: left border accent */
+.footer-run-item.current {
+    border-left-color: #4a9eff;
+}
+
+/* Pipeline-active run: visible background tint */
+.footer-run-item.pipeline-running {
+    background: rgba(80, 200, 120, 0.15);
+}
+
+.footer-run-item.pipeline-degraded {
+    background: rgba(224, 80, 80, 0.15);
+}
+
+/* Hover overlays pipeline background */
 .footer-run-item:hover {
     background: #1a1a2a;
+}
+
+/* Collapsed value: pipeline status tint */
+.footer-run-value.pipeline-running {
+    border-color: rgba(80, 200, 120, 0.5);
+    background: rgba(80, 200, 120, 0.12);
+}
+
+.footer-run-value.pipeline-degraded {
+    border-color: rgba(224, 80, 80, 0.5);
+    background: rgba(224, 80, 80, 0.12);
 }
 
 .run-id {

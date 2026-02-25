@@ -9,6 +9,7 @@ import { OrganismStateView } from './ui/organism/OrganismStateView.js';
 import { OrganismPanelManager } from './ui/panels/OrganismPanelManager.js';
 import { TickPanelManager } from './ui/panels/TickPanelManager.js';
 import { loadingManager } from './ui/LoadingManager.js';
+import { WaitingOverlay } from './ui/WaitingOverlay.js';
 
 /**
  * The main application controller. It initializes all components, manages the application state,
@@ -31,7 +32,12 @@ export class AppController {
         this.simulationApi = new SimulationApi();
         this.environmentApi = new EnvironmentApi();
         this.organismApi = new OrganismApi();
-        
+
+        this.waitingOverlay = new WaitingOverlay({
+            environmentApi: this.environmentApi,
+            organismApi: this.organismApi
+        });
+
         // Request controllers for cancellation
         this.simulationRequestController = null;
         this.organismSummaryRequestController = null;
@@ -148,6 +154,7 @@ export class AppController {
 
             // Stop polling and cancel ongoing requests
             this._stopMaxTickPolling();
+            this.waitingOverlay.cancel();
             if (this.simulationRequestController) this.simulationRequestController.abort();
             if (this.organismSummaryRequestController) this.organismSummaryRequestController.abort();
             if (this.organismDetailsRequestController) this.organismDetailsRequestController.abort();
@@ -598,6 +605,7 @@ export class AppController {
             this.minimapView.setOwnershipColorResolver(this._minimapOwnershipColorResolver());
 
             // Abort previous request if it's still running
+            this.waitingOverlay.cancel();
             if (this.simulationRequestController) {
                 this.simulationRequestController.abort();
             }
@@ -668,7 +676,15 @@ export class AppController {
                 this.state.maxTick = orgTickRange.maxTick;
             }
             this.tickPanelManager.updateTickDisplay(this.state.currentTick, this.state.maxTick);
-            
+
+            // If no tick data is available yet, wait for the simulation to produce data
+            if (this.state.maxTick === null) {
+                loadingManager.hide();
+                this.state.maxTick = await this.waitingOverlay.waitForData(this.state.runId);
+                this.tickPanelManager.updateTickDisplay(this.state.currentTick, this.state.maxTick);
+                loadingManager.show('Loading');
+            }
+
             // Wait for layout to be calculated before loading initial viewport
             // This ensures correct viewport size calculation on first load,
             // especially when browser window is on a high-DPI monitor.
@@ -680,11 +696,11 @@ export class AppController {
                     });
                 });
             });
-            
+
             // Additional small delay to ensure container dimensions are stable
             // This helps with monitor-specific timing issues
             await new Promise(resolve => setTimeout(resolve, 50));
-            
+
             // Load initial tick, force reload to bypass optimization on first load
             loadingManager.update('Fetching environment', 45);
             await this.navigateToTick(this.state.currentTick, true);

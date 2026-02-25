@@ -1,7 +1,9 @@
+import { PipelineStatusPoller } from '../../../../shared/pipeline/PipelineStatusPoller.js';
+
 /**
  * Run selector panel for choosing simulation runs.
  * Positioned at the bottom-right as a footer panel.
- * Features keyboard navigation (ArrowUp/Down) and filter input.
+ * Features keyboard navigation (ArrowUp/Down), filter input, and live pipeline status display.
  *
  * @class RunSelectorPanel
  */
@@ -22,8 +24,12 @@ export class RunSelectorPanel {
         this.isOpen = false;
         this.selectedIndex = -1;
 
+        this._poller = new PipelineStatusPoller();
+        this._poller.onChange(() => this._onPipelineStatusChange());
+
         this.createDOM();
         this.attachEvents();
+        this._poller.start();
     }
 
     /**
@@ -211,11 +217,18 @@ export class RunSelectorPanel {
             return;
         }
 
-        this.listEl.innerHTML = this.filteredRuns.map((r, index) => `
-            <div class="run-selector-item${index === this.selectedIndex ? ' selected' : ''}" data-index="${index}">
-                <span class="run-id" title="${r.runId}">${this.formatDisplay(r.runId)}</span>
-            </div>
-        `).join('');
+        const currentRunId = this.getCurrentRunId?.() || null;
+        const { activeRunId, status } = this._pipelineState();
+
+        this.listEl.innerHTML = this.filteredRuns.map((r, index) => {
+            const classes = ['run-selector-item'];
+            if (index === this.selectedIndex) classes.push('selected');
+            if (r.runId === currentRunId) classes.push('current');
+            if (r.runId === activeRunId) classes.push(this._statusClass(status));
+            return `<div class="${classes.join(' ')}" data-index="${index}">` +
+                `<span class="run-id" title="${r.runId}">${this.formatDisplay(r.runId)}</span>` +
+                `</div>`;
+        }).join('');
 
         this.listEl.querySelectorAll('.run-selector-item').forEach(item => {
             item.addEventListener('click', () => {
@@ -235,13 +248,14 @@ export class RunSelectorPanel {
     }
 
     /**
-     * Updates the displayed current run ID.
+     * Updates the displayed current run ID and pipeline status indicator.
      */
     updateCurrent() {
         if (!this.valueEl) return;
         const current = this.getCurrentRunId ? (this.getCurrentRunId() || '(none)') : '(none)';
         this.valueEl.textContent = this.formatDisplay(current);
         this.valueEl.title = current;
+        this._updateValueStatus();
     }
 
     /**
@@ -358,5 +372,41 @@ export class RunSelectorPanel {
      */
     hide() {
         this.element.classList.add('hidden');
+    }
+
+    // ── Pipeline status ──────────────────────────────────────
+
+    /** @returns {{ activeRunId: string|null, status: string|null }} */
+    _pipelineState() {
+        return { activeRunId: this._poller.activeRunId, status: this._poller.status };
+    }
+
+    /** Maps pipeline status to a CSS class for the list item. */
+    _statusClass(status) {
+        if (status === 'RUNNING') return 'pipeline-running';
+        if (status === 'DEGRADED') return 'pipeline-degraded';
+        return '';
+    }
+
+    /** Updates the collapsed value element's status class. */
+    _updateValueStatus() {
+        if (!this.valueEl) return;
+        this.valueEl.classList.remove('pipeline-running', 'pipeline-degraded');
+        const currentRunId = this.getCurrentRunId?.() || null;
+        const { activeRunId, status } = this._pipelineState();
+        if (currentRunId && currentRunId === activeRunId) {
+            const cls = this._statusClass(status);
+            if (cls) this.valueEl.classList.add(cls);
+        }
+    }
+
+    /** Called by the poller whenever pipeline status changes. */
+    _onPipelineStatusChange() {
+        this._updateValueStatus();
+        if (this.isOpen) {
+            // Re-render to update status classes on list items
+            const filterText = this.inputEl?.value || '';
+            this.renderList(filterText);
+        }
     }
 }
