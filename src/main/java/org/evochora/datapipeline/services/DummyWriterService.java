@@ -65,6 +65,8 @@ public class DummyWriterService extends AbstractService {
                 currentTick += ticksPerChunk;
             }
             
+            setShutdownPhase(ShutdownPhase.PROCESSING);
+            Thread.interrupted();
             try {
                 StreamingWriteResult result = storage.writeChunkBatchStreaming(batch.iterator());
                 totalChunksWritten.addAndGet(result.chunkCount());
@@ -81,6 +83,8 @@ public class DummyWriterService extends AbstractService {
                     "Failed to write chunk batch",
                     String.format("Ticks: %d-%d", firstTick, lastTick)
                 );
+            } finally {
+                setShutdownPhase(ShutdownPhase.WAITING);
             }
 
             writeCount++;

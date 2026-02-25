@@ -336,8 +336,30 @@ public class ServiceManager implements IMonitorable {
                     return state == IService.State.RUNNING || state == IService.State.PAUSED;
                 })
                 .collect(Collectors.toList());
-        applyToAllServices(this::stopService, actuallyStoppable);
-        
+
+        // Stop all services in parallel — each service.stop() blocks until its thread
+        // terminates (or times out), so parallel execution reduces total shutdown time
+        // from N × timeout to ~1 × timeout.
+        List<Thread> stopThreads = new ArrayList<>();
+        for (String name : actuallyStoppable) {
+            Thread t = new Thread(() -> {
+                try {
+                    stopService(name);
+                } catch (Exception e) {
+                    log.warn("Could not stop service '{}': {}", name, e.getMessage());
+                }
+            }, "shutdown-" + name);
+            t.start();
+            stopThreads.add(t);
+        }
+        for (Thread t : stopThreads) {
+            try {
+                t.join();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+
         // NOTE: Resources are NOT closed here to allow restart via HTTP API.
         // Resources are only closed during JVM shutdown via shutdown() method.
     }

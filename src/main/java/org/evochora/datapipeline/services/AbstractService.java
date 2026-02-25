@@ -42,14 +42,17 @@ public abstract class AbstractService implements IService, IMonitorable {
      * Services should check {@link #isStopRequested()} in their main loop
      * and exit gracefully when this flag is set, completing any in-progress
      * operations before returning from {@link #run()}.
-     * <p>
-     * Two-Phase Shutdown:
-     * <ol>
-     *   <li>Phase 1: This flag is set, giving the service time to finish current work</li>
-     *   <li>Phase 2: If the service doesn't stop within timeout, Thread.interrupt() is called</li>
-     * </ol>
      */
     private final AtomicBoolean stopRequested = new AtomicBoolean(false);
+
+    /**
+     * Tracks whether the service is currently in a safe-to-interrupt state (WAITING)
+     * or performing IO writes that must not be interrupted (PROCESSING).
+     * <p>
+     * Volatile for visibility across the service thread and the stop() caller thread.
+     * Default is WAITING — services that never set this get immediate interrupt on shutdown.
+     */
+    private volatile ShutdownPhase currentShutdownPhase = ShutdownPhase.WAITING;
     
     /**
      * Collection of operational errors that occurred during service execution.
@@ -114,16 +117,17 @@ public abstract class AbstractService implements IService, IMonitorable {
         State state = getCurrentState();
         if (state == State.RUNNING || state == State.PAUSED) {
             // ============================================================
-            // TWO-PHASE GRACEFUL SHUTDOWN
+            // PHASE-AWARE GRACEFUL SHUTDOWN
             // ============================================================
-            // Phase 1: Signal stop request, allow service to finish current work
-            // Phase 2: Force interrupt if service doesn't stop in time
+            // 1. Signal stop request + wake paused threads
+            // 2. If WAITING → immediate interrupt (breaks blocking receive/poll)
+            // 3. Wait for thread termination (full timeout as grace period)
+            // 4. If still alive → force interrupt + WARN (regardless of phase)
+            // 5. If still alive → ERROR state
             // ============================================================
-            
-            // Phase 1: Signal graceful shutdown
+
             stopRequested.set(true);
-            
-            // Wake up paused threads so they can see stopRequested
+
             if (state == State.PAUSED) {
                 synchronized (pauseLock) {
                     pauseLock.notifyAll();
@@ -132,56 +136,46 @@ public abstract class AbstractService implements IService, IMonitorable {
 
             if (serviceThread != null) {
                 try {
-                    // ============================================================
-                    // TWO-PHASE GRACEFUL SHUTDOWN
-                    // Phase 1: Short grace period for services using poll() with timeout
-                    // Phase 2: Force interrupt for services in blocking calls
-                    // ============================================================
-                    
                     long totalTimeoutMs = shutdownTimeoutSeconds * 1000L;
                     long startTime = System.currentTimeMillis();
-                    long pollIntervalMs = 50; // Check every 50ms
-                    
-                    // Phase 1: Graceful grace period (80% of total timeout)
-                    // Services must finish their current operation (e.g., database flushes,
-                    // storage writes) before interrupt. Thread.interrupt() permanently closes
-                    // Java NIO FileChannels (ClosedByInterruptException), corrupting any
-                    // file-based storage that is mid-write.
-                    long gracePeriodMs = totalTimeoutMs * 4 / 5;
-                    
-                    while (serviceThread.isAlive() && 
-                           (System.currentTimeMillis() - startTime) < gracePeriodMs) {
+                    long pollIntervalMs = 50;
+
+                    // WAITING services can be interrupted immediately — they are blocked on
+                    // receive/poll calls that respond to interrupt without data corruption.
+                    // PROCESSING services are mid-write to storage/database — interrupt would
+                    // corrupt NIO FileChannels via ClosedByInterruptException.
+                    if (getShutdownPhase() == ShutdownPhase.WAITING) {
+                        serviceThread.interrupt();
+                    }
+
+                    // Wait for thread termination (full timeout as grace period for PROCESSING)
+                    while (serviceThread.isAlive()
+                            && (System.currentTimeMillis() - startTime) < totalTimeoutMs) {
                         serviceThread.join(pollIntervalMs);
                     }
-                    
-                    // Phase 2: If still alive, force interrupt
+
+                    // Force interrupt if thread did not terminate within timeout
                     if (serviceThread.isAlive()) {
-                        log.debug("{} did not stop gracefully within {}ms, sending interrupt", 
-                            this.getClass().getSimpleName(), gracePeriodMs);
+                        log.warn("{} did not stop within {}s, forcing interrupt",
+                            this.getClass().getSimpleName(), shutdownTimeoutSeconds);
                         serviceThread.interrupt();
-                        
-                        // Wait remaining time for forced termination
-                        while (serviceThread.isAlive() && 
-                               (System.currentTimeMillis() - startTime) < totalTimeoutMs) {
-                            serviceThread.join(pollIntervalMs);
-                        }
+
+                        // Brief wait for forced termination
+                        serviceThread.join(1000);
                     }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     log.warn("{} interrupted while waiting for service shutdown", this.getClass().getSimpleName());
                 }
 
-                // Check if thread actually terminated
                 if (serviceThread.isAlive()) {
-                    log.error("{} thread did not stop within {} seconds! Forcing ERROR state.", 
+                    log.error("{} thread did not stop within {} seconds! Forcing ERROR state.",
                         this.getClass().getSimpleName(), shutdownTimeoutSeconds);
                     currentState.set(State.ERROR);
                     return;
                 }
             }
 
-            // Thread has terminated - status should already be STOPPED (set by finally block)
-            // Defensive check in case of unexpected state
             if (getCurrentState() != State.STOPPED && getCurrentState() != State.ERROR) {
                 log.warn("{} thread terminated but state is {}, setting to STOPPED",
                     this.getClass().getSimpleName(), getCurrentState());
@@ -282,20 +276,27 @@ public abstract class AbstractService implements IService, IMonitorable {
      * <p>
      * <strong>Graceful Shutdown Pattern:</strong>
      * Services should check {@link #isStopRequested()} in their main loop and exit
-     * gracefully when it returns {@code true}. This enables completing current work
-     * (ACKs, flushes) before shutdown.
+     * gracefully when it returns {@code true}. Services performing IO writes should
+     * bracket their critical sections with {@link #setShutdownPhase(ShutdownPhase)}
+     * to prevent interrupt-induced NIO corruption:
      * <pre>
      * &#64;Override
      * protected void run() throws InterruptedException {
      *     while (!isStopRequested()) {
      *         checkPause();
-     *         T item = queue.poll(1, TimeUnit.SECONDS); // Use timeout!
-     *         if (item != null) {
-     *             processItem(item);  // Completes fully
-     *             sendAck(item);      // ACK also completes
+     *         // Default phase is WAITING → receive/poll gets interrupted immediately on shutdown
+     *         try (var batch = queue.receiveBatch(...)) {
+     *             if (batch.size() == 0) continue;
+     *
+     *             setShutdownPhase(ShutdownPhase.PROCESSING);
+     *             Thread.interrupted(); // Clear interrupt flag from WAITING→PROCESSING race
+     *
+     *             storage.write(batch);
+     *             batch.commit();
+     *
+     *             setShutdownPhase(ShutdownPhase.WAITING);
      *         }
      *     }
-     *     flushPendingWork(); // Optional cleanup
      * }
      * </pre>
      * <p>
@@ -396,6 +397,25 @@ public abstract class AbstractService implements IService, IMonitorable {
      */
     protected boolean isStopRequested() {
         return stopRequested.get();
+    }
+
+    @Override
+    public ShutdownPhase getShutdownPhase() {
+        return currentShutdownPhase;
+    }
+
+    /**
+     * Sets the current shutdown phase. Subclasses call this to mark IO-critical sections.
+     * <p>
+     * Set to PROCESSING before storage/database writes and back to WAITING after commit.
+     * When transitioning to PROCESSING, callers should also clear any pending interrupt
+     * flag via {@code Thread.interrupted()} to prevent a race where stop() interrupted
+     * the thread while it was still in WAITING but has since entered PROCESSING.
+     *
+     * @param phase the new shutdown phase
+     */
+    protected void setShutdownPhase(ShutdownPhase phase) {
+        this.currentShutdownPhase = phase;
     }
 
     /**

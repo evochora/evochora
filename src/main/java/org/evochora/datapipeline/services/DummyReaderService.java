@@ -83,6 +83,8 @@ public class DummyReaderService extends AbstractService {
                             continue;
                         }
 
+                        setShutdownPhase(ShutdownPhase.PROCESSING);
+                        Thread.interrupted();
                         try {
                             long[] state = {-1, 0}; // [expectedFirstTick, chunksInBatch]
                             storage.forEachChunk(path, chunk -> {
@@ -130,6 +132,8 @@ public class DummyReaderService extends AbstractService {
                                 "Failed to read chunk batch",
                                 String.format("Path: %s", path)
                             );
+                        } finally {
+                            setShutdownPhase(ShutdownPhase.WAITING);
                         }
                     }
                     

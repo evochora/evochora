@@ -71,6 +71,8 @@ public class MetadataIndexer<ACK> extends AbstractIndexer<MetadataInfo, ACK> {
         SimulationMetadata metadata = storage.readMessage(storagePath, SimulationMetadata.parser());
         
         // Index metadata to database
+        setShutdownPhase(ShutdownPhase.PROCESSING);
+        Thread.interrupted();
         try (IResourceSchemaAwareMetadataWriter db = database) {
             db.insertMetadata(metadata);
             metadataIndexed.incrementAndGet();
@@ -79,8 +81,10 @@ public class MetadataIndexer<ACK> extends AbstractIndexer<MetadataInfo, ACK> {
             metadataFailed.incrementAndGet();
             log.error("Failed to index metadata for run: {}", runId);
             throw e;
+        } finally {
+            setShutdownPhase(ShutdownPhase.WAITING);
         }
-        
+
         // Acknowledge message after successful processing
         topic.ack(message);
         log.debug("Acknowledged metadata notification for {}", info.getStoragePath());

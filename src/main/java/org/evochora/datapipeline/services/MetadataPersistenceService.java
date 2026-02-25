@@ -183,8 +183,14 @@ public class MetadataPersistenceService extends AbstractService {
                 String key = simulationRunId + "/raw/metadata.pb";
 
                 // Write metadata with retry logic, then commit
-                writeMetadataWithRetry(key, metadata);
-                batch.commit();
+                setShutdownPhase(ShutdownPhase.PROCESSING);
+                Thread.interrupted();
+                try {
+                    writeMetadataWithRetry(key, metadata);
+                    batch.commit();
+                } finally {
+                    setShutdownPhase(ShutdownPhase.WAITING);
+                }
 
                 log.debug("Metadata persisted successfully for simulation {}, service stopping", simulationRunId);
                 return;

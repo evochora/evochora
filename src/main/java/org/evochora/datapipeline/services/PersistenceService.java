@@ -181,6 +181,9 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
                         continue;
                     }
 
+                    setShutdownPhase(ShutdownPhase.PROCESSING);
+                    Thread.interrupted();
+
                     // Stream-write to storage (one chunk at a time on heap)
                     StreamingWriteResult result = storage.writeChunkBatchStreaming(chunks);
 
@@ -189,6 +192,8 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
 
                     // ACK: broker deletes messages
                     batch.commit();
+
+                    setShutdownPhase(ShutdownPhase.WAITING);
 
                     // Mark chunks as processed AFTER successful commit.
                     // This ensures failed batches are fully retried on redelivery.
@@ -204,6 +209,7 @@ public class PersistenceService extends AbstractService implements IMemoryEstima
                         result.path(), result.chunkCount(), result.totalTickCount());
 
                 } catch (IOException | RuntimeException e) {
+                    setShutdownPhase(ShutdownPhase.WAITING);
                     // Write or deserialization failed — don't commit. close() will rollback.
                     // Messages are redelivered by the broker on next receiveBatch().
                     // RuntimeException covers lazy deserialization failures in the streaming

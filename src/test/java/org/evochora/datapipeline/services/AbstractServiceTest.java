@@ -167,5 +167,110 @@ public class AbstractServiceTest {
         });
     }
 
+    /**
+     * A service that stays in WAITING phase (default) and blocks on Thread.sleep().
+     * stop() should interrupt it immediately.
+     */
+    private static class WaitingPhaseService extends AbstractService {
+        private final CountDownLatch runningLatch = new CountDownLatch(1);
+        private final CountDownLatch terminatedLatch = new CountDownLatch(1);
+        volatile long stopDurationMs = -1;
+
+        protected WaitingPhaseService(String name, Config options, Map<String, List<IResource>> resources) {
+            super(name, options, resources);
+        }
+
+        @Override
+        protected void run() throws InterruptedException {
+            runningLatch.countDown();
+            // Blocks indefinitely — relies on interrupt to exit
+            Thread.sleep(Long.MAX_VALUE);
+        }
+    }
+
+    /**
+     * A service that enters PROCESSING phase and stays there for a controlled duration.
+     * stop() should wait for the grace period instead of interrupting immediately.
+     */
+    private static class ProcessingPhaseService extends AbstractService {
+        private final CountDownLatch runningLatch = new CountDownLatch(1);
+        private final AtomicBoolean wasInterruptedDuringProcessing = new AtomicBoolean(false);
+        private final long processingDurationMs;
+
+        protected ProcessingPhaseService(String name, Config options, Map<String, List<IResource>> resources,
+                                         long processingDurationMs) {
+            super(name, options, resources);
+            this.processingDurationMs = processingDurationMs;
+        }
+
+        @Override
+        protected void run() throws InterruptedException {
+            runningLatch.countDown();
+            setShutdownPhase(ShutdownPhase.PROCESSING);
+            Thread.interrupted();
+
+            // Simulate a long write operation that must not be interrupted
+            long start = System.currentTimeMillis();
+            while ((System.currentTimeMillis() - start) < processingDurationMs) {
+                if (Thread.currentThread().isInterrupted()) {
+                    wasInterruptedDuringProcessing.set(true);
+                    return;
+                }
+                Thread.yield();
+            }
+
+            setShutdownPhase(ShutdownPhase.WAITING);
+
+            // After processing, check for stop
+            while (!isStopRequested() && !Thread.currentThread().isInterrupted()) {
+                Thread.sleep(50);
+            }
+        }
+
+        public boolean wasInterruptedDuringProcessing() {
+            return wasInterruptedDuringProcessing.get();
+        }
+    }
+
+    @Test
+    void waitingPhaseServiceIsInterruptedImmediately() throws InterruptedException {
+        WaitingPhaseService service = new WaitingPhaseService("waiting-svc", config, resources);
+        service.start();
+        assertTrue(service.runningLatch.await(2, TimeUnit.SECONDS), "Service should be running");
+
+        long start = System.currentTimeMillis();
+        service.stop();
+        long elapsed = System.currentTimeMillis() - start;
+
+        assertEquals(IService.State.STOPPED, service.getCurrentState());
+        // WAITING phase should be interrupted immediately, not wait for full timeout (5s default)
+        assertTrue(elapsed < 2000, "WAITING service should stop quickly, took " + elapsed + "ms");
+    }
+
+    @Test
+    void processingPhaseServiceGetsGracePeriod() throws InterruptedException {
+        // Service will be in PROCESSING for 500ms, then return to WAITING
+        ProcessingPhaseService service = new ProcessingPhaseService("processing-svc", config, resources, 500);
+        service.start();
+        assertTrue(service.runningLatch.await(2, TimeUnit.SECONDS), "Service should be running");
+
+        // Small delay to ensure service has entered PROCESSING phase
+        Thread.sleep(50);
+        assertEquals(IService.ShutdownPhase.PROCESSING, service.getShutdownPhase());
+
+        service.stop();
+
+        assertEquals(IService.State.STOPPED, service.getCurrentState());
+        // Service should NOT have been interrupted while in PROCESSING
+        assertFalse(service.wasInterruptedDuringProcessing(),
+            "Service should not be interrupted during PROCESSING phase");
+    }
+
+    @Test
+    void defaultShutdownPhaseIsWaiting() {
+        TestService service = new TestService("test-service", config, resources);
+        assertEquals(IService.ShutdownPhase.WAITING, service.getShutdownPhase());
+    }
+
     private interface TestResource extends IResource {}
 }

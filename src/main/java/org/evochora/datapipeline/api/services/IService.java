@@ -11,6 +11,22 @@ package org.evochora.datapipeline.api.services;
 public interface IService {
 
     /**
+     * Indicates what a service is currently doing, used by stop() to decide
+     * whether an immediate interrupt is safe.
+     * <p>
+     * WAITING means the service is idle or blocked on a receive/poll call and
+     * can be interrupted without risk. PROCESSING means the service is actively
+     * writing to storage or database — an interrupt could corrupt NIO channels,
+     * so the service needs a grace period to finish its current write.
+     */
+    enum ShutdownPhase {
+        /** Service is idle or blocked on a receive/poll — safe to interrupt immediately. */
+        WAITING,
+        /** Service is actively writing to storage/database — needs grace period. */
+        PROCESSING
+    }
+
+    /**
      * The operational state of a service.
      */
     enum State {
@@ -61,5 +77,15 @@ public interface IService {
      * @return The current {@link State}.
      */
     State getCurrentState();
+
+    /**
+     * Returns the current shutdown phase of the service.
+     * <p>
+     * Used by stop() to decide whether to interrupt the service thread immediately
+     * (WAITING) or wait for a grace period (PROCESSING).
+     *
+     * @return The current {@link ShutdownPhase}.
+     */
+    ShutdownPhase getShutdownPhase();
 
 }
