@@ -543,8 +543,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 simulation.tick();
                 long tick = currentTick.incrementAndGet();
 
-                // Yield to other threads/processes to prevent system freezing
-                Thread.yield();
+                if (isStopRequested() || Thread.currentThread().isInterrupted()) break;
 
                 if (tick % samplingInterval == 0) {
                     try {

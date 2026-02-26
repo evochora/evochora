@@ -744,6 +744,9 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
      * Releases the drain token back to the token queue.
      */
     private void releaseToken(jakarta.jms.Message token) {
+        if (Thread.currentThread().isInterrupted()) {
+            return;
+        }
         JMSException lastException = null;
         for (int attempt = 1; attempt <= 3; attempt++) {
             try {
@@ -753,6 +756,10 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
                 tokenProducer.send(newToken);
                 return;
             } catch (JMSException e) {
+                if (isSessionClosing(e)) {
+                    log.debug("Token release skipped on queue '{}' — session closing", queueName);
+                    return;
+                }
                 lastException = e;
                 log.warn("Failed to release drain token on queue '{}' (attempt {}/3)", queueName, attempt);
                 if (attempt < 3) {
@@ -770,6 +777,23 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
             lastException != null ? lastException.getMessage() : "unknown");
         log.error("Failed to release drain token on queue '{}' after 3 attempts — drain lock is now STUCK", queueName);
         throw new RuntimeException("Failed to release drain token — lock stuck on queue: " + queueName, lastException);
+    }
+
+    /**
+     * Checks whether a JMSException indicates the session or connection is closing.
+     * Walks the cause chain looking for typical Artemis shutdown indicators.
+     */
+    private static boolean isSessionClosing(Throwable t) {
+        for (Throwable current = t; current != null; current = current.getCause()) {
+            if (current instanceof org.apache.activemq.artemis.api.core.ActiveMQInterruptedException) {
+                return true;
+            }
+            String msg = current.getMessage();
+            if (msg != null && (msg.contains("closed") || msg.contains("destroyed"))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     // =========================================================================

@@ -61,6 +61,7 @@ public class Simulation {
     private final LongOpenHashSet allGenomesEverSeen = new LongOpenHashSet();
     private IRandomProvider randomProvider;
     private int loggingEnabledCount = 0;
+    private int instructionsSinceYield = 0;
 
     private Map<String, ProgramArtifact> programArtifacts = new HashMap<>();
 
@@ -367,6 +368,7 @@ public class Simulation {
         List<Instruction> plannedInstructions = new ArrayList<>();
         for (Organism organism : this.organisms) {
             if (Thread.currentThread().isInterrupted()) return;
+            if ((++instructionsSinceYield & 0xFFF) == 0) Thread.yield();
             if (organism.isDead()) continue;
 
             Instruction instruction = vm.plan(organism);
@@ -448,8 +450,10 @@ public class Simulation {
             InterceptionContext ctx = contexts != null
                     ? contexts[TickWorkerPool.getThreadIndex()] : null;
 
+            int localCount = 0;
             for (int i = from; i < to; i++) {
                 if (mainThread.isInterrupted()) return;
+                if ((++localCount & 0xFFF) == 0) Thread.yield();
                 Organism organism = organisms.get(i);
                 if (organism.isDead()) continue;
 
