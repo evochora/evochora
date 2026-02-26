@@ -34,11 +34,8 @@ public class ScopeAnalysisHandler implements IAnalysisHandler {
         }
     }
 
-    /**
-     * Special method that is called AFTER the children of a scope have been analyzed.
-     * @param symbolTable The symbol table to use.
-     */
-    public void afterChildren(SymbolTable symbolTable) {
+    @Override
+    public void afterChildren(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         symbolTable.leaveScope();
     }
 }
