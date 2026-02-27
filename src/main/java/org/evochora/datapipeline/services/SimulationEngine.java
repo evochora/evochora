@@ -553,6 +553,10 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                         log.debug("Interrupted while sending tick data for tick {} during shutdown", tick);
                         throw e; // Re-throw to exit cleanly
                     } catch (Exception e) {
+                        if (isStopRequested() || Thread.currentThread().isInterrupted()) {
+                            log.debug("Failed to send tick data for tick {} during shutdown", tick);
+                            break;
+                        }
                         log.warn("Failed to capture or send tick data for tick {}", tick);
                         recordError("SEND_ERROR", "Failed to send tick data", String.format("Tick: %d", tick));
                     }
