@@ -385,6 +385,7 @@ public class GenomeAnalyticsPlugin extends AbstractAnalyticsPlugin {
         entry.visualization.config = new HashMap<>();
         entry.visualization.config.put("x", "tick");
         entry.visualization.config.put("jsonColumn", "genome_data");
+        entry.visualization.config.put("maxGroups", topN);
         entry.visualization.config.put("yFormat", "integer");
 
         return entry;

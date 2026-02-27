@@ -123,9 +123,9 @@ function pivotData(data, xKey, groupKey, valueKey) {
  * @param {string} jsonKey - Column containing JSON map (e.g., 'genome_data')
  * @returns {{expanded: Array<Object>, groups: string[]}} Expanded data and group labels
  */
-function expandJsonColumn(data, xKey, jsonKey) {
-    // First pass: parse JSON and collect all group keys
-    const groupSet = new Set();
+function expandJsonColumn(data, xKey, jsonKey, maxGroups) {
+    // First pass: parse JSON, collect all group keys and their totals across all rows
+    const groupTotals = new Map();
     const parsed = data.map(row => {
         const x = toNumber(row[xKey]);
         const jsonStr = row[jsonKey];
@@ -137,18 +137,40 @@ function expandJsonColumn(data, xKey, jsonKey) {
                 // Skip malformed JSON
             }
         }
-        for (const key of Object.keys(map)) {
-            groupSet.add(key);
+        for (const [key, value] of Object.entries(map)) {
+            groupTotals.set(key, (groupTotals.get(key) || 0) + (toNumber(value) || 0));
         }
         return { x, map };
     });
 
-    // Sort "other" to end, rest alphabetically
-    const groups = [...groupSet].sort((a, b) => {
-        if (a === 'other') return 1;
-        if (b === 'other') return -1;
-        return a.localeCompare(b);
-    });
+    // Separate named groups from "other"
+    const namedEntries = [...groupTotals.entries()].filter(([k]) => k !== 'other');
+
+    let groups;
+    if (maxGroups && namedEntries.length > maxGroups) {
+        // Rank by total count across all visible ticks, keep top maxGroups
+        namedEntries.sort((a, b) => b[1] - a[1]);
+        const topSet = new Set(namedEntries.slice(0, maxGroups).map(([k]) => k));
+        groups = [...topSet].sort((a, b) => a.localeCompare(b));
+        groups.push('other');
+
+        // Merge overflow groups into "other" per row
+        for (const entry of parsed) {
+            let otherSum = entry.map['other'] || 0;
+            for (const [key, value] of Object.entries(entry.map)) {
+                if (key !== 'other' && !topSet.has(key)) {
+                    otherSum += toNumber(value) || 0;
+                }
+            }
+            entry.map['other'] = otherSum;
+        }
+    } else {
+        // All groups fit — sort alphabetically with "other" at end
+        groups = namedEntries.map(([k]) => k).sort((a, b) => a.localeCompare(b));
+        if (groupTotals.has('other')) {
+            groups.push('other');
+        }
+    }
 
     // Second pass: build wide-format rows with all groups present
     const expanded = parsed.map(({ x, map }) => {
@@ -184,7 +206,8 @@ export function render(canvas, data, config) {
 
         // Check for jsonColumn mode (JSON-encoded map per row)
         if (config.jsonColumn) {
-            const { expanded, groups } = expandJsonColumn(data, xKey, config.jsonColumn);
+            const maxGroups = config.maxGroups || COLORS.length;
+            const { expanded, groups } = expandJsonColumn(data, xKey, config.jsonColumn, maxGroups);
             chartData = expanded;
             yKeys = groups;
             labels = expanded.map(row => toNumber(row[xKey]));
@@ -345,7 +368,8 @@ export function update(chart, data, config) {
 
         // Check for jsonColumn mode
         if (config.jsonColumn) {
-            const { expanded, groups } = expandJsonColumn(data, xKey, config.jsonColumn);
+            const maxGroups = config.maxGroups || COLORS.length;
+            const { expanded, groups } = expandJsonColumn(data, xKey, config.jsonColumn, maxGroups);
             chartData = expanded;
             yKeys = groups;
             chart.data.labels = expanded.map(row => toNumber(row[xKey]));
