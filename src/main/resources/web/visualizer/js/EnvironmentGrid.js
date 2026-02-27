@@ -501,6 +501,14 @@ export class EnvironmentGrid {
             y2: Math.min(this.worldHeightCells, Math.ceil(viewportCenterY + halfHeight))
         };
 
+        // Ensure prefetch region always covers the current viewport (clamped to world bounds).
+        // Without this, the centered cap region can miss viewport edges when the viewport
+        // center differs from the world center (e.g., world fits on screen vertically).
+        expandedRegion.x1 = Math.min(expandedRegion.x1, Math.max(0, viewport.x1));
+        expandedRegion.y1 = Math.min(expandedRegion.y1, Math.max(0, viewport.y1));
+        expandedRegion.x2 = Math.max(expandedRegion.x2, Math.min(this.worldWidthCells, viewport.x2));
+        expandedRegion.y2 = Math.max(expandedRegion.y2, Math.min(this.worldHeightCells, viewport.y2));
+
         // Skip if region is already fully loaded
         if (this.zoomedOutRenderer.isRegionFullyLoaded(expandedRegion)) {
             return;
