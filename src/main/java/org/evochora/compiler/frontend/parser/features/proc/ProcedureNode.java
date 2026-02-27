@@ -2,6 +2,7 @@ package org.evochora.compiler.frontend.parser.features.proc;
 
 import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
+import org.evochora.compiler.frontend.parser.ast.SourceLocatable;
 
 import java.util.List;
 
@@ -22,7 +23,12 @@ public record ProcedureNode(
         List<Token> refParameters,
         List<Token> valParameters,
         List<AstNode> body
-) implements AstNode {
+) implements AstNode, SourceLocatable {
+
+    @Override
+    public String getSourceFileName() {
+        return name.fileName();
+    }
 
     @Override
     public List<AstNode> getChildren() {

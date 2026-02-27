@@ -19,8 +19,8 @@ import java.util.stream.Collectors;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Tests the compiler's handling of scoped includes, particularly how layout directives
- * like `.ORG` and `.DIR` behave across nested file inclusions.
+ * Tests the compiler's handling of sourced files, particularly how layout directives
+ * like `.ORG` and `.DIR` behave across nested {@code .SOURCE} directives.
  * This is an integration test as it involves the filesystem and the full compiler pipeline.
  */
 public class ScopedIncludeTest {
@@ -38,7 +38,7 @@ public class ScopedIncludeTest {
 
     /**
      * Verifies that the compiler correctly manages layout contexts (origin and direction)
-     * across nested `.INCLUDE` directives. The test creates a chain of included files,
+     * across nested `.SOURCE` directives. The test creates a chain of included files,
      * each modifying the layout context with relative `.ORG` and `.DIR` commands. It then
      * compiles the top-level file and asserts that the final coordinates of all instructions
      * are correct, proving that the layout context is properly saved and restored at each
@@ -69,7 +69,7 @@ public class ScopedIncludeTest {
             ".ORG 1|1",      // Relative to base [1,1] -> absolute [2,2]
             "NOP",              // Placed at [2,2]. DV is [1,0] -> next pos is [3,2]
             ".DIR 0|1",      // DV is now [0,1] for the scope of this file (and its includes)
-            ".INCLUDE \"inc2.s\"",// Includes at pos [3,2]. After, pos=[3,4]. DV restored to [0,1].
+            ".SOURCE \"inc2.s\"",// Includes at pos [3,2]. After, pos=[3,4]. DV restored to [0,1].
             "NOP"               // Placed at [3,4]. DV is [0,1] -> next pos is [3,5]
         ));
 
@@ -79,7 +79,7 @@ public class ScopedIncludeTest {
             "NOP",              // Placed at [0,0]. Default DV is [1,0] -> next pos is [1,0].
             ".ORG 0|1",      // Absolute position, since base is [0,0].
             "NOP",              // Placed at [0,1]. DV is [1,0] -> next pos is [1,1].
-            ".INCLUDE \"inc1.s\"",// Includes at pos [1,1]. After, pos=[3,5]. DV restored to [1,0].
+            ".SOURCE \"inc1.s\"",// Includes at pos [1,1]. After, pos=[3,5]. DV restored to [1,0].
             "NOP"               // Placed at [3,5]. DV is [1,0] -> next pos is [4,5].
         ));
 

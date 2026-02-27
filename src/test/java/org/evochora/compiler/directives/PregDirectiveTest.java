@@ -10,7 +10,6 @@ import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 
@@ -30,7 +29,7 @@ public class PregDirectiveTest {
                 ".ENDP"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, Path.of(""));
+        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics);
 
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
 
@@ -47,7 +46,7 @@ public class PregDirectiveTest {
                 ".ENDP"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, Path.of(""));
+        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics);
 
         parser.parse();
 

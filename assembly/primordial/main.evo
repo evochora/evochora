@@ -84,15 +84,13 @@ JMPI MAIN_LOOP; NOP^12; JMPI MAIN_LOOP
 # ENERGY HARVESTING MODULE
 # ===========================================================================
 .ORG 0|8
-.INCLUDE "lib/energy.evo"
-.REQUIRE "lib/energy.evo" AS ENERGY
+.IMPORT "lib/energy.evo" AS ENERGY
 
 # ===========================================================================
 # REPRODUCTION MODULE
 # ===========================================================================
 .ORG 0|31
-.INCLUDE "lib/reproduce.evo"
-.REQUIRE "lib/reproduce.evo" AS REPRODUCE
+.IMPORT "lib/reproduce.evo" AS REPRODUCE
 
 # ===========================================================================
 # SAFETY FALLBACK (mutation resistance)

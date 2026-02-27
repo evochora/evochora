@@ -21,7 +21,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -63,7 +62,7 @@ public class EmissionIntegrationTest {
         Lexer lexer = new Lexer(src, diags);
         List<Token> tokens = lexer.scanTokens();
         // KORREKTUR: basePath hinzufügen
-        Parser parser = new Parser(tokens, diags, Path.of(""));
+        Parser parser = new Parser(tokens, diags);
         List<AstNode> ast = parser.parse();
 
         // KORREKTUR: Erstelle eine SymbolTable und übergib sie.

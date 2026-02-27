@@ -4,13 +4,9 @@ import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.lexer.TokenType;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 
-import java.nio.file.Path;
-import java.util.List;
-
 /**
- * An interface that encapsulates the contextual state during parsing or preprocessing.
- * It provides handlers with access to the token stream and other necessary services
- * without coupling them directly to a specific implementation like the parser.
+ * Provides parser directive handlers with access to the token stream.
+ * This interface decouples handlers from the concrete {@link Parser} implementation.
  */
 public interface ParsingContext {
     /**
@@ -65,34 +61,4 @@ public interface ParsingContext {
      * @return true if at the end of the stream, false otherwise.
      */
     boolean isAtEnd();
-
-    // Methods specific to the PreProcessor
-
-    /**
-     * Injects a list of tokens into the stream, replacing a specified number of existing tokens.
-     * This is primarily used for macro expansion.
-     * @param tokens The list of tokens to inject.
-     * @param tokensToRemove The number of tokens to remove from the original stream.
-     */
-    void injectTokens(List<Token> tokens, int tokensToRemove);
-
-    /**
-     * Gets the base path of the current file being processed.
-     * This is used to resolve relative paths in include directives.
-     * @return The base path.
-     */
-    Path getBasePath();
-
-    /**
-     * Checks if a file has already been included to prevent circular dependencies.
-     * @param path The path of the file to check.
-     * @return true if the file has already been included, false otherwise.
-     */
-    boolean hasAlreadyIncluded(String path);
-
-    /**
-     * Marks a file as having been included.
-     * @param path The path of the file to mark.
-     */
-    void markAsIncluded(String path);
 }

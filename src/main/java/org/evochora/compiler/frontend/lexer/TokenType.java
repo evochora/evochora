@@ -15,9 +15,6 @@ public enum TokenType {
     STAR,
     /** The ',' character, used as a separator. */
     COMMA,
-    /** The '^' character, used for repetition shorthand (e.g., NOP^3). */
-    CARET,
-
     // Two-character tokens
     /** The '..' character, used for ranges. */
     DOT_DOT,

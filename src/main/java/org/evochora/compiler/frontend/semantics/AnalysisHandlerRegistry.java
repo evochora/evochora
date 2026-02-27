@@ -4,11 +4,13 @@ import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.parser.ast.InstructionNode;
 import org.evochora.compiler.frontend.parser.ast.PregNode;
 import org.evochora.compiler.frontend.parser.features.def.DefineNode;
+import org.evochora.compiler.frontend.parser.features.importdir.ImportNode;
 import org.evochora.compiler.frontend.parser.features.label.LabelNode;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
 import org.evochora.compiler.frontend.parser.features.reg.RegNode;
 import org.evochora.compiler.frontend.parser.features.require.RequireNode;
-import org.evochora.compiler.frontend.parser.features.scope.ScopeNode;
+
+
 import org.evochora.compiler.frontend.semantics.analysis.*;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 
@@ -85,14 +87,15 @@ public final class AnalysisHandlerRegistry {
         // Pass-1 collectors
         registry.registerCollector(ProcedureNode.class, new ProcedureSymbolCollector(scopeMap));
         registry.registerCollector(LabelNode.class, new LabelSymbolCollector());
+        registry.registerCollector(ImportNode.class, new ImportSymbolCollector());
         registry.registerCollector(RequireNode.class, new RequireSymbolCollector());
-        registry.registerCollector(ScopeNode.class, new ScopeSymbolCollector(scopeMap));
 
         // Pass-2 handlers
+        registry.register(ImportNode.class, new ImportAnalysisHandler());
+        registry.register(RequireNode.class, new RequireAnalysisHandler());
         registry.register(DefineNode.class, new DefineAnalysisHandler());
         registry.register(RegNode.class, new RegAnalysisHandler());
         registry.register(LabelNode.class, new LabelAnalysisHandler());
-        registry.register(ScopeNode.class, new ScopeAnalysisHandler(scopeMap));
         registry.register(ProcedureNode.class, new ProcedureAnalysisHandler(scopeMap));
         registry.register(InstructionNode.class, new InstructionAnalysisHandler(symbolTable, diagnostics));
         registry.register(PregNode.class, new PregAnalysisHandler());

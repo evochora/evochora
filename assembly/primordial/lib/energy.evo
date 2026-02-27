@@ -5,8 +5,7 @@
 # Prime periods (89, 97, 101, 103) ensure varied exploration patterns and
 # reduce the chance of getting stuck in loops.
 
-.INCLUDE "lib/state.evo"
-.REQUIRE "lib/state.evo" AS STATE
+.SOURCE "state.evo"
 
 # ===========================================================================
 # STATE STORAGE - Persisted between calls

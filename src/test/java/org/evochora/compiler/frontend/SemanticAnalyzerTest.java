@@ -11,7 +11,6 @@ import org.evochora.compiler.frontend.semantics.SymbolTable; // NEUER IMPORT
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import java.nio.file.Path;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -30,7 +29,7 @@ public class SemanticAnalyzerTest {
         
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, Path.of(""));
+        Parser parser = new Parser(tokens, diagnostics);
         return parser.parse();
     }
 
@@ -65,7 +64,7 @@ public class SemanticAnalyzerTest {
     }
 
     /**
-     * Verifies that using the same label name in different, non-overlapping scopes is allowed.
+     * Verifies that using the same label name in different, non-overlapping procedure scopes is allowed.
      * This is a unit test for scope-based symbol resolution.
      */
     @Test
@@ -73,12 +72,14 @@ public class SemanticAnalyzerTest {
     void testSameLabelInDifferentScopesIsAllowed() {
         // Arrange
         String source = String.join("\n",
-                ".SCOPE FIRST_SCOPE",
+                ".PROC FIRST_PROC",
                 "  MY_LABEL: NOP",
-                ".ENDS",
-                ".SCOPE SECOND_SCOPE",
+                "  RET",
+                ".ENDP",
+                ".PROC SECOND_PROC",
                 "  MY_LABEL: NOP",
-                ".ENDS"
+                "  RET",
+                ".ENDP"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
@@ -90,12 +91,12 @@ public class SemanticAnalyzerTest {
 
         // Assert
         assertThat(diagnostics.hasErrors())
-                .as("Gleiche Label-Namen in unterschiedlichen Scopes sollten erlaubt sein")
+                .as("Same label names in different procedure scopes should be allowed")
                 .isFalse();
     }
 
     /**
-     * Verifies that defining the same label twice within the same scope is reported as an error.
+     * Verifies that defining the same label twice within the same procedure scope is reported as an error.
      * This is a unit test for symbol table management within a single scope.
      */
     @Test
@@ -103,10 +104,11 @@ public class SemanticAnalyzerTest {
     void testDuplicateLabelWithinSameScopeIsReported() {
         // Arrange
         String source = String.join("\n",
-                ".SCOPE MY_SCOPE",
+                ".PROC MY_PROC",
                 "  LOOP: NOP",
-                "  LOOP: NOP # Fehler: Duplikat im selben Scope",
-                ".ENDS"
+                "  LOOP: NOP",
+                "  RET",
+                ".ENDP"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
@@ -261,7 +263,7 @@ public class SemanticAnalyzerTest {
     }
 
     /**
-     * Verifies that attempting to access a label defined in an inner scope from an outer scope
+     * Verifies that attempting to access a label defined in a procedure from outside
      * is reported as an undefined symbol error.
      * This is a unit test for scope-based symbol resolution.
      */
@@ -270,10 +272,11 @@ public class SemanticAnalyzerTest {
     void testAccessingInnerScopeLabelFromOuterScopeReportsError() {
         // Arrange
         String source = String.join("\n",
-                ".SCOPE INNER_SCOPE",
+                ".PROC INNER_PROC",
                 "  INNER_LABEL: NOP",
-                ".ENDS",
-                "JMPI INNER_LABEL  # Fehler: INNER_LABEL ist hier nicht sichtbar"
+                "  RET",
+                ".ENDP",
+                "JMPI INNER_LABEL"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);

@@ -2,8 +2,7 @@ package org.evochora.compiler.frontend.parser.features.reg;
 
 import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.lexer.TokenType;
-import org.evochora.compiler.frontend.directive.IDirectiveHandler;
-import org.evochora.compiler.frontend.CompilerPhase;
+import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParsingContext;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
@@ -12,18 +11,13 @@ import org.evochora.compiler.frontend.parser.ast.AstNode;
  * Handler for the .REG directive.
  * Parses a register alias and adds it to the parser's alias table.
  */
-public class RegDirectiveHandler implements IDirectiveHandler {
-
-    @Override
-    public CompilerPhase getPhase() {
-        return CompilerPhase.PARSING;
-    }
+public class RegDirectiveHandler implements IParserDirectiveHandler {
 
     /**
      * Parses a .REG directive.
      * Expected format: .REG <ALIAS_NAME> <REGISTER_NAME>
      * @param context The context that encapsulates the parser.
-     * @return {@code null} because this directive does not produce an AST node.
+     * @return A {@link RegNode} or {@code null} if parsing fails.
      */
     @Override
     public AstNode parse(ParsingContext context) {
@@ -61,15 +55,10 @@ public class RegDirectiveHandler implements IDirectiveHandler {
         }
 
         if (name != null && register != null) {
-            // We have to cast to the Parser implementation to get access to the alias table.
-            // A cleaner solution might be an interface, but this is pragmatic for now.
             ((Parser) context).addRegisterAlias(name.text(), register);
-            
-            // Create and return a RegNode for the AST
             return new RegNode(name, register);
         }
 
-        // If we couldn't create a valid RegNode, return null
         return null;
     }
 }

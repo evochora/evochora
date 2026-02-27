@@ -2,6 +2,7 @@ package org.evochora.compiler.frontend.parser.features.label;
 
 import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
+import org.evochora.compiler.frontend.parser.ast.SourceLocatable;
 
 import java.util.List;
 
@@ -16,7 +17,12 @@ public record LabelNode(
         Token labelToken,
         AstNode statement,
         boolean exported
-) implements AstNode {
+) implements AstNode, SourceLocatable {
+
+    @Override
+    public String getSourceFileName() {
+        return labelToken.fileName();
+    }
 
     /**
      * Constructs a non-exported label node. This constructor provides backwards

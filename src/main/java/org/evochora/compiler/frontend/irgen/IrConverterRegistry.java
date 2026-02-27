@@ -1,25 +1,29 @@
 package org.evochora.compiler.frontend.irgen;
 
 import org.evochora.compiler.frontend.irgen.converters.DirNodeConverter;
+import org.evochora.compiler.frontend.irgen.converters.ImportNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.InstructionNodeConverter;
+import org.evochora.compiler.frontend.irgen.converters.RequireNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.LabelNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.OrgNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.PlaceNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.ProcedureNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.PopCtxNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.PushCtxNodeConverter;
-import org.evochora.compiler.frontend.irgen.converters.ScopeNodeConverter;
+
 import org.evochora.compiler.frontend.irgen.converters.DefineNodeConverter;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.parser.ast.InstructionNode;
 import org.evochora.compiler.frontend.parser.ast.PopCtxNode;
 import org.evochora.compiler.frontend.parser.ast.PushCtxNode;
 import org.evochora.compiler.frontend.parser.features.dir.DirNode;
+import org.evochora.compiler.frontend.parser.features.importdir.ImportNode;
 import org.evochora.compiler.frontend.parser.features.label.LabelNode;
+import org.evochora.compiler.frontend.parser.features.require.RequireNode;
 import org.evochora.compiler.frontend.parser.features.org.OrgNode;
 import org.evochora.compiler.frontend.parser.features.place.PlaceNode;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
-import org.evochora.compiler.frontend.parser.features.scope.ScopeNode;
+
 
 import java.util.HashMap;
 import java.util.Map;
@@ -118,8 +122,9 @@ public final class IrConverterRegistry {
 		reg.register(DirNode.class, new DirNodeConverter());
 		reg.register(PlaceNode.class, new PlaceNodeConverter());
 		reg.register(ProcedureNode.class, new ProcedureNodeConverter());
-		reg.register(ScopeNode.class, new ScopeNodeConverter());
 		reg.register(org.evochora.compiler.frontend.parser.features.def.DefineNode.class, new DefineNodeConverter());
+		reg.register(ImportNode.class, new ImportNodeConverter());
+		reg.register(RequireNode.class, new RequireNodeConverter());
 
 		// Internal context directives
 		reg.register(PushCtxNode.class, new PushCtxNodeConverter());

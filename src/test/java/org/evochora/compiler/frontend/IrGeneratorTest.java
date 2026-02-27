@@ -22,7 +22,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
 
@@ -46,7 +45,7 @@ public class IrGeneratorTest {
             fail("Lexer errors: " + diagnostics.summary());
         }
 
-        Parser parser = new Parser(tokens, diagnostics, Path.of(""));
+        Parser parser = new Parser(tokens, diagnostics);
         List<AstNode> ast = parser.parse();
         if (diagnostics.hasErrors()) {
             fail("Parser errors: " + diagnostics.summary());

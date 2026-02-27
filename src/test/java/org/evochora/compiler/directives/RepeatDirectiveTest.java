@@ -37,7 +37,7 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""));
+        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""), null);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand();
@@ -67,7 +67,7 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""));
+        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""), null);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand();
@@ -97,7 +97,7 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""));
+        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""), null);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand();
@@ -136,7 +136,7 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""));
+        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""), null);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand();
@@ -170,7 +170,7 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""));
+        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""), null);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand();
@@ -192,7 +192,7 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""));
+        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""), null);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand();
@@ -230,7 +230,7 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""));
+        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""), null);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand();
@@ -259,7 +259,7 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""));
+        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""), null);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand();
@@ -288,7 +288,7 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""));
+        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""), null);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand();
@@ -323,7 +323,7 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""));
+        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""), null);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand();
@@ -346,7 +346,7 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""));
+        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""), null);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand();
@@ -378,7 +378,7 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""));
+        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""), null);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand();

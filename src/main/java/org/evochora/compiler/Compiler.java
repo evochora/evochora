@@ -8,6 +8,10 @@ import org.evochora.compiler.api.TokenInfo;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.lexer.Token;
+import org.evochora.compiler.frontend.lexer.TokenType;
+import org.evochora.compiler.frontend.module.DependencyGraph;
+import org.evochora.compiler.frontend.module.DependencyScanner;
+import org.evochora.compiler.frontend.module.ModuleDescriptor;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ast.PregNode;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
@@ -94,18 +98,44 @@ public class Compiler implements ICompiler {
             basePath = Path.of("").toAbsolutePath();
         }
         
-        // Phase 1: Lexical Analysis
+        String mainFilePath = absoluteProgramName.toString().replace('\\', '/');
         String fullSource = String.join("\n", sourceLines) + "\n";
-        Lexer initialLexer = new Lexer(fullSource, diagnostics, absoluteProgramName.toString().replace('\\', '/'));
-        List<Token> initialTokens = initialLexer.scanTokens();
-        
+
+        // Phase 0: Dependency Scanning (load imported modules)
+        DependencyScanner depScanner = new DependencyScanner(diagnostics);
+        DependencyGraph graph = depScanner.scan(fullSource, mainFilePath, basePath);
+        if (diagnostics.hasErrors()) {
+            throw new CompilationException(diagnostics.summary());
+        }
+
+        // Phase 1: Lexical Analysis — lex all files, store results
+        Map<String, List<Token>> moduleTokens = new HashMap<>();
+        for (ModuleDescriptor module : graph.topologicalOrder()) {
+            if (module.id().path().equals(mainFilePath)) continue;
+            String moduleSource = module.content();
+            if (!moduleSource.endsWith("\n")) moduleSource += "\n";
+            Lexer moduleLexer = new Lexer(moduleSource, diagnostics, module.sourcePath());
+            List<Token> tokens = moduleLexer.scanTokens();
+            if (!tokens.isEmpty() && tokens.getLast().type() == TokenType.END_OF_FILE) {
+                tokens.removeLast();
+            }
+            moduleTokens.put(module.sourcePath(), tokens);
+        }
+        Lexer mainLexer = new Lexer(fullSource, diagnostics, mainFilePath);
+        List<Token> initialTokens = new ArrayList<>(mainLexer.scanTokens());
+
         // Phase 2: Preprocessing (includes, macros)
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, basePath);
+        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, basePath,
+                moduleTokens.isEmpty() ? null : moduleTokens);
         List<Token> processedTokens = preProcessor.expand();
 
         Map<String, List<String>> sources = new HashMap<>();
-        // Use absolute path for main file to ensure consistency with included files
-        sources.put(absoluteProgramName.toString().replace('\\', '/'), sourceLines);
+        sources.put(mainFilePath, sourceLines);
+        for (ModuleDescriptor module : graph.topologicalOrder()) {
+            if (!module.id().path().equals(mainFilePath)) {
+                sources.put(module.sourcePath(), Arrays.asList(module.content().split("\\r?\\n")));
+            }
+        }
         preProcessor.getIncludedFileContents().forEach((path, content) ->
                 sources.put(path, Arrays.asList(content.split("\\r?\\n"))));
 
@@ -114,7 +144,7 @@ public class Compiler implements ICompiler {
         }
 
         // Phase 3: Parsing (builds AST)
-        Parser parser = new Parser(processedTokens, diagnostics, basePath);
+        Parser parser = new Parser(processedTokens, diagnostics);
         List<AstNode> ast = parser.parse();
 
         // parser.getGlobalRegisterAliases() is used later when extracting aliases; no local copy needed here
@@ -153,7 +183,7 @@ public class Compiler implements ICompiler {
 
         // Phase 4: Semantic Analysis (symbol resolution, type checking)
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainFilePath);
         analyzer.analyze(ast);
         if (diagnostics.hasErrors()) {
             throw new CompilationException(diagnostics.summary());

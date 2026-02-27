@@ -12,7 +12,6 @@ import org.evochora.compiler.frontend.parser.features.place.PlaceNode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
 
-import java.nio.file.Path;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -32,7 +31,7 @@ public class LayoutDirectiveTest {
     void testOrgDirective() {
         // Arrange
         String source = ".ORG 10|20";
-        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), Path.of(""));
+        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine());
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -51,7 +50,7 @@ public class LayoutDirectiveTest {
     void testDirDirective() {
         // Arrange
         String source = ".DIR 1|0";
-        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), Path.of(""));
+        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine());
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -71,7 +70,7 @@ public class LayoutDirectiveTest {
     void testPlaceDirective() {
         // Arrange
         String source = ".PLACE DATA:100 5|-5";
-        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), Path.of(""));
+        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine());
 
         // Act
         List<AstNode> ast = parser.parse();

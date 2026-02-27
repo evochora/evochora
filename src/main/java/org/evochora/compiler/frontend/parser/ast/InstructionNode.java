@@ -19,7 +19,12 @@ public record InstructionNode(
         List<AstNode> arguments,
         List<AstNode> refArguments,
         List<AstNode> valArguments
-) implements AstNode {
+) implements AstNode, SourceLocatable {
+
+    @Override
+    public String getSourceFileName() {
+        return opcode.fileName();
+    }
 
     /**
      * Compact constructor to ensure lists are never null.

@@ -4,7 +4,7 @@ import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.TokenInfo;
 import org.evochora.compiler.frontend.parser.ast.*;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
-import org.evochora.compiler.frontend.parser.features.scope.ScopeNode;
+
 import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -115,12 +115,10 @@ public class TokenMapGenerator {
         }
 
         String previousScope = this.currentScope;
-        boolean isNewScopeNode = node instanceof ProcedureNode || node instanceof ScopeNode;
+        boolean isNewScopeNode = node instanceof ProcedureNode;
 
         if (node instanceof ProcedureNode procNode) {
             this.currentScope = procNode.name().text().toUpperCase();
-        } else if (node instanceof ScopeNode scopeNode) {
-            this.currentScope = scopeNode.name().text().toUpperCase();
         }
 
         // Visit the current node to add its token to the map
@@ -249,10 +247,6 @@ public class TokenMapGenerator {
         for (Map.Entry<AstNode, SymbolTable.Scope> entry : scopeMap.entrySet()) {
             if (entry.getKey() instanceof ProcedureNode procNode) {
                 if (procNode.name().text().toUpperCase().equals(scopeName)) {
-                    return entry.getValue();
-                }
-            } else if (entry.getKey() instanceof ScopeNode scopeNode) {
-                if (scopeNode.name().text().toUpperCase().equals(scopeName)) {
                     return entry.getValue();
                 }
             }

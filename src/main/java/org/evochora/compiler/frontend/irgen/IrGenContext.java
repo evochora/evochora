@@ -12,7 +12,7 @@ import org.evochora.compiler.frontend.parser.ast.TypedLiteralNode;
 import org.evochora.compiler.frontend.parser.ast.VectorLiteralNode;
 import org.evochora.compiler.frontend.parser.features.label.LabelNode;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
-import org.evochora.compiler.frontend.parser.features.scope.ScopeNode;
+
 import org.evochora.compiler.ir.IrItem;
 import org.evochora.compiler.ir.IrProgram;
 
@@ -99,7 +99,6 @@ public final class IrGenContext {
 		if (node instanceof TypedLiteralNode n) return n.type();
 		if (node instanceof IdentifierNode n) return n.identifierToken();
 		if (node instanceof ProcedureNode n) return n.name();
-		if (node instanceof ScopeNode n) return n.name();
 		if (node instanceof VectorLiteralNode n && !n.components().isEmpty()) return n.components().get(0);
 		return null;
 	}

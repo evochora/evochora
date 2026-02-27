@@ -1,10 +1,9 @@
 package org.evochora.compiler.frontend.parser.features.proc;
 
-import org.evochora.compiler.frontend.directive.IDirectiveHandler;
+import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
 import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.lexer.TokenType;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
-import org.evochora.compiler.frontend.CompilerPhase;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParsingContext;
 
@@ -12,18 +11,14 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Handles the parsing of the <code>.proc</code> and <code>.endp</code> directives, which define a procedure block.
+ * Handles the parsing of the <code>.PROC</code> and <code>.ENDP</code> directives, which define a procedure block.
  * Procedures can be exported and can have parameters.
  */
-public class ProcDirectiveHandler implements IDirectiveHandler {
-    @Override
-    public CompilerPhase getPhase() {
-        return CompilerPhase.PARSING;
-    }
+public class ProcDirectiveHandler implements IParserDirectiveHandler {
 
     /**
-     * Parses a procedure definition, including its body, until an <code>.endp</code> directive is found.
-     * The syntax is <code>.proc &lt;name&gt; [EXPORT] [WITH &lt;param1&gt; &lt;param2&gt; ...] ... .endp</code>.
+     * Parses a procedure definition, including its body, until an <code>.ENDP</code> directive is found.
+     * The syntax is <code>.PROC &lt;name&gt; [EXPORT] [WITH &lt;param1&gt; &lt;param2&gt; ...] ... .ENDP</code>.
      * @param context The parsing context.
      * @return A {@link ProcedureNode} representing the parsed procedure.
      */

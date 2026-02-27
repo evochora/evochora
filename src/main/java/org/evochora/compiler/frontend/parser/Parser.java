@@ -1,9 +1,6 @@
 package org.evochora.compiler.frontend.parser;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.CompilerPhase;
-import org.evochora.compiler.frontend.directive.IDirectiveHandler;
-import org.evochora.compiler.frontend.directive.DirectiveHandlerRegistry;
 import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.lexer.TokenType;
 import org.evochora.compiler.frontend.parser.ast.*;
@@ -11,7 +8,6 @@ import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.frontend.parser.features.label.LabelNode;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
 
-import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
@@ -29,8 +25,7 @@ public class Parser implements ParsingContext {
 
     private final List<Token> tokens;
     private final DiagnosticsEngine diagnostics;
-    private final DirectiveHandlerRegistry directiveRegistry;
-    private final Path basePath;
+    private final ParserDirectiveRegistry directiveRegistry;
     private int current = 0;
 
     private final Deque<Map<String, Token>> registerAliasScopes = new ArrayDeque<>();
@@ -40,13 +35,11 @@ public class Parser implements ParsingContext {
      * Constructs a new Parser.
      * @param tokens The list of tokens to parse.
      * @param diagnostics The engine for reporting errors and warnings.
-     * @param basePath The base path of the source file, used for resolving includes.
      */
-    public Parser(List<Token> tokens, DiagnosticsEngine diagnostics, Path basePath) {
+    public Parser(List<Token> tokens, DiagnosticsEngine diagnostics) {
         this.tokens = tokens;
         this.diagnostics = diagnostics;
-        this.basePath = basePath;
-        this.directiveRegistry = DirectiveHandlerRegistry.initialize();
+        this.directiveRegistry = ParserDirectiveRegistry.initialize();
         registerAliasScopes.push(new HashMap<>());
     }
 
@@ -124,17 +117,12 @@ public class Parser implements ParsingContext {
 
     private AstNode directiveStatement() {
         Token directiveToken = peek();
-        Optional<IDirectiveHandler> handlerOptional = directiveRegistry.get(directiveToken.text());
+        Optional<IParserDirectiveHandler> handlerOptional = directiveRegistry.get(directiveToken.text());
 
         if (handlerOptional.isPresent()) {
-            IDirectiveHandler handler = handlerOptional.get();
-            if (handler.getPhase() == CompilerPhase.PARSING) {
-                return handler.parse(this);
-            }
-            advance();
-            return null;
+            return handlerOptional.get().parse(this);
         } else {
-            diagnostics.reportError("Unknown directive: " + directiveToken.text(), directiveToken.fileName(), directiveToken.line());
+            // Directive not registered in the parser (e.g., preprocessing-only directives)
             advance();
             return null;
         }
@@ -338,13 +326,4 @@ public class Parser implements ParsingContext {
      */
     public Map<String, ProcedureNode> getProcedureTable() { return procedureTable; }
     @Override public DiagnosticsEngine getDiagnostics() { return diagnostics; }
-    @Override public void injectTokens(List<Token> tokens, int tokensToRemove) { throw new UnsupportedOperationException("Not supported in parsing phase."); }
-
-    @Override
-    public Path getBasePath() {
-        return this.basePath;
-    }
-
-    @Override public boolean hasAlreadyIncluded(String path) { throw new UnsupportedOperationException("Not supported in parsing phase."); }
-    @Override public void markAsIncluded(String path) { throw new UnsupportedOperationException("Not supported in parsing phase."); }
 }

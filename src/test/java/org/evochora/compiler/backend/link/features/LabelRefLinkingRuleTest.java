@@ -6,6 +6,7 @@ import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.lexer.Token;
 import org.evochora.compiler.frontend.lexer.TokenType;
+import org.evochora.compiler.frontend.semantics.ModuleId;
 import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.ir.IrImm;
@@ -168,17 +169,24 @@ class LabelRefLinkingRuleTest {
 
     @Test
     void resolvesExportedLabelViaQualifiedName() {
-        // Given: A symbol table with an exported label in "lib.s" and an alias in "main.s"
+        // Given: A symbol table with an exported label in "lib.s" and an import alias in "main.s"
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         SymbolTable symbolTable = new SymbolTable(diagnostics);
 
-        // Define the label in lib.s
-        Token labelToken = new Token(TokenType.IDENTIFIER, "TARGET", null, 1, 0, "lib.s");
-        symbolTable.define(new Symbol(labelToken, Symbol.Type.LABEL));
-        symbolTable.registerLabelMeta(labelToken, true); // exported
+        ModuleId libModule = new ModuleId("lib.s");
+        ModuleId mainModule = new ModuleId("main.s");
+        symbolTable.registerModule(libModule, "lib.s");
+        symbolTable.registerModule(mainModule, "main.s");
 
-        // Register the alias: in main.s, LIB -> lib.s
-        symbolTable.registerRequireAlias("main.s", "LIB", "lib.s");
+        // Define the label in lib.s module
+        symbolTable.setCurrentModule(libModule);
+        Token labelToken = new Token(TokenType.IDENTIFIER, "TARGET", null, 1, 0, "lib.s");
+        symbolTable.define(new Symbol(labelToken, Symbol.Type.LABEL, null, true));
+        symbolTable.registerLabelMeta(labelToken, true);
+
+        // Register the import alias: in main.s, LIB -> lib.s
+        symbolTable.setCurrentModule(mainModule);
+        symbolTable.getModuleScope(mainModule).orElseThrow().imports().put("LIB", libModule);
 
         // Create rule with this symbol table
         LabelRefLinkingRule ruleWithExport = new LabelRefLinkingRule(symbolTable);
@@ -219,13 +227,20 @@ class LabelRefLinkingRuleTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         SymbolTable symbolTable = new SymbolTable(diagnostics);
 
-        // Define the label in lib.s (NOT exported)
+        ModuleId libModule = new ModuleId("lib.s");
+        ModuleId mainModule = new ModuleId("main.s");
+        symbolTable.registerModule(libModule, "lib.s");
+        symbolTable.registerModule(mainModule, "main.s");
+
+        // Define the label in lib.s module (NOT exported)
+        symbolTable.setCurrentModule(libModule);
         Token labelToken = new Token(TokenType.IDENTIFIER, "PRIVATE", null, 1, 0, "lib.s");
         symbolTable.define(new Symbol(labelToken, Symbol.Type.LABEL));
-        symbolTable.registerLabelMeta(labelToken, false); // NOT exported
+        symbolTable.registerLabelMeta(labelToken, false);
 
-        // Register the alias
-        symbolTable.registerRequireAlias("main.s", "LIB", "lib.s");
+        // Register the import alias
+        symbolTable.setCurrentModule(mainModule);
+        symbolTable.getModuleScope(mainModule).orElseThrow().imports().put("LIB", libModule);
 
         LabelRefLinkingRule ruleWithNonExport = new LabelRefLinkingRule(symbolTable);
 

@@ -21,7 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Tests for the {@link PreProcessor}, focusing on file inclusion capabilities.
  * These tests are tagged as "integration" because they require filesystem access
- * to handle the `.INCLUDE` directive.
+ * to handle the `.SOURCE` directive.
  */
 public class PreProcessorTest {
 
@@ -34,7 +34,7 @@ public class PreProcessorTest {
     }
 
     /**
-     * Verifies that the preprocessor correctly expands an `.INCLUDE` directive.
+     * Verifies that the preprocessor correctly expands an `.SOURCE` directive.
      * The test creates a temporary source file and a main file that includes it.
      * It then asserts that the preprocessor replaces the include directive with the
      * tokens from the included file, properly wrapped in `.PUSH_CTX` and `.POP_CTX`
@@ -51,14 +51,14 @@ public class PreProcessorTest {
         Path libFile = tempDir.resolve("test.s");
         Files.writeString(libFile, "NOP"); // Schreibt NUR "NOP", ohne Zeilenumbruch
 
-        String mainSource = ".INCLUDE \"test.s\"";
+        String mainSource = ".SOURCE \"test.s\"";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
 
         Path mainFile = tempDir.resolve("main.s");
         Lexer lexer = new Lexer(mainSource, diagnostics, mainFile.toString());
         List<Token> initialTokens = lexer.scanTokens();
 
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, tempDir);
+        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, tempDir, null);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand();
