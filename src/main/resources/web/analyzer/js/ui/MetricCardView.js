@@ -138,20 +138,41 @@ export function getAllCards() {
  */
 export function renderChart(card, data) {
     if (!card) return;
-    
+
     const canvas = card.element.querySelector('canvas');
     const chartType = card.metric.visualization?.type;
     const chartConfig = card.metric.visualization?.config || {};
-    
+
+    // Capture hidden dataset labels before destroying
+    const hiddenLabels = new Set();
+    if (card.chart?.data?.datasets) {
+        card.chart.data.datasets.forEach((ds, idx) => {
+            if (card.chart.getDatasetMeta(idx).hidden) {
+                hiddenLabels.add(ds.label);
+            }
+        });
+    }
+
     if (card.chart) {
         if (card.chart.destroy) {
             card.chart.destroy();
         }
     }
-    
+
     const chartModule = ChartRegistry.getChart(chartType);
     if (chartModule && chartModule.render) {
         card.chart = chartModule.render(canvas, data, chartConfig);
+
+        // Restore hidden state for matching labels
+        if (hiddenLabels.size > 0 && card.chart?.data?.datasets) {
+            card.chart.data.datasets.forEach((ds, idx) => {
+                if (hiddenLabels.has(ds.label)) {
+                    card.chart.getDatasetMeta(idx).hidden = true;
+                }
+            });
+            card.chart.update('none');
+        }
+
         hideMessage(card);
     } else {
         console.warn(`[MetricCardView] Unknown chart type: ${chartType}`);

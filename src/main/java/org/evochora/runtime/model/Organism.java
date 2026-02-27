@@ -439,9 +439,20 @@ public class Organism {
             return this;
         }
 
-        /** Sets the location stack contents. */
+        /** Sets the location stack contents, clamping to {@link Config#LOCATION_STACK_MAX_DEPTH}. */
         public RestoreBuilder locationStack(Deque<int[]> stack) {
-            this.locationStack = stack;
+            if (stack.size() > Config.LOCATION_STACK_MAX_DEPTH) {
+                ArrayDeque<int[]> clamped = new ArrayDeque<>(Config.LOCATION_STACK_MAX_DEPTH);
+                int kept = 0;
+                for (int[] entry : stack) {
+                    if (kept >= Config.LOCATION_STACK_MAX_DEPTH) break;
+                    clamped.addLast(entry);
+                    kept++;
+                }
+                this.locationStack = clamped;
+            } else {
+                this.locationStack = stack;
+            }
             return this;
         }
 

@@ -383,6 +383,7 @@ class GenomeAnalyticsPluginTest {
         assertThat(population.visualization.type).isEqualTo("stacked-area-chart");
         assertThat(population.visualization.config.get("x")).isEqualTo("tick");
         assertThat(population.visualization.config.get("jsonColumn")).isEqualTo("genome_data");
+        assertThat(population.visualization.config.get("maxGroups")).isEqualTo(3);
         assertThat(population.visualization.config.get("yFormat")).isEqualTo("integer");
     }
 
