@@ -259,25 +259,80 @@ public class VMLocationInstructionTest {
     }
 
     /**
-     * Verifies that the Location Stack's maximum depth is correctly handled.
-     * This test simulates filling the stack to capacity to check overflow conditions.
-     * This is a unit test for the Organism's stack limits.
+     * Verifies that DPLS fails with overflow when the location stack is at max depth.
      */
     @Test
     @Tag("unit")
-    void testLocationStackOverflow() {
+    void testDplsOverflow() {
         Deque<int[]> ls = org.getLocationStack();
-        // Fill the stack to its maximum capacity
         for (int i = 0; i < Config.LOCATION_STACK_MAX_DEPTH; i++) {
             ls.push(new int[]{i, i});
         }
-        assertThat(ls.size()).isEqualTo(Config.LOCATION_STACK_MAX_DEPTH);
 
-        // A direct push would exceed capacity, but ArrayDeque grows.
-        // In the VM, an instruction would check the size *before* pushing.
-        // We simulate this check here.
-        boolean wouldOverflow = ls.size() >= Config.LOCATION_STACK_MAX_DEPTH;
-        assertThat(wouldOverflow).isTrue();
+        placeInstruction(org, "DPLS");
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("Location Stack Overflow");
+        assertThat(ls.size()).isEqualTo(Config.LOCATION_STACK_MAX_DEPTH);
+    }
+
+    /**
+     * Verifies that DUPL fails with overflow when the location stack is at max depth.
+     */
+    @Test
+    @Tag("unit")
+    void testDuplOverflow() {
+        Deque<int[]> ls = org.getLocationStack();
+        for (int i = 0; i < Config.LOCATION_STACK_MAX_DEPTH; i++) {
+            ls.push(new int[]{i, i});
+        }
+
+        placeInstruction(org, "DUPL");
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("Location Stack Overflow");
+        assertThat(ls.size()).isEqualTo(Config.LOCATION_STACK_MAX_DEPTH);
+    }
+
+    /**
+     * Verifies that PUSL fails with overflow when the location stack is at max depth.
+     */
+    @Test
+    @Tag("unit")
+    void testPuslOverflow() {
+        Deque<int[]> ls = org.getLocationStack();
+        for (int i = 0; i < Config.LOCATION_STACK_MAX_DEPTH; i++) {
+            ls.push(new int[]{i, i});
+        }
+        org.setLr(0, new int[]{99, 99});
+        int lrIndex = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE).toInt();
+
+        placeInstruction(org, "PUSL", lrIndex);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("Location Stack Overflow");
+        assertThat(ls.size()).isEqualTo(Config.LOCATION_STACK_MAX_DEPTH);
+    }
+
+    /**
+     * Verifies that push instructions succeed when the location stack is one below max depth.
+     */
+    @Test
+    @Tag("unit")
+    void testLocationStackPushAtOneBelowMax() {
+        Deque<int[]> ls = org.getLocationStack();
+        for (int i = 0; i < Config.LOCATION_STACK_MAX_DEPTH - 1; i++) {
+            ls.push(new int[]{i, i});
+        }
+
+        placeInstruction(org, "DPLS");
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isFalse();
+        assertThat(ls.size()).isEqualTo(Config.LOCATION_STACK_MAX_DEPTH);
     }
 
     // --- Location Stack Operations Tests ---

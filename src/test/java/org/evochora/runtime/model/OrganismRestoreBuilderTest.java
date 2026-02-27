@@ -14,6 +14,7 @@ import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.runtime.Simulation;
+import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.test.utils.SimulationTestUtils;
 import org.junit.jupiter.api.BeforeAll;
@@ -305,6 +306,47 @@ class OrganismRestoreBuilderTest {
 
         // Max energy comes from simulation config
         assertThat(org.getMaxEnergy()).isEqualTo(32767); // SimulationTestUtils default
+    }
+
+    // ==================== Location Stack Clamping Tests ====================
+
+    @Test
+    @Tag("unit")
+    void testRestoreBuilder_LocationStackClampedWhenOversized() {
+        Deque<int[]> oversizedStack = new ArrayDeque<>();
+        int totalEntries = Config.LOCATION_STACK_MAX_DEPTH + 50;
+        for (int i = 0; i < totalEntries; i++) {
+            oversizedStack.addLast(new int[]{i, i});
+        }
+
+        Organism org = Organism.restore(1, 0L)
+            .ip(new int[]{0, 0})
+            .dv(new int[]{1, 0})
+            .initialPosition(new int[]{0, 0})
+            .locationStack(oversizedStack)
+            .build(simulation);
+
+        Deque<int[]> ls = org.getLocationStack();
+        assertThat(ls.size()).isEqualTo(Config.LOCATION_STACK_MAX_DEPTH);
+        // Top entries (most recent, added first via addLast = head of iteration) are kept
+        assertThat(ls.peek()).isEqualTo(new int[]{0, 0});
+    }
+
+    @Test
+    @Tag("unit")
+    void testRestoreBuilder_LocationStackUnchangedWhenWithinLimit() {
+        Deque<int[]> normalStack = new ArrayDeque<>();
+        normalStack.addLast(new int[]{1, 1});
+        normalStack.addLast(new int[]{2, 2});
+
+        Organism org = Organism.restore(1, 0L)
+            .ip(new int[]{0, 0})
+            .dv(new int[]{1, 0})
+            .initialPosition(new int[]{0, 0})
+            .locationStack(normalStack)
+            .build(simulation);
+
+        assertThat(org.getLocationStack().size()).isEqualTo(2);
     }
 
     // ==================== Round-Trip Test ====================

@@ -119,6 +119,7 @@ public class LocationInstruction extends Instruction {
         switch (name) {
             case "DUPL": {
                 if (ls.isEmpty()) { org.instructionFailed("DUPL on empty LS"); return; }
+                if (ls.size() >= Config.LOCATION_STACK_MAX_DEPTH) { org.instructionFailed("Location Stack Overflow"); return; }
                 ls.push(ls.peek());
                 break;
             }
@@ -150,6 +151,7 @@ public class LocationInstruction extends Instruction {
                 break;
             }
             case "DPLS": {
+                if (ls.size() >= Config.LOCATION_STACK_MAX_DEPTH) { org.instructionFailed("Location Stack Overflow"); return; }
                 ls.push(org.getActiveDp());
                 break;
             }
@@ -172,7 +174,8 @@ public class LocationInstruction extends Instruction {
                 int lrIdx = toLrIndex(ops.get(0));
                 int[] vec = org.getLr(lrIdx);
                 if (vec == null) { org.instructionFailed("Invalid LR index"); return; }
-                org.getLocationStack().push(vec);
+                if (ls.size() >= Config.LOCATION_STACK_MAX_DEPTH) { org.instructionFailed("Location Stack Overflow"); return; }
+                ls.push(vec);
                 break;
             }
             case "POPL": {
