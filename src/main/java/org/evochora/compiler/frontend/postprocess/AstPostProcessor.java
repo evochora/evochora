@@ -5,8 +5,8 @@ import org.evochora.compiler.frontend.parser.ast.*;
 import org.evochora.compiler.frontend.parser.features.def.DefineNode;
 import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
-import org.evochora.compiler.frontend.lexer.Token;
-import org.evochora.compiler.frontend.lexer.TokenType;
+import org.evochora.compiler.model.Token;
+import org.evochora.compiler.model.TokenType;
 import org.evochora.compiler.api.SourceInfo;
 
 import java.util.HashMap;

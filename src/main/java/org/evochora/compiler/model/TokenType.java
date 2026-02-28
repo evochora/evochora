@@ -1,7 +1,7 @@
-package org.evochora.compiler.frontend.lexer;
+package org.evochora.compiler.model;
 
 /**
- * Defines the different types of tokens that the {@link Lexer} can recognize.
+ * Defines the different types of tokens recognized during lexical analysis.
  */
 public enum TokenType {
     // Single-character tokens.

@@ -3,7 +3,7 @@ package org.evochora.compiler.frontend.parser.ast;
 import java.util.List;
 import java.util.Objects;
 import org.evochora.compiler.api.SourceInfo;
-import org.evochora.compiler.frontend.lexer.Token;
+import org.evochora.compiler.model.Token;
 
 /**
  * An AST node that represents a register.

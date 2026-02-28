@@ -1,8 +1,8 @@
 package org.evochora.compiler.directives;
 
 import org.evochora.compiler.frontend.lexer.Lexer;
-import org.evochora.compiler.frontend.lexer.Token;
-import org.evochora.compiler.frontend.lexer.TokenType;
+import org.evochora.compiler.model.Token;
+import org.evochora.compiler.model.TokenType;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.junit.jupiter.api.Test;

@@ -5,7 +5,7 @@ import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.parser.ast.PregNode;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.frontend.semantics.Symbol;
-import org.evochora.compiler.frontend.lexer.TokenType;
+import org.evochora.compiler.model.TokenType;
 import org.evochora.runtime.Config;
 
 /**
@@ -52,7 +52,7 @@ public class PregAnalysisHandler implements IAnalysisHandler {
 
         // Add the alias to the symbol table with ALIAS type
         // Create a token for the alias name
-        org.evochora.compiler.frontend.lexer.Token aliasToken = new org.evochora.compiler.frontend.lexer.Token(
+        org.evochora.compiler.model.Token aliasToken = new org.evochora.compiler.model.Token(
             pregNode.alias().type(),
             pregNode.alias().text(),
             pregNode.alias().value(),
@@ -71,7 +71,7 @@ public class PregAnalysisHandler implements IAnalysisHandler {
      * @param targetRegister the register token to validate
      * @return true if the register is valid, false otherwise
      */
-    private boolean isValidProcedureRegister(org.evochora.compiler.frontend.lexer.Token targetRegister) {
+    private boolean isValidProcedureRegister(org.evochora.compiler.model.Token targetRegister) {
         if (targetRegister.type() != TokenType.REGISTER) {
             return false;
         }
@@ -95,7 +95,7 @@ public class PregAnalysisHandler implements IAnalysisHandler {
      * @param alias the alias token to validate
      * @return true if the alias is valid, false otherwise
      */
-    private boolean isValidAliasName(org.evochora.compiler.frontend.lexer.Token alias) {
+    private boolean isValidAliasName(org.evochora.compiler.model.Token alias) {
         // Alias can be IDENTIFIER or REGISTER token
         return alias.type() == TokenType.IDENTIFIER || alias.type() == TokenType.REGISTER;
     }

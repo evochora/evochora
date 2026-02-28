@@ -3,7 +3,7 @@ package org.evochora.compiler.frontend;
 import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.lexer.Lexer;
-import org.evochora.compiler.frontend.lexer.Token;
+import org.evochora.compiler.model.Token;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;

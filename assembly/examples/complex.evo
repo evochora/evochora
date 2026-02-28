@@ -40,22 +40,19 @@ MESSAGE_BUFFER:
 # PROCEDURES
 # =============================================================================
 
-# Procedure with REF parameters (modifies original values)
-.PROC ADD_ENERGY EXPORT REF ENERGY AMOUNT
+# Procedure with mixed REF/VAL parameters (REF modifies original, VAL is read-only)
+.PROC ADD_ENERGY EXPORT REF ENERGY VAL AMOUNT
   ADDR ENERGY AMOUNT
   RET
 .ENDP
 
-# Procedure with VAL parameters (value-only, doesn't modify originals)
-.PROC CALCULATE_DISTANCE EXPORT VAL X1 Y1 X2 Y2 RESULT
-  # Calculate distance between two points (simplified)
+# Procedure with REF output and VAL inputs (Manhattan distance, simplified)
+.PROC CALCULATE_DISTANCE EXPORT REF RESULT VAL X1 Y1 X2 Y2
+  # Manhattan distance: |X2 - X1| + |Y2 - Y1| (without absolute value)
   SUBR X2 X1
-  MULR RESULT RESULT
   SUBR Y2 Y1
-  MULR RESULT RESULT
-  # Square root would be more complex, so we'll just return the sum
-  ADDR RESULT X1
-  ADDR RESULT Y1
+  SETR RESULT X2
+  ADDR RESULT Y2
   RET
 .ENDP
 
@@ -182,7 +179,7 @@ SEARCH_COMPLETE:
 .ENDP
 
 # Procedure that uses registers for memory operations
-.PROC MEMORY_READ EXPORT REF MEMORY_PTR VAL ADDRESS RESULT
+.PROC MEMORY_READ EXPORT REF MEMORY_PTR RESULT VAL ADDRESS
   # Read from memory using register
   SETR MEMORY_PTR ADDRESS
   # Simulate memory read (simplified)
@@ -244,12 +241,12 @@ START:
   SETI %TEMP DATA:50
   
   # Initialize system using registers
-  CALL SYSTEM_INIT REF %TEMP %TEMP
+  CALL SYSTEM_INIT REF %TEMP %RESULT
   
   # Main behavior loop
 BEHAVIOR_LOOP:
   # Add some energy
-  CALL ADD_ENERGY REF %ENERGY ENERGY_GAIN
+  CALL ADD_ENERGY REF %ENERGY VAL ENERGY_GAIN
   
   # Cap energy at maximum
   LTI %ENERGY MAX_ENERGY
@@ -310,8 +307,8 @@ NOT_ENOUGH_ENERGY:
 
 # Demonstrate various procedure calls
 DEMO_PROCEDURES:
-  # Call procedure with VAL parameters
-  CALL CALCULATE_DISTANCE VAL %POS_X %POS_Y DATA:100 DATA:200 %RESULT
+  # Call procedure with REF output and VAL inputs
+  CALL CALCULATE_DISTANCE REF %RESULT VAL %POS_X %POS_Y DATA:100 DATA:200
   
   # Call procedure with mixed REF and VAL parameters
   CALL UPDATE_POSITION REF %POS_X %POS_Y VAL DATA:5 DATA:10
@@ -328,8 +325,8 @@ DEMO_PROCEDURES:
   # Call procedure with stack operations
   CALL PUSH_VALUE REF %STACK_PTR VAL %ENERGY
   
-  # Call procedure with registers
-  CALL MEMORY_READ REF %TEMP VAL DATA:50 %TEMP
+  # Call procedure with REF outputs and VAL input
+  CALL MEMORY_READ REF %TEMP %RESULT VAL DATA:50
   
   # Call procedure with system flags
   CALL SET_FLAG REF %TEMP VAL DATA:1

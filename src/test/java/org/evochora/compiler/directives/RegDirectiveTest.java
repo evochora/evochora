@@ -2,7 +2,7 @@ package org.evochora.compiler.directives;
 
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
-import org.evochora.compiler.frontend.lexer.Token;
+import org.evochora.compiler.model.Token;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.parser.ast.InstructionNode;
 import org.evochora.compiler.frontend.parser.ast.RegisterNode;
@@ -63,7 +63,7 @@ public class RegDirectiveTest {
         // AST Post-Processing - Resolves register aliases
         // Extract register aliases from parser (same as the real compiler does)
         Map<String, String> registerAliases = new HashMap<>();
-        Map<String, org.evochora.compiler.frontend.lexer.Token> parserAliases = parser.getGlobalRegisterAliases();
+        Map<String, org.evochora.compiler.model.Token> parserAliases = parser.getGlobalRegisterAliases();
         
         parserAliases.forEach((aliasName, registerToken) -> {
             registerAliases.put(aliasName, registerToken.text());
@@ -208,7 +208,7 @@ public class RegDirectiveTest {
         
         // AST Post-Processing - Resolves register aliases
         Map<String, String> registerAliases = new HashMap<>();
-        Map<String, org.evochora.compiler.frontend.lexer.Token> parserAliases = parser.getGlobalRegisterAliases();
+        Map<String, org.evochora.compiler.model.Token> parserAliases = parser.getGlobalRegisterAliases();
         
         parserAliases.forEach((aliasName, registerToken) -> {
             registerAliases.put(aliasName, registerToken.text());

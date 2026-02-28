@@ -1,7 +1,7 @@
-package org.evochora.compiler.frontend.lexer;
+package org.evochora.compiler.model;
 
 /**
- * Represents a single token extracted from the source code by the {@link Lexer}.
+ * Represents a single token extracted from the source code by the Lexer.
  *
  * @param type The type of the token (e.g., Opcode, Register, Number).
  * @param text The exact text of the token from the source code.

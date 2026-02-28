@@ -1,8 +1,8 @@
 package org.evochora.compiler.frontend.preprocessor.features.source;
 
 import org.evochora.compiler.frontend.io.SourceLoader;
-import org.evochora.compiler.frontend.lexer.Token;
-import org.evochora.compiler.frontend.lexer.TokenType;
+import org.evochora.compiler.model.Token;
+import org.evochora.compiler.model.TokenType;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorDirectiveHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;

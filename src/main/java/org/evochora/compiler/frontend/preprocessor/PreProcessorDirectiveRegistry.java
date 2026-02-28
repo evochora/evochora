@@ -6,7 +6,7 @@ import org.evochora.compiler.frontend.preprocessor.features.repeat.CaretDirectiv
 import org.evochora.compiler.frontend.preprocessor.features.repeat.RepeatDirectiveHandler;
 import org.evochora.compiler.frontend.preprocessor.features.source.SourceDirectiveHandler;
 
-import org.evochora.compiler.frontend.lexer.Token;
+import org.evochora.compiler.model.Token;
 
 import java.util.HashMap;
 import java.util.List;

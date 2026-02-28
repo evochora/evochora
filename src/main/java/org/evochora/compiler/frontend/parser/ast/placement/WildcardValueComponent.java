@@ -1,6 +1,6 @@
 package org.evochora.compiler.frontend.parser.ast.placement;
 
-import org.evochora.compiler.frontend.lexer.Token;
+import org.evochora.compiler.model.Token;
 
 /**
  * Represents the '*' wildcard for a full dimension.

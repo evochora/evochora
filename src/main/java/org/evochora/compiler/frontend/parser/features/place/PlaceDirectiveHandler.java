@@ -7,8 +7,8 @@ import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.parser.ast.TypedLiteralNode;
 import org.evochora.compiler.frontend.parser.ast.VectorLiteralNode;
 import org.evochora.compiler.frontend.parser.ast.placement.*;
-import org.evochora.compiler.frontend.lexer.Token;
-import org.evochora.compiler.frontend.lexer.TokenType;
+import org.evochora.compiler.model.Token;
+import org.evochora.compiler.model.TokenType;
 
 import java.util.ArrayList;
 import java.util.List;

@@ -22,7 +22,7 @@ public class RegAnalysisHandler implements IAnalysisHandler {
 
     private void processRegDirective(RegNode regNode, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         // Validate that the target is actually a register
-        if (regNode.register().type() != org.evochora.compiler.frontend.lexer.TokenType.REGISTER) {
+        if (regNode.register().type() != org.evochora.compiler.model.TokenType.REGISTER) {
             diagnostics.reportError(
                 "Target in .REG directive must be a register.",
                 regNode.register().fileName(),

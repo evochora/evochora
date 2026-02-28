@@ -2,7 +2,7 @@ package org.evochora.compiler.frontend.irgen;
 
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.lexer.Token;
+import org.evochora.compiler.model.Token;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.parser.ast.IdentifierNode;
 import org.evochora.compiler.frontend.parser.ast.InstructionNode;

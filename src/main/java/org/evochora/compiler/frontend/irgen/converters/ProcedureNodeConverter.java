@@ -32,7 +32,7 @@ public final class ProcedureNodeConverter implements IAstNodeToIrConverter<Proce
 		ctx.emit(new org.evochora.compiler.ir.IrLabelDef(node.name().text(), ctx.sourceOf(node)));
 		// Install parameter names for this procedure scope so identifiers can resolve to %FPRx
 		// Collect all parameters (old-style, REF, and VAL) into a single list
-		java.util.List<org.evochora.compiler.frontend.lexer.Token> allParams = new java.util.ArrayList<>();
+		java.util.List<org.evochora.compiler.model.Token> allParams = new java.util.ArrayList<>();
 		if (node.parameters() != null) {
 			allParams.addAll(node.parameters());
 		}

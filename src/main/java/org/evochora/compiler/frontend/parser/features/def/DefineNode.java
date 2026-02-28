@@ -1,6 +1,6 @@
 package org.evochora.compiler.frontend.parser.features.def;
 
-import org.evochora.compiler.frontend.lexer.Token;
+import org.evochora.compiler.model.Token;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 
 import java.util.List;

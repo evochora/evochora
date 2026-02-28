@@ -1,0 +1,31 @@
+# Math utilities module.
+# Standalone module with no dependencies — can be imported directly.
+
+# Exported label (demonstrates cross-module label access via ALIAS.LABEL)
+MATH_READY: EXPORT
+  NOP
+
+# Clamps VALUE into the range [MIN, MAX].
+# If VALUE < MIN, sets VALUE = MIN. If VALUE > MAX, sets VALUE = MAX.
+.PROC CLAMP EXPORT REF VALUE VAL MIN MAX
+  LTR VALUE MIN
+  JMPI CLAMP_TO_MIN
+  LTR MAX VALUE
+  JMPI CLAMP_DONE
+  SETR VALUE MAX
+  RET
+CLAMP_TO_MIN:
+  SETR VALUE MIN
+CLAMP_DONE:
+  RET
+.ENDP
+
+# Adds AMOUNT to VALUE, then clamps the result to not exceed MAX.
+.PROC ADD_CLAMPED EXPORT REF VALUE VAL AMOUNT MAX
+  ADDR VALUE AMOUNT
+  LTR MAX VALUE
+  JMPI ADD_CLAMPED_DONE
+  SETR VALUE MAX
+ADD_CLAMPED_DONE:
+  RET
+.ENDP

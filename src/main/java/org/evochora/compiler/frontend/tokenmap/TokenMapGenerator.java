@@ -152,7 +152,7 @@ public class TokenMapGenerator {
             // Add old WITH syntax parameters
             if (procNode.parameters() != null) {
                 for (int i = 0; i < procNode.parameters().size(); i++) {
-                    org.evochora.compiler.frontend.lexer.Token param = procNode.parameters().get(i);
+                    org.evochora.compiler.model.Token param = procNode.parameters().get(i);
                     addParameterToken(param, Symbol.Type.VARIABLE, procNode.name().text().toUpperCase(), i);
                 }
             }
@@ -160,7 +160,7 @@ public class TokenMapGenerator {
             // Process new REF syntax parameters
             if (procNode.refParameters() != null) {
                 for (int i = 0; i < procNode.refParameters().size(); i++) {
-                    org.evochora.compiler.frontend.lexer.Token param = procNode.refParameters().get(i);
+                    org.evochora.compiler.model.Token param = procNode.refParameters().get(i);
                     addParameterToken(param, Symbol.Type.VARIABLE, procNode.name().text().toUpperCase(), i);
                 }
             }
@@ -168,7 +168,7 @@ public class TokenMapGenerator {
             // Process new VAL syntax parameters
             if (procNode.valParameters() != null) {
                 for (int i = 0; i < procNode.valParameters().size(); i++) {
-                    org.evochora.compiler.frontend.lexer.Token param = procNode.valParameters().get(i);
+                    org.evochora.compiler.model.Token param = procNode.valParameters().get(i);
                     addParameterToken(param, Symbol.Type.VARIABLE, procNode.name().text().toUpperCase(), i);
                 }
             }
@@ -222,7 +222,7 @@ public class TokenMapGenerator {
     /**
      * Resolves a symbol in the current scope context.
      */
-    private Optional<Symbol> resolveInCurrentScope(org.evochora.compiler.frontend.lexer.Token token) {
+    private Optional<Symbol> resolveInCurrentScope(org.evochora.compiler.model.Token token) {
         // Temporarily set the symbol table's current scope to our tracked scope
         SymbolTable.Scope originalScope = symbolTable.getCurrentScope();
         
@@ -257,7 +257,7 @@ public class TokenMapGenerator {
     /**
      * A helper method to create a TokenInfo object and add it to the map.
      */
-    private void addToken(org.evochora.compiler.frontend.lexer.Token token, Symbol.Type type, String scope) {
+    private void addToken(org.evochora.compiler.model.Token token, Symbol.Type type, String scope) {
         if (token != null) {
             SourceInfo sourceInfo = new SourceInfo(
                 token.fileName(),
@@ -281,7 +281,7 @@ public class TokenMapGenerator {
      * A helper method to create a TokenInfo object for parameters and add it to the map.
      * Parameters are naturally unique due to their SourceInfo (file + line + column).
      */
-    private void addParameterToken(org.evochora.compiler.frontend.lexer.Token token, Symbol.Type type, String scope, int parameterIndex) {
+    private void addParameterToken(org.evochora.compiler.model.Token token, Symbol.Type type, String scope, int parameterIndex) {
         if (token != null) {
             // Each parameter has a unique position in the source, so no artificial suffixes needed
             SourceInfo sourceInfo = new SourceInfo(

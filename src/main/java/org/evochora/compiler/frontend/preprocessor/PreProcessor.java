@@ -1,7 +1,7 @@
 package org.evochora.compiler.frontend.preprocessor;
 
-import org.evochora.compiler.frontend.lexer.Token;
-import org.evochora.compiler.frontend.lexer.TokenType;
+import org.evochora.compiler.model.Token;
+import org.evochora.compiler.model.TokenType;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.preprocessor.features.macro.MacroDefinition;
 import java.nio.file.Path;
