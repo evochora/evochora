@@ -55,11 +55,13 @@ public class ImportSourceHandler implements IPreProcessorDirectiveHandler {
         String pathValue = (String) pathToken.value();
         String resolvedPath = resolvePath(pathValue, pathToken.fileName(), preProcessor.getBasePath());
 
-        // Guard against double-inlining of the same module
-        if (preProcessor.hasAlreadyIncluded(resolvedPath)) {
+        // Guard against circular imports
+        if (preProcessor.isInImportChain(resolvedPath)) {
+            preProcessor.getDiagnostics().reportError(
+                    "Circular .IMPORT detected: " + pathValue, pathToken.fileName(), pathToken.line());
             return;
         }
-        preProcessor.markAsIncluded(resolvedPath);
+        preProcessor.pushImportChain(resolvedPath);
 
         List<Token> tokens = moduleTokens.get(resolvedPath);
         if (tokens == null) {
@@ -72,9 +74,10 @@ public class ImportSourceHandler implements IPreProcessorDirectiveHandler {
         // Create a copy of the pre-lexed tokens (each import gets its own instance)
         List<Token> newTokens = new ArrayList<>(tokens);
 
-        // Wrap with PUSH_CTX/POP_CTX for relative .ORG support
-        newTokens.add(0, new Token(TokenType.DIRECTIVE, ".PUSH_CTX", null, importToken.line(), 0, importToken.fileName()));
-        newTokens.add(new Token(TokenType.DIRECTIVE, ".POP_CTX", null, importToken.line(), 0, importToken.fileName()));
+        // Wrap with PUSH_CTX/POP_CTX — PUSH_CTX carries the resolved module path
+        // so ModuleContextTracker can switch to the correct module immediately
+        newTokens.add(0, new Token(TokenType.DIRECTIVE, ".PUSH_CTX", resolvedPath, importToken.line(), 0, importToken.fileName()));
+        newTokens.add(new Token(TokenType.DIRECTIVE, ".POP_CTX", "IMPORT", importToken.line(), 0, importToken.fileName()));
 
         // Inject after the .IMPORT directive (tokens remain for the parser)
         preProcessor.injectTokens(newTokens, 0);

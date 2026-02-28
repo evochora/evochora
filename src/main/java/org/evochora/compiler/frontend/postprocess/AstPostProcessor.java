@@ -3,6 +3,7 @@ package org.evochora.compiler.frontend.postprocess;
 import org.evochora.compiler.frontend.TreeWalker;
 import org.evochora.compiler.frontend.parser.ast.*;
 import org.evochora.compiler.frontend.parser.features.def.DefineNode;
+import org.evochora.compiler.frontend.semantics.ModuleContextTracker;
 import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.model.Token;
@@ -12,7 +13,6 @@ import org.evochora.compiler.api.SourceInfo;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-import java.util.function.Consumer;
 
 /**
  * A dedicated compiler phase that transforms the AST after semantic analysis.
@@ -21,14 +21,27 @@ import java.util.function.Consumer;
  */
 public class AstPostProcessor {
     private final SymbolTable symbolTable;
+    private final ModuleContextTracker contextTracker;
     private final Map<String, String> registerAliases;    // %COUNTER -> %DR0, %TMP -> %PR0
     private final Map<String, TypedLiteralNode> constants; // MAX_VALUE -> TypedLiteralNode(DATA, 42)
     private final Map<AstNode, AstNode> replacements = new HashMap<>();
 
+    /**
+     * Constructs a post-processor for single-file compilation (no module context).
+     */
     public AstPostProcessor(SymbolTable symbolTable, Map<String, String> registerAliases) {
+        this(symbolTable, registerAliases, new ModuleContextTracker(symbolTable, new HashMap<>()));
+    }
+
+    /**
+     * Constructs a module-aware post-processor.
+     */
+    public AstPostProcessor(SymbolTable symbolTable, Map<String, String> registerAliases,
+                            ModuleContextTracker contextTracker) {
         this.symbolTable = symbolTable;
         this.registerAliases = registerAliases;
-        this.constants = new HashMap<>(); // Will be populated during first pass
+        this.contextTracker = contextTracker;
+        this.constants = new HashMap<>();
     }
 
     /**
@@ -37,15 +50,27 @@ public class AstPostProcessor {
      * @return The transformed AST root.
      */
     public AstNode process(AstNode root) {
-        // First pass: collect all replacements needed and build constants map
-        Map<Class<? extends AstNode>, Consumer<AstNode>> handlers = new HashMap<>();
-        handlers.put(IdentifierNode.class, this::collectReplacements);
-        handlers.put(DefineNode.class, this::collectConstants);
-        TreeWalker walker = new TreeWalker(handlers);
-        walker.walk(root);
-        
-        // Second pass: apply the replacements using the same walker
+        // First pass: collect constants and replacements with module context tracking
+        collectPass(root);
+
+        // Second pass: apply the replacements
+        TreeWalker walker = new TreeWalker(new HashMap<>());
         return walker.transform(root, replacements);
+    }
+
+    private void collectPass(AstNode node) {
+        if (node == null) return;
+        contextTracker.handleNode(node);
+
+        if (node instanceof DefineNode) {
+            collectConstants(node);
+        } else if (node instanceof IdentifierNode) {
+            collectReplacements(node);
+        }
+
+        for (AstNode child : node.getChildren()) {
+            collectPass(child);
+        }
     }
     
 

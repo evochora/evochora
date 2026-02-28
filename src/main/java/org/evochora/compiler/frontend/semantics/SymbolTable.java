@@ -169,6 +169,13 @@ public class SymbolTable {
         String name = symbol.name().text().toUpperCase();
         String file = symbol.name().fileName();
 
+        // In module context, use the module's source path as file key.
+        // This makes .SOURCE-included symbols resolvable from the module's own tokens.
+        ModuleScope modScope = modules.get(currentModuleId);
+        if (modScope != null) {
+            file = modScope.sourcePath();
+        }
+
         // Register in the scope hierarchy (for procedure-local visibility)
         Map<String, Symbol> perFile = currentScope.symbols.computeIfAbsent(name, k -> new HashMap<>());
         if (perFile.containsKey(file)) {
@@ -182,7 +189,6 @@ public class SymbolTable {
         }
 
         // Register in the module scope (for cross-module visibility)
-        ModuleScope modScope = modules.get(currentModuleId);
         if (modScope != null && currentScope == rootScope) {
             modScope.symbols().putIfAbsent(name, symbol);
         }

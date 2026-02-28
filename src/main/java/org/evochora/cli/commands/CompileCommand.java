@@ -33,7 +33,7 @@ public class CompileCommand implements Callable<Integer> {
 
     @Option(
         names = {"-e", "--env"},
-        description = "Environment properties in format 'WIDTHxHEIGHT:topology' (e.g., '100x100:toroidal'). Default: 100x100:toroidal"
+        description = "Environment properties in format 'WIDTHxHEIGHT:topology' (e.g., '1000x1000:toroidal'). Default: 1000x1000:toroidal"
     )
     private String env;
 
@@ -59,7 +59,7 @@ public class CompileCommand implements Callable<Integer> {
 
     private EnvironmentProperties parseEnvironmentProperties(String env) {
         if (env == null || env.isEmpty()) {
-            return new EnvironmentProperties(new int[]{100, 100}, true); // Default
+            return new EnvironmentProperties(new int[]{1000, 1000}, true); // Default
         }
 
         String[] parts = env.split(":");

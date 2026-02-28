@@ -3,31 +3,32 @@
 # The importer must satisfy this dependency with a USING clause.
 
 .REQUIRE "math.evo" AS MATH
+.SOURCE "constants.evo"
 
 # Move north (Y - 1), clamped to world bounds.
 .PROC NORTH EXPORT REF Y
   SUBI Y DATA:1
-  CALL MATH.CLAMP REF Y VAL DATA:0 DATA:99
+  CALL MATH.CLAMP REF Y VAL WORLD_MIN WORLD_MAX
   RET
 .ENDP
 
 # Move south (Y + 1), clamped to world bounds.
 .PROC SOUTH EXPORT REF Y
   ADDI Y DATA:1
-  CALL MATH.CLAMP REF Y VAL DATA:0 DATA:99
+  CALL MATH.CLAMP REF Y VAL WORLD_MIN WORLD_MAX
   RET
 .ENDP
 
 # Move east (X + 1), clamped to world bounds.
 .PROC EAST EXPORT REF X
   ADDI X DATA:1
-  CALL MATH.CLAMP REF X VAL DATA:0 DATA:99
+  CALL MATH.CLAMP REF X VAL WORLD_MIN WORLD_MAX
   RET
 .ENDP
 
 # Move west (X - 1), clamped to world bounds.
 .PROC WEST EXPORT REF X
   SUBI X DATA:1
-  CALL MATH.CLAMP REF X VAL DATA:0 DATA:99
+  CALL MATH.CLAMP REF X VAL WORLD_MIN WORLD_MAX
   RET
 .ENDP

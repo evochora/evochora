@@ -52,6 +52,7 @@ public class PreProcessorDirectiveRegistry {
         registry.register(".MACRO", new MacroDirectiveHandler());
         registry.register(".REPEAT", new RepeatDirectiveHandler());
         registry.register("^", new CaretDirectiveHandler());
+        registry.register(".POP_CTX", new PopCtxDirectiveHandler());
         if (moduleTokens != null) {
             registry.register(".IMPORT", new ImportSourceHandler(moduleTokens));
         }

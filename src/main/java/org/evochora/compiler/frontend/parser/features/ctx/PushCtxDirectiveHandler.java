@@ -8,7 +8,9 @@ import org.evochora.compiler.frontend.parser.ast.PushCtxNode;
 public class PushCtxDirectiveHandler implements IParserDirectiveHandler {
     @Override
     public AstNode parse(ParsingContext context) {
+        Object value = context.peek().value();
         context.advance(); // consume .PUSH_CTX
-        return new PushCtxNode();
+        String targetPath = (value instanceof String s) ? s : null;
+        return new PushCtxNode(targetPath);
     }
 }

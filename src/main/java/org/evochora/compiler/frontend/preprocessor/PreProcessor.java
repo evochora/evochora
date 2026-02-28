@@ -6,6 +6,7 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.preprocessor.features.macro.MacroDefinition;
 import java.nio.file.Path;
 import java.util.*;
+import java.util.Deque;
 
 /**
  * The preprocessor for the assembly language. It runs after the lexer and before the parser.
@@ -19,7 +20,8 @@ public class PreProcessor {
     private final PreProcessorDirectiveRegistry directiveRegistry;
     private final Path basePath;
     private int current = 0;
-    private final Set<String> includedFiles = new HashSet<>();
+    private final Deque<String> sourceChain = new ArrayDeque<>();
+    private final Deque<String> importChain = new ArrayDeque<>();
     private final PreProcessorContext ppContext = new PreProcessorContext();
     private final Map<String, String> includedFileContents = new HashMap<>();
 
@@ -252,20 +254,52 @@ public class PreProcessor {
     }
 
     /**
-     * Checks if a file has already been included to prevent circular or duplicate inclusion.
+     * Checks if a file is currently in the .SOURCE inclusion chain (circular detection).
+     * Unlike global dedup, this allows the same file to be sourced from different modules.
      * @param path The path of the file to check.
-     * @return true if the file has already been included, false otherwise.
+     * @return true if the file is in the current inclusion chain, false otherwise.
      */
-    public boolean hasAlreadyIncluded(String path) {
-        return includedFiles.contains(path);
+    public boolean isInSourceChain(String path) {
+        return sourceChain.contains(path);
     }
 
     /**
-     * Marks a file as having been included.
-     * @param path The path of the file to mark.
+     * Pushes a file onto the .SOURCE inclusion chain before inlining its tokens.
+     * @param path The path of the file being sourced.
      */
-    public void markAsIncluded(String path) {
-        includedFiles.add(path);
+    public void pushSourceChain(String path) {
+        sourceChain.push(path);
+    }
+
+    /**
+     * Pops the top entry from the .SOURCE inclusion chain after inlining completes.
+     */
+    public void popSourceChain() {
+        if (!sourceChain.isEmpty()) sourceChain.pop();
+    }
+
+    /**
+     * Checks if a module is currently in the .IMPORT inclusion chain (circular detection).
+     * @param path The resolved path of the module to check.
+     * @return true if the module is in the current inclusion chain, false otherwise.
+     */
+    public boolean isInImportChain(String path) {
+        return importChain.contains(path);
+    }
+
+    /**
+     * Pushes a module onto the .IMPORT inclusion chain before inlining its tokens.
+     * @param path The resolved path of the module being imported.
+     */
+    public void pushImportChain(String path) {
+        importChain.push(path);
+    }
+
+    /**
+     * Pops the top entry from the .IMPORT inclusion chain after inlining completes.
+     */
+    public void popImportChain() {
+        if (!importChain.isEmpty()) importChain.pop();
     }
 
     /**

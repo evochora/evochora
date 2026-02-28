@@ -9,6 +9,7 @@ import org.evochora.compiler.frontend.module.ModuleDescriptor;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
+import org.evochora.compiler.frontend.semantics.ModuleId;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.model.Token;
@@ -189,9 +190,15 @@ class UsingClauseIntegrationTest {
         List<AstNode> ast = parser.parse();
         if (diagnostics.hasErrors()) return diagnostics;
 
+        // Build file-to-module mapping
+        Map<String, ModuleId> fileToModule = new HashMap<>();
+        for (ModuleDescriptor module : graph.topologicalOrder()) {
+            fileToModule.put(module.sourcePath(), module.id());
+        }
+
         // Phase 4: Semantic analysis (module-aware)
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainPath);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainPath, fileToModule);
         analyzer.analyze(ast);
 
         return diagnostics;

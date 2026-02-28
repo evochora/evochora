@@ -4,7 +4,6 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.module.DependencyGraph;
 import org.evochora.compiler.frontend.module.ModuleDescriptor;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
-import org.evochora.compiler.frontend.parser.ast.SourceLocatable;
 import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
 import org.evochora.compiler.frontend.semantics.analysis.ISymbolCollector;
 
@@ -29,7 +28,7 @@ public class SemanticAnalyzer {
     private final SymbolTable symbolTable;
     private final AnalysisHandlerRegistry registry;
     private final Map<AstNode, SymbolTable.Scope> scopeMap = new HashMap<>();
-    private final Map<String, ModuleId> fileToModule = new HashMap<>();
+    private final ModuleContextTracker contextTracker;
 
     /**
      * Constructs a semantic analyzer without module support.
@@ -39,7 +38,7 @@ public class SemanticAnalyzer {
      * @param symbolTable The symbol table to use for analysis.
      */
     public SemanticAnalyzer(DiagnosticsEngine diagnostics, SymbolTable symbolTable) {
-        this(diagnostics, symbolTable, null, null);
+        this(diagnostics, symbolTable, null, null, new HashMap<>());
     }
 
     /**
@@ -49,11 +48,14 @@ public class SemanticAnalyzer {
      * @param symbolTable  The symbol table to use for analysis.
      * @param graph        The dependency graph from Phase 0. Null for single-file compilation.
      * @param mainFilePath The absolute path of the main source file. Null when graph is null.
+     * @param fileToModule Mapping from source file path to module ID, built by the Compiler.
      */
     public SemanticAnalyzer(DiagnosticsEngine diagnostics, SymbolTable symbolTable,
-                            DependencyGraph graph, String mainFilePath) {
+                            DependencyGraph graph, String mainFilePath,
+                            Map<String, ModuleId> fileToModule) {
         this.diagnostics = diagnostics;
         this.symbolTable = symbolTable;
+        this.contextTracker = new ModuleContextTracker(symbolTable, fileToModule);
         this.registry = AnalysisHandlerRegistry.initializeWithDefaults(symbolTable, scopeMap, diagnostics);
 
         if (graph != null) {
@@ -115,21 +117,8 @@ public class SemanticAnalyzer {
         }
     }
 
-    /**
-     * Switches the symbol table's current module context based on the source file
-     * of the given AST node. Only nodes implementing {@link SourceLocatable} carry
-     * source file information; other nodes are processed in the current context.
-     */
     private void switchModuleContext(AstNode node) {
-        if (fileToModule.isEmpty()) return;
-        if (node instanceof SourceLocatable locatable) {
-            String fileName = locatable.getSourceFileName();
-            if (fileName == null) return;
-            ModuleId moduleId = fileToModule.get(fileName);
-            if (moduleId != null && !moduleId.equals(symbolTable.getCurrentModuleId())) {
-                symbolTable.setCurrentModule(moduleId);
-            }
-        }
+        contextTracker.handleNode(node);
     }
 
     /**
@@ -151,7 +140,6 @@ public class SemanticAnalyzer {
                 modScope.requires().put(req.alias().toUpperCase(), req.path());
             }
 
-            fileToModule.put(module.sourcePath(), moduleId);
         }
 
         // Set up USING bindings: each USING clause on an import wires a source module
@@ -190,4 +178,5 @@ public class SemanticAnalyzer {
     public AnalysisHandlerRegistry getRegistry() {
         return registry;
     }
+
 }

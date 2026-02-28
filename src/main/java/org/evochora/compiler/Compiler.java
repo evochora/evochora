@@ -15,6 +15,8 @@ import org.evochora.compiler.frontend.module.ModuleDescriptor;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ast.PregNode;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
+import org.evochora.compiler.frontend.semantics.ModuleContextTracker;
+import org.evochora.compiler.frontend.semantics.ModuleId;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
@@ -181,9 +183,15 @@ public class Compiler implements ICompiler {
             throw new CompilationException(diagnostics.summary());
         }
 
+        // Build file-to-module mapping from dependency graph (shared by Phase 4 + 6)
+        Map<String, ModuleId> fileToModule = new HashMap<>();
+        for (ModuleDescriptor module : graph.topologicalOrder()) {
+            fileToModule.put(module.sourcePath(), module.id());
+        }
+
         // Phase 4: Semantic Analysis (symbol resolution, type checking)
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainFilePath);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainFilePath, fileToModule);
         analyzer.analyze(ast);
         if (diagnostics.hasErrors()) {
             throw new CompilationException(diagnostics.summary());
@@ -225,7 +233,8 @@ public class Compiler implements ICompiler {
             }
         }
         
-        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, astRegisterAliases);
+        ModuleContextTracker postProcessTracker = new ModuleContextTracker(symbolTable, fileToModule);
+        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, astRegisterAliases, postProcessTracker);
         
         // Process all AST nodes, not just the first one
         for (int i = 0; i < ast.size(); i++) {

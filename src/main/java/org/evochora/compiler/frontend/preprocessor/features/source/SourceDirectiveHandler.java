@@ -42,11 +42,13 @@ public class SourceDirectiveHandler implements IPreProcessorDirectiveHandler {
             String content = result.content();
             String logicalName = result.logicalName();
 
-            if (preProcessor.hasAlreadyIncluded(logicalName)) {
+            if (preProcessor.isInSourceChain(logicalName)) {
+                preProcessor.getDiagnostics().reportError(
+                        "Circular .SOURCE detected: " + pathValue, pathToken.fileName(), pathToken.line());
                 preProcessor.removeTokens(startIndex, endIndex - startIndex);
                 return;
             }
-            preProcessor.markAsIncluded(logicalName);
+            preProcessor.pushSourceChain(logicalName);
             preProcessor.addSourceContent(logicalName, content);
 
             Lexer lexer = new Lexer(content, preProcessor.getDiagnostics(), logicalName);
@@ -72,7 +74,7 @@ public class SourceDirectiveHandler implements IPreProcessorDirectiveHandler {
 
             // Inject context management directives
             newTokens.add(0, new Token(TokenType.DIRECTIVE, ".PUSH_CTX", null, pathToken.line(), 0, pathToken.fileName()));
-            newTokens.add(new Token(TokenType.DIRECTIVE, ".POP_CTX", null, pathToken.line(), 0, pathToken.fileName()));
+            newTokens.add(new Token(TokenType.DIRECTIVE, ".POP_CTX", "SOURCE", pathToken.line(), 0, pathToken.fileName()));
 
             preProcessor.removeTokens(startIndex, endIndex - startIndex);
             preProcessor.injectTokens(newTokens, 0);

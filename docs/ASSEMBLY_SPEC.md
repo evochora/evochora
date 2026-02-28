@@ -713,3 +713,36 @@ START:
 * `.SCOPE <Name> / .ENDS`: Defines a named scope. Labels defined inside a scope are only visible within that scope, preventing name collisions.
 
 ```
+.SCOPE INNER
+  LOOP: NOP
+  JMPI LOOP      # Refers to INNER.LOOP
+.ENDS
+```
+
+---
+
+## 8. Examples
+
+Complete, compilable example programs are provided in [`assembly/examples/`](../assembly/examples/):
+
+| File | Description |
+|---|---|
+| [`simple.evo`](../assembly/examples/simple.evo) | Basic syntax: register aliases, `.DEFINE`, `.PROC`, labels, loops |
+| [`complex.evo`](../assembly/examples/complex.evo) | Advanced features: `.PLACE`, `.MACRO`, `.REPEAT`, `.SOURCE`, multiple `.ORG` regions |
+| [`modules.evo`](../assembly/examples/modules.evo) | Module system: `.IMPORT`, `.REQUIRE`, `USING`, `.SOURCE` for shared constants, `EXPORT` |
+
+The module example consists of multiple files:
+
+| File | Role |
+|---|---|
+| [`modules/constants.evo`](../assembly/examples/modules/constants.evo) | Shared constants loaded via `.SOURCE` |
+| [`modules/math.evo`](../assembly/examples/modules/math.evo) | Standalone math utilities (no dependencies) |
+| [`modules/movement.evo`](../assembly/examples/modules/movement.evo) | Movement procedures, depends on math via `.REQUIRE` |
+
+To compile the examples using the CLI:
+
+```bash
+evochora compile --file=assembly/examples/simple.evo
+evochora compile --file=assembly/examples/complex.evo
+evochora compile --file=assembly/examples/modules.evo
+```
