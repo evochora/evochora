@@ -1,6 +1,9 @@
 package org.evochora.compiler.frontend.postprocess;
 
 import org.evochora.compiler.frontend.parser.ast.*;
+import org.evochora.compiler.frontend.parser.features.def.DefineNode;
+import org.evochora.compiler.frontend.semantics.ModuleContextTracker;
+import org.evochora.compiler.frontend.semantics.ModuleId;
 import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.model.Token;
@@ -11,6 +14,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -289,11 +293,117 @@ class AstPostProcessorTest {
         assertThat(registerToken.fileName()).isEqualTo("test.s");
     }
 
+    @Test
+    void testProcess_ConstantResolvedWithModuleContext() {
+        // Set up two modules with different values for the same constant name
+        ModuleId modA = new ModuleId("/mod_a.evo");
+        ModuleId modB = new ModuleId("/mod_b.evo");
+        ModuleId main = new ModuleId("/main.evo");
+
+        DiagnosticsEngine diags = new DiagnosticsEngine();
+        SymbolTable st = new SymbolTable(diags);
+        st.registerModule(main, main.path());
+        st.registerModule(modA, modA.path());
+        st.registerModule(modB, modB.path());
+        st.setCurrentModule(main);
+
+        Map<String, ModuleId> fileToModule = new HashMap<>();
+        fileToModule.put(main.path(), main);
+        fileToModule.put(modA.path(), modA);
+        fileToModule.put(modB.path(), modB);
+
+        // Define STEP=10 in module A context
+        st.setCurrentModule(modA);
+        Token stepTokenA = new Token(TokenType.IDENTIFIER, "STEP", null, 1, 1, modA.path());
+        st.define(new Symbol(stepTokenA, Symbol.Type.CONSTANT));
+
+        // Define STEP=1 in module B context
+        st.setCurrentModule(modB);
+        Token stepTokenB = new Token(TokenType.IDENTIFIER, "STEP", null, 1, 1, modB.path());
+        st.define(new Symbol(stepTokenB, Symbol.Type.CONSTANT));
+
+        st.setCurrentModule(main);
+
+        TypedLiteralNode valueA = new TypedLiteralNode(
+                new Token(TokenType.IDENTIFIER, "DATA", null, 1, 1, modA.path()),
+                new Token(TokenType.NUMBER, "10", 10, 1, 1, modA.path()));
+        TypedLiteralNode valueB = new TypedLiteralNode(
+                new Token(TokenType.IDENTIFIER, "DATA", null, 1, 1, modB.path()),
+                new Token(TokenType.NUMBER, "1", 1, 1, 1, modB.path()));
+
+        DefineNode defineA = new DefineNode(stepTokenA, valueA);
+        DefineNode defineB = new DefineNode(stepTokenB, valueB);
+
+        IdentifierNode useA = new IdentifierNode(
+                new Token(TokenType.IDENTIFIER, "STEP", null, 2, 1, modA.path()));
+        IdentifierNode useB = new IdentifierNode(
+                new Token(TokenType.IDENTIFIER, "STEP", null, 2, 1, modB.path()));
+
+        InstructionNode instrA = new InstructionNode(
+                new Token(TokenType.OPCODE, "SETI", null, 2, 1, modA.path()),
+                List.of(new RegisterNode("%DR0", createSourceInfo(),
+                        new Token(TokenType.REGISTER, "%DR0", null, 2, 1, modA.path())), useA));
+        InstructionNode instrB = new InstructionNode(
+                new Token(TokenType.OPCODE, "SETI", null, 2, 1, modB.path()),
+                List.of(new RegisterNode("%DR1", createSourceInfo(),
+                        new Token(TokenType.REGISTER, "%DR1", null, 2, 1, modB.path())), useB));
+
+        // Process each node individually (matching how the Compiler calls process() per top-level node)
+        ModuleContextTracker tracker = new ModuleContextTracker(st, fileToModule);
+        AstPostProcessor moduleProcessor = new AstPostProcessor(st, new HashMap<>(), tracker);
+
+        List<AstNode> nodes = List.of(
+                new PushCtxNode(modA.path()), defineA, instrA, new PopCtxNode(),
+                new PushCtxNode(modB.path()), defineB, instrB, new PopCtxNode()
+        );
+        List<AstNode> results = new ArrayList<>();
+        for (AstNode node : nodes) {
+            results.add(moduleProcessor.process(node));
+        }
+
+        InstructionNode resultA = (InstructionNode) results.get(2);
+        InstructionNode resultB = (InstructionNode) results.get(6);
+
+        // Module A should have STEP=10
+        assertThat(resultA.arguments().get(1)).isInstanceOf(TypedLiteralNode.class);
+        assertThat(((TypedLiteralNode) resultA.arguments().get(1)).value().text()).isEqualTo("10");
+
+        // Module B should have STEP=1
+        assertThat(resultB.arguments().get(1)).isInstanceOf(TypedLiteralNode.class);
+        assertThat(((TypedLiteralNode) resultB.arguments().get(1)).value().text()).isEqualTo("1");
+    }
+
+    @Test
+    void testProcess_SingleFileConstantResolutionStillWorks() {
+        // Verify single-file mode (no module context) still resolves constants
+        Token nameToken = createToken("MY_CONST", TokenType.IDENTIFIER);
+        symbolTable.define(new Symbol(nameToken, Symbol.Type.CONSTANT));
+
+        TypedLiteralNode constValue = new TypedLiteralNode(
+                new Token(TokenType.IDENTIFIER, "DATA", null, 1, 1, "test.s"),
+                new Token(TokenType.NUMBER, "99", 99, 1, 1, "test.s"));
+        DefineNode defineNode = new DefineNode(nameToken, constValue);
+
+        IdentifierNode useNode = new IdentifierNode(createToken("MY_CONST", TokenType.IDENTIFIER));
+        InstructionNode instr = new InstructionNode(
+                createToken("SETI", TokenType.OPCODE),
+                List.of(new RegisterNode("%DR0", createSourceInfo(),
+                        createToken("%DR0", TokenType.REGISTER)), useNode));
+
+        // Process each node individually (matching the real Compiler pattern)
+        processor.process(defineNode);
+        AstNode resultInstr = processor.process(instr);
+
+        assertThat(resultInstr).isInstanceOf(InstructionNode.class);
+        assertThat(((InstructionNode) resultInstr).arguments().get(1)).isInstanceOf(TypedLiteralNode.class);
+        assertThat(((TypedLiteralNode) ((InstructionNode) resultInstr).arguments().get(1)).value().text()).isEqualTo("99");
+    }
+
     // Helper methods
     private Token createToken(String text, TokenType type) {
         return new Token(type, text, null, 10, 5, "test.s");
     }
-    
+
     private SourceInfo createSourceInfo() {
         return new SourceInfo("test.s", 10, 5);
     }

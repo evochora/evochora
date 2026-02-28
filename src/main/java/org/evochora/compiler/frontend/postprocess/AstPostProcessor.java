@@ -4,6 +4,7 @@ import org.evochora.compiler.frontend.TreeWalker;
 import org.evochora.compiler.frontend.parser.ast.*;
 import org.evochora.compiler.frontend.parser.features.def.DefineNode;
 import org.evochora.compiler.frontend.semantics.ModuleContextTracker;
+import org.evochora.compiler.frontend.semantics.ModuleId;
 import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.model.Token;
@@ -23,7 +24,8 @@ public class AstPostProcessor {
     private final SymbolTable symbolTable;
     private final ModuleContextTracker contextTracker;
     private final Map<String, String> registerAliases;    // %COUNTER -> %DR0, %TMP -> %PR0
-    private final Map<String, TypedLiteralNode> constants; // MAX_VALUE -> TypedLiteralNode(DATA, 42)
+    // Module-qualified constants: modulePath -> (constantName -> value)
+    private final Map<String, Map<String, TypedLiteralNode>> constants;
     private final Map<AstNode, AstNode> replacements = new HashMap<>();
 
     /**
@@ -95,15 +97,22 @@ public class AstPostProcessor {
         Optional<Symbol> symbolOpt = symbolTable.resolve(idNode.identifierToken());
         if (symbolOpt.isPresent()) {
             Symbol symbol = symbolOpt.get();
-            if (symbol.type() == Symbol.Type.CONSTANT && constants.containsKey(identifierName)) {
-                TypedLiteralNode constantValue = constants.get(identifierName);
-                // Replace the identifier with the constant value
-                replacements.put(idNode, constantValue);
+            if (symbol.type() == Symbol.Type.CONSTANT) {
+                String moduleKey = currentModuleKey();
+                Map<String, TypedLiteralNode> moduleConstants = constants.get(moduleKey);
+                if (moduleConstants != null && moduleConstants.containsKey(identifierName)) {
+                    replacements.put(idNode, moduleConstants.get(identifierName));
+                }
             }
         }
     }
     
     
+    private String currentModuleKey() {
+        ModuleId moduleId = symbolTable.getCurrentModuleId();
+        return moduleId != null ? moduleId.path() : "";
+    }
+
     /**
      * Creates a RegisterNode replacement for an identifier that resolves to a register alias.
      *
@@ -145,11 +154,11 @@ public class AstPostProcessor {
         if (!(node instanceof DefineNode defineNode)) {
             return;
         }
-        
-        // Extract the constant name and value
+
         String constantName = defineNode.name().text();
         if (defineNode.value() instanceof TypedLiteralNode typedValue) {
-            constants.put(constantName, typedValue);
+            String moduleKey = currentModuleKey();
+            constants.computeIfAbsent(moduleKey, k -> new HashMap<>()).put(constantName, typedValue);
         }
     }
 }

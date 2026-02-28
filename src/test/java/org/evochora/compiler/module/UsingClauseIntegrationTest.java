@@ -11,6 +11,7 @@ import org.evochora.compiler.frontend.parser.ast.AstNode;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.semantics.ModuleId;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
+import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.model.Token;
 import org.evochora.compiler.model.TokenType;
@@ -151,17 +152,90 @@ class UsingClauseIntegrationTest {
         assertErrorContaining(diagnostics, "B", "no USING clause provides it");
     }
 
+    @Test
+    @Tag("integration")
+    void usingResolvesQualifiedSymbolCorrectly() throws Exception {
+        // dep.evo: exported label HARVEST
+        Files.writeString(tempDir.resolve("dep.evo"), "HARVEST: EXPORT\n  NOP\n");
+
+        // lib.evo: requires DEP, references DEP.HARVEST
+        Files.writeString(tempDir.resolve("lib.evo"),
+                ".REQUIRE \"dep.evo\" AS DEP\nWORK: EXPORT\n  JMPI DEP.HARVEST\n");
+
+        String mainSource = ".IMPORT \"dep.evo\" AS D\n.IMPORT \"lib.evo\" AS LIB USING D AS DEP\nNOP\n";
+        String mainPath = tempDir.resolve("main.evo").toString();
+
+        SemanticsResult result = compileThroughSemanticsWithSymbols(mainSource, mainPath);
+
+        assertThat(result.diagnostics.hasErrors())
+                .as("Expected no errors but got: %s", result.diagnostics.getDiagnostics())
+                .isFalse();
+
+        // Verify that DEP.HARVEST resolves to a LABEL symbol from dep.evo
+        String depPath = tempDir.resolve("dep.evo").normalize().toString().replace('\\', '/');
+        SymbolTable st = result.symbolTable;
+        st.setCurrentModule(new ModuleId(
+                tempDir.resolve("lib.evo").normalize().toString().replace('\\', '/')));
+
+        Token lookupToken = new Token(TokenType.IDENTIFIER, "DEP.HARVEST", null, 1, 1, depPath);
+        var resolved = st.resolve(lookupToken);
+        assertThat(resolved).isPresent();
+        assertThat(resolved.get().type()).isEqualTo(Symbol.Type.LABEL);
+        assertThat(resolved.get().name().text()).isEqualToIgnoringCase("HARVEST");
+    }
+
+    @Test
+    @Tag("integration")
+    void usingWithSourcedConstantsInRequiredModule() throws Exception {
+        // consts.evo: shared constants
+        Files.writeString(tempDir.resolve("consts.evo"),
+                ".DEFINE AMOUNT DATA:5\n");
+
+        // math.evo: standalone, exports ADD_CONST
+        Files.writeString(tempDir.resolve("math.evo"),
+                ".SOURCE \"consts.evo\"\n" +
+                ".PROC ADD_CONST EXPORT REF X\n" +
+                "  ADDI X AMOUNT\n" +
+                "  RET\n" +
+                ".ENDP\n");
+
+        // user.evo: requires MATH, calls MATH.ADD_CONST
+        Files.writeString(tempDir.resolve("user.evo"),
+                ".REQUIRE \"math.evo\" AS MATH\n" +
+                ".PROC DO_WORK EXPORT REF V\n" +
+                "  CALL MATH.ADD_CONST REF V\n" +
+                "  RET\n" +
+                ".ENDP\n");
+
+        String mainSource = ".IMPORT \"math.evo\" AS M\n" +
+                ".IMPORT \"user.evo\" AS U USING M AS MATH\n" +
+                "SETI %DR0 DATA:10\nCALL U.DO_WORK REF %DR0\n";
+        String mainPath = tempDir.resolve("main.evo").toString();
+
+        SemanticsResult result = compileThroughSemanticsWithSymbols(mainSource, mainPath);
+
+        assertThat(result.diagnostics.hasErrors())
+                .as("Expected no errors but got: %s", result.diagnostics.getDiagnostics())
+                .isFalse();
+    }
+
+    private record SemanticsResult(DiagnosticsEngine diagnostics, SymbolTable symbolTable) {}
+
+    private DiagnosticsEngine compileThroughSemantics(String mainSource, String mainPath) {
+        return compileThroughSemanticsWithSymbols(mainSource, mainPath).diagnostics;
+    }
+
     /**
      * Runs the full compilation pipeline through semantic analysis.
      * Mirrors the phases in Compiler.java (Phase 0 through Phase 4).
      */
-    private DiagnosticsEngine compileThroughSemantics(String mainSource, String mainPath) {
+    private SemanticsResult compileThroughSemanticsWithSymbols(String mainSource, String mainPath) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
 
         // Phase 0: Dependency scanning
         DependencyScanner scanner = new DependencyScanner(diagnostics);
         DependencyGraph graph = scanner.scan(mainSource, mainPath, tempDir);
-        if (diagnostics.hasErrors()) return diagnostics;
+        if (diagnostics.hasErrors()) return new SemanticsResult(diagnostics, null);
 
         // Phase 1: Lex all modules
         Map<String, List<Token>> moduleTokens = new HashMap<>();
@@ -183,12 +257,12 @@ class UsingClauseIntegrationTest {
         PreProcessor preProcessor = new PreProcessor(mainTokens, diagnostics, tempDir,
                 moduleTokens.isEmpty() ? null : moduleTokens);
         List<Token> processedTokens = preProcessor.expand();
-        if (diagnostics.hasErrors()) return diagnostics;
+        if (diagnostics.hasErrors()) return new SemanticsResult(diagnostics, null);
 
         // Phase 3: Parsing
         Parser parser = new Parser(processedTokens, diagnostics);
         List<AstNode> ast = parser.parse();
-        if (diagnostics.hasErrors()) return diagnostics;
+        if (diagnostics.hasErrors()) return new SemanticsResult(diagnostics, null);
 
         // Build file-to-module mapping
         Map<String, ModuleId> fileToModule = new HashMap<>();
@@ -201,7 +275,7 @@ class UsingClauseIntegrationTest {
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainPath, fileToModule);
         analyzer.analyze(ast);
 
-        return diagnostics;
+        return new SemanticsResult(diagnostics, symbolTable);
     }
 
     private void assertErrorContaining(DiagnosticsEngine diagnostics, String... substrings) {

@@ -70,4 +70,49 @@ public class RequireDirectiveTest {
 
         assertThat(diagnostics.hasErrors()).isTrue();
     }
+
+    @Test
+    @Tag("unit")
+    void missingAliasReportsError() {
+        String source = ".REQUIRE \"dependency.evo\" AS";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics);
+        List<Token> tokens = lexer.scanTokens();
+        Parser parser = new Parser(tokens, diagnostics);
+        parser.parse();
+
+        assertThat(diagnostics.hasErrors()).isTrue();
+    }
+
+    @Test
+    @Tag("unit")
+    void requireNodeRetainsSourceFileName() {
+        String source = ".REQUIRE \"math.evo\" AS MATH";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics, "main.evo");
+        List<Token> tokens = lexer.scanTokens();
+        Parser parser = new Parser(tokens, diagnostics);
+
+        List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
+
+        assertThat(diagnostics.hasErrors()).isFalse();
+        RequireNode node = (RequireNode) ast.get(0);
+        assertThat(node.getSourceFileName()).isEqualTo("main.evo");
+    }
+
+    @Test
+    @Tag("unit")
+    void requireNodeChildrenAreEmpty() {
+        String source = ".REQUIRE \"utils.evo\" AS UTILS";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics);
+        List<Token> tokens = lexer.scanTokens();
+        Parser parser = new Parser(tokens, diagnostics);
+
+        List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
+
+        assertThat(diagnostics.hasErrors()).isFalse();
+        RequireNode node = (RequireNode) ast.get(0);
+        assertThat(node.getChildren()).isEmpty();
+    }
 }

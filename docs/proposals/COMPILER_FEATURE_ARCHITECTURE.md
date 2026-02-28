@@ -43,7 +43,7 @@ registration file. No phase code is touched.
 | 12 | **source** | 0, 2 | SourceDirectiveHandler, SourceLoader |
 | 13 | **macro** | 2 | MacroDirectiveHandler, MacroDefinition, + hardcoded expandMacro() in PreProcessor |
 | 14 | **repeat** | 2 | RepeatDirectiveHandler, CaretDirectiveHandler |
-| 15 | **ctx** | 2, 3, 7, 9 | PushCtxNode, PopCtxNode, PushCtxDirectiveHandler, PopCtxDirectiveHandler, PushCtxNodeConverter, PopCtxNodeConverter, PushCtxLayoutHandler, PopCtxLayoutHandler |
+| 15 | **ctx** | 2, 3, 7, 9 | PushCtxNode, PopCtxNode, PopCtxDirectiveHandler (preprocessor), PushCtxDirectiveHandler (parser), PopCtxDirectiveHandler (parser), PushCtxNodeConverter, PopCtxNodeConverter, PushCtxLayoutHandler, PopCtxLayoutHandler |
 
 ---
 
@@ -207,15 +207,17 @@ org.evochora.compiler
 │   └── ctx/
 │       ├── PushCtxNode.java
 │       ├── PopCtxNode.java
-│       ├── PushCtxDirectiveHandler.java
-│       ├── PopCtxDirectiveHandler.java
+│       ├── CtxPopPreProcessorHandler.java  # Preprocessor-level .POP_CTX (chain popping)
+│       ├── PushCtxDirectiveHandler.java    # Parser-level .PUSH_CTX
+│       ├── PopCtxDirectiveHandler.java     # Parser-level .POP_CTX
 │       ├── PushCtxNodeConverter.java
 │       ├── PopCtxNodeConverter.java
 │       ├── PushCtxLayoutHandler.java
 │       ├── PopCtxLayoutHandler.java
 │       └── CtxFeature.java
 ├── util/                               # Infrastructure utilities
-│   └── SourceLoader.java
+│   ├── SourceLoader.java
+│   └── ModuleContextTracker.java       # Shared by Phase 4 + Phase 6
 ├── api/                                # Public API (unchanged)
 ├── internal/                           # API serialization helpers (unchanged)
 ├── CompilerFeature.java                # Feature registration interface
@@ -408,7 +410,7 @@ registration class, and updates the corresponding registry initialization.
 | D1 | repeat | RepeatDirectiveHandler, CaretDirectiveHandler | RepeatFeature.java |
 | D2 | source | SourceDirectiveHandler | SourceFeature.java |
 | D3 | macro | MacroDirectiveHandler, MacroDefinition, MacroExpansionHandler | MacroFeature.java |
-| D4 | ctx | PushCtx/PopCtx Nodes + Handlers + Converters + LayoutHandlers | CtxFeature.java |
+| D4 | ctx | PushCtx/PopCtx Nodes + Parser Handlers + Preprocessor PopCtxHandler + Converters + LayoutHandlers | CtxFeature.java |
 | D5 | org | OrgNode, OrgDirectiveHandler, OrgNodeConverter, OrgLayoutHandler | OrgFeature.java |
 | D6 | dir | DirNode, DirDirectiveHandler, DirNodeConverter, DirLayoutHandler | DirFeature.java |
 | D7 | define | DefineNode, DefineDirectiveHandler, DefineAnalysisHandler, DefinePostProcessHandler, DefineNodeConverter | DefineFeature.java |
@@ -430,7 +432,7 @@ Order rationale: start with simple features (few phases), end with complex ones
 |------|-------------|
 | E1 | Wire `CompilerFeature` registration in Compiler.java: create all features, register via `FeatureRegistrationContext`, replace all `initializeWithDefaults()` in registries. |
 | E2 | Delete empty `frontend/*/features/` directories. |
-| E3 | Move remaining shared types (SymbolTable, Symbol, ModuleId, ModuleDescriptor, DependencyGraph, SourceLoader) to `compiler/model/` and `compiler/util/`. |
+| E3 | Move remaining shared types (SymbolTable, Symbol, ModuleId, ModuleDescriptor, DependencyGraph, ModuleContextTracker, SourceLoader) to `compiler/model/` and `compiler/util/`. |
 
 ### Phase F: Cleanup (optional, low priority)
 
