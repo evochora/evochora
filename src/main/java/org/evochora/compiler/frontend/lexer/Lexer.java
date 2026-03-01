@@ -1,8 +1,8 @@
 package org.evochora.compiler.frontend.lexer;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.model.Token;
-import org.evochora.compiler.model.TokenType;
+import org.evochora.compiler.model.token.Token;
+import org.evochora.compiler.model.token.TokenType;
 
 import java.util.ArrayList;
 import java.util.List;

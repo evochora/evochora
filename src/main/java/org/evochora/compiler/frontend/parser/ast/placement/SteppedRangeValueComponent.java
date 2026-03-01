@@ -1,6 +1,6 @@
 package org.evochora.compiler.frontend.parser.ast.placement;
 
-import org.evochora.compiler.model.Token;
+import org.evochora.compiler.model.token.Token;
 
 /**
  * Represents a range with a start, step, and end value (e.g., 10:2:20).

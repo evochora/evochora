@@ -1,6 +1,6 @@
 package org.evochora.compiler.frontend.parser.ast.placement;
 
-import org.evochora.compiler.model.Token;
+import org.evochora.compiler.model.token.Token;
 
 /**
  * Represents a single integer value in a .PLACE directive.

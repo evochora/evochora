@@ -1,6 +1,6 @@
 package org.evochora.compiler.frontend.parser.ast;
 
-import org.evochora.compiler.model.Token;
+import org.evochora.compiler.model.token.Token;
 
 /**
  * An AST node that represents a generic identifier,

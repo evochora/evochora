@@ -1,4 +1,4 @@
-package org.evochora.compiler.model;
+package org.evochora.compiler.model.token;
 
 /**
  * Defines the different types of tokens recognized during lexical analysis.

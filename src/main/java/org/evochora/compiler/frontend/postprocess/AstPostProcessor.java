@@ -7,8 +7,8 @@ import org.evochora.compiler.frontend.semantics.ModuleContextTracker;
 import org.evochora.compiler.frontend.semantics.ModuleId;
 import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
-import org.evochora.compiler.model.Token;
-import org.evochora.compiler.model.TokenType;
+import org.evochora.compiler.model.token.Token;
+import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.api.SourceInfo;
 
 import java.util.HashMap;

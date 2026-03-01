@@ -1,7 +1,7 @@
 package org.evochora.compiler.frontend.parser.ast;
 
 import org.evochora.compiler.api.SourceInfo;
-import org.evochora.compiler.model.Token;
+import org.evochora.compiler.model.token.Token;
 
 /**
  * AST node representing a .PREG directive within a procedure.

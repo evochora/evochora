@@ -1,8 +1,8 @@
 package org.evochora.compiler.frontend.parser.features.importdir;
 
 import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
-import org.evochora.compiler.model.Token;
-import org.evochora.compiler.model.TokenType;
+import org.evochora.compiler.model.token.Token;
+import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.parser.ParsingContext;
 import org.evochora.compiler.frontend.parser.ast.AstNode;
 

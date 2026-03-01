@@ -1,4 +1,4 @@
-package org.evochora.compiler.model;
+package org.evochora.compiler.model.token;
 
 /**
  * Represents a single token extracted from the source code by the Lexer.

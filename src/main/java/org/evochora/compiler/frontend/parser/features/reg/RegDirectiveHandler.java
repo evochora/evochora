@@ -1,7 +1,7 @@
 package org.evochora.compiler.frontend.parser.features.reg;
 
-import org.evochora.compiler.model.Token;
-import org.evochora.compiler.model.TokenType;
+import org.evochora.compiler.model.token.Token;
+import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParsingContext;
@@ -42,7 +42,7 @@ public class RegDirectiveHandler implements IParserDirectiveHandler {
             Token numTok = context.advance();
             int idx = (int) numTok.value();
             String text = "%DR" + idx;
-            register = new org.evochora.compiler.model.Token(
+            register = new org.evochora.compiler.model.token.Token(
                     TokenType.REGISTER,
                     text,
                     null,

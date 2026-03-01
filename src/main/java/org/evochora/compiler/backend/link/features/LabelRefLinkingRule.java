@@ -41,7 +41,7 @@ public class LabelRefLinkingRule implements ILinkingRule {
                 String labelNameToFind = ref.labelName();
 
                 if (labelNameToFind.contains(".")) {
-                    var symbolOpt = symbolTable.resolve(new org.evochora.compiler.model.Token(
+                    var symbolOpt = symbolTable.resolve(new org.evochora.compiler.model.token.Token(
                             null, labelNameToFind, null, instruction.source().lineNumber(), 0, instruction.source().fileName()
                     ));
                     if (symbolOpt.isPresent()) {

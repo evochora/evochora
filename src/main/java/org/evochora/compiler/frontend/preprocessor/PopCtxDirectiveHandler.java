@@ -1,6 +1,6 @@
 package org.evochora.compiler.frontend.preprocessor;
 
-import org.evochora.compiler.model.Token;
+import org.evochora.compiler.model.token.Token;
 
 /**
  * Handles the internal {@code .POP_CTX} directive in the preprocessor phase.
