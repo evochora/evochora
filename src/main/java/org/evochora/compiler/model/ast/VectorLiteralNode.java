@@ -1,16 +1,18 @@
 package org.evochora.compiler.model.ast;
 
-import org.evochora.compiler.model.token.Token;
+import org.evochora.compiler.api.SourceInfo;
 
 import java.util.List;
 
 /**
  * An AST node that represents a vector literal, e.g., "3|21".
  *
- * @param components A list of tokens that represent the individual numbers of the vector.
+ * @param values The integer values of the vector components.
+ * @param sourceInfo The source location where this literal appeared.
  */
 public record VectorLiteralNode(
-        List<Token> components
-) implements AstNode {
+        List<Integer> values,
+        SourceInfo sourceInfo
+) implements AstNode, ISourceLocatable {
     // This node has no children and inherits the empty list from getChildren().
 }

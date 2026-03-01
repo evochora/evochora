@@ -1,16 +1,18 @@
 package org.evochora.compiler.model.ast;
 
-import org.evochora.compiler.model.token.Token;
+import org.evochora.compiler.api.SourceInfo;
 
 /**
  * An AST node that represents a typed literal, e.g., "DATA:42".
  *
- * @param type The token containing the type of the literal (e.g., DATA).
- * @param value The token containing the numeric value.
+ * @param typeName The name of the type (e.g., "DATA").
+ * @param value The integer value of the literal.
+ * @param sourceInfo The source location where this literal appeared.
  */
 public record TypedLiteralNode(
-        Token type,
-        Token value
-) implements AstNode {
+        String typeName,
+        int value,
+        SourceInfo sourceInfo
+) implements AstNode, ISourceLocatable {
     // This node has no children and inherits the empty list from getChildren().
 }

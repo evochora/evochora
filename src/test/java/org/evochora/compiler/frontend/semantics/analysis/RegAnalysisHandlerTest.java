@@ -41,9 +41,8 @@ class RegAnalysisHandlerTest {
         handler.analyze(regNode, symbolTable, diagnostics);
 
         assertFalse(diagnostics.hasErrors());
-        Token counterToken = new Token(TokenType.IDENTIFIER, "COUNTER", null, 1, 1, "test.s");
-        assertTrue(symbolTable.resolve(counterToken).isPresent());
-        assertEquals(Symbol.Type.ALIAS, symbolTable.resolve(counterToken).get().type());
+        assertTrue(symbolTable.resolve("COUNTER", "test.s").isPresent());
+        assertEquals(Symbol.Type.ALIAS, symbolTable.resolve("COUNTER", "test.s").get().type());
     }
 
     @Test
@@ -56,9 +55,8 @@ class RegAnalysisHandlerTest {
         handler.analyze(regNode, symbolTable, diagnostics);
 
         assertFalse(diagnostics.hasErrors());
-        Token positionToken = new Token(TokenType.IDENTIFIER, "POSITION", null, 1, 1, "test.s");
-        assertTrue(symbolTable.resolve(positionToken).isPresent());
-        assertEquals(Symbol.Type.ALIAS, symbolTable.resolve(positionToken).get().type());
+        assertTrue(symbolTable.resolve("POSITION", "test.s").isPresent());
+        assertEquals(Symbol.Type.ALIAS, symbolTable.resolve("POSITION", "test.s").get().type());
     }
 
     @Test
@@ -71,8 +69,7 @@ class RegAnalysisHandlerTest {
         handler.analyze(regNode, symbolTable, diagnostics);
 
         assertFalse(diagnostics.hasErrors());
-        Token targetToken = new Token(TokenType.IDENTIFIER, "TARGET", null, 1, 1, "test.s");
-        assertTrue(symbolTable.resolve(targetToken).isPresent());
+        assertTrue(symbolTable.resolve("TARGET", "test.s").isPresent());
     }
 
     @Test
@@ -85,8 +82,7 @@ class RegAnalysisHandlerTest {
         handler.analyze(regNode, symbolTable, diagnostics);
 
         assertTrue(diagnostics.hasErrors());
-        Token invalidToken = new Token(TokenType.IDENTIFIER, "INVALID", null, 1, 1, "test.s");
-        assertFalse(symbolTable.resolve(invalidToken).isPresent());
+        assertFalse(symbolTable.resolve("INVALID", "test.s").isPresent());
     }
 
     @Test
@@ -99,8 +95,7 @@ class RegAnalysisHandlerTest {
         handler.analyze(regNode, symbolTable, diagnostics);
 
         assertTrue(diagnostics.hasErrors());
-        Token invalidToken = new Token(TokenType.IDENTIFIER, "INVALID", null, 1, 1, "test.s");
-        assertFalse(symbolTable.resolve(invalidToken).isPresent());
+        assertFalse(symbolTable.resolve("INVALID", "test.s").isPresent());
     }
 
     @Test
@@ -113,8 +108,7 @@ class RegAnalysisHandlerTest {
         handler.analyze(regNode, symbolTable, diagnostics);
 
         assertTrue(diagnostics.hasErrors());
-        Token invalidToken = new Token(TokenType.IDENTIFIER, "INVALID", null, 1, 1, "test.s");
-        assertFalse(symbolTable.resolve(invalidToken).isPresent());
+        assertFalse(symbolTable.resolve("INVALID", "test.s").isPresent());
     }
 
     @Test
@@ -127,8 +121,7 @@ class RegAnalysisHandlerTest {
         handler.analyze(regNode, symbolTable, diagnostics);
 
         assertTrue(diagnostics.hasErrors());
-        Token invalidToken = new Token(TokenType.IDENTIFIER, "INVALID", null, 1, 1, "test.s");
-        assertFalse(symbolTable.resolve(invalidToken).isPresent());
+        assertFalse(symbolTable.resolve("INVALID", "test.s").isPresent());
     }
 
     @Test
@@ -141,7 +134,6 @@ class RegAnalysisHandlerTest {
         handler.analyze(regNode, symbolTable, diagnostics);
 
         assertTrue(diagnostics.hasErrors());
-        Token invalidToken = new Token(TokenType.IDENTIFIER, "INVALID", null, 1, 1, "test.s");
-        assertFalse(symbolTable.resolve(invalidToken).isPresent());
+        assertFalse(symbolTable.resolve("INVALID", "test.s").isPresent());
     }
 }

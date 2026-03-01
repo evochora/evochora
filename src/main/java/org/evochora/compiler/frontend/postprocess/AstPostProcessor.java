@@ -10,8 +10,6 @@ import org.evochora.compiler.frontend.semantics.ModuleContextTracker;
 import org.evochora.compiler.frontend.semantics.ModuleId;
 import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
-import org.evochora.compiler.model.token.Token;
-import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.api.SourceInfo;
 
 import java.util.HashMap;
@@ -85,7 +83,7 @@ public class AstPostProcessor {
             return;
         }
         
-        String identifierName = idNode.identifierToken().text();
+        String identifierName = idNode.text();
         
         // Check if this identifier is a register alias
         // Register aliases are stored with UPPERCASE names as keys
@@ -97,7 +95,7 @@ public class AstPostProcessor {
         }
         
         // Check if this identifier is a constant
-        Optional<Symbol> symbolOpt = symbolTable.resolve(idNode.identifierToken());
+        Optional<Symbol> symbolOpt = symbolTable.resolve(idNode.text(), idNode.sourceInfo().fileName());
         if (symbolOpt.isPresent()) {
             Symbol symbol = symbolOpt.get();
             if (symbol.type() == Symbol.Type.CONSTANT) {
@@ -128,27 +126,12 @@ public class AstPostProcessor {
             throw new IllegalArgumentException("Expected IdentifierNode, got: " + originalNode.getClass().getSimpleName());
         }
         
-        SourceInfo sourceInfo = new SourceInfo(
-            idNode.identifierToken().fileName(),
-            idNode.identifierToken().line(),
-            idNode.identifierToken().column()
-        );
-        
-        // Create a new token representing the resolved register
-        Token resolvedRegisterToken = new Token(
-            TokenType.REGISTER,
-            resolvedRegister,
-            null,
-            sourceInfo.lineNumber(),
-            sourceInfo.columnNumber(),
-            sourceInfo.fileName()
-        );
-        
+        SourceInfo sourceInfo = idNode.sourceInfo();
+
         RegisterNode replacement = new RegisterNode(
             resolvedRegister,
             aliasName,
-            sourceInfo,
-            resolvedRegisterToken
+            sourceInfo
         );
         replacements.put(originalNode, replacement);
     }

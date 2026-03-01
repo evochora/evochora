@@ -26,7 +26,7 @@ public final class DirNodeConverter implements IAstNodeToIrConverter<DirNode> {
 	@Override
 	public void convert(DirNode node, IrGenContext ctx) {
 		if (node.directionVector() instanceof VectorLiteralNode v) {
-			int[] comps = v.components().stream().mapToInt(tok -> Integer.parseInt(tok.text())).toArray();
+			int[] comps = v.values().stream().mapToInt(Integer::intValue).toArray();
 			Map<String, IrValue> args = new HashMap<>();
 			args.put("direction", new IrValue.Vector(comps));
 			ctx.emit(new IrDirective("core", "dir", args, ctx.sourceOf(node)));

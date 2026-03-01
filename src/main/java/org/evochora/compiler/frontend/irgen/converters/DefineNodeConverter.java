@@ -36,7 +36,7 @@ public final class DefineNodeConverter implements IAstNodeToIrConverter<DefineNo
             ctx.registerConstant(nameUpper, value);
         } else if (node.value() instanceof IdentifierNode id) {
             // Allow constant aliasing: resolve later as label if needed
-            ctx.registerConstant(nameUpper, new org.evochora.compiler.model.ir.IrLabelRef(id.identifierToken().text()));
+            ctx.registerConstant(nameUpper, new org.evochora.compiler.model.ir.IrLabelRef(id.text()));
         }
         // .DEFINE does not emit IR by itself
     }
@@ -49,13 +49,13 @@ public final class DefineNodeConverter implements IAstNodeToIrConverter<DefineNo
      */
     private IrOperand toOperand(AstNode value) {
         if (value instanceof NumberLiteralNode n) {
-            return new IrImm(n.getValue());
+            return new IrImm(n.value());
         }
         if (value instanceof TypedLiteralNode t) {
-            return new IrTypedImm(t.type().text(), Integer.parseInt(t.value().text()));
+            return new IrTypedImm(t.typeName(), t.value());
         }
         if (value instanceof VectorLiteralNode v) {
-            int[] comps = v.components().stream().mapToInt(tok -> Integer.parseInt(tok.text())).toArray();
+            int[] comps = v.values().stream().mapToInt(Integer::intValue).toArray();
             return new IrVec(comps);
         }
         return null;

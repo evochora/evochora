@@ -116,6 +116,6 @@ public class DefineDirectiveTest {
 
         assertThat(seti.arguments().get(1)).isInstanceOf(TypedLiteralNode.class);
         TypedLiteralNode constant = (TypedLiteralNode) seti.arguments().get(1);
-        assertThat(constant.value().text()).isEqualTo("42");
+        assertThat(constant.value()).isEqualTo(42);
     }
 }

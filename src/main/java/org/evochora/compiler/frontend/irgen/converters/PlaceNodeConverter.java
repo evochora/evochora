@@ -27,10 +27,10 @@ public final class PlaceNodeConverter implements IAstNodeToIrConverter<PlaceNode
 
         // Convert the literal part
         if (node.literal() instanceof TypedLiteralNode t) {
-            args.put("type", new IrValue.Str(t.type().text()));
-            args.put("value", new IrValue.Int64(Long.parseLong(t.value().text())));
+            args.put("type", new IrValue.Str(t.typeName()));
+            args.put("value", new IrValue.Int64(t.value()));
         } else if (node.literal() instanceof NumberLiteralNode n) {
-            args.put("value", new IrValue.Int64(n.getValue()));
+            args.put("value", new IrValue.Int64(n.value()));
         }
 
         // Convert the placements part
@@ -45,11 +45,7 @@ public final class PlaceNodeConverter implements IAstNodeToIrConverter<PlaceNode
 
     private IPlacementArgument convertPlacementArgument(IPlacementArgumentNode node) {
         if (node instanceof VectorPlacementNode vpn) {
-            int[] comps = vpn.vector().components().stream().mapToInt(tok -> Integer.parseInt(tok.text())).toArray();
-            List<Integer> components = new ArrayList<>();
-            for (int comp : comps) {
-                components.add(comp);
-            }
+            List<Integer> components = vpn.vector().values();
             return new IrVectorPlacement(components);
         } else if (node instanceof RangeExpressionNode ren) {
             List<List<IIrPlacementComponent>> irDimensions = new ArrayList<>();

@@ -56,7 +56,7 @@ class AstPostProcessorTest {
     @Test
     void testProcess_NoAliases_ReturnsOriginalAst() {
         // Create a simple AST with no aliases
-        IdentifierNode idNode = new IdentifierNode(createToken("SOME_LABEL", TokenType.IDENTIFIER));
+        IdentifierNode idNode = new IdentifierNode("SOME_LABEL", createSourceInfo());
         
         // Create a simple AST structure - just use the identifier node
         AstNode result = processor.process(idNode);
@@ -68,7 +68,7 @@ class AstPostProcessorTest {
     @Test
     void testProcess_RegisterAlias_ReplacesIdentifierWithRegisterNode() {
         // Create an identifier that should be resolved as a register alias
-        IdentifierNode idNode = new IdentifierNode(createToken("COUNTER", TokenType.IDENTIFIER));
+        IdentifierNode idNode = new IdentifierNode("COUNTER", createSourceInfo());
         
         // Add the symbol to the symbol table
         symbolTable.define(new Symbol(createToken("COUNTER", TokenType.IDENTIFIER), Symbol.Type.ALIAS));
@@ -84,16 +84,15 @@ class AstPostProcessorTest {
         assertThat(registerNode.getName()).isEqualTo("%DR0");
         assertThat(registerNode.getOriginalAlias()).isEqualTo("COUNTER");
         assertThat(registerNode.isAlias()).isTrue();
-        assertThat(registerNode.registerToken().text()).isEqualTo("%DR0");
-        assertThat(registerNode.registerToken().type()).isEqualTo(TokenType.REGISTER);
+        assertThat(registerNode.getName()).isEqualTo("%DR0");
     }
 
     @Test
     void testProcess_MultipleAliases_AllReplacedCorrectly() {
         // Create multiple identifiers that should be resolved
-        IdentifierNode counterNode = new IdentifierNode(createToken("COUNTER", TokenType.IDENTIFIER));
-        IdentifierNode tmpNode = new IdentifierNode(createToken("TMP", TokenType.IDENTIFIER));
-        IdentifierNode posNode = new IdentifierNode(createToken("POS", TokenType.IDENTIFIER));
+        IdentifierNode counterNode = new IdentifierNode("COUNTER", createSourceInfo());
+        IdentifierNode tmpNode = new IdentifierNode("TMP", createSourceInfo());
+        IdentifierNode posNode = new IdentifierNode("POS", createSourceInfo());
         
         // Add all symbols to the symbol table
         symbolTable.define(new Symbol(createToken("COUNTER", TokenType.IDENTIFIER), Symbol.Type.ALIAS));
@@ -102,8 +101,7 @@ class AstPostProcessorTest {
         
         // Create a simple AST with these identifiers
         InstructionNode instruction = new InstructionNode(
-            createToken("SETI", TokenType.OPCODE),
-            List.of(counterNode, tmpNode, posNode)
+            "SETI", List.of(counterNode, tmpNode, posNode), createSourceInfo()
         );
         
         // Process the AST
@@ -132,7 +130,7 @@ class AstPostProcessorTest {
     @Test
     void testProcess_NonAliasIdentifier_NotReplaced() {
         // Create an identifier that is NOT an alias
-        IdentifierNode idNode = new IdentifierNode(createToken("SOME_LABEL", TokenType.IDENTIFIER));
+        IdentifierNode idNode = new IdentifierNode("SOME_LABEL", createSourceInfo());
         
         // Add it as a LABEL symbol (not ALIAS)
         symbolTable.define(new Symbol(createToken("SOME_LABEL", TokenType.IDENTIFIER), Symbol.Type.LABEL));
@@ -147,7 +145,7 @@ class AstPostProcessorTest {
     @Test
     void testProcess_UnknownIdentifier_NotReplaced() {
         // Create an identifier that doesn't exist in the symbol table
-        IdentifierNode idNode = new IdentifierNode(createToken("UNKNOWN", TokenType.IDENTIFIER));
+        IdentifierNode idNode = new IdentifierNode("UNKNOWN", createSourceInfo());
         
         // Process the AST
         AstNode result = processor.process(idNode);
@@ -159,7 +157,7 @@ class AstPostProcessorTest {
     @Test
     void testProcess_AliasNotInRegisterAliases_NotReplaced() {
         // Create an identifier that is an alias but not in our register aliases map
-        IdentifierNode idNode = new IdentifierNode(createToken("SOME_ALIAS", TokenType.IDENTIFIER));
+        IdentifierNode idNode = new IdentifierNode("SOME_ALIAS", createSourceInfo());
         
         // Add it as an ALIAS symbol
         symbolTable.define(new Symbol(createToken("SOME_ALIAS", TokenType.IDENTIFIER), Symbol.Type.ALIAS));
@@ -174,9 +172,9 @@ class AstPostProcessorTest {
     @Test
     void testProcess_ComplexAst_OnlyAliasesReplaced() {
         // Create a complex AST with mixed content
-        IdentifierNode counterNode = new IdentifierNode(createToken("COUNTER", TokenType.IDENTIFIER));
-        IdentifierNode labelNode = new IdentifierNode(createToken("SOME_LABEL", TokenType.IDENTIFIER));
-        NumberLiteralNode numberNode = new NumberLiteralNode(createToken("42", TokenType.NUMBER));
+        IdentifierNode counterNode = new IdentifierNode("COUNTER", createSourceInfo());
+        IdentifierNode labelNode = new IdentifierNode("SOME_LABEL", createSourceInfo());
+        NumberLiteralNode numberNode = new NumberLiteralNode(42, createSourceInfo());
         
         // Add symbols to symbol table
         symbolTable.define(new Symbol(createToken("COUNTER", TokenType.IDENTIFIER), Symbol.Type.ALIAS));
@@ -184,8 +182,7 @@ class AstPostProcessorTest {
         
         // Create instruction with mixed arguments
         InstructionNode instruction = new InstructionNode(
-            createToken("SETI", TokenType.OPCODE),
-            List.of(counterNode, labelNode, numberNode)
+            "SETI", List.of(counterNode, labelNode, numberNode), createSourceInfo()
         );
         
         // Process the AST
@@ -211,8 +208,7 @@ class AstPostProcessorTest {
         // Create a RegisterNode (should not be processed)
         RegisterNode registerNode = new RegisterNode(
             "%DR0",
-            createSourceInfo(),
-            createToken("%DR0", TokenType.REGISTER)
+            createSourceInfo()
         );
         
         // Process the AST
@@ -225,7 +221,7 @@ class AstPostProcessorTest {
     @Test
     void testProcess_NumberLiteralNode_NotReplaced() {
         // Create a NumberLiteralNode (should not be processed)
-        NumberLiteralNode numberNode = new NumberLiteralNode(createToken("42", TokenType.NUMBER));
+        NumberLiteralNode numberNode = new NumberLiteralNode(42, createSourceInfo());
         
         // Process the AST
         AstNode result = processor.process(numberNode);
@@ -240,7 +236,7 @@ class AstPostProcessorTest {
         AstPostProcessor emptyProcessor = new AstPostProcessor(symbolTable, new HashMap<>());
         
         // Create an identifier that would be an alias
-        IdentifierNode idNode = new IdentifierNode(createToken("COUNTER", TokenType.IDENTIFIER));
+        IdentifierNode idNode = new IdentifierNode("COUNTER", createSourceInfo());
         symbolTable.define(new Symbol(createToken("COUNTER", TokenType.IDENTIFIER), Symbol.Type.ALIAS));
         
         // Process the AST
@@ -253,11 +249,10 @@ class AstPostProcessorTest {
     @Test
     void testProcess_SourceInfoPreserved() {
         // Create an identifier with specific source info
-        Token token = createToken("COUNTER", TokenType.IDENTIFIER);
-        IdentifierNode idNode = new IdentifierNode(token);
-        
+        IdentifierNode idNode = new IdentifierNode("COUNTER", createSourceInfo());
+
         // Add to symbol table
-        symbolTable.define(new Symbol(token, Symbol.Type.ALIAS));
+        symbolTable.define(new Symbol(createToken("COUNTER", TokenType.IDENTIFIER), Symbol.Type.ALIAS));
         
         // Process the AST
         AstNode result = processor.process(idNode);
@@ -267,7 +262,7 @@ class AstPostProcessorTest {
         RegisterNode registerNode = (RegisterNode) result;
         
         // Source info should be preserved
-        SourceInfo sourceInfo = registerNode.getSourceInfo();
+        SourceInfo sourceInfo = registerNode.sourceInfo();
         assertThat(sourceInfo.fileName()).isEqualTo("test.s");
         assertThat(sourceInfo.lineNumber()).isEqualTo(10);
         assertThat(sourceInfo.columnNumber()).isEqualTo(5);
@@ -276,11 +271,10 @@ class AstPostProcessorTest {
     @Test
     void testProcess_TokenInfoCorrect() {
         // Create an identifier
-        Token token = createToken("COUNTER", TokenType.IDENTIFIER);
-        IdentifierNode idNode = new IdentifierNode(token);
-        
+        IdentifierNode idNode = new IdentifierNode("COUNTER", createSourceInfo());
+
         // Add to symbol table
-        symbolTable.define(new Symbol(token, Symbol.Type.ALIAS));
+        symbolTable.define(new Symbol(createToken("COUNTER", TokenType.IDENTIFIER), Symbol.Type.ALIAS));
         
         // Process the AST
         AstNode result = processor.process(idNode);
@@ -289,14 +283,11 @@ class AstPostProcessorTest {
         assertThat(result).isInstanceOf(RegisterNode.class);
         RegisterNode registerNode = (RegisterNode) result;
         
-        // Token should have correct type and text
-        Token registerToken = registerNode.registerToken();
-        assertThat(registerToken.type()).isEqualTo(TokenType.REGISTER);
-        assertThat(registerToken.text()).isEqualTo("%DR0");
-        assertThat(registerToken.value()).isNull(); // Registers don't have values
-        assertThat(registerToken.line()).isEqualTo(10);
-        assertThat(registerToken.column()).isEqualTo(5);
-        assertThat(registerToken.fileName()).isEqualTo("test.s");
+        // Verify name and source info
+        assertThat(registerNode.getName()).isEqualTo("%DR0");
+        assertThat(registerNode.sourceInfo().lineNumber()).isEqualTo(10);
+        assertThat(registerNode.sourceInfo().columnNumber()).isEqualTo(5);
+        assertThat(registerNode.sourceInfo().fileName()).isEqualTo("test.s");
     }
 
     @Test
@@ -330,29 +321,21 @@ class AstPostProcessorTest {
 
         st.setCurrentModule(main);
 
-        TypedLiteralNode valueA = new TypedLiteralNode(
-                new Token(TokenType.IDENTIFIER, "DATA", null, 1, 1, modA.path()),
-                new Token(TokenType.NUMBER, "10", 10, 1, 1, modA.path()));
-        TypedLiteralNode valueB = new TypedLiteralNode(
-                new Token(TokenType.IDENTIFIER, "DATA", null, 1, 1, modB.path()),
-                new Token(TokenType.NUMBER, "1", 1, 1, 1, modB.path()));
+        TypedLiteralNode valueA = new TypedLiteralNode("DATA", 10, new SourceInfo(modA.path(), 1, 1));
+        TypedLiteralNode valueB = new TypedLiteralNode("DATA", 1, new SourceInfo(modB.path(), 1, 1));
 
         DefineNode defineA = new DefineNode(stepTokenA, valueA);
         DefineNode defineB = new DefineNode(stepTokenB, valueB);
 
-        IdentifierNode useA = new IdentifierNode(
-                new Token(TokenType.IDENTIFIER, "STEP", null, 2, 1, modA.path()));
-        IdentifierNode useB = new IdentifierNode(
-                new Token(TokenType.IDENTIFIER, "STEP", null, 2, 1, modB.path()));
+        IdentifierNode useA = new IdentifierNode("STEP", new SourceInfo(modA.path(), 2, 1));
+        IdentifierNode useB = new IdentifierNode("STEP", new SourceInfo(modB.path(), 2, 1));
 
         InstructionNode instrA = new InstructionNode(
-                new Token(TokenType.OPCODE, "SETI", null, 2, 1, modA.path()),
-                List.of(new RegisterNode("%DR0", createSourceInfo(),
-                        new Token(TokenType.REGISTER, "%DR0", null, 2, 1, modA.path())), useA));
+                "SETI", List.of(new RegisterNode("%DR0", createSourceInfo()), useA),
+                new SourceInfo(modA.path(), 2, 1));
         InstructionNode instrB = new InstructionNode(
-                new Token(TokenType.OPCODE, "SETI", null, 2, 1, modB.path()),
-                List.of(new RegisterNode("%DR1", createSourceInfo(),
-                        new Token(TokenType.REGISTER, "%DR1", null, 2, 1, modB.path())), useB));
+                "SETI", List.of(new RegisterNode("%DR1", createSourceInfo()), useB),
+                new SourceInfo(modB.path(), 2, 1));
 
         // Process each node individually (matching how the Compiler calls process() per top-level node)
         ModuleContextTracker tracker = new ModuleContextTracker(st, fileToModule);
@@ -372,11 +355,11 @@ class AstPostProcessorTest {
 
         // Module A should have STEP=10
         assertThat(resultA.arguments().get(1)).isInstanceOf(TypedLiteralNode.class);
-        assertThat(((TypedLiteralNode) resultA.arguments().get(1)).value().text()).isEqualTo("10");
+        assertThat(((TypedLiteralNode) resultA.arguments().get(1)).value()).isEqualTo(10);
 
         // Module B should have STEP=1
         assertThat(resultB.arguments().get(1)).isInstanceOf(TypedLiteralNode.class);
-        assertThat(((TypedLiteralNode) resultB.arguments().get(1)).value().text()).isEqualTo("1");
+        assertThat(((TypedLiteralNode) resultB.arguments().get(1)).value()).isEqualTo(1);
     }
 
     @Test
@@ -385,16 +368,13 @@ class AstPostProcessorTest {
         Token nameToken = createToken("MY_CONST", TokenType.IDENTIFIER);
         symbolTable.define(new Symbol(nameToken, Symbol.Type.CONSTANT));
 
-        TypedLiteralNode constValue = new TypedLiteralNode(
-                new Token(TokenType.IDENTIFIER, "DATA", null, 1, 1, "test.s"),
-                new Token(TokenType.NUMBER, "99", 99, 1, 1, "test.s"));
+        TypedLiteralNode constValue = new TypedLiteralNode("DATA", 99, new SourceInfo("test.s", 1, 1));
         DefineNode defineNode = new DefineNode(nameToken, constValue);
 
-        IdentifierNode useNode = new IdentifierNode(createToken("MY_CONST", TokenType.IDENTIFIER));
+        IdentifierNode useNode = new IdentifierNode("MY_CONST", createSourceInfo());
         InstructionNode instr = new InstructionNode(
-                createToken("SETI", TokenType.OPCODE),
-                List.of(new RegisterNode("%DR0", createSourceInfo(),
-                        createToken("%DR0", TokenType.REGISTER)), useNode));
+                "SETI", List.of(new RegisterNode("%DR0", createSourceInfo()), useNode),
+                createSourceInfo());
 
         // Process each node individually (matching the real Compiler pattern)
         processor.process(defineNode);
@@ -402,7 +382,7 @@ class AstPostProcessorTest {
 
         assertThat(resultInstr).isInstanceOf(InstructionNode.class);
         assertThat(((InstructionNode) resultInstr).arguments().get(1)).isInstanceOf(TypedLiteralNode.class);
-        assertThat(((TypedLiteralNode) ((InstructionNode) resultInstr).arguments().get(1)).value().text()).isEqualTo("99");
+        assertThat(((TypedLiteralNode) ((InstructionNode) resultInstr).arguments().get(1)).value()).isEqualTo(99);
     }
 
     // Helper methods

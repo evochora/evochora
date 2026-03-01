@@ -1,7 +1,6 @@
 package org.evochora.compiler.model.ast;
 
 import org.evochora.compiler.api.SourceInfo;
-import org.evochora.compiler.model.token.Token;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -10,22 +9,19 @@ import java.util.List;
 /**
  * An AST node that represents a single machine instruction.
  *
- * @param opcode The token of the opcode (e.g., SETI).
+ * @param opcode The opcode mnemonic (e.g., "SETI").
  * @param arguments A list of AST nodes that represent the arguments of the instruction.
  * @param refArguments A list of AST nodes for REF arguments, specific to CALL.
  * @param valArguments A list of AST nodes for VAL arguments, specific to CALL.
+ * @param sourceInfo The source location of the instruction.
  */
 public record InstructionNode(
-        Token opcode,
+        String opcode,
         List<AstNode> arguments,
         List<AstNode> refArguments,
-        List<AstNode> valArguments
+        List<AstNode> valArguments,
+        SourceInfo sourceInfo
 ) implements AstNode, ISourceLocatable {
-
-    @Override
-    public SourceInfo sourceInfo() {
-        return new SourceInfo(opcode.fileName(), opcode.line(), opcode.column());
-    }
 
     /**
      * Compact constructor to ensure lists are never null.
@@ -44,11 +40,12 @@ public record InstructionNode(
 
     /**
      * Constructor for instructions that do not use REF/VAL arguments.
-     * @param opcode The instruction's opcode.
+     * @param opcode The instruction's opcode mnemonic.
      * @param arguments The instruction's arguments.
+     * @param sourceInfo The source location.
      */
-    public InstructionNode(Token opcode, List<AstNode> arguments) {
-        this(opcode, arguments, Collections.emptyList(), Collections.emptyList());
+    public InstructionNode(String opcode, List<AstNode> arguments, SourceInfo sourceInfo) {
+        this(opcode, arguments, Collections.emptyList(), Collections.emptyList(), sourceInfo);
     }
 
     @Override
@@ -91,6 +88,6 @@ public record InstructionNode(
             newValArguments.add(newChildren.get(index++));
         }
 
-        return new InstructionNode(opcode, newArguments, newRefArguments, newValArguments);
+        return new InstructionNode(opcode, newArguments, newRefArguments, newValArguments, sourceInfo);
     }
 }

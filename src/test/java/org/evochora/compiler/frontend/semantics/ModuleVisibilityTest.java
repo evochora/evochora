@@ -55,9 +55,7 @@ public class ModuleVisibilityTest {
     @Tag("unit")
     void qualifiedNameResolvesExportedSymbol() {
         symbolTable.setCurrentModule(MAIN_MODULE);
-        Token qualifiedName = new Token(TokenType.IDENTIFIER, "LIB.HARVEST", null, 1, 0, "/test/main.evo");
-
-        Optional<Symbol> result = symbolTable.resolve(qualifiedName);
+        Optional<Symbol> result = symbolTable.resolve("LIB.HARVEST", "/test/main.evo");
 
         assertThat(result).isPresent();
         assertThat(result.get().name().text()).isEqualToIgnoringCase("HARVEST");
@@ -67,9 +65,8 @@ public class ModuleVisibilityTest {
     @Tag("unit")
     void qualifiedNameDoesNotResolveNonExportedSymbol() {
         symbolTable.setCurrentModule(MAIN_MODULE);
-        Token qualifiedName = new Token(TokenType.IDENTIFIER, "LIB.INTERNAL", null, 1, 0, "/test/main.evo");
 
-        Optional<Symbol> result = symbolTable.resolve(qualifiedName);
+        Optional<Symbol> result = symbolTable.resolve("LIB.INTERNAL", "/test/main.evo");
 
         assertThat(result).isEmpty();
     }
@@ -78,9 +75,8 @@ public class ModuleVisibilityTest {
     @Tag("unit")
     void unknownAliasDoesNotResolve() {
         symbolTable.setCurrentModule(MAIN_MODULE);
-        Token qualifiedName = new Token(TokenType.IDENTIFIER, "UNKNOWN.HARVEST", null, 1, 0, "/test/main.evo");
 
-        Optional<Symbol> result = symbolTable.resolve(qualifiedName);
+        Optional<Symbol> result = symbolTable.resolve("UNKNOWN.HARVEST", "/test/main.evo");
 
         assertThat(result).isEmpty();
     }
@@ -89,9 +85,8 @@ public class ModuleVisibilityTest {
     @Tag("unit")
     void unqualifiedNameFromSameModuleResolves() {
         symbolTable.setCurrentModule(LIB_MODULE);
-        Token localName = new Token(TokenType.IDENTIFIER, "HARVEST", null, 5, 0, "/test/lib.evo");
 
-        Optional<Symbol> result = symbolTable.resolve(localName);
+        Optional<Symbol> result = symbolTable.resolve("HARVEST", "/test/lib.evo");
 
         assertThat(result).isPresent();
     }
@@ -104,9 +99,8 @@ public class ModuleVisibilityTest {
         mainScope.usingBindings().put("DEP", LIB_MODULE);
 
         symbolTable.setCurrentModule(MAIN_MODULE);
-        Token qualifiedName = new Token(TokenType.IDENTIFIER, "DEP.HARVEST", null, 1, 0, "/test/main.evo");
 
-        Optional<Symbol> result = symbolTable.resolve(qualifiedName);
+        Optional<Symbol> result = symbolTable.resolve("DEP.HARVEST", "/test/main.evo");
 
         assertThat(result).isPresent();
         assertThat(result.get().name().text()).isEqualToIgnoringCase("HARVEST");

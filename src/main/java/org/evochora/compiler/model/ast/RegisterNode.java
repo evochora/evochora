@@ -3,32 +3,29 @@ package org.evochora.compiler.model.ast;
 import java.util.List;
 import java.util.Objects;
 import org.evochora.compiler.api.SourceInfo;
-import org.evochora.compiler.model.token.Token;
 
 /**
  * An AST node that represents a register.
  */
-public class RegisterNode implements AstNode {
+public class RegisterNode implements AstNode, ISourceLocatable {
     private final String name;
-    private final String originalAlias; // <-- NEW FIELD
+    private final String originalAlias;
     private final SourceInfo sourceInfo;
-    private final Token registerToken; // <-- ORIGINAL TOKEN FIELD
 
     /**
      * Constructor for registers written directly in code.
      */
-    public RegisterNode(String name, SourceInfo sourceInfo, Token registerToken) {
-        this(name, null, sourceInfo, registerToken); // No original alias
+    public RegisterNode(String name, SourceInfo sourceInfo) {
+        this(name, null, sourceInfo);
     }
 
     /**
      * Constructor for registers created by resolving an alias.
      */
-    public RegisterNode(String physicalName, String originalAlias, SourceInfo sourceInfo, Token registerToken) {
+    public RegisterNode(String physicalName, String originalAlias, SourceInfo sourceInfo) {
         this.name = physicalName;
         this.originalAlias = originalAlias;
         this.sourceInfo = sourceInfo;
-        this.registerToken = registerToken;
     }
 
     public String getName() {
@@ -36,24 +33,21 @@ public class RegisterNode implements AstNode {
     }
 
     public String getOriginalAlias() {
-        return originalAlias; // <-- NEW GETTER
+        return originalAlias;
     }
 
     public boolean isAlias() {
-        return originalAlias != null; // <-- NEW HELPER
+        return originalAlias != null;
     }
 
-    public SourceInfo getSourceInfo() {
+    @Override
+    public SourceInfo sourceInfo() {
         return sourceInfo;
-    }
-
-    public Token registerToken() {
-        return registerToken;
     }
 
     @Override
     public List<AstNode> getChildren() {
-        return List.of(); // RegisterNode has no children
+        return List.of();
     }
 
     @Override
@@ -64,7 +58,6 @@ public class RegisterNode implements AstNode {
         return String.format("RegisterNode(name=%s)", name);
     }
 
-    // equals() and hashCode() updated to include all fields
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
@@ -72,11 +65,11 @@ public class RegisterNode implements AstNode {
         RegisterNode that = (RegisterNode) o;
         return Objects.equals(name, that.name) &&
                Objects.equals(originalAlias, that.originalAlias) &&
-               Objects.equals(registerToken, that.registerToken);
+               Objects.equals(sourceInfo, that.sourceInfo);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(name, originalAlias, registerToken);
+        return Objects.hash(name, originalAlias, sourceInfo);
     }
 }

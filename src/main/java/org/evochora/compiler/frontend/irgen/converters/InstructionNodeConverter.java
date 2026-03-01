@@ -30,7 +30,7 @@ public final class InstructionNodeConverter implements IAstNodeToIrConverter<Ins
      */
     @Override
     public void convert(InstructionNode node, IrGenContext ctx) {
-        String opcode = node.opcode().text();
+        String opcode = node.opcode();
 
         // New CALL syntax with REF and VAL
         if ("CALL".equalsIgnoreCase(opcode) && (!node.refArguments().isEmpty() || !node.valArguments().isEmpty())) {
@@ -60,7 +60,7 @@ public final class InstructionNodeConverter implements IAstNodeToIrConverter<Ins
             for (int i = 0; i < node.arguments().size(); i++) {
                 AstNode a = node.arguments().get(i);
                 if (a instanceof IdentifierNode id) {
-                    String t = id.identifierToken().text().toUpperCase();
+                    String t = id.text().toUpperCase();
                     if ("WITH".equals(t) || ".WITH".equals(t)) {
                         withIdx = i;
                         break;
@@ -80,9 +80,9 @@ public final class InstructionNodeConverter implements IAstNodeToIrConverter<Ins
             for (int j = withIdx + 1; j < node.arguments().size(); j++) {
                 AstNode a = node.arguments().get(j);
                 if (a instanceof RegisterNode r) {
-                    actuals.add(new IrValue.Str(r.registerToken().text()));
+                    actuals.add(new IrValue.Str(r.getName()));
                 } else if (a instanceof IdentifierNode id) {
-                    String nameU = id.identifierToken().text().toUpperCase();
+                    String nameU = id.text().toUpperCase();
                     java.util.Optional<Integer> idxOpt = ctx.resolveProcedureParam(nameU);
                     if (idxOpt.isPresent()) {
                         actuals.add(new IrValue.Str("%FPR" + idxOpt.get()));
@@ -106,16 +106,16 @@ public final class InstructionNodeConverter implements IAstNodeToIrConverter<Ins
      */
     private IrOperand convertOperand(AstNode arg, IrGenContext ctx) {
         if (arg instanceof RegisterNode r) {
-            return new IrReg(r.registerToken().text());
+            return new IrReg(r.getName());
         } else if (arg instanceof NumberLiteralNode n) {
-            return new IrImm(n.getValue());
+            return new IrImm(n.value());
         } else if (arg instanceof TypedLiteralNode t) {
-            return new IrTypedImm(t.type().text(), parseIntegerLiteral(t.value().text()));
+            return new IrTypedImm(t.typeName(), t.value());
         } else if (arg instanceof VectorLiteralNode v) {
-            int[] comps = v.components().stream().mapToInt(tok -> parseIntegerLiteral(tok.text())).toArray();
+            int[] comps = v.values().stream().mapToInt(Integer::intValue).toArray();
             return new IrVec(comps);
         } else if (arg instanceof IdentifierNode id) {
-            String nameU = id.identifierToken().text().toUpperCase();
+            String nameU = id.text().toUpperCase();
             java.util.Optional<Integer> idxOpt = ctx.resolveProcedureParam(nameU);
             if (idxOpt.isPresent()) {
                 return new IrReg("%FPR" + idxOpt.get());
@@ -124,34 +124,9 @@ public final class InstructionNodeConverter implements IAstNodeToIrConverter<Ins
             if (constOpt.isPresent()) {
                 return constOpt.get();
             }
-            return new IrLabelRef(id.identifierToken().text());
+            return new IrLabelRef(id.text());
         }
         return new IrLabelRef(arg.toString());
     }
 
-    /**
-     * Parses an integer literal string, supporting different bases (0x, 0b, 0o) and underscores.
-     *
-     * @param text The string to parse.
-     * @return The parsed integer value.
-     */
-    private int parseIntegerLiteral(String text) {
-        if (text == null || text.isEmpty()) {
-            throw new IllegalArgumentException("Empty literal text");
-        }
-
-        // Remove underscores for parsing
-        String cleanText = text.replace("_", "");
-
-        // Handle different bases
-        if (cleanText.startsWith("0x") || cleanText.startsWith("0X")) {
-            return Integer.parseInt(cleanText.substring(2), 16);
-        } else if (cleanText.startsWith("0b") || cleanText.startsWith("0B")) {
-            return Integer.parseInt(cleanText.substring(2), 2);
-        } else if (cleanText.startsWith("0o") || cleanText.startsWith("0O")) {
-            return Integer.parseInt(cleanText.substring(2), 8);
-        } else {
-            return Integer.parseInt(cleanText);
-        }
-    }
 }

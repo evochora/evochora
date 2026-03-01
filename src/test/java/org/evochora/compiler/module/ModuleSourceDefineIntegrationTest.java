@@ -142,8 +142,8 @@ class ModuleSourceDefineIntegrationTest {
         TypedLiteralNode fastStep = (TypedLiteralNode) addiNodes.get(0).arguments().get(1);
         TypedLiteralNode slowStep = (TypedLiteralNode) addiNodes.get(1).arguments().get(1);
 
-        assertThat(fastStep.value().text()).isEqualTo("10");
-        assertThat(slowStep.value().text()).isEqualTo("1");
+        assertThat(fastStep.value()).isEqualTo(10);
+        assertThat(slowStep.value()).isEqualTo(1);
     }
 
     @Test
@@ -178,7 +178,7 @@ class ModuleSourceDefineIntegrationTest {
         boolean found = setiNodes.stream().anyMatch(seti ->
                 seti.arguments().size() >= 2
                 && seti.arguments().get(1) instanceof TypedLiteralNode tln
-                && "255".equals(tln.value().text()));
+                && tln.value() == 255);
         assertThat(found).as("SETI with resolved constant MAX=255 not found").isTrue();
     }
 
@@ -232,7 +232,7 @@ class ModuleSourceDefineIntegrationTest {
         boolean found = setiNodes.stream().anyMatch(seti ->
                 seti.arguments().size() >= 2
                 && seti.arguments().get(1) instanceof TypedLiteralNode tln
-                && "7".equals(tln.value().text()));
+                && tln.value() == 7);
         assertThat(found).as("SETI with resolved constant INIT_VAL=7 not found").isTrue();
     }
 
@@ -305,7 +305,7 @@ class ModuleSourceDefineIntegrationTest {
 
     private void collectInstructions(AstNode node, String opcode, List<InstructionNode> result) {
         if (node == null) return;
-        if (node instanceof InstructionNode instr && instr.opcode().text().equalsIgnoreCase(opcode)) {
+        if (node instanceof InstructionNode instr && instr.opcode().equalsIgnoreCase(opcode)) {
             result.add(instr);
         }
         for (AstNode child : node.getChildren()) {

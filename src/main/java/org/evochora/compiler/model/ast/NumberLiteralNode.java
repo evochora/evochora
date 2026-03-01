@@ -1,23 +1,17 @@
 package org.evochora.compiler.model.ast;
 
-import org.evochora.compiler.model.token.Token;
+import org.evochora.compiler.api.SourceInfo;
 
 /**
  * An AST node that represents a numeric literal.
  *
- * @param numberToken The token containing the number.
+ * @param value The integer value of the literal.
+ * @param sourceInfo The source location where this literal appeared.
  */
 public record NumberLiteralNode(
-        Token numberToken
-) implements AstNode {
-
-    /**
-     * Gets the integer value of the numeric literal.
-     * @return The integer value.
-     */
-    public int getValue() {
-        return (int) numberToken.value();
-    }
+        int value,
+        SourceInfo sourceInfo
+) implements AstNode, ISourceLocatable {
 
     // This node has no children and inherits the empty list from getChildren().
 }

@@ -71,7 +71,7 @@ public class ProcedureDirectiveTest {
         assertThat(bodyWithoutNulls.get(0)).isInstanceOf(InstructionNode.class);
 
         InstructionNode nopNode = (InstructionNode) bodyWithoutNulls.get(0);
-        assertThat(nopNode.opcode().text()).isEqualTo("NOP");
+        assertThat(nopNode.opcode()).isEqualTo("NOP");
 
         var procTable = parser.getProcedureTable();
         assertThat(procTable).hasSize(1);

@@ -178,16 +178,18 @@ public class TokenMapGenerator {
         } else if (node instanceof IdentifierNode identifierNode) {
             // Add the identifier token - resolve its type from symbol table
             // Use the current scope context for proper resolution
-            Optional<Symbol> symbolOpt = resolveInCurrentScope(identifierNode.identifierToken());
+            Optional<Symbol> symbolOpt = resolveInCurrentScope(identifierNode.text(), identifierNode.sourceInfo().fileName());
             if (symbolOpt.isPresent()) {
-                addToken(identifierNode.identifierToken(), symbolOpt.get().type(), this.currentScope);
+                SourceInfo si = identifierNode.sourceInfo();
+                TokenInfo tokenInfo = new TokenInfo(identifierNode.text(), symbolOpt.get().type(), this.currentScope);
+                tokenMap.put(si, tokenInfo);
             } else {
                 // If symbol not found, report it as a compilation error using DiagnosticsEngine
                 diagnostics.reportError(
-                    "Symbol '" + identifierNode.identifierToken().text() + 
+                    "Symbol '" + identifierNode.text() +
                     "' could not be resolved. This indicates a semantic analysis failure.",
-                    identifierNode.identifierToken().fileName(),
-                    identifierNode.identifierToken().line()
+                    identifierNode.sourceInfo().fileName(),
+                    identifierNode.sourceInfo().lineNumber()
                 );
                 // Continue compilation - don't add this token to the map
             }
@@ -196,7 +198,7 @@ public class TokenMapGenerator {
             if (registerNode.isAlias()) {
                 // This is an alias - add token for the original alias name (e.g., %COUNTER)
                 // We need to create a SourceInfo from the RegisterNode's sourceInfo
-                SourceInfo aliasSourceInfo = registerNode.getSourceInfo();
+                SourceInfo aliasSourceInfo = registerNode.sourceInfo();
                 TokenInfo aliasTokenInfo = new TokenInfo(
                     registerNode.getOriginalAlias(),  // Use the original alias name
                     Symbol.Type.ALIAS,               // Mark it as an alias
@@ -205,7 +207,7 @@ public class TokenMapGenerator {
                 tokenMap.put(aliasSourceInfo, aliasTokenInfo);
             } else {
                 // This is a direct register - add token for the register name (e.g., %DR0)
-                SourceInfo regSourceInfo = registerNode.getSourceInfo();
+                SourceInfo regSourceInfo = registerNode.sourceInfo();
                 TokenInfo regTokenInfo = new TokenInfo(
                     registerNode.getName(),          // Use the register name
                     Symbol.Type.VARIABLE,           // Mark it as a variable
@@ -215,9 +217,10 @@ public class TokenMapGenerator {
             }
         } else if (node instanceof InstructionNode instructionNode) {
             // Only add CALL and RET instructions to token map
-            String opcode = instructionNode.opcode().text();
+            String opcode = instructionNode.opcode();
             if ("CALL".equalsIgnoreCase(opcode) || "RET".equalsIgnoreCase(opcode)) {
-                addToken(instructionNode.opcode(), Symbol.Type.CONSTANT, this.currentScope);
+                SourceInfo si = instructionNode.sourceInfo();
+                tokenMap.put(si, new TokenInfo(opcode, Symbol.Type.CONSTANT, this.currentScope));
             }
         }
     }
@@ -225,18 +228,18 @@ public class TokenMapGenerator {
     /**
      * Resolves a symbol in the current scope context.
      */
-    private Optional<Symbol> resolveInCurrentScope(org.evochora.compiler.model.token.Token token) {
+    private Optional<Symbol> resolveInCurrentScope(String name, String fileName) {
         // Temporarily set the symbol table's current scope to our tracked scope
         SymbolTable.Scope originalScope = symbolTable.getCurrentScope();
-        
+
         // Find the scope object that corresponds to our current scope name
         SymbolTable.Scope targetScope = findScopeByName(this.currentScope);
         if (targetScope != null) {
             symbolTable.setCurrentScope(targetScope);
         }
-        
+
         try {
-            return symbolTable.resolve(token);
+            return symbolTable.resolve(name, fileName);
         } finally {
             // Restore the original scope
             symbolTable.setCurrentScope(originalScope);

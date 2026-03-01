@@ -45,11 +45,11 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
             return;
         }
 
-        String instructionName = instructionNode.opcode().text();
+        String instructionName = instructionNode.opcode();
         Integer instructionId = Instruction.getInstructionIdByName(instructionName);
 
         if (instructionId == null) {
-            diagnostics.reportError("Unknown instruction '" + instructionName + "'.", instructionNode.opcode().fileName(), instructionNode.opcode().line());
+            diagnostics.reportError("Unknown instruction '" + instructionName + "'.", instructionNode.sourceInfo().fileName(), instructionNode.sourceInfo().lineNumber());
             return;
         }
 
@@ -66,42 +66,42 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                 // Handle new CALL ... REF ... VAL syntax
                 if (!instructionNode.refArguments().isEmpty() || !instructionNode.valArguments().isEmpty()) {
                     if (instructionNode.arguments().isEmpty() || !(instructionNode.arguments().get(0) instanceof IdentifierNode procIdentifier)) {
-                        diagnostics.reportError("CALL with REF/VAL requires a procedure name.", instructionNode.opcode().fileName(), instructionNode.opcode().line());
+                        diagnostics.reportError("CALL with REF/VAL requires a procedure name.", instructionNode.sourceInfo().fileName(), instructionNode.sourceInfo().lineNumber());
                         return; // Stop analysis for this instruction
                     }
 
-                    Optional<Symbol> procSymbolOpt = symbolTable.resolve(procIdentifier.identifierToken());
+                    Optional<Symbol> procSymbolOpt = symbolTable.resolve(procIdentifier.text(), procIdentifier.sourceInfo().fileName());
                     if (procSymbolOpt.isEmpty() || procSymbolOpt.get().type() != Symbol.Type.PROCEDURE) {
-                        diagnostics.reportError("Procedure '" + procIdentifier.identifierToken().text() + "' not found or is not a procedure.", procIdentifier.identifierToken().fileName(), procIdentifier.identifierToken().line());
+                        diagnostics.reportError("Procedure '" + procIdentifier.text() + "' not found or is not a procedure.", procIdentifier.sourceInfo().fileName(), procIdentifier.sourceInfo().lineNumber());
                         return;
                     }
 
                     Symbol procSymbol = procSymbolOpt.get();
                     if (!(procSymbol.node() instanceof org.evochora.compiler.frontend.parser.features.proc.ProcedureNode procedureNode)) {
-                        diagnostics.reportError("Internal error: Symbol for procedure '" + procIdentifier.identifierToken().text() + "' does not contain a valid ProcedureNode.", procIdentifier.identifierToken().fileName(), procIdentifier.identifierToken().line());
+                        diagnostics.reportError("Internal error: Symbol for procedure '" + procIdentifier.text() + "' does not contain a valid ProcedureNode.", procIdentifier.sourceInfo().fileName(), procIdentifier.sourceInfo().lineNumber());
                         return;
                     }
 
                     // Validate argument counts
                     if (instructionNode.refArguments().size() != procedureNode.refParameters().size()) {
-                        diagnostics.reportError(String.format("Procedure '%s' expects %d REF argument(s), but received %d.", procedureNode.name().text(), procedureNode.refParameters().size(), instructionNode.refArguments().size()), instructionNode.opcode().fileName(), instructionNode.opcode().line());
+                        diagnostics.reportError(String.format("Procedure '%s' expects %d REF argument(s), but received %d.", procedureNode.name().text(), procedureNode.refParameters().size(), instructionNode.refArguments().size()), instructionNode.sourceInfo().fileName(), instructionNode.sourceInfo().lineNumber());
                     }
                     if (instructionNode.valArguments().size() != procedureNode.valParameters().size()) {
-                        diagnostics.reportError(String.format("Procedure '%s' expects %d VAL argument(s), but received %d.", procedureNode.name().text(), procedureNode.valParameters().size(), instructionNode.valArguments().size()), instructionNode.opcode().fileName(), instructionNode.opcode().line());
+                        diagnostics.reportError(String.format("Procedure '%s' expects %d VAL argument(s), but received %d.", procedureNode.name().text(), procedureNode.valParameters().size(), instructionNode.valArguments().size()), instructionNode.sourceInfo().fileName(), instructionNode.sourceInfo().lineNumber());
                     }
 
                     // Validate REF argument types
                     for (AstNode refArg : instructionNode.refArguments()) {
                         if (refArg instanceof RegisterNode) continue;
                         if (refArg instanceof IdentifierNode id) {
-                            var res = symbolTable.resolve(id.identifierToken());
+                            var res = symbolTable.resolve(id.text(), id.sourceInfo().fileName());
                             if (res.isPresent() && (res.get().type() == Symbol.Type.VARIABLE || res.get().type() == Symbol.Type.ALIAS))
                                 continue;
                             // Check if this is a parameter name (will be resolved to %FPRx later)
                             // Parameter names are valid in REF arguments
                             continue;
                         }
-                        diagnostics.reportError("REF arguments must be registers.", instructionNode.opcode().fileName(), instructionNode.opcode().line());
+                        diagnostics.reportError("REF arguments must be registers.", instructionNode.sourceInfo().fileName(), instructionNode.sourceInfo().lineNumber());
                     }
                     
                     // Validate VAL argument types
@@ -110,7 +110,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                         if (valArg instanceof NumberLiteralNode) continue;
                         if (valArg instanceof TypedLiteralNode) continue;
                         if (valArg instanceof IdentifierNode id) {
-                            var res = symbolTable.resolve(id.identifierToken());
+                            var res = symbolTable.resolve(id.text(), id.sourceInfo().fileName());
                             if (res.isPresent()) {
                                 // Allow labels as VAL parameters
                                 if (res.get().type() == Symbol.Type.LABEL) {
@@ -125,7 +125,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                             // Parameter names are valid in VAL arguments
                             continue;
                         }
-                        diagnostics.reportError("VAL arguments must be registers, literals, or labels.", instructionNode.opcode().fileName(), instructionNode.opcode().line());
+                        diagnostics.reportError("VAL arguments must be registers, literals, or labels.", instructionNode.sourceInfo().fileName(), instructionNode.sourceInfo().lineNumber());
                     }
                     // Since we've handled the new syntax, we can skip the rest of the generic analysis.
                     // The main argument (proc name) will be checked against the instruction signature below.
@@ -140,7 +140,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                     for (int i = 0; i < instructionNode.arguments().size(); i++) {
                         AstNode a = instructionNode.arguments().get(i);
                         if (a instanceof IdentifierNode id) {
-                            String t = id.identifierToken().text().toUpperCase();
+                            String t = id.text().toUpperCase();
                             if ("WITH".equals(t) || ".WITH".equals(t)) {
                                 withIdx = i;
                                 break;
@@ -150,7 +150,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                     // Do not allow additional tokens between target and WITH (prevents e.g. "EXPORT" in between)
                     int unexpectedEnd = withIdx >= 0 ? withIdx : instructionNode.arguments().size();
                     if (unexpectedEnd > 1) {
-                        diagnostics.reportError("CALL syntax error: unexpected token before WITH.", instructionNode.opcode().fileName(), instructionNode.opcode().line());
+                        diagnostics.reportError("CALL syntax error: unexpected token before WITH.", instructionNode.sourceInfo().fileName(), instructionNode.sourceInfo().lineNumber());
                         return;
                     }
                     int actualsStart = withIdx >= 0 ? withIdx + 1 : 1;
@@ -158,11 +158,11 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                         AstNode arg = instructionNode.arguments().get(j);
                         if (arg instanceof RegisterNode) continue;
                         if (arg instanceof IdentifierNode id) {
-                            var res = symbolTable.resolve(id.identifierToken());
+                            var res = symbolTable.resolve(id.text(), id.sourceInfo().fileName());
                             if (res.isPresent() && (res.get().type() == Symbol.Type.VARIABLE || res.get().type() == Symbol.Type.ALIAS))
                                 continue;
                         }
-                        diagnostics.reportError("CALL actuals must be registers or parameter names.", instructionNode.opcode().fileName(), instructionNode.opcode().line());
+                        diagnostics.reportError("CALL actuals must be registers or parameter names.", instructionNode.sourceInfo().fileName(), instructionNode.sourceInfo().lineNumber());
                         return;
                     }
                 }
@@ -174,8 +174,8 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                 diagnostics.reportError(
                         String.format("Instruction '%s' expects %d argument(s), but got %d.",
                                 instructionName, expectedArity, actualArity),
-                        instructionNode.opcode().fileName(),
-                        instructionNode.opcode().line()
+                        instructionNode.sourceInfo().fileName(),
+                        instructionNode.sourceInfo().lineNumber()
                 );
                 return;
             }
@@ -186,7 +186,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
 
                 // Handle constant substitution
                 if (argumentNode instanceof IdentifierNode idNode) {
-                    Optional<Symbol> symbolOpt = symbolTable.resolve(idNode.identifierToken());
+                    Optional<Symbol> symbolOpt = symbolTable.resolve(idNode.text(), idNode.sourceInfo().fileName());
                     
                     if (symbolOpt.isPresent()) {
                         Symbol symbol = symbolOpt.get();
@@ -195,8 +195,8 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                 diagnostics.reportError(
                                         String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got CONSTANT.",
                                                 i + 1, instructionName, expectedType),
-                                        instructionNode.opcode().fileName(),
-                                        instructionNode.opcode().line()
+                                        instructionNode.sourceInfo().fileName(),
+                                        instructionNode.sourceInfo().lineNumber()
                                 );
                             }
                         } else if (symbol.type() == Symbol.Type.LABEL || symbol.type() == Symbol.Type.PROCEDURE) {
@@ -205,8 +205,8 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                 diagnostics.reportError(
                                         String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got LABEL.",
                                                 i + 1, instructionName, expectedType),
-                                        instructionNode.opcode().fileName(),
-                                        instructionNode.opcode().line()
+                                        instructionNode.sourceInfo().fileName(),
+                                        instructionNode.sourceInfo().lineNumber()
                                 );
                             }
                         } else if (symbol.type() == Symbol.Type.ALIAS) {
@@ -215,8 +215,8 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                 diagnostics.reportError(
                                         String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got ALIAS.",
                                                 i + 1, instructionName, expectedType),
-                                        instructionNode.opcode().fileName(),
-                                        instructionNode.opcode().line()
+                                        instructionNode.sourceInfo().fileName(),
+                                        instructionNode.sourceInfo().lineNumber()
                                 );
                             }
                         } else if (symbol.type() == Symbol.Type.VARIABLE) {
@@ -225,8 +225,8 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                 diagnostics.reportError(
                                         String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got PARAMETER.",
                                                 i + 1, instructionName, expectedType),
-                                        instructionNode.opcode().fileName(),
-                                        instructionNode.opcode().line()
+                                        instructionNode.sourceInfo().fileName(),
+                                        instructionNode.sourceInfo().lineNumber()
                                 );
                             }
                         }
@@ -234,9 +234,9 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                         // Allow unresolved if a VECTOR is expected (forward-referenced label to be linked)
                         if (expectedType != InstructionArgumentType.VECTOR) {
                             diagnostics.reportError(
-                                    String.format("Symbol '%s' is not defined.", idNode.identifierToken().text()),
-                                    idNode.identifierToken().fileName(),
-                                    idNode.identifierToken().line()
+                                    String.format("Symbol '%s' is not defined.", idNode.text()),
+                                    idNode.sourceInfo().fileName(),
+                                    idNode.sourceInfo().lineNumber()
                             );
                         }
                     }
@@ -247,15 +247,15 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                         diagnostics.reportError(
                                 String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got %s.",
                                         i + 1, instructionName, expectedType, actualType),
-                                instructionNode.opcode().fileName(),
-                                instructionNode.opcode().line()
+                                instructionNode.sourceInfo().fileName(),
+                                instructionNode.sourceInfo().lineNumber()
                         );
                     }
 
                     // Additional validations
                     // 1) Register validity (%DRx, %PRx, %FPRx) - aliases are already replaced in the parser
                     if (expectedType == InstructionArgumentType.REGISTER && argumentNode instanceof RegisterNode regNode) {
-                        String tokenText = regNode.registerToken().text();
+                        String tokenText = regNode.getName();
                         String u = tokenText.toUpperCase();
                         
                         // Validate register bounds based on configuration
@@ -266,16 +266,16 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                     diagnostics.reportError(
                                             String.format("Data register '%s' is out of bounds. Valid range: %%DR0-%%DR%d.", 
                                                 tokenText, Config.NUM_DATA_REGISTERS - 1),
-                                            regNode.registerToken().fileName(),
-                                            regNode.registerToken().line()
+                                            regNode.sourceInfo().fileName(),
+                                            regNode.sourceInfo().lineNumber()
                                     );
                                     return;
                                 }
                             } catch (NumberFormatException e) {
                                 diagnostics.reportError(
                                         String.format("Invalid data register format '%s'.", tokenText),
-                                        regNode.registerToken().fileName(),
-                                        regNode.registerToken().line()
+                                        regNode.sourceInfo().fileName(),
+                                        regNode.sourceInfo().lineNumber()
                                 );
                                 return;
                             }
@@ -286,16 +286,16 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                     diagnostics.reportError(
                                             String.format("Procedure register '%s' is out of bounds. Valid range: %%PR0-%%PR%d.", 
                                                 tokenText, Config.NUM_PROC_REGISTERS - 1),
-                                            regNode.registerToken().fileName(),
-                                            regNode.registerToken().line()
+                                            regNode.sourceInfo().fileName(),
+                                            regNode.sourceInfo().lineNumber()
                                     );
                                     return;
                                 }
                             } catch (NumberFormatException e) {
                                 diagnostics.reportError(
                                         String.format("Invalid procedure register format '%s'.", tokenText),
-                                        regNode.registerToken().fileName(),
-                                        regNode.registerToken().line()
+                                        regNode.sourceInfo().fileName(),
+                                        regNode.sourceInfo().lineNumber()
                                 );
                                 return;
                             }
@@ -306,16 +306,16 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                     diagnostics.reportError(
                                             String.format("Formal parameter register '%s' is out of bounds. Valid range: %%FPR0-%%FPR%d.", 
                                                 tokenText, Config.NUM_FORMAL_PARAM_REGISTERS - 1),
-                                            regNode.registerToken().fileName(),
-                                            regNode.registerToken().line()
+                                            regNode.sourceInfo().fileName(),
+                                            regNode.sourceInfo().lineNumber()
                                     );
                                     return;
                                 }
                             } catch (NumberFormatException e) {
                                 diagnostics.reportError(
                                         String.format("Invalid formal parameter register format '%s'.", tokenText),
-                                        regNode.registerToken().fileName(),
-                                        regNode.registerToken().line()
+                                        regNode.sourceInfo().fileName(),
+                                        regNode.sourceInfo().lineNumber()
                                 );
                                 return;
                             }
@@ -323,8 +323,8 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                             // Prohibition: Direct access to %FPRx should not be allowed
                             diagnostics.reportError(
                                     "Access to formal parameter registers (%FPRx) is not allowed in user code.",
-                                    regNode.registerToken().fileName(),
-                                    regNode.registerToken().line()
+                                    regNode.sourceInfo().fileName(),
+                                    regNode.sourceInfo().lineNumber()
                             );
                             return;
                         }
@@ -334,12 +334,12 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                         if (regId.isEmpty()) {
                             diagnostics.reportError(
                                     String.format("Unknown register '%s'.", tokenText),
-                                    regNode.registerToken().fileName(),
-                                    regNode.registerToken().line()
+                                    regNode.sourceInfo().fileName(),
+                                    regNode.sourceInfo().lineNumber()
                             );
                         }
                     } else if (expectedType == InstructionArgumentType.LOCATION_REGISTER && argumentNode instanceof RegisterNode regNode) {
-                        String tokenText = regNode.registerToken().text();
+                        String tokenText = regNode.getName();
                         String u = tokenText.toUpperCase();
                         
                         if (u.startsWith("%LR")) {
@@ -349,16 +349,16 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                     diagnostics.reportError(
                                             String.format("Location register '%s' is out of bounds. Valid range: %%LR0-%%LR%d.", 
                                                 tokenText, Config.NUM_LOCATION_REGISTERS - 1),
-                                            regNode.registerToken().fileName(),
-                                            regNode.registerToken().line()
+                                            regNode.sourceInfo().fileName(),
+                                            regNode.sourceInfo().lineNumber()
                                     );
                                     return;
                                 }
                             } catch (NumberFormatException e) {
                                 diagnostics.reportError(
                                         String.format("Invalid location register format '%s'.", tokenText),
-                                        regNode.registerToken().fileName(),
-                                        regNode.registerToken().line()
+                                        regNode.sourceInfo().fileName(),
+                                        regNode.sourceInfo().lineNumber()
                                 );
                                 return;
                             }
@@ -366,8 +366,8 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                             diagnostics.reportError(
                                     String.format("Argument %d for instruction '%s' expects a location register (%%LRx), but got '%s'.",
                                         i + 1, instructionName, tokenText),
-                                    regNode.registerToken().fileName(),
-                                    regNode.registerToken().line()
+                                    regNode.sourceInfo().fileName(),
+                                    regNode.sourceInfo().lineNumber()
                             );
                             return;
                         }
@@ -377,8 +377,8 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                         if (regId.isEmpty()) {
                             diagnostics.reportError(
                                     String.format("Unknown location register '%s'.", tokenText),
-                                    regNode.registerToken().fileName(),
-                                    regNode.registerToken().line()
+                                    regNode.sourceInfo().fileName(),
+                                    regNode.sourceInfo().lineNumber()
                             );
                         }
                     }
@@ -388,8 +388,8 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                         diagnostics.reportError(
                                 String.format("Argument %d for instruction '%s' requires a typed literal (e.g., DATA:42).",
                                         i + 1, instructionName),
-                                instructionNode.opcode().fileName(),
-                                instructionNode.opcode().line()
+                                instructionNode.sourceInfo().fileName(),
+                                instructionNode.sourceInfo().lineNumber()
                         );
                     }
                 }
@@ -399,7 +399,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
 
     private InstructionArgumentType getArgumentTypeFromNode(AstNode node) {
         if (node instanceof RegisterNode regNode) {
-            String tokenText = regNode.registerToken().text().toUpperCase();
+            String tokenText = regNode.getName().toUpperCase();
             if (tokenText.startsWith("%LR")) {
                 return InstructionArgumentType.LOCATION_REGISTER;
             }

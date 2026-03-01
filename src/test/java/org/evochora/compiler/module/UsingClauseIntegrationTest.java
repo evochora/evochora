@@ -177,8 +177,7 @@ class UsingClauseIntegrationTest {
         st.setCurrentModule(new ModuleId(
                 tempDir.resolve("lib.evo").normalize().toString().replace('\\', '/')));
 
-        Token lookupToken = new Token(TokenType.IDENTIFIER, "DEP.HARVEST", null, 1, 1, depPath);
-        var resolved = st.resolve(lookupToken);
+        var resolved = st.resolve("DEP.HARVEST", depPath);
         assertThat(resolved).isPresent();
         assertThat(resolved.get().type()).isEqualTo(Symbol.Type.LABEL);
         assertThat(resolved.get().name().text()).isEqualToIgnoringCase("HARVEST");

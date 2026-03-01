@@ -88,7 +88,7 @@ public class RegDirectiveTest {
 
         assertThat(seti.arguments().get(0)).isInstanceOf(RegisterNode.class);
         RegisterNode reg = (RegisterNode) seti.arguments().get(0);
-        assertThat(reg.registerToken().text()).isEqualTo("%DR7");
+        assertThat(reg.getName()).isEqualTo("%DR7");
     }
 
     /**
@@ -233,6 +233,6 @@ public class RegDirectiveTest {
 
         assertThat(dplr.arguments().get(0)).isInstanceOf(RegisterNode.class);
         RegisterNode reg = (RegisterNode) dplr.arguments().get(0);
-        assertThat(reg.registerToken().text()).isEqualTo("%LR0");
+        assertThat(reg.getName()).isEqualTo("%LR0");
     }
 }

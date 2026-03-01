@@ -198,12 +198,12 @@ public class SymbolTable {
      * Resolves a symbol by name, searching from the current scope upwards to the root.
      * If the symbol is not found, it attempts to resolve it as a qualified name
      * (e.g., {@code ALIAS.SYMBOL}) using the current module's import aliases.
-     * @param name The token of the symbol to resolve.
+     * @param name The name of the symbol to resolve.
+     * @param requestingFile The file requesting the symbol resolution (for module scoping).
      * @return An optional containing the found symbol, or empty if not found.
      */
-    public Optional<Symbol> resolve(Token name) {
-        String key = name.text().toUpperCase();
-        String requestingFile = name.fileName();
+    public Optional<Symbol> resolve(String name, String requestingFile) {
+        String key = name.toUpperCase();
 
         // Search scope hierarchy (current scope → root)
         for (Scope scope = currentScope; scope != null; scope = scope.parent) {

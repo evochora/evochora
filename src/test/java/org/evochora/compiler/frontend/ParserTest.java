@@ -57,16 +57,16 @@ public class ParserTest {
         assertThat(ast.get(0)).isInstanceOf(InstructionNode.class);
 
         InstructionNode setiNode = (InstructionNode) ast.get(0);
-        assertThat(setiNode.opcode().text()).isEqualTo("SETI");
+        assertThat(setiNode.opcode()).isEqualTo("SETI");
         assertThat(setiNode.arguments()).hasSize(2);
         assertThat(setiNode.arguments().get(0)).isInstanceOf(RegisterNode.class);
         assertThat(setiNode.arguments().get(1)).isInstanceOf(NumberLiteralNode.class);
 
         RegisterNode regArg = (RegisterNode) setiNode.arguments().get(0);
-        assertThat(regArg.registerToken().text()).isEqualTo("%DR0");
+        assertThat(regArg.getName()).isEqualTo("%DR0");
 
         NumberLiteralNode numArg = (NumberLiteralNode) setiNode.arguments().get(1);
-        assertThat(numArg.getValue()).isEqualTo(42);
+        assertThat(numArg.value()).isEqualTo(42);
     }
 
     /**
@@ -97,7 +97,7 @@ public class ParserTest {
         assertThat(labelNode.statement()).isInstanceOf(InstructionNode.class);
 
         InstructionNode nopNode = (InstructionNode) labelNode.statement();
-        assertThat(nopNode.opcode().text()).isEqualTo("NOP");
+        assertThat(nopNode.opcode()).isEqualTo("NOP");
         assertThat(nopNode.arguments()).isEmpty();
     }
 
@@ -127,9 +127,9 @@ public class ParserTest {
         assertThat(setv.arguments().get(1)).isInstanceOf(VectorLiteralNode.class);
 
         VectorLiteralNode vector = (VectorLiteralNode) setv.arguments().get(1);
-        assertThat(vector.components()).hasSize(2);
-        assertThat(vector.components().get(0).value()).isEqualTo(10);
-        assertThat(vector.components().get(1).value()).isEqualTo(-20);
+        assertThat(vector.values()).hasSize(2);
+        assertThat(vector.values().get(0)).isEqualTo(10);
+        assertThat(vector.values().get(1)).isEqualTo(-20);
     }
 
     /**
@@ -161,7 +161,7 @@ public class ParserTest {
         assertThat(labelNode.statement()).isInstanceOf(InstructionNode.class);
 
         InstructionNode nopNode = (InstructionNode) labelNode.statement();
-        assertThat(nopNode.opcode().text()).isEqualTo("NOP");
+        assertThat(nopNode.opcode()).isEqualTo("NOP");
     }
 
     /**
@@ -215,6 +215,6 @@ public class ParserTest {
         assertThat(labelNode.statement()).isInstanceOf(InstructionNode.class);
 
         InstructionNode nopNode = (InstructionNode) labelNode.statement();
-        assertThat(nopNode.opcode().text()).isEqualTo("NOP");
+        assertThat(nopNode.opcode()).isEqualTo("NOP");
     }
 }

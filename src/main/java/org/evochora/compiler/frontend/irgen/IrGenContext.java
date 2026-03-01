@@ -4,12 +4,7 @@ import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.ISourceLocatable;
-import org.evochora.compiler.model.ast.NumberLiteralNode;
-import org.evochora.compiler.model.ast.RegisterNode;
-import org.evochora.compiler.model.ast.TypedLiteralNode;
-import org.evochora.compiler.model.ast.VectorLiteralNode;
 
 import org.evochora.compiler.model.ir.IrItem;
 import org.evochora.compiler.model.ir.IrProgram;
@@ -73,22 +68,7 @@ public final class IrGenContext {
 		if (node instanceof ISourceLocatable locatable) {
 			return locatable.sourceInfo();
 		}
-
-		Token representative = getRepresentativeToken(node);
-		if (representative != null) {
-			return new SourceInfo(representative.fileName(), representative.line(), representative.column());
-		}
-
 		return new SourceInfo("unknown", -1, -1);
-	}
-
-	private Token getRepresentativeToken(AstNode node) {
-		if (node instanceof RegisterNode n) return n.registerToken();
-		if (node instanceof NumberLiteralNode n) return n.numberToken();
-		if (node instanceof TypedLiteralNode n) return n.type();
-		if (node instanceof IdentifierNode n) return n.identifierToken();
-		if (node instanceof VectorLiteralNode n && !n.components().isEmpty()) return n.components().get(0);
-		return null;
 	}
 
 	/**

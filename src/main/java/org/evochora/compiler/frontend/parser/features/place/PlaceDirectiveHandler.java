@@ -76,12 +76,17 @@ public class PlaceDirectiveHandler implements IParserDirectiveHandler {
             }
             return new RangeExpressionNode(dimensions);
         } else {
-            List<Token> valueTokens = new ArrayList<>();
+            List<Integer> values = new ArrayList<>();
+            Token firstToken = null;
             for (IPlacementComponent comp : components) {
                 SingleValueComponent single = (SingleValueComponent) comp;
-                valueTokens.add(single.value());
+                if (firstToken == null) firstToken = single.value();
+                values.add((int) single.value().value());
             }
-            VectorLiteralNode vectorNode = new VectorLiteralNode(valueTokens);
+            org.evochora.compiler.api.SourceInfo sourceInfo = firstToken != null
+                    ? new org.evochora.compiler.api.SourceInfo(firstToken.fileName(), firstToken.line(), firstToken.column())
+                    : new org.evochora.compiler.api.SourceInfo("unknown", -1, -1);
+            VectorLiteralNode vectorNode = new VectorLiteralNode(java.util.Collections.unmodifiableList(values), sourceInfo);
             return new VectorPlacementNode(vectorNode);
         }
     }
