@@ -224,8 +224,9 @@ org.evochora.compiler
 │   └── ModuleContextTracker.java       # Shared by Phase 4 + Phase 6
 ├── api/                                # Public API (unchanged)
 ├── internal/                           # API serialization helpers (unchanged)
-├── CompilerFeature.java                # Feature registration interface
-├── FeatureRegistrationContext.java     # Registration API for features
+├── ICompilerFeature.java               # Feature registration interface
+├── IFeatureRegistrationContext.java    # Registration API for features (pure declarative, no getters)
+├── FeatureRegistry.java               # Collects registrations, provides getters for Compiler
 ├── Compiler.java                       # Orchestrator (thin)
 ├── frontend/                           # Pure phase orchestrators + registries
 │   ├── lexer/                          # Phase 1: Lexer.java only
@@ -246,30 +247,38 @@ org.evochora.compiler
 
 ## Feature Registration Pattern
 
-Each feature has a registration class that implements `CompilerFeature`:
+Each feature has a registration class that implements `ICompilerFeature`:
 
 ```java
-// compiler/CompilerFeature.java
-public interface CompilerFeature {
-    void register(FeatureRegistrationContext ctx);
+// compiler/ICompilerFeature.java
+public interface ICompilerFeature {
+    String name();  // for diagnostics/logging
+    void register(IFeatureRegistrationContext ctx);
 }
 
-// compiler/FeatureRegistrationContext.java
-public interface FeatureRegistrationContext {
-    // Phase registration methods
-    void preprocessor(String directiveName, IPreProcessorDirectiveHandler handler);
-    void parser(String directiveName, IParserDirectiveHandler handler);
-    <T extends AstNode> void symbolCollector(Class<T> nodeType, ISymbolCollector collector);
-    <T extends AstNode> void analysisHandler(Class<T> nodeType, IAnalysisHandler handler);
-    <T extends AstNode> void tokenMapContributor(Class<T> nodeType, ITokenMapContributor contributor);
-    <T extends AstNode> void postProcessHandler(Class<T> nodeType, IPostProcessHandler handler);
+// compiler/IFeatureRegistrationContext.java — pure declarative, no state accessors
+public interface IFeatureRegistrationContext {
+    // Phase 0: Dependency Scanning
+    void dependencyScanHandler(IDependencyScanHandler handler);
+    // Phase 2: Preprocessing
+    void preprocessor(String directive, IPreProcessorDirectiveHandler handler);
+    // Phase 3: Parsing
+    void parser(String directive, IParserDirectiveHandler handler);
+    // Phase 4: Semantic Analysis
+    void symbolCollector(Class<? extends AstNode> nodeType, ISymbolCollector collector);
+    void analysisHandler(Class<? extends AstNode> nodeType, IAnalysisHandler handler);
+    // Phase 5: Token Map Generation
+    void tokenMapContributor(Class<? extends AstNode> nodeType, ITokenMapContributor contributor);
+    // Phase 6: AST Post-Processing
+    void postProcessHandler(Class<? extends AstNode> nodeType, IPostProcessHandler handler);
+    // Phase 7: IR Generation
     <T extends AstNode> void irConverter(Class<T> nodeType, IAstNodeToIrConverter<T> converter);
+    // Phase 8: IR Rewriting (Emission)
     void emissionRule(IEmissionRule rule);
+    // Phase 9: Layout
     void layoutHandler(String namespace, String name, ILayoutDirectiveHandler handler);
+    // Phase 10: Linking
     void linkingRule(ILinkingRule rule);
-
-    // Context accessors (provided by Compiler.java)
-    Map<String, List<Token>> moduleTokens();  // Pre-lexed tokens per module (for .IMPORT)
 }
 ```
 
@@ -277,10 +286,14 @@ Example — the `import` feature:
 
 ```java
 // compiler/features/importdir/ImportFeature.java
-public class ImportFeature implements CompilerFeature {
+public class ImportFeature implements ICompilerFeature {
     @Override
-    public void register(FeatureRegistrationContext ctx) {
-        ctx.preprocessor(".IMPORT", new ImportSourceHandler(ctx.moduleTokens()));
+    public String name() { return "import"; }
+
+    @Override
+    public void register(IFeatureRegistrationContext ctx) {
+        // moduleTokens flows through PreProcessorContext at execution time, not here
+        ctx.preprocessor(".IMPORT", new ImportSourceHandler());
         ctx.parser(".IMPORT", new ImportDirectiveHandler());
         ctx.symbolCollector(ImportNode.class, new ImportSymbolCollector());
         ctx.analysisHandler(ImportNode.class, new ImportAnalysisHandler());
@@ -293,9 +306,12 @@ Example — the `proc` feature (spans many phases):
 
 ```java
 // compiler/features/proc/ProcFeature.java
-public class ProcFeature implements CompilerFeature {
+public class ProcFeature implements ICompilerFeature {
     @Override
-    public void register(FeatureRegistrationContext ctx) {
+    public String name() { return "proc"; }
+
+    @Override
+    public void register(IFeatureRegistrationContext ctx) {
         ctx.parser(".PROC", new ProcDirectiveHandler());
         ctx.symbolCollector(ProcedureNode.class, new ProcedureSymbolCollector());
         ctx.analysisHandler(ProcedureNode.class, new ProcedureAnalysisHandler());
@@ -314,7 +330,7 @@ The Compiler discovers features at startup:
 
 ```java
 // In Compiler.java — the ONLY place that knows about all features
-List<CompilerFeature> features = List.of(
+List<ICompilerFeature> features = List.of(
     new InstructionFeature(),
     new LabelFeature(),
     new ProcFeature(),
@@ -331,8 +347,8 @@ List<CompilerFeature> features = List.of(
     new RepeatFeature(),
     new CtxFeature()
 );
-FeatureRegistrationContext ctx = new DefaultFeatureRegistrationContext(...);
-features.forEach(f -> f.register(ctx));
+FeatureRegistry registry = new FeatureRegistry();
+features.forEach(f -> f.register(registry));
 ```
 
 Phase registries are then populated from the context — no phase knows any feature.
@@ -416,7 +432,7 @@ Create the interfaces and registries needed for feature consolidation.
 
 | Step | Description |
 |------|-------------|
-| C1 | Create `CompilerFeature` + `FeatureRegistrationContext` interfaces in `compiler/`. |
+| C1 | Create `ICompilerFeature` + `IFeatureRegistrationContext` + `FeatureRegistry` in `compiler/`. Create `IDependencyScanHandler` + `IDependencyScanContext` in `frontend/module/`. Create stub interfaces `ITokenMapContributor`/`ITokenMapContext` in `frontend/tokenmap/` and `IPostProcessHandler`/`IPostProcessContext` in `frontend/postprocess/`. |
 | C2 | Extend `ParsingContext` with `expression()`, `declaration()`, etc. — eliminate Parser downcasts in handlers. |
 | C3 | Create `ITokenMapContributor` + `TokenMapContributorRegistry`, refactor `TokenMapGenerator` to dispatch through registry. |
 | C4 | Create `IPostProcessHandler` + `PostProcessHandlerRegistry`, refactor `AstPostProcessor` to dispatch through registry. |
