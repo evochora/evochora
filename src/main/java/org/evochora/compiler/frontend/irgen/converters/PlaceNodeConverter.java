@@ -6,9 +6,9 @@ import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.frontend.parser.ast.placement.*;
 import org.evochora.compiler.frontend.parser.features.place.PlaceNode;
-import org.evochora.compiler.ir.IrDirective;
-import org.evochora.compiler.ir.IrValue;
-import org.evochora.compiler.ir.placement.*;
+import org.evochora.compiler.model.ir.IrDirective;
+import org.evochora.compiler.model.ir.IrValue;
+import org.evochora.compiler.model.ir.placement.*;
 
 import java.util.ArrayList;
 import java.util.HashMap;

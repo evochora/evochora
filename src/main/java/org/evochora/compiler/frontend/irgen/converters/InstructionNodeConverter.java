@@ -9,7 +9,7 @@ import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.model.ast.VectorLiteralNode;
-import org.evochora.compiler.ir.*;
+import org.evochora.compiler.model.ir.*;
 
 import java.util.ArrayList;
 import java.util.List;

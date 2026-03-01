@@ -2,11 +2,11 @@ package org.evochora.compiler.backend.layout;
 
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.SourceInfo;
-import org.evochora.compiler.ir.IrDirective;
-import org.evochora.compiler.ir.IrInstruction;
-import org.evochora.compiler.ir.IrItem;
-import org.evochora.compiler.ir.IrLabelDef;
-import org.evochora.compiler.ir.IrProgram;
+import org.evochora.compiler.model.ir.IrDirective;
+import org.evochora.compiler.model.ir.IrInstruction;
+import org.evochora.compiler.model.ir.IrItem;
+import org.evochora.compiler.model.ir.IrLabelDef;
+import org.evochora.compiler.model.ir.IrProgram;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.runtime.model.EnvironmentProperties;
 

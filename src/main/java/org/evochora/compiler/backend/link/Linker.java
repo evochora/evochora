@@ -2,9 +2,9 @@ package org.evochora.compiler.backend.link;
 
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.backend.layout.LayoutResult;
-import org.evochora.compiler.ir.IrInstruction;
-import org.evochora.compiler.ir.IrItem;
-import org.evochora.compiler.ir.IrProgram;
+import org.evochora.compiler.model.ir.IrInstruction;
+import org.evochora.compiler.model.ir.IrItem;
+import org.evochora.compiler.model.ir.IrProgram;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.runtime.model.EnvironmentProperties;
 

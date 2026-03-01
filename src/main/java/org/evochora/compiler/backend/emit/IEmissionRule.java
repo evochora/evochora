@@ -1,7 +1,7 @@
 package org.evochora.compiler.backend.emit;
 
 import org.evochora.compiler.backend.link.LinkingContext;
-import org.evochora.compiler.ir.IrItem;
+import org.evochora.compiler.model.ir.IrItem;
 
 import java.util.List;
 

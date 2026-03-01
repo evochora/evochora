@@ -4,8 +4,8 @@ import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.backend.layout.ILayoutDirectiveHandler;
 import org.evochora.compiler.backend.layout.LayoutContext;
 import org.evochora.compiler.backend.layout.Nd;
-import org.evochora.compiler.ir.IrDirective;
-import org.evochora.compiler.ir.IrValue;
+import org.evochora.compiler.model.ir.IrDirective;
+import org.evochora.compiler.model.ir.IrValue;
 
 /**
  * Handles core:org directive during layout.

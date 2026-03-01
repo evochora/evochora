@@ -5,7 +5,7 @@ import org.evochora.compiler.backend.emit.EmissionRegistry;
 import org.evochora.compiler.backend.emit.IEmissionRule;
 import org.evochora.compiler.backend.emit.features.CallerMarshallingRule;
 import org.evochora.compiler.backend.link.LinkingContext;
-import org.evochora.compiler.ir.*;
+import org.evochora.compiler.model.ir.*;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;

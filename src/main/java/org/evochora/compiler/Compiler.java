@@ -27,7 +27,7 @@ import org.evochora.compiler.frontend.tokenmap.TokenMapGenerator;
 
 import java.util.ArrayList;
 import org.evochora.compiler.frontend.postprocess.AstPostProcessor;
-import org.evochora.compiler.ir.IrProgram;
+import org.evochora.compiler.model.ir.IrProgram;
 import org.evochora.compiler.backend.layout.LayoutEngine;
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.backend.link.Linker;
@@ -248,7 +248,7 @@ public class Compiler implements ICompiler {
 
         // Phase 8: IR Rewriting (apply emission rules)
         EmissionRegistry emissionRegistry = EmissionRegistry.initializeWithDefaults();
-        java.util.List<org.evochora.compiler.ir.IrItem> rewritten = irProgram.items();
+        java.util.List<org.evochora.compiler.model.ir.IrItem> rewritten = irProgram.items();
         LinkingContext linkingContext = new LinkingContext();
         for (IEmissionRule rule : emissionRegistry.rules()) {
             rewritten = rule.apply(rewritten, linkingContext);

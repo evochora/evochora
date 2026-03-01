@@ -15,7 +15,7 @@ import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
-import org.evochora.compiler.ir.*;
+import org.evochora.compiler.model.ir.*;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.BeforeAll;

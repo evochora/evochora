@@ -3,8 +3,8 @@ package org.evochora.compiler.frontend.irgen.converters;
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrGenContext;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
-import org.evochora.compiler.ir.IrDirective;
-import org.evochora.compiler.ir.IrValue;
+import org.evochora.compiler.model.ir.IrDirective;
+import org.evochora.compiler.model.ir.IrValue;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -29,7 +29,7 @@ public final class ProcedureNodeConverter implements IAstNodeToIrConverter<Proce
 	@Override
 	public void convert(ProcedureNode node, IrGenContext ctx) {
 		// Define a label at the procedure entry so CALL <name> can link to it
-		ctx.emit(new org.evochora.compiler.ir.IrLabelDef(node.name().text(), ctx.sourceOf(node)));
+		ctx.emit(new org.evochora.compiler.model.ir.IrLabelDef(node.name().text(), ctx.sourceOf(node)));
 		// Install parameter names for this procedure scope so identifiers can resolve to %FPRx
 		// Collect all parameters (old-style, REF, and VAL) into a single list
 		java.util.List<org.evochora.compiler.model.token.Token> allParams = new java.util.ArrayList<>();

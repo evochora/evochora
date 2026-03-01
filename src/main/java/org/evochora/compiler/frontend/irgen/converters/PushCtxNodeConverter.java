@@ -3,7 +3,7 @@ package org.evochora.compiler.frontend.irgen.converters;
 import org.evochora.compiler.frontend.parser.ast.PushCtxNode;
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrGenContext;
-import org.evochora.compiler.ir.IrDirective;
+import org.evochora.compiler.model.ir.IrDirective;
 
 import java.util.Collections;
 

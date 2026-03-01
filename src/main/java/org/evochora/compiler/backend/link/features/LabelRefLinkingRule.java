@@ -4,7 +4,7 @@ import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.backend.link.ILinkingRule;
 import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
-import org.evochora.compiler.ir.*;
+import org.evochora.compiler.model.ir.*;
 
 import java.util.ArrayList;
 import java.util.List;

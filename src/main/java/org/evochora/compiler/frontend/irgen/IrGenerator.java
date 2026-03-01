@@ -2,7 +2,7 @@ package org.evochora.compiler.frontend.irgen;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.ir.IrProgram;
+import org.evochora.compiler.model.ir.IrProgram;
 
 import java.util.List;
 

@@ -3,7 +3,7 @@ package org.evochora.compiler.backend.layout.features;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.backend.layout.ILayoutDirectiveHandler;
 import org.evochora.compiler.backend.layout.LayoutContext;
-import org.evochora.compiler.ir.IrDirective;
+import org.evochora.compiler.model.ir.IrDirective;
 
 public class PopCtxLayoutHandler implements ILayoutDirectiveHandler {
     @Override

@@ -1,6 +1,6 @@
-package org.evochora.compiler.ir;
+package org.evochora.compiler.model.ir;
 
-import org.evochora.compiler.ir.placement.IPlacementArgument;
+import org.evochora.compiler.model.ir.placement.IPlacementArgument;
 import java.util.List;
 import java.util.Map;
 

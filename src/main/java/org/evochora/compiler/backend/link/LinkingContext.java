@@ -1,6 +1,6 @@
 package org.evochora.compiler.backend.link;
 
-import org.evochora.compiler.ir.IrInstruction;
+import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.isa.IInstructionSet;
 
 import java.util.HashMap;

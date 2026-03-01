@@ -5,9 +5,9 @@ import org.evochora.compiler.api.PlacedMolecule;
 import org.evochora.compiler.backend.layout.ILayoutDirectiveHandler;
 import org.evochora.compiler.backend.layout.LayoutContext;
 import org.evochora.compiler.backend.layout.Nd;
-import org.evochora.compiler.ir.IrDirective;
-import org.evochora.compiler.ir.IrValue;
-import org.evochora.compiler.ir.placement.*;
+import org.evochora.compiler.model.ir.IrDirective;
+import org.evochora.compiler.model.ir.IrValue;
+import org.evochora.compiler.model.ir.placement.*;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.MoleculeTypeRegistry;
 

@@ -5,7 +5,7 @@ import org.evochora.compiler.backend.layout.features.OrgLayoutHandler;
 import org.evochora.compiler.backend.layout.features.PlaceLayoutHandler;
 import org.evochora.compiler.backend.layout.features.PopCtxLayoutHandler;
 import org.evochora.compiler.backend.layout.features.PushCtxLayoutHandler;
-import org.evochora.compiler.ir.IrDirective;
+import org.evochora.compiler.model.ir.IrDirective;
 
 import java.util.HashMap;
 import java.util.Map;

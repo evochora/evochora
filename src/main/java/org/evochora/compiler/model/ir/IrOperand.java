@@ -1,4 +1,4 @@
-package org.evochora.compiler.ir;
+package org.evochora.compiler.model.ir;
 
 /**
  * Base type for instruction operands in the IR. Keeps semantic meaning

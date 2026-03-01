@@ -1,4 +1,4 @@
-package org.evochora.compiler.ir;
+package org.evochora.compiler.model.ir;
 
 /**
  * Typed scalar literal value, used when the source contains an explicit type annotation.

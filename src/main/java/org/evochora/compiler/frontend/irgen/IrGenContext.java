@@ -13,8 +13,8 @@ import org.evochora.compiler.model.ast.VectorLiteralNode;
 import org.evochora.compiler.frontend.parser.features.label.LabelNode;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
 
-import org.evochora.compiler.ir.IrItem;
-import org.evochora.compiler.ir.IrProgram;
+import org.evochora.compiler.model.ir.IrItem;
+import org.evochora.compiler.model.ir.IrProgram;
 
 import java.util.ArrayList;
 import java.util.Deque;
@@ -34,7 +34,7 @@ public final class IrGenContext {
 	private final IrConverterRegistry registry;
 	private final List<IrItem> out = new ArrayList<>();
 	private final Deque<Map<String, Integer>> procParamScopes = new ArrayDeque<>();
-	private final Map<String, org.evochora.compiler.ir.IrOperand> constantByNameUpper = new HashMap<>();
+	private final Map<String, org.evochora.compiler.model.ir.IrOperand> constantByNameUpper = new HashMap<>();
 
 	/**
 	 * Constructs a new IR generation context.
@@ -156,7 +156,7 @@ public final class IrGenContext {
 	 * @param nameUpper The upper-case name of the constant.
 	 * @param value The operand value.
 	 */
-	public void registerConstant(String nameUpper, org.evochora.compiler.ir.IrOperand value) {
+	public void registerConstant(String nameUpper, org.evochora.compiler.model.ir.IrOperand value) {
 		if (nameUpper != null && value != null) {
 			constantByNameUpper.put(nameUpper, value);
 		}
@@ -167,7 +167,7 @@ public final class IrGenContext {
 	 * @param nameUpper The upper-case name of the constant to resolve.
 	 * @return The operand value if found, otherwise empty.
 	 */
-	public java.util.Optional<org.evochora.compiler.ir.IrOperand> resolveConstant(String nameUpper) {
+	public java.util.Optional<org.evochora.compiler.model.ir.IrOperand> resolveConstant(String nameUpper) {
 		return java.util.Optional.ofNullable(constantByNameUpper.get(nameUpper));
 	}
 }

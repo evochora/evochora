@@ -4,8 +4,8 @@ import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrGenContext;
 import org.evochora.compiler.model.ast.VectorLiteralNode;
 import org.evochora.compiler.frontend.parser.features.org.OrgNode;
-import org.evochora.compiler.ir.IrDirective;
-import org.evochora.compiler.ir.IrValue;
+import org.evochora.compiler.model.ir.IrDirective;
+import org.evochora.compiler.model.ir.IrValue;
 
 import java.util.HashMap;
 import java.util.Map;

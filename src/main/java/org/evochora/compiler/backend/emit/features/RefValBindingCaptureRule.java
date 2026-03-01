@@ -2,7 +2,7 @@ package org.evochora.compiler.backend.emit.features;
 
 import org.evochora.compiler.backend.emit.IEmissionRule;
 import org.evochora.compiler.backend.link.LinkingContext;
-import org.evochora.compiler.ir.*;
+import org.evochora.compiler.model.ir.*;
 
 import java.util.ArrayList;
 import java.util.List;

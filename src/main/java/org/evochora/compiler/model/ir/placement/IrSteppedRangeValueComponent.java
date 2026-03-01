@@ -1,4 +1,4 @@
-package org.evochora.compiler.ir.placement;
+package org.evochora.compiler.model.ir.placement;
 
 /**
  * The IR representation of a stepped range value component.

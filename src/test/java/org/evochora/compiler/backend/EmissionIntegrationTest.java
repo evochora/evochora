@@ -12,10 +12,10 @@ import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.frontend.semantics.SymbolTable; // NEUER IMPORT
-import org.evochora.compiler.ir.IrDirective;
-import org.evochora.compiler.ir.IrInstruction;
-import org.evochora.compiler.ir.IrItem;
-import org.evochora.compiler.ir.IrProgram;
+import org.evochora.compiler.model.ir.IrDirective;
+import org.evochora.compiler.model.ir.IrInstruction;
+import org.evochora.compiler.model.ir.IrItem;
+import org.evochora.compiler.model.ir.IrProgram;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;

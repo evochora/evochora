@@ -1,6 +1,6 @@
 package org.evochora.compiler.backend.layout;
 
-import org.evochora.compiler.ir.IrDirective;
+import org.evochora.compiler.model.ir.IrDirective;
 
 /**
  * Handles a specific directive during the layout phase.

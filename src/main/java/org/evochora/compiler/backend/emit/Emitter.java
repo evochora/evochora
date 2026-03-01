@@ -10,7 +10,7 @@ import org.evochora.compiler.api.TokenInfo;
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.isa.IInstructionSet;
-import org.evochora.compiler.ir.*;
+import org.evochora.compiler.model.ir.*;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.MoleculeTypeRegistry;
 

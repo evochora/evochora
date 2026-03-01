@@ -1,4 +1,4 @@
-package org.evochora.compiler.ir;
+package org.evochora.compiler.model.ir;
 
 /**
  * Symbolic register reference. Resolution to numeric IDs happens in backend.

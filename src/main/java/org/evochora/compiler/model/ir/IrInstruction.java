@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-package org.evochora.compiler.ir;
+package org.evochora.compiler.model.ir;
 
 import org.evochora.compiler.api.SourceInfo;
 

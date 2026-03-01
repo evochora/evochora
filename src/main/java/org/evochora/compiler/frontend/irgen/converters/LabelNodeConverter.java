@@ -4,7 +4,7 @@ import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrGenContext;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.parser.features.label.LabelNode;
-import org.evochora.compiler.ir.IrLabelDef;
+import org.evochora.compiler.model.ir.IrLabelDef;
 
 /**
  * Converts {@link LabelNode} into {@link IrLabelDef} and then delegates to the child statement if present.

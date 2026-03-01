@@ -8,10 +8,10 @@ import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.model.ast.VectorLiteralNode;
 import org.evochora.compiler.frontend.parser.features.def.DefineNode;
-import org.evochora.compiler.ir.IrImm;
-import org.evochora.compiler.ir.IrOperand;
-import org.evochora.compiler.ir.IrTypedImm;
-import org.evochora.compiler.ir.IrVec;
+import org.evochora.compiler.model.ir.IrImm;
+import org.evochora.compiler.model.ir.IrOperand;
+import org.evochora.compiler.model.ir.IrTypedImm;
+import org.evochora.compiler.model.ir.IrVec;
 
 /**
  * Captures constants from .DEFINE into the IR generation context so they can be
@@ -23,7 +23,7 @@ public final class DefineNodeConverter implements IAstNodeToIrConverter<DefineNo
      * {@inheritDoc}
      * <p>
      * This implementation registers the constant in the {@link IrGenContext} for later use.
-     * It does not emit any {@link org.evochora.compiler.ir.IrItem}s.
+     * It does not emit any {@link org.evochora.compiler.model.ir.IrItem}s.
      *
      * @param node The node to convert.
      * @param ctx  The generation context.
@@ -36,7 +36,7 @@ public final class DefineNodeConverter implements IAstNodeToIrConverter<DefineNo
             ctx.registerConstant(nameUpper, value);
         } else if (node.value() instanceof IdentifierNode id) {
             // Allow constant aliasing: resolve later as label if needed
-            ctx.registerConstant(nameUpper, new org.evochora.compiler.ir.IrLabelRef(id.identifierToken().text()));
+            ctx.registerConstant(nameUpper, new org.evochora.compiler.model.ir.IrLabelRef(id.identifierToken().text()));
         }
         // .DEFINE does not emit IR by itself
     }
