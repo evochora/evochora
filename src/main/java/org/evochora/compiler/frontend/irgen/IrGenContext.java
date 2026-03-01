@@ -5,13 +5,11 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
-import org.evochora.compiler.model.ast.InstructionNode;
+import org.evochora.compiler.model.ast.ISourceLocatable;
 import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.model.ast.VectorLiteralNode;
-import org.evochora.compiler.frontend.parser.features.label.LabelNode;
-import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
 
 import org.evochora.compiler.model.ir.IrItem;
 import org.evochora.compiler.model.ir.IrProgram;
@@ -71,19 +69,11 @@ public final class IrGenContext {
 		return diagnostics;
 	}
 
-	// --- START OF CORRECTION ---
-
 	public SourceInfo sourceOf(AstNode node) {
-		if (node instanceof InstructionNode n && n.opcode() != null) {
-			// For instructions, we reconstruct the line.
-					return new SourceInfo(
-				n.opcode().fileName(),
-				n.opcode().line(),
-				n.opcode().column()
-		);
+		if (node instanceof ISourceLocatable locatable) {
+			return locatable.sourceInfo();
 		}
 
-		// For all other nodes, we continue to use a representative token.
 		Token representative = getRepresentativeToken(node);
 		if (representative != null) {
 			return new SourceInfo(representative.fileName(), representative.line(), representative.column());
@@ -93,17 +83,13 @@ public final class IrGenContext {
 	}
 
 	private Token getRepresentativeToken(AstNode node) {
-		if (node instanceof LabelNode n) return n.labelToken();
 		if (node instanceof RegisterNode n) return n.registerToken();
 		if (node instanceof NumberLiteralNode n) return n.numberToken();
 		if (node instanceof TypedLiteralNode n) return n.type();
 		if (node instanceof IdentifierNode n) return n.identifierToken();
-		if (node instanceof ProcedureNode n) return n.name();
 		if (node instanceof VectorLiteralNode n && !n.components().isEmpty()) return n.components().get(0);
 		return null;
 	}
-
-	// --- END OF CORRECTION ---
 
 	/**
 	 * Builds the final {@link IrProgram} from the emitted items.
