@@ -1,8 +1,9 @@
 package org.evochora.compiler.frontend.parser.features.require;
 
 import org.evochora.compiler.model.token.Token;
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.frontend.parser.ast.SourceLocatable;
+import org.evochora.compiler.model.ast.ISourceLocatable;
 
 /**
  * AST node for the {@code .REQUIRE} directive.
@@ -18,10 +19,10 @@ import org.evochora.compiler.frontend.parser.ast.SourceLocatable;
 public record RequireNode(
         Token path,
         Token alias
-) implements AstNode, SourceLocatable {
+) implements AstNode, ISourceLocatable {
 
     @Override
-    public String getSourceFileName() {
-        return alias.fileName();
+    public SourceInfo sourceInfo() {
+        return new SourceInfo(alias.fileName(), alias.line(), alias.column());
     }
 }

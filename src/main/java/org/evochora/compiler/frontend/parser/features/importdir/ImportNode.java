@@ -1,8 +1,9 @@
 package org.evochora.compiler.frontend.parser.features.importdir;
 
 import org.evochora.compiler.model.token.Token;
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.frontend.parser.ast.SourceLocatable;
+import org.evochora.compiler.model.ast.ISourceLocatable;
 
 import java.util.List;
 
@@ -19,11 +20,11 @@ public record ImportNode(
         Token path,
         Token alias,
         List<UsingClause> usings
-) implements AstNode, SourceLocatable {
+) implements AstNode, ISourceLocatable {
 
     @Override
-    public String getSourceFileName() {
-        return alias.fileName();
+    public SourceInfo sourceInfo() {
+        return new SourceInfo(alias.fileName(), alias.line(), alias.column());
     }
 
     /**

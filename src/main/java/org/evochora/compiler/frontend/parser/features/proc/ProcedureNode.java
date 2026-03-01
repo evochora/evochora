@@ -1,8 +1,9 @@
 package org.evochora.compiler.frontend.parser.features.proc;
 
 import org.evochora.compiler.model.token.Token;
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.frontend.parser.ast.SourceLocatable;
+import org.evochora.compiler.model.ast.ISourceLocatable;
 
 import java.util.List;
 
@@ -23,11 +24,11 @@ public record ProcedureNode(
         List<Token> refParameters,
         List<Token> valParameters,
         List<AstNode> body
-) implements AstNode, SourceLocatable {
+) implements AstNode, ISourceLocatable {
 
     @Override
-    public String getSourceFileName() {
-        return name.fileName();
+    public SourceInfo sourceInfo() {
+        return new SourceInfo(name.fileName(), name.line(), name.column());
     }
 
     @Override

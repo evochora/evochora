@@ -4,7 +4,8 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.parser.ast.PopCtxNode;
 import org.evochora.compiler.frontend.parser.ast.PushCtxNode;
-import org.evochora.compiler.frontend.parser.ast.SourceLocatable;
+import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.model.ast.ISourceLocatable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -18,7 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * Unit tests for {@link ModuleContextTracker}.
  * Verifies that module context switching works correctly for
- * PushCtxNode, PopCtxNode, and SourceLocatable nodes.
+ * PushCtxNode, PopCtxNode, and ISourceLocatable nodes.
  */
 @Tag("unit")
 class ModuleContextTrackerTest {
@@ -141,12 +142,12 @@ class ModuleContextTrackerTest {
     }
 
     /**
-     * Minimal SourceLocatable stub for testing.
+     * Minimal ISourceLocatable stub for testing.
      */
-    private record StubSourceLocatable(String fileName) implements AstNode, SourceLocatable {
+    private record StubSourceLocatable(String fileName) implements AstNode, ISourceLocatable {
         @Override
-        public String getSourceFileName() {
-            return fileName;
+        public SourceInfo sourceInfo() {
+            return new SourceInfo(fileName, 0, 0);
         }
 
         @Override

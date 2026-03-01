@@ -3,7 +3,7 @@ package org.evochora.compiler.frontend.semantics;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.parser.ast.PopCtxNode;
 import org.evochora.compiler.frontend.parser.ast.PushCtxNode;
-import org.evochora.compiler.frontend.parser.ast.SourceLocatable;
+import org.evochora.compiler.model.ast.ISourceLocatable;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -56,8 +56,8 @@ public class ModuleContextTracker {
             }
             return;
         }
-        if (node instanceof SourceLocatable locatable) {
-            String fileName = locatable.getSourceFileName();
+        if (node instanceof ISourceLocatable locatable) {
+            String fileName = locatable.sourceInfo().fileName();
             if (fileName == null) return;
             ModuleId moduleId = fileToModule.get(fileName);
             if (moduleId != null && !moduleId.equals(symbolTable.getCurrentModuleId())) {

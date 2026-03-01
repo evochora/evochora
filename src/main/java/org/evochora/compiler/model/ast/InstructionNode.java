@@ -1,6 +1,6 @@
 package org.evochora.compiler.model.ast;
 
-import org.evochora.compiler.frontend.parser.ast.SourceLocatable;
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.token.Token;
 
 import java.util.ArrayList;
@@ -20,11 +20,11 @@ public record InstructionNode(
         List<AstNode> arguments,
         List<AstNode> refArguments,
         List<AstNode> valArguments
-) implements AstNode, SourceLocatable {
+) implements AstNode, ISourceLocatable {
 
     @Override
-    public String getSourceFileName() {
-        return opcode.fileName();
+    public SourceInfo sourceInfo() {
+        return new SourceInfo(opcode.fileName(), opcode.line(), opcode.column());
     }
 
     /**

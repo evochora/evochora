@@ -97,7 +97,7 @@ public class RequireDirectiveTest {
 
         assertThat(diagnostics.hasErrors()).isFalse();
         RequireNode node = (RequireNode) ast.get(0);
-        assertThat(node.getSourceFileName()).isEqualTo("main.evo");
+        assertThat(node.sourceInfo().fileName()).isEqualTo("main.evo");
     }
 
     @Test

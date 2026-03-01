@@ -4,6 +4,7 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.module.DependencyGraph;
 import org.evochora.compiler.frontend.module.ModuleDescriptor;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.ISourceLocatable;
 import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
 import org.evochora.compiler.frontend.semantics.analysis.ISymbolCollector;
 
@@ -20,7 +21,7 @@ import java.util.Optional;
  * <p>In multi-module compilation, the analyzer receives a {@link DependencyGraph} at construction
  * time and sets up module relationships (imports, requires, USING bindings) in the symbol table
  * before analysis begins. During traversal, it auto-switches the symbol table's current module
- * context based on the source file of each AST node via the {@link SourceLocatable} interface.
+ * context based on the source file of each AST node via the {@link ISourceLocatable} interface.
  */
 public class SemanticAnalyzer {
 

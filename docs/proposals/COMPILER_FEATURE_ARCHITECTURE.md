@@ -88,7 +88,10 @@ Currently AST nodes store Token references (e.g., `InstructionNode(Token opcode,
 This must be refactored: AST nodes store extracted values (String, int) + SourceInfo.
 The Parser is the boundary that reads Tokens and produces AST nodes with extracted data.
 
-`SourceLocatable` becomes obsolete — replaced by `SourceInfo` on every AST node.
+`SourceLocatable` is modernized to `ISourceLocatable` and moved to `model/ast/`.
+The method changes from `getSourceFileName()` to `sourceInfo()` returning `SourceInfo`.
+AST nodes that originate from source code implement `ISourceLocatable`; synthetic nodes
+(PushCtxNode, PopCtxNode) do not.
 
 ---
 
@@ -103,6 +106,7 @@ org.evochora.compiler
 │   │   └── TokenType.java
 │   ├── ast/                            # Phase 3-7 data format (core grammar only)
 │   │   ├── AstNode.java               # No Token imports
+│   │   ├── ISourceLocatable.java      # Capability interface: sourceInfo() → SourceInfo
 │   │   ├── InstructionNode.java        # Core grammar, not a feature
 │   │   ├── IdentifierNode.java         # Core grammar
 │   │   ├── NumberLiteralNode.java      # Core grammar
@@ -347,7 +351,7 @@ is resolved:
 | Macro expansion hardcoded in PreProcessor | Extracted to `MacroExpansionHandler`, registered as fallback handler |
 | Parser handlers downcast ParsingContext | `ParsingContext` extended with `expression()`, `declaration()`, etc. |
 | Compiler.java contains business logic | Procedure metadata extraction moves to `ProcFeature` components |
-| IrGenContext instanceof chains | `AstNode.sourceInfo()` method — IrGenContext uses SourceInfo directly |
+| IrGenContext instanceof chains | `ISourceLocatable.sourceInfo()` — IrGenContext uses SourceInfo via capability interface |
 | TokenMapGenerator hardcodes features | Registry-based `ITokenMapContributor` dispatch |
 | LabelRefLinkingRule imports SymbolTable | Pre-resolved qualified names map, or SymbolTable in `compiler/model/` |
 | Linker hardcodes CALL | `CallSiteBindingRule` in `features/proc/` |
@@ -367,24 +371,44 @@ Pure package moves — only import paths change, no behavioral changes.
 
 | Step | Description |
 |------|-------------|
-| A1 | Move Token + TokenType → `compiler/model/token/` (currently in `compiler/model/`, needs one more move). **PARTIALLY DONE.** |
-| A2 | Move core AST nodes → `compiler/model/ast/` (AstNode, InstructionNode, IdentifierNode, NumberLiteralNode, RegisterNode, TypedLiteralNode, VectorLiteralNode). Keep Token references and SourceLocatable as-is — decoupled in Phase B. |
-| A3 | Move IR types → `compiler/model/ir/` (from existing `compiler/ir/`). |
+| A1 | Move Token + TokenType → `compiler/model/token/`. **DONE.** |
+| A2 | Move core AST nodes → `compiler/model/ast/` (AstNode, InstructionNode, IdentifierNode, NumberLiteralNode, RegisterNode, TypedLiteralNode, VectorLiteralNode). Keep Token references and SourceLocatable as-is — decoupled in Phase B. **DONE.** |
+| A3 | Move IR types → `compiler/model/ir/` (from existing `compiler/ir/`). **DONE.** |
 
 After Phase A all three data format layers are in their target packages.
 AST still imports Token — that's intentional, decoupled incrementally in Phase B.
 
 ### Phase B: AST-Token Decoupling
 
-Incremental refactoring — each step is additive or changes one thing at a time.
+Incremental refactoring of the 7 core AST nodes in `model/ast/`. Feature-specific AST nodes
+(DefineNode, ImportNode, LabelNode, etc. in `frontend/parser/features/`) remain unchanged
+here — they are decoupled when moved to `features/` in Phase D (see per-step notes there).
 
 | Step | Description |
 |------|-------------|
-| B1 | Add `sourceInfo()` method to AstNode (returns SourceInfo). Parser populates it when creating nodes. Purely additive — nothing else changes yet. |
-| B2 | Simplify IrGenContext: use `node.sourceInfo()` for error reporting instead of instanceof chains that call `getRepresentativeToken()`. |
-| B3 | Refactor AST nodes to store extracted values (String, int) + SourceInfo instead of Token references. **One node type per commit.** Parser extracts values from Tokens at creation time. Consumers updated along with each node. |
-| B4 | Remove `SourceLocatable` interface (all consumers now use `sourceInfo()`). |
-| B5 | Verify data format purity: `model/ast/` has zero imports from `model/token/` or `model/ir/`. |
+| B1 | Modernize `SourceLocatable` → `ISourceLocatable` in `model/ast/`. Method changes from `getSourceFileName()` to `sourceInfo()` returning `SourceInfo`. Move from `frontend/parser/ast/` to `model/ast/`. Update all 5 current implementers (InstructionNode, LabelNode, RequireNode, ProcedureNode, ImportNode) and consumers (ModuleContextTracker, SemanticAnalyzer). |
+| B2 | Simplify IrGenContext: replace `getRepresentativeToken()` instanceof chains with `ISourceLocatable.sourceInfo()`. |
+| B3 | Refactor core AST nodes to store extracted values + SourceInfo instead of Token references. **One node per commit**, consumers updated with each node. All 7 nodes implement `ISourceLocatable`. See node specifications below. |
+| B4 | Verify data format purity: `model/ast/` has zero imports from `model/token/` or `model/ir/`. |
+
+**B3 Node Specifications (recommended commit order — simplest to largest blast radius):**
+
+| # | Node | Current Fields | New Fields | Type |
+|---|------|---------------|------------|------|
+| 1 | NumberLiteralNode | `(Token numberToken)` | `(int value, SourceInfo sourceInfo)` | record |
+| 2 | IdentifierNode | `(Token identifierToken)` | `(String text, SourceInfo sourceInfo)` | record |
+| 3 | TypedLiteralNode | `(Token type, Token value)` | `(String typeName, int value, SourceInfo sourceInfo)` | record |
+| 4 | VectorLiteralNode | `(List<Token> components)` | `(List<Integer> values, SourceInfo sourceInfo)` | record |
+| 5 | RegisterNode | `(String name, String originalAlias, SourceInfo sourceInfo, Token registerToken)` | `(String name, String originalAlias, SourceInfo sourceInfo)` — remove Token field, rename `getSourceInfo()` → `sourceInfo()` | class |
+| 6 | InstructionNode | `(Token opcode, List<AstNode> args, List<AstNode> refArgs, List<AstNode> valArgs)` | `(String opcode, List<AstNode> args, List<AstNode> refArgs, List<AstNode> valArgs, SourceInfo sourceInfo)` | record |
+
+Key accessor changes per node:
+- **NumberLiteralNode**: `getValue()` / `numberToken().value()` → `value()`. Parsing moves to Parser.
+- **IdentifierNode**: `identifierToken().text()` → `text()`.
+- **TypedLiteralNode**: `type().text()` → `typeName()`, `value().text()` → consumers use `value()` directly (int). Value parsing moves to Parser.
+- **VectorLiteralNode**: `components().stream().mapToInt(tok -> parseInt(tok.text()))` → `values()` directly. Parsing moves to Parser.
+- **RegisterNode**: `registerToken().text()` → `getName()` (already exists), `registerToken().fileName()/line()` → `sourceInfo().fileName()/lineNumber()` (SourceInfo already exists, Token field removed).
+- **InstructionNode**: `opcode().text()` → `opcode()` (same accessor name, return type changes Token → String), `getSourceFileName()` → `sourceInfo().fileName()`.
 
 ### Phase C: Registration Infrastructure
 
@@ -405,6 +429,11 @@ Move all feature components into `compiler/features/*/` packages, one feature at
 Each step creates the feature package, moves all components, creates the `XxxFeature`
 registration class, and updates the corresponding registry initialization.
 
+Feature-specific AST nodes that still hold Token references are decoupled from Token
+as part of their move (same approach as Phase B: replace Token fields with extracted
+values + SourceInfo, implement `ISourceLocatable`). Steps marked with **[+decouple]**
+include this Token decoupling work.
+
 | Step | Feature | Files to Move | New Files |
 |------|---------|--------------|-----------|
 | D1 | repeat | RepeatDirectiveHandler, CaretDirectiveHandler | RepeatFeature.java |
@@ -413,18 +442,19 @@ registration class, and updates the corresponding registry initialization.
 | D4 | ctx | PushCtx/PopCtx Nodes + Parser Handlers + Preprocessor PopCtxHandler + Converters + LayoutHandlers | CtxFeature.java |
 | D5 | org | OrgNode, OrgDirectiveHandler, OrgNodeConverter, OrgLayoutHandler | OrgFeature.java |
 | D6 | dir | DirNode, DirDirectiveHandler, DirNodeConverter, DirLayoutHandler | DirFeature.java |
-| D7 | define | DefineNode, DefineDirectiveHandler, DefineAnalysisHandler, DefinePostProcessHandler, DefineNodeConverter | DefineFeature.java |
-| D8 | reg | RegNode, RegDirectiveHandler, RegAnalysisHandler, RegPostProcessHandler | RegFeature.java |
-| D9 | preg | PregNode, PregDirectiveHandler, PregAnalysisHandler | PregFeature.java |
-| D10 | label | LabelNode, LabelSymbolCollector, LabelAnalysisHandler, LabelNodeConverter | LabelFeature.java |
-| D11 | place | PlaceNode, PlaceDirectiveHandler, PlaceNodeConverter, PlaceLayoutHandler, placement/ | PlaceFeature.java |
-| D12 | require | RequireNode, RequireDirectiveHandler, RequireSymbolCollector, RequireAnalysisHandler, RequireNodeConverter | RequireFeature.java |
-| D13 | importdir | ImportNode, ImportSourceHandler, ImportDirectiveHandler, ImportSymbolCollector, ImportAnalysisHandler, ImportNodeConverter | ImportFeature.java |
-| D14 | proc | ProcedureNode, ExportNode, ProcDirectiveHandler, ProcedureSymbolCollector, ProcedureAnalysisHandler, ProcedureNodeConverter, ProcedureMarshallingRule, CallerMarshallingRule, CallBindingCaptureRule, RefValBindingCaptureRule, CallSiteBindingRule, ProcedureTokenMapContributor | ProcFeature.java |
+| D7 | define | DefineNode, DefineDirectiveHandler, DefineAnalysisHandler, DefinePostProcessHandler, DefineNodeConverter. **[+decouple]** DefineNode: Token `name` → String + SourceInfo | DefineFeature.java |
+| D8 | reg | RegNode, RegDirectiveHandler, RegAnalysisHandler, RegPostProcessHandler. **[+decouple]** RegNode: Token `alias`, `register` → String + SourceInfo | RegFeature.java |
+| D9 | preg | PregNode, PregDirectiveHandler, PregAnalysisHandler. **[+decouple]** PregNode: Token `alias`, `targetRegister` → String + SourceInfo | PregFeature.java |
+| D10 | label | LabelNode, LabelSymbolCollector, LabelAnalysisHandler, LabelNodeConverter. **[+decouple]** LabelNode: Token `labelToken` → String + SourceInfo | LabelFeature.java |
+| D11 | place | PlaceNode, PlaceDirectiveHandler, PlaceNodeConverter, PlaceLayoutHandler, placement/. **[+decouple]** placement sub-nodes: RangeValueComponent, SingleValueComponent, SteppedRangeValueComponent, WildcardValueComponent — Token fields → extracted values + SourceInfo | PlaceFeature.java |
+| D12 | require | RequireNode, RequireDirectiveHandler, RequireSymbolCollector, RequireAnalysisHandler, RequireNodeConverter. **[+decouple]** RequireNode: Token `path`, `alias` → String + SourceInfo | RequireFeature.java |
+| D13 | importdir | ImportNode, ImportSourceHandler, ImportDirectiveHandler, ImportSymbolCollector, ImportAnalysisHandler, ImportNodeConverter. **[+decouple]** ImportNode: Token `path`, `alias` + UsingClause Tokens → String + SourceInfo | ImportFeature.java |
+| D14 | proc | ProcedureNode, ExportNode, ProcDirectiveHandler, ProcedureSymbolCollector, ProcedureAnalysisHandler, ProcedureNodeConverter, ProcedureMarshallingRule, CallerMarshallingRule, CallBindingCaptureRule, RefValBindingCaptureRule, CallSiteBindingRule, ProcedureTokenMapContributor. **[+decouple]** ProcedureNode: Token `name`, `parameters`, `refParameters`, `valParameters` → String/List\<String\> + SourceInfo; ExportNode: Token `exportedName` → String + SourceInfo | ProcFeature.java |
 | D15 | instruction | InstructionAnalysisHandler, InstructionNodeConverter, InstructionTokenMapContributor | InstructionFeature.java |
 
 Order rationale: start with simple features (few phases), end with complex ones
 (proc spans 6+ phases). Each step is independently committable with all tests green.
+D1-D6 have no Token decoupling; D7-D14 include Token decoupling of their feature nodes.
 
 ### Phase E: Wiring
 
@@ -456,7 +486,7 @@ After ALL steps are complete:
 6. **All phase registries are populated via FeatureRegistrationContext** — no `initializeWithDefaults()`
 7. **Data format layer purity**: `model/token/` has zero imports from `model/ast/` or `model/ir/`; `model/ast/` has zero imports from `model/token/` or `model/ir/`; `model/ir/` has zero imports from `model/token/` or `model/ast/`. The only shared type across layers is `SourceInfo`.
 8. **AST nodes store no Token references** — only extracted values (String, int, etc.) + SourceInfo
-9. **`SourceLocatable` is deleted** — replaced by `SourceInfo` on every AST node
+9. **`SourceLocatable` modernized to `ISourceLocatable`** in `model/ast/` — returns `SourceInfo` instead of `String getSourceFileName()`; all source-tracked AST nodes implement it, synthetic nodes (PushCtxNode, PopCtxNode) do not
 10. **All tests green** after each step
 
 ## Constraints

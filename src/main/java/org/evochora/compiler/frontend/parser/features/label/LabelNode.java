@@ -1,8 +1,9 @@
 package org.evochora.compiler.frontend.parser.features.label;
 
 import org.evochora.compiler.model.token.Token;
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.frontend.parser.ast.SourceLocatable;
+import org.evochora.compiler.model.ast.ISourceLocatable;
 
 import java.util.List;
 
@@ -17,11 +18,11 @@ public record LabelNode(
         Token labelToken,
         AstNode statement,
         boolean exported
-) implements AstNode, SourceLocatable {
+) implements AstNode, ISourceLocatable {
 
     @Override
-    public String getSourceFileName() {
-        return labelToken.fileName();
+    public SourceInfo sourceInfo() {
+        return new SourceInfo(labelToken.fileName(), labelToken.line(), labelToken.column());
     }
 
     /**
