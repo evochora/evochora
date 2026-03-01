@@ -1,5 +1,7 @@
 package org.evochora.compiler.frontend.parser.ast;
 
+import org.evochora.compiler.model.ast.AstNode;
+
 /**
  * An AST node representing a .POP_CTX directive.
  * This is an internal directive injected by the preprocessor.

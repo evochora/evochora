@@ -19,7 +19,7 @@ import org.evochora.compiler.frontend.semantics.ModuleContextTracker;
 import org.evochora.compiler.frontend.semantics.ModuleId;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.parser.ast.AstNode;
+import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.irgen.IrConverterRegistry;
 import org.evochora.compiler.frontend.irgen.IrGenerator;
 import org.evochora.compiler.frontend.semantics.SymbolTable;

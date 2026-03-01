@@ -1,4 +1,4 @@
-package org.evochora.compiler.frontend.parser.ast;
+package org.evochora.compiler.model.ast;
 
 import java.util.Collections;
 import java.util.List;
@@ -17,18 +17,17 @@ public interface AstNode {
     default List<AstNode> getChildren() {
         return Collections.emptyList();
     }
-    
+
     /**
      * Creates a new instance of this node with the given children.
      * This allows the TreeWalker to reconstruct nodes generically without
-     * knowing their specific types.
-     * 
+     * knowing the specific structure of each node.
+     *
      * @param newChildren The new children for this node
      * @return A new instance of this node with the new children, or this node if reconstruction isn't supported
      */
     default AstNode reconstructWithChildren(List<AstNode> newChildren) {
         // Default implementation: return this node unchanged
-        // Subclasses should override this if they support reconstruction
         return this;
     }
 }

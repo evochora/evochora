@@ -2,7 +2,13 @@ package org.evochora.compiler.frontend.irgen.converters;
 
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrGenContext;
-import org.evochora.compiler.frontend.parser.ast.*;
+import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.IdentifierNode;
+import org.evochora.compiler.model.ast.InstructionNode;
+import org.evochora.compiler.model.ast.NumberLiteralNode;
+import org.evochora.compiler.model.ast.RegisterNode;
+import org.evochora.compiler.model.ast.TypedLiteralNode;
+import org.evochora.compiler.model.ast.VectorLiteralNode;
 import org.evochora.compiler.ir.*;
 
 import java.util.ArrayList;

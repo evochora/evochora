@@ -2,7 +2,7 @@ package org.evochora.compiler.frontend.irgen.converters;
 
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrGenContext;
-import org.evochora.compiler.frontend.parser.ast.VectorLiteralNode;
+import org.evochora.compiler.model.ast.VectorLiteralNode;
 import org.evochora.compiler.frontend.parser.features.dir.DirNode;
 import org.evochora.compiler.ir.IrDirective;
 import org.evochora.compiler.ir.IrValue;

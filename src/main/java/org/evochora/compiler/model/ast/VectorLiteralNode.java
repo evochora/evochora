@@ -1,4 +1,4 @@
-package org.evochora.compiler.frontend.parser.ast;
+package org.evochora.compiler.model.ast;
 
 import org.evochora.compiler.model.token.Token;
 

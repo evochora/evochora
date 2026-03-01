@@ -1,7 +1,7 @@
 package org.evochora.compiler.frontend.semantics;
 
-import org.evochora.compiler.frontend.parser.ast.AstNode;
-import org.evochora.compiler.frontend.parser.ast.InstructionNode;
+import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.frontend.parser.ast.PregNode;
 import org.evochora.compiler.frontend.parser.features.def.DefineNode;
 import org.evochora.compiler.frontend.parser.features.importdir.ImportNode;

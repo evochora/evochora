@@ -3,7 +3,7 @@ package org.evochora.compiler.frontend.semantics;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.module.DependencyGraph;
 import org.evochora.compiler.frontend.module.ModuleDescriptor;
-import org.evochora.compiler.frontend.parser.ast.AstNode;
+import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
 import org.evochora.compiler.frontend.semantics.analysis.ISymbolCollector;
 

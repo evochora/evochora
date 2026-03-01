@@ -1,6 +1,12 @@
 package org.evochora.compiler.frontend.postprocess;
 
 import org.evochora.compiler.frontend.parser.ast.*;
+import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.IdentifierNode;
+import org.evochora.compiler.model.ast.InstructionNode;
+import org.evochora.compiler.model.ast.NumberLiteralNode;
+import org.evochora.compiler.model.ast.RegisterNode;
+import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.frontend.parser.features.def.DefineNode;
 import org.evochora.compiler.frontend.semantics.ModuleContextTracker;
 import org.evochora.compiler.frontend.semantics.ModuleId;

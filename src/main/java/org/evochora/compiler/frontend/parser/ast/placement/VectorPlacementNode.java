@@ -1,6 +1,6 @@
 package org.evochora.compiler.frontend.parser.ast.placement;
 
-import org.evochora.compiler.frontend.parser.ast.VectorLiteralNode;
+import org.evochora.compiler.model.ast.VectorLiteralNode;
 
 /**
  * An adapter class that holds a VectorLiteralNode for the old syntax (e.g., 11|12).

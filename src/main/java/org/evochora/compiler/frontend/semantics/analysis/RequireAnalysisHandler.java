@@ -1,7 +1,7 @@
 package org.evochora.compiler.frontend.semantics.analysis;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.parser.ast.AstNode;
+import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.parser.features.require.RequireNode;
 import org.evochora.compiler.frontend.semantics.ModuleId;
 import org.evochora.compiler.frontend.semantics.ModuleScope;

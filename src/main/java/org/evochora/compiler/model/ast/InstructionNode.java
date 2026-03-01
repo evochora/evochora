@@ -1,5 +1,6 @@
-package org.evochora.compiler.frontend.parser.ast;
+package org.evochora.compiler.model.ast;
 
+import org.evochora.compiler.frontend.parser.ast.SourceLocatable;
 import org.evochora.compiler.model.token.Token;
 
 import java.util.ArrayList;
@@ -59,7 +60,7 @@ public record InstructionNode(
         allChildren.addAll(valArguments);
         return allChildren;
     }
-    
+
     @Override
     public AstNode reconstructWithChildren(List<AstNode> newChildren) {
         // Split newChildren back into arguments, refArguments, and valArguments
@@ -67,29 +68,29 @@ public record InstructionNode(
         int argumentsSize = this.arguments.size();
         int refArgumentsSize = this.refArguments.size();
         int valArgumentsSize = this.valArguments.size();
-        
+
         List<AstNode> newArguments = new ArrayList<>();
         List<AstNode> newRefArguments = new ArrayList<>();
         List<AstNode> newValArguments = new ArrayList<>();
-        
+
         // Split the newChildren back into their respective lists
         int index = 0;
-        
+
         // Add arguments
         for (int i = 0; i < argumentsSize && index < newChildren.size(); i++) {
             newArguments.add(newChildren.get(index++));
         }
-        
+
         // Add refArguments
         for (int i = 0; i < refArgumentsSize && index < newChildren.size(); i++) {
             newRefArguments.add(newChildren.get(index++));
         }
-        
+
         // Add valArguments
         for (int i = 0; i < valArgumentsSize && index < newChildren.size(); i++) {
             newValArguments.add(newChildren.get(index++));
         }
-        
+
         return new InstructionNode(opcode, newArguments, newRefArguments, newValArguments);
     }
 }

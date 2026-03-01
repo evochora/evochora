@@ -1,6 +1,6 @@
 package org.evochora.compiler.frontend.irgen;
 
-import org.evochora.compiler.frontend.parser.ast.AstNode;
+import org.evochora.compiler.model.ast.AstNode;
 
 /**
  * Default/fallback converter used when no specific converter is registered.

@@ -1,6 +1,6 @@
 package org.evochora.compiler.frontend.parser;
 
-import org.evochora.compiler.frontend.parser.ast.AstNode;
+import org.evochora.compiler.model.ast.AstNode;
 
 /**
  * Handler interface for directives processed during the parsing phase.

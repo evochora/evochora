@@ -2,7 +2,10 @@ package org.evochora.compiler.frontend.tokenmap;
 
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.TokenInfo;
-import org.evochora.compiler.frontend.parser.ast.*;
+import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.IdentifierNode;
+import org.evochora.compiler.model.ast.InstructionNode;
+import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
 
 import org.evochora.compiler.frontend.semantics.Symbol;

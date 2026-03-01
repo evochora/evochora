@@ -4,7 +4,7 @@ import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
 import org.evochora.compiler.frontend.parser.ParsingContext;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
-import org.evochora.compiler.frontend.parser.ast.AstNode;
+import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.parser.ast.PregNode;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.runtime.Config;

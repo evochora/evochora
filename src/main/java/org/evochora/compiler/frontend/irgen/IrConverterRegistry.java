@@ -12,8 +12,8 @@ import org.evochora.compiler.frontend.irgen.converters.PopCtxNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.PushCtxNodeConverter;
 
 import org.evochora.compiler.frontend.irgen.converters.DefineNodeConverter;
-import org.evochora.compiler.frontend.parser.ast.AstNode;
-import org.evochora.compiler.frontend.parser.ast.InstructionNode;
+import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.frontend.parser.ast.PopCtxNode;
 import org.evochora.compiler.frontend.parser.ast.PushCtxNode;
 import org.evochora.compiler.frontend.parser.features.dir.DirNode;

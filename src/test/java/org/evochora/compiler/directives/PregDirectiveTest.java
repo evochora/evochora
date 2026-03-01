@@ -4,7 +4,7 @@ import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
-import org.evochora.compiler.frontend.parser.ast.AstNode;
+import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.Tag;

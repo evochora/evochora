@@ -1,4 +1,4 @@
-package org.evochora.compiler.frontend.parser.ast;
+package org.evochora.compiler.model.ast;
 
 import java.util.List;
 import java.util.Objects;
@@ -42,7 +42,7 @@ public class RegisterNode implements AstNode {
     public boolean isAlias() {
         return originalAlias != null; // <-- NEW HELPER
     }
-    
+
     public SourceInfo getSourceInfo() {
         return sourceInfo;
     }
@@ -50,12 +50,12 @@ public class RegisterNode implements AstNode {
     public Token registerToken() {
         return registerToken;
     }
-    
+
     @Override
     public List<AstNode> getChildren() {
         return List.of(); // RegisterNode has no children
     }
-    
+
     @Override
     public String toString() {
         if (isAlias()) {
@@ -63,14 +63,14 @@ public class RegisterNode implements AstNode {
         }
         return String.format("RegisterNode(name=%s)", name);
     }
-    
+
     // equals() and hashCode() updated to include all fields
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         RegisterNode that = (RegisterNode) o;
-        return Objects.equals(name, that.name) && 
+        return Objects.equals(name, that.name) &&
                Objects.equals(originalAlias, that.originalAlias) &&
                Objects.equals(registerToken, that.registerToken);
     }

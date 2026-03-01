@@ -1,5 +1,6 @@
 package org.evochora.compiler.frontend.parser.ast;
 
+import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.token.Token;
 

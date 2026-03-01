@@ -1,7 +1,7 @@
 package org.evochora.compiler.frontend.parser.features.proc;
 
 import org.evochora.compiler.model.token.Token;
-import org.evochora.compiler.frontend.parser.ast.AstNode;
+import org.evochora.compiler.model.ast.AstNode;
 
 /**
  * An AST node that represents an <code>.export</code> directive within a procedure.

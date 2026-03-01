@@ -1,8 +1,13 @@
 package org.evochora.compiler.frontend.semantics.analysis;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.parser.ast.*;
-import org.evochora.compiler.frontend.parser.ast.RegisterNode;
+import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.IdentifierNode;
+import org.evochora.compiler.model.ast.InstructionNode;
+import org.evochora.compiler.model.ast.NumberLiteralNode;
+import org.evochora.compiler.model.ast.RegisterNode;
+import org.evochora.compiler.model.ast.TypedLiteralNode;
+import org.evochora.compiler.model.ast.VectorLiteralNode;
 import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.runtime.isa.Instruction;

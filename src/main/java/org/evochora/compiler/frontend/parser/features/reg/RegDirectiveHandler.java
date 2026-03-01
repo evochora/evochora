@@ -5,7 +5,7 @@ import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParsingContext;
-import org.evochora.compiler.frontend.parser.ast.AstNode;
+import org.evochora.compiler.model.ast.AstNode;
 
 /**
  * Handler for the .REG directive.

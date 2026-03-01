@@ -3,8 +3,8 @@ package org.evochora.compiler.frontend.parser.features.dir;
 import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParsingContext;
-import org.evochora.compiler.frontend.parser.ast.AstNode;
-import org.evochora.compiler.frontend.parser.ast.VectorLiteralNode;
+import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.VectorLiteralNode;
 
 /**
  * Handles the parsing of the <code>.DIR</code> directive.

@@ -2,8 +2,8 @@ package org.evochora.compiler.frontend.irgen.converters;
 
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrGenContext;
-import org.evochora.compiler.frontend.parser.ast.NumberLiteralNode;
-import org.evochora.compiler.frontend.parser.ast.TypedLiteralNode;
+import org.evochora.compiler.model.ast.NumberLiteralNode;
+import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.frontend.parser.ast.placement.*;
 import org.evochora.compiler.frontend.parser.features.place.PlaceNode;
 import org.evochora.compiler.ir.IrDirective;

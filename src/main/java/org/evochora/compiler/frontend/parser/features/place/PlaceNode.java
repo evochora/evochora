@@ -1,6 +1,6 @@
 package org.evochora.compiler.frontend.parser.features.place;
 
-import org.evochora.compiler.frontend.parser.ast.AstNode;
+import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.parser.ast.placement.IPlacementArgumentNode;
 
 import java.util.List;

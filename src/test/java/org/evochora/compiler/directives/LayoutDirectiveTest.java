@@ -2,9 +2,9 @@ package org.evochora.compiler.directives;
 
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
-import org.evochora.compiler.frontend.parser.ast.AstNode;
+import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.parser.ast.TypedLiteralNode;
+import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.frontend.parser.ast.placement.VectorPlacementNode;
 import org.evochora.compiler.frontend.parser.features.dir.DirNode;
 import org.evochora.compiler.frontend.parser.features.org.OrgNode;

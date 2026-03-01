@@ -1,7 +1,7 @@
 package org.evochora.compiler.frontend.semantics;
 
 import org.evochora.compiler.model.token.Token;
-import org.evochora.compiler.frontend.parser.ast.AstNode;
+import org.evochora.compiler.model.ast.AstNode;
 
 /**
  * Represents a single symbol (e.g., a label, a constant, or a procedure)

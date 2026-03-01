@@ -7,7 +7,7 @@ import org.evochora.compiler.frontend.module.DependencyGraph;
 import org.evochora.compiler.frontend.module.DependencyScanner;
 import org.evochora.compiler.frontend.module.ModuleDescriptor;
 import org.evochora.compiler.frontend.parser.Parser;
-import org.evochora.compiler.frontend.parser.ast.AstNode;
+import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.semantics.ModuleId;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
