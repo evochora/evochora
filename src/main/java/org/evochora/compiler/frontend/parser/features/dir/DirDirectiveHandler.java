@@ -1,7 +1,6 @@
 package org.evochora.compiler.frontend.parser.features.dir;
 
 import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
-import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.VectorLiteralNode;
@@ -21,8 +20,7 @@ public class DirDirectiveHandler implements IParserDirectiveHandler {
     @Override
     public AstNode parse(ParsingContext context) {
         context.advance(); // consume .DIR
-        Parser parser = (Parser) context;
-        AstNode vector = parser.expression();
+        AstNode vector = context.expression();
         if (!(vector instanceof VectorLiteralNode)) {
             context.getDiagnostics().reportError("Expected a vector literal after .DIR.", context.peek().fileName(), context.peek().line());
         }

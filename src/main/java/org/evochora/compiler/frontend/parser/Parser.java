@@ -14,9 +14,7 @@ import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.frontend.parser.features.label.LabelNode;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
 
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -34,7 +32,7 @@ public class Parser implements ParsingContext {
     private final ParserDirectiveRegistry directiveRegistry;
     private int current = 0;
 
-    private final Deque<Map<String, Token>> registerAliasScopes = new ArrayDeque<>();
+    private final ParserState parserState = new ParserState();
     private final Map<String, ProcedureNode> procedureTable = new HashMap<>();
 
     /**
@@ -46,40 +44,15 @@ public class Parser implements ParsingContext {
         this.tokens = tokens;
         this.diagnostics = diagnostics;
         this.directiveRegistry = ParserDirectiveRegistry.initialize();
-        registerAliasScopes.push(new HashMap<>());
     }
 
     /**
-     * Pushes a new scope for register aliases onto the stack. Used for procedures and scopes.
-     */
-    public void pushRegisterAliasScope() {
-        registerAliasScopes.push(new HashMap<>());
-    }
-
-    /**
-     * Pops the current register alias scope from the stack.
-     */
-    public void popRegisterAliasScope() {
-        if (registerAliasScopes.size() > 1) {
-            registerAliasScopes.pop();
-        }
-    }
-
-    /**
-     * Adds a new register alias to the current scope.
-     * @param name The alias name.
-     * @param registerToken The token representing the actual register.
-     */
-    public void addRegisterAlias(String name, Token registerToken) {
-        registerAliasScopes.peek().put(name.toUpperCase(), registerToken);
-    }
-
-        /**
      * Gets the global register aliases.
      * @return A map of global register aliases.
      */
     public Map<String, Token> getGlobalRegisterAliases() {
-        return new HashMap<>(registerAliasScopes.getLast()); // Global scope is the last element
+        RegisterAliasState aliases = parserState.get(RegisterAliasState.class);
+        return aliases != null ? aliases.getGlobalAliases() : new HashMap<>();
     }
 
     /**
@@ -104,6 +77,7 @@ public class Parser implements ParsingContext {
      * Parses a single declaration, which can be a directive or a statement.
      * @return The parsed {@link AstNode}, or null if an error occurs.
      */
+    @Override
     public AstNode declaration() {
         try {
             while (check(TokenType.NEWLINE)) {
@@ -217,6 +191,7 @@ public class Parser implements ParsingContext {
      * Parses an expression, which can be a literal, a register, an identifier, or a vector.
      * @return The parsed {@link AstNode} for the expression.
      */
+    @Override
     public AstNode expression() {
         if (check(TokenType.NUMBER) && checkNext(TokenType.PIPE)) {
             Token first = consume(TokenType.NUMBER, "Expected number component for vector.");
@@ -342,4 +317,5 @@ public class Parser implements ParsingContext {
      */
     public Map<String, ProcedureNode> getProcedureTable() { return procedureTable; }
     @Override public DiagnosticsEngine getDiagnostics() { return diagnostics; }
+    @Override public ParserState state() { return parserState; }
 }

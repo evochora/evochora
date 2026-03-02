@@ -2,6 +2,7 @@ package org.evochora.compiler.frontend.parser;
 
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
+import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 
 /**
@@ -61,4 +62,23 @@ public interface ParsingContext {
      * @return true if at the end of the stream, false otherwise.
      */
     boolean isAtEnd();
+
+    /**
+     * Parses an expression (literal, register, identifier, or vector).
+     * @return The parsed {@link AstNode} for the expression.
+     */
+    AstNode expression();
+
+    /**
+     * Parses a single declaration (directive or statement).
+     * @return The parsed {@link AstNode}, or null if an error occurs.
+     */
+    AstNode declaration();
+
+    /**
+     * Returns the generic parser state container that features use
+     * to store and retrieve their own state objects.
+     * @return The parser state.
+     */
+    ParserState state();
 }

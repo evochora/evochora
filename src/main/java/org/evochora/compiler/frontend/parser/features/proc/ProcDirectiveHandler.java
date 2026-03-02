@@ -1,11 +1,12 @@
 package org.evochora.compiler.frontend.parser.features.proc;
 
 import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
+import org.evochora.compiler.frontend.parser.Parser;
+import org.evochora.compiler.frontend.parser.ParsingContext;
+import org.evochora.compiler.frontend.parser.RegisterAliasState;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.frontend.parser.Parser;
-import org.evochora.compiler.frontend.parser.ParsingContext;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,7 +25,6 @@ public class ProcDirectiveHandler implements IParserDirectiveHandler {
      */
     @Override
     public AstNode parse(ParsingContext context) {
-        Parser parser = (Parser) context;
         context.advance(); // consume .PROC
 
         Token procName = context.consume(TokenType.IDENTIFIER, "Expected procedure name after .PROC.");
@@ -71,19 +71,19 @@ public class ProcDirectiveHandler implements IParserDirectiveHandler {
         }
 
         // Open scope for procedure-local aliases
-        parser.pushRegisterAliasScope();
+        context.state().getOrCreate(RegisterAliasState.class, RegisterAliasState::new).pushScope();
 
         List<AstNode> body = new ArrayList<>();
         while (!context.isAtEnd() && !(context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".ENDP"))) {
             if (context.match(TokenType.NEWLINE)) continue;
-            AstNode statement = parser.declaration();
+            AstNode statement = context.declaration();
             if (statement != null) {
                 body.add(statement);
             }
         }
 
         // Close scope for procedure-local aliases
-        parser.popRegisterAliasScope();
+        context.state().getOrCreate(RegisterAliasState.class, RegisterAliasState::new).popScope();
 
         if (context.isAtEnd() || !(context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".ENDP"))) {
             context.getDiagnostics().reportError("Expected .ENDP to close procedure block.", "Syntax Error", procName.line());
@@ -92,7 +92,7 @@ public class ProcDirectiveHandler implements IParserDirectiveHandler {
         }
 
         ProcedureNode procNode = new ProcedureNode(procName, exported, parameters, refParameters, valParameters, body);
-        parser.registerProcedure(procNode);
+        ((Parser) context).registerProcedure(procNode);
         return procNode;
     }
 }

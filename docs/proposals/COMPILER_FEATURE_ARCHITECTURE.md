@@ -25,25 +25,24 @@ registration file. No phase code is touched.
 
 ## Current Feature Inventory
 
-15 features spanning 11 phases, with 7 phase-level registries:
+14 features spanning 11 phases, with 7 phase-level registries:
 
 | # | Feature | Phases Active In | Components |
 |---|---------|-----------------|------------|
 | 1 | **instruction** | 3, 4, 7, 8, 10, 11 | InstructionNode, InstructionAnalysisHandler, InstructionNodeConverter, + violations in Parser, TokenMapGenerator, Linker, IrGenContext |
 | 2 | **label** | 3, 4, 7, 9, 11 | LabelNode, LabelSymbolCollector, LabelAnalysisHandler, LabelNodeConverter, + violation in Parser |
-| 3 | **proc** | 3, 4, 5, 7, 8, 10 | ProcedureNode, ExportNode, ProcDirectiveHandler, ProcedureSymbolCollector, ProcedureAnalysisHandler, ProcedureNodeConverter, ProcedureMarshallingRule, CallerMarshallingRule, CallBindingCaptureRule, RefValBindingCaptureRule, + violations in TokenMapGenerator, Linker, Compiler |
+| 3 | **proc** | 3, 4, 5, 6, 7, 8, 10 | ProcedureNode, ExportNode, ProcDirectiveHandler, PregNode, PregDirectiveHandler, ProcedureSymbolCollector, ProcedureAnalysisHandler, PregAnalysisHandler, ProcedureNodeConverter, ProcedureMarshallingRule, CallerMarshallingRule, CallBindingCaptureRule, RefValBindingCaptureRule, + violations in TokenMapGenerator, Linker, Compiler. `.PREG` is part of proc because it aliases procedure registers and only exists inside `.PROC` blocks. |
 | 4 | **reg** | 3, 4, 6 | RegNode, RegDirectiveHandler, RegAnalysisHandler, + AstPostProcessor |
-| 5 | **preg** | 3, 4 | PregNode, PregDirectiveHandler, PregAnalysisHandler, + violation in Compiler |
-| 6 | **define** | 3, 4, 6, 7 | DefineNode, DefineDirectiveHandler, DefineAnalysisHandler, DefineNodeConverter, + violation in AstPostProcessor |
-| 7 | **org** | 3, 7, 9 | OrgNode, OrgDirectiveHandler, OrgNodeConverter, OrgLayoutHandler |
-| 8 | **dir** | 3, 7, 9 | DirNode, DirDirectiveHandler, DirNodeConverter, DirLayoutHandler |
-| 9 | **place** | 3, 7, 9 | PlaceNode, PlaceDirectiveHandler, PlaceNodeConverter, PlaceLayoutHandler, + placement AST/IR types |
-| 10 | **import** | 0, 2, 3, 4, 7 | ImportNode, ImportSourceHandler, ImportDirectiveHandler, ImportSymbolCollector, ImportAnalysisHandler, ImportNodeConverter |
-| 11 | **require** | 0, 3, 4, 7 | RequireNode, RequireDirectiveHandler, RequireSymbolCollector, RequireAnalysisHandler, RequireNodeConverter |
-| 12 | **source** | 0, 2 | SourceDirectiveHandler, SourceLoader |
-| 13 | **macro** | 2 | MacroDirectiveHandler, MacroDefinition, + hardcoded expandMacro() in PreProcessor |
-| 14 | **repeat** | 2 | RepeatDirectiveHandler, CaretDirectiveHandler |
-| 15 | **ctx** | 2, 3, 7, 9 | PushCtxNode, PopCtxNode, PopCtxDirectiveHandler (preprocessor), PushCtxDirectiveHandler (parser), PopCtxDirectiveHandler (parser), PushCtxNodeConverter, PopCtxNodeConverter, PushCtxLayoutHandler, PopCtxLayoutHandler |
+| 5 | **define** | 3, 4, 6, 7 | DefineNode, DefineDirectiveHandler, DefineAnalysisHandler, DefineNodeConverter, + violation in AstPostProcessor |
+| 6 | **org** | 3, 7, 9 | OrgNode, OrgDirectiveHandler, OrgNodeConverter, OrgLayoutHandler |
+| 7 | **dir** | 3, 7, 9 | DirNode, DirDirectiveHandler, DirNodeConverter, DirLayoutHandler |
+| 8 | **place** | 3, 7, 9 | PlaceNode, PlaceDirectiveHandler, PlaceNodeConverter, PlaceLayoutHandler, + placement AST/IR types |
+| 9 | **import** | 0, 2, 3, 4, 7 | ImportNode, ImportSourceHandler, ImportDirectiveHandler, ImportSymbolCollector, ImportAnalysisHandler, ImportNodeConverter |
+| 10 | **require** | 0, 3, 4, 7 | RequireNode, RequireDirectiveHandler, RequireSymbolCollector, RequireAnalysisHandler, RequireNodeConverter |
+| 11 | **source** | 0, 2 | SourceDirectiveHandler, SourceLoader |
+| 12 | **macro** | 2 | MacroDirectiveHandler, MacroDefinition, + hardcoded expandMacro() in PreProcessor |
+| 13 | **repeat** | 2 | RepeatDirectiveHandler, CaretDirectiveHandler |
+| 14 | **ctx** | 2, 3, 7, 9 | PushCtxNode, PopCtxNode, PopCtxDirectiveHandler (preprocessor), PushCtxDirectiveHandler (parser), PopCtxDirectiveHandler (parser), PushCtxNodeConverter, PopCtxNodeConverter, PushCtxLayoutHandler, PopCtxLayoutHandler |
 
 ---
 
@@ -133,8 +132,13 @@ org.evochora.compiler
 │   │   ├── ProcedureNode.java
 │   │   ├── ExportNode.java
 │   │   ├── ProcDirectiveHandler.java
+│   │   ├── PregNode.java              # .PREG is part of proc (aliases PRs, only inside .PROC)
+│   │   ├── PregDirectiveHandler.java
 │   │   ├── ProcedureSymbolCollector.java
 │   │   ├── ProcedureAnalysisHandler.java
+│   │   ├── PregAnalysisHandler.java
+│   │   ├── ProcAliasState.java        # NEW — PR alias state, implements IScopedParserState
+│   │   ├── ProcPostProcessHandler.java # NEW — resolves PR aliases (runs before RegPostProcessHandler)
 │   │   ├── ProcedureNodeConverter.java
 │   │   ├── ProcedureMarshallingRule.java
 │   │   ├── CallerMarshallingRule.java
@@ -147,13 +151,9 @@ org.evochora.compiler
 │   │   ├── RegNode.java
 │   │   ├── RegDirectiveHandler.java
 │   │   ├── RegAnalysisHandler.java
+│   │   ├── RegisterAliasState.java    # DR+LR alias state, implements IScopedParserState
 │   │   ├── RegPostProcessHandler.java  # NEW (extracted from AstPostProcessor)
 │   │   └── RegFeature.java
-│   ├── preg/
-│   │   ├── PregNode.java
-│   │   ├── PregDirectiveHandler.java
-│   │   ├── PregAnalysisHandler.java
-│   │   └── PregFeature.java
 │   ├── define/
 │   │   ├── DefineNode.java
 │   │   ├── DefineDirectiveHandler.java
@@ -231,7 +231,7 @@ org.evochora.compiler
 ├── frontend/                           # Pure phase orchestrators + registries
 │   ├── lexer/                          # Phase 1: Lexer.java only
 │   ├── preprocessor/                   # Phase 2: PreProcessor.java + registry
-│   ├── parser/                         # Phase 3: Parser.java + ParsingContext + registry
+│   ├── parser/                         # Phase 3: Parser.java + ParsingContext + ParserState + IScopedParserState + registry
 │   ├── semantics/                      # Phase 4: SemanticAnalyzer.java + registry
 │   ├── tokenmap/                       # Phase 5: TokenMapGenerator.java + registry (NEW)
 │   ├── postprocess/                    # Phase 6: AstPostProcessor.java + registry (NEW)
@@ -302,7 +302,7 @@ public class ImportFeature implements ICompilerFeature {
 }
 ```
 
-Example — the `proc` feature (spans many phases):
+Example — the `proc` feature (spans many phases, includes `.PREG`):
 
 ```java
 // compiler/features/proc/ProcFeature.java
@@ -313,9 +313,12 @@ public class ProcFeature implements ICompilerFeature {
     @Override
     public void register(IFeatureRegistrationContext ctx) {
         ctx.parser(".PROC", new ProcDirectiveHandler());
+        ctx.parser(".PREG", new PregDirectiveHandler());
         ctx.symbolCollector(ProcedureNode.class, new ProcedureSymbolCollector());
         ctx.analysisHandler(ProcedureNode.class, new ProcedureAnalysisHandler());
+        ctx.analysisHandler(PregNode.class, new PregAnalysisHandler());
         ctx.tokenMapContributor(ProcedureNode.class, new ProcedureTokenMapContributor());
+        ctx.postProcessHandler(PregNode.class, new ProcPostProcessHandler());
         ctx.irConverter(ProcedureNode.class, new ProcedureNodeConverter());
         ctx.emissionRule(new CallBindingCaptureRule());
         ctx.emissionRule(new RefValBindingCaptureRule());
@@ -333,9 +336,8 @@ The Compiler discovers features at startup:
 List<ICompilerFeature> features = List.of(
     new InstructionFeature(),
     new LabelFeature(),
-    new ProcFeature(),
+    new ProcFeature(),       // includes .PREG (PR aliases only exist inside .PROC)
     new RegFeature(),
-    new PregFeature(),
     new DefineFeature(),
     new OrgFeature(),
     new DirFeature(),
@@ -365,7 +367,7 @@ is resolved:
 | Shared types in phase packages | Token/TokenType in `compiler/model/`, core AST in `compiler/model/ast/`, feature nodes in `features/*/` |
 | SourceDirectiveHandler calls Lexer | Pre-lexed tokens via `FeatureRegistrationContext.sourceTokens()` |
 | Macro expansion hardcoded in PreProcessor | Extracted to `MacroExpansionHandler`, registered as fallback handler |
-| Parser handlers downcast ParsingContext | `ParsingContext` extended with `expression()`, `declaration()`, etc. |
+| Parser handlers downcast ParsingContext | `ParsingContext` extended with `expression()`, `declaration()`, `state()`. `ParserState` is a generic type-safe container — features store their own state classes, phase code has no feature imports. Only `registerProcedure()` cast remains (resolved in D13). |
 | Compiler.java contains business logic | Procedure metadata extraction moves to `ProcFeature` components |
 | IrGenContext instanceof chains | `ISourceLocatable.sourceInfo()` — IrGenContext uses SourceInfo via capability interface |
 | TokenMapGenerator hardcodes features | Registry-based `ITokenMapContributor` dispatch |
@@ -433,11 +435,12 @@ Create the interfaces and registries needed for feature consolidation.
 | Step | Description |
 |------|-------------|
 | C1 | Create `ICompilerFeature` + `IFeatureRegistrationContext` + `FeatureRegistry` in `compiler/`. Create `IDependencyScanHandler` + `IDependencyScanContext` in `frontend/module/`. Create stub interfaces `ITokenMapContributor`/`ITokenMapContext` in `frontend/tokenmap/` and `IPostProcessHandler`/`IPostProcessContext` in `frontend/postprocess/`. |
-| C2 | Extend `ParsingContext` with `expression()`, `declaration()`, etc. — eliminate Parser downcasts in handlers. |
+| C2 | Extend `ParsingContext` with `expression()`, `declaration()`, `state()`. Create `ParserState` (generic type-safe container) and `RegisterAliasState` (temporarily in `parser/` — moves to `features/reg/` in D8). Eliminate 6 of 7 handler casts. Only `registerProcedure()` cast remains in ProcDirectiveHandler (resolved in D13). **DONE.** |
 | C3 | Create `ITokenMapContributor` + `TokenMapContributorRegistry`, refactor `TokenMapGenerator` to dispatch through registry. |
 | C4 | Create `IPostProcessHandler` + `PostProcessHandlerRegistry`, refactor `AstPostProcessor` to dispatch through registry. |
 | C5 | Extract `MacroExpansionHandler` from `PreProcessor.expandMacro()`, register as handler in `PreProcessorDirectiveRegistry`. |
 | C6 | Extract `CallSiteBindingRule` from `Linker`, move CALL detection into linking rule. |
+| C7 | Create `IScopedParserState` interface in `parser/`. Add `pushScope()`/`popScope()` to `ParserState` — propagates to all registered `IScopedParserState` objects. Pure parser infrastructure, no feature imports. |
 
 ### Phase D: Feature Consolidation
 
@@ -459,18 +462,39 @@ include this Token decoupling work.
 | D5 | org | OrgNode, OrgDirectiveHandler, OrgNodeConverter, OrgLayoutHandler | OrgFeature.java |
 | D6 | dir | DirNode, DirDirectiveHandler, DirNodeConverter, DirLayoutHandler | DirFeature.java |
 | D7 | define | DefineNode, DefineDirectiveHandler, DefineAnalysisHandler, DefinePostProcessHandler, DefineNodeConverter. **[+decouple]** DefineNode: Token `name` → String + SourceInfo | DefineFeature.java |
-| D8 | reg | RegNode, RegDirectiveHandler, RegAnalysisHandler, RegPostProcessHandler. **[+decouple]** RegNode: Token `alias`, `register` → String + SourceInfo | RegFeature.java |
-| D9 | preg | PregNode, PregDirectiveHandler, PregAnalysisHandler. **[+decouple]** PregNode: Token `alias`, `targetRegister` → String + SourceInfo | PregFeature.java |
-| D10 | label | LabelNode, LabelSymbolCollector, LabelAnalysisHandler, LabelNodeConverter. **[+decouple]** LabelNode: Token `labelToken` → String + SourceInfo | LabelFeature.java |
-| D11 | place | PlaceNode, PlaceDirectiveHandler, PlaceNodeConverter, PlaceLayoutHandler, placement/. **[+decouple]** placement sub-nodes: RangeValueComponent, SingleValueComponent, SteppedRangeValueComponent, WildcardValueComponent — Token fields → extracted values + SourceInfo | PlaceFeature.java |
-| D12 | require | RequireNode, RequireDirectiveHandler, RequireSymbolCollector, RequireAnalysisHandler, RequireNodeConverter. **[+decouple]** RequireNode: Token `path`, `alias` → String + SourceInfo | RequireFeature.java |
-| D13 | importdir | ImportNode, ImportSourceHandler, ImportDirectiveHandler, ImportSymbolCollector, ImportAnalysisHandler, ImportNodeConverter. **[+decouple]** ImportNode: Token `path`, `alias` + UsingClause Tokens → String + SourceInfo | ImportFeature.java |
-| D14 | proc | ProcedureNode, ExportNode, ProcDirectiveHandler, ProcedureSymbolCollector, ProcedureAnalysisHandler, ProcedureNodeConverter, ProcedureMarshallingRule, CallerMarshallingRule, CallBindingCaptureRule, RefValBindingCaptureRule, CallSiteBindingRule, ProcedureTokenMapContributor. **[+decouple]** ProcedureNode: Token `name`, `parameters`, `refParameters`, `valParameters` → String/List\<String\> + SourceInfo; ExportNode: Token `exportedName` → String + SourceInfo | ProcFeature.java |
-| D15 | instruction | InstructionAnalysisHandler, InstructionNodeConverter, InstructionTokenMapContributor | InstructionFeature.java |
+| D8 | reg | See D8 details below. | RegFeature.java |
+| D9 | label | LabelNode, LabelSymbolCollector, LabelAnalysisHandler, LabelNodeConverter. **[+decouple]** LabelNode: Token `labelToken` → String + SourceInfo | LabelFeature.java |
+| D10 | place | PlaceNode, PlaceDirectiveHandler, PlaceNodeConverter, PlaceLayoutHandler, placement/. **[+decouple]** placement sub-nodes: RangeValueComponent, SingleValueComponent, SteppedRangeValueComponent, WildcardValueComponent — Token fields → extracted values + SourceInfo | PlaceFeature.java |
+| D11 | require | RequireNode, RequireDirectiveHandler, RequireSymbolCollector, RequireAnalysisHandler, RequireNodeConverter. **[+decouple]** RequireNode: Token `path`, `alias` → String + SourceInfo | RequireFeature.java |
+| D12 | importdir | ImportNode, ImportSourceHandler, ImportDirectiveHandler, ImportSymbolCollector, ImportAnalysisHandler, ImportNodeConverter. **[+decouple]** ImportNode: Token `path`, `alias` + UsingClause Tokens → String + SourceInfo | ImportFeature.java |
+| D13 | proc | See D13 details below. | ProcFeature.java |
+| D14 | instruction | InstructionAnalysisHandler, InstructionNodeConverter, InstructionTokenMapContributor | InstructionFeature.java |
 
 Order rationale: start with simple features (few phases), end with complex ones
 (proc spans 6+ phases). Each step is independently committable with all tests green.
-D1-D6 have no Token decoupling; D7-D14 include Token decoupling of their feature nodes.
+D1-D6 have no Token decoupling; D7-D13 include Token decoupling of their feature nodes.
+
+**D8 details (reg):**
+
+Move to `features/reg/`: RegNode, RegDirectiveHandler, RegAnalysisHandler, RegPostProcessHandler (NEW, extracted from AstPostProcessor).
+
+Additionally:
+1. Move `RegisterAliasState` from `parser/` (temporary C2 location) to `features/reg/`. Add `implements IScopedParserState`.
+2. Remove `getGlobalRegisterAliases()` from Parser. Compiler.java reads aliases via `parser.state().get(RegisterAliasState.class).getGlobalAliases()` (or equivalent extraction pattern, see F2).
+3. Update tests that call `parser.getGlobalRegisterAliases()`: RegDirectiveTest, DefineDirectiveTest, ModuleSourceDefineIntegrationTest.
+4. **[+decouple]** RegNode: Token `alias`, `register` → String + SourceInfo.
+
+**D13 details (proc — includes preg):**
+
+Move to `features/proc/`: ProcedureNode, ExportNode, ProcDirectiveHandler, PregNode, PregDirectiveHandler, ProcedureSymbolCollector, ProcedureAnalysisHandler, PregAnalysisHandler, ProcedureNodeConverter, ProcedureMarshallingRule, CallerMarshallingRule, CallBindingCaptureRule, RefValBindingCaptureRule, CallSiteBindingRule, ProcedureTokenMapContributor.
+
+Additionally:
+1. Create `ProcAliasState` (implements `IScopedParserState`) in `features/proc/` — manages PR aliases. PregDirectiveHandler uses ProcAliasState instead of RegisterAliasState.
+2. Create `ProcPostProcessHandler` in `features/proc/` — resolves PR aliases in AST. Registered with higher priority than RegPostProcessHandler so PR aliases shadow DR/LR aliases on name conflict.
+3. ProcDirectiveHandler: replace `context.state().getOrCreate(RegisterAliasState.class, ...)` with `context.state().pushScope()` / `context.state().popScope()` (generic, no feature imports). Replace `context.declaration()` (already done in C2). Resolve `registerProcedure()` cast — procedure registration moves to ProcFeature or a clean cross-phase extraction pattern.
+4. Remove from Parser: `registerProcedure()`, `getProcedureTable()`, `procedureTable` field.
+5. Update tests: ProcedureDirectiveTest (calls `parser.getProcedureTable()`), PregDirectiveTest.
+6. **[+decouple]** ProcedureNode: Token `name`, `parameters`, `refParameters`, `valParameters` → String/List\<String\> + SourceInfo. ExportNode: Token `exportedName` → String + SourceInfo. PregNode: Token `alias`, `targetRegister` → String + SourceInfo.
 
 ### Phase E: Wiring
 
@@ -485,8 +509,51 @@ D1-D6 have no Token decoupling; D7-D14 include Token decoupling of their feature
 | Step | Description |
 |------|-------------|
 | F1 | Refactor SourceDirectiveHandler to use pre-lexed tokens (same as ImportSourceHandler). |
-| F2 | Extract procedure metadata logic from Compiler.java into ProcFeature. |
+| F2 | Extract cross-phase data extraction from Compiler.java: register alias data (currently `parser.getGlobalRegisterAliases()`) and procedure table data (currently `parser.getProcedureTable()`) flow through feature-provided mechanisms instead of Parser accessor methods. |
 | F3 | Introduce MachineConstraints, remove runtime Config imports from features. |
+
+### Phase G: LR Parameter Passing (open design — needs discussion before committing)
+
+**Goal:** Enable passing LR values as procedure parameters, giving procedures their own
+location register space without requiring a new register bank (LPR).
+
+**Status:** The design below is a starting point. Several open questions remain (see below).
+This phase is independent of Phases A-F and can be implemented at any time after D13.
+
+**Runtime fact:** FPR stores `Object`, LR values are `int[]` (dimension-agnostic coordinate
+vectors). The data stack is `Deque<Object>`. At the runtime level, LR values can already
+flow through the data stack and FPR without code changes.
+
+**Proposed approach — LR save/restore + location stack marshalling:**
+
+| Step | Description |
+|------|-------------|
+| G1 | Runtime: ProcedureCallHandler saves/restores LRs on CALL/RETURN (same pattern as existing PR/FPR save/restore). This gives procedures their own LR space — a procedure can navigate freely via DP without affecting the caller's coordinates. |
+| G2 | Compiler: ProcedureMarshallingRule generates PUSL/POPL (location stack) instead of PUSH/POP (data stack) for LR parameters. LR values never flow through the data stack or FPR, preserving the LR integrity invariant (LRs can only contain coordinates visited via DP). |
+| G3 | Parser: Allow LR in `.PROC` parameter declarations (REF/VAL). |
+
+**Open questions that must be resolved before implementation:**
+
+1. **LR integrity with FPR path:** The PUSL/POPL approach preserves LR integrity (no data→LR
+   path). But is the location stack the right mechanism, or should there be a more direct
+   LR-to-LR parameter transfer? PUSL/POPL use the shared location stack, which could conflict
+   with user code that also uses the location stack.
+
+2. **Procedure-local LR aliases:** With LR save/restore (G1), a procedure effectively has its
+   own LRs. Should `.REG` aliases for LR inside a `.PROC` work differently than global `.REG`
+   aliases? Currently IScopedParserState handles this (proc-local `.REG %POS %LR0` disappears
+   at `.ENDP`), but the semantics may need refinement — a proc-local LR alias refers to the
+   procedure's saved LR, not the caller's.
+
+3. **Full symmetry with DR/PR:** DRs have their own procedure-local bank (PR). With G1, LRs
+   get save/restore but no separate bank. This means the callee's LRs start as copies of the
+   caller's LRs (then diverge via DP). Is this the desired semantics, or should procedure LRs
+   start uninitialized (like PRs)? If uninitialized, should there be a dedicated `.PREG`-like
+   directive for LR parameter aliasing, or is `.REG` sufficient?
+
+4. **Nested calls and stack depth:** LR save/restore adds 4 coordinate vectors per call frame.
+   For deeply nested or recursive procedures, this increases memory usage. Is this acceptable,
+   or should LR save/restore be opt-in (only for procedures that declare LR parameters)?
 
 ---
 
@@ -494,7 +561,7 @@ D1-D6 have no Token decoupling; D7-D14 include Token decoupling of their feature
 
 After ALL steps are complete:
 
-1. **Every feature is one package** under `compiler/features/`
+1. **All 14 features are each one package** under `compiler/features/`
 2. **Every feature has a registration class** implementing `CompilerFeature`
 3. **Phase classes contain zero feature-specific imports** — only handler interfaces from their own phase package
 4. **No cross-feature imports** — features are independent

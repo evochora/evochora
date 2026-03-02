@@ -2,6 +2,7 @@ package org.evochora.compiler.frontend.parser.features.proc;
 
 import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
 import org.evochora.compiler.frontend.parser.ParsingContext;
+import org.evochora.compiler.frontend.parser.RegisterAliasState;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.model.ast.AstNode;
@@ -71,7 +72,8 @@ public class PregDirectiveHandler implements IParserDirectiveHandler {
             return null;
         }
 
-        ((org.evochora.compiler.frontend.parser.Parser) context).addRegisterAlias(alias.text(), targetRegister);
+        context.state().getOrCreate(RegisterAliasState.class, RegisterAliasState::new)
+            .addAlias(alias.text(), targetRegister);
 
         SourceInfo sourceInfo = new SourceInfo(
             alias.fileName(),

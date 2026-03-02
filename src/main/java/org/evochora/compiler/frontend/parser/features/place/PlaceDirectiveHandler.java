@@ -1,7 +1,6 @@
 package org.evochora.compiler.frontend.parser.features.place;
 
 import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
-import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
@@ -28,10 +27,9 @@ public class PlaceDirectiveHandler implements IParserDirectiveHandler {
     @Override
     public AstNode parse(ParsingContext context) {
         context.advance(); // consume .PLACE
-        Parser parser = (Parser) context;
 
         // 1. Parse the literal
-        AstNode literal = parser.expression();
+        AstNode literal = context.expression();
         if (!(literal instanceof TypedLiteralNode)) {
             context.getDiagnostics().reportError("Expected a typed literal (e.g. DATA:5) for .PLACE.", context.peek().fileName(), context.peek().line());
         }
@@ -92,7 +90,6 @@ public class PlaceDirectiveHandler implements IParserDirectiveHandler {
     }
 
     private IPlacementComponent parseDimensionComponent(ParsingContext context) {
-        Parser parser = (Parser) context;
         if (context.peek().type() == TokenType.STAR) {
             Token starToken = context.advance(); // consume '*'
             return new WildcardValueComponent(starToken);
@@ -103,13 +100,13 @@ public class PlaceDirectiveHandler implements IParserDirectiveHandler {
 
             if (context.peek().type() == TokenType.DOT_DOT) {
                 context.advance(); // consume '..'
-                Token end = parser.consume(TokenType.NUMBER, "Expected a number for the end of the range.");
+                Token end = context.consume(TokenType.NUMBER, "Expected a number for the end of the range.");
                 return new RangeValueComponent(start, end);
             } else if (context.peek().type() == TokenType.COLON) {
                 context.advance(); // consume ':'
-                Token step = parser.consume(TokenType.NUMBER, "Expected a number for the step of the range.");
-                parser.consume(TokenType.COLON, "Expected ':' after the step value.");
-                Token end = parser.consume(TokenType.NUMBER, "Expected a number for the end of the stepped range.");
+                Token step = context.consume(TokenType.NUMBER, "Expected a number for the step of the range.");
+                context.consume(TokenType.COLON, "Expected ':' after the step value.");
+                Token end = context.consume(TokenType.NUMBER, "Expected a number for the end of the stepped range.");
                 return new SteppedRangeValueComponent(start, step, end);
             } else {
                 return new SingleValueComponent(start);
