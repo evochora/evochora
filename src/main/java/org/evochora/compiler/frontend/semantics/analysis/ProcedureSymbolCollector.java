@@ -4,6 +4,7 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
+import org.evochora.compiler.frontend.semantics.ModuleId;
 import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 
@@ -27,7 +28,12 @@ public class ProcedureSymbolCollector implements ISymbolCollector {
         symbolTable.define(new Symbol(proc.name(), Symbol.Type.PROCEDURE, proc));
         symbolTable.registerProcedureMeta(proc.name(), proc.exported());
 
-        SymbolTable.Scope newScope = symbolTable.enterScope();
+        ModuleId currentModule = symbolTable.getCurrentModuleId();
+        String moduleName = currentModule != null
+            ? ModuleId.deriveModuleName(currentModule.path())
+            : ModuleId.deriveModuleName(proc.name().fileName());
+        String scopeName = moduleName + "." + proc.name().text().toUpperCase();
+        SymbolTable.Scope newScope = symbolTable.enterScope(scopeName);
         scopeMap.put(node, newScope);
 
         if (proc.parameters() != null) {

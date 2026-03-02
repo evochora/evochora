@@ -21,14 +21,22 @@ public class SymbolTable {
 
     /**
      * Represents a single scope in the symbol table (procedure-local or module-global).
+     * Each scope has a human-readable name used for display and annotations (e.g., "global",
+     * "MAIN.INIT"). Scope identity is determined by object reference, not by name.
      */
     public static class Scope {
         private final Scope parent;
+        private final String name;
         private final List<Scope> children = new ArrayList<>();
         private final Map<String, Map<String, Symbol>> symbols = new HashMap<>(); // name -> (fileName -> symbol)
 
-        Scope(Scope parent) {
+        Scope(Scope parent, String name) {
             this.parent = parent;
+            this.name = name;
+        }
+
+        public String name() {
+            return name;
         }
 
         void addChild(Scope child) {
@@ -57,7 +65,7 @@ public class SymbolTable {
      */
     public SymbolTable(DiagnosticsEngine diagnostics) {
         this.diagnostics = diagnostics;
-        this.rootScope = new Scope(null);
+        this.rootScope = new Scope(null, "global");
         this.currentScope = this.rootScope;
     }
 
@@ -115,11 +123,12 @@ public class SymbolTable {
     }
 
     /**
-     * Enters a new scope.
+     * Enters a new named scope.
+     * @param name A human-readable scope name for display and annotations (e.g., "MAIN.INIT").
      * @return The new scope.
      */
-    public Scope enterScope() {
-        Scope newScope = new Scope(currentScope);
+    public Scope enterScope(String name) {
+        Scope newScope = new Scope(currentScope, name);
         currentScope.addChild(newScope);
         currentScope = newScope;
         return newScope;

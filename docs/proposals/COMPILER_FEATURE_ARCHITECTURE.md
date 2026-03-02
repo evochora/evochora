@@ -29,9 +29,9 @@ registration file. No phase code is touched.
 
 | # | Feature | Phases Active In | Components |
 |---|---------|-----------------|------------|
-| 1 | **instruction** | 3, 4, 7, 8, 10, 11 | InstructionNode, InstructionAnalysisHandler, InstructionNodeConverter, + violations in Parser, TokenMapGenerator, Linker, IrGenContext |
+| 1 | **instruction** | 3, 4, 7, 8, 10, 11 | InstructionNode, InstructionAnalysisHandler, InstructionNodeConverter, + violations in Parser, ~~TokenMapGenerator~~ (C3), Linker, IrGenContext |
 | 2 | **label** | 3, 4, 7, 9, 11 | LabelNode, LabelSymbolCollector, LabelAnalysisHandler, LabelNodeConverter, + violation in Parser |
-| 3 | **proc** | 3, 4, 5, 6, 7, 8, 10 | ProcedureNode, ExportNode, ProcDirectiveHandler, PregNode, PregDirectiveHandler, ProcedureSymbolCollector, ProcedureAnalysisHandler, PregAnalysisHandler, ProcedureNodeConverter, ProcedureMarshallingRule, CallerMarshallingRule, CallBindingCaptureRule, RefValBindingCaptureRule, + violations in TokenMapGenerator, Linker, Compiler. `.PREG` is part of proc because it aliases procedure registers and only exists inside `.PROC` blocks. |
+| 3 | **proc** | 3, 4, 5, 6, 7, 8, 10 | ProcedureNode, ExportNode, ProcDirectiveHandler, PregNode, PregDirectiveHandler, ProcedureSymbolCollector, ProcedureAnalysisHandler, PregAnalysisHandler, ProcedureNodeConverter, ProcedureMarshallingRule, CallerMarshallingRule, CallBindingCaptureRule, RefValBindingCaptureRule, + violations in ~~TokenMapGenerator~~ (C3), Linker, Compiler. `.PREG` is part of proc because it aliases procedure registers and only exists inside `.PROC` blocks. |
 | 4 | **reg** | 3, 4, 6 | RegNode, RegDirectiveHandler, RegAnalysisHandler, + AstPostProcessor |
 | 5 | **define** | 3, 4, 6, 7 | DefineNode, DefineDirectiveHandler, DefineAnalysisHandler, DefineNodeConverter, + violation in AstPostProcessor |
 | 6 | **org** | 3, 7, 9 | OrgNode, OrgDirectiveHandler, OrgNodeConverter, OrgLayoutHandler |
@@ -58,8 +58,9 @@ registration file. No phase code is touched.
 | Phase 9 (Layout) | `LayoutDirectiveRegistry` | `ILayoutDirectiveHandler` | Namespace:name string |
 | Phase 10 (Linking) | `LinkingRegistry` | `ILinkingRule` | Ordered list (no key) |
 
+| Phase 5 (TokenMap) | `TokenMapContributorRegistry` | `ITokenMapContributor` | AST node class |
+
 **Missing registries** (feature logic hardcoded in phase):
-- Phase 5 (TokenMap) — no registry, all logic hardcoded in `TokenMapGenerator`
 - Phase 6 (PostProcess) — no registry, logic hardcoded in `AstPostProcessor`
 
 ---
@@ -370,7 +371,7 @@ is resolved:
 | Parser handlers downcast ParsingContext | `ParsingContext` extended with `expression()`, `declaration()`, `state()`. `ParserState` is a generic type-safe container — features store their own state classes, phase code has no feature imports. Only `registerProcedure()` cast remains (resolved in D13). |
 | Compiler.java contains business logic | Procedure metadata extraction moves to `ProcFeature` components |
 | IrGenContext instanceof chains | `ISourceLocatable.sourceInfo()` — IrGenContext uses SourceInfo via capability interface |
-| TokenMapGenerator hardcodes features | Registry-based `ITokenMapContributor` dispatch |
+| TokenMapGenerator hardcodes features | Registry-based `ITokenMapContributor` dispatch. **RESOLVED** in C3: `ProcedureTokenMapContributor` + `InstructionTokenMapContributor` extracted, `Scope.name()` eliminates all `ProcedureNode` references from `TokenMapGenerator`. |
 | LabelRefLinkingRule imports SymbolTable | Pre-resolved qualified names map, or SymbolTable in `compiler/model/` |
 | Linker hardcodes CALL | `CallSiteBindingRule` in `features/proc/` |
 | Magic opcode strings | Constants in feature packages or shared `Opcodes` class |
@@ -436,7 +437,7 @@ Create the interfaces and registries needed for feature consolidation.
 |------|-------------|
 | C1 | Create `ICompilerFeature` + `IFeatureRegistrationContext` + `FeatureRegistry` in `compiler/`. Create `IDependencyScanHandler` + `IDependencyScanContext` in `frontend/module/`. Create stub interfaces `ITokenMapContributor`/`ITokenMapContext` in `frontend/tokenmap/` and `IPostProcessHandler`/`IPostProcessContext` in `frontend/postprocess/`. |
 | C2 | Extend `ParsingContext` with `expression()`, `declaration()`, `state()`. Create `ParserState` (generic type-safe container) and `RegisterAliasState` (temporarily in `parser/` — moves to `features/reg/` in D8). Eliminate 6 of 7 handler casts. Only `registerProcedure()` cast remains in ProcDirectiveHandler (resolved in D13). **DONE.** |
-| C3 | Create `ITokenMapContributor` + `TokenMapContributorRegistry`, refactor `TokenMapGenerator` to dispatch through registry. |
+| C3 | Refactor `TokenMapGenerator` to dispatch through `TokenMapContributorRegistry`. Populate `ITokenMapContext` (3 methods). Extract `ProcedureTokenMapContributor` and `InstructionTokenMapContributor`. Add `Scope.name()` to `SymbolTable.Scope` and `deriveModuleName()` to `ModuleId` for module-qualified scope names (e.g., `MAIN.INIT`). Replace `findScopeByName()` with direct Scope-object tracking. Eliminates all `ProcedureNode` references from `TokenMapGenerator`. **DONE.** |
 | C4 | Create `IPostProcessHandler` + `PostProcessHandlerRegistry`, refactor `AstPostProcessor` to dispatch through registry. |
 | C5 | Extract `MacroExpansionHandler` from `PreProcessor.expandMacro()`, register as handler in `PreProcessorDirectiveRegistry`. |
 | C6 | Extract `CallSiteBindingRule` from `Linker`, move CALL detection into linking rule. |

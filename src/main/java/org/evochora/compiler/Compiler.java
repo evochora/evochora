@@ -23,6 +23,9 @@ import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.irgen.IrConverterRegistry;
 import org.evochora.compiler.frontend.irgen.IrGenerator;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
+import org.evochora.compiler.frontend.tokenmap.InstructionTokenMapContributor;
+import org.evochora.compiler.frontend.tokenmap.ProcedureTokenMapContributor;
+import org.evochora.compiler.frontend.tokenmap.TokenMapContributorRegistry;
 import org.evochora.compiler.frontend.tokenmap.TokenMapGenerator;
 
 import java.util.ArrayList;
@@ -198,7 +201,10 @@ public class Compiler implements ICompiler {
         }
         
         // Phase 5: Token Map Generation (for debugger)
-        TokenMapGenerator tokenMapGenerator = new TokenMapGenerator(symbolTable, analyzer.getScopeMap(), diagnostics);
+        TokenMapContributorRegistry tokenMapRegistry = new TokenMapContributorRegistry();
+        tokenMapRegistry.register(org.evochora.compiler.frontend.parser.features.proc.ProcedureNode.class, new ProcedureTokenMapContributor());
+        tokenMapRegistry.register(org.evochora.compiler.model.ast.InstructionNode.class, new InstructionTokenMapContributor());
+        TokenMapGenerator tokenMapGenerator = new TokenMapGenerator(symbolTable, analyzer.getScopeMap(), diagnostics, tokenMapRegistry);
         Map<SourceInfo, TokenInfo> tokenMap = tokenMapGenerator.generateAll(ast);
 
         // Phase 6: AST Post-Processing (resolve register aliases)

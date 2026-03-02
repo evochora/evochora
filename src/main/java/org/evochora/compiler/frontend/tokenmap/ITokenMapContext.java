@@ -1,10 +1,39 @@
 package org.evochora.compiler.frontend.tokenmap;
 
+import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.frontend.semantics.Symbol;
+
 /**
  * Context provided to {@link ITokenMapContributor} implementations during Phase 5 (Token Map Generation).
  *
- * <p>Methods will be added in step C3 when the TokenMapGenerator is refactored to use
- * the contributor registry pattern.</p>
+ * <p>Exposes the minimum API that contributors need: adding token entries, reading the current
+ * scope name, and reporting diagnostics. The {@link TokenMapGenerator} implements this interface
+ * and passes itself to contributors.</p>
  */
 public interface ITokenMapContext {
+
+	/**
+	 * Adds a token entry to the token map.
+	 *
+	 * @param sourceInfo The source location of the token.
+	 * @param text       The token text.
+	 * @param type       The semantic type of the token.
+	 * @param scope      The scope name to associate with the token.
+	 */
+	void addToken(SourceInfo sourceInfo, String text, Symbol.Type type, String scope);
+
+	/**
+	 * Returns the current module-qualified scope name (e.g., "MAIN.INIT", "global").
+	 *
+	 * @return The current scope name for display and annotations.
+	 */
+	String currentScope();
+
+	/**
+	 * Returns the diagnostics engine for reporting errors.
+	 *
+	 * @return The diagnostics engine.
+	 */
+	DiagnosticsEngine getDiagnostics();
 }

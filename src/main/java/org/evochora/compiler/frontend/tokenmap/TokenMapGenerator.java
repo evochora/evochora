@@ -4,9 +4,7 @@ import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.TokenInfo;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
-import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.model.ast.RegisterNode;
-import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
 
 import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
@@ -28,26 +26,36 @@ import java.util.Optional;
  * This generator is stateful and maintains the current scope as it walks the tree,
  * ensuring that all tokens are correctly contextualized. It relies on a pre-populated
  * SymbolTable as the source of truth for symbol resolution.
+ * <p>
+ * Feature-specific AST node handling is delegated to {@link ITokenMapContributor}
+ * implementations via the {@link TokenMapContributorRegistry}. Core node types
+ * (IdentifierNode, RegisterNode) are handled as default logic.
  */
-public class TokenMapGenerator {
+public class TokenMapGenerator implements ITokenMapContext {
 
     private final SymbolTable symbolTable;
     private final Map<AstNode, SymbolTable.Scope> scopeMap;
     private final Map<SourceInfo, TokenInfo> tokenMap = new HashMap<>();
     private final DiagnosticsEngine diagnostics;
-    private String currentScope = "global";
+    private final TokenMapContributorRegistry contributorRegistry;
+    private SymbolTable.Scope currentScopeObj;
+    private String currentScopeName = "global";
 
     /**
      * Constructs a TokenMapGenerator.
      *
-     * @param symbolTable The fully resolved symbol table from the semantic analysis phase.
-     * @param scopeMap The map of AST nodes to their corresponding scopes from SemanticAnalyzer.
-     * @param diagnostics The diagnostics engine for reporting compilation errors.
+     * @param symbolTable         The fully resolved symbol table from the semantic analysis phase.
+     * @param scopeMap            The map of AST nodes to their corresponding scopes from SemanticAnalyzer.
+     * @param diagnostics         The diagnostics engine for reporting compilation errors.
+     * @param contributorRegistry The registry of feature-specific token map contributors.
      */
-    public TokenMapGenerator(SymbolTable symbolTable, Map<AstNode, SymbolTable.Scope> scopeMap, DiagnosticsEngine diagnostics) {
+    public TokenMapGenerator(SymbolTable symbolTable, Map<AstNode, SymbolTable.Scope> scopeMap,
+                             DiagnosticsEngine diagnostics, TokenMapContributorRegistry contributorRegistry) {
         this.symbolTable = Objects.requireNonNull(symbolTable, "SymbolTable cannot be null.");
         this.scopeMap = scopeMap;
         this.diagnostics = diagnostics;
+        this.contributorRegistry = Objects.requireNonNull(contributorRegistry, "ContributorRegistry cannot be null.");
+        this.currentScopeObj = symbolTable.getRootScope();
     }
 
     /**
@@ -87,28 +95,47 @@ public class TokenMapGenerator {
      */
     public static Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> buildTokenLookup(Map<SourceInfo, TokenInfo> tokenMap) {
         Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> result = new HashMap<>();
-        
+
         for (Map.Entry<SourceInfo, TokenInfo> entry : tokenMap.entrySet()) {
             SourceInfo sourceInfo = entry.getKey();
             TokenInfo tokenInfo = entry.getValue();
-            
+
             String fileName = sourceInfo.fileName();
             Integer lineNumber = sourceInfo.lineNumber();
             Integer columnNumber = sourceInfo.columnNumber();
-            
-            // Add token to the lookup structure for annotation system
+
             result.computeIfAbsent(fileName, k -> new HashMap<>())
                   .computeIfAbsent(lineNumber, k -> new HashMap<>())
                   .computeIfAbsent(columnNumber, k -> new ArrayList<>())
                   .add(tokenInfo);
         }
-        
+
         return result;
     }
 
+    // === ITokenMapContext implementation ===
+
+    @Override
+    public void addToken(SourceInfo sourceInfo, String text, Symbol.Type type, String scope) {
+        tokenMap.put(sourceInfo, new TokenInfo(text, type, scope));
+    }
+
+    @Override
+    public String currentScope() {
+        return this.currentScopeName;
+    }
+
+    @Override
+    public DiagnosticsEngine getDiagnostics() {
+        return this.diagnostics;
+    }
+
+    // === Tree walking ===
+
     /**
-     * A custom, stateful recursive walk method that manages the current scope.
-     * It correctly handles entering and exiting scopes defined by procedures or .scope directives.
+     * A stateful recursive walk method that manages the current scope via the scopeMap.
+     * Scope transitions are determined generically by looking up the node in the scopeMap,
+     * using {@link SymbolTable.Scope#name()} for the display name.
      *
      * @param node The current AST node to visit.
      */
@@ -117,194 +144,83 @@ public class TokenMapGenerator {
             return;
         }
 
-        String previousScope = this.currentScope;
-        boolean isNewScopeNode = node instanceof ProcedureNode;
+        SymbolTable.Scope previousScopeObj = this.currentScopeObj;
+        String previousScopeName = this.currentScopeName;
 
-        if (node instanceof ProcedureNode procNode) {
-            this.currentScope = procNode.name().text().toUpperCase();
+        SymbolTable.Scope nodeScope = scopeMap.get(node);
+        if (nodeScope != null) {
+            this.currentScopeObj = nodeScope;
+            this.currentScopeName = nodeScope.name();
         }
 
-        // Visit the current node to add its token to the map
         visit(node);
 
-        // Recursively visit all children
         for (AstNode child : node.getChildren()) {
             walkAndVisit(child);
         }
 
-        // Restore the previous scope after leaving the node's subtree
-        if (isNewScopeNode) {
-            this.currentScope = previousScope;
-        }
+        this.currentScopeObj = previousScopeObj;
+        this.currentScopeName = previousScopeName;
     }
 
     /**
-     * Processes a single AST node, identifies its token type, and adds it to the token map.
-     * It uses the SymbolTable as the definitive source for resolving identifiers.
+     * Processes a single AST node. Consults the contributor registry first;
+     * if no contributor is registered, falls back to default handling for
+     * core node types (IdentifierNode, RegisterNode).
      *
      * @param node The AST node to process.
      */
     private void visit(AstNode node) {
-        if (node instanceof ProcedureNode procNode) {
-            // Add the procedure name token to global scope
-            addToken(procNode.name(), Symbol.Type.PROCEDURE, "global");
-            
-            // Add parameter tokens as VARIABLE type in the procedure's scope
-            // Parameters are metadata stored in the procedure node, not separate AST nodes
-            
-            // Add old WITH syntax parameters
-            if (procNode.parameters() != null) {
-                for (int i = 0; i < procNode.parameters().size(); i++) {
-                    org.evochora.compiler.model.token.Token param = procNode.parameters().get(i);
-                    addParameterToken(param, Symbol.Type.VARIABLE, procNode.name().text().toUpperCase(), i);
-                }
-            }
-            
-            // Process new REF syntax parameters
-            if (procNode.refParameters() != null) {
-                for (int i = 0; i < procNode.refParameters().size(); i++) {
-                    org.evochora.compiler.model.token.Token param = procNode.refParameters().get(i);
-                    addParameterToken(param, Symbol.Type.VARIABLE, procNode.name().text().toUpperCase(), i);
-                }
-            }
-            
-            // Process new VAL syntax parameters
-            if (procNode.valParameters() != null) {
-                for (int i = 0; i < procNode.valParameters().size(); i++) {
-                    org.evochora.compiler.model.token.Token param = procNode.valParameters().get(i);
-                    addParameterToken(param, Symbol.Type.VARIABLE, procNode.name().text().toUpperCase(), i);
-                }
-            }
-        } else if (node instanceof IdentifierNode identifierNode) {
-            // Add the identifier token - resolve its type from symbol table
-            // Use the current scope context for proper resolution
+        Optional<ITokenMapContributor> contributor = contributorRegistry.get(node.getClass());
+        if (contributor.isPresent()) {
+            contributor.get().contribute(node, this);
+            return;
+        }
+
+        if (node instanceof IdentifierNode identifierNode) {
             Optional<Symbol> symbolOpt = resolveInCurrentScope(identifierNode.text(), identifierNode.sourceInfo().fileName());
             if (symbolOpt.isPresent()) {
                 SourceInfo si = identifierNode.sourceInfo();
-                TokenInfo tokenInfo = new TokenInfo(identifierNode.text(), symbolOpt.get().type(), this.currentScope);
-                tokenMap.put(si, tokenInfo);
+                tokenMap.put(si, new TokenInfo(identifierNode.text(), symbolOpt.get().type(), this.currentScopeName));
             } else {
-                // If symbol not found, report it as a compilation error using DiagnosticsEngine
                 diagnostics.reportError(
                     "Symbol '" + identifierNode.text() +
                     "' could not be resolved. This indicates a semantic analysis failure.",
                     identifierNode.sourceInfo().fileName(),
                     identifierNode.sourceInfo().lineNumber()
                 );
-                // Continue compilation - don't add this token to the map
             }
         } else if (node instanceof RegisterNode registerNode) {
-            // Handle register nodes - they can be either direct registers or aliases
             if (registerNode.isAlias()) {
-                // This is an alias - add token for the original alias name (e.g., %COUNTER)
-                // We need to create a SourceInfo from the RegisterNode's sourceInfo
                 SourceInfo aliasSourceInfo = registerNode.sourceInfo();
-                TokenInfo aliasTokenInfo = new TokenInfo(
-                    registerNode.getOriginalAlias(),  // Use the original alias name
-                    Symbol.Type.ALIAS,               // Mark it as an alias
-                    this.currentScope                // Use current scope (will be "global" or procedure name)
-                );
-                tokenMap.put(aliasSourceInfo, aliasTokenInfo);
+                tokenMap.put(aliasSourceInfo, new TokenInfo(
+                    registerNode.getOriginalAlias(),
+                    Symbol.Type.ALIAS,
+                    this.currentScopeName
+                ));
             } else {
-                // This is a direct register - add token for the register name (e.g., %DR0)
                 SourceInfo regSourceInfo = registerNode.sourceInfo();
-                TokenInfo regTokenInfo = new TokenInfo(
-                    registerNode.getName(),          // Use the register name
-                    Symbol.Type.VARIABLE,           // Mark it as a variable
-                    this.currentScope               // Use current scope
-                );
-                tokenMap.put(regSourceInfo, regTokenInfo);
-            }
-        } else if (node instanceof InstructionNode instructionNode) {
-            // Only add CALL and RET instructions to token map
-            String opcode = instructionNode.opcode();
-            if ("CALL".equalsIgnoreCase(opcode) || "RET".equalsIgnoreCase(opcode)) {
-                SourceInfo si = instructionNode.sourceInfo();
-                tokenMap.put(si, new TokenInfo(opcode, Symbol.Type.CONSTANT, this.currentScope));
+                tokenMap.put(regSourceInfo, new TokenInfo(
+                    registerNode.getName(),
+                    Symbol.Type.VARIABLE,
+                    this.currentScopeName
+                ));
             }
         }
     }
 
     /**
-     * Resolves a symbol in the current scope context.
+     * Resolves a symbol using the currently tracked scope object.
      */
     private Optional<Symbol> resolveInCurrentScope(String name, String fileName) {
-        // Temporarily set the symbol table's current scope to our tracked scope
         SymbolTable.Scope originalScope = symbolTable.getCurrentScope();
-
-        // Find the scope object that corresponds to our current scope name
-        SymbolTable.Scope targetScope = findScopeByName(this.currentScope);
-        if (targetScope != null) {
-            symbolTable.setCurrentScope(targetScope);
+        if (this.currentScopeObj != null) {
+            symbolTable.setCurrentScope(this.currentScopeObj);
         }
-
         try {
             return symbolTable.resolve(name, fileName);
         } finally {
-            // Restore the original scope
             symbolTable.setCurrentScope(originalScope);
-        }
-    }
-
-    /**
-     * Finds a scope by name by searching through the scope map.
-     */
-    private SymbolTable.Scope findScopeByName(String scopeName) {
-        for (Map.Entry<AstNode, SymbolTable.Scope> entry : scopeMap.entrySet()) {
-            if (entry.getKey() instanceof ProcedureNode procNode) {
-                if (procNode.name().text().toUpperCase().equals(scopeName)) {
-                    return entry.getValue();
-                }
-            }
-        }
-        return null;
-    }
-
-    /**
-     * A helper method to create a TokenInfo object and add it to the map.
-     */
-    private void addToken(org.evochora.compiler.model.token.Token token, Symbol.Type type, String scope) {
-        if (token != null) {
-            SourceInfo sourceInfo = new SourceInfo(
-                token.fileName(),
-                token.line(),
-                token.column()
-            );
-            
-            // Create TokenInfo with the proper structure
-            TokenInfo tokenInfo = new TokenInfo(
-                token.text(),
-                type,
-                scope
-            );
-            
-            // Overwrite existing tokens to ensure correct line numbers
-            tokenMap.put(sourceInfo, tokenInfo);
-        }
-    }
-
-    /**
-     * A helper method to create a TokenInfo object for parameters and add it to the map.
-     * Parameters are naturally unique due to their SourceInfo (file + line + column).
-     */
-    private void addParameterToken(org.evochora.compiler.model.token.Token token, Symbol.Type type, String scope, int parameterIndex) {
-        if (token != null) {
-            // Each parameter has a unique position in the source, so no artificial suffixes needed
-            SourceInfo sourceInfo = new SourceInfo(
-                token.fileName(),
-                token.line(),
-                token.column()
-            );
-            
-            // Create TokenInfo with the original token text (no artificial suffixes)
-            TokenInfo tokenInfo = new TokenInfo(
-                token.text(),  // Keep original text for proper annotation matching
-                type,
-                scope
-            );
-            
-            // Add to token map
-            tokenMap.put(sourceInfo, tokenInfo);
         }
     }
 }
