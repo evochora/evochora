@@ -31,12 +31,13 @@ public final class DefineNodeConverter implements IAstNodeToIrConverter<DefineNo
     @Override
     public void convert(DefineNode node, IrGenContext ctx) {
         String nameUpper = node.name().text().toUpperCase();
+        String fileName = node.name().fileName();
         IrOperand value = toOperand(node.value());
         if (value != null) {
-            ctx.registerConstant(nameUpper, value);
+            ctx.registerConstant(nameUpper, value, fileName);
         } else if (node.value() instanceof IdentifierNode id) {
             // Allow constant aliasing: resolve later as label if needed
-            ctx.registerConstant(nameUpper, new org.evochora.compiler.model.ir.IrLabelRef(id.text()));
+            ctx.registerConstant(nameUpper, new org.evochora.compiler.model.ir.IrLabelRef(id.text()), fileName);
         }
         // .DEFINE does not emit IR by itself
     }

@@ -11,16 +11,18 @@ export const INSTRUCTION_CONSTANTS = {
 export class AnnotationUtils {
     /**
      * Resolves a register alias or name (e.g., "%COUNTER", "%PR0") to its canonical form
-     * (e.g., "%PR0").
+     * (e.g., "%PR0"). When a qualifiedName is provided, it takes precedence for the lookup
+     * since backend keys are module-qualified (e.g., "ENERGY.COUNTER").
      *
      * @param {string} token - The token to resolve.
      * @param {object} artifact - The program artifact containing the register alias map.
+     * @param {string} [qualifiedName] - The canonical module-qualified alias name for lookup.
      * @returns {string|null} The canonical register name (e.g., "%PR0") or null if not a valid alias.
      */
-    static resolveToCanonicalRegister(token, artifact) {
-        const upper = token.toUpperCase();
-        if (artifact.registerAliasMap && artifact.registerAliasMap[upper] !== undefined) {
-            const regId = artifact.registerAliasMap[upper];
+    static resolveToCanonicalRegister(token, artifact, qualifiedName) {
+        const lookupKey = (qualifiedName || token || '').toUpperCase();
+        if (artifact.registerAliasMap && artifact.registerAliasMap[lookupKey] !== undefined) {
+            const regId = artifact.registerAliasMap[lookupKey];
             if (regId >= INSTRUCTION_CONSTANTS.FPR_BASE) return `%FPR${regId - INSTRUCTION_CONSTANTS.FPR_BASE}`;
             if (regId >= INSTRUCTION_CONSTANTS.PR_BASE) return `%PR${regId - INSTRUCTION_CONSTANTS.PR_BASE}`;
             return `%DR${regId}`;
@@ -167,18 +169,21 @@ export class AnnotationUtils {
     /**
      * Resolves a label name to its hash value using the program artifact.
      * Used for displaying the hash value in the source view annotations.
+     * When a qualifiedName is provided, it takes precedence for the lookup
+     * since backend keys are now module-qualified (e.g., "ENERGY.HARVEST").
      *
-     * @param {string} name - The label or procedure name.
+     * @param {string} name - The label or procedure name as it appears in source.
      * @param {object} artifact - The program artifact containing `labelNameToValue` map.
+     * @param {string} [qualifiedName] - The canonical module-qualified name for lookup.
      * @returns {number|null} The 20-bit hash value, or null if not found.
      */
-    static resolveLabelNameToHash(name, artifact) {
-        if (!name || !artifact || !artifact.labelNameToValue) {
+    static resolveLabelNameToHash(name, artifact, qualifiedName) {
+        if (!artifact || !artifact.labelNameToValue) {
             return null;
         }
-        const upperName = name.toUpperCase();
-        // labelNameToValue is a map from string name to int32 hash
-        return artifact.labelNameToValue[upperName] ?? null;
+        const lookupKey = (qualifiedName || name || '').toUpperCase();
+        if (!lookupKey) return null;
+        return artifact.labelNameToValue[lookupKey] ?? null;
     }
 
     /**

@@ -28,8 +28,9 @@ public final class ProcedureNodeConverter implements IAstNodeToIrConverter<Proce
 	 */
 	@Override
 	public void convert(ProcedureNode node, IrGenContext ctx) {
-		// Define a label at the procedure entry so CALL <name> can link to it
-		ctx.emit(new org.evochora.compiler.model.ir.IrLabelDef(node.name().text(), ctx.sourceOf(node)));
+		// Define a module-qualified label at the procedure entry so CALL <name> can link to it
+		String qualifiedName = ctx.qualifyName(node.name().text(), node.name().fileName());
+		ctx.emit(new org.evochora.compiler.model.ir.IrLabelDef(qualifiedName, ctx.sourceOf(node)));
 		// Install parameter names for this procedure scope so identifiers can resolve to %FPRx
 		// Collect all parameters (old-style, REF, and VAL) into a single list
 		java.util.List<org.evochora.compiler.model.token.Token> allParams = new java.util.ArrayList<>();
@@ -44,7 +45,7 @@ public final class ProcedureNodeConverter implements IAstNodeToIrConverter<Proce
 		}
 		ctx.pushProcedureParams(allParams);
 		Map<String, IrValue> enterArgs = new HashMap<>();
-		enterArgs.put("name", new IrValue.Str(node.name().text()));
+		enterArgs.put("name", new IrValue.Str(qualifiedName));
 		enterArgs.put("arity", new IrValue.Int64(node.parameters() != null ? node.parameters().size() : 0));
 		enterArgs.put("exported", new IrValue.Bool(node.exported()));
 		if (node.refParameters() != null) {
@@ -59,7 +60,7 @@ public final class ProcedureNodeConverter implements IAstNodeToIrConverter<Proce
 		node.body().forEach(ctx::convert);
 
 		Map<String, IrValue> exitArgs = new HashMap<>();
-		exitArgs.put("name", new IrValue.Str(node.name().text()));
+		exitArgs.put("name", new IrValue.Str(qualifiedName));
 		exitArgs.put("arity", new IrValue.Int64(node.parameters() != null ? node.parameters().size() : 0));
 		exitArgs.put("exported", new IrValue.Bool(node.exported()));
 		if (node.refParameters() != null) {

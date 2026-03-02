@@ -41,23 +41,24 @@ class LabelRefLinkingRuleTest {
     void setUp() {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        rule = new LabelRefLinkingRule(symbolTable);
+        rule = new LabelRefLinkingRule(symbolTable, Map.of());
         context = new LinkingContext();
         dummySource = new SourceInfo("test.s", 1, 0);
     }
 
     @Test
     void convertsLabelRefToHashValue() {
-        // Given: A layout with label "FOO" at address 10
+        // Given: A layout with module-qualified label "TEST.FOO" at address 10
+        // (source file is "test.s" → module name "TEST")
         layout = new LayoutResult(
                 Map.of(10, new int[]{5, 5}),
                 Map.of("5|5", 10),
-                Map.of("FOO", 10),
+                Map.of("TEST.FOO", 10),
                 Collections.emptyMap(),
                 Collections.emptyMap()
         );
 
-        // And: An instruction with IrLabelRef("FOO")
+        // And: An instruction with IrLabelRef("FOO") from "test.s"
         IrInstruction input = new IrInstruction(
                 "CALL",
                 List.of(new IrLabelRef("FOO")),
@@ -73,7 +74,7 @@ class LabelRefLinkingRuleTest {
 
         IrTypedImm typedImm = (IrTypedImm) result.operands().get(0);
         assertThat(typedImm.typeName()).isEqualTo("LABELREF");
-        long expectedHash = "FOO".hashCode() & 0x7FFFF; // 19-bit, always positive
+        long expectedHash = "TEST.FOO".hashCode() & 0x7FFFF;
         assertThat(typedImm.value()).isEqualTo(expectedHash);
     }
 
@@ -81,15 +82,18 @@ class LabelRefLinkingRuleTest {
     void hashIsConsistentWithRuntimeExpectation() {
         // This test verifies that the hash generation in the compiler
         // matches what the runtime's LabelIndex expects.
+        // Labels are module-qualified (source "test.s" → module "TEST").
 
         String[] labelNames = {"INCREMENT", "LOOP_START", "EXIT", "my_proc", "A"};
 
         for (String labelName : labelNames) {
-            // Given: A layout with the label
+            String qualifiedName = "TEST." + labelName.toUpperCase();
+
+            // Given: A layout with the module-qualified label
             layout = new LayoutResult(
                     Map.of(0, new int[]{0, 0}),
                     Map.of("0|0", 0),
-                    Map.of(labelName, 0),
+                    Map.of(qualifiedName, 0),
                     Collections.emptyMap(),
                     Collections.emptyMap()
             );
@@ -108,9 +112,9 @@ class LabelRefLinkingRuleTest {
             IrTypedImm typedImm = (IrTypedImm) result.operands().get(0);
             assertThat(typedImm.typeName()).isEqualTo("LABELREF");
 
-            long expectedHash = labelName.hashCode() & 0x7FFFF;
+            long expectedHash = qualifiedName.hashCode() & 0x7FFFF;
             assertThat(typedImm.value())
-                    .as("Hash for label '%s' should match runtime expectation", labelName)
+                    .as("Hash for label '%s' (qualified: '%s') should match runtime expectation", labelName, qualifiedName)
                     .isEqualTo(expectedHash);
 
             // And: The hash is within the valid range (19 bits, always positive)
@@ -145,11 +149,11 @@ class LabelRefLinkingRuleTest {
 
     @Test
     void doesNotConvertUnknownLabel() {
-        // Given: A layout WITHOUT the referenced label
+        // Given: A layout WITHOUT the referenced label (module-qualified keys)
         layout = new LayoutResult(
                 Collections.emptyMap(),
                 Collections.emptyMap(),
-                Map.of("OTHER_LABEL", 5), // Different label
+                Map.of("TEST.OTHER_LABEL", 5), // Different label
                 Collections.emptyMap(),
                 Collections.emptyMap()
         );
@@ -189,13 +193,14 @@ class LabelRefLinkingRuleTest {
         symbolTable.getModuleScope(mainModule).orElseThrow().imports().put("LIB", libModule);
 
         // Create rule with this symbol table
-        LabelRefLinkingRule ruleWithExport = new LabelRefLinkingRule(symbolTable);
+        LabelRefLinkingRule ruleWithExport = new LabelRefLinkingRule(symbolTable, Map.of());
 
-        // Given: A layout with "TARGET" label
+        // Given: A layout with module-qualified label "LIB.TARGET"
+        // (symbol is in "lib.s" → deriveModuleName → "LIB")
         layout = new LayoutResult(
                 Map.of(10, new int[]{5, 5}),
                 Map.of("5|5", 10),
-                Map.of("TARGET", 10),
+                Map.of("LIB.TARGET", 10),
                 Collections.emptyMap(),
                 Collections.emptyMap()
         );
@@ -211,13 +216,13 @@ class LabelRefLinkingRuleTest {
         // When: The rule is applied
         IrInstruction result = ruleWithExport.apply(input, context, layout);
 
-        // Then: The qualified label is resolved to the hash of "TARGET"
+        // Then: The qualified label is resolved to the hash of "LIB.TARGET"
         assertThat(result.operands()).hasSize(1);
         assertThat(result.operands().get(0)).isInstanceOf(IrTypedImm.class);
 
         IrTypedImm typedImm = (IrTypedImm) result.operands().get(0);
         assertThat(typedImm.typeName()).isEqualTo("LABELREF");
-        long expectedHash = "TARGET".hashCode() & 0x7FFFF;
+        long expectedHash = "LIB.TARGET".hashCode() & 0x7FFFF;
         assertThat(typedImm.value()).isEqualTo(expectedHash);
     }
 
@@ -242,7 +247,7 @@ class LabelRefLinkingRuleTest {
         symbolTable.setCurrentModule(mainModule);
         symbolTable.getModuleScope(mainModule).orElseThrow().imports().put("LIB", libModule);
 
-        LabelRefLinkingRule ruleWithNonExport = new LabelRefLinkingRule(symbolTable);
+        LabelRefLinkingRule ruleWithNonExport = new LabelRefLinkingRule(symbolTable, Map.of());
 
         // Layout contains the label
         layout = new LayoutResult(

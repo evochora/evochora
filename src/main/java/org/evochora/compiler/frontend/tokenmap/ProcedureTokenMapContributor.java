@@ -20,9 +20,11 @@ public class ProcedureTokenMapContributor implements ITokenMapContributor {
 	public void contribute(AstNode node, ITokenMapContext context) {
 		ProcedureNode procNode = (ProcedureNode) node;
 
+		// qualifiedName = module-qualified scope name (e.g., "ENERGY.HARVEST")
+		String qualifiedName = context.currentScope();
 		context.addToken(
 			new SourceInfo(procNode.name().fileName(), procNode.name().line(), procNode.name().column()),
-			procNode.name().text(), Symbol.Type.PROCEDURE, "global");
+			procNode.name().text(), Symbol.Type.PROCEDURE, "global", qualifiedName);
 
 		String procScope = context.currentScope();
 		addParameters(procNode.parameters(), procScope, context);

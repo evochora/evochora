@@ -9,6 +9,8 @@ import org.evochora.compiler.model.ast.ISourceLocatable;
 import org.evochora.compiler.model.ir.IrItem;
 import org.evochora.compiler.model.ir.IrProgram;
 
+import org.evochora.compiler.frontend.semantics.ModuleId;
+
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
@@ -25,6 +27,7 @@ public final class IrGenContext {
 	private final String programName;
 	private final DiagnosticsEngine diagnostics;
 	private final IrConverterRegistry registry;
+	private final Map<String, ModuleId> fileToModule;
 	private final List<IrItem> out = new ArrayList<>();
 	private final Deque<Map<String, Integer>> procParamScopes = new ArrayDeque<>();
 	private final Map<String, org.evochora.compiler.model.ir.IrOperand> constantByNameUpper = new HashMap<>();
@@ -34,11 +37,14 @@ public final class IrGenContext {
 	 * @param programName The name of the program being compiled.
 	 * @param diagnostics The diagnostics engine for reporting errors and warnings.
 	 * @param registry The registry for resolving AST node converters.
+	 * @param fileToModule Mapping from source file paths to their module identifiers.
 	 */
-	public IrGenContext(String programName, DiagnosticsEngine diagnostics, IrConverterRegistry registry) {
+	public IrGenContext(String programName, DiagnosticsEngine diagnostics, IrConverterRegistry registry,
+						Map<String, ModuleId> fileToModule) {
 		this.programName = programName;
 		this.diagnostics = diagnostics;
 		this.registry = registry;
+		this.fileToModule = fileToModule != null ? fileToModule : Map.of();
 	}
 
 	/**
@@ -115,25 +121,45 @@ public final class IrGenContext {
 		return java.util.Optional.empty();
 	}
 
+	// --- Module-qualified naming ---
+
+	/**
+	 * Qualifies a local name with its module prefix derived from the source file.
+	 * @param localName The unqualified name (e.g., "HARVEST").
+	 * @param fileName The source file path where the name is defined.
+	 * @return The module-qualified name (e.g., "ENERGY.HARVEST").
+	 */
+	public String qualifyName(String localName, String fileName) {
+		ModuleId moduleId = fileToModule.get(fileName);
+		String moduleName = moduleId != null
+			? ModuleId.deriveModuleName(moduleId.path())
+			: ModuleId.deriveModuleName(fileName);
+		return moduleName + "." + localName.toUpperCase();
+	}
+
 	// --- Constant registry for .DEFINE ---
 
 	/**
-	 * Registers a named constant.
+	 * Registers a named constant with module qualification.
 	 * @param nameUpper The upper-case name of the constant.
 	 * @param value The operand value.
+	 * @param fileName The source file where the constant is defined.
 	 */
-	public void registerConstant(String nameUpper, org.evochora.compiler.model.ir.IrOperand value) {
+	public void registerConstant(String nameUpper, org.evochora.compiler.model.ir.IrOperand value, String fileName) {
 		if (nameUpper != null && value != null) {
-			constantByNameUpper.put(nameUpper, value);
+			String qualifiedKey = qualifyName(nameUpper, fileName);
+			constantByNameUpper.put(qualifiedKey, value);
 		}
 	}
 
 	/**
-	 * Resolves a named constant.
+	 * Resolves a named constant using module-qualified lookup.
 	 * @param nameUpper The upper-case name of the constant to resolve.
+	 * @param fileName The source file requesting the constant (for module context).
 	 * @return The operand value if found, otherwise empty.
 	 */
-	public java.util.Optional<org.evochora.compiler.model.ir.IrOperand> resolveConstant(String nameUpper) {
-		return java.util.Optional.ofNullable(constantByNameUpper.get(nameUpper));
+	public java.util.Optional<org.evochora.compiler.model.ir.IrOperand> resolveConstant(String nameUpper, String fileName) {
+		String qualifiedKey = qualifyName(nameUpper, fileName);
+		return java.util.Optional.ofNullable(constantByNameUpper.get(qualifiedKey));
 	}
 }

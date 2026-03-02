@@ -120,7 +120,7 @@ public final class InstructionNodeConverter implements IAstNodeToIrConverter<Ins
             if (idxOpt.isPresent()) {
                 return new IrReg("%FPR" + idxOpt.get());
             }
-            java.util.Optional<IrOperand> constOpt = ctx.resolveConstant(nameU);
+            java.util.Optional<IrOperand> constOpt = ctx.resolveConstant(nameU, id.sourceInfo().fileName());
             if (constOpt.isPresent()) {
                 return constOpt.get();
             }

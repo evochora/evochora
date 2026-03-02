@@ -45,10 +45,10 @@ class AstPostProcessorTest {
         symbolTable = new SymbolTable(diagnostics);
         registerAliases = new HashMap<>();
         
-        // Set up some test register aliases
-        registerAliases.put("COUNTER", "%DR0");
-        registerAliases.put("TMP", "%PR0");
-        registerAliases.put("POS", "%DR1");
+        // Set up some test register aliases (module-qualified keys, "test.s" → module "TEST")
+        registerAliases.put("TEST.COUNTER", "%DR0");
+        registerAliases.put("TEST.TMP", "%PR0");
+        registerAliases.put("TEST.POS", "%DR1");
         
         processor = new AstPostProcessor(symbolTable, registerAliases);
     }

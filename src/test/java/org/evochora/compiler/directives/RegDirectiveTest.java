@@ -7,6 +7,7 @@ import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.frontend.semantics.ModuleId;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.frontend.postprocess.AstPostProcessor;
@@ -66,7 +67,8 @@ public class RegDirectiveTest {
         Map<String, org.evochora.compiler.model.token.Token> parserAliases = parser.getGlobalRegisterAliases();
         
         parserAliases.forEach((aliasName, registerToken) -> {
-            registerAliases.put(aliasName, registerToken.text());
+            String moduleName = ModuleId.deriveModuleName(registerToken.fileName());
+            registerAliases.put(moduleName + "." + aliasName.toUpperCase(), registerToken.text());
         });
         
         AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, registerAliases);
@@ -211,7 +213,8 @@ public class RegDirectiveTest {
         Map<String, org.evochora.compiler.model.token.Token> parserAliases = parser.getGlobalRegisterAliases();
         
         parserAliases.forEach((aliasName, registerToken) -> {
-            registerAliases.put(aliasName, registerToken.text());
+            String moduleName = ModuleId.deriveModuleName(registerToken.fileName());
+            registerAliases.put(moduleName + "." + aliasName.toUpperCase(), registerToken.text());
         });
         
         AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, registerAliases);

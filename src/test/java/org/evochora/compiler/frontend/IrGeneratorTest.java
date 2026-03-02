@@ -146,7 +146,8 @@ public class IrGeneratorTest {
 
         assertTrue(items.get(1) instanceof IrLabelDef);
         IrLabelDef lbl = (IrLabelDef) items.get(1);
-        assertEquals("L1", lbl.name());
+        // Label names are module-qualified; default Lexer file "<memory>" → module "<MEMORY>"
+        assertEquals("<MEMORY>.L1", lbl.name());
 
         assertTrue(items.get(2) instanceof IrInstruction);
         IrInstruction seti = (IrInstruction) items.get(2);

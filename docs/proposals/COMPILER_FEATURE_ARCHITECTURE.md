@@ -372,7 +372,7 @@ is resolved:
 | Compiler.java contains business logic | Procedure metadata extraction moves to `ProcFeature` components |
 | IrGenContext instanceof chains | `ISourceLocatable.sourceInfo()` — IrGenContext uses SourceInfo via capability interface |
 | TokenMapGenerator hardcodes features | Registry-based `ITokenMapContributor` dispatch. **RESOLVED** in C3: `ProcedureTokenMapContributor` + `InstructionTokenMapContributor` extracted, `Scope.name()` eliminates all `ProcedureNode` references from `TokenMapGenerator`. |
-| LabelRefLinkingRule imports SymbolTable | Pre-resolved qualified names map, or SymbolTable in `compiler/model/` |
+| LabelRefLinkingRule imports SymbolTable | Pre-resolved qualified names map, or SymbolTable in `compiler/model/`. **C4:** LabelRefLinkingRule now also receives `fileToModule` for module-qualified resolution. |
 | Linker hardcodes CALL | `CallSiteBindingRule` in `features/proc/` |
 | Magic opcode strings | Constants in feature packages or shared `Opcodes` class |
 | Frontend imports runtime Config | `MachineConstraints` in `compiler/model/` |
@@ -438,10 +438,11 @@ Create the interfaces and registries needed for feature consolidation.
 | C1 | Create `ICompilerFeature` + `IFeatureRegistrationContext` + `FeatureRegistry` in `compiler/`. Create `IDependencyScanHandler` + `IDependencyScanContext` in `frontend/module/`. Create stub interfaces `ITokenMapContributor`/`ITokenMapContext` in `frontend/tokenmap/` and `IPostProcessHandler`/`IPostProcessContext` in `frontend/postprocess/`. |
 | C2 | Extend `ParsingContext` with `expression()`, `declaration()`, `state()`. Create `ParserState` (generic type-safe container) and `RegisterAliasState` (temporarily in `parser/` — moves to `features/reg/` in D8). Eliminate 6 of 7 handler casts. Only `registerProcedure()` cast remains in ProcDirectiveHandler (resolved in D13). **DONE.** |
 | C3 | Refactor `TokenMapGenerator` to dispatch through `TokenMapContributorRegistry`. Populate `ITokenMapContext` (3 methods). Extract `ProcedureTokenMapContributor` and `InstructionTokenMapContributor`. Add `Scope.name()` to `SymbolTable.Scope` and `deriveModuleName()` to `ModuleId` for module-qualified scope names (e.g., `MAIN.INIT`). Replace `findScopeByName()` with direct Scope-object tracking. Eliminates all `ProcedureNode` references from `TokenMapGenerator`. **DONE.** |
-| C4 | Create `IPostProcessHandler` + `PostProcessHandlerRegistry`, refactor `AstPostProcessor` to dispatch through registry. |
-| C5 | Extract `MacroExpansionHandler` from `PreProcessor.expandMacro()`, register as handler in `PreProcessorDirectiveRegistry`. |
-| C6 | Extract `CallSiteBindingRule` from `Linker`, move CALL detection into linking rule. |
-| C7 | Create `IScopedParserState` interface in `parser/`. Add `pushScope()`/`popScope()` to `ParserState` — propagates to all registered `IScopedParserState` objects. Pure parser infrastructure, no feature imports. |
+| C4 | Module-namespacing: all identifier namespaces (procedures, labels, constants, register-aliases) are module-qualified throughout the backend. Format: `MODULENAME.LOCALNAME`. IrGenContext gains `qualifyName()` + module-aware `registerConstant()`/`resolveConstant()`. LabelRefLinkingRule qualifies local and cross-module references. `procNameToParamNames` and register-alias keys in Compiler.java are qualified. TokenInfo gains `qualifiedName` field for frontend lookups. Breaking change: label hashes are now based on qualified names. **DONE.** |
+| C5 | Create `IPostProcessHandler` + `PostProcessHandlerRegistry`, refactor `AstPostProcessor` to dispatch through registry. |
+| C6 | Extract `MacroExpansionHandler` from `PreProcessor.expandMacro()`, register as handler in `PreProcessorDirectiveRegistry`. |
+| C7 | Extract `CallSiteBindingRule` from `Linker`, move CALL detection into linking rule. |
+| C8 | Create `IScopedParserState` interface in `parser/`. Add `pushScope()`/`popScope()` to `ParserState` — propagates to all registered `IScopedParserState` objects. Pure parser infrastructure, no feature imports. |
 
 ### Phase D: Feature Consolidation
 

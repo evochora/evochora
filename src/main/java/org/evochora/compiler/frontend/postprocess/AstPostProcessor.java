@@ -85,12 +85,11 @@ public class AstPostProcessor {
         
         String identifierName = idNode.text();
         
-        // Check if this identifier is a register alias
-        // Register aliases are stored with UPPERCASE names as keys
+        // Check if this identifier is a register alias (module-qualified keys)
         String upperName = identifierName.toUpperCase();
-        if (registerAliases.containsKey(upperName)) {
-            String resolvedName = registerAliases.get(upperName);
-            createRegisterReplacement(idNode, upperName, resolvedName);
+        String qualifiedAlias = qualifyAliasName(upperName, idNode.sourceInfo().fileName());
+        if (registerAliases.containsKey(qualifiedAlias)) {
+            createRegisterReplacement(idNode, upperName, registerAliases.get(qualifiedAlias));
             return;
         }
         
@@ -112,6 +111,14 @@ public class AstPostProcessor {
     private String currentModuleKey() {
         ModuleId moduleId = symbolTable.getCurrentModuleId();
         return moduleId != null ? moduleId.path() : "";
+    }
+
+    private String qualifyAliasName(String upperName, String fileName) {
+        ModuleId moduleId = symbolTable.getCurrentModuleId();
+        String moduleName = moduleId != null
+            ? ModuleId.deriveModuleName(moduleId.path())
+            : ModuleId.deriveModuleName(fileName);
+        return moduleName + "." + upperName;
     }
 
     /**

@@ -3,11 +3,15 @@ package org.evochora.compiler.backend.link.features;
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.backend.link.ILinkingRule;
 import org.evochora.compiler.backend.link.LinkingContext;
+import org.evochora.compiler.frontend.semantics.ModuleId;
+import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.model.ir.*;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 /**
  * Resolves IrLabelRef operands to hash values for fuzzy jump matching.
@@ -17,13 +21,16 @@ import java.util.List;
 public class LabelRefLinkingRule implements ILinkingRule {
 
     private final SymbolTable symbolTable;
+    private final Map<String, ModuleId> fileToModule;
 
     /**
      * Constructs a new label reference linking rule.
      * @param symbolTable The symbol table for resolving symbols.
+     * @param fileToModule Mapping from source file paths to module identifiers.
      */
-    public LabelRefLinkingRule(SymbolTable symbolTable) {
+    public LabelRefLinkingRule(SymbolTable symbolTable, Map<String, ModuleId> fileToModule) {
         this.symbolTable = symbolTable;
+        this.fileToModule = fileToModule;
     }
 
     /**
@@ -39,12 +46,19 @@ public class LabelRefLinkingRule implements ILinkingRule {
             IrOperand op = ops.get(i);
             if (op instanceof IrLabelRef ref) {
                 String labelNameToFind = ref.labelName();
+                String instrFile = instruction.source().fileName();
 
                 if (labelNameToFind.contains(".")) {
-                    var symbolOpt = symbolTable.resolve(labelNameToFind, instruction.source().fileName());
+                    // Cross-module reference: resolve through symbol table to canonical name
+                    Optional<Symbol> symbolOpt = symbolTable.resolve(labelNameToFind, instrFile);
                     if (symbolOpt.isPresent()) {
-                        labelNameToFind = symbolOpt.get().name().text();
+                        Symbol sym = symbolOpt.get();
+                        String symFile = sym.name().fileName();
+                        labelNameToFind = qualifyName(sym.name().text(), symFile);
                     }
+                } else {
+                    // Local reference: qualify with the instruction's own module
+                    labelNameToFind = qualifyName(labelNameToFind, instrFile);
                 }
 
                 Integer targetAddr = layout.labelToAddress().get(labelNameToFind);
@@ -60,5 +74,13 @@ public class LabelRefLinkingRule implements ILinkingRule {
             }
         }
         return rewritten != null ? new IrInstruction(instruction.opcode(), rewritten, instruction.source()) : instruction;
+    }
+
+    private String qualifyName(String localName, String fileName) {
+        ModuleId moduleId = fileToModule.get(fileName);
+        String moduleName = moduleId != null
+            ? ModuleId.deriveModuleName(moduleId.path())
+            : ModuleId.deriveModuleName(fileName);
+        return moduleName + "." + localName.toUpperCase();
     }
 }

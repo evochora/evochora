@@ -113,6 +113,12 @@ public class Compiler implements ICompiler {
             throw new CompilationException(diagnostics.summary());
         }
 
+        // Build file-to-module mapping from dependency graph (shared by multiple phases)
+        Map<String, ModuleId> fileToModule = new HashMap<>();
+        for (ModuleDescriptor module : graph.topologicalOrder()) {
+            fileToModule.put(module.sourcePath(), module.id());
+        }
+
         // Phase 1: Lexical Analysis — lex all files, store results
         Map<String, List<Token>> moduleTokens = new HashMap<>();
         for (ModuleDescriptor module : graph.topologicalOrder()) {
@@ -179,17 +185,12 @@ public class Compiler implements ICompiler {
                         .collect(Collectors.toList()));
             }
             
-            procNameToParamNames.put(name.toUpperCase(), params);
+            String qualifiedName = resolveQualifiedName(name, procNode.name().fileName(), fileToModule);
+            procNameToParamNames.put(qualifiedName, params);
         });
 
         if (diagnostics.hasErrors()) {
             throw new CompilationException(diagnostics.summary());
-        }
-
-        // Build file-to-module mapping from dependency graph (shared by Phase 4 + 6)
-        Map<String, ModuleId> fileToModule = new HashMap<>();
-        for (ModuleDescriptor module : graph.topologicalOrder()) {
-            fileToModule.put(module.sourcePath(), module.id());
         }
 
         // Phase 4: Semantic Analysis (symbol resolution, type checking)
@@ -204,20 +205,21 @@ public class Compiler implements ICompiler {
         TokenMapContributorRegistry tokenMapRegistry = new TokenMapContributorRegistry();
         tokenMapRegistry.register(org.evochora.compiler.frontend.parser.features.proc.ProcedureNode.class, new ProcedureTokenMapContributor());
         tokenMapRegistry.register(org.evochora.compiler.model.ast.InstructionNode.class, new InstructionTokenMapContributor());
-        TokenMapGenerator tokenMapGenerator = new TokenMapGenerator(symbolTable, analyzer.getScopeMap(), diagnostics, tokenMapRegistry);
+        TokenMapGenerator tokenMapGenerator = new TokenMapGenerator(symbolTable, analyzer.getScopeMap(), diagnostics, tokenMapRegistry, fileToModule);
         Map<SourceInfo, TokenInfo> tokenMap = tokenMapGenerator.generateAll(ast);
 
         // Phase 6: AST Post-Processing (resolve register aliases)
         // Extract register aliases from parser (both .REG and .PREG)
         Map<String, String> astRegisterAliases = new HashMap<>();
         
-        // Extract global register aliases from parser
+        // Extract global register aliases from parser (module-qualified keys)
         parser.getGlobalRegisterAliases().forEach((aliasName, registerToken) -> {
-            astRegisterAliases.put(aliasName, registerToken.text());
+            String qualifiedAlias = resolveQualifiedName(aliasName, registerToken.fileName(), fileToModule);
+            astRegisterAliases.put(qualifiedAlias, registerToken.text());
         });
         
-        // Extract procedure register aliases from AST
-        extractProcedureRegisterAliases(ast, astRegisterAliases);
+        // Extract procedure register aliases from AST (module-qualified keys)
+        extractProcedureRegisterAliases(ast, astRegisterAliases, fileToModule);
         
         // Create final alias map for emitter (convert register names to IDs)
         Map<String, Integer> finalAliasMap = new HashMap<>();
@@ -250,7 +252,7 @@ public class Compiler implements ICompiler {
         // Phase 7: IR Generation (convert AST to intermediate representation)
         IrConverterRegistry irRegistry = IrConverterRegistry.initializeWithDefaults();
         IrGenerator irGenerator = new IrGenerator(diagnostics, irRegistry);
-        IrProgram irProgram = irGenerator.generate(ast, programName);
+        IrProgram irProgram = irGenerator.generate(ast, programName, fileToModule);
 
         // Phase 8: IR Rewriting (apply emission rules)
         EmissionRegistry emissionRegistry = EmissionRegistry.initializeWithDefaults();
@@ -266,7 +268,7 @@ public class Compiler implements ICompiler {
         LayoutResult layout = layoutEngine.layout(rewrittenIr, new RuntimeInstructionSetAdapter(), envProps);
 
         // Phase 10: Linking (resolve cross-references)
-        LinkingRegistry linkingRegistry = LinkingRegistry.initializeWithDefaults(symbolTable);
+        LinkingRegistry linkingRegistry = LinkingRegistry.initializeWithDefaults(symbolTable, fileToModule);
         Linker linker = new Linker(linkingRegistry);
         IrProgram linkedIr = linker.link(rewrittenIr, layout, linkingContext, envProps);
 
@@ -295,21 +297,30 @@ public class Compiler implements ICompiler {
      * @param ast the AST to extract aliases from
      * @param registerAliases the map to populate with procedure register aliases
      */
-    private void extractProcedureRegisterAliases(List<AstNode> ast, Map<String, String> registerAliases) {
+    private void extractProcedureRegisterAliases(List<AstNode> ast, Map<String, String> registerAliases,
+                                                   Map<String, ModuleId> fileToModule) {
         for (AstNode node : ast) {
             if (node == null) continue;
-            
-            // Check if this is a PregNode
+
             if (node instanceof PregNode pregNode) {
-                String aliasName = pregNode.alias().text();
+                String qualifiedAlias = resolveQualifiedName(
+                    pregNode.alias().text(), pregNode.alias().fileName(), fileToModule);
                 int registerIndex = pregNode.registerIndexValue();
                 String targetRegister = "%PR" + registerIndex;
-                registerAliases.put(aliasName, targetRegister);
+                registerAliases.put(qualifiedAlias, targetRegister);
             }
-            
-            // Recursively check children
-            extractProcedureRegisterAliases(node.getChildren(), registerAliases);
+
+            extractProcedureRegisterAliases(node.getChildren(), registerAliases, fileToModule);
         }
+    }
+
+    private static String resolveQualifiedName(String localName, String fileName,
+                                                Map<String, ModuleId> fileToModule) {
+        ModuleId moduleId = fileToModule.get(fileName);
+        String moduleName = moduleId != null
+            ? ModuleId.deriveModuleName(moduleId.path())
+            : ModuleId.deriveModuleName(fileName);
+        return moduleName + "." + localName.toUpperCase();
     }
     
     
