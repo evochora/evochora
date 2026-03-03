@@ -1,10 +1,12 @@
 package org.evochora.compiler.module;
 
+import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.module.DependencyGraph;
 import org.evochora.compiler.frontend.module.DependencyScanner;
 import org.evochora.compiler.frontend.module.ModuleDescriptor;
+import org.evochora.compiler.frontend.module.SourceRootResolver;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.InstructionNode;
@@ -210,7 +212,9 @@ class ModuleSourceDefineIntegrationTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(mainSource, diagnostics, mainPath);
         List<Token> tokens = new ArrayList<>(lexer.scanTokens());
-        PreProcessor preProcessor = new PreProcessor(tokens, diagnostics, tempDir, null);
+        SourceRootResolver circularResolver = new SourceRootResolver(
+                List.of(new SourceRoot(".", null)), tempDir);
+        PreProcessor preProcessor = new PreProcessor(tokens, diagnostics, circularResolver, null);
         preProcessor.expand();
 
         assertThat(diagnostics.hasErrors()).isTrue();
@@ -259,8 +263,10 @@ class ModuleSourceDefineIntegrationTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
 
         // Phase 0: Dependency scanning
-        DependencyScanner scanner = new DependencyScanner(diagnostics);
-        DependencyGraph graph = scanner.scan(mainSource, mainPath, tempDir);
+        SourceRootResolver resolver = new SourceRootResolver(
+                List.of(new SourceRoot(".", null)), tempDir);
+        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver);
+        DependencyGraph graph = scanner.scan(mainSource, mainPath);
         if (diagnostics.hasErrors()) return new PostProcessResult(diagnostics, List.of());
 
         // Phase 1: Lex all modules
@@ -280,7 +286,7 @@ class ModuleSourceDefineIntegrationTest {
         List<Token> mainTokens = new ArrayList<>(mainLexer.scanTokens());
 
         // Phase 2: Preprocessing
-        PreProcessor preProcessor = new PreProcessor(mainTokens, diagnostics, tempDir,
+        PreProcessor preProcessor = new PreProcessor(mainTokens, diagnostics, resolver,
                 moduleTokens.isEmpty() ? null : moduleTokens);
         List<Token> processedTokens = preProcessor.expand();
         if (diagnostics.hasErrors()) return new PostProcessResult(diagnostics, List.of());

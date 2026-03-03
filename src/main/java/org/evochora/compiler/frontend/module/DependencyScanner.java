@@ -31,11 +31,13 @@ public final class DependencyScanner {
             "(?i)USING\\s+(\\w+)\\s+AS\\s+(\\w+)");
 
     private final DiagnosticsEngine diagnostics;
+    private final SourceRootResolver resolver;
     private final Map<ModuleId, ModuleDescriptor> descriptors = new LinkedHashMap<>();
     private final Set<ModuleId> visiting = new LinkedHashSet<>();
 
-    public DependencyScanner(DiagnosticsEngine diagnostics) {
+    public DependencyScanner(DiagnosticsEngine diagnostics, SourceRootResolver resolver) {
         this.diagnostics = diagnostics;
+        this.resolver = resolver;
     }
 
     /**
@@ -43,12 +45,11 @@ public final class DependencyScanner {
      *
      * @param mainContent  The source content of the main file.
      * @param mainPath     The resolved, normalized path of the main file.
-     * @param mainBasePath The directory of the main file (for relative path resolution).
      * @return A dependency graph with modules in topological order.
      */
-    public DependencyGraph scan(String mainContent, String mainPath, Path mainBasePath) {
+    public DependencyGraph scan(String mainContent, String mainPath) {
         ModuleId mainId = new ModuleId(mainPath);
-        scanModule(mainId, mainPath, mainContent, mainBasePath);
+        scanModule(mainId, mainPath, mainContent);
 
         if (diagnostics.hasErrors()) {
             return new DependencyGraph(List.of());
@@ -59,7 +60,7 @@ public final class DependencyScanner {
         return new DependencyGraph(sorted);
     }
 
-    private void scanModule(ModuleId moduleId, String sourcePath, String content, Path basePath) {
+    private void scanModule(ModuleId moduleId, String sourcePath, String content) {
         if (descriptors.containsKey(moduleId)) return;
 
         if (visiting.contains(moduleId)) {
@@ -98,13 +99,18 @@ public final class DependencyScanner {
                     }
                 }
                 // Recursively scan the imported module
-                String resolvedPath = resolvePath(path, sourcePath, basePath);
+                String resolvedPath;
+                try {
+                    resolvedPath = resolver.resolve(path, sourcePath);
+                } catch (SourceRootResolver.UnknownPrefixException e) {
+                    diagnostics.reportError(e.getMessage(), sourcePath, i + 1);
+                    continue;
+                }
                 ModuleId importId = new ModuleId(resolvedPath);
                 imports.add(new ModuleDescriptor.ImportDecl(path, alias, usings, importId));
                 try {
-                    String importContent = loadContent(resolvedPath, path, sourcePath, basePath);
-                    Path importBasePath = deriveBasePath(resolvedPath);
-                    scanModule(importId, resolvedPath, importContent, importBasePath);
+                    String importContent = loadContent(resolvedPath);
+                    scanModule(importId, resolvedPath, importContent);
                 } catch (IOException e) {
                     diagnostics.reportError("Could not load imported module: " + path, sourcePath, i + 1);
                 }
@@ -124,10 +130,16 @@ public final class DependencyScanner {
                 String path = sourceMatcher.group(1);
                 sourceFiles.add(path);
                 // Scan .SOURCE files for nested .SOURCE directives and validate no .IMPORT/.REQUIRE
-                String resolvedPath = resolvePath(path, sourcePath, basePath);
+                String resolvedPath;
                 try {
-                    String sourceContent = loadContent(resolvedPath, path, sourcePath, basePath);
-                    scanSourceFile(resolvedPath, sourceContent, basePath);
+                    resolvedPath = resolver.resolve(path, sourcePath);
+                } catch (SourceRootResolver.UnknownPrefixException e) {
+                    diagnostics.reportError(e.getMessage(), sourcePath, i + 1);
+                    continue;
+                }
+                try {
+                    String sourceContent = loadContent(resolvedPath);
+                    scanSourceFile(resolvedPath, sourceContent);
                 } catch (IOException e) {
                     diagnostics.reportError("Could not load sourced file: " + path, sourcePath, i + 1);
                 }
@@ -143,7 +155,7 @@ public final class DependencyScanner {
      * Scans a .SOURCE file for validation: must not contain .IMPORT or .REQUIRE,
      * but may contain nested .SOURCE.
      */
-    private void scanSourceFile(String sourcePath, String content, Path basePath) {
+    private void scanSourceFile(String sourcePath, String content) {
         String[] lines = content.split("\\r?\\n");
         for (int i = 0; i < lines.length; i++) {
             String line = lines[i].trim();
@@ -163,10 +175,16 @@ public final class DependencyScanner {
             Matcher sourceMatcher = SOURCE_PATTERN.matcher(line);
             if (sourceMatcher.matches()) {
                 String nestedPath = sourceMatcher.group(1);
-                String resolvedPath = resolvePath(nestedPath, sourcePath, basePath);
+                String resolvedPath;
                 try {
-                    String nestedContent = loadContent(resolvedPath, nestedPath, sourcePath, basePath);
-                    scanSourceFile(resolvedPath, nestedContent, basePath);
+                    resolvedPath = resolver.resolve(nestedPath, sourcePath);
+                } catch (SourceRootResolver.UnknownPrefixException e) {
+                    diagnostics.reportError(e.getMessage(), sourcePath, i + 1);
+                    continue;
+                }
+                try {
+                    String nestedContent = loadContent(resolvedPath);
+                    scanSourceFile(resolvedPath, nestedContent);
                 } catch (IOException e) {
                     diagnostics.reportError("Could not load sourced file: " + nestedPath, sourcePath, i + 1);
                 }
@@ -174,22 +192,7 @@ public final class DependencyScanner {
         }
     }
 
-    /**
-     * Resolves a path relative to the source file or as an absolute URL.
-     */
-    private String resolvePath(String path, String sourceFilePath, Path basePath) {
-        if (SourceLoader.isHttpUrl(path)) {
-            return path;
-        }
-        if (SourceLoader.isHttpUrl(sourceFilePath)) {
-            return SourceLoader.resolveHttpRelative(sourceFilePath, path);
-        }
-        Path sourceDir = Path.of(sourceFilePath).getParent();
-        if (sourceDir == null) sourceDir = basePath;
-        return sourceDir.resolve(path).normalize().toString().replace('\\', '/');
-    }
-
-    private String loadContent(String resolvedPath, String originalPath, String sourceFilePath, Path basePath) throws IOException {
+    private String loadContent(String resolvedPath) throws IOException {
         if (SourceLoader.isHttpUrl(resolvedPath)) {
             return SourceLoader.loadHttp(resolvedPath).content();
         }
@@ -198,14 +201,6 @@ public final class DependencyScanner {
             return SourceLoader.loadFile(filePath).content();
         }
         throw new IOException("File not found: " + resolvedPath);
-    }
-
-    private Path deriveBasePath(String resolvedPath) {
-        if (SourceLoader.isHttpUrl(resolvedPath)) {
-            return Path.of(".");
-        }
-        Path parent = Path.of(resolvedPath).getParent();
-        return parent != null ? parent : Path.of(".");
     }
 
     /**
@@ -223,10 +218,7 @@ public final class DependencyScanner {
 
         for (ModuleDescriptor desc : descriptors.values()) {
             for (ModuleDescriptor.ImportDecl imp : desc.imports()) {
-                String resolvedPath = resolvePath(imp.path(), desc.sourcePath(),
-                        Path.of(desc.sourcePath()).getParent() != null ?
-                                Path.of(desc.sourcePath()).getParent() : Path.of("."));
-                ModuleId depId = new ModuleId(resolvedPath);
+                ModuleId depId = imp.resolvedId();
                 if (descriptors.containsKey(depId)) {
                     dependencies.get(desc.id()).add(depId);
                     dependents.computeIfAbsent(depId, k -> new LinkedHashSet<>()).add(desc.id());

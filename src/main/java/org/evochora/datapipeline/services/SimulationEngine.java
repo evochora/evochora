@@ -18,7 +18,10 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.CompilationException;
+import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.compiler.api.SourceRoot;
+import org.evochora.compiler.frontend.module.SourceRootResolver;
 import org.evochora.datapipeline.api.contracts.CallSiteBinding;
 import org.evochora.datapipeline.api.contracts.ColumnTokenLookup;
 import org.evochora.datapipeline.api.contracts.FileTokenLookup;
@@ -373,6 +376,19 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         Map<String, ProgramInfo> programInfo = new HashMap<>();
         Compiler compiler = new Compiler();
 
+        // Build compiler options from config
+        CompilerOptions compilerOptions;
+        if (options.hasPath("compiler.source-roots")) {
+            List<? extends Config> rootConfigs = options.getConfigList("compiler.source-roots");
+            List<SourceRoot> sourceRoots = rootConfigs.stream()
+                    .map(rc -> new SourceRoot(rc.getString("path"),
+                            rc.hasPath("prefix") ? rc.getString("prefix") : null))
+                    .toList();
+            compilerOptions = new CompilerOptions(sourceRoots);
+        } else {
+            compilerOptions = CompilerOptions.defaults();
+        }
+
         String topology = options.getString("environment.topology");
         if (!"TORUS".equalsIgnoreCase(topology) && !"BOUND".equalsIgnoreCase(topology)) {
             throw new IllegalArgumentException(
@@ -388,12 +404,15 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         }
         EnvironmentProperties envProps = new EnvironmentProperties(shape, isToroidal);
 
+        SourceRootResolver tempResolver = new SourceRootResolver(compilerOptions.sourceRoots(), Paths.get(""));
+
         for (Config orgConfig : organismConfigs) {
             String programPath = orgConfig.getString("program");
             if (!programInfo.containsKey(programPath)) {
                 try {
-                    String source = Files.readString(Paths.get(programPath));
-                    ProgramArtifact artifact = compiler.compile(List.of(source.split("\n")), programPath, envProps);
+                    String resolvedPath = tempResolver.resolve(programPath, "");
+                    String source = Files.readString(Paths.get(resolvedPath));
+                    ProgramArtifact artifact = compiler.compile(List.of(source.split("\n")), resolvedPath, envProps, compilerOptions);
                     programInfo.put(programPath, new ProgramInfo(programPath, artifact.programId(), artifact));
                     compiledPrograms.put(artifact.programId(), artifact);
                 } catch (CompilationException e) {

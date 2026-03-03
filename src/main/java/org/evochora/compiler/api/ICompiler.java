@@ -29,6 +29,17 @@ public interface ICompiler {
     ProgramArtifact compile(List<String> sourceLines, String programName, EnvironmentProperties envProps) throws CompilationException;
 
     /**
+     * Compiles with explicit environment context and compiler options.
+     * @param sourceLines A list of strings representing the lines of the main source code.
+     * @param programName A name for the program, used for debugging purposes.
+     * @param envProps The environment properties, providing context like world dimensions. Can be null.
+     * @param options Compiler options controlling source root resolution. Can be null for defaults.
+     * @return A {@link ProgramArtifact} containing the compiled program and all associated metadata.
+     * @throws CompilationException if errors occur during the compilation process.
+     */
+    ProgramArtifact compile(List<String> sourceLines, String programName, EnvironmentProperties envProps, CompilerOptions options) throws CompilationException;
+
+    /**
      * Sets the verbosity level for log output.
      * @param level The verbosity level (e.g., 0=quiet, 1=normal, 2=verbose, 3=trace).
      */

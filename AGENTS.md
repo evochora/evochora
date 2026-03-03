@@ -84,9 +84,11 @@ When the node is running, it exposes a REST API for controlling and monitoring t
 ## Assembly Compile System
 The compiler can be invoked in multiple equivalent ways. For details and examples, see the **Compile** section in `docs/CLI_USAGE.md`.
 
-- Primary user-facing entry point: `bin/evochora compile --file=<path> [--env=<dimensions>[:<toroidal>]]`
+- Primary user-facing entry point: `bin/evochora compile --source-root <root> --file=<path> [--env=<dimensions>[:<toroidal>]]`
 - Developer entry point via JAR (after `./gradlew jar`):
-  `java -jar build/libs/evochora.jar compile --file=<path> [--env=<dimensions>[:<toroidal>]]`
+  `java -jar build/libs/evochora.jar compile --source-root <root> --file=<path> [--env=<dimensions>[:<toroidal>]]`
+
+Source roots define base directories (or HTTP URLs) from which module paths are resolved. Use `--source-root path:PREFIX` for named roots and `PREFIX:path` in directives to target them.
 
 The compiler produces a JSON `ProgramArtifact` with machine code layout, labels, registers, procedures, environment properties, and source/ token maps that can be used for debugging and analysis.
 

@@ -67,12 +67,28 @@ The `compile` command translates EvoASM source files into a JSON `ProgramArtifac
 
 ```bash
 # Basic compilation (uses default environment from config)
-bin/evochora compile --file=assembly/examples/simple.evo
+bin/evochora compile --source-root assembly/examples --file=simple.evo
 
 # With custom environment
-bin/evochora compile --file=assembly/examples/simple.evo --env=200x200:flat
-bin/evochora compile --file=assembly/examples/simple.evo --env=1000x1000x100:toroidal
+bin/evochora compile --source-root assembly/examples --file=simple.evo --env=200x200:flat
+
+# Multiple source roots with prefixes (format: path or path:PREFIX)
+bin/evochora compile --source-root ./predator:PRED --source-root ./prey:PREY --file=PRED:main.evo
+
+# HTTP source root
+bin/evochora compile --source-root https://example.com/organisms:PRED --file=PRED:main.evo
 ```
+
+### Source Roots (`--source-root`)
+
+Source roots define base directories (or HTTP URLs) from which `.IMPORT`, `.REQUIRE`, and `.SOURCE` paths are resolved. All paths in directives are relative to their source root.
+
+Syntax:
+
+- `--source-root <path>` — unprefixed (default) source root
+- `--source-root <path>:<PREFIX>` — named source root with prefix (PREFIX must match `[A-Z][A-Z0-9_]*`)
+
+When using prefixed source roots, directive paths use `PREFIX:path` syntax (e.g., `.IMPORT "PRED:lib/move.evo" AS MOVE`). If no `--source-root` is specified, the current directory is used as the default root.
 
 ### Environment Parameters (`--env`)
 
@@ -328,7 +344,7 @@ java -jar build/libs/evochora.jar node run
 java -jar build/libs/evochora.jar --config my-config.conf node run
 
 # Compile EvoASM
-java -jar build/libs/evochora.jar compile --file=assembly/examples/simple.evo
+java -jar build/libs/evochora.jar compile --source-root assembly/examples --file=simple.evo
 
 # Inspect storage data
 java -jar build/libs/evochora.jar inspect storage --tick=1000 --run-id=my-simulation-run

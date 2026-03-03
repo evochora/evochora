@@ -3,7 +3,10 @@ package org.evochora.cli.commands;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import org.evochora.compiler.Compiler;
+import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.compiler.api.SourceRoot;
+import org.evochora.compiler.frontend.module.SourceRootResolver;
 import org.evochora.compiler.internal.LinearizedProgramArtifact;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -11,9 +14,11 @@ import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
-import java.io.File;
 import java.io.PrintWriter;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Callable;
@@ -27,9 +32,9 @@ public class CompileCommand implements Callable<Integer> {
     @Option(
         names = {"-f", "--file"},
         required = true,
-        description = "Path to the assembly source file to compile"
+        description = "Path to the assembly source file (supports PREFIX:path syntax)"
     )
-    private File file;
+    private String file;
 
     @Option(
         names = {"-e", "--env"},
@@ -37,17 +42,29 @@ public class CompileCommand implements Callable<Integer> {
     )
     private String env;
 
+    @Option(
+        names = {"--source-root"},
+        arity = "0..*",
+        description = "Source root directories in format 'path' or 'path:PREFIX' (e.g., './predator:PRED')"
+    )
+    private List<String> sourceRootArgs;
+
     @CommandLine.Spec
     CommandLine.Model.CommandSpec spec;
 
     @Override
     public Integer call() throws Exception {
-        Instruction.init(); // Initialize the instruction set
-        List<String> sourceLines = Files.readAllLines(file.toPath());
+        Instruction.init();
+
+        CompilerOptions compilerOptions = buildCompilerOptions();
+        SourceRootResolver resolver = new SourceRootResolver(compilerOptions.sourceRoots(), Paths.get(""));
+        String resolvedPath = resolver.resolve(file, "");
+
+        List<String> sourceLines = Files.readAllLines(Path.of(resolvedPath));
         EnvironmentProperties envProps = parseEnvironmentProperties(env);
 
         Compiler compiler = new Compiler();
-        ProgramArtifact artifact = compiler.compile(sourceLines, file.getPath(), envProps);
+        ProgramArtifact artifact = compiler.compile(sourceLines, resolvedPath, envProps, compilerOptions);
         LinearizedProgramArtifact linearizedArtifact = artifact.toLinearized(envProps);
 
         Gson gson = new GsonBuilder().setPrettyPrinting().create();
@@ -57,9 +74,29 @@ public class CompileCommand implements Callable<Integer> {
         return 0;
     }
 
+    private CompilerOptions buildCompilerOptions() {
+        if (sourceRootArgs == null || sourceRootArgs.isEmpty()) {
+            return CompilerOptions.defaults();
+        }
+        List<SourceRoot> roots = new ArrayList<>();
+        for (String arg : sourceRootArgs) {
+            int colonIdx = arg.lastIndexOf(':');
+            if (colonIdx > 0 && colonIdx < arg.length() - 1) {
+                String candidate = arg.substring(colonIdx + 1);
+                // Only treat as PREFIX if it matches the prefix pattern (all uppercase)
+                if (candidate.matches("[A-Z][A-Z0-9_]*")) {
+                    roots.add(new SourceRoot(arg.substring(0, colonIdx), candidate));
+                    continue;
+                }
+            }
+            roots.add(new SourceRoot(arg, null));
+        }
+        return new CompilerOptions(roots);
+    }
+
     private EnvironmentProperties parseEnvironmentProperties(String env) {
         if (env == null || env.isEmpty()) {
-            return new EnvironmentProperties(new int[]{1000, 1000}, true); // Default
+            return new EnvironmentProperties(new int[]{1000, 1000}, true);
         }
 
         String[] parts = env.split(":");

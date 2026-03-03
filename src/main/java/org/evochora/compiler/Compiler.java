@@ -1,9 +1,11 @@
 package org.evochora.compiler;
 
 import org.evochora.compiler.api.CompilationException;
+import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.ICompiler;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.api.TokenInfo;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.compiler.frontend.lexer.Lexer;
@@ -12,6 +14,7 @@ import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.module.DependencyGraph;
 import org.evochora.compiler.frontend.module.DependencyScanner;
 import org.evochora.compiler.frontend.module.ModuleDescriptor;
+import org.evochora.compiler.frontend.module.SourceRootResolver;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ast.PregNode;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
@@ -71,19 +74,32 @@ public class Compiler implements ICompiler {
 
     /**
      * Compiles the given source code into a program artifact with environment context.
+     * Delegates to the 4-arg overload with default options.
+     */
+    @Override
+    public ProgramArtifact compile(List<String> sourceLines, String programName, EnvironmentProperties envProps) throws CompilationException {
+        return compile(sourceLines, programName, envProps, null);
+    }
+
+    /**
+     * Compiles the given source code into a program artifact with environment context and options.
      *
      * @param sourceLines The lines of source code to compile.
      * @param programName The name of the program, used for diagnostics and artifact metadata.
      * @param envProps The environment properties, providing context like world dimensions. Can be null.
+     * @param options Compiler options controlling source root resolution. Can be null for defaults.
      * @return The compiled program artifact.
      * @throws CompilationException if any errors occur during compilation.
      */
-    public ProgramArtifact compile(List<String> sourceLines, String programName, EnvironmentProperties envProps) throws CompilationException {
+    @Override
+    public ProgramArtifact compile(List<String> sourceLines, String programName, EnvironmentProperties envProps, CompilerOptions options) throws CompilationException {
 
         if (verbosity >= 0) {
             org.evochora.compiler.diagnostics.CompilerLogger.setLevel(verbosity);
         }
-        // org.evochora.compiler.diagnostics.CompilerLogger.info("Compiler: " + programName);
+
+        CompilerOptions effectiveOptions = (options != null) ? options : CompilerOptions.defaults();
+        effectiveOptions.validate();
 
         // Calculate absolute program name first (needed for Lexer and sources map)
         Path basePath;
@@ -102,13 +118,18 @@ public class Compiler implements ICompiler {
             absoluteProgramName = Path.of(programName).toAbsolutePath();
             basePath = Path.of("").toAbsolutePath();
         }
-        
+
         String mainFilePath = absoluteProgramName.toString().replace('\\', '/');
         String fullSource = String.join("\n", sourceLines) + "\n";
 
+        // Explicit source roots resolve relative to CWD; default source roots resolve relative to the program file
+        Path workingDirectory = (options != null) ? Path.of("").toAbsolutePath() : basePath;
+        SourceRootResolver resolver = new SourceRootResolver(
+                effectiveOptions.sourceRoots(), workingDirectory);
+
         // Phase 0: Dependency Scanning (load imported modules)
-        DependencyScanner depScanner = new DependencyScanner(diagnostics);
-        DependencyGraph graph = depScanner.scan(fullSource, mainFilePath, basePath);
+        DependencyScanner depScanner = new DependencyScanner(diagnostics, resolver);
+        DependencyGraph graph = depScanner.scan(fullSource, mainFilePath);
         if (diagnostics.hasErrors()) {
             throw new CompilationException(diagnostics.summary());
         }
@@ -136,7 +157,7 @@ public class Compiler implements ICompiler {
         List<Token> initialTokens = new ArrayList<>(mainLexer.scanTokens());
 
         // Phase 2: Preprocessing (includes, macros)
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, basePath,
+        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, resolver,
                 moduleTokens.isEmpty() ? null : moduleTokens);
         List<Token> processedTokens = preProcessor.expand();
 

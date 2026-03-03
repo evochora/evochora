@@ -3,7 +3,7 @@
 # The importer must satisfy this dependency with a USING clause.
 
 .REQUIRE "math.evo" AS MATH
-.SOURCE "constants.evo"
+.SOURCE "modules/constants.evo"
 
 # Move north (Y - 1), clamped to world bounds.
 EXPORT .PROC NORTH REF Y

@@ -6,7 +6,6 @@ import org.evochora.compiler.frontend.preprocessor.IPreProcessorDirectiveHandler
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
 
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -53,7 +52,13 @@ public class ImportSourceHandler implements IPreProcessorDirectiveHandler {
 
         // Resolve the path to an absolute path
         String pathValue = (String) pathToken.value();
-        String resolvedPath = resolvePath(pathValue, pathToken.fileName(), preProcessor.getBasePath());
+        String resolvedPath;
+        try {
+            resolvedPath = preProcessor.getResolver().resolve(pathValue, pathToken.fileName());
+        } catch (org.evochora.compiler.frontend.module.SourceRootResolver.UnknownPrefixException e) {
+            preProcessor.getDiagnostics().reportError(e.getMessage(), pathToken.fileName(), pathToken.line());
+            return;
+        }
 
         // Guard against circular imports
         if (preProcessor.isInImportChain(resolvedPath)) {
@@ -83,19 +88,4 @@ public class ImportSourceHandler implements IPreProcessorDirectiveHandler {
         preProcessor.injectTokens(newTokens, 0);
     }
 
-    /**
-     * Resolves a relative path to an absolute path, using the including file's directory.
-     * Falls back to basePath if the including file has no parent directory.
-     */
-    private String resolvePath(String pathValue, String includingFileName, Path basePath) {
-        Path includingFileDir;
-        if (includingFileName != null && !includingFileName.isEmpty()) {
-            Path filePath = Path.of(includingFileName);
-            Path parent = filePath.getParent();
-            includingFileDir = (parent != null) ? parent : basePath;
-        } else {
-            includingFileDir = basePath;
-        }
-        return includingFileDir.resolve(pathValue).normalize().toString().replace('\\', '/');
-    }
 }

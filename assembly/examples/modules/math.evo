@@ -1,7 +1,7 @@
 # Math utilities module.
 # Standalone module with no dependencies — can be imported directly.
 
-.SOURCE "constants.evo"
+.SOURCE "modules/constants.evo"
 
 # Exported label (demonstrates cross-module label access via ALIAS.LABEL)
 EXPORT MATH_READY:

@@ -621,6 +621,15 @@ The module system allows splitting programs across multiple files. Three directi
 * **Syntax**: `.SOURCE "<path>"`
 * **Effect**: Reads the file at `<path>` and inlines its tokens at the directive location. This is a pure text inclusion mechanism for sharing macros, constants, and other non-module code. `.SOURCE` files must **not** contain `.IMPORT` or `.REQUIRE` directives. Supports local paths, classpath resources, and HTTP/HTTPS URLs.
 
+#### Path Resolution
+
+All paths in `.IMPORT`, `.REQUIRE`, and `.SOURCE` are resolved against configured **source roots**. A source root is a base directory (or HTTP URL) from which paths are resolved. Source roots are configured via `compiler.source-roots` in the configuration file or via the `--source-root` CLI flag.
+
+* **Unprefixed paths** (e.g., `"lib/energy.evo"`) resolve against the default (unprefixed) source root.
+* **Prefixed paths** use `PREFIX:path` syntax (e.g., `"PRED:lib/move.evo"`) to target a named source root. Prefixes must match `[A-Z][A-Z0-9_]*`.
+* **HTTP URLs** as source root paths are fully supported. A source root like `https://example.com/organisms` resolves `"lib/move.evo"` to `https://example.com/organisms/lib/move.evo`.
+* If no source roots are configured, the main file's directory is used as the default root.
+
 #### `.PROC`
 
 * **Syntax**: `[EXPORT] .PROC <Name> [REF <param1> ...] [VAL <param2> ...] / .ENDP`
@@ -756,7 +765,7 @@ The module example consists of multiple files:
 To compile the examples using the CLI:
 
 ```bash
-evochora compile --file=assembly/examples/simple.evo
-evochora compile --file=assembly/examples/complex.evo
-evochora compile --file=assembly/examples/modules.evo
+evochora compile --source-root assembly/examples --file=simple.evo
+evochora compile --source-root assembly/examples --file=complex.evo
+evochora compile --source-root assembly/examples --file=modules.evo
 ```

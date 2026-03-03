@@ -1,6 +1,6 @@
 # lib/reproduce.evo
 # Exported reproduction procedure for organisms
-.SOURCE "state.evo"
+.SOURCE "lib/state.evo"
 
 .REG %CONTCORD %LR0 # Coordinate to continue reproduction from
 

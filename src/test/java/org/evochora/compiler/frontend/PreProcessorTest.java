@@ -1,6 +1,8 @@
 package org.evochora.compiler.frontend;
 
+import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.frontend.lexer.Lexer;
+import org.evochora.compiler.frontend.module.SourceRootResolver;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -58,7 +60,9 @@ public class PreProcessorTest {
         Lexer lexer = new Lexer(mainSource, diagnostics, mainFile.toString());
         List<Token> initialTokens = lexer.scanTokens();
 
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, tempDir, null);
+        SourceRootResolver resolver = new SourceRootResolver(
+                List.of(new SourceRoot(".", null)), tempDir);
+        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, resolver, null);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand();

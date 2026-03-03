@@ -38,7 +38,14 @@ public class SourceDirectiveHandler implements IPreProcessorDirectiveHandler {
         String pathValue = (String) pathToken.value();
 
         try {
-            SourceLoader.LoadResult result = loadContent(pathValue, pathToken, preProcessor);
+            SourceLoader.LoadResult result;
+            try {
+                result = loadContent(pathValue, pathToken, preProcessor);
+            } catch (org.evochora.compiler.frontend.module.SourceRootResolver.UnknownPrefixException e) {
+                preProcessor.getDiagnostics().reportError(e.getMessage(), pathToken.fileName(), pathToken.line());
+                preProcessor.removeTokens(startIndex, endIndex - startIndex);
+                return;
+            }
             String content = result.content();
             String logicalName = result.logicalName();
 
@@ -105,9 +112,9 @@ public class SourceDirectiveHandler implements IPreProcessorDirectiveHandler {
             return SourceLoader.loadHttp(resolvedUrl);
         }
 
-        // Local filesystem resolution
-        Path includingFileDir = deriveParentDir(includingFileName, preProcessor.getBasePath());
-        Path resolvedPath = includingFileDir.resolve(pathValue).normalize();
+        // Source-root-relative resolution
+        String resolvedPathStr = preProcessor.getResolver().resolve(pathValue, includingFileName);
+        Path resolvedPath = Path.of(resolvedPathStr);
 
         if (Files.exists(resolvedPath)) {
             return SourceLoader.loadFile(resolvedPath);
@@ -126,25 +133,11 @@ public class SourceDirectiveHandler implements IPreProcessorDirectiveHandler {
         try {
             return SourceLoader.loadClasspath(classpathCandidate);
         } catch (IOException ignored) {
-            // Try alternative classpath resolution using basePath
-            String basePathStr = preProcessor.getBasePath().toString().replace('\\', '/');
-            String alternativeCandidate = basePathStr + "/" + pathValue;
+            // Try alternative classpath resolution using resolved path's parent
+            Path resolvedParent = resolvedPath.getParent();
+            String parentStr = resolvedParent != null ? resolvedParent.toString().replace('\\', '/') : "";
+            String alternativeCandidate = parentStr + "/" + pathValue;
             return SourceLoader.loadClasspath(alternativeCandidate);
         }
-    }
-
-    /**
-     * Derives the parent directory of the file containing the directive.
-     * Falls back to the provided basePath if the fileName has no parent.
-     */
-    private Path deriveParentDir(String fileName, Path fallbackBasePath) {
-        if (fileName != null && !fileName.isEmpty()) {
-            Path filePath = Path.of(fileName);
-            Path parent = filePath.getParent();
-            if (parent != null) {
-                return parent;
-            }
-        }
-        return fallbackBasePath;
     }
 }

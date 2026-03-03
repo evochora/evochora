@@ -3,8 +3,8 @@ package org.evochora.compiler.frontend.preprocessor;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.frontend.module.SourceRootResolver;
 import org.evochora.compiler.frontend.preprocessor.features.macro.MacroDefinition;
-import java.nio.file.Path;
 import java.util.*;
 import java.util.Deque;
 
@@ -18,7 +18,7 @@ public class PreProcessor {
     private final List<Token> tokens;
     private final DiagnosticsEngine diagnostics;
     private final PreProcessorDirectiveRegistry directiveRegistry;
-    private final Path basePath;
+    private final SourceRootResolver resolver;
     private int current = 0;
     private final Deque<String> sourceChain = new ArrayDeque<>();
     private final Deque<String> importChain = new ArrayDeque<>();
@@ -29,15 +29,15 @@ public class PreProcessor {
      * Constructs a new PreProcessor.
      * @param initialTokens The initial list of tokens from the lexer.
      * @param diagnostics The engine for reporting errors and warnings.
-     * @param basePath The base path of the main source file.
+     * @param resolver The source root resolver for path resolution.
      * @param moduleTokens Pre-lexed tokens per imported module (absolute path → token list),
      *                     or null for single-file compilations without imports.
      */
-    public PreProcessor(List<Token> initialTokens, DiagnosticsEngine diagnostics, Path basePath,
+    public PreProcessor(List<Token> initialTokens, DiagnosticsEngine diagnostics, SourceRootResolver resolver,
                         Map<String, List<Token>> moduleTokens) {
         this.tokens = new ArrayList<>(initialTokens);
         this.diagnostics = diagnostics;
-        this.basePath = basePath;
+        this.resolver = resolver;
         this.directiveRegistry = PreProcessorDirectiveRegistry.initialize(moduleTokens);
     }
 
@@ -246,11 +246,11 @@ public class PreProcessor {
     }
 
     /**
-     * Gets the base path of the main source file, used for resolving relative paths.
-     * @return The base path.
+     * Gets the source root resolver for path resolution.
+     * @return The source root resolver.
      */
-    public Path getBasePath() {
-        return basePath;
+    public SourceRootResolver getResolver() {
+        return resolver;
     }
 
     /**

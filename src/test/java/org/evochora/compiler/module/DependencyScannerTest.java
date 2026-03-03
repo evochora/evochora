@@ -1,15 +1,19 @@
 package org.evochora.compiler.module;
 
+import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.module.DependencyGraph;
 import org.evochora.compiler.frontend.module.DependencyScanner;
 import org.evochora.compiler.frontend.module.ModuleDescriptor;
+import org.evochora.compiler.frontend.module.SourceRootResolver;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
@@ -21,14 +25,19 @@ public class DependencyScannerTest {
     @TempDir
     Path tempDir;
 
+    private SourceRootResolver defaultResolver(Path root) {
+        return new SourceRootResolver(List.of(new SourceRoot(".", null)), root);
+    }
+
     @Test
     @Tag("unit")
     void singleFileProducesSingleModuleGraph() {
         String source = "NOP\nSETI %DR0 42\n";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        DependencyScanner scanner = new DependencyScanner(diagnostics);
+        SourceRootResolver resolver = defaultResolver(Path.of("/test"));
+        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver);
 
-        DependencyGraph graph = scanner.scan(source, "/test/main.evo", Path.of("/test"));
+        DependencyGraph graph = scanner.scan(source, "/test/main.evo");
 
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(graph.topologicalOrder()).hasSize(1);
@@ -45,8 +54,9 @@ public class DependencyScannerTest {
         String mainPath = tempDir.resolve("main.evo").toString();
 
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        DependencyScanner scanner = new DependencyScanner(diagnostics);
-        DependencyGraph graph = scanner.scan(mainSource, mainPath, tempDir);
+        SourceRootResolver resolver = defaultResolver(tempDir);
+        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver);
+        DependencyGraph graph = scanner.scan(mainSource, mainPath);
 
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(graph.topologicalOrder()).hasSize(2);
@@ -68,8 +78,9 @@ public class DependencyScannerTest {
 
         String aSource = Files.readString(aFile);
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        DependencyScanner scanner = new DependencyScanner(diagnostics);
-        scanner.scan(aSource, aFile.toString(), tempDir);
+        SourceRootResolver resolver = defaultResolver(tempDir);
+        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver);
+        scanner.scan(aSource, aFile.toString());
 
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.summary()).containsIgnoringCase("circular");
@@ -85,8 +96,9 @@ public class DependencyScannerTest {
         String mainPath = tempDir.resolve("main.evo").toString();
 
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        DependencyScanner scanner = new DependencyScanner(diagnostics);
-        scanner.scan(mainSource, mainPath, tempDir);
+        SourceRootResolver resolver = defaultResolver(tempDir);
+        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver);
+        scanner.scan(mainSource, mainPath);
 
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.summary()).contains(".IMPORT");
@@ -105,8 +117,9 @@ public class DependencyScannerTest {
         String mainPath = tempDir.resolve("main.evo").toString();
 
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        DependencyScanner scanner = new DependencyScanner(diagnostics);
-        DependencyGraph graph = scanner.scan(mainSource, mainPath, tempDir);
+        SourceRootResolver resolver = defaultResolver(tempDir);
+        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver);
+        DependencyGraph graph = scanner.scan(mainSource, mainPath);
 
         assertThat(diagnostics.hasErrors()).isFalse();
 
@@ -129,8 +142,9 @@ public class DependencyScannerTest {
         String mainPath = tempDir.resolve("main.evo").toString();
 
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        DependencyScanner scanner = new DependencyScanner(diagnostics);
-        DependencyGraph graph = scanner.scan(source, mainPath, tempDir);
+        SourceRootResolver resolver = defaultResolver(tempDir);
+        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver);
+        DependencyGraph graph = scanner.scan(source, mainPath);
 
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(graph.topologicalOrder()).hasSize(1);
