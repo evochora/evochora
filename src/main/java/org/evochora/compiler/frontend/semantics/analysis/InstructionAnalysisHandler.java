@@ -147,7 +147,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                             }
                         }
                     }
-                    // Do not allow additional tokens between target and WITH (prevents e.g. "EXPORT" in between)
+                    // Do not allow additional tokens between target and WITH
                     int unexpectedEnd = withIdx >= 0 ? withIdx : instructionNode.arguments().size();
                     if (unexpectedEnd > 1) {
                         diagnostics.reportError("CALL syntax error: unexpected token before WITH.", instructionNode.sourceInfo().fileName(), instructionNode.sourceInfo().lineNumber());

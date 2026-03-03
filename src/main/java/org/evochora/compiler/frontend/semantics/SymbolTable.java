@@ -57,6 +57,7 @@ public class SymbolTable {
     // --- Export metadata ---
     private final Map<String, Boolean> procExportedByFileAndName = new HashMap<>();
     private final Map<String, Boolean> labelExportedByFileAndName = new HashMap<>();
+    private final Map<String, Boolean> defineExportedByFileAndName = new HashMap<>();
 
     /**
      * Constructs a new symbol table. The current module must be set via
@@ -295,6 +296,21 @@ public class SymbolTable {
     private Boolean isLabelExported(Token labelName) {
         String key = labelName.fileName() + "|" + labelName.text().toUpperCase();
         return labelExportedByFileAndName.get(key);
+    }
+
+    /**
+     * Registers metadata for a define constant, such as whether it is exported.
+     * @param defineName The name token of the constant.
+     * @param exported True if the constant is exported, false otherwise.
+     */
+    public void registerDefineMeta(Token defineName, boolean exported) {
+        String key = defineName.fileName() + "|" + defineName.text().toUpperCase();
+        defineExportedByFileAndName.put(key, exported);
+    }
+
+    private Boolean isDefineExported(Token defineName) {
+        String key = defineName.fileName() + "|" + defineName.text().toUpperCase();
+        return defineExportedByFileAndName.get(key);
     }
 
     /**

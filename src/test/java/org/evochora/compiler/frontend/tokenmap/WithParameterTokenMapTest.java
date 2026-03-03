@@ -24,7 +24,7 @@ class WithParameterTokenMapTest extends CompilerTestBase {
 
     @Test
     void testProcedureParametersAreInTokenMap() throws Exception {
-        String source = ".PROC PROC1 EXPORT WITH PROC1REG1 PROC1REG2\n  NOP\n  RET\n.ENDP";
+        String source = "EXPORT .PROC PROC1 WITH PROC1REG1 PROC1REG2\n  NOP\n  RET\n.ENDP";
         
         Compiler compiler = new Compiler();
         ProgramArtifact artifact = compiler.compile(List.of(source.split("\n")), "test_proc.s", testEnvProps);

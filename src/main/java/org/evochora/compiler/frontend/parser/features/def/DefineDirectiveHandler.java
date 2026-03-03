@@ -23,12 +23,13 @@ public class DefineDirectiveHandler implements IParserDirectiveHandler {
         context.advance(); // consume .DEFINE
 
         Token name = context.consume(TokenType.IDENTIFIER, "Expected a constant name after .DEFINE.");
+        boolean exported = context.isExported();
         AstNode valueNode = context.expression();
 
         if (name == null || valueNode == null) {
             return null;
         }
 
-        return new DefineNode(name, valueNode);
+        return new DefineNode(name, valueNode, exported);
     }
 }

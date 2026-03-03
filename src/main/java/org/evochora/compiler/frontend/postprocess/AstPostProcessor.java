@@ -53,6 +53,8 @@ public class AstPostProcessor {
      * @return The transformed AST root.
      */
     public AstNode process(AstNode root) {
+        replacements.clear();
+
         // First pass: collect constants and replacements with module context tracking
         collectPass(root);
 

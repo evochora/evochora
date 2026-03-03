@@ -9,6 +9,7 @@ import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.model.ast.VectorLiteralNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.frontend.parser.features.def.DefineNode;
 import org.evochora.compiler.frontend.parser.features.label.LabelNode;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.BeforeAll;
@@ -133,7 +134,7 @@ public class ParserTest {
     }
 
     /**
-     * Verifies that the parser correctly handles an exported label (e.g., "L1: EXPORT NOP").
+     * Verifies that the parser correctly handles an exported label (e.g., "EXPORT L1: NOP").
      * The exported flag should be true and the statement should be parsed correctly.
      * This is a unit test for the parser.
      */
@@ -141,7 +142,7 @@ public class ParserTest {
     @Tag("unit")
     void testParserExportedLabel() {
         // Arrange
-        String source = "L1: EXPORT NOP";
+        String source = "EXPORT L1: NOP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
@@ -196,7 +197,7 @@ public class ParserTest {
     @Tag("unit")
     void testParserExportedLabelWithStatementOnNextLine() {
         // Arrange
-        String source = "L1: EXPORT\nNOP";
+        String source = "EXPORT L1:\nNOP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
@@ -216,5 +217,60 @@ public class ParserTest {
 
         InstructionNode nopNode = (InstructionNode) labelNode.statement();
         assertThat(nopNode.opcode()).isEqualTo("NOP");
+    }
+
+    /**
+     * Verifies that the parser correctly handles an exported define (e.g., "EXPORT .DEFINE X 42").
+     * The exported flag should be true.
+     */
+    @Test
+    @Tag("unit")
+    void testParserExportedDefine() {
+        // Arrange
+        String source = "EXPORT .DEFINE MAX_ENERGY 42";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics);
+        List<Token> tokens = lexer.scanTokens();
+        Parser parser = new Parser(tokens, diagnostics);
+
+        // Act
+        List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(ast).hasSize(1);
+        assertThat(ast.get(0)).isInstanceOf(DefineNode.class);
+
+        DefineNode defineNode = (DefineNode) ast.get(0);
+        assertThat(defineNode.name().text()).isEqualTo("MAX_ENERGY");
+        assertThat(defineNode.exported()).isTrue();
+        assertThat(defineNode.value()).isInstanceOf(NumberLiteralNode.class);
+        assertThat(((NumberLiteralNode) defineNode.value()).value()).isEqualTo(42);
+    }
+
+    /**
+     * Verifies that a non-exported define has the exported flag set to false.
+     */
+    @Test
+    @Tag("unit")
+    void testParserNonExportedDefine() {
+        // Arrange
+        String source = ".DEFINE MAX_ENERGY 42";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics);
+        List<Token> tokens = lexer.scanTokens();
+        Parser parser = new Parser(tokens, diagnostics);
+
+        // Act
+        List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
+
+        // Assert
+        assertThat(diagnostics.hasErrors()).isFalse();
+        assertThat(ast).hasSize(1);
+        assertThat(ast.get(0)).isInstanceOf(DefineNode.class);
+
+        DefineNode defineNode = (DefineNode) ast.get(0);
+        assertThat(defineNode.name().text()).isEqualTo("MAX_ENERGY");
+        assertThat(defineNode.exported()).isFalse();
     }
 }

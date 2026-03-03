@@ -47,11 +47,11 @@ class UsingClauseIntegrationTest {
     @Tag("integration")
     void validUsingClauseSatisfiesRequire() throws Exception {
         // dep.evo: a simple dependency module with an exported label
-        Files.writeString(tempDir.resolve("dep.evo"), "HARVEST: EXPORT\n  NOP\n");
+        Files.writeString(tempDir.resolve("dep.evo"), "EXPORT HARVEST:\n  NOP\n");
 
         // lib.evo: requires DEP and uses DEP.HARVEST
         Files.writeString(tempDir.resolve("lib.evo"),
-                ".REQUIRE \"dep.evo\" AS DEP\nWORK: EXPORT\n  JMPI DEP.HARVEST\n");
+                ".REQUIRE \"dep.evo\" AS DEP\nEXPORT WORK:\n  JMPI DEP.HARVEST\n");
 
         // main.evo: imports dep and lib, provides dep to lib via USING
         String mainSource = ".IMPORT \"dep.evo\" AS D\n.IMPORT \"lib.evo\" AS LIB USING D AS DEP\nNOP\n";
@@ -156,11 +156,11 @@ class UsingClauseIntegrationTest {
     @Tag("integration")
     void usingResolvesQualifiedSymbolCorrectly() throws Exception {
         // dep.evo: exported label HARVEST
-        Files.writeString(tempDir.resolve("dep.evo"), "HARVEST: EXPORT\n  NOP\n");
+        Files.writeString(tempDir.resolve("dep.evo"), "EXPORT HARVEST:\n  NOP\n");
 
         // lib.evo: requires DEP, references DEP.HARVEST
         Files.writeString(tempDir.resolve("lib.evo"),
-                ".REQUIRE \"dep.evo\" AS DEP\nWORK: EXPORT\n  JMPI DEP.HARVEST\n");
+                ".REQUIRE \"dep.evo\" AS DEP\nEXPORT WORK:\n  JMPI DEP.HARVEST\n");
 
         String mainSource = ".IMPORT \"dep.evo\" AS D\n.IMPORT \"lib.evo\" AS LIB USING D AS DEP\nNOP\n";
         String mainPath = tempDir.resolve("main.evo").toString();
@@ -193,7 +193,7 @@ class UsingClauseIntegrationTest {
         // math.evo: standalone, exports ADD_CONST
         Files.writeString(tempDir.resolve("math.evo"),
                 ".SOURCE \"consts.evo\"\n" +
-                ".PROC ADD_CONST EXPORT REF X\n" +
+                "EXPORT .PROC ADD_CONST REF X\n" +
                 "  ADDI X AMOUNT\n" +
                 "  RET\n" +
                 ".ENDP\n");
@@ -201,7 +201,7 @@ class UsingClauseIntegrationTest {
         // user.evo: requires MATH, calls MATH.ADD_CONST
         Files.writeString(tempDir.resolve("user.evo"),
                 ".REQUIRE \"math.evo\" AS MATH\n" +
-                ".PROC DO_WORK EXPORT REF V\n" +
+                "EXPORT .PROC DO_WORK REF V\n" +
                 "  CALL MATH.ADD_CONST REF V\n" +
                 "  RET\n" +
                 ".ENDP\n");

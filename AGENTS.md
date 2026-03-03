@@ -140,6 +140,11 @@ There is a central document for AI agent guidelines that defines architectural p
 - **Handler Pattern**: Phase main classes (PreProcessor, Parser, SemanticAnalyzer, IrGenerator, LayoutEngine, Linker, Emitter) must use their corresponding handlers/plugins system
 - **Thin Orchestrators**: All logic goes into handlers/plugins; main classes stay clean as distributors
 - **Registry-Based**: Use DirectiveHandlerRegistry, IrConverterRegistry, LayoutDirectiveRegistry, LinkingRegistry, EmissionRegistry for extensibility
+- **Feature-Slicing**: Features (not phases) are the unit of code organization. Each feature is a self-contained package with all its components (parser handler, AST node, semantics handler, IR converter, etc.). Features register themselves into phase registries.
+- **Feature-Agnostic Core**: Core infrastructure (phases, SymbolTable, data formats) must never reference specific features. Features depend on phases, not vice versa. The only place that knows which features exist is the registration list in Compiler.java.
+- **Three Pure Data Formats**: Token (`model/token/`), AST (`model/ast/`), IR (`model/ir/`) are strictly separated. No cross-dependencies between them. `SourceInfo` is the only shared type.
+- **Stateless Features**: Features have no constructor parameters and no mutable state. Compilation data flows through phase contexts (e.g., PreProcessorContext, IrGenContext), not through features.
+- **Pure Data Records**: Core data types (Symbol, AstNode subtypes, IR items) are pure records. Placement/scoping knowledge lives in the SymbolTable and phase contexts, not in the data records themselves.
 
 ## Runtime (`src/main/java/org/evochora/runtime/`)
 

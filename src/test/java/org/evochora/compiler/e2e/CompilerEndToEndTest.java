@@ -39,7 +39,7 @@ public class CompilerEndToEndTest {
     @Tag("unit")
 	void compilesProcedureAndCallEndToEnd() throws Exception {
 		String source = String.join("\n",
-				".PROC ADD2 EXPORT REF A B",
+				"EXPORT .PROC ADD2 REF A B",
 				"  ADDR A B",
 				"  RET",
 				".ENDP",
@@ -74,7 +74,7 @@ public class CompilerEndToEndTest {
     @Tag("unit")
 	void acceptsExportOnProcHeader() throws Exception {
 		String source = String.join("\n",
-				".PROC BAR EXPORT",
+				"EXPORT .PROC BAR",
 				"  NOP",
 				"  RET",
 				".ENDP",

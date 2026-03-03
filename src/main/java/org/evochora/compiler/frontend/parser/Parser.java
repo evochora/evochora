@@ -34,6 +34,7 @@ public class Parser implements ParsingContext {
 
     private final ParserState parserState = new ParserState();
     private final Map<String, ProcedureNode> procedureTable = new HashMap<>();
+    private boolean currentExported = false;
 
     /**
      * Constructs a new Parser.
@@ -109,15 +110,28 @@ public class Parser implements ParsingContext {
     }
 
     private AstNode statement() {
+        currentExported = false;
+        if (check(TokenType.IDENTIFIER) && "EXPORT".equalsIgnoreCase(peek().text())) {
+            currentExported = true;
+            advance(); // consume EXPORT
+        }
+
         if (check(TokenType.IDENTIFIER) && checkNext(TokenType.COLON)) {
             Token labelToken = advance();
             advance(); // consume ':'
-            boolean exported = false;
-            if (check(TokenType.IDENTIFIER) && "EXPORT".equalsIgnoreCase(peek().text())) {
-                advance(); // consume 'EXPORT'
-                exported = true;
-            }
+            boolean exported = currentExported;
             return new LabelNode(labelToken, declaration(), exported);
+        }
+
+        if (check(TokenType.DIRECTIVE)) {
+            return directiveStatement();
+        }
+
+        if (currentExported) {
+            Token errorToken = isAtEnd() ? previous() : peek();
+            diagnostics.reportError(
+                    "EXPORT can only precede a label definition or a directive (.PROC, .IMPORT, .DEFINE).",
+                    errorToken.fileName(), errorToken.line());
         }
         return instructionStatement();
     }
@@ -318,4 +332,5 @@ public class Parser implements ParsingContext {
     public Map<String, ProcedureNode> getProcedureTable() { return procedureTable; }
     @Override public DiagnosticsEngine getDiagnostics() { return diagnostics; }
     @Override public ParserState state() { return parserState; }
+    @Override public boolean isExported() { return currentExported; }
 }

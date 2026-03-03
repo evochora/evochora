@@ -46,7 +46,7 @@ public class RefWithParameterBugTest {
               NOP
             JMPI START
             
-            .PROC TEST_PROC EXPORT WITH DIR FWD_MASK
+            EXPORT .PROC TEST_PROC WITH DIR FWD_MASK
               RTRI DIR DATA:0 DATA:1
               V2BR FWD_MASK DIR
               RET
@@ -66,7 +66,7 @@ public class RefWithParameterBugTest {
               NOP
             JMPI START
             
-            .PROC TEST_PROC EXPORT REF DIR FWD_MASK
+            EXPORT .PROC TEST_PROC REF DIR FWD_MASK
               RTRI DIR DATA:0 DATA:1
               V2BR FWD_MASK DIR
               RET

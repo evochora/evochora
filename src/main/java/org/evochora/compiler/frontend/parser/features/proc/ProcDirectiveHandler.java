@@ -19,7 +19,7 @@ public class ProcDirectiveHandler implements IParserDirectiveHandler {
 
     /**
      * Parses a procedure definition, including its body, until an <code>.ENDP</code> directive is found.
-     * The syntax is <code>.PROC &lt;name&gt; [EXPORT] [WITH &lt;param1&gt; &lt;param2&gt; ...] ... .ENDP</code>.
+     * The syntax is <code>[EXPORT] .PROC &lt;name&gt; [WITH &lt;param1&gt; &lt;param2&gt; ...] ... .ENDP</code>.
      * @param context The parsing context.
      * @return A {@link ProcedureNode} representing the parsed procedure.
      */
@@ -28,18 +28,15 @@ public class ProcDirectiveHandler implements IParserDirectiveHandler {
         context.advance(); // consume .PROC
 
         Token procName = context.consume(TokenType.IDENTIFIER, "Expected procedure name after .PROC.");
-        boolean exported = false;
+        boolean exported = context.isExported();
         List<Token> parameters = new ArrayList<>();
         List<Token> refParameters = new ArrayList<>();
         List<Token> valParameters = new ArrayList<>();
-        // Flexible loop to parse optional keywords like EXPORT, WITH, REF, and VAL
+        // Flexible loop to parse optional keywords like WITH, REF, and VAL
         while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
             if (context.check(TokenType.IDENTIFIER)) {
                 String keyword = context.peek().text();
-                if ("EXPORT".equalsIgnoreCase(keyword)) {
-                    context.advance();
-                    exported = true;
-                } else if ("WITH".equalsIgnoreCase(keyword)) {
+                if ("WITH".equalsIgnoreCase(keyword)) {
                     context.advance();
                     // After WITH, only parameters follow until newline
                     while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {

@@ -51,7 +51,7 @@ Declares that the current module needs access to another module, but does not pl
 # energy.evo
 .REQUIRE "./utils.evo" AS UTILS
 
-.PROC HARVEST EXPORT
+EXPORT .PROC HARVEST
   CALL UTILS.HELPER
 .ENDP
 ```
@@ -106,15 +106,15 @@ Restrictions:
 
 ### `EXPORT` — Make a symbol public
 
-The `EXPORT` modifier on a symbol declaration makes it visible to modules that import this file. Without `EXPORT`, symbols are private.
+The `EXPORT` prefix modifier on a symbol declaration makes it visible to modules that import this file. Without `EXPORT`, symbols are private.
 
 Exportable symbols:
 
 | Symbol Type | Syntax | Example |
 |---|---|---|
-| Procedure | `.PROC name EXPORT ...` | `.PROC HARVEST EXPORT` |
-| Top-level label | `name: EXPORT` | `HARVEST_STATE: EXPORT` |
-| Constant | `.DEFINE name value EXPORT` | `.DEFINE MAX_ENERGY DATA:9999 EXPORT` |
+| Procedure | `EXPORT .PROC name ...` | `EXPORT .PROC HARVEST` |
+| Top-level label | `EXPORT name:` | `EXPORT HARVEST_STATE:` |
+| Constant | `EXPORT .DEFINE name value` | `EXPORT .DEFINE MAX_ENERGY DATA:9999` |
 
 Non-exportable symbols:
 - Labels inside procedures (always private to the procedure).

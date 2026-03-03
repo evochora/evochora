@@ -8,7 +8,7 @@ import org.evochora.compiler.model.ast.ISourceLocatable;
 import java.util.List;
 
 /**
- * An AST node that represents a label definition (e.g., "L1:" or "L1: EXPORT").
+ * An AST node that represents a label definition (e.g., "L1:" or "EXPORT L1:").
  *
  * @param labelToken The token containing the name of the label.
  * @param statement The statement (typically an instruction) that follows this label.

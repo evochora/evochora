@@ -45,7 +45,7 @@ public class RuntimeIntegrationTest {
     @Tag("integration")
 	void procedureWithParametersAddsValuesAtRuntime() throws Exception {
 		String source = String.join("\n",
-				".PROC ADD2 EXPORT REF A B",
+				"EXPORT .PROC ADD2 REF A B",
 				"  ADDR A B",
 				"  RET",
 				".ENDP",
@@ -103,7 +103,7 @@ public class RuntimeIntegrationTest {
                 "CALL INCREMENT REF %DR0",
                 "WAIT",  // Use WAIT instead of NOP - NOP is instant-skip
                 ".ORG 0|1",
-                ".PROC INCREMENT EXPORT REF VALUE",
+                "EXPORT .PROC INCREMENT REF VALUE",
                 "  ADDI VALUE DATA:1",
                 "  RET",
                 ".ENDP"
@@ -148,7 +148,7 @@ public class RuntimeIntegrationTest {
                 "CALL INC REF %DR0",
                 "WAIT",  // Use WAIT instead of NOP - NOP is instant-skip
                 ".ORG 0|1",
-                ".PROC INC EXPORT REF A",
+                "EXPORT .PROC INC REF A",
                 "  ADDI A DATA:1",
                 "  RET",
                 ".ENDP"

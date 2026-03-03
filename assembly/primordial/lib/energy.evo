@@ -12,7 +12,7 @@
 # ===========================================================================
 .ORG 0|2
 # 3 DATA fields in the row above HARVEST_START (x=1..3, y=2 relative to origin)
-HARVEST_STATE: EXPORT
+EXPORT HARVEST_STATE:
 .PLACE DATA:1  1|2    # FWD_MASK: Forward direction as bitmask (default: right)
 .PLACE DATA:0  2|2    # KIDX: Current prime period index (0-3)
 .PLACE DATA:89 3|2    # KLEFT: Steps remaining until next turn (K0 period)
@@ -21,7 +21,7 @@ HARVEST_STATE: EXPORT
 # PROCEDURE ENTRY
 # ===========================================================================
 .ORG 0|0
-.PROC HARVEST EXPORT
+EXPORT .PROC HARVEST
 
   # Register aliases for clarity
   .PREG %FWD_MASK %PR0   # Cached forward direction as bitmask

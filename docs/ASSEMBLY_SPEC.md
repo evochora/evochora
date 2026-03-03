@@ -184,10 +184,10 @@ START_LOOP:
 
 #### Exported Labels
 
-By default, labels are only visible within the file where they are defined. To make a label accessible from other modules, add the `EXPORT` keyword after the colon:
+By default, labels are only visible within the file where they are defined. To make a label accessible from other modules, add the `EXPORT` keyword before the label:
 
 ```
-MY_ENTRY_POINT: EXPORT
+EXPORT MY_ENTRY_POINT:
   ...
 ```
 
@@ -195,7 +195,7 @@ Exported labels can be referenced from other files using qualified names (simila
 
 ```
 # In lib.evo
-DATA_TABLE: EXPORT
+EXPORT DATA_TABLE:
   .PLACE DATA:42 0|0
 
 # In main.evo
@@ -205,6 +205,20 @@ DATA_TABLE: EXPORT
 START:
   JMPI LIB.DATA_TABLE  # Jump to the exported label
   ...
+```
+
+#### Exported Constants
+
+Constants defined with `.DEFINE` can also be exported. This allows modules to expose configuration values as part of their API:
+
+```
+# In lib.evo
+EXPORT .DEFINE MAX_ENERGY DATA:1000
+EXPORT .DEFINE STEP_SIZE 1|0
+
+# In main.evo
+.IMPORT "lib.evo" AS LIB
+SETI %DR0 LIB.MAX_ENERGY
 ```
 
 ### Case-Insensitivity
@@ -520,7 +534,7 @@ Directives are special commands that instruct the compiler on how to assemble th
 
 ### Definitions and Aliases
 
-* `.DEFINE <NAME> <VALUE>`: Creates a simple text substitution. The compiler will replace every occurrence of `<NAME>` with `<VALUE>` before parsing.
+* `[EXPORT] .DEFINE <NAME> <VALUE>`: Creates a compile-time constant. The compiler will replace every occurrence of `<NAME>` with `<VALUE>`. The optional `EXPORT` prefix makes the constant visible to importing modules.
 * `.REG <%ALIAS> <%REGISTER>`: Assigns a custom name (`<%ALIAS>`) to a register. Supports both data registers (e.g., `.REG %COUNTER %DR0`) and location registers (e.g., `.REG %POSITION %LR0`).
 
 ### Layout Control
@@ -609,9 +623,9 @@ The module system allows splitting programs across multiple files. Three directi
 
 #### `.PROC`
 
-* **Syntax**: `.PROC <Name> [EXPORT] [REF <param1> ...] [VAL <param2> ...] / .ENDP`
+* **Syntax**: `[EXPORT] .PROC <Name> [REF <param1> ...] [VAL <param2> ...] / .ENDP`
 * **Effect**: Defines a procedure.
-    - `EXPORT`: Makes the procedure visible to other modules.
+    - `EXPORT`: Prefix modifier that makes the procedure visible to other modules.
     - `REF`: Defines **call-by-reference** parameters. The procedure receives a direct reference to the caller's register. Any modification inside the procedure affects the original register.
     - `VAL`: Defines **call-by-value** parameters. The procedure receives a copy of the value from the caller's register. Modifications are local and do not affect the original register.
     - **Example**:
@@ -629,7 +643,7 @@ The module system allows splitting programs across multiple files. Three directi
 
 ```
 # lib.evo — a reusable library
-.PROC LIB.DOUBLE EXPORT REF X
+EXPORT .PROC LIB.DOUBLE REF X
   PUSH X
   PUSH X
   ADDS
@@ -654,7 +668,7 @@ When a library module depends on another library, it declares the dependency wit
 **File 1: `math.evo`**
 ```
 # A standalone math library using stack-based conventions.
-.PROC MATH.ADD EXPORT
+EXPORT .PROC MATH.ADD
   ADDS            # Pops two values from the stack, pushes their sum
   RET
 .ENDP
@@ -666,7 +680,7 @@ When a library module depends on another library, it declares the dependency wit
 # Instead, it declares the dependency with .REQUIRE.
 .REQUIRE "math.evo" AS MATH
 
-.PROC UTILS.ADD_ONE EXPORT REF X
+EXPORT .PROC UTILS.ADD_ONE REF X
   PUSH X          # Push the register value onto the stack
   PUSI DATA:1     # Push 1
   CALL MATH.ADD   # Stack now has X+1

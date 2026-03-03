@@ -53,7 +53,7 @@ class ModuleSourceDefineIntegrationTest {
 
         Files.writeString(tempDir.resolve("lib.evo"),
                 ".SOURCE \"consts.evo\"\n" +
-                ".PROC WORK EXPORT REF X\n" +
+                "EXPORT .PROC WORK REF X\n" +
                 "  SETI X FOO\n" +
                 "  RET\n" +
                 ".ENDP\n");
@@ -76,14 +76,14 @@ class ModuleSourceDefineIntegrationTest {
 
         Files.writeString(tempDir.resolve("mod_a.evo"),
                 ".SOURCE \"consts.evo\"\n" +
-                ".PROC A_WORK EXPORT REF X\n" +
+                "EXPORT .PROC A_WORK REF X\n" +
                 "  SETI X LIMIT\n" +
                 "  RET\n" +
                 ".ENDP\n");
 
         Files.writeString(tempDir.resolve("mod_b.evo"),
                 ".SOURCE \"consts.evo\"\n" +
-                ".PROC B_WORK EXPORT REF X\n" +
+                "EXPORT .PROC B_WORK REF X\n" +
                 "  SETI X LIMIT\n" +
                 "  RET\n" +
                 ".ENDP\n");
@@ -96,6 +96,18 @@ class ModuleSourceDefineIntegrationTest {
         assertThat(result.diagnostics.hasErrors())
                 .as("Expected no errors but got: %s", result.diagnostics.getDiagnostics())
                 .isFalse();
+
+        // Verify LIMIT was actually resolved to DATA:99 in both modules
+        List<InstructionNode> setiNodes = new ArrayList<>();
+        for (AstNode node : result.ast) {
+            collectInstructions(node, "SETI", setiNodes);
+        }
+        assertThat(setiNodes).hasSize(2);
+        assertThat(setiNodes).allSatisfy(seti -> {
+            assertThat(seti.arguments()).hasSizeGreaterThanOrEqualTo(2);
+            assertThat(seti.arguments().get(1)).isInstanceOf(TypedLiteralNode.class);
+            assertThat(((TypedLiteralNode) seti.arguments().get(1)).value()).isEqualTo(99);
+        });
     }
 
     @Test
@@ -110,14 +122,14 @@ class ModuleSourceDefineIntegrationTest {
 
         Files.writeString(tempDir.resolve("fast.evo"),
                 ".SOURCE \"fast_config.evo\"\n" +
-                ".PROC FAST_MOVE EXPORT REF X\n" +
+                "EXPORT .PROC FAST_MOVE REF X\n" +
                 "  ADDI X STEP\n" +
                 "  RET\n" +
                 ".ENDP\n");
 
         Files.writeString(tempDir.resolve("slow.evo"),
                 ".SOURCE \"slow_config.evo\"\n" +
-                ".PROC SLOW_MOVE EXPORT REF X\n" +
+                "EXPORT .PROC SLOW_MOVE REF X\n" +
                 "  ADDI X STEP\n" +
                 "  RET\n" +
                 ".ENDP\n");
@@ -154,7 +166,7 @@ class ModuleSourceDefineIntegrationTest {
 
         Files.writeString(tempDir.resolve("lib.evo"),
                 ".SOURCE \"consts.evo\"\n" +
-                ".PROC INIT EXPORT REF X\n" +
+                "EXPORT .PROC INIT REF X\n" +
                 "  SETI X MAX\n" +
                 "  RET\n" +
                 ".ENDP\n");

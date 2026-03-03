@@ -118,7 +118,7 @@ The `IIrPlacementComponent` interface is the base for IR-level representations o
 Consider the following assembly code snippet:
 
 ```assembly
-.PROC MY_FUNC EXPORT WITH A
+EXPORT .PROC MY_FUNC WITH A
   RET
 .ENDP
 

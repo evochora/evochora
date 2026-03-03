@@ -81,4 +81,11 @@ public interface ParsingContext {
      * @return The parser state.
      */
     ParserState state();
+
+    /**
+     * Returns whether the current statement was preceded by the EXPORT keyword.
+     * Set by the parser when it consumes an EXPORT prefix.
+     * @return true if the current statement is exported.
+     */
+    boolean isExported();
 }
