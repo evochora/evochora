@@ -3,7 +3,6 @@ package org.evochora.compiler.frontend.semantics.analysis;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.parser.features.require.RequireNode;
-import org.evochora.compiler.frontend.semantics.ModuleId;
 import org.evochora.compiler.frontend.semantics.ModuleScope;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 
@@ -21,8 +20,8 @@ public class RequireAnalysisHandler implements IAnalysisHandler {
         RequireNode requireNode = (RequireNode) node;
         String alias = requireNode.alias().text().toUpperCase();
 
-        ModuleId currentModule = symbolTable.getCurrentModuleId();
-        ModuleScope modScope = symbolTable.getModuleScope(currentModule).orElse(null);
+        String currentChain = symbolTable.getCurrentAliasChain();
+        ModuleScope modScope = symbolTable.getModuleScope(currentChain).orElse(null);
         if (modScope == null) {
             diagnostics.reportError(
                     "Internal error: no module scope registered for current module.",

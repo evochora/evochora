@@ -6,7 +6,8 @@ import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.RegisterNode;
 
-import org.evochora.compiler.frontend.semantics.ModuleId;
+import org.evochora.compiler.frontend.semantics.ModuleContextTracker;
+import org.evochora.compiler.frontend.semantics.ResolvedSymbol;
 import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -39,7 +40,7 @@ public class TokenMapGenerator implements ITokenMapContext {
     private final Map<SourceInfo, TokenInfo> tokenMap = new HashMap<>();
     private final DiagnosticsEngine diagnostics;
     private final TokenMapContributorRegistry contributorRegistry;
-    private final Map<String, ModuleId> fileToModule;
+    private final ModuleContextTracker contextTracker;
     private SymbolTable.Scope currentScopeObj;
     private String currentScopeName = "global";
 
@@ -50,16 +51,16 @@ public class TokenMapGenerator implements ITokenMapContext {
      * @param scopeMap            The map of AST nodes to their corresponding scopes from SemanticAnalyzer.
      * @param diagnostics         The diagnostics engine for reporting compilation errors.
      * @param contributorRegistry The registry of feature-specific token map contributors.
-     * @param fileToModule        Mapping from source file paths to module identifiers.
+     * @param contextTracker      The module context tracker for alias chain qualification.
      */
     public TokenMapGenerator(SymbolTable symbolTable, Map<AstNode, SymbolTable.Scope> scopeMap,
                              DiagnosticsEngine diagnostics, TokenMapContributorRegistry contributorRegistry,
-                             Map<String, ModuleId> fileToModule) {
+                             ModuleContextTracker contextTracker) {
         this.symbolTable = Objects.requireNonNull(symbolTable, "SymbolTable cannot be null.");
         this.scopeMap = scopeMap;
         this.diagnostics = diagnostics;
         this.contributorRegistry = Objects.requireNonNull(contributorRegistry, "ContributorRegistry cannot be null.");
-        this.fileToModule = fileToModule != null ? fileToModule : Map.of();
+        this.contextTracker = contextTracker;
         this.currentScopeObj = symbolTable.getRootScope();
     }
 
@@ -154,6 +155,9 @@ public class TokenMapGenerator implements ITokenMapContext {
             return;
         }
 
+        // Track module context via PushCtxNode/PopCtxNode
+        contextTracker.handleNode(node);
+
         SymbolTable.Scope previousScopeObj = this.currentScopeObj;
         String previousScopeName = this.currentScopeName;
 
@@ -188,14 +192,14 @@ public class TokenMapGenerator implements ITokenMapContext {
         }
 
         if (node instanceof IdentifierNode identifierNode) {
-            Optional<Symbol> symbolOpt = resolveInCurrentScope(identifierNode.text(), identifierNode.sourceInfo().fileName());
+            Optional<ResolvedSymbol> symbolOpt = resolveInCurrentScope(identifierNode.text(), identifierNode.sourceInfo().fileName());
             if (symbolOpt.isPresent()) {
-                Symbol sym = symbolOpt.get();
+                ResolvedSymbol resolved = symbolOpt.get();
+                Symbol sym = resolved.symbol();
                 SourceInfo si = identifierNode.sourceInfo();
                 String qualifiedName = null;
                 if (sym.type() == Symbol.Type.PROCEDURE || sym.type() == Symbol.Type.LABEL) {
-                    String symFile = sym.name().fileName();
-                    qualifiedName = qualifyName(sym.name().text(), symFile);
+                    qualifiedName = resolved.qualifiedName();
                 }
                 tokenMap.put(si, new TokenInfo(identifierNode.text(), sym.type(), this.currentScopeName, qualifiedName));
             } else {
@@ -209,7 +213,7 @@ public class TokenMapGenerator implements ITokenMapContext {
         } else if (node instanceof RegisterNode registerNode) {
             if (registerNode.isAlias()) {
                 SourceInfo aliasSourceInfo = registerNode.sourceInfo();
-                String qualifiedAlias = qualifyName(registerNode.getOriginalAlias(), aliasSourceInfo.fileName());
+                String qualifiedAlias = qualifyName(registerNode.getOriginalAlias());
                 tokenMap.put(aliasSourceInfo, new TokenInfo(
                     registerNode.getOriginalAlias(),
                     Symbol.Type.ALIAS,
@@ -227,18 +231,18 @@ public class TokenMapGenerator implements ITokenMapContext {
         }
     }
 
-    private String qualifyName(String localName, String fileName) {
-        ModuleId moduleId = fileToModule.get(fileName);
-        String moduleName = moduleId != null
-            ? ModuleId.deriveModuleName(moduleId.path())
-            : ModuleId.deriveModuleName(fileName);
-        return moduleName + "." + localName.toUpperCase();
+    private String qualifyName(String localName) {
+        String chain = contextTracker.currentAliasChain();
+        if (chain != null && !chain.isEmpty()) {
+            return chain + "." + localName.toUpperCase();
+        }
+        return localName.toUpperCase();
     }
 
     /**
      * Resolves a symbol using the currently tracked scope object.
      */
-    private Optional<Symbol> resolveInCurrentScope(String name, String fileName) {
+    private Optional<ResolvedSymbol> resolveInCurrentScope(String name, String fileName) {
         SymbolTable.Scope originalScope = symbolTable.getCurrentScope();
         if (this.currentScopeObj != null) {
             symbolTable.setCurrentScope(this.currentScopeObj);

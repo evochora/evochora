@@ -31,7 +31,7 @@ registration file. No phase code is touched.
 |---|---------|-----------------|------------|
 | 1 | **instruction** | 3, 4, 7, 8, 10, 11 | InstructionNode, InstructionAnalysisHandler, InstructionNodeConverter, + violations in Parser, ~~TokenMapGenerator~~ (C3), Linker, IrGenContext |
 | 2 | **label** | 3, 4, 7, 9, 11 | LabelNode, LabelSymbolCollector, LabelAnalysisHandler, LabelNodeConverter, + violation in Parser |
-| 3 | **proc** | 3, 4, 5, 6, 7, 8, 10 | ProcedureNode, ProcDirectiveHandler, PregNode, PregDirectiveHandler, ProcedureSymbolCollector, ProcedureAnalysisHandler, PregAnalysisHandler, ProcedureNodeConverter, ProcedureMarshallingRule, CallerMarshallingRule, CallBindingCaptureRule, RefValBindingCaptureRule, + violations in ~~TokenMapGenerator~~ (C3), Linker, Compiler. `.PREG` is part of proc because it aliases procedure registers and only exists inside `.PROC` blocks. |
+| 3 | **proc** | 3, 4, 5, 6, 7, 8, 10, 11 | ProcedureNode, ProcDirectiveHandler, PregNode, PregDirectiveHandler, ProcedureSymbolCollector, ProcedureAnalysisHandler, PregAnalysisHandler, ProcedureNodeConverter, ProcedureMarshallingRule, CallerMarshallingRule, CallBindingCaptureRule, RefValBindingCaptureRule, ProcedureEmissionContributor, + violations in ~~TokenMapGenerator~~ (C3), Linker, ~~Compiler~~ (C7). `.PREG` is part of proc because it aliases procedure registers and only exists inside `.PROC` blocks. |
 | 4 | **reg** | 3, 4, 6 | RegNode, RegDirectiveHandler, RegAnalysisHandler, + AstPostProcessor |
 | 5 | **define** | 3, 4, 6, 7 | DefineNode, DefineDirectiveHandler, DefineAnalysisHandler, DefineNodeConverter, + violation in AstPostProcessor |
 | 6 | **org** | 3, 7, 9 | OrgNode, OrgDirectiveHandler, OrgNodeConverter, OrgLayoutHandler |
@@ -59,6 +59,7 @@ registration file. No phase code is touched.
 | Phase 10 (Linking) | `LinkingRegistry` | `ILinkingRule` | Ordered list (no key) |
 
 | Phase 5 (TokenMap) | `TokenMapContributorRegistry` | `ITokenMapContributor` | AST node class |
+| Phase 11 (Emitter) | `EmissionContributorRegistry` | `IEmissionContributor` | Ordered list (no key) |
 
 **Missing registries** (feature logic hardcoded in phase):
 - Phase 6 (PostProcess) — no registry, logic hardcoded in `AstPostProcessor`
@@ -279,6 +280,8 @@ public interface IFeatureRegistrationContext {
     void layoutHandler(String namespace, String name, ILayoutDirectiveHandler handler);
     // Phase 10: Linking
     void linkingRule(ILinkingRule rule);
+    // Phase 11: Emission (metadata extraction from IR directives)
+    void emissionContributor(IEmissionContributor contributor);
 }
 ```
 
@@ -440,7 +443,7 @@ Create the interfaces and registries needed for feature consolidation.
 | C4 | Module-namespacing: all identifier namespaces (procedures, labels, constants, register-aliases) are module-qualified throughout the backend. Format: `MODULENAME.LOCALNAME`. IrGenContext gains `qualifyName()` + module-aware `registerConstant()`/`resolveConstant()`. LabelRefLinkingRule qualifies local and cross-module references. `procNameToParamNames` and register-alias keys in Compiler.java are qualified. TokenInfo gains `qualifiedName` field for frontend lookups. Breaking change: label hashes are now based on qualified names. **DONE.** |
 | C5 | Source Root Infrastructure — see C5 details below. |
 | C6 | EXPORT Prefix Syntax — see C6 details below. |
-| C7 | Placement-Aware Module Naming (Import Alias Chains) — see C7 details below. |
+| C7 | Placement-Aware Module Naming (Import Alias Chains). Includes Emitter Registry: create `IEmissionContributor` + `EmissionContributorRegistry` in `backend/emit/`, extract `ProcedureEmissionContributor` from Compiler.java. See C7 details below. |
 | C8 | Create `IPostProcessHandler` + `PostProcessHandlerRegistry`, refactor `AstPostProcessor` to dispatch through registry. |
 | C9 | Extract `MacroExpansionHandler` from `PreProcessor.expandMacro()`, register as handler in `PreProcessorDirectiveRegistry`. |
 | C10 | Extract `CallSiteBindingRule` from `Linker`, move CALL detection into linking rule. |
@@ -887,7 +890,9 @@ Phase 7 (IrGen):           IrGenContext tracks alias chain via PushCtx/PopCtx AS
 Phase 9 (Layout):          No change — IrLabelDef names already qualified in Phase 7
 Phase 10 (Linking):        Linker tracks alias chain via PushCtx/PopCtx IrDirectives
                            LabelRefLinkingRule qualifies using current alias chain
-Phase 11 (Emit):           No change — uses resolved/linked values
+Phase 11 (Emit):           EmissionContributorRegistry dispatches IrDirectives to contributors.
+                           ProcedureEmissionContributor extracts procNameToParamNames from
+                           proc_enter directives. Compiler no longer builds this map.
 ```
 
 **Implementation by phase:**

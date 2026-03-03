@@ -11,7 +11,7 @@ import org.evochora.compiler.frontend.module.SourceRootResolver;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
-import org.evochora.compiler.frontend.semantics.ModuleId;
+
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
@@ -33,7 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Integration tests for USING clauses on {@code .IMPORT} directives.
- * Exercises the full pipeline: DependencyScanner → Lexer → PreProcessor → Parser → SemanticAnalyzer.
+ * Exercises the full pipeline: DependencyScanner -> Lexer -> PreProcessor -> Parser -> SemanticAnalyzer.
  */
 class UsingClauseIntegrationTest {
 
@@ -173,16 +173,15 @@ class UsingClauseIntegrationTest {
                 .as("Expected no errors but got: %s", result.diagnostics.getDiagnostics())
                 .isFalse();
 
-        // Verify that DEP.HARVEST resolves to a LABEL symbol from dep.evo
-        String depPath = tempDir.resolve("dep.evo").normalize().toString().replace('\\', '/');
+        // Verify that DEP.HARVEST resolves from the LIB module context
         SymbolTable st = result.symbolTable;
-        st.setCurrentModule(new ModuleId(
-                tempDir.resolve("lib.evo").normalize().toString().replace('\\', '/')));
+        st.setCurrentModule("LIB");
 
+        String depPath = tempDir.resolve("dep.evo").normalize().toString().replace('\\', '/');
         var resolved = st.resolve("DEP.HARVEST", depPath);
         assertThat(resolved).isPresent();
-        assertThat(resolved.get().type()).isEqualTo(Symbol.Type.LABEL);
-        assertThat(resolved.get().name().text()).isEqualToIgnoringCase("HARVEST");
+        assertThat(resolved.get().symbol().type()).isEqualTo(Symbol.Type.LABEL);
+        assertThat(resolved.get().symbol().name().text()).isEqualToIgnoringCase("HARVEST");
     }
 
     @Test
@@ -233,6 +232,8 @@ class UsingClauseIntegrationTest {
     private SemanticsResult compileThroughSemanticsWithSymbols(String mainSource, String mainPath) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
 
+        String rootAliasChain = "";
+
         // Phase 0: Dependency scanning
         SourceRootResolver resolver = new SourceRootResolver(
                 List.of(new SourceRoot(".", null)), tempDir);
@@ -256,9 +257,9 @@ class UsingClauseIntegrationTest {
         Lexer mainLexer = new Lexer(mainSource, diagnostics, mainPath);
         List<Token> mainTokens = new ArrayList<>(mainLexer.scanTokens());
 
-        // Phase 2: Preprocessing
+        // Phase 2: Preprocessing (with root alias chain)
         PreProcessor preProcessor = new PreProcessor(mainTokens, diagnostics, resolver,
-                moduleTokens.isEmpty() ? null : moduleTokens);
+                moduleTokens.isEmpty() ? null : moduleTokens, rootAliasChain);
         List<Token> processedTokens = preProcessor.expand();
         if (diagnostics.hasErrors()) return new SemanticsResult(diagnostics, null);
 
@@ -267,15 +268,9 @@ class UsingClauseIntegrationTest {
         List<AstNode> ast = parser.parse();
         if (diagnostics.hasErrors()) return new SemanticsResult(diagnostics, null);
 
-        // Build file-to-module mapping
-        Map<String, ModuleId> fileToModule = new HashMap<>();
-        for (ModuleDescriptor module : graph.topologicalOrder()) {
-            fileToModule.put(module.sourcePath(), module.id());
-        }
-
-        // Phase 4: Semantic analysis (module-aware)
+        // Phase 4: Semantic analysis (uses rootAliasChain instead of fileToModule)
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainPath, fileToModule);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainPath, rootAliasChain);
         analyzer.analyze(ast);
 
         return new SemanticsResult(diagnostics, symbolTable);

@@ -46,13 +46,30 @@ public interface ICompiler {
     void setVerbosity(int level);
 
     /**
-     * Compiles the source code from a file.
+     * Compiles the source code from a file path, resolving it against configured source roots.
+     * The compiler reads the file, derives the root alias chain from any source root prefix
+     * in the path (e.g., "PRED:main.evo" yields rootAliasChain="PRED"), and handles all
+     * internal path resolution.
+     *
+     * @param programPath The path to the main source file. May use PREFIX:path syntax
+     *                    to target a named source root.
+     * @param envProps    The environment properties. Can be null.
+     * @param options     Compiler options with source root configuration. Can be null for defaults.
+     * @return A {@link ProgramArtifact} containing the compiled program.
+     * @throws CompilationException if errors occur during compilation.
+     * @throws java.io.IOException if the file cannot be read.
+     */
+    ProgramArtifact compile(String programPath, EnvironmentProperties envProps, CompilerOptions options) throws CompilationException, java.io.IOException;
+
+    /**
+     * Compiles the source code from a file using default options.
+     *
      * @param programPath The path to the main source file.
      * @return A {@link ProgramArtifact} containing the compiled program.
      * @throws CompilationException if errors occur during compilation.
      * @throws java.io.IOException if the file cannot be read.
      */
     default ProgramArtifact compile(String programPath) throws CompilationException, java.io.IOException {
-        return compile(java.nio.file.Files.readAllLines(java.nio.file.Path.of(programPath)), programPath);
+        return compile(programPath, null, null);
     }
 }

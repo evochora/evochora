@@ -3,6 +3,7 @@ package org.evochora.compiler.backend.emit;
 import org.evochora.runtime.Config;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.MachineInstructionInfo;
+import org.evochora.compiler.api.ParamInfo;
 import org.evochora.compiler.api.PlacedMolecule;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceInfo;
@@ -34,12 +35,17 @@ public class Emitter {
     /**
      * Emits the final program artifact from the IR and layout information.
      *
+     * <p>During the item loop, all registered {@link IEmissionContributor}s are invoked
+     * for each IR item. Contributors populate the {@link EmissionContext} with feature-specific
+     * metadata (e.g., procedure parameter info). The Emitter reads the accumulated metadata
+     * when building the final {@link ProgramArtifact}.</p>
+     *
      * @param program The linked IR program.
      * @param layout The layout result, containing coordinate and source mapping.
      * @param linkingContext The context from the linking phase, containing call site bindings.
      * @param isa The instruction set architecture for opcode and register resolution.
      * @param registerAliasMap A map of register aliases to their physical indices.
-     * @param procNameToParamNames A map of procedure names to their parameter information (name and type).
+     * @param contributorRegistry Registry of emission contributors for extracting metadata from IR.
      * @param sources A map of source file names to their content.
      * @return The final, compiled {@link ProgramArtifact}.
      * @throws CompilationException if an error occurs during emission.
@@ -49,7 +55,7 @@ public class Emitter {
                                 LinkingContext linkingContext,
                                 IInstructionSet isa,
                                 Map<String, Integer> registerAliasMap,
-                                Map<String, List<org.evochora.compiler.api.ParamInfo>> procNameToParamNames,
+                                EmissionContributorRegistry contributorRegistry,
                                 Map<String, List<String>> sources,
                                 Map<SourceInfo, TokenInfo> tokenMap,
                                 Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup) throws CompilationException {
@@ -62,6 +68,15 @@ public class Emitter {
         // Map to collect machine instructions per source line for frontend visualization
         // Key: "fileName:lineNumber", Value: List of machine instructions (sorted by linear address)
         Map<String, List<MachineInstructionInfo>> sourceLineToInstructions = new HashMap<>();
+
+        // Invoke emission contributors to extract feature-specific metadata from IR
+        EmissionContext emissionContext = new EmissionContext();
+        List<IEmissionContributor> contributors = contributorRegistry.contributors();
+        for (IrItem item : program.items()) {
+            for (IEmissionContributor contributor : contributors) {
+                contributor.onItem(item, emissionContext);
+            }
+        }
 
         int address = 0;
         for (IrItem item : program.items()) {
@@ -177,7 +192,7 @@ public class Emitter {
                 coordToLinear,
                 linearToCoord,
                 registerAliasMap,
-                procNameToParamNames,
+                emissionContext.procNameToParamNames(),
                 tokenMap,
                 tokenLookup,
                 sortedSourceLineToInstructions,

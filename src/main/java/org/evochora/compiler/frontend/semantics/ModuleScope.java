@@ -6,24 +6,25 @@ import java.util.Map;
 /**
  * Holds per-module data in the module-aware symbol table.
  * Each module has its own symbol namespace, import aliases, require declarations,
- * and USING bindings.
+ * and USING bindings. Modules are identified by their alias chain (e.g., "PRED.MATH").
  */
 public final class ModuleScope {
 
-    private final ModuleId moduleId;
+    private final String aliasChain;
     private final String sourcePath;
     private final Map<String, Symbol> symbols = new HashMap<>();
-    private final Map<String, ModuleId> imports = new HashMap<>();
-    private final Map<String, String> requires = new HashMap<>();
-    private final Map<String, ModuleId> usingBindings = new HashMap<>();
+    private final Map<String, String> imports = new HashMap<>();       // alias → alias chain of imported module
+    private final Map<String, String> requires = new HashMap<>();      // alias → required path/URL
+    private final Map<String, String> usingBindings = new HashMap<>(); // alias → alias chain of resolved module
+    private final Map<String, Boolean> importExported = new HashMap<>(); // alias → exported flag
 
-    public ModuleScope(ModuleId moduleId, String sourcePath) {
-        this.moduleId = moduleId;
+    public ModuleScope(String aliasChain, String sourcePath) {
+        this.aliasChain = aliasChain;
         this.sourcePath = sourcePath;
     }
 
-    public ModuleId moduleId() {
-        return moduleId;
+    public String aliasChain() {
+        return aliasChain;
     }
 
     public String sourcePath() {
@@ -38,9 +39,9 @@ public final class ModuleScope {
     }
 
     /**
-     * Alias (upper-case) to imported module ID.
+     * Alias (upper-case) to alias chain of imported module.
      */
-    public Map<String, ModuleId> imports() {
+    public Map<String, String> imports() {
         return imports;
     }
 
@@ -52,9 +53,16 @@ public final class ModuleScope {
     }
 
     /**
-     * Alias (upper-case) to resolved module ID (filled by the importer via USING clauses).
+     * Alias (upper-case) to alias chain of resolved module (filled by the importer via USING clauses).
      */
-    public Map<String, ModuleId> usingBindings() {
+    public Map<String, String> usingBindings() {
         return usingBindings;
+    }
+
+    /**
+     * Alias (upper-case) to whether the import is exported.
+     */
+    public Map<String, Boolean> importExported() {
+        return importExported;
     }
 }

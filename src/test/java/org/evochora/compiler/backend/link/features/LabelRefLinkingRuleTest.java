@@ -6,7 +6,6 @@ import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
-import org.evochora.compiler.frontend.semantics.ModuleId;
 import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.model.ir.IrImm;
@@ -41,15 +40,15 @@ class LabelRefLinkingRuleTest {
     void setUp() {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        rule = new LabelRefLinkingRule(symbolTable, Map.of());
+        rule = new LabelRefLinkingRule(symbolTable);
         context = new LinkingContext();
+        context.pushAliasChain("TEST");
         dummySource = new SourceInfo("test.s", 1, 0);
     }
 
     @Test
     void convertsLabelRefToHashValue() {
         // Given: A layout with module-qualified label "TEST.FOO" at address 10
-        // (source file is "test.s" → module name "TEST")
         layout = new LayoutResult(
                 Map.of(10, new int[]{5, 5}),
                 Map.of("5|5", 10),
@@ -82,7 +81,6 @@ class LabelRefLinkingRuleTest {
     void hashIsConsistentWithRuntimeExpectation() {
         // This test verifies that the hash generation in the compiler
         // matches what the runtime's LabelIndex expects.
-        // Labels are module-qualified (source "test.s" → module "TEST").
 
         String[] labelNames = {"INCREMENT", "LOOP_START", "EXIT", "my_proc", "A"};
 
@@ -173,30 +171,32 @@ class LabelRefLinkingRuleTest {
 
     @Test
     void resolvesExportedLabelViaQualifiedName() {
-        // Given: A symbol table with an exported label in "lib.s" and an import alias in "main.s"
+        // Given: A symbol table with an exported label in LIB and an import alias in MAIN
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         SymbolTable symbolTable = new SymbolTable(diagnostics);
 
-        ModuleId libModule = new ModuleId("lib.s");
-        ModuleId mainModule = new ModuleId("main.s");
-        symbolTable.registerModule(libModule, "lib.s");
-        symbolTable.registerModule(mainModule, "main.s");
+        String libChain = "LIB";
+        String mainChain = "MAIN";
+        symbolTable.registerModule(libChain, "lib.s");
+        symbolTable.registerModule(mainChain, "main.s");
 
-        // Define the label in lib.s module
-        symbolTable.setCurrentModule(libModule);
+        // Define the label in LIB module
+        symbolTable.setCurrentModule(libChain);
         Token labelToken = new Token(TokenType.IDENTIFIER, "TARGET", null, 1, 0, "lib.s");
         symbolTable.define(new Symbol(labelToken, Symbol.Type.LABEL, null, true));
-        symbolTable.registerLabelMeta(labelToken, true);
 
-        // Register the import alias: in main.s, LIB -> lib.s
-        symbolTable.setCurrentModule(mainModule);
-        symbolTable.getModuleScope(mainModule).orElseThrow().imports().put("LIB", libModule);
+        // Register the import alias: in MAIN, LIB -> libChain
+        symbolTable.setCurrentModule(mainChain);
+        symbolTable.getModuleScope(mainChain).orElseThrow().imports().put("LIB", libChain);
 
         // Create rule with this symbol table
-        LabelRefLinkingRule ruleWithExport = new LabelRefLinkingRule(symbolTable, Map.of());
+        LabelRefLinkingRule ruleWithExport = new LabelRefLinkingRule(symbolTable);
+
+        // Set up linking context with MAIN alias chain
+        LinkingContext exportContext = new LinkingContext();
+        exportContext.pushAliasChain(mainChain);
 
         // Given: A layout with module-qualified label "LIB.TARGET"
-        // (symbol is in "lib.s" → deriveModuleName → "LIB")
         layout = new LayoutResult(
                 Map.of(10, new int[]{5, 5}),
                 Map.of("5|5", 10),
@@ -214,7 +214,7 @@ class LabelRefLinkingRuleTest {
         );
 
         // When: The rule is applied
-        IrInstruction result = ruleWithExport.apply(input, context, layout);
+        IrInstruction result = ruleWithExport.apply(input, exportContext, layout);
 
         // Then: The qualified label is resolved to the hash of "LIB.TARGET"
         assertThat(result.operands()).hasSize(1);
@@ -228,26 +228,29 @@ class LabelRefLinkingRuleTest {
 
     @Test
     void doesNotResolveNonExportedLabelViaQualifiedName() {
-        // Given: A symbol table with a NON-exported label in "lib.s"
+        // Given: A symbol table with a NON-exported label in LIB
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         SymbolTable symbolTable = new SymbolTable(diagnostics);
 
-        ModuleId libModule = new ModuleId("lib.s");
-        ModuleId mainModule = new ModuleId("main.s");
-        symbolTable.registerModule(libModule, "lib.s");
-        symbolTable.registerModule(mainModule, "main.s");
+        String libChain = "LIB";
+        String mainChain = "MAIN";
+        symbolTable.registerModule(libChain, "lib.s");
+        symbolTable.registerModule(mainChain, "main.s");
 
-        // Define the label in lib.s module (NOT exported)
-        symbolTable.setCurrentModule(libModule);
+        // Define the label in LIB module (NOT exported)
+        symbolTable.setCurrentModule(libChain);
         Token labelToken = new Token(TokenType.IDENTIFIER, "PRIVATE", null, 1, 0, "lib.s");
         symbolTable.define(new Symbol(labelToken, Symbol.Type.LABEL));
-        symbolTable.registerLabelMeta(labelToken, false);
 
         // Register the import alias
-        symbolTable.setCurrentModule(mainModule);
-        symbolTable.getModuleScope(mainModule).orElseThrow().imports().put("LIB", libModule);
+        symbolTable.setCurrentModule(mainChain);
+        symbolTable.getModuleScope(mainChain).orElseThrow().imports().put("LIB", libChain);
 
-        LabelRefLinkingRule ruleWithNonExport = new LabelRefLinkingRule(symbolTable, Map.of());
+        LabelRefLinkingRule ruleWithNonExport = new LabelRefLinkingRule(symbolTable);
+
+        // Set up linking context with MAIN alias chain
+        LinkingContext nonExportContext = new LinkingContext();
+        nonExportContext.pushAliasChain(mainChain);
 
         // Layout contains the label
         layout = new LayoutResult(
@@ -267,7 +270,7 @@ class LabelRefLinkingRuleTest {
         );
 
         // When: The rule is applied
-        IrInstruction result = ruleWithNonExport.apply(input, context, layout);
+        IrInstruction result = ruleWithNonExport.apply(input, nonExportContext, layout);
 
         // Then: The label is NOT resolved (stays as IrLabelRef) because it's not exported
         assertThat(result.operands().get(0)).isInstanceOf(IrLabelRef.class);

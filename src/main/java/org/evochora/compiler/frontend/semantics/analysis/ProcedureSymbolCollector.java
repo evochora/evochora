@@ -4,7 +4,6 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
-import org.evochora.compiler.frontend.semantics.ModuleId;
 import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 
@@ -25,14 +24,12 @@ public class ProcedureSymbolCollector implements ISymbolCollector {
     @Override
     public void collect(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         ProcedureNode proc = (ProcedureNode) node;
-        symbolTable.define(new Symbol(proc.name(), Symbol.Type.PROCEDURE, proc));
-        symbolTable.registerProcedureMeta(proc.name(), proc.exported());
+        symbolTable.define(new Symbol(proc.name(), Symbol.Type.PROCEDURE, proc, proc.exported()));
 
-        ModuleId currentModule = symbolTable.getCurrentModuleId();
-        String moduleName = currentModule != null
-            ? ModuleId.deriveModuleName(currentModule.path())
-            : ModuleId.deriveModuleName(proc.name().fileName());
-        String scopeName = moduleName + "." + proc.name().text().toUpperCase();
+        String currentChain = symbolTable.getCurrentAliasChain();
+        String scopeName = (currentChain != null && !currentChain.isEmpty())
+            ? currentChain + "." + proc.name().text().toUpperCase()
+            : proc.name().text().toUpperCase();
         SymbolTable.Scope newScope = symbolTable.enterScope(scopeName);
         scopeMap.put(node, newScope);
 

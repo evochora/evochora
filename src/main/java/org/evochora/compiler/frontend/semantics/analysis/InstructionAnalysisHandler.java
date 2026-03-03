@@ -8,6 +8,7 @@ import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.model.ast.VectorLiteralNode;
+import org.evochora.compiler.frontend.semantics.ResolvedSymbol;
 import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.runtime.isa.Instruction;
@@ -70,13 +71,13 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                         return; // Stop analysis for this instruction
                     }
 
-                    Optional<Symbol> procSymbolOpt = symbolTable.resolve(procIdentifier.text(), procIdentifier.sourceInfo().fileName());
-                    if (procSymbolOpt.isEmpty() || procSymbolOpt.get().type() != Symbol.Type.PROCEDURE) {
+                    Optional<ResolvedSymbol> procSymbolOpt = symbolTable.resolve(procIdentifier.text(), procIdentifier.sourceInfo().fileName());
+                    if (procSymbolOpt.isEmpty() || procSymbolOpt.get().symbol().type() != Symbol.Type.PROCEDURE) {
                         diagnostics.reportError("Procedure '" + procIdentifier.text() + "' not found or is not a procedure.", procIdentifier.sourceInfo().fileName(), procIdentifier.sourceInfo().lineNumber());
                         return;
                     }
 
-                    Symbol procSymbol = procSymbolOpt.get();
+                    Symbol procSymbol = procSymbolOpt.get().symbol();
                     if (!(procSymbol.node() instanceof org.evochora.compiler.frontend.parser.features.proc.ProcedureNode procedureNode)) {
                         diagnostics.reportError("Internal error: Symbol for procedure '" + procIdentifier.text() + "' does not contain a valid ProcedureNode.", procIdentifier.sourceInfo().fileName(), procIdentifier.sourceInfo().lineNumber());
                         return;
@@ -95,7 +96,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                         if (refArg instanceof RegisterNode) continue;
                         if (refArg instanceof IdentifierNode id) {
                             var res = symbolTable.resolve(id.text(), id.sourceInfo().fileName());
-                            if (res.isPresent() && (res.get().type() == Symbol.Type.VARIABLE || res.get().type() == Symbol.Type.ALIAS))
+                            if (res.isPresent() && (res.get().symbol().type() == Symbol.Type.VARIABLE || res.get().symbol().type() == Symbol.Type.ALIAS))
                                 continue;
                             // Check if this is a parameter name (will be resolved to %FPRx later)
                             // Parameter names are valid in REF arguments
@@ -113,11 +114,11 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                             var res = symbolTable.resolve(id.text(), id.sourceInfo().fileName());
                             if (res.isPresent()) {
                                 // Allow labels as VAL parameters
-                                if (res.get().type() == Symbol.Type.LABEL) {
+                                if (res.get().symbol().type() == Symbol.Type.LABEL) {
                                     continue;
                                 }
                                 // Allow variables and aliases as VAL parameters
-                                if (res.get().type() == Symbol.Type.VARIABLE || res.get().type() == Symbol.Type.ALIAS) {
+                                if (res.get().symbol().type() == Symbol.Type.VARIABLE || res.get().symbol().type() == Symbol.Type.ALIAS) {
                                     continue;
                                 }
                             }
@@ -159,7 +160,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                         if (arg instanceof RegisterNode) continue;
                         if (arg instanceof IdentifierNode id) {
                             var res = symbolTable.resolve(id.text(), id.sourceInfo().fileName());
-                            if (res.isPresent() && (res.get().type() == Symbol.Type.VARIABLE || res.get().type() == Symbol.Type.ALIAS))
+                            if (res.isPresent() && (res.get().symbol().type() == Symbol.Type.VARIABLE || res.get().symbol().type() == Symbol.Type.ALIAS))
                                 continue;
                         }
                         diagnostics.reportError("CALL actuals must be registers or parameter names.", instructionNode.sourceInfo().fileName(), instructionNode.sourceInfo().lineNumber());
@@ -186,10 +187,10 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
 
                 // Handle constant substitution
                 if (argumentNode instanceof IdentifierNode idNode) {
-                    Optional<Symbol> symbolOpt = symbolTable.resolve(idNode.text(), idNode.sourceInfo().fileName());
-                    
+                    Optional<ResolvedSymbol> symbolOpt = symbolTable.resolve(idNode.text(), idNode.sourceInfo().fileName());
+
                     if (symbolOpt.isPresent()) {
-                        Symbol symbol = symbolOpt.get();
+                        Symbol symbol = symbolOpt.get().symbol();
                         if (symbol.type() == Symbol.Type.CONSTANT) {
                             if (expectedType != InstructionArgumentType.LITERAL) {
                                 diagnostics.reportError(

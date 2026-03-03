@@ -22,23 +22,34 @@ public class PreProcessor {
     private int current = 0;
     private final Deque<String> sourceChain = new ArrayDeque<>();
     private final Deque<String> importChain = new ArrayDeque<>();
-    private final PreProcessorContext ppContext = new PreProcessorContext();
+    private final PreProcessorContext ppContext;
     private final Map<String, String> includedFileContents = new HashMap<>();
 
     /**
      * Constructs a new PreProcessor.
-     * @param initialTokens The initial list of tokens from the lexer.
-     * @param diagnostics The engine for reporting errors and warnings.
-     * @param resolver The source root resolver for path resolution.
-     * @param moduleTokens Pre-lexed tokens per imported module (absolute path → token list),
-     *                     or null for single-file compilations without imports.
+     * @param initialTokens  The initial list of tokens from the lexer.
+     * @param diagnostics    The engine for reporting errors and warnings.
+     * @param resolver       The source root resolver for path resolution.
+     * @param moduleTokens   Pre-lexed tokens per imported module (absolute path → token list),
+     *                       or null for single-file compilations without imports.
+     * @param rootAliasChain The alias chain for the compilation root module (e.g., "MAIN"),
+     *                       or empty string for default.
      */
     public PreProcessor(List<Token> initialTokens, DiagnosticsEngine diagnostics, SourceRootResolver resolver,
-                        Map<String, List<Token>> moduleTokens) {
+                        Map<String, List<Token>> moduleTokens, String rootAliasChain) {
         this.tokens = new ArrayList<>(initialTokens);
         this.diagnostics = diagnostics;
         this.resolver = resolver;
         this.directiveRegistry = PreProcessorDirectiveRegistry.initialize(moduleTokens);
+        this.ppContext = new PreProcessorContext(rootAliasChain);
+    }
+
+    /**
+     * Constructs a new PreProcessor with an empty root alias chain (backward compatibility).
+     */
+    public PreProcessor(List<Token> initialTokens, DiagnosticsEngine diagnostics, SourceRootResolver resolver,
+                        Map<String, List<Token>> moduleTokens) {
+        this(initialTokens, diagnostics, resolver, moduleTokens, "");
     }
 
     /**

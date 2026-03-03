@@ -3,14 +3,12 @@ package org.evochora.compiler.backend.link.features;
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.backend.link.ILinkingRule;
 import org.evochora.compiler.backend.link.LinkingContext;
-import org.evochora.compiler.frontend.semantics.ModuleId;
-import org.evochora.compiler.frontend.semantics.Symbol;
+import org.evochora.compiler.frontend.semantics.ModuleScope;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.model.ir.*;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -21,16 +19,13 @@ import java.util.Optional;
 public class LabelRefLinkingRule implements ILinkingRule {
 
     private final SymbolTable symbolTable;
-    private final Map<String, ModuleId> fileToModule;
 
     /**
      * Constructs a new label reference linking rule.
      * @param symbolTable The symbol table for resolving symbols.
-     * @param fileToModule Mapping from source file paths to module identifiers.
      */
-    public LabelRefLinkingRule(SymbolTable symbolTable, Map<String, ModuleId> fileToModule) {
+    public LabelRefLinkingRule(SymbolTable symbolTable) {
         this.symbolTable = symbolTable;
-        this.fileToModule = fileToModule;
     }
 
     /**
@@ -49,16 +44,25 @@ public class LabelRefLinkingRule implements ILinkingRule {
                 String instrFile = instruction.source().fileName();
 
                 if (labelNameToFind.contains(".")) {
-                    // Cross-module reference: resolve through symbol table to canonical name
-                    Optional<Symbol> symbolOpt = symbolTable.resolve(labelNameToFind, instrFile);
-                    if (symbolOpt.isPresent()) {
-                        Symbol sym = symbolOpt.get();
-                        String symFile = sym.name().fileName();
-                        labelNameToFind = qualifyName(sym.name().text(), symFile);
+                    // Cross-module reference: resolve alias to the target module's alias chain
+                    int dotPos = labelNameToFind.indexOf('.');
+                    String alias = labelNameToFind.substring(0, dotPos).toUpperCase();
+                    String symName = labelNameToFind.substring(dotPos + 1).toUpperCase();
+
+                    Optional<ModuleScope> currentModScope = symbolTable.getModuleScope(
+                            context.currentAliasChain());
+                    if (currentModScope.isPresent()) {
+                        String targetChain = currentModScope.get().imports().get(alias);
+                        if (targetChain == null) {
+                            targetChain = currentModScope.get().usingBindings().get(alias);
+                        }
+                        if (targetChain != null) {
+                            labelNameToFind = targetChain + "." + symName;
+                        }
                     }
                 } else {
-                    // Local reference: qualify with the instruction's own module
-                    labelNameToFind = qualifyName(labelNameToFind, instrFile);
+                    // Local reference: qualify with the current alias chain from context
+                    labelNameToFind = qualifyName(labelNameToFind, context);
                 }
 
                 Integer targetAddr = layout.labelToAddress().get(labelNameToFind);
@@ -76,11 +80,11 @@ public class LabelRefLinkingRule implements ILinkingRule {
         return rewritten != null ? new IrInstruction(instruction.opcode(), rewritten, instruction.source()) : instruction;
     }
 
-    private String qualifyName(String localName, String fileName) {
-        ModuleId moduleId = fileToModule.get(fileName);
-        String moduleName = moduleId != null
-            ? ModuleId.deriveModuleName(moduleId.path())
-            : ModuleId.deriveModuleName(fileName);
-        return moduleName + "." + localName.toUpperCase();
+    private String qualifyName(String localName, LinkingContext context) {
+        String chain = context.currentAliasChain();
+        if (chain != null && !chain.isEmpty()) {
+            return chain + "." + localName.toUpperCase();
+        }
+        return localName.toUpperCase();
     }
 }

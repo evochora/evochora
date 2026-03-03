@@ -1,6 +1,7 @@
 package org.evochora.compiler.frontend.semantics;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.frontend.semantics.ResolvedSymbol;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,52 +22,50 @@ public class ModuleVisibilityTest {
     private DiagnosticsEngine diagnostics;
     private SymbolTable symbolTable;
 
-    private static final ModuleId MAIN_MODULE = new ModuleId("/test/main.evo");
-    private static final ModuleId LIB_MODULE = new ModuleId("/test/lib.evo");
+    private static final String MAIN_CHAIN = "MAIN";
+    private static final String LIB_CHAIN = "LIB";
 
     @BeforeEach
     void setUp() {
         diagnostics = new DiagnosticsEngine();
         symbolTable = new SymbolTable(diagnostics);
 
-        // Register both modules
-        symbolTable.registerModule(MAIN_MODULE, "/test/main.evo");
-        symbolTable.registerModule(LIB_MODULE, "/test/lib.evo");
+        // Register both modules using alias chains
+        symbolTable.registerModule(MAIN_CHAIN, "/test/main.evo");
+        symbolTable.registerModule(LIB_CHAIN, "/test/lib.evo");
 
         // Set up import relationship: main imports lib as "LIB"
-        ModuleScope mainScope = symbolTable.getModuleScope(MAIN_MODULE).orElseThrow();
-        mainScope.imports().put("LIB", LIB_MODULE);
+        ModuleScope mainScope = symbolTable.getModuleScope(MAIN_CHAIN).orElseThrow();
+        mainScope.imports().put("LIB", LIB_CHAIN);
 
         // Define an exported label in the lib module
-        symbolTable.setCurrentModule(LIB_MODULE);
+        symbolTable.setCurrentModule(LIB_CHAIN);
         Token exportedLabelToken = new Token(TokenType.IDENTIFIER, "HARVEST", null, 1, 0, "/test/lib.evo");
         Symbol exportedSymbol = new Symbol(exportedLabelToken, Symbol.Type.LABEL, null, true);
         symbolTable.define(exportedSymbol);
-        symbolTable.registerLabelMeta(exportedLabelToken, true);
 
         // Define a non-exported label in the lib module
         Token privateLabelToken = new Token(TokenType.IDENTIFIER, "INTERNAL", null, 2, 0, "/test/lib.evo");
         Symbol privateSymbol = new Symbol(privateLabelToken, Symbol.Type.LABEL, null, false);
         symbolTable.define(privateSymbol);
-        symbolTable.registerLabelMeta(privateLabelToken, false);
     }
 
     @Test
     @Tag("unit")
     void qualifiedNameResolvesExportedSymbol() {
-        symbolTable.setCurrentModule(MAIN_MODULE);
-        Optional<Symbol> result = symbolTable.resolve("LIB.HARVEST", "/test/main.evo");
+        symbolTable.setCurrentModule(MAIN_CHAIN);
+        Optional<ResolvedSymbol> result = symbolTable.resolve("LIB.HARVEST", "/test/main.evo");
 
         assertThat(result).isPresent();
-        assertThat(result.get().name().text()).isEqualToIgnoringCase("HARVEST");
+        assertThat(result.get().symbol().name().text()).isEqualToIgnoringCase("HARVEST");
     }
 
     @Test
     @Tag("unit")
     void qualifiedNameDoesNotResolveNonExportedSymbol() {
-        symbolTable.setCurrentModule(MAIN_MODULE);
+        symbolTable.setCurrentModule(MAIN_CHAIN);
 
-        Optional<Symbol> result = symbolTable.resolve("LIB.INTERNAL", "/test/main.evo");
+        Optional<ResolvedSymbol> result = symbolTable.resolve("LIB.INTERNAL", "/test/main.evo");
 
         assertThat(result).isEmpty();
     }
@@ -74,9 +73,9 @@ public class ModuleVisibilityTest {
     @Test
     @Tag("unit")
     void unknownAliasDoesNotResolve() {
-        symbolTable.setCurrentModule(MAIN_MODULE);
+        symbolTable.setCurrentModule(MAIN_CHAIN);
 
-        Optional<Symbol> result = symbolTable.resolve("UNKNOWN.HARVEST", "/test/main.evo");
+        Optional<ResolvedSymbol> result = symbolTable.resolve("UNKNOWN.HARVEST", "/test/main.evo");
 
         assertThat(result).isEmpty();
     }
@@ -84,9 +83,9 @@ public class ModuleVisibilityTest {
     @Test
     @Tag("unit")
     void unqualifiedNameFromSameModuleResolves() {
-        symbolTable.setCurrentModule(LIB_MODULE);
+        symbolTable.setCurrentModule(LIB_CHAIN);
 
-        Optional<Symbol> result = symbolTable.resolve("HARVEST", "/test/lib.evo");
+        Optional<ResolvedSymbol> result = symbolTable.resolve("HARVEST", "/test/lib.evo");
 
         assertThat(result).isPresent();
     }
@@ -94,15 +93,15 @@ public class ModuleVisibilityTest {
     @Test
     @Tag("unit")
     void usingBindingsResolveQualifiedNames() {
-        // Set up USING: main has a using binding DEP -> LIB_MODULE
-        ModuleScope mainScope = symbolTable.getModuleScope(MAIN_MODULE).orElseThrow();
-        mainScope.usingBindings().put("DEP", LIB_MODULE);
+        // Set up USING: main has a using binding DEP -> LIB_CHAIN
+        ModuleScope mainScope = symbolTable.getModuleScope(MAIN_CHAIN).orElseThrow();
+        mainScope.usingBindings().put("DEP", LIB_CHAIN);
 
-        symbolTable.setCurrentModule(MAIN_MODULE);
+        symbolTable.setCurrentModule(MAIN_CHAIN);
 
-        Optional<Symbol> result = symbolTable.resolve("DEP.HARVEST", "/test/main.evo");
+        Optional<ResolvedSymbol> result = symbolTable.resolve("DEP.HARVEST", "/test/main.evo");
 
         assertThat(result).isPresent();
-        assertThat(result.get().name().text()).isEqualToIgnoringCase("HARVEST");
+        assertThat(result.get().symbol().name().text()).isEqualToIgnoringCase("HARVEST");
     }
 }

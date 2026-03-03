@@ -3,7 +3,6 @@ package org.evochora.compiler.frontend.semantics.analysis;
 import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.parser.features.importdir.ImportNode;
-import org.evochora.compiler.frontend.semantics.ModuleId;
 import org.evochora.compiler.frontend.semantics.ModuleScope;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.model.token.Token;
@@ -26,9 +25,9 @@ class ImportAnalysisHandlerTest {
     private static final String LIB_FILE = "/test/lib.evo";
     private static final String DEP_FILE = "/test/dep.evo";
 
-    private static final ModuleId MAIN_MODULE = new ModuleId(MAIN_FILE);
-    private static final ModuleId LIB_MODULE = new ModuleId(LIB_FILE);
-    private static final ModuleId DEP_MODULE = new ModuleId(DEP_FILE);
+    private static final String MAIN_CHAIN = "MAIN";
+    private static final String LIB_CHAIN = "LIB";
+    private static final String DEP_CHAIN = "D";
 
     private DiagnosticsEngine diagnostics;
     private SymbolTable symbolTable;
@@ -40,20 +39,20 @@ class ImportAnalysisHandlerTest {
         symbolTable = new SymbolTable(diagnostics);
         handler = new ImportAnalysisHandler();
 
-        symbolTable.registerModule(MAIN_MODULE, MAIN_FILE);
-        symbolTable.registerModule(LIB_MODULE, LIB_FILE);
-        symbolTable.registerModule(DEP_MODULE, DEP_FILE);
+        symbolTable.registerModule(MAIN_CHAIN, MAIN_FILE);
+        symbolTable.registerModule(LIB_CHAIN, LIB_FILE);
+        symbolTable.registerModule(DEP_CHAIN, DEP_FILE);
 
         // main imports dep as "D" and lib as "LIB"
-        ModuleScope mainScope = symbolTable.getModuleScope(MAIN_MODULE).orElseThrow();
-        mainScope.imports().put("D", DEP_MODULE);
-        mainScope.imports().put("LIB", LIB_MODULE);
+        ModuleScope mainScope = symbolTable.getModuleScope(MAIN_CHAIN).orElseThrow();
+        mainScope.imports().put("D", DEP_CHAIN);
+        mainScope.imports().put("LIB", LIB_CHAIN);
 
         // lib requires "DEP"
-        ModuleScope libScope = symbolTable.getModuleScope(LIB_MODULE).orElseThrow();
+        ModuleScope libScope = symbolTable.getModuleScope(LIB_CHAIN).orElseThrow();
         libScope.requires().put("DEP", "dep.evo");
 
-        symbolTable.setCurrentModule(MAIN_MODULE);
+        symbolTable.setCurrentModule(MAIN_CHAIN);
     }
 
     @Test
@@ -123,13 +122,13 @@ class ImportAnalysisHandlerTest {
     @Tag("unit")
     void multipleRequiresAllSatisfied() {
         // lib requires both DEP and EXTRA
-        ModuleScope libScope = symbolTable.getModuleScope(LIB_MODULE).orElseThrow();
+        ModuleScope libScope = symbolTable.getModuleScope(LIB_CHAIN).orElseThrow();
         libScope.requires().put("EXTRA", "extra.evo");
 
-        ModuleId extraModule = new ModuleId("/test/extra.evo");
-        symbolTable.registerModule(extraModule, "/test/extra.evo");
-        ModuleScope mainScope = symbolTable.getModuleScope(MAIN_MODULE).orElseThrow();
-        mainScope.imports().put("E", extraModule);
+        String extraChain = "E";
+        symbolTable.registerModule(extraChain, "/test/extra.evo");
+        ModuleScope mainScope = symbolTable.getModuleScope(MAIN_CHAIN).orElseThrow();
+        mainScope.imports().put("E", extraChain);
 
         // .IMPORT "lib.evo" AS LIB USING D AS DEP USING E AS EXTRA
         ImportNode node = importNode("lib.evo", "LIB", List.of(
@@ -146,7 +145,7 @@ class ImportAnalysisHandlerTest {
     @Tag("unit")
     void multipleRequiresPartiallySatisfiedReportsError() {
         // lib requires both DEP and EXTRA, but only DEP is provided
-        ModuleScope libScope = symbolTable.getModuleScope(LIB_MODULE).orElseThrow();
+        ModuleScope libScope = symbolTable.getModuleScope(LIB_CHAIN).orElseThrow();
         libScope.requires().put("EXTRA", "extra.evo");
 
         ImportNode node = importNode("lib.evo", "LIB", List.of(

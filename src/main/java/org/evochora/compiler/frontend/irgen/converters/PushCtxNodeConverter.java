@@ -4,14 +4,21 @@ import org.evochora.compiler.frontend.parser.ast.PushCtxNode;
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrGenContext;
 import org.evochora.compiler.model.ir.IrDirective;
+import org.evochora.compiler.model.ir.IrValue;
 
-import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
 
-//public void convert(AstNode node, IrGenContext context)
 public class PushCtxNodeConverter implements IAstNodeToIrConverter<PushCtxNode> {
     @Override
-    //public void convert(AstNode node, IrGenContext context) {
     public void convert(PushCtxNode node, IrGenContext context) {
-        context.emit(new IrDirective("core", "push_ctx", Collections.emptyMap(), context.sourceOf(node)));
+        Map<String, IrValue> args = new HashMap<>();
+        if (node.aliasChain() != null) {
+            args.put("aliasChain", new IrValue.Str(node.aliasChain()));
+        }
+        // Always push so pop is symmetric. For .SOURCE (null aliasChain),
+        // pushAliasChain(null) preserves the current chain on the stack.
+        context.pushAliasChain(node.aliasChain());
+        context.emit(new IrDirective("core", "push_ctx", args, context.sourceOf(node)));
     }
 }

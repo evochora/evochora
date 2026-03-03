@@ -51,7 +51,10 @@ public class IrGeneratorTest {
             fail("Parser errors: " + diagnostics.summary());
         }
 
+        String rootAliasChain = "";
         SymbolTable symbolTable = new SymbolTable(diagnostics);
+        symbolTable.registerModule(rootAliasChain, "<memory>");
+        symbolTable.setCurrentModule(rootAliasChain);
         new SemanticAnalyzer(diagnostics, symbolTable).analyze(ast);
         if (diagnostics.hasErrors()) {
             fail("Semantic analysis errors: " + diagnostics.summary());
@@ -59,7 +62,7 @@ public class IrGeneratorTest {
 
         IrConverterRegistry registry = IrConverterRegistry.initializeWithDefaults();
         IrGenerator irGen = new IrGenerator(diagnostics, registry);
-        IrProgram ir = irGen.generate(ast, "TestProg");
+        IrProgram ir = irGen.generate(ast, "TestProg", rootAliasChain);
         if (diagnostics.hasErrors()) {
             fail("IR generation errors: " + diagnostics.summary());
         }
@@ -146,8 +149,8 @@ public class IrGeneratorTest {
 
         assertTrue(items.get(1) instanceof IrLabelDef);
         IrLabelDef lbl = (IrLabelDef) items.get(1);
-        // Label names are module-qualified; default Lexer file "<memory>" → module "<MEMORY>"
-        assertEquals("<MEMORY>.L1", lbl.name());
+        // Single-file mode: rootAliasChain is empty, labels are unqualified
+        assertEquals("L1", lbl.name());
 
         assertTrue(items.get(2) instanceof IrInstruction);
         IrInstruction seti = (IrInstruction) items.get(2);

@@ -1,12 +1,10 @@
 package org.evochora.compiler.frontend.irgen;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.semantics.ModuleId;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ir.IrProgram;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * Phase: Generates IR from a validated AST by delegating to converters
@@ -30,30 +28,29 @@ public final class IrGenerator {
 
 	/**
 	 * Generates a linear IR program by dispatching each AST node to a converter.
+	 * Uses an empty root alias chain (for single-file compilation).
 	 *
 	 * @param ast         The semantically validated AST nodes.
 	 * @param programName The program name used for IR metadata and diagnostics.
 	 * @return The generated IR program.
 	 */
 	public IrProgram generate(List<AstNode> ast, String programName) {
-		return generate(ast, programName, Map.of());
+		return generate(ast, programName, "");
 	}
 
 	/**
 	 * Generates a linear IR program by dispatching each AST node to a converter.
 	 *
-	 * @param ast          The semantically validated AST nodes.
-	 * @param programName  The program name used for IR metadata and diagnostics.
-	 * @param fileToModule Mapping from source file paths to module identifiers.
+	 * @param ast            The semantically validated AST nodes.
+	 * @param programName    The program name used for IR metadata and diagnostics.
+	 * @param rootAliasChain The alias chain for the root module (e.g., "MAIN").
 	 * @return The generated IR program.
 	 */
-	public IrProgram generate(List<AstNode> ast, String programName, Map<String, ModuleId> fileToModule) {
-		IrGenContext ctx = new IrGenContext(programName, diagnostics, registry, fileToModule);
+	public IrProgram generate(List<AstNode> ast, String programName, String rootAliasChain) {
+		IrGenContext ctx = new IrGenContext(programName, diagnostics, registry, rootAliasChain);
 		for (AstNode node : ast) {
 			registry.resolve(node).convert(node, ctx);
 		}
 		return ctx.build();
 	}
 }
-
-

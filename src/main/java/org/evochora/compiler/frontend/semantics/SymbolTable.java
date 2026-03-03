@@ -1,7 +1,6 @@
 package org.evochora.compiler.frontend.semantics;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.model.token.Token;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -13,6 +12,10 @@ import java.util.Optional;
  * A module-aware symbol table for managing scopes and symbols during semantic analysis.
  * Supports nested procedure scopes within each module, qualified cross-module name resolution
  * via import aliases, and export-based visibility control.
+ *
+ * <p>Modules are identified by their import alias chain (e.g., "PRED.MATH") rather than
+ * by file path, allowing the same physical file to appear as distinct placements with
+ * independent symbol namespaces.</p>
  *
  * <p>For single-file compilations, the table operates with a default module and behaves
  * identically to the pre-module-system version.</p>
@@ -44,9 +47,9 @@ public class SymbolTable {
         }
     }
 
-    // --- Module-aware primary structure ---
-    private final Map<ModuleId, ModuleScope> modules = new HashMap<>();
-    private ModuleId currentModuleId;
+    // --- Module-aware primary structure (keyed by alias chain) ---
+    private final Map<String, ModuleScope> modules = new HashMap<>();
+    private String currentAliasChain;
 
     // --- Procedure-local scope hierarchy (within the current module) ---
     private final Scope rootScope;
@@ -54,14 +57,9 @@ public class SymbolTable {
 
     private final DiagnosticsEngine diagnostics;
 
-    // --- Export metadata ---
-    private final Map<String, Boolean> procExportedByFileAndName = new HashMap<>();
-    private final Map<String, Boolean> labelExportedByFileAndName = new HashMap<>();
-    private final Map<String, Boolean> defineExportedByFileAndName = new HashMap<>();
-
     /**
      * Constructs a new symbol table. The current module must be set via
-     * {@link #setCurrentModule(ModuleId)} before any define/resolve operations.
+     * {@link #setCurrentModule(String)} before any define/resolve operations.
      * @param diagnostics The diagnostics engine for reporting errors.
      */
     public SymbolTable(DiagnosticsEngine diagnostics) {
@@ -74,43 +72,51 @@ public class SymbolTable {
 
     /**
      * Registers a module in the symbol table.
-     * @param moduleId The module identity.
+     * @param aliasChain The alias chain identifying this module placement (e.g., "PRED.MATH").
      * @param sourcePath The file path or URL of the module source.
      */
-    public void registerModule(ModuleId moduleId, String sourcePath) {
-        modules.computeIfAbsent(moduleId, id -> new ModuleScope(id, sourcePath));
+    public void registerModule(String aliasChain, String sourcePath) {
+        modules.computeIfAbsent(aliasChain, ac -> new ModuleScope(ac, sourcePath));
     }
 
     /**
      * Sets the current module context. All subsequent define/resolve operations
      * operate within this module.
-     * @param moduleId The module to set as current.
+     * @param aliasChain The alias chain of the module to set as current.
      */
-    public void setCurrentModule(ModuleId moduleId) {
-        this.currentModuleId = moduleId;
-        if (!modules.containsKey(moduleId)) {
-            modules.put(moduleId, new ModuleScope(moduleId, moduleId.path()));
+    public void setCurrentModule(String aliasChain) {
+        this.currentAliasChain = aliasChain;
+        if (!modules.containsKey(aliasChain)) {
+            modules.put(aliasChain, new ModuleScope(aliasChain, aliasChain));
         }
     }
 
     /**
-     * Gets the current module ID.
+     * Gets the current module alias chain.
      */
-    public ModuleId getCurrentModuleId() {
-        return currentModuleId;
+    public String getCurrentAliasChain() {
+        return currentAliasChain;
     }
 
     /**
-     * Gets the module scope for the given module ID, or empty if not registered.
+     * @deprecated Use {@link #getCurrentAliasChain()} instead. Provided for transitional compatibility.
      */
-    public Optional<ModuleScope> getModuleScope(ModuleId moduleId) {
-        return Optional.ofNullable(modules.get(moduleId));
+    @Deprecated
+    public ModuleId getCurrentModuleId() {
+        return currentAliasChain != null ? new ModuleId(currentAliasChain) : null;
+    }
+
+    /**
+     * Gets the module scope for the given alias chain, or empty if not registered.
+     */
+    public Optional<ModuleScope> getModuleScope(String aliasChain) {
+        return Optional.ofNullable(modules.get(aliasChain));
     }
 
     /**
      * Gets the module scope map (for multi-module iteration).
      */
-    public Map<ModuleId, ModuleScope> getModules() {
+    public Map<String, ModuleScope> getModules() {
         return modules;
     }
 
@@ -181,7 +187,7 @@ public class SymbolTable {
 
         // In module context, use the module's source path as file key.
         // This makes .SOURCE-included symbols resolvable from the module's own tokens.
-        ModuleScope modScope = modules.get(currentModuleId);
+        ModuleScope modScope = modules.get(currentAliasChain);
         if (modScope != null) {
             file = modScope.sourcePath();
         }
@@ -210,37 +216,49 @@ public class SymbolTable {
      * (e.g., {@code ALIAS.SYMBOL}) using the current module's import aliases.
      * @param name The name of the symbol to resolve.
      * @param requestingFile The file requesting the symbol resolution (for module scoping).
-     * @return An optional containing the found symbol, or empty if not found.
+     * @return An optional containing the resolved symbol with its qualified name, or empty if not found.
      */
-    public Optional<Symbol> resolve(String name, String requestingFile) {
+    public Optional<ResolvedSymbol> resolve(String name, String requestingFile) {
         String key = name.toUpperCase();
 
         // Search scope hierarchy (current scope → root)
         for (Scope scope = currentScope; scope != null; scope = scope.parent) {
             Map<String, Symbol> perFile = scope.symbols.get(key);
             if (perFile != null) {
-                if (perFile.containsKey(requestingFile)) return Optional.of(perFile.get(requestingFile));
+                if (perFile.containsKey(requestingFile)) {
+                    Symbol sym = perFile.get(requestingFile);
+                    String qualified = qualifyName(key);
+                    return Optional.of(new ResolvedSymbol(sym, qualified));
+                }
             }
         }
 
-        // Attempt qualified name resolution (ALIAS.SYMBOL)
+        // Attempt qualified name resolution (ALIAS.SYMBOL or multi-level ALIAS.B.SYMBOL)
         int dot = key.indexOf('.');
         if (dot > 0) {
             String alias = key.substring(0, dot);
             String remainder = key.substring(dot + 1);
 
-            ModuleScope resolveModScope = modules.get(currentModuleId);
+            ModuleScope resolveModScope = modules.get(currentAliasChain);
             if (resolveModScope != null) {
-                ModuleId targetModuleId = resolveModScope.imports().get(alias);
-                if (targetModuleId == null) {
-                    targetModuleId = resolveModScope.usingBindings().get(alias);
+                String targetAliasChain = resolveModScope.imports().get(alias);
+                if (targetAliasChain == null) {
+                    targetAliasChain = resolveModScope.usingBindings().get(alias);
                 }
-                if (targetModuleId != null) {
-                    ModuleScope targetModScope = modules.get(targetModuleId);
+                if (targetAliasChain != null) {
+                    // Check for multi-level resolution (A.B.SYMBOL)
+                    int nextDot = remainder.indexOf('.');
+                    if (nextDot > 0) {
+                        return resolveMultiLevel(targetAliasChain, remainder);
+                    }
+
+                    ModuleScope targetModScope = modules.get(targetAliasChain);
                     if (targetModScope != null) {
                         Symbol sym = targetModScope.symbols().get(remainder);
                         if (sym != null && isExported(sym)) {
-                            return Optional.of(sym);
+                            String qualified = targetAliasChain.isEmpty()
+                                    ? remainder : targetAliasChain + "." + remainder;
+                            return Optional.of(new ResolvedSymbol(sym, qualified));
                         }
                     }
                 }
@@ -250,67 +268,57 @@ public class SymbolTable {
     }
 
     /**
+     * Recursively resolves multi-level qualified names (e.g., "A.B.C.LABEL").
+     * At each level, checks that the import is EXPORT-visible before descending.
+     */
+    private Optional<ResolvedSymbol> resolveMultiLevel(String currentChain, String remainder) {
+        int dot = remainder.indexOf('.');
+        if (dot <= 0) {
+            ModuleScope modScope = modules.get(currentChain);
+            if (modScope != null) {
+                Symbol sym = modScope.symbols().get(remainder);
+                if (sym != null && isExported(sym)) {
+                    String qualified = currentChain.isEmpty()
+                            ? remainder : currentChain + "." + remainder;
+                    return Optional.of(new ResolvedSymbol(sym, qualified));
+                }
+            }
+            return Optional.empty();
+        }
+
+        String nextAlias = remainder.substring(0, dot);
+        String nextRemainder = remainder.substring(dot + 1);
+
+        ModuleScope modScope = modules.get(currentChain);
+        if (modScope == null) return Optional.empty();
+
+        String nextChain = modScope.imports().get(nextAlias);
+        if (nextChain == null) {
+            nextChain = modScope.usingBindings().get(nextAlias);
+        }
+        if (nextChain == null) return Optional.empty();
+
+        Boolean exp = modScope.importExported().get(nextAlias);
+        if (!Boolean.TRUE.equals(exp)) return Optional.empty();
+
+        return resolveMultiLevel(nextChain, nextRemainder);
+    }
+
+    /**
+     * Qualifies a name with the current alias chain.
+     */
+    private String qualifyName(String nameUpper) {
+        if (currentAliasChain != null && !currentAliasChain.isEmpty()) {
+            return currentAliasChain + "." + nameUpper;
+        }
+        return nameUpper;
+    }
+
+    /**
      * Checks if a symbol is exported (visible to other modules).
      */
     private boolean isExported(Symbol sym) {
-        if (sym.exported()) return true;
-        // Fall back to metadata-based export check
-        if (sym.type() == Symbol.Type.PROCEDURE) {
-            Boolean exported = isProcedureExported(sym.name());
-            return Boolean.TRUE.equals(exported);
-        }
-        if (sym.type() == Symbol.Type.LABEL) {
-            Boolean exported = isLabelExported(sym.name());
-            return Boolean.TRUE.equals(exported);
-        }
-        return false;
-    }
-
-    // === Export metadata ===
-
-    /**
-     * Registers metadata for a procedure, such as whether it is exported.
-     * @param procName The name token of the procedure.
-     * @param exported True if the procedure is exported, false otherwise.
-     */
-    public void registerProcedureMeta(Token procName, boolean exported) {
-        String key = procName.fileName() + "|" + procName.text().toUpperCase();
-        procExportedByFileAndName.put(key, exported);
-    }
-
-    private Boolean isProcedureExported(Token procName) {
-        String key = procName.fileName() + "|" + procName.text().toUpperCase();
-        return procExportedByFileAndName.get(key);
-    }
-
-    /**
-     * Registers metadata for a label, such as whether it is exported.
-     * @param labelName The name token of the label.
-     * @param exported True if the label is exported, false otherwise.
-     */
-    public void registerLabelMeta(Token labelName, boolean exported) {
-        String key = labelName.fileName() + "|" + labelName.text().toUpperCase();
-        labelExportedByFileAndName.put(key, exported);
-    }
-
-    private Boolean isLabelExported(Token labelName) {
-        String key = labelName.fileName() + "|" + labelName.text().toUpperCase();
-        return labelExportedByFileAndName.get(key);
-    }
-
-    /**
-     * Registers metadata for a define constant, such as whether it is exported.
-     * @param defineName The name token of the constant.
-     * @param exported True if the constant is exported, false otherwise.
-     */
-    public void registerDefineMeta(Token defineName, boolean exported) {
-        String key = defineName.fileName() + "|" + defineName.text().toUpperCase();
-        defineExportedByFileAndName.put(key, exported);
-    }
-
-    private Boolean isDefineExported(Token defineName) {
-        String key = defineName.fileName() + "|" + defineName.text().toUpperCase();
-        return defineExportedByFileAndName.get(key);
+        return sym.exported();
     }
 
     /**

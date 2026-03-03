@@ -2,6 +2,7 @@ package org.evochora.compiler.frontend.preprocessor.features.importdir;
 
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
+import org.evochora.compiler.frontend.module.PlacementContext;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorDirectiveHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
@@ -41,7 +42,10 @@ public class ImportSourceHandler implements IPreProcessorDirectiveHandler {
         Token pathToken = preProcessor.consume(TokenType.STRING, "Expected a file path in quotes after .IMPORT.");
         if (pathToken == null) return;
 
-        // Skip AS ALIAS and optional USING clauses — leave them for the parser
+        // Extract alias from "AS ALIAS" before skipping the rest of the directive
+        String alias = extractAlias(preProcessor);
+
+        // Skip remaining tokens (USING clauses) — leave them for the parser
         while (!preProcessor.isAtEnd() && !preProcessor.check(TokenType.NEWLINE)) {
             preProcessor.advance();
         }
@@ -68,6 +72,13 @@ public class ImportSourceHandler implements IPreProcessorDirectiveHandler {
         }
         preProcessor.pushImportChain(resolvedPath);
 
+        // Compute alias chain: parent chain + alias
+        String parentChain = preProcessorContext.currentAliasChain();
+        String aliasUpper = alias != null ? alias.toUpperCase() : resolvedPath;
+        String aliasChain = (parentChain == null || parentChain.isEmpty())
+                ? aliasUpper
+                : parentChain + "." + aliasUpper;
+
         List<Token> tokens = moduleTokens.get(resolvedPath);
         if (tokens == null) {
             preProcessor.getDiagnostics().reportError(
@@ -79,13 +90,33 @@ public class ImportSourceHandler implements IPreProcessorDirectiveHandler {
         // Create a copy of the pre-lexed tokens (each import gets its own instance)
         List<Token> newTokens = new ArrayList<>(tokens);
 
-        // Wrap with PUSH_CTX/POP_CTX — PUSH_CTX carries the resolved module path
-        // so ModuleContextTracker can switch to the correct module immediately
-        newTokens.add(0, new Token(TokenType.DIRECTIVE, ".PUSH_CTX", resolvedPath, importToken.line(), 0, importToken.fileName()));
+        // Wrap with PUSH_CTX/POP_CTX — PUSH_CTX carries PlacementContext with alias chain
+        PlacementContext placementCtx = new PlacementContext(resolvedPath, aliasChain);
+        newTokens.add(0, new Token(TokenType.DIRECTIVE, ".PUSH_CTX", placementCtx, importToken.line(), 0, importToken.fileName()));
         newTokens.add(new Token(TokenType.DIRECTIVE, ".POP_CTX", "IMPORT", importToken.line(), 0, importToken.fileName()));
+
+        // Push alias chain before injecting tokens (imported module's tokens will see this chain)
+        preProcessorContext.pushAliasChain(aliasChain);
 
         // Inject after the .IMPORT directive (tokens remain for the parser)
         preProcessor.injectTokens(newTokens, 0);
+    }
+
+    /**
+     * Extracts the import alias from the "AS ALIAS" tokens without consuming past them.
+     * The tokens are consumed but left conceptually for the parser (which re-parses the directive).
+     */
+    private String extractAlias(PreProcessor preProcessor) {
+        if (!preProcessor.isAtEnd() && preProcessor.check(TokenType.IDENTIFIER)
+                && "AS".equalsIgnoreCase(preProcessor.peek().text())) {
+            preProcessor.advance(); // consume AS
+            if (!preProcessor.isAtEnd() && preProcessor.check(TokenType.IDENTIFIER)) {
+                Token aliasToken = preProcessor.peek();
+                preProcessor.advance(); // consume alias
+                return aliasToken.text();
+            }
+        }
+        return null;
     }
 
 }

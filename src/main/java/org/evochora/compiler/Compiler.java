@@ -5,7 +5,6 @@ import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.ICompiler;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceInfo;
-import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.api.TokenInfo;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.compiler.frontend.lexer.Lexer;
@@ -44,12 +43,13 @@ import org.evochora.compiler.backend.emit.IEmissionRule;
 import org.evochora.compiler.backend.emit.Emitter;
 import org.evochora.compiler.isa.RuntimeInstructionSetAdapter;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * The main compiler implementation. This class orchestrates the entire compilation
@@ -59,6 +59,31 @@ public class Compiler implements ICompiler {
 
     private final DiagnosticsEngine diagnostics = new DiagnosticsEngine();
     private int verbosity = -1;
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public ProgramArtifact compile(String programPath, EnvironmentProperties envProps, CompilerOptions options)
+            throws CompilationException, IOException {
+        String resolvedPath;
+        if (options != null) {
+            // Explicit source roots: resolve via source roots relative to CWD
+            CompilerOptions effectiveOptions = options;
+            effectiveOptions.validate();
+            SourceRootResolver resolver = new SourceRootResolver(
+                    effectiveOptions.sourceRoots(), Path.of("").toAbsolutePath());
+            resolvedPath = resolver.resolve(programPath, "");
+        } else {
+            // No source roots: treat programPath as CWD-relative file path
+            SourceRootResolver.ParsedPath parsed = SourceRootResolver.parsePath(programPath);
+            resolvedPath = Path.of(parsed.filePath()).toAbsolutePath().normalize()
+                    .toString().replace('\\', '/');
+        }
+
+        List<String> sourceLines = Files.readAllLines(Path.of(resolvedPath));
+        return compile(sourceLines, programPath, envProps, options);
+    }
 
     /**
      * {@inheritDoc}
@@ -101,43 +126,46 @@ public class Compiler implements ICompiler {
         CompilerOptions effectiveOptions = (options != null) ? options : CompilerOptions.defaults();
         effectiveOptions.validate();
 
-        // Calculate absolute program name first (needed for Lexer and sources map)
-        Path basePath;
-        Path absoluteProgramName;
-        try {
-            Path pn = Path.of(programName);
-            if (pn.isAbsolute()) {
-                absoluteProgramName = pn;
-                basePath = pn.getParent() != null ? pn.getParent() : pn.toAbsolutePath();
-            } else {
-                Path abs = pn.toAbsolutePath();
-                absoluteProgramName = abs;
-                basePath = abs.getParent() != null ? abs.getParent() : Path.of("").toAbsolutePath();
+        // Derive root alias chain from the source root prefix in programName
+        SourceRootResolver.ParsedPath parsedProgram = SourceRootResolver.parsePath(programName);
+        String rootAliasChain = (parsedProgram.prefix() != null) ? parsedProgram.prefix() : "";
+
+        // Determine working directory and resolve programName to actual file path
+        final Path workingDirectory;
+        final String mainFilePath;
+        if (options != null) {
+            // Explicit source roots: resolve relative to CWD
+            workingDirectory = Path.of("").toAbsolutePath();
+            SourceRootResolver initResolver = new SourceRootResolver(
+                    effectiveOptions.sourceRoots(), workingDirectory);
+            mainFilePath = initResolver.resolve(programName, "");
+        } else {
+            // No source roots: resolve relative to program file's parent
+            String resolvedFilePath;
+            Path wd;
+            try {
+                Path programFile = Path.of(parsedProgram.filePath()).toAbsolutePath().normalize();
+                resolvedFilePath = programFile.toString().replace('\\', '/');
+                wd = programFile.getParent() != null
+                        ? programFile.getParent()
+                        : Path.of("").toAbsolutePath();
+            } catch (Exception e) {
+                resolvedFilePath = programName;
+                wd = Path.of("").toAbsolutePath();
             }
-        } catch (Exception ignored) {
-            absoluteProgramName = Path.of(programName).toAbsolutePath();
-            basePath = Path.of("").toAbsolutePath();
+            mainFilePath = resolvedFilePath;
+            workingDirectory = wd;
         }
-
-        String mainFilePath = absoluteProgramName.toString().replace('\\', '/');
-        String fullSource = String.join("\n", sourceLines) + "\n";
-
-        // Explicit source roots resolve relative to CWD; default source roots resolve relative to the program file
-        Path workingDirectory = (options != null) ? Path.of("").toAbsolutePath() : basePath;
         SourceRootResolver resolver = new SourceRootResolver(
                 effectiveOptions.sourceRoots(), workingDirectory);
+
+        String fullSource = String.join("\n", sourceLines) + "\n";
 
         // Phase 0: Dependency Scanning (load imported modules)
         DependencyScanner depScanner = new DependencyScanner(diagnostics, resolver);
         DependencyGraph graph = depScanner.scan(fullSource, mainFilePath);
         if (diagnostics.hasErrors()) {
             throw new CompilationException(diagnostics.summary());
-        }
-
-        // Build file-to-module mapping from dependency graph (shared by multiple phases)
-        Map<String, ModuleId> fileToModule = new HashMap<>();
-        for (ModuleDescriptor module : graph.topologicalOrder()) {
-            fileToModule.put(module.sourcePath(), module.id());
         }
 
         // Phase 1: Lexical Analysis — lex all files, store results
@@ -158,7 +186,7 @@ public class Compiler implements ICompiler {
 
         // Phase 2: Preprocessing (includes, macros)
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, resolver,
-                moduleTokens.isEmpty() ? null : moduleTokens);
+                moduleTokens.isEmpty() ? null : moduleTokens, rootAliasChain);
         List<Token> processedTokens = preProcessor.expand();
 
         Map<String, List<String>> sources = new HashMap<>();
@@ -179,69 +207,41 @@ public class Compiler implements ICompiler {
         Parser parser = new Parser(processedTokens, diagnostics);
         List<AstNode> ast = parser.parse();
 
-        // parser.getGlobalRegisterAliases() is used later when extracting aliases; no local copy needed here
-
-        Map<String, List<org.evochora.compiler.api.ParamInfo>> procNameToParamNames = new HashMap<>();
-        parser.getProcedureTable().forEach((name, procNode) -> {
-            List<org.evochora.compiler.api.ParamInfo> params = new ArrayList<>();
-            
-            // Add REF parameters first (they come first in the procedure definition)
-            if (procNode.refParameters() != null) {
-                params.addAll(procNode.refParameters().stream()
-                        .map(token -> new org.evochora.compiler.api.ParamInfo(token.text(), org.evochora.compiler.api.ParamType.REF))
-                        .collect(Collectors.toList()));
-            }
-            
-            // Add VAL parameters second
-            if (procNode.valParameters() != null) {
-                params.addAll(procNode.valParameters().stream()
-                        .map(token -> new org.evochora.compiler.api.ParamInfo(token.text(), org.evochora.compiler.api.ParamType.VAL))
-                        .collect(Collectors.toList()));
-            }
-            
-            // Add old WITH syntax parameters last (for backward compatibility)
-            if (procNode.parameters() != null) {
-                params.addAll(procNode.parameters().stream()
-                        .map(token -> new org.evochora.compiler.api.ParamInfo(token.text(), org.evochora.compiler.api.ParamType.WITH))
-                        .collect(Collectors.toList()));
-            }
-            
-            String qualifiedName = resolveQualifiedName(name, procNode.name().fileName(), fileToModule);
-            procNameToParamNames.put(qualifiedName, params);
-        });
-
         if (diagnostics.hasErrors()) {
             throw new CompilationException(diagnostics.summary());
         }
 
         // Phase 4: Semantic Analysis (symbol resolution, type checking)
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainFilePath, fileToModule);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainFilePath, rootAliasChain);
         analyzer.analyze(ast);
         if (diagnostics.hasErrors()) {
             throw new CompilationException(diagnostics.summary());
         }
-        
+
         // Phase 5: Token Map Generation (for debugger)
         TokenMapContributorRegistry tokenMapRegistry = new TokenMapContributorRegistry();
         tokenMapRegistry.register(org.evochora.compiler.frontend.parser.features.proc.ProcedureNode.class, new ProcedureTokenMapContributor());
         tokenMapRegistry.register(org.evochora.compiler.model.ast.InstructionNode.class, new InstructionTokenMapContributor());
-        TokenMapGenerator tokenMapGenerator = new TokenMapGenerator(symbolTable, analyzer.getScopeMap(), diagnostics, tokenMapRegistry, fileToModule);
+        ModuleContextTracker tokenMapTracker = new ModuleContextTracker(symbolTable);
+        symbolTable.setCurrentModule(rootAliasChain);
+        TokenMapGenerator tokenMapGenerator = new TokenMapGenerator(symbolTable, analyzer.getScopeMap(), diagnostics, tokenMapRegistry, tokenMapTracker);
         Map<SourceInfo, TokenInfo> tokenMap = tokenMapGenerator.generateAll(ast);
 
         // Phase 6: AST Post-Processing (resolve register aliases)
         // Extract register aliases from parser (both .REG and .PREG)
         Map<String, String> astRegisterAliases = new HashMap<>();
-        
+
         // Extract global register aliases from parser (module-qualified keys)
         parser.getGlobalRegisterAliases().forEach((aliasName, registerToken) -> {
-            String qualifiedAlias = resolveQualifiedName(aliasName, registerToken.fileName(), fileToModule);
+            String qualifiedAlias = resolveQualifiedName(aliasName, registerToken.fileName(),
+                    mainFilePath, rootAliasChain);
             astRegisterAliases.put(qualifiedAlias, registerToken.text());
         });
-        
+
         // Extract procedure register aliases from AST (module-qualified keys)
-        extractProcedureRegisterAliases(ast, astRegisterAliases, fileToModule);
-        
+        extractProcedureRegisterAliases(ast, astRegisterAliases, mainFilePath, rootAliasChain);
+
         // Create final alias map for emitter (convert register names to IDs)
         Map<String, Integer> finalAliasMap = new HashMap<>();
         for (Map.Entry<String, String> entry : astRegisterAliases.entrySet()) {
@@ -261,10 +261,11 @@ public class Compiler implements ICompiler {
                 finalAliasMap.put(aliasName, registerId);
             }
         }
-        
-        ModuleContextTracker postProcessTracker = new ModuleContextTracker(symbolTable, fileToModule);
+
+        ModuleContextTracker postProcessTracker = new ModuleContextTracker(symbolTable);
+        symbolTable.setCurrentModule(rootAliasChain);
         AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, astRegisterAliases, postProcessTracker);
-        
+
         // Process all AST nodes, not just the first one
         for (int i = 0; i < ast.size(); i++) {
             ast.set(i, astPostProcessor.process(ast.get(i)));
@@ -273,12 +274,13 @@ public class Compiler implements ICompiler {
         // Phase 7: IR Generation (convert AST to intermediate representation)
         IrConverterRegistry irRegistry = IrConverterRegistry.initializeWithDefaults();
         IrGenerator irGenerator = new IrGenerator(diagnostics, irRegistry);
-        IrProgram irProgram = irGenerator.generate(ast, programName, fileToModule);
+        IrProgram irProgram = irGenerator.generate(ast, programName, rootAliasChain);
 
         // Phase 8: IR Rewriting (apply emission rules)
         EmissionRegistry emissionRegistry = EmissionRegistry.initializeWithDefaults();
         java.util.List<org.evochora.compiler.model.ir.IrItem> rewritten = irProgram.items();
         LinkingContext linkingContext = new LinkingContext();
+        linkingContext.pushAliasChain(rootAliasChain);
         for (IEmissionRule rule : emissionRegistry.rules()) {
             rewritten = rule.apply(rewritten, linkingContext);
         }
@@ -289,17 +291,22 @@ public class Compiler implements ICompiler {
         LayoutResult layout = layoutEngine.layout(rewrittenIr, new RuntimeInstructionSetAdapter(), envProps);
 
         // Phase 10: Linking (resolve cross-references)
-        LinkingRegistry linkingRegistry = LinkingRegistry.initializeWithDefaults(symbolTable, fileToModule);
+        LinkingRegistry linkingRegistry = LinkingRegistry.initializeWithDefaults(symbolTable);
         Linker linker = new Linker(linkingRegistry);
-        IrProgram linkedIr = linker.link(rewrittenIr, layout, linkingContext, envProps);
+        // Reset the linking context's alias chain for the linking pass
+        LinkingContext linkContext = new LinkingContext();
+        linkContext.pushAliasChain(rootAliasChain);
+        IrProgram linkedIr = linker.link(rewrittenIr, layout, linkContext, envProps);
 
         // Phase 11: Emission (generate final binary)
+        org.evochora.compiler.backend.emit.EmissionContributorRegistry emissionContributorRegistry =
+                org.evochora.compiler.backend.emit.EmissionContributorRegistry.initializeWithDefaults();
         Emitter emitter = new Emitter();
         ProgramArtifact artifact;
         try {
             // Generate tokenLookup from tokenMap for efficient line-based lookup
             Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup = TokenMapGenerator.buildTokenLookup(tokenMap);
-            artifact = emitter.emit(linkedIr, layout, linkingContext, new RuntimeInstructionSetAdapter(), finalAliasMap, procNameToParamNames, sources, tokenMap, tokenLookup);
+            artifact = emitter.emit(linkedIr, layout, linkContext, new RuntimeInstructionSetAdapter(), finalAliasMap, emissionContributorRegistry, sources, tokenMap, tokenLookup);
         } catch (org.evochora.compiler.api.CompilationException ce) {
             throw ce; // already formatted with file/line
         } catch (RuntimeException re) {
@@ -310,7 +317,7 @@ public class Compiler implements ICompiler {
         org.evochora.compiler.diagnostics.CompilerLogger.debug("Compiler: " + programName + " programId:" + artifact.programId());
         return artifact;
     }
-    
+
     /**
      * Extracts procedure register aliases from the AST and adds them to the register aliases map.
      * This allows the AstPostProcessor to resolve procedure register aliases.
@@ -319,33 +326,43 @@ public class Compiler implements ICompiler {
      * @param registerAliases the map to populate with procedure register aliases
      */
     private void extractProcedureRegisterAliases(List<AstNode> ast, Map<String, String> registerAliases,
-                                                   Map<String, ModuleId> fileToModule) {
+                                                  String mainFilePath, String rootAliasChain) {
         for (AstNode node : ast) {
             if (node == null) continue;
 
             if (node instanceof PregNode pregNode) {
                 String qualifiedAlias = resolveQualifiedName(
-                    pregNode.alias().text(), pregNode.alias().fileName(), fileToModule);
+                    pregNode.alias().text(), pregNode.alias().fileName(),
+                    mainFilePath, rootAliasChain);
                 int registerIndex = pregNode.registerIndexValue();
                 String targetRegister = "%PR" + registerIndex;
                 registerAliases.put(qualifiedAlias, targetRegister);
             }
 
-            extractProcedureRegisterAliases(node.getChildren(), registerAliases, fileToModule);
+            extractProcedureRegisterAliases(node.getChildren(), registerAliases,
+                    mainFilePath, rootAliasChain);
         }
     }
 
+    /**
+     * Qualifies a local name with its module prefix.
+     * For tokens from the main file, uses rootAliasChain. For imported module tokens,
+     * falls back to file-derived name. This transitional helper will be deleted when
+     * extraction moves to the phases that track alias chains (Issues 6/7).
+     */
     private static String resolveQualifiedName(String localName, String fileName,
-                                                Map<String, ModuleId> fileToModule) {
-        ModuleId moduleId = fileToModule.get(fileName);
-        String moduleName = moduleId != null
-            ? ModuleId.deriveModuleName(moduleId.path())
-            : ModuleId.deriveModuleName(fileName);
-        return moduleName + "." + localName.toUpperCase();
+                                               String mainFilePath, String rootAliasChain) {
+        String moduleName;
+        if (mainFilePath != null && mainFilePath.equals(fileName)) {
+            moduleName = rootAliasChain;
+        } else {
+            moduleName = ModuleId.deriveModuleName(fileName);
+        }
+        if (moduleName != null && !moduleName.isEmpty()) {
+            return moduleName + "." + localName.toUpperCase();
+        }
+        return localName.toUpperCase();
     }
-    
-    
-    
 
 
     /**

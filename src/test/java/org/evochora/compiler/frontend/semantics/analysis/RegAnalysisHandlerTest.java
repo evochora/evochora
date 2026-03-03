@@ -42,7 +42,7 @@ class RegAnalysisHandlerTest {
 
         assertFalse(diagnostics.hasErrors());
         assertTrue(symbolTable.resolve("COUNTER", "test.s").isPresent());
-        assertEquals(Symbol.Type.ALIAS, symbolTable.resolve("COUNTER", "test.s").get().type());
+        assertEquals(Symbol.Type.ALIAS, symbolTable.resolve("COUNTER", "test.s").get().symbol().type());
     }
 
     @Test
@@ -56,7 +56,7 @@ class RegAnalysisHandlerTest {
 
         assertFalse(diagnostics.hasErrors());
         assertTrue(symbolTable.resolve("POSITION", "test.s").isPresent());
-        assertEquals(Symbol.Type.ALIAS, symbolTable.resolve("POSITION", "test.s").get().type());
+        assertEquals(Symbol.Type.ALIAS, symbolTable.resolve("POSITION", "test.s").get().symbol().type());
     }
 
     @Test

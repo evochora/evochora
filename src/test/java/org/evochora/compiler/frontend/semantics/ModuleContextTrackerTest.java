@@ -4,32 +4,27 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.parser.ast.PopCtxNode;
 import org.evochora.compiler.frontend.parser.ast.PushCtxNode;
-import org.evochora.compiler.api.SourceInfo;
-import org.evochora.compiler.model.ast.ISourceLocatable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * Unit tests for {@link ModuleContextTracker}.
  * Verifies that module context switching works correctly for
- * PushCtxNode, PopCtxNode, and ISourceLocatable nodes.
+ * PushCtxNode and PopCtxNode nodes using alias chains.
  */
 @Tag("unit")
 class ModuleContextTrackerTest {
 
-    private static final ModuleId MAIN = new ModuleId("/main.evo");
-    private static final ModuleId MATH = new ModuleId("/modules/math.evo");
-    private static final ModuleId MOVE = new ModuleId("/modules/movement.evo");
+    private static final String MAIN = "MAIN";
+    private static final String MATH = "MATH";
+    private static final String MOVE = "MOVE";
 
     private SymbolTable symbolTable;
-    private Map<String, ModuleId> fileToModule;
     private ModuleContextTracker tracker;
 
     @BeforeEach
@@ -37,122 +32,79 @@ class ModuleContextTrackerTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         symbolTable = new SymbolTable(diagnostics);
 
-        symbolTable.registerModule(MAIN, MAIN.path());
-        symbolTable.registerModule(MATH, MATH.path());
-        symbolTable.registerModule(MOVE, MOVE.path());
+        symbolTable.registerModule(MAIN, "/main.evo");
+        symbolTable.registerModule(MATH, "/modules/math.evo");
+        symbolTable.registerModule(MOVE, "/modules/movement.evo");
         symbolTable.setCurrentModule(MAIN);
 
-        fileToModule = new HashMap<>();
-        fileToModule.put(MAIN.path(), MAIN);
-        fileToModule.put(MATH.path(), MATH);
-        fileToModule.put(MOVE.path(), MOVE);
-
-        tracker = new ModuleContextTracker(symbolTable, fileToModule);
+        tracker = new ModuleContextTracker(symbolTable);
     }
 
     @Test
-    void pushCtxWithTargetPath_switchesToTargetModule() {
-        tracker.handleNode(new PushCtxNode(MATH.path()));
+    void pushCtxWithAliasChain_switchesToTargetModule() {
+        tracker.handleNode(new PushCtxNode("/modules/math.evo", MATH));
 
-        assertThat(symbolTable.getCurrentModuleId()).isEqualTo(MATH);
+        assertThat(symbolTable.getCurrentAliasChain()).isEqualTo(MATH);
     }
 
     @Test
-    void pushCtxWithoutTargetPath_keepsCurrentModule() {
-        tracker.handleNode(new PushCtxNode());
+    void pushCtxWithoutAliasChain_keepsCurrentModule() {
+        // .SOURCE: null alias chain preserves parent context
+        tracker.handleNode(new PushCtxNode("/some/source.evo", null));
 
-        assertThat(symbolTable.getCurrentModuleId()).isEqualTo(MAIN);
+        assertThat(symbolTable.getCurrentAliasChain()).isEqualTo(MAIN);
     }
 
     @Test
     void popCtx_restoresPreviousModule() {
-        tracker.handleNode(new PushCtxNode(MATH.path()));
-        assertThat(symbolTable.getCurrentModuleId()).isEqualTo(MATH);
+        tracker.handleNode(new PushCtxNode("/modules/math.evo", MATH));
+        assertThat(symbolTable.getCurrentAliasChain()).isEqualTo(MATH);
 
         tracker.handleNode(new PopCtxNode());
-        assertThat(symbolTable.getCurrentModuleId()).isEqualTo(MAIN);
-    }
-
-    @Test
-    void sourceLocatable_switchesModuleByFileName() {
-        AstNode nodeFromMath = new StubSourceLocatable(MATH.path());
-        tracker.handleNode(nodeFromMath);
-
-        assertThat(symbolTable.getCurrentModuleId()).isEqualTo(MATH);
-    }
-
-    @Test
-    void sourceLocatable_unknownFile_noSwitch() {
-        AstNode nodeFromUnknown = new StubSourceLocatable("/unknown.evo");
-        tracker.handleNode(nodeFromUnknown);
-
-        assertThat(symbolTable.getCurrentModuleId()).isEqualTo(MAIN);
+        assertThat(symbolTable.getCurrentAliasChain()).isEqualTo(MAIN);
     }
 
     @Test
     void nestedPushPop_importThenSource_restoresCorrectly() {
         // Simulate: .IMPORT math.evo → .SOURCE constants.evo → Pop SOURCE → Pop IMPORT
-        tracker.handleNode(new PushCtxNode(MATH.path()));       // enter math
-        assertThat(symbolTable.getCurrentModuleId()).isEqualTo(MATH);
+        tracker.handleNode(new PushCtxNode("/modules/math.evo", MATH));
+        assertThat(symbolTable.getCurrentAliasChain()).isEqualTo(MATH);
 
-        tracker.handleNode(new PushCtxNode());                  // enter .SOURCE (no target)
-        assertThat(symbolTable.getCurrentModuleId()).isEqualTo(MATH);
+        tracker.handleNode(new PushCtxNode("/constants.evo", null)); // .SOURCE (no alias chain)
+        assertThat(symbolTable.getCurrentAliasChain()).isEqualTo(MATH);
 
-        tracker.handleNode(new PopCtxNode());                   // leave .SOURCE
-        assertThat(symbolTable.getCurrentModuleId()).isEqualTo(MATH);
+        tracker.handleNode(new PopCtxNode());                        // leave .SOURCE
+        assertThat(symbolTable.getCurrentAliasChain()).isEqualTo(MATH);
 
-        tracker.handleNode(new PopCtxNode());                   // leave .IMPORT
-        assertThat(symbolTable.getCurrentModuleId()).isEqualTo(MAIN);
+        tracker.handleNode(new PopCtxNode());                        // leave .IMPORT
+        assertThat(symbolTable.getCurrentAliasChain()).isEqualTo(MAIN);
     }
 
     @Test
     void twoSequentialImports_correctContextPerBlock() {
         // .IMPORT math.evo
-        tracker.handleNode(new PushCtxNode(MATH.path()));
-        assertThat(symbolTable.getCurrentModuleId()).isEqualTo(MATH);
+        tracker.handleNode(new PushCtxNode("/modules/math.evo", MATH));
+        assertThat(symbolTable.getCurrentAliasChain()).isEqualTo(MATH);
         tracker.handleNode(new PopCtxNode());
-        assertThat(symbolTable.getCurrentModuleId()).isEqualTo(MAIN);
+        assertThat(symbolTable.getCurrentAliasChain()).isEqualTo(MAIN);
 
         // .IMPORT movement.evo
-        tracker.handleNode(new PushCtxNode(MOVE.path()));
-        assertThat(symbolTable.getCurrentModuleId()).isEqualTo(MOVE);
+        tracker.handleNode(new PushCtxNode("/modules/movement.evo", MOVE));
+        assertThat(symbolTable.getCurrentAliasChain()).isEqualTo(MOVE);
         tracker.handleNode(new PopCtxNode());
-        assertThat(symbolTable.getCurrentModuleId()).isEqualTo(MAIN);
+        assertThat(symbolTable.getCurrentAliasChain()).isEqualTo(MAIN);
     }
 
     @Test
-    void emptyFileToModule_noSwitchEver() {
-        ModuleContextTracker emptyTracker = new ModuleContextTracker(symbolTable, new HashMap<>());
-
-        emptyTracker.handleNode(new PushCtxNode(MATH.path()));
-        assertThat(symbolTable.getCurrentModuleId()).isEqualTo(MAIN);
-
-        emptyTracker.handleNode(new StubSourceLocatable(MATH.path()));
-        assertThat(symbolTable.getCurrentModuleId()).isEqualTo(MAIN);
-
-        emptyTracker.handleNode(new PopCtxNode());
-        assertThat(symbolTable.getCurrentModuleId()).isEqualTo(MAIN);
+    void pushCtxWithNoArgConstructor_keepsCurrentModule() {
+        tracker.handleNode(new PushCtxNode());
+        assertThat(symbolTable.getCurrentAliasChain()).isEqualTo(MAIN);
     }
 
     @Test
     void popCtxOnEmptyStack_noException() {
         // Should not throw even without a prior push
         tracker.handleNode(new PopCtxNode());
-        assertThat(symbolTable.getCurrentModuleId()).isEqualTo(MAIN);
-    }
-
-    /**
-     * Minimal ISourceLocatable stub for testing.
-     */
-    private record StubSourceLocatable(String fileName) implements AstNode, ISourceLocatable {
-        @Override
-        public SourceInfo sourceInfo() {
-            return new SourceInfo(fileName, 0, 0);
-        }
-
-        @Override
-        public List<AstNode> getChildren() {
-            return List.of();
-        }
+        assertThat(symbolTable.getCurrentAliasChain()).isEqualTo(MAIN);
     }
 }

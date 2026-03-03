@@ -7,7 +7,6 @@ import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.semantics.ModuleId;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.frontend.postprocess.AstPostProcessor;
@@ -51,26 +50,26 @@ public class RegDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics); // KORREKTUR
+        Parser parser = new Parser(tokens, diagnostics);
 
         // Act - Run full compiler pipeline up to AstPostProcessor
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
-        
+
         // Semantic Analysis - Populates symbol table with aliases
+        String rootAliasChain = "";
         SymbolTable symbolTable = new SymbolTable(diagnostics);
+        symbolTable.registerModule(rootAliasChain, "<memory>");
+        symbolTable.setCurrentModule(rootAliasChain);
         SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         semanticAnalyzer.analyze(ast);
-        
+
         // AST Post-Processing - Resolves register aliases
-        // Extract register aliases from parser (same as the real compiler does)
         Map<String, String> registerAliases = new HashMap<>();
         Map<String, org.evochora.compiler.model.token.Token> parserAliases = parser.getGlobalRegisterAliases();
-        
-        parserAliases.forEach((aliasName, registerToken) -> {
-            String moduleName = ModuleId.deriveModuleName(registerToken.fileName());
-            registerAliases.put(moduleName + "." + aliasName.toUpperCase(), registerToken.text());
-        });
-        
+
+        parserAliases.forEach((aliasName, registerToken) ->
+            registerAliases.put(aliasName.toUpperCase(), registerToken.text()));
+
         AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, registerAliases);
         List<AstNode> processedAst = ast.stream()
             .map(node -> astPostProcessor.process(node))
@@ -79,10 +78,10 @@ public class RegDirectiveTest {
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(processedAst).hasSize(2);
-        
+
         // First node should be the RegNode
         assertThat(processedAst.get(0)).isInstanceOf(org.evochora.compiler.frontend.parser.features.reg.RegNode.class);
-        
+
         // Second node should be the InstructionNode
         assertThat(processedAst.get(1)).isInstanceOf(InstructionNode.class);
         InstructionNode seti = (InstructionNode) processedAst.get(1);
@@ -202,21 +201,22 @@ public class RegDirectiveTest {
 
         // Act - Run full compiler pipeline up to AstPostProcessor
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
-        
+
         // Semantic Analysis - Populates symbol table with aliases
+        String rootAliasChain = "";
         SymbolTable symbolTable = new SymbolTable(diagnostics);
+        symbolTable.registerModule(rootAliasChain, "<memory>");
+        symbolTable.setCurrentModule(rootAliasChain);
         SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable);
         semanticAnalyzer.analyze(ast);
-        
+
         // AST Post-Processing - Resolves register aliases
         Map<String, String> registerAliases = new HashMap<>();
         Map<String, org.evochora.compiler.model.token.Token> parserAliases = parser.getGlobalRegisterAliases();
-        
-        parserAliases.forEach((aliasName, registerToken) -> {
-            String moduleName = ModuleId.deriveModuleName(registerToken.fileName());
-            registerAliases.put(moduleName + "." + aliasName.toUpperCase(), registerToken.text());
-        });
-        
+
+        parserAliases.forEach((aliasName, registerToken) ->
+            registerAliases.put(aliasName.toUpperCase(), registerToken.text()));
+
         AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, registerAliases);
         List<AstNode> processedAst = ast.stream()
             .map(node -> astPostProcessor.process(node))
@@ -225,10 +225,10 @@ public class RegDirectiveTest {
         // Assert - Should compile successfully
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(processedAst).hasSize(2);
-        
+
         // First node should be the RegNode
         assertThat(processedAst.get(0)).isInstanceOf(org.evochora.compiler.frontend.parser.features.reg.RegNode.class);
-        
+
         // Second node should be the InstructionNode
         assertThat(processedAst.get(1)).isInstanceOf(InstructionNode.class);
         InstructionNode dplr = (InstructionNode) processedAst.get(1);

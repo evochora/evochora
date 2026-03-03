@@ -3,7 +3,6 @@ package org.evochora.compiler.frontend.semantics.analysis;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.parser.features.importdir.ImportNode;
-import org.evochora.compiler.frontend.semantics.ModuleId;
 import org.evochora.compiler.frontend.semantics.ModuleScope;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 
@@ -24,7 +23,7 @@ public class ImportAnalysisHandler implements IAnalysisHandler {
         ImportNode importNode = (ImportNode) node;
         String alias = importNode.alias().text().toUpperCase();
 
-        ModuleScope currentModScope = symbolTable.getModuleScope(symbolTable.getCurrentModuleId()).orElse(null);
+        ModuleScope currentModScope = symbolTable.getModuleScope(symbolTable.getCurrentAliasChain()).orElse(null);
         if (currentModScope == null) {
             diagnostics.reportError(
                     "Internal error: no module scope registered for current module.",
@@ -33,8 +32,8 @@ public class ImportAnalysisHandler implements IAnalysisHandler {
             return;
         }
 
-        ModuleId importedModuleId = currentModScope.imports().get(alias);
-        if (importedModuleId == null) {
+        String importedAliasChain = currentModScope.imports().get(alias);
+        if (importedAliasChain == null) {
             diagnostics.reportError(
                     "Import alias '" + importNode.alias().text()
                             + "' is not registered in the module scope.",
@@ -43,7 +42,7 @@ public class ImportAnalysisHandler implements IAnalysisHandler {
             return;
         }
 
-        ModuleScope importedModScope = symbolTable.getModuleScope(importedModuleId).orElse(null);
+        ModuleScope importedModScope = symbolTable.getModuleScope(importedAliasChain).orElse(null);
 
         for (ImportNode.UsingClause using : importNode.usings()) {
             String sourceAlias = using.sourceAlias().text().toUpperCase();

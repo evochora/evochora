@@ -14,7 +14,7 @@ import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.frontend.postprocess.AstPostProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.semantics.ModuleContextTracker;
-import org.evochora.compiler.frontend.semantics.ModuleId;
+
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.model.token.Token;
@@ -262,6 +262,8 @@ class ModuleSourceDefineIntegrationTest {
     private PostProcessResult compileThroughPostProcess(String mainSource, String mainPath) {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
 
+        String rootAliasChain = "";
+
         // Phase 0: Dependency scanning
         SourceRootResolver resolver = new SourceRootResolver(
                 List.of(new SourceRoot(".", null)), tempDir);
@@ -285,9 +287,9 @@ class ModuleSourceDefineIntegrationTest {
         Lexer mainLexer = new Lexer(mainSource, diagnostics, mainPath);
         List<Token> mainTokens = new ArrayList<>(mainLexer.scanTokens());
 
-        // Phase 2: Preprocessing
+        // Phase 2: Preprocessing (with root alias chain for alias chain tracking)
         PreProcessor preProcessor = new PreProcessor(mainTokens, diagnostics, resolver,
-                moduleTokens.isEmpty() ? null : moduleTokens);
+                moduleTokens.isEmpty() ? null : moduleTokens, rootAliasChain);
         List<Token> processedTokens = preProcessor.expand();
         if (diagnostics.hasErrors()) return new PostProcessResult(diagnostics, List.of());
 
@@ -296,15 +298,9 @@ class ModuleSourceDefineIntegrationTest {
         List<AstNode> ast = new ArrayList<>(parser.parse());
         if (diagnostics.hasErrors()) return new PostProcessResult(diagnostics, ast);
 
-        // Build file-to-module mapping
-        Map<String, ModuleId> fileToModule = new HashMap<>();
-        for (ModuleDescriptor module : graph.topologicalOrder()) {
-            fileToModule.put(module.sourcePath(), module.id());
-        }
-
-        // Phase 4: Semantic analysis
+        // Phase 4: Semantic analysis (uses rootAliasChain instead of fileToModule)
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainPath, fileToModule);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainPath, rootAliasChain);
         analyzer.analyze(ast);
         if (diagnostics.hasErrors()) return new PostProcessResult(diagnostics, ast);
 
@@ -312,7 +308,8 @@ class ModuleSourceDefineIntegrationTest {
         Map<String, String> registerAliases = new HashMap<>();
         parser.getGlobalRegisterAliases().forEach((name, token) -> registerAliases.put(name, token.text()));
 
-        ModuleContextTracker tracker = new ModuleContextTracker(symbolTable, fileToModule);
+        ModuleContextTracker tracker = new ModuleContextTracker(symbolTable);
+        symbolTable.setCurrentModule(rootAliasChain);
         AstPostProcessor postProcessor = new AstPostProcessor(symbolTable, registerAliases, tracker);
         for (int i = 0; i < ast.size(); i++) {
             ast.set(i, postProcessor.process(ast.get(i)));

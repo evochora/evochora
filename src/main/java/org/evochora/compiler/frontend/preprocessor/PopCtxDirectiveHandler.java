@@ -18,6 +18,7 @@ class PopCtxDirectiveHandler implements IPreProcessorDirectiveHandler {
             preProcessor.popSourceChain();
         } else if ("IMPORT".equals(token.value())) {
             preProcessor.popImportChain();
+            preProcessorContext.popAliasChain();
         }
     }
 }

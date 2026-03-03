@@ -2,9 +2,11 @@ package org.evochora.compiler.backend.link;
 
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.backend.layout.LayoutResult;
+import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrItem;
 import org.evochora.compiler.model.ir.IrProgram;
+import org.evochora.compiler.model.ir.IrValue;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.runtime.model.EnvironmentProperties;
 
@@ -40,6 +42,21 @@ public final class Linker {
         IInstructionSet isa = new org.evochora.compiler.isa.RuntimeInstructionSetAdapter();
 
         for (IrItem item : program.items()) {
+            // Track alias chain from push_ctx/pop_ctx directives
+            if (item instanceof IrDirective dir && "core".equals(dir.namespace())) {
+                if ("push_ctx".equals(dir.name())) {
+                    IrValue chainValue = dir.args().get("aliasChain");
+                    if (chainValue instanceof IrValue.Str s) {
+                        context.pushAliasChain(s.value());
+                    } else {
+                        // .SOURCE: no aliasChain arg. Push current chain so pop is symmetric.
+                        context.pushAliasChain(context.currentAliasChain());
+                    }
+                } else if ("pop_ctx".equals(dir.name())) {
+                    context.popAliasChain();
+                }
+            }
+
             if (item instanceof IrInstruction ins) {
                 if ("CALL".equalsIgnoreCase(ins.opcode())) {
                     int[] bindings = context.resolvePendingBinding(ins, isa);

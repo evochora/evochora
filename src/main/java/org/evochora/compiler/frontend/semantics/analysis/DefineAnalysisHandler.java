@@ -17,8 +17,7 @@ public class DefineAnalysisHandler implements IAnalysisHandler {
     @Override
     public void analyze(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         if (node instanceof DefineNode defineNode) {
-            symbolTable.define(new Symbol(defineNode.name(), Symbol.Type.CONSTANT));
-            symbolTable.registerDefineMeta(defineNode.name(), defineNode.exported());
+            symbolTable.define(new Symbol(defineNode.name(), Symbol.Type.CONSTANT, null, defineNode.exported()));
         }
     }
 }

@@ -22,7 +22,7 @@ public final class LabelNodeConverter implements IAstNodeToIrConverter<LabelNode
 	 */
 	@Override
 	public void convert(LabelNode node, IrGenContext ctx) {
-		String qualifiedName = ctx.qualifyName(node.labelToken().text(), node.labelToken().fileName());
+		String qualifiedName = ctx.qualifyName(node.labelToken().text());
 		ctx.emit(new IrLabelDef(qualifiedName, ctx.sourceOf(node)));
 		AstNode stmt = node.statement();
 		if (stmt != null) {

@@ -29,7 +29,7 @@ public final class ProcedureNodeConverter implements IAstNodeToIrConverter<Proce
 	@Override
 	public void convert(ProcedureNode node, IrGenContext ctx) {
 		// Define a module-qualified label at the procedure entry so CALL <name> can link to it
-		String qualifiedName = ctx.qualifyName(node.name().text(), node.name().fileName());
+		String qualifiedName = ctx.qualifyName(node.name().text());
 		ctx.emit(new org.evochora.compiler.model.ir.IrLabelDef(qualifiedName, ctx.sourceOf(node)));
 		// Install parameter names for this procedure scope so identifiers can resolve to %FPRx
 		// Collect all parameters (old-style, REF, and VAL) into a single list

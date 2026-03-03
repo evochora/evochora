@@ -4,7 +4,6 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.module.DependencyGraph;
 import org.evochora.compiler.frontend.module.ModuleDescriptor;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.model.ast.ISourceLocatable;
 import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
 import org.evochora.compiler.frontend.semantics.analysis.ISymbolCollector;
 
@@ -20,8 +19,8 @@ import java.util.Optional;
  *
  * <p>In multi-module compilation, the analyzer receives a {@link DependencyGraph} at construction
  * time and sets up module relationships (imports, requires, USING bindings) in the symbol table
- * before analysis begins. During traversal, it auto-switches the symbol table's current module
- * context based on the source file of each AST node via the {@link ISourceLocatable} interface.
+ * before analysis begins. During traversal, it switches module context using PushCtxNode/PopCtxNode
+ * markers carrying alias chains from the preprocessor.</p>
  */
 public class SemanticAnalyzer {
 
@@ -39,28 +38,28 @@ public class SemanticAnalyzer {
      * @param symbolTable The symbol table to use for analysis.
      */
     public SemanticAnalyzer(DiagnosticsEngine diagnostics, SymbolTable symbolTable) {
-        this(diagnostics, symbolTable, null, null, new HashMap<>());
+        this(diagnostics, symbolTable, null, null, null);
     }
 
     /**
      * Constructs a module-aware semantic analyzer.
      *
-     * @param diagnostics  The diagnostics engine for reporting errors.
-     * @param symbolTable  The symbol table to use for analysis.
-     * @param graph        The dependency graph from Phase 0. Null for single-file compilation.
-     * @param mainFilePath The absolute path of the main source file. Null when graph is null.
-     * @param fileToModule Mapping from source file path to module ID, built by the Compiler.
+     * @param diagnostics    The diagnostics engine for reporting errors.
+     * @param symbolTable    The symbol table to use for analysis.
+     * @param graph          The dependency graph from Phase 0. Null for single-file compilation.
+     * @param mainFilePath   The absolute path of the main source file. Null when graph is null.
+     * @param rootAliasChain The alias chain for the root module (e.g., "MAIN"). Null when graph is null.
      */
     public SemanticAnalyzer(DiagnosticsEngine diagnostics, SymbolTable symbolTable,
                             DependencyGraph graph, String mainFilePath,
-                            Map<String, ModuleId> fileToModule) {
+                            String rootAliasChain) {
         this.diagnostics = diagnostics;
         this.symbolTable = symbolTable;
-        this.contextTracker = new ModuleContextTracker(symbolTable, fileToModule);
+        this.contextTracker = new ModuleContextTracker(symbolTable);
         this.registry = AnalysisHandlerRegistry.initializeWithDefaults(symbolTable, scopeMap, diagnostics);
 
-        if (graph != null) {
-            setupModuleRelationships(graph, mainFilePath);
+        if (graph != null && rootAliasChain != null) {
+            setupModuleRelationships(graph, mainFilePath, rootAliasChain);
         }
     }
 
@@ -124,44 +123,81 @@ public class SemanticAnalyzer {
 
     /**
      * Sets up module relationships in the symbol table from the dependency graph.
-     * Registers all modules and their import/require/USING relationships.
+     * Each module is registered under its alias chain, which is computed from the
+     * import hierarchy. The root module uses rootAliasChain, imported modules use
+     * their import alias appended to the parent's chain.
      */
-    private void setupModuleRelationships(DependencyGraph graph, String mainFilePath) {
-        for (ModuleDescriptor module : graph.topologicalOrder()) {
-            ModuleId moduleId = module.id();
-            symbolTable.registerModule(moduleId, module.sourcePath());
+    private void setupModuleRelationships(DependencyGraph graph, String mainFilePath, String rootAliasChain) {
+        List<ModuleDescriptor> topoOrder = graph.topologicalOrder();
 
-            ModuleScope modScope = symbolTable.getModuleScope(moduleId).orElseThrow();
+        // Pass 1: Compute alias chains for all modules, starting from root.
+        // Reverse topological order processes the root first, then its dependencies,
+        // ensuring parent alias chains are available before child chains.
+        Map<String, String> pathToAliasChain = new HashMap<>();
+        pathToAliasChain.put(mainFilePath, rootAliasChain);
+
+        List<ModuleDescriptor> fromRoot = new java.util.ArrayList<>(topoOrder);
+        java.util.Collections.reverse(fromRoot);
+        for (ModuleDescriptor module : fromRoot) {
+            String modulePath = module.sourcePath();
+            String moduleAliasChain = pathToAliasChain.get(modulePath);
+            if (moduleAliasChain == null) {
+                moduleAliasChain = ModuleId.deriveModuleName(modulePath);
+                pathToAliasChain.put(modulePath, moduleAliasChain);
+            }
+            for (ModuleDescriptor.ImportDecl imp : module.imports()) {
+                String importedPath = imp.resolvedId().path();
+                String importAlias = imp.alias().toUpperCase();
+                String importedAliasChain = moduleAliasChain.isEmpty()
+                        ? importAlias
+                        : moduleAliasChain + "." + importAlias;
+                pathToAliasChain.put(importedPath, importedAliasChain);
+            }
+        }
+
+        // Pass 2: Register all modules under their correct alias chains and populate relationships.
+        for (ModuleDescriptor module : topoOrder) {
+            String modulePath = module.sourcePath();
+            String moduleAliasChain = pathToAliasChain.getOrDefault(modulePath,
+                    ModuleId.deriveModuleName(modulePath));
+            symbolTable.registerModule(moduleAliasChain, modulePath);
+
+            ModuleScope modScope = symbolTable.getModuleScope(moduleAliasChain).orElseThrow();
 
             for (ModuleDescriptor.ImportDecl imp : module.imports()) {
-                modScope.imports().put(imp.alias().toUpperCase(), imp.resolvedId());
+                String importAlias = imp.alias().toUpperCase();
+                String importedAliasChain = pathToAliasChain.get(imp.resolvedId().path());
+                modScope.imports().put(importAlias, importedAliasChain);
             }
 
             for (ModuleDescriptor.RequireDecl req : module.requires()) {
                 modScope.requires().put(req.alias().toUpperCase(), req.path());
             }
-
         }
 
-        // Set up USING bindings: each USING clause on an import wires a source module
-        // into the imported module's scope under its required alias
-        for (ModuleDescriptor module : graph.topologicalOrder()) {
+        // Pass 3: Set up USING bindings (requires all modules to be registered first).
+        for (ModuleDescriptor module : topoOrder) {
+            String modulePath = module.sourcePath();
+            String moduleAliasChain = pathToAliasChain.get(modulePath);
+            if (moduleAliasChain == null) continue;
+
             for (ModuleDescriptor.ImportDecl imp : module.imports()) {
-                ModuleScope importedModScope = symbolTable.getModuleScope(imp.resolvedId()).orElse(null);
+                String importedAliasChain = pathToAliasChain.get(imp.resolvedId().path());
+                ModuleScope importedModScope = symbolTable.getModuleScope(importedAliasChain).orElse(null);
                 if (importedModScope == null) continue;
 
                 for (ModuleDescriptor.UsingDecl using : imp.usings()) {
                     String sourceAlias = using.sourceAlias().toUpperCase();
-                    ModuleScope importerScope = symbolTable.getModuleScope(module.id()).orElseThrow();
-                    ModuleId sourceModuleId = importerScope.imports().get(sourceAlias);
-                    if (sourceModuleId != null) {
-                        importedModScope.usingBindings().put(using.targetAlias().toUpperCase(), sourceModuleId);
+                    ModuleScope importerScope = symbolTable.getModuleScope(moduleAliasChain).orElseThrow();
+                    String sourceAliasChain = importerScope.imports().get(sourceAlias);
+                    if (sourceAliasChain != null) {
+                        importedModScope.usingBindings().put(using.targetAlias().toUpperCase(), sourceAliasChain);
                     }
                 }
             }
         }
 
-        symbolTable.setCurrentModule(new ModuleId(mainFilePath));
+        symbolTable.setCurrentModule(rootAliasChain);
     }
 
     /**

@@ -1,8 +1,6 @@
 package org.evochora.datapipeline.services;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -21,7 +19,6 @@ import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceRoot;
-import org.evochora.compiler.frontend.module.SourceRootResolver;
 import org.evochora.datapipeline.api.contracts.CallSiteBinding;
 import org.evochora.datapipeline.api.contracts.ColumnTokenLookup;
 import org.evochora.datapipeline.api.contracts.FileTokenLookup;
@@ -404,15 +401,11 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         }
         EnvironmentProperties envProps = new EnvironmentProperties(shape, isToroidal);
 
-        SourceRootResolver tempResolver = new SourceRootResolver(compilerOptions.sourceRoots(), Paths.get(""));
-
         for (Config orgConfig : organismConfigs) {
             String programPath = orgConfig.getString("program");
             if (!programInfo.containsKey(programPath)) {
                 try {
-                    String resolvedPath = tempResolver.resolve(programPath, "");
-                    String source = Files.readString(Paths.get(resolvedPath));
-                    ProgramArtifact artifact = compiler.compile(List.of(source.split("\n")), resolvedPath, envProps, compilerOptions);
+                    ProgramArtifact artifact = compiler.compile(programPath, envProps, compilerOptions);
                     programInfo.put(programPath, new ProgramInfo(programPath, artifact.programId(), artifact));
                     compiledPrograms.put(artifact.programId(), artifact);
                 } catch (CompilationException e) {

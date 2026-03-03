@@ -9,8 +9,6 @@ import org.evochora.compiler.model.ast.ISourceLocatable;
 import org.evochora.compiler.model.ir.IrItem;
 import org.evochora.compiler.model.ir.IrProgram;
 
-import org.evochora.compiler.frontend.semantics.ModuleId;
-
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
@@ -20,31 +18,32 @@ import java.util.ArrayDeque;
 
 /**
  * Mutable context passed to converters during IR generation.
- * Provides emission utilities, diagnostics access, and SourceInfo construction.
+ * Provides emission utilities, diagnostics access, SourceInfo construction,
+ * and alias-chain-based module qualification.
  */
 public final class IrGenContext {
 
 	private final String programName;
 	private final DiagnosticsEngine diagnostics;
 	private final IrConverterRegistry registry;
-	private final Map<String, ModuleId> fileToModule;
 	private final List<IrItem> out = new ArrayList<>();
 	private final Deque<Map<String, Integer>> procParamScopes = new ArrayDeque<>();
 	private final Map<String, org.evochora.compiler.model.ir.IrOperand> constantByNameUpper = new HashMap<>();
+	private final Deque<String> aliasChainStack = new ArrayDeque<>();
 
 	/**
 	 * Constructs a new IR generation context.
-	 * @param programName The name of the program being compiled.
-	 * @param diagnostics The diagnostics engine for reporting errors and warnings.
-	 * @param registry The registry for resolving AST node converters.
-	 * @param fileToModule Mapping from source file paths to their module identifiers.
+	 * @param programName    The name of the program being compiled.
+	 * @param diagnostics    The diagnostics engine for reporting errors and warnings.
+	 * @param registry       The registry for resolving AST node converters.
+	 * @param rootAliasChain The alias chain for the root module (e.g., "MAIN").
 	 */
 	public IrGenContext(String programName, DiagnosticsEngine diagnostics, IrConverterRegistry registry,
-						Map<String, ModuleId> fileToModule) {
+						String rootAliasChain) {
 		this.programName = programName;
 		this.diagnostics = diagnostics;
 		this.registry = registry;
-		this.fileToModule = fileToModule != null ? fileToModule : Map.of();
+		aliasChainStack.push(rootAliasChain != null ? rootAliasChain : "");
 	}
 
 	/**
@@ -121,20 +120,44 @@ public final class IrGenContext {
 		return java.util.Optional.empty();
 	}
 
+	// --- Alias chain stack management ---
+
+	/**
+	 * Pushes an alias chain when entering an imported module.
+	 */
+	public void pushAliasChain(String aliasChain) {
+		aliasChainStack.push(aliasChain != null ? aliasChain : currentAliasChain());
+	}
+
+	/**
+	 * Pops the alias chain when leaving an imported module.
+	 */
+	public void popAliasChain() {
+		if (aliasChainStack.size() > 1) {
+			aliasChainStack.pop();
+		}
+	}
+
+	/**
+	 * Returns the current alias chain.
+	 */
+	public String currentAliasChain() {
+		return aliasChainStack.peek();
+	}
+
 	// --- Module-qualified naming ---
 
 	/**
-	 * Qualifies a local name with its module prefix derived from the source file.
+	 * Qualifies a local name with its module prefix derived from the current alias chain.
 	 * @param localName The unqualified name (e.g., "HARVEST").
-	 * @param fileName The source file path where the name is defined.
 	 * @return The module-qualified name (e.g., "ENERGY.HARVEST").
 	 */
-	public String qualifyName(String localName, String fileName) {
-		ModuleId moduleId = fileToModule.get(fileName);
-		String moduleName = moduleId != null
-			? ModuleId.deriveModuleName(moduleId.path())
-			: ModuleId.deriveModuleName(fileName);
-		return moduleName + "." + localName.toUpperCase();
+	public String qualifyName(String localName) {
+		String chain = currentAliasChain();
+		if (chain != null && !chain.isEmpty()) {
+			return chain + "." + localName.toUpperCase();
+		}
+		return localName.toUpperCase();
 	}
 
 	// --- Constant registry for .DEFINE ---
@@ -143,11 +166,10 @@ public final class IrGenContext {
 	 * Registers a named constant with module qualification.
 	 * @param nameUpper The upper-case name of the constant.
 	 * @param value The operand value.
-	 * @param fileName The source file where the constant is defined.
 	 */
-	public void registerConstant(String nameUpper, org.evochora.compiler.model.ir.IrOperand value, String fileName) {
+	public void registerConstant(String nameUpper, org.evochora.compiler.model.ir.IrOperand value) {
 		if (nameUpper != null && value != null) {
-			String qualifiedKey = qualifyName(nameUpper, fileName);
+			String qualifiedKey = qualifyName(nameUpper);
 			constantByNameUpper.put(qualifiedKey, value);
 		}
 	}
@@ -155,11 +177,10 @@ public final class IrGenContext {
 	/**
 	 * Resolves a named constant using module-qualified lookup.
 	 * @param nameUpper The upper-case name of the constant to resolve.
-	 * @param fileName The source file requesting the constant (for module context).
 	 * @return The operand value if found, otherwise empty.
 	 */
-	public java.util.Optional<org.evochora.compiler.model.ir.IrOperand> resolveConstant(String nameUpper, String fileName) {
-		String qualifiedKey = qualifyName(nameUpper, fileName);
+	public java.util.Optional<org.evochora.compiler.model.ir.IrOperand> resolveConstant(String nameUpper) {
+		String qualifiedKey = qualifyName(nameUpper);
 		return java.util.Optional.ofNullable(constantByNameUpper.get(qualifiedKey));
 	}
 }

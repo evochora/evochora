@@ -3,6 +3,8 @@ package org.evochora.compiler.backend.link;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.isa.IInstructionSet;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -16,6 +18,7 @@ public final class LinkingContext {
     private int linearAddressCursor = 0;
     private final Map<Integer, int[]> callSiteBindings = new HashMap<>();
     private final Map<IrInstruction, List<String>> pendingBindings = new IdentityHashMap<>();
+    private final Deque<String> aliasChainStack = new ArrayDeque<>();
 
 
     /**
@@ -56,5 +59,30 @@ public final class LinkingContext {
             ids[i] = isa.resolveRegisterToken(regNames.get(i)).orElse(-1);
         }
         return ids;
+    }
+
+    // --- Alias chain stack for module context tracking ---
+
+    /**
+     * Pushes an alias chain when entering an imported module.
+     */
+    public void pushAliasChain(String aliasChain) {
+        aliasChainStack.push(aliasChain);
+    }
+
+    /**
+     * Pops the alias chain when leaving an imported module.
+     */
+    public void popAliasChain() {
+        if (!aliasChainStack.isEmpty()) {
+            aliasChainStack.pop();
+        }
+    }
+
+    /**
+     * Returns the current alias chain, or empty string if the stack is empty.
+     */
+    public String currentAliasChain() {
+        return aliasChainStack.isEmpty() ? "" : aliasChainStack.peek();
     }
 }

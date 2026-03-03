@@ -4,6 +4,7 @@ import org.evochora.compiler.frontend.io.SourceLoader;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.lexer.Lexer;
+import org.evochora.compiler.frontend.module.PlacementContext;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorDirectiveHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
@@ -79,8 +80,9 @@ public class SourceDirectiveHandler implements IPreProcessorDirectiveHandler {
                 }
             }
 
-            // Inject context management directives
-            newTokens.add(0, new Token(TokenType.DIRECTIVE, ".PUSH_CTX", null, pathToken.line(), 0, pathToken.fileName()));
+            // Inject context management directives — null alias chain preserves parent's context
+            PlacementContext placementCtx = new PlacementContext(logicalName, null);
+            newTokens.add(0, new Token(TokenType.DIRECTIVE, ".PUSH_CTX", placementCtx, pathToken.line(), 0, pathToken.fileName()));
             newTokens.add(new Token(TokenType.DIRECTIVE, ".POP_CTX", "SOURCE", pathToken.line(), 0, pathToken.fileName()));
 
             preProcessor.removeTokens(startIndex, endIndex - startIndex);

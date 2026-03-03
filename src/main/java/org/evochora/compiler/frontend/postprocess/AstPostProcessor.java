@@ -7,7 +7,7 @@ import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.frontend.parser.features.def.DefineNode;
 import org.evochora.compiler.frontend.semantics.ModuleContextTracker;
-import org.evochora.compiler.frontend.semantics.ModuleId;
+import org.evochora.compiler.frontend.semantics.ResolvedSymbol;
 import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.api.SourceInfo;
@@ -25,7 +25,7 @@ public class AstPostProcessor {
     private final SymbolTable symbolTable;
     private final ModuleContextTracker contextTracker;
     private final Map<String, String> registerAliases;    // %COUNTER -> %DR0, %TMP -> %PR0
-    // Module-qualified constants: modulePath -> (constantName -> value)
+    // Module-qualified constants: aliasChain -> (constantName -> value)
     private final Map<String, Map<String, TypedLiteralNode>> constants;
     private final Map<AstNode, AstNode> replacements = new HashMap<>();
 
@@ -33,7 +33,7 @@ public class AstPostProcessor {
      * Constructs a post-processor for single-file compilation (no module context).
      */
     public AstPostProcessor(SymbolTable symbolTable, Map<String, String> registerAliases) {
-        this(symbolTable, registerAliases, new ModuleContextTracker(symbolTable, new HashMap<>()));
+        this(symbolTable, registerAliases, new ModuleContextTracker(symbolTable));
     }
 
     /**
@@ -77,28 +77,28 @@ public class AstPostProcessor {
             collectPass(child);
         }
     }
-    
+
 
 
     private void collectReplacements(AstNode node) {
         if (!(node instanceof IdentifierNode idNode)) {
             return;
         }
-        
+
         String identifierName = idNode.text();
-        
+
         // Check if this identifier is a register alias (module-qualified keys)
         String upperName = identifierName.toUpperCase();
-        String qualifiedAlias = qualifyAliasName(upperName, idNode.sourceInfo().fileName());
+        String qualifiedAlias = qualifyAliasName(upperName);
         if (registerAliases.containsKey(qualifiedAlias)) {
             createRegisterReplacement(idNode, upperName, registerAliases.get(qualifiedAlias));
             return;
         }
-        
+
         // Check if this identifier is a constant
-        Optional<Symbol> symbolOpt = symbolTable.resolve(idNode.text(), idNode.sourceInfo().fileName());
+        Optional<ResolvedSymbol> symbolOpt = symbolTable.resolve(idNode.text(), idNode.sourceInfo().fileName());
         if (symbolOpt.isPresent()) {
-            Symbol symbol = symbolOpt.get();
+            Symbol symbol = symbolOpt.get().symbol();
             if (symbol.type() == Symbol.Type.CONSTANT) {
                 String moduleKey = currentModuleKey();
                 Map<String, TypedLiteralNode> moduleConstants = constants.get(moduleKey);
@@ -108,19 +108,19 @@ public class AstPostProcessor {
             }
         }
     }
-    
-    
+
+
     private String currentModuleKey() {
-        ModuleId moduleId = symbolTable.getCurrentModuleId();
-        return moduleId != null ? moduleId.path() : "";
+        String chain = symbolTable.getCurrentAliasChain();
+        return chain != null ? chain : "";
     }
 
-    private String qualifyAliasName(String upperName, String fileName) {
-        ModuleId moduleId = symbolTable.getCurrentModuleId();
-        String moduleName = moduleId != null
-            ? ModuleId.deriveModuleName(moduleId.path())
-            : ModuleId.deriveModuleName(fileName);
-        return moduleName + "." + upperName;
+    private String qualifyAliasName(String upperName) {
+        String chain = symbolTable.getCurrentAliasChain();
+        if (chain != null && !chain.isEmpty()) {
+            return chain + "." + upperName;
+        }
+        return upperName;
     }
 
     /**
@@ -134,7 +134,7 @@ public class AstPostProcessor {
         if (!(originalNode instanceof IdentifierNode idNode)) {
             throw new IllegalArgumentException("Expected IdentifierNode, got: " + originalNode.getClass().getSimpleName());
         }
-        
+
         SourceInfo sourceInfo = idNode.sourceInfo();
 
         RegisterNode replacement = new RegisterNode(
@@ -144,7 +144,7 @@ public class AstPostProcessor {
         );
         replacements.put(originalNode, replacement);
     }
-    
+
     private void collectConstants(AstNode node) {
         if (!(node instanceof DefineNode defineNode)) {
             return;

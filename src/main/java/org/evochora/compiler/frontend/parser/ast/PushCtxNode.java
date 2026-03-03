@@ -7,19 +7,25 @@ import org.evochora.compiler.model.ast.AstNode;
  * This is an internal directive injected by the preprocessor.
  *
  * <p>For .IMPORT directives, the target path identifies the imported module
- * so the module context can switch immediately upon entering the block.
- * For .SOURCE directives, the target path is null — the enclosing module
+ * and the alias chain identifies its placement in the import hierarchy.
+ * For .SOURCE directives, the alias chain is null — the enclosing module
  * context is preserved.</p>
  */
 public class PushCtxNode implements AstNode {
     private final String targetPath;
+    private final String aliasChain;
 
     public PushCtxNode() {
-        this(null);
+        this(null, null);
     }
 
     public PushCtxNode(String targetPath) {
+        this(targetPath, null);
+    }
+
+    public PushCtxNode(String targetPath, String aliasChain) {
         this.targetPath = targetPath;
+        this.aliasChain = aliasChain;
     }
 
     /**
@@ -27,5 +33,13 @@ public class PushCtxNode implements AstNode {
      */
     public String targetPath() {
         return targetPath;
+    }
+
+    /**
+     * Returns the import alias chain (e.g., "PRED.MATH") for .IMPORT placements,
+     * or null for .SOURCE text inclusions.
+     */
+    public String aliasChain() {
+        return aliasChain;
     }
 }

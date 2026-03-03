@@ -2,6 +2,8 @@ package org.evochora.compiler.frontend.preprocessor;
 
 import org.evochora.compiler.frontend.preprocessor.features.macro.MacroDefinition;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -9,10 +11,23 @@ import java.util.Optional;
 /**
  * A shared context for the preprocessor phase.
  * Contains all global states that are modified or read by directive handlers
- * during preprocessing (e.g., macro and routine tables).
+ * during preprocessing (e.g., macro and routine tables, alias chain stack).
  */
 public class PreProcessorContext {
     private final Map<String, MacroDefinition> macroTable = new HashMap<>();
+    private final Deque<String> aliasChainStack = new ArrayDeque<>();
+
+    /**
+     * @param rootAliasChain The alias chain for the compilation root module (e.g., "MAIN").
+     *                       Empty string for the default/root module.
+     */
+    public PreProcessorContext(String rootAliasChain) {
+        aliasChainStack.push(rootAliasChain != null ? rootAliasChain : "");
+    }
+
+    public PreProcessorContext() {
+        this("");
+    }
 
     /**
      * Registers a new macro definition.
@@ -29,5 +44,31 @@ public class PreProcessorContext {
      */
     public Optional<MacroDefinition> getMacro(String name) {
         return Optional.ofNullable(macroTable.get(name.toUpperCase()));
+    }
+
+    // --- Alias chain stack ---
+
+    /**
+     * Returns the current import alias chain (e.g., "PRED.MATH").
+     */
+    public String currentAliasChain() {
+        return aliasChainStack.peek();
+    }
+
+    /**
+     * Pushes a new alias chain when entering an imported module.
+     * @param aliasChain The full alias chain for the entered module.
+     */
+    public void pushAliasChain(String aliasChain) {
+        aliasChainStack.push(aliasChain);
+    }
+
+    /**
+     * Pops the alias chain when leaving an imported module.
+     */
+    public void popAliasChain() {
+        if (aliasChainStack.size() > 1) {
+            aliasChainStack.pop();
+        }
     }
 }

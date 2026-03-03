@@ -21,6 +21,7 @@ public class ImportDirectiveHandler implements IParserDirectiveHandler {
 
     @Override
     public AstNode parse(ParsingContext context) {
+        boolean exported = context.isExported();
         context.advance(); // consume .IMPORT
 
         Token pathToken = context.consume(TokenType.STRING, "Expected a file path in quotes after .IMPORT.");
@@ -67,6 +68,6 @@ public class ImportDirectiveHandler implements IParserDirectiveHandler {
             }
         }
 
-        return new ImportNode(pathToken, aliasToken, usings);
+        return new ImportNode(pathToken, aliasToken, usings, exported);
     }
 }

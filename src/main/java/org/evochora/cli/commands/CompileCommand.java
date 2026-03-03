@@ -6,7 +6,6 @@ import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceRoot;
-import org.evochora.compiler.frontend.module.SourceRootResolver;
 import org.evochora.compiler.internal.LinearizedProgramArtifact;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -15,9 +14,6 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
 import java.io.PrintWriter;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -56,15 +52,13 @@ public class CompileCommand implements Callable<Integer> {
     public Integer call() throws Exception {
         Instruction.init();
 
-        CompilerOptions compilerOptions = buildCompilerOptions();
-        SourceRootResolver resolver = new SourceRootResolver(compilerOptions.sourceRoots(), Paths.get(""));
-        String resolvedPath = resolver.resolve(file, "");
-
-        List<String> sourceLines = Files.readAllLines(Path.of(resolvedPath));
+        CompilerOptions compilerOptions = (sourceRootArgs != null && !sourceRootArgs.isEmpty())
+                ? buildCompilerOptions()
+                : null;
         EnvironmentProperties envProps = parseEnvironmentProperties(env);
 
         Compiler compiler = new Compiler();
-        ProgramArtifact artifact = compiler.compile(sourceLines, resolvedPath, envProps, compilerOptions);
+        ProgramArtifact artifact = compiler.compile(file, envProps, compilerOptions);
         LinearizedProgramArtifact linearizedArtifact = artifact.toLinearized(envProps);
 
         Gson gson = new GsonBuilder().setPrettyPrinting().create();

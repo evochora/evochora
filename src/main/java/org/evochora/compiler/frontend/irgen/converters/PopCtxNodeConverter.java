@@ -7,11 +7,10 @@ import org.evochora.compiler.model.ir.IrDirective;
 
 import java.util.Collections;
 
-//public class PopCtxNodeConverter implements IAstNodeToIrConverter {
 public class PopCtxNodeConverter implements IAstNodeToIrConverter<PopCtxNode> {
     @Override
-    //public void convert(AstNode node, IrGenContext context) {
     public void convert(PopCtxNode node, IrGenContext context) {
+        context.popAliasChain();
         context.emit(new IrDirective("core", "pop_ctx", Collections.emptyMap(), context.sourceOf(node)));
     }
 }
