@@ -15,8 +15,14 @@ import org.evochora.compiler.frontend.module.DependencyScanner;
 import org.evochora.compiler.frontend.module.ModuleDescriptor;
 import org.evochora.compiler.frontend.module.SourceRootResolver;
 import org.evochora.compiler.frontend.parser.Parser;
+import org.evochora.compiler.frontend.preprocessor.PopCtxDirectiveHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
+import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorResult;
+import org.evochora.compiler.frontend.preprocessor.features.importdir.ImportSourceHandler;
+import org.evochora.compiler.frontend.preprocessor.features.macro.MacroDirectiveHandler;
+import org.evochora.compiler.frontend.preprocessor.features.source.SourceDirectiveHandler;
+import org.evochora.compiler.features.repeat.RepeatFeature;
 import org.evochora.compiler.frontend.semantics.ModuleContextTracker;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -161,6 +167,10 @@ public class Compiler implements ICompiler {
 
         String fullSource = String.join("\n", sourceLines) + "\n";
 
+        // Feature registration
+        FeatureRegistry featureRegistry = new FeatureRegistry();
+        List.of(new RepeatFeature()).forEach(f -> f.register(featureRegistry));
+
         // Phase 0: Dependency Scanning (load imported modules)
         DependencyScanner depScanner = new DependencyScanner(diagnostics, resolver);
         DependencyGraph graph = depScanner.scan(fullSource, mainFilePath);
@@ -185,8 +195,16 @@ public class Compiler implements ICompiler {
         List<Token> initialTokens = new ArrayList<>(mainLexer.scanTokens());
 
         // Phase 2: Preprocessing (includes, macros)
+        PreProcessorHandlerRegistry ppRegistry = new PreProcessorHandlerRegistry();
+        featureRegistry.preprocessorHandlers().forEach(ppRegistry::register);
+        ppRegistry.register(".SOURCE", new SourceDirectiveHandler());
+        ppRegistry.register(".MACRO", new MacroDirectiveHandler());
+        ppRegistry.register(".POP_CTX", new PopCtxDirectiveHandler());
+        if (!moduleTokens.isEmpty()) {
+            ppRegistry.register(".IMPORT", new ImportSourceHandler(moduleTokens));
+        }
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, resolver,
-                moduleTokens.isEmpty() ? null : moduleTokens, rootAliasChain);
+                ppRegistry, rootAliasChain);
         PreProcessorResult ppResult = preProcessor.expand();
 
         Map<String, List<String>> sources = new HashMap<>();

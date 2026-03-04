@@ -1,4 +1,4 @@
-package org.evochora.compiler.frontend.preprocessor.features.repeat;
+package org.evochora.compiler.features.repeat;
 
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;

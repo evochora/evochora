@@ -2,11 +2,14 @@ package org.evochora.compiler.directives;
 
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.features.repeat.CaretDirectiveHandler;
+import org.evochora.compiler.features.repeat.RepeatDirectiveHandler;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.module.SourceRootResolver;
+import org.evochora.compiler.frontend.preprocessor.PreProcessor;
+import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
-import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
@@ -27,6 +30,15 @@ public class RepeatDirectiveTest {
         Instruction.init();
     }
 
+    private PreProcessor createPreProcessor(List<Token> initialTokens, DiagnosticsEngine diagnostics) {
+        PreProcessorHandlerRegistry registry = new PreProcessorHandlerRegistry();
+        registry.register(".REPEAT", new RepeatDirectiveHandler());
+        registry.register("^", new CaretDirectiveHandler());
+        return new PreProcessor(initialTokens, diagnostics,
+                new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")),
+                registry, "");
+    }
+
     /**
      * Tests inline mode: .REPEAT n INSTRUCTION
      * Should expand to n copies of the instruction separated by NEWLINEs.
@@ -39,7 +51,7 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")), null);
+        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand().tokens();
@@ -69,7 +81,7 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")), null);
+        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand().tokens();
@@ -99,7 +111,7 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")), null);
+        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand().tokens();
@@ -138,7 +150,7 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")), null);
+        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand().tokens();
@@ -172,7 +184,7 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")), null);
+        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand().tokens();
@@ -194,7 +206,7 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")), null);
+        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand().tokens();
@@ -232,7 +244,7 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")), null);
+        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand().tokens();
@@ -261,7 +273,7 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")), null);
+        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand().tokens();
@@ -290,7 +302,7 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")), null);
+        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand().tokens();
@@ -325,7 +337,7 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")), null);
+        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand().tokens();
@@ -348,7 +360,7 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")), null);
+        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand().tokens();
@@ -380,7 +392,7 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")), null);
+        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
         // Act
         List<Token> expandedTokens = preProcessor.expand().tokens();

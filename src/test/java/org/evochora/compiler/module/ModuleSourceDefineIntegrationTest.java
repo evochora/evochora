@@ -12,8 +12,13 @@ import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.frontend.postprocess.AstPostProcessor;
+import org.evochora.compiler.frontend.preprocessor.PopCtxDirectiveHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
+import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorResult;
+import org.evochora.compiler.frontend.preprocessor.features.importdir.ImportSourceHandler;
+import org.evochora.compiler.frontend.preprocessor.features.macro.MacroDirectiveHandler;
+import org.evochora.compiler.frontend.preprocessor.features.source.SourceDirectiveHandler;
 import org.evochora.compiler.frontend.semantics.ModuleContextTracker;
 
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
@@ -215,7 +220,10 @@ class ModuleSourceDefineIntegrationTest {
         List<Token> tokens = new ArrayList<>(lexer.scanTokens());
         SourceRootResolver circularResolver = new SourceRootResolver(
                 List.of(new SourceRoot(".", null)), tempDir);
-        PreProcessor preProcessor = new PreProcessor(tokens, diagnostics, circularResolver, null);
+        PreProcessorHandlerRegistry registry = new PreProcessorHandlerRegistry();
+        registry.register(".SOURCE", new SourceDirectiveHandler());
+        PreProcessor preProcessor = new PreProcessor(tokens, diagnostics, circularResolver,
+                registry, "");
         preProcessor.expand();
 
         assertThat(diagnostics.hasErrors()).isTrue();
@@ -289,8 +297,15 @@ class ModuleSourceDefineIntegrationTest {
         List<Token> mainTokens = new ArrayList<>(mainLexer.scanTokens());
 
         // Phase 2: Preprocessing (with root alias chain for alias chain tracking)
+        PreProcessorHandlerRegistry ppRegistry = new PreProcessorHandlerRegistry();
+        ppRegistry.register(".SOURCE", new SourceDirectiveHandler());
+        ppRegistry.register(".MACRO", new MacroDirectiveHandler());
+        ppRegistry.register(".POP_CTX", new PopCtxDirectiveHandler());
+        if (!moduleTokens.isEmpty()) {
+            ppRegistry.register(".IMPORT", new ImportSourceHandler(moduleTokens));
+        }
         PreProcessor preProcessor = new PreProcessor(mainTokens, diagnostics, resolver,
-                moduleTokens.isEmpty() ? null : moduleTokens, rootAliasChain);
+                ppRegistry, rootAliasChain);
         PreProcessorResult ppResult = preProcessor.expand();
         if (diagnostics.hasErrors()) return new PostProcessResult(diagnostics, List.of());
 

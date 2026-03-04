@@ -7,6 +7,8 @@ import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
+import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
+import org.evochora.compiler.frontend.preprocessor.features.source.SourceDirectiveHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -62,7 +64,10 @@ public class PreProcessorTest {
 
         SourceRootResolver resolver = new SourceRootResolver(
                 List.of(new SourceRoot(".", null)), tempDir);
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, resolver, null);
+        PreProcessorHandlerRegistry registry = new PreProcessorHandlerRegistry();
+        registry.register(".SOURCE", new SourceDirectiveHandler());
+        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, resolver,
+                registry, "");
 
         // Act
         List<Token> expandedTokens = preProcessor.expand().tokens();

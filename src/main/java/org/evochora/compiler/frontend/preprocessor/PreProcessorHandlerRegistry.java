@@ -1,15 +1,6 @@
 package org.evochora.compiler.frontend.preprocessor;
 
-import org.evochora.compiler.frontend.preprocessor.features.importdir.ImportSourceHandler;
-import org.evochora.compiler.frontend.preprocessor.features.macro.MacroDirectiveHandler;
-import org.evochora.compiler.frontend.preprocessor.features.repeat.CaretDirectiveHandler;
-import org.evochora.compiler.frontend.preprocessor.features.repeat.RepeatDirectiveHandler;
-import org.evochora.compiler.frontend.preprocessor.features.source.SourceDirectiveHandler;
-
-import org.evochora.compiler.model.token.Token;
-
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -41,23 +32,4 @@ public class PreProcessorHandlerRegistry {
         return Optional.ofNullable(handlers.get(name.toUpperCase()));
     }
 
-    /**
-     * Creates a registry with all built-in preprocessing handlers.
-     * @param moduleTokens Pre-lexed tokens per module (absolute path → token list), or null
-     *                     for single-file compilations without imports. When provided,
-     *                     registers the {@code .IMPORT} handler.
-     * @return A new registry instance.
-     */
-    public static PreProcessorHandlerRegistry initialize(Map<String, List<Token>> moduleTokens) {
-        PreProcessorHandlerRegistry registry = new PreProcessorHandlerRegistry();
-        registry.register(".SOURCE", new SourceDirectiveHandler());
-        registry.register(".MACRO", new MacroDirectiveHandler());
-        registry.register(".REPEAT", new RepeatDirectiveHandler());
-        registry.register("^", new CaretDirectiveHandler());
-        registry.register(".POP_CTX", new PopCtxDirectiveHandler());
-        if (moduleTokens != null) {
-            registry.register(".IMPORT", new ImportSourceHandler(moduleTokens));
-        }
-        return registry;
-    }
 }

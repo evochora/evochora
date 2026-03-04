@@ -60,10 +60,8 @@ registration file. No phase code is touched.
 | Phase 10 (Linking) | `LinkingRegistry` | `ILinkingRule` | Ordered list (no key) |
 
 | Phase 5 (TokenMap) | `TokenMapContributorRegistry` | `ITokenMapContributor` | AST node class |
+| Phase 6 (PostProcess) | `PostProcessHandlerRegistry` | `IPostProcessHandler` | AST node class |
 | Phase 11 (Emitter) | `EmissionContributorRegistry` | `IEmissionContributor` | Ordered list (no key) |
-
-**Missing registries** (feature logic hardcoded in phase):
-- Phase 6 (PostProcess) — no registry, logic hardcoded in `AstPostProcessor`
 
 ---
 
@@ -1176,7 +1174,44 @@ helpers).
 
 Move all feature components into `compiler/features/*/` packages, one feature at a time.
 Each step creates the feature package, moves all components, creates the `XxxFeature`
-registration class, and updates the corresponding registry initialization.
+registration class, **wires the feature into Compiler.java**, and removes the
+corresponding inline handler registrations.
+
+#### Registry Cutover Strategy
+
+When a D step is the **first to touch a registry**, it performs a full cutover for
+that registry:
+
+1. Delete the registry's `initialize()`/`initializeWithDefaults()` method
+2. Reduce the phase class (e.g., `PreProcessor`) to a single constructor that accepts
+   a pre-built registry — no internal `initialize()` call
+3. Compiler.java builds the full registry: feature-contributed handlers (from
+   `FeatureRegistry`) + inline registrations for not-yet-migrated features
+4. Update ALL tests that construct the phase class to provide explicit registries
+
+Subsequent D steps that touch the same registry simply move their inline registrations
+from Compiler.java into their `XxxFeature.register()`. No legacy code to clean up,
+no shrinking `initialize()`, no merge logic.
+
+**D1** introduces the wiring infrastructure in Compiler.java (`FeatureRegistry`,
+feature list, registration loop) and performs the full cutover for
+`PreProcessorHandlerRegistry`. By D14, all registries are fully feature-driven and
+all `initialize()`/`initializeWithDefaults()` methods are gone.
+
+**Registry cutover points:**
+
+| Registry | First D-step | Features at cutover |
+|---|---|---|
+| `PreProcessorHandlerRegistry` | **D1** | repeat, source, macro, ctx, importdir |
+| `ParserDirectiveRegistry` | **D4** | ctx, define, reg, proc, preg, org, dir, place, importdir, require |
+| `IrConverterRegistry` | **D4** | ctx + 12 others |
+| `LayoutDirectiveRegistry` | **D4** | ctx, org, dir, place (built inside `LayoutEngine`) |
+| `PostProcessHandlerRegistry` | **D7** | define, reg, preg |
+| `AnalysisHandlerRegistry` | **D7** | define, reg, label, proc, preg, import, require, instruction |
+| `EmissionContributorRegistry` | **D8** | reg, proc |
+| `LinkingRegistry` | **D9** | label, proc |
+| `EmissionRegistry` | **D13** | proc only |
+| `TokenMapContributorRegistry` | — | Already hand-wired in Compiler.java (no `initialize()`) |
 
 Feature-specific AST nodes that still hold Token references are decoupled from Token
 as part of their move (same approach as Phase B: replace Token fields with extracted
@@ -1185,24 +1220,27 @@ include this Token decoupling work.
 
 | Step | Feature | Files to Move | New Files |
 |------|---------|--------------|-----------|
-| D1 | repeat | RepeatDirectiveHandler, CaretDirectiveHandler | RepeatFeature.java |
-| D2 | source | SourceDirectiveHandler | SourceFeature.java |
+| D1 | repeat | RepeatDirectiveHandler, CaretDirectiveHandler. **[+wiring-infra]** Introduces feature wiring in Compiler.java. **[+cutover: PreProcessorHandlerRegistry]** Deletes `initialize()`, single-constructor `PreProcessor`, all PP tests updated. **DONE.** | RepeatFeature.java |
+| D2 | source | SourceDirectiveHandler (move inline registration from Compiler.java to SourceFeature) | SourceFeature.java |
 | D3 | macro | MacroDirectiveHandler, MacroDefinition, MacroExpansionHandler | MacroFeature.java |
-| D4 | ctx | PushCtx/PopCtx Nodes + Parser Handlers + Preprocessor PopCtxHandler + Converters + LayoutHandlers. **[+constants]** Replace magic strings `"core"`, `"push_ctx"`, `"pop_ctx"` with shared constants (used in Linker, PushCtxNodeConverter, PopCtxNodeConverter, LayoutProcessor). | CtxFeature.java |
+| D4 | ctx | PushCtx/PopCtx Nodes + Parser Handlers + Preprocessor PopCtxHandler + Converters + LayoutHandlers. **[+constants]** Replace magic strings `"core"`, `"push_ctx"`, `"pop_ctx"` with shared constants (used in Linker, PushCtxNodeConverter, PopCtxNodeConverter, LayoutProcessor). **[+cutover: ParserDirectiveRegistry, IrConverterRegistry, LayoutDirectiveRegistry]** | CtxFeature.java |
 | D5 | org | OrgNode, OrgDirectiveHandler, OrgNodeConverter, OrgLayoutHandler | OrgFeature.java |
 | D6 | dir | DirNode, DirDirectiveHandler, DirNodeConverter, DirLayoutHandler | DirFeature.java |
-| D7 | define | DefineNode, DefineDirectiveHandler, DefineAnalysisHandler, DefinePostProcessHandler, DefineNodeConverter. **[+decouple]** DefineNode: Token `name` → String + SourceInfo. **[+DRY]** Extract shared `IrGenContext.convertOperand(AstNode)` method from `DefineNodeConverter.toOperand()` and `InstructionNodeConverter.convertOperand()` (identical instanceof chains for NumberLiteralNode/TypedLiteralNode/VectorLiteralNode → IR operand mapping). | DefineFeature.java |
-| D8 | reg | See D8 details below. | RegFeature.java |
-| D9 | label | LabelNode, LabelSymbolCollector, LabelAnalysisHandler, LabelNodeConverter. **[+decouple]** LabelNode: Token `labelToken` → String + SourceInfo | LabelFeature.java |
+| D7 | define | DefineNode, DefineDirectiveHandler, DefineAnalysisHandler, DefinePostProcessHandler, DefineNodeConverter. **[+decouple]** DefineNode: Token `name` → String + SourceInfo. **[+cutover: PostProcessHandlerRegistry, AnalysisHandlerRegistry]** | DefineFeature.java |
+| D7b | (refactoring) | No feature move. **[+DRY]** Extract shared `IrGenContext.convertOperand(AstNode)` method from `DefineNodeConverter.toOperand()` and `InstructionNodeConverter.convertOperand()` (identical instanceof chains for NumberLiteralNode/TypedLiteralNode/VectorLiteralNode → IR operand mapping). Touches define + instruction features — separated from D7 to keep the cutover step focused. | — |
+| D8 | reg | See D8 details below. **[+cutover: EmissionContributorRegistry]** | RegFeature.java |
+| D9 | label | LabelNode, LabelSymbolCollector, LabelAnalysisHandler, LabelNodeConverter. **[+decouple]** LabelNode: Token `labelToken` → String + SourceInfo. **[+cutover: LinkingRegistry]** | LabelFeature.java |
 | D10 | place | PlaceNode, PlaceDirectiveHandler, PlaceNodeConverter, PlaceLayoutHandler, placement/. **[+decouple]** placement sub-nodes: RangeValueComponent, SingleValueComponent, SteppedRangeValueComponent, WildcardValueComponent — Token fields → extracted values + SourceInfo | PlaceFeature.java |
 | D11 | require | RequireNode, RequireDirectiveHandler, RequireSymbolCollector, RequireAnalysisHandler, RequireNodeConverter. **[+decouple]** RequireNode: Token `path`, `alias` → String + SourceInfo | RequireFeature.java |
 | D12 | importdir | ImportNode, ImportSourceHandler, ImportDirectiveHandler, ImportSymbolCollector, ImportAnalysisHandler, ImportNodeConverter. **[+decouple]** ImportNode: Token `path`, `alias` + UsingClause Tokens → String + SourceInfo | ImportFeature.java |
-| D13 | proc | See D13 details below. | ProcFeature.java |
+| D13 | proc | See D13 details below. **[+cutover: EmissionRegistry]** | ProcFeature.java |
 | D14 | instruction | InstructionAnalysisHandler, InstructionNodeConverter, InstructionTokenMapContributor | InstructionFeature.java |
 
 Order rationale: start with simple features (few phases), end with complex ones
 (proc spans 6+ phases). Each step is independently committable with all tests green.
 D1-D6 have no Token decoupling; D7-D13 include Token decoupling of their feature nodes.
+D7b is a pure refactoring step (no feature move) separated from D7 to keep the
+cutover step focused.
 
 **D8 details (reg):**
 
@@ -1210,7 +1248,7 @@ Move to `features/reg/`: RegNode, RegDirectiveHandler, RegAnalysisHandler, RegPo
 
 Additionally:
 1. Move `RegisterAliasState` from `parser/` (temporary C2 location) to `features/reg/`. Add `implements IScopedParserState`.
-2. Remove `getGlobalRegisterAliases()` from Parser. Compiler.java reads aliases via `parser.state().get(RegisterAliasState.class).getGlobalAliases()` (or equivalent extraction pattern, see F2).
+2. Remove `getGlobalRegisterAliases()` from Parser. Compiler.java reads aliases via `parser.state().get(RegisterAliasState.class).getGlobalAliases()` (or equivalent extraction pattern).
 3. Update tests that call `parser.getGlobalRegisterAliases()`: RegDirectiveTest, DefineDirectiveTest, ModuleSourceDefineIntegrationTest.
 4. **[+decouple]** RegNode: Token `alias`, `register` → String + SourceInfo.
 
@@ -1228,11 +1266,15 @@ Additionally:
 7. IrGenContext: `pushProcedureParams(List<Token>)` → `pushProcedureParams(List<String>)`. Remove Token import from IrGenContext.
 8. Extract `parseCallInstruction()` from Parser. Create `IInstructionParsingHandler` interface in `parser/`. Register `CallInstructionHandler` in `features/proc/`. `Parser.instructionStatement()` dispatches through registry for opcodes with custom syntax.
 
-### Phase E: Wiring
+### Phase E: Cleanup & Relocation
+
+E1 (wiring) has been absorbed into Phase D — each D step wires its feature, and
+cutover steps eliminate `initialize()`/`initializeWithDefaults()` methods completely.
+By D14, all registries are fully feature-driven.
 
 | Step | Description |
 |------|-------------|
-| E1 | Wire `CompilerFeature` registration in Compiler.java: create all features, register via `FeatureRegistrationContext`, replace all `initializeWithDefaults()` in registries. |
+| ~~E1~~ | ~~Wire `CompilerFeature` registration in Compiler.java~~ — **absorbed into Phase D**. D1 introduces wiring infrastructure. Cutover steps eliminate `initialize()`/`initializeWithDefaults()`: D1 (PreProcessor), D4 (Parser, IrConverter, Layout), D7 (PostProcess, Analysis), D8 (EmissionContributor), D9 (Linking), D13 (Emission). |
 | E2 | Delete empty `frontend/*/features/` directories. |
 | E3 | Move remaining shared types (SymbolTable, Symbol, ModuleId, ModuleDescriptor, DependencyGraph, ModuleContextTracker, SourceLoader) to `compiler/model/` and `compiler/util/`. |
 
@@ -1241,7 +1283,7 @@ Additionally:
 | Step | Description |
 |------|-------------|
 | F1 | Refactor SourceDirectiveHandler to use pre-lexed tokens (same as ImportSourceHandler). Move EOF-token stripping from Compiler.java into Lexer (e.g. `scanTokensWithoutEof()`) or PreProcessor. |
-| F2 | Extract cross-phase data extraction from Compiler.java: register alias data (currently `parser.getGlobalRegisterAliases()`) and procedure table data (currently `parser.getProcedureTable()`) flow through feature-provided mechanisms instead of Parser accessor methods. |
+| ~~F2~~ | ~~Extract cross-phase data extraction from Compiler.java~~ — **absorbed into Phase D**: `getGlobalRegisterAliases()` removed in D8, `getProcedureTable()` removed in D13. |
 | F3 | Introduce MachineConstraints, remove runtime Config imports from features. |
 
 ### Phase G: LR Parameter Passing (open design — needs discussion before committing)

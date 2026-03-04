@@ -3,9 +3,11 @@ package org.evochora.compiler.directives;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.module.SourceRootResolver;
+import org.evochora.compiler.frontend.preprocessor.PreProcessor;
+import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
+import org.evochora.compiler.frontend.preprocessor.features.macro.MacroDirectiveHandler;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
-import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.BeforeAll;
@@ -47,7 +49,11 @@ public class MacroDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")), null);
+        PreProcessorHandlerRegistry registry = new PreProcessorHandlerRegistry();
+        registry.register(".MACRO", new MacroDirectiveHandler());
+        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics,
+                new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")),
+                registry, "");
 
         // Act
         List<Token> expandedTokens = preProcessor.expand().tokens();

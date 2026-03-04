@@ -7,7 +7,7 @@ import org.evochora.compiler.model.token.Token;
  * Pops the .SOURCE or .IMPORT inclusion chain when leaving an included block.
  * The token remains in the stream for the parser to create a PopCtxNode.
  */
-class PopCtxDirectiveHandler implements IPreProcessorHandler {
+public class PopCtxDirectiveHandler implements IPreProcessorHandler {
 
     @Override
     public void process(PreProcessor preProcessor, PreProcessorContext preProcessorContext) {

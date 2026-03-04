@@ -10,7 +10,12 @@ import org.evochora.compiler.frontend.module.ModuleDescriptor;
 import org.evochora.compiler.frontend.module.SourceRootResolver;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.frontend.preprocessor.PopCtxDirectiveHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
+import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
+import org.evochora.compiler.frontend.preprocessor.features.importdir.ImportSourceHandler;
+import org.evochora.compiler.frontend.preprocessor.features.macro.MacroDirectiveHandler;
+import org.evochora.compiler.frontend.preprocessor.features.source.SourceDirectiveHandler;
 
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.frontend.semantics.Symbol;
@@ -258,8 +263,15 @@ class UsingClauseIntegrationTest {
         List<Token> mainTokens = new ArrayList<>(mainLexer.scanTokens());
 
         // Phase 2: Preprocessing (with root alias chain)
+        PreProcessorHandlerRegistry ppRegistry = new PreProcessorHandlerRegistry();
+        ppRegistry.register(".SOURCE", new SourceDirectiveHandler());
+        ppRegistry.register(".MACRO", new MacroDirectiveHandler());
+        ppRegistry.register(".POP_CTX", new PopCtxDirectiveHandler());
+        if (!moduleTokens.isEmpty()) {
+            ppRegistry.register(".IMPORT", new ImportSourceHandler(moduleTokens));
+        }
         PreProcessor preProcessor = new PreProcessor(mainTokens, diagnostics, resolver,
-                moduleTokens.isEmpty() ? null : moduleTokens, rootAliasChain);
+                ppRegistry, rootAliasChain);
         List<Token> processedTokens = preProcessor.expand().tokens();
         if (diagnostics.hasErrors()) return new SemanticsResult(diagnostics, null);
 

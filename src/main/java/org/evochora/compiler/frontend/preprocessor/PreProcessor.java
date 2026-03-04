@@ -26,29 +26,21 @@ public class PreProcessor {
 
     /**
      * Constructs a new PreProcessor.
+     *
      * @param initialTokens  The initial list of tokens from the lexer.
      * @param diagnostics    The engine for reporting errors and warnings.
      * @param resolver       The source root resolver for path resolution.
-     * @param moduleTokens   Pre-lexed tokens per imported module (absolute path → token list),
-     *                       or null for single-file compilations without imports.
+     * @param registry       The pre-built handler registry for this preprocessing run.
      * @param rootAliasChain The alias chain for the compilation root module (e.g., "MAIN"),
      *                       or empty string for default.
      */
     public PreProcessor(List<Token> initialTokens, DiagnosticsEngine diagnostics, SourceRootResolver resolver,
-                        Map<String, List<Token>> moduleTokens, String rootAliasChain) {
+                        PreProcessorHandlerRegistry registry, String rootAliasChain) {
         this.tokens = new ArrayList<>(initialTokens);
         this.diagnostics = diagnostics;
         this.resolver = resolver;
-        this.directiveRegistry = PreProcessorHandlerRegistry.initialize(moduleTokens);
+        this.directiveRegistry = registry;
         this.ppContext = new PreProcessorContext(rootAliasChain);
-    }
-
-    /**
-     * Constructs a new PreProcessor with an empty root alias chain (backward compatibility).
-     */
-    public PreProcessor(List<Token> initialTokens, DiagnosticsEngine diagnostics, SourceRootResolver resolver,
-                        Map<String, List<Token>> moduleTokens) {
-        this(initialTokens, diagnostics, resolver, moduleTokens, "");
     }
 
     /**
