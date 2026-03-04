@@ -34,7 +34,7 @@ public final class ProtobufConverter {
      */
     public static String toJson(Message message) {
         try {
-            return JsonFormat.printer().print(message);
+            return JsonFormat.printer().includingDefaultValueFields().print(message);
         } catch (InvalidProtocolBufferException e) {
             throw new RuntimeException("Failed to convert protobuf message to JSON.", e);
         }
