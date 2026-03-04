@@ -31,6 +31,7 @@ import org.evochora.compiler.frontend.tokenmap.TokenMapGenerator;
 
 import java.util.ArrayList;
 import org.evochora.compiler.frontend.postprocess.AstPostProcessor;
+import org.evochora.compiler.frontend.postprocess.PostProcessHandlerRegistry;
 import org.evochora.compiler.model.ir.IrProgram;
 import org.evochora.compiler.backend.layout.LayoutEngine;
 import org.evochora.compiler.backend.layout.LayoutResult;
@@ -228,9 +229,10 @@ public class Compiler implements ICompiler {
         Map<SourceInfo, TokenInfo> tokenMap = tokenMapGenerator.generateAll(ast);
 
         // Phase 6: AST Post-Processing (resolve register aliases and constants)
+        PostProcessHandlerRegistry postProcessRegistry = PostProcessHandlerRegistry.initializeWithDefaults();
         ModuleContextTracker postProcessTracker = new ModuleContextTracker(symbolTable);
         symbolTable.setCurrentModule(rootAliasChain);
-        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, postProcessTracker);
+        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, postProcessTracker, postProcessRegistry);
 
         // Process all AST nodes, not just the first one
         for (int i = 0; i < ast.size(); i++) {

@@ -5,9 +5,6 @@ import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
-import org.evochora.compiler.frontend.parser.ast.PregNode;
-import org.evochora.compiler.frontend.parser.features.def.DefineNode;
-import org.evochora.compiler.frontend.parser.features.reg.RegNode;
 import org.evochora.compiler.frontend.semantics.ModuleContextTracker;
 import org.evochora.compiler.frontend.semantics.ResolvedSymbol;
 import org.evochora.compiler.frontend.semantics.Symbol;
@@ -23,10 +20,11 @@ import java.util.Optional;
  * It resolves identifiers like constants and register aliases into their concrete forms.
  * This runs *after* the TokenMapGenerator to ensure debug info is based on the original source.
  */
-public class AstPostProcessor {
+public class AstPostProcessor implements IPostProcessContext {
     private final SymbolTable symbolTable;
     private final ModuleContextTracker contextTracker;
-    // Module-qualified register aliases, self-extracted from RegNode/PregNode during the walk
+    private final PostProcessHandlerRegistry registry;
+    // Module-qualified register aliases, collected from RegNode/PregNode via handlers
     private final Map<String, String> registerAliases = new HashMap<>();
     // Module-qualified constants: aliasChain -> (constantName -> value)
     private final Map<String, Map<String, TypedLiteralNode>> constants = new HashMap<>();
@@ -36,15 +34,24 @@ public class AstPostProcessor {
      * Constructs a post-processor for single-file compilation (no module context).
      */
     public AstPostProcessor(SymbolTable symbolTable) {
-        this(symbolTable, new ModuleContextTracker(symbolTable));
+        this(symbolTable, new ModuleContextTracker(symbolTable), PostProcessHandlerRegistry.initializeWithDefaults());
     }
 
     /**
-     * Constructs a module-aware post-processor.
+     * Constructs a module-aware post-processor with default handlers.
      */
     public AstPostProcessor(SymbolTable symbolTable, ModuleContextTracker contextTracker) {
+        this(symbolTable, contextTracker, PostProcessHandlerRegistry.initializeWithDefaults());
+    }
+
+    /**
+     * Constructs a module-aware post-processor with an explicit handler registry.
+     */
+    public AstPostProcessor(SymbolTable symbolTable, ModuleContextTracker contextTracker,
+                            PostProcessHandlerRegistry registry) {
         this.symbolTable = symbolTable;
         this.contextTracker = contextTracker;
+        this.registry = registry;
     }
 
     /**
@@ -67,13 +74,11 @@ public class AstPostProcessor {
         if (node == null) return;
         contextTracker.handleNode(node);
 
-        if (node instanceof RegNode regNode) {
-            collectRegisterAlias(regNode.alias().text(), regNode.register().text());
-        } else if (node instanceof PregNode pregNode) {
-            collectRegisterAlias(pregNode.alias().text(), pregNode.targetRegister().text());
-        } else if (node instanceof DefineNode) {
-            collectConstants(node);
-        } else if (node instanceof IdentifierNode) {
+        // Dispatch through registry for feature-specific handlers
+        registry.get(node.getClass()).ifPresent(h -> h.collect(node, this));
+
+        // Orchestrator infrastructure: IdentifierNode replacement (not feature-specific)
+        if (node instanceof IdentifierNode) {
             collectReplacements(node);
         }
 
@@ -82,12 +87,17 @@ public class AstPostProcessor {
         }
     }
 
-    private void collectRegisterAlias(String aliasText, String registerText) {
+    @Override
+    public void collectRegisterAlias(String aliasText, String registerText) {
         String qualifiedAlias = qualifyAliasName(aliasText.toUpperCase());
         registerAliases.put(qualifiedAlias, registerText);
     }
 
-
+    @Override
+    public void collectConstant(String constantName, TypedLiteralNode value) {
+        String moduleKey = currentModuleKey();
+        constants.computeIfAbsent(moduleKey, k -> new HashMap<>()).put(constantName, value);
+    }
 
     private void collectReplacements(AstNode node) {
         if (!(node instanceof IdentifierNode idNode)) {
@@ -152,17 +162,5 @@ public class AstPostProcessor {
             sourceInfo
         );
         replacements.put(originalNode, replacement);
-    }
-
-    private void collectConstants(AstNode node) {
-        if (!(node instanceof DefineNode defineNode)) {
-            return;
-        }
-
-        String constantName = defineNode.name().text();
-        if (defineNode.value() instanceof TypedLiteralNode typedValue) {
-            String moduleKey = currentModuleKey();
-            constants.computeIfAbsent(moduleKey, k -> new HashMap<>()).put(constantName, typedValue);
-        }
     }
 }
