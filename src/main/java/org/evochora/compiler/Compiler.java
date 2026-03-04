@@ -20,7 +20,7 @@ import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorResult;
 import org.evochora.compiler.frontend.preprocessor.features.importdir.ImportSourceHandler;
-import org.evochora.compiler.frontend.preprocessor.features.macro.MacroDirectiveHandler;
+import org.evochora.compiler.features.macro.MacroFeature;
 import org.evochora.compiler.features.repeat.RepeatFeature;
 import org.evochora.compiler.features.source.SourceFeature;
 import org.evochora.compiler.frontend.semantics.ModuleContextTracker;
@@ -169,7 +169,7 @@ public class Compiler implements ICompiler {
 
         // Feature registration
         FeatureRegistry featureRegistry = new FeatureRegistry();
-        List.of(new RepeatFeature(), new SourceFeature()).forEach(f -> f.register(featureRegistry));
+        List.of(new RepeatFeature(), new SourceFeature(), new MacroFeature()).forEach(f -> f.register(featureRegistry));
 
         // Phase 0: Dependency Scanning (load imported modules)
         DependencyScanner depScanner = new DependencyScanner(diagnostics, resolver);
@@ -197,7 +197,6 @@ public class Compiler implements ICompiler {
         // Phase 2: Preprocessing (includes, macros)
         PreProcessorHandlerRegistry ppRegistry = new PreProcessorHandlerRegistry();
         featureRegistry.preprocessorHandlers().forEach(ppRegistry::register);
-        ppRegistry.register(".MACRO", new MacroDirectiveHandler());
         ppRegistry.register(".POP_CTX", new PopCtxDirectiveHandler());
         if (!moduleTokens.isEmpty()) {
             ppRegistry.register(".IMPORT", new ImportSourceHandler(moduleTokens));

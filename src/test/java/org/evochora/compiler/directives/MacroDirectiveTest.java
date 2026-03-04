@@ -5,7 +5,7 @@ import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.module.SourceRootResolver;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
-import org.evochora.compiler.frontend.preprocessor.features.macro.MacroDirectiveHandler;
+import org.evochora.compiler.features.macro.MacroDirectiveHandler;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;

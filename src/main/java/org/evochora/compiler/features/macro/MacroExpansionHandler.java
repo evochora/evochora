@@ -1,4 +1,4 @@
-package org.evochora.compiler.frontend.preprocessor.features.macro;
+package org.evochora.compiler.features.macro;
 
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
