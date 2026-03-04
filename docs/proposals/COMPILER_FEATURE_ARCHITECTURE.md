@@ -1221,7 +1221,7 @@ include this Token decoupling work.
 | Step | Feature | Files to Move | New Files |
 |------|---------|--------------|-----------|
 | D1 | repeat | RepeatDirectiveHandler, CaretDirectiveHandler. **[+wiring-infra]** Introduces feature wiring in Compiler.java. **[+cutover: PreProcessorHandlerRegistry]** Deletes `initialize()`, single-constructor `PreProcessor`, all PP tests updated. **DONE.** | RepeatFeature.java |
-| D2 | source | SourceDirectiveHandler (move inline registration from Compiler.java to SourceFeature) | SourceFeature.java |
+| D2 | source | SourceDirectiveHandler (move inline registration from Compiler.java to SourceFeature) **DONE.** | SourceFeature.java |
 | D3 | macro | MacroDirectiveHandler, MacroDefinition, MacroExpansionHandler | MacroFeature.java |
 | D4 | ctx | PushCtx/PopCtx Nodes + Parser Handlers + Preprocessor PopCtxHandler + Converters + LayoutHandlers. **[+constants]** Replace magic strings `"core"`, `"push_ctx"`, `"pop_ctx"` with shared constants (used in Linker, PushCtxNodeConverter, PopCtxNodeConverter, LayoutProcessor). **[+cutover: ParserDirectiveRegistry, IrConverterRegistry, LayoutDirectiveRegistry]** | CtxFeature.java |
 | D5 | org | OrgNode, OrgDirectiveHandler, OrgNodeConverter, OrgLayoutHandler | OrgFeature.java |

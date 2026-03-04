@@ -8,7 +8,7 @@ import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
-import org.evochora.compiler.frontend.preprocessor.features.source.SourceDirectiveHandler;
+import org.evochora.compiler.features.source.SourceDirectiveHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;

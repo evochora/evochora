@@ -15,7 +15,7 @@ import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
 import org.evochora.compiler.frontend.preprocessor.features.importdir.ImportSourceHandler;
 import org.evochora.compiler.frontend.preprocessor.features.macro.MacroDirectiveHandler;
-import org.evochora.compiler.frontend.preprocessor.features.source.SourceDirectiveHandler;
+import org.evochora.compiler.features.source.SourceDirectiveHandler;
 
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.frontend.semantics.Symbol;
