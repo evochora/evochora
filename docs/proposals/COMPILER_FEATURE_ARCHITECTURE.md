@@ -58,6 +58,7 @@ registration file. No phase code is touched.
 | Phase 8 (Emission) | `EmissionRegistry` | `IEmissionRule` | Ordered list (no key) |
 | Phase 9 (Layout) | `LayoutDirectiveRegistry` | `ILayoutDirectiveHandler` | Namespace:name string |
 | Phase 10 (Linking) | `LinkingRegistry` | `ILinkingRule` | Ordered list (no key) |
+| Phase 10 (Linking) | `LinkingDirectiveRegistry` | `ILinkingDirectiveHandler` | Namespace:name string |
 
 | Phase 5 (TokenMap) | `TokenMapContributorRegistry` | `ITokenMapContributor` | AST node class |
 | Phase 6 (PostProcess) | `PostProcessHandlerRegistry` | `IPostProcessHandler` | AST node class |
@@ -279,6 +280,7 @@ public interface IFeatureRegistrationContext {
     void layoutHandler(String namespace, String name, ILayoutDirectiveHandler handler);
     // Phase 10: Linking
     void linkingRule(ILinkingRule rule);
+    void linkingDirectiveHandler(String namespace, String name, ILinkingDirectiveHandler handler);
     // Phase 11: Emission (metadata extraction from IR directives)
     void emissionContributor(IEmissionContributor contributor);
 }
@@ -1203,9 +1205,9 @@ all `initialize()`/`initializeWithDefaults()` methods are gone.
 | Registry | First D-step | Features at cutover |
 |---|---|---|
 | `PreProcessorHandlerRegistry` | **D1** | repeat, source, macro, ctx, importdir |
-| `ParserDirectiveRegistry` | **D4** | ctx, define, reg, proc, preg, org, dir, place, importdir, require |
-| `IrConverterRegistry` | **D4** | ctx + 12 others |
-| `LayoutDirectiveRegistry` | **D4** | ctx, org, dir, place (built inside `LayoutEngine`) |
+| `ParserDirectiveRegistry` | **D4b** | ctx, define, reg, proc, preg, org, dir, place, importdir, require |
+| `IrConverterRegistry` | **D4c** | ctx + 12 others |
+| `LayoutDirectiveRegistry` | **D4d** | ctx, org, dir, place (built inside `LayoutEngine`) |
 | `PostProcessHandlerRegistry` | **D7** | define, reg, preg |
 | `AnalysisHandlerRegistry` | **D7** | define, reg, label, proc, preg, import, require, instruction |
 | `EmissionContributorRegistry` | **D8** | reg, proc |
@@ -1223,7 +1225,11 @@ include this Token decoupling work.
 | D1 | repeat | RepeatDirectiveHandler, CaretDirectiveHandler. **[+wiring-infra]** Introduces feature wiring in Compiler.java. **[+cutover: PreProcessorHandlerRegistry]** Deletes `initialize()`, single-constructor `PreProcessor`, all PP tests updated. **DONE.** | RepeatFeature.java |
 | D2 | source | SourceDirectiveHandler (move inline registration from Compiler.java to SourceFeature) **DONE.** | SourceFeature.java |
 | D3 | macro | MacroDirectiveHandler, MacroDefinition, MacroExpansionHandler **DONE.** | MacroFeature.java |
-| D4 | ctx | PushCtx/PopCtx Nodes + Parser Handlers + Preprocessor PopCtxHandler + Converters + LayoutHandlers. **[+constants]** Replace magic strings `"core"`, `"push_ctx"`, `"pop_ctx"` with shared constants (used in Linker, PushCtxNodeConverter, PopCtxNodeConverter, LayoutProcessor). **[+cutover: ParserDirectiveRegistry, IrConverterRegistry, LayoutDirectiveRegistry]** | CtxFeature.java |
+| D4a | ctx (move) | Move all ctx files into `features/ctx/` and create `CtxFeature.java`. Magic strings remain as-is until D4e extracts directive dispatch. See D4 details below. | CtxFeature.java |
+| D4b | ctx (cutover: Parser) | **[+cutover: ParserDirectiveRegistry]** Delete `initialize()`, `Parser` takes pre-built registry, Compiler.java builds it. See D4 details below. | — |
+| D4c | ctx (cutover: IrConverter) | **[+cutover: IrConverterRegistry]** Delete `initializeWithDefaults()`, `IrGenerator` takes pre-built registry, Compiler.java builds it. See D4 details below. | — |
+| D4d | ctx (cutover: Layout) | **[+cutover: LayoutDirectiveRegistry]** Delete `initializeWithDefaults()`, `LayoutEngine` takes pre-built registry, Compiler.java builds it. See D4 details below. | — |
+| D4e | Linker directive dispatch | **[+linker-dispatch]** Extract hardcoded `IrDirective` handling from `Linker` into feature-registered handlers via a new `ILinkingDirectiveHandler` interface and `LinkingDirectiveRegistry`. See D4 details below. | ILinkingDirectiveHandler.java, LinkingDirectiveRegistry.java |
 | D5 | org | OrgNode, OrgDirectiveHandler, OrgNodeConverter, OrgLayoutHandler | OrgFeature.java |
 | D6 | dir | DirNode, DirDirectiveHandler, DirNodeConverter, DirLayoutHandler | DirFeature.java |
 | D7 | define | DefineNode, DefineDirectiveHandler, DefineAnalysisHandler, DefinePostProcessHandler, DefineNodeConverter. **[+decouple]** DefineNode: Token `name` → String + SourceInfo. **[+cutover: PostProcessHandlerRegistry, AnalysisHandlerRegistry]** | DefineFeature.java |
@@ -1241,6 +1247,116 @@ Order rationale: start with simple features (few phases), end with complex ones
 D1-D6 have no Token decoupling; D7-D13 include Token decoupling of their feature nodes.
 D7b is a pure refactoring step (no feature move) separated from D7 to keep the
 cutover step focused.
+
+**D4 details (ctx — split into D4a-D4d):**
+
+D4 is the largest D step because the ctx feature spans 4 phases (2, 3, 7, 9) and
+is the first to touch three registries. To keep each commit focused and independently
+verifiable, D4 is split into four sub-steps.
+
+*D4a — Feature move + constants:*
+
+Move 9 files into `features/ctx/` package and create `CtxFeature.java`:
+- `frontend/preprocessor/PopCtxDirectiveHandler` (preprocessor, Phase 2)
+- `frontend/parser/features/ctx/PushCtxDirectiveHandler` (parser, Phase 3)
+- `frontend/parser/features/ctx/PopCtxDirectiveHandler` (parser, Phase 3)
+- `frontend/parser/ast/PushCtxNode` (AST node)
+- `frontend/parser/ast/PopCtxNode` (AST node)
+- `frontend/irgen/converters/PushCtxNodeConverter` (Phase 7)
+- `frontend/irgen/converters/PopCtxNodeConverter` (Phase 7)
+- `backend/layout/features/PushCtxLayoutHandler` (Phase 9)
+- `backend/layout/features/PopCtxLayoutHandler` (Phase 9)
+
+Magic strings (`"core"`, `"push_ctx"`, `"pop_ctx"`) remain as raw string literals
+for now. They become feature-internal constants naturally once D4e extracts directive
+dispatch from the Linker — at that point the only remaining consumers are inside
+`features/ctx/` itself.
+
+Update imports in `ParserDirectiveRegistry.initialize()`,
+`IrConverterRegistry.initializeWithDefaults()`, and
+`LayoutDirectiveRegistry.initializeWithDefaults()` to point to the new package.
+The `initialize()` methods remain functional — they are deleted in D4b-D4d.
+
+*D4b — Cutover: ParserDirectiveRegistry:*
+
+Delete `ParserDirectiveRegistry.initialize()` and all feature handler imports.
+`Parser` currently calls `initialize()` in its constructor (line 47). Replace with
+a single constructor that accepts a pre-built `ParserDirectiveRegistry`. Compiler.java
+builds the registry: feature-contributed handlers (from `FeatureRegistry`) + inline
+registrations for not-yet-migrated features (define, reg, proc, preg, org, dir,
+place, import, require).
+
+13 test files construct `Parser` directly (49 call sites total) and must be updated
+to provide an explicit registry:
+
+- `ParserTest` (8), `ProcedureDirectiveTest` (8), `RequireDirectiveTest` (6),
+  `ImportDirectiveTest` (5), `RegDirectiveTest` (5), `LayoutDirectiveTest` (3),
+  `DefineDirectiveTest` (2), `PregDirectiveTest` (2),
+  `UsingClauseIntegrationTest` (1), `ModuleSourceDefineIntegrationTest` (1),
+  `EmissionIntegrationTest` (1), `IrGeneratorTest` (1), `SemanticAnalyzerTest` (1)
+
+Each test builds a `ParserDirectiveRegistry` with exactly the handlers it needs
+(same approach as D1 for `PreProcessorHandlerRegistry`).
+
+*D4c — Cutover: IrConverterRegistry:*
+
+Delete `IrConverterRegistry.initializeWithDefaults()` and all feature converter
+imports. `IrGenerator` currently calls `initializeWithDefaults()` in `Compiler.java`
+(line 246). Replace: Compiler.java builds the registry externally using feature
+contributions + inline registrations for not-yet-migrated converters (instruction,
+label, org, dir, place, proc, define, import, require, reg, preg). Two test files
+construct `IrConverterRegistry` directly and need updating: `IrGeneratorTest` and
+`EmissionIntegrationTest`.
+
+*D4d — Cutover: LayoutDirectiveRegistry:*
+
+Delete `LayoutDirectiveRegistry.initializeWithDefaults()` and all feature handler
+imports. `LayoutEngine` currently calls `initializeWithDefaults()` inside its
+`layout()` method (line 32). Replace: `LayoutEngine.layout()` accepts a pre-built
+`LayoutDirectiveRegistry` parameter (or Compiler.java passes it in). Compiler.java
+builds the registry: feature-contributed handlers + inline registrations for
+not-yet-migrated handlers (org, dir, place). `LayoutEngineTest` reaches the
+registry indirectly through `LayoutEngine` — it needs updating to pass an explicit
+registry.
+
+*D4e — Linker directive dispatch:*
+
+The Linker currently has hardcoded `if/else` logic for `push_ctx`/`pop_ctx`
+`IrDirective` items (lines 46-57). This is feature-specific logic inside a phase
+class — a direct violation of the feature-agnostic core principle.
+
+The fix follows the same dual-dispatch pattern that Layout (Phase 9) already uses:
+instructions dispatch through `ILinkingRule`, directives dispatch through a new
+`ILinkingDirectiveHandler`. These are separate interfaces because `IrInstruction`
+and `IrDirective` are different types with different processing semantics
+(instruction rules transform and return a rewritten instruction; directive handlers
+mutate context state).
+
+New files in `backend/link/`:
+
+- `ILinkingDirectiveHandler`: `void handle(IrDirective directive, LinkingContext context)`
+- `LinkingDirectiveRegistry`: keyed by `namespace:name` string (same pattern as
+  `LayoutDirectiveRegistry`). `resolve(IrDirective)` returns the matching handler.
+
+Changes:
+
+1. Create `ILinkingDirectiveHandler` interface in `backend/link/`.
+2. Create `LinkingDirectiveRegistry` in `backend/link/`.
+3. Add `linkingDirectiveHandler(String namespace, String name, ILinkingDirectiveHandler handler)`
+   to `IFeatureRegistrationContext` and implement in `FeatureRegistry`.
+4. Refactor `Linker`: constructor takes both `LinkingRegistry` (instructions) and
+   `LinkingDirectiveRegistry` (directives). The `link()` loop dispatches directives
+   through `registry.resolve(dir).handle(dir, context)` instead of hardcoded if/else.
+5. `Compiler.java` builds `LinkingDirectiveRegistry`: feature-contributed handlers
+   from `FeatureRegistry` (including ctx).
+6. Update `CtxFeature.register()` to include:
+   `ctx.linkingDirectiveHandler("core", "push_ctx", new PushCtxLinkingHandler())`
+   and `ctx.linkingDirectiveHandler("core", "pop_ctx", new PopCtxLinkingHandler())`.
+   These two small handler classes live in `features/ctx/`.
+7. Remove the hardcoded `push_ctx`/`pop_ctx` if/else from `Linker.link()`.
+
+After this step, `Linker` is a pure dispatcher with zero feature knowledge — the
+same property that `LayoutEngine` already has via `LayoutDirectiveRegistry`.
 
 **D8 details (reg):**
 
@@ -1274,7 +1390,7 @@ By D14, all registries are fully feature-driven.
 
 | Step | Description |
 |------|-------------|
-| ~~E1~~ | ~~Wire `CompilerFeature` registration in Compiler.java~~ — **absorbed into Phase D**. D1 introduces wiring infrastructure. Cutover steps eliminate `initialize()`/`initializeWithDefaults()`: D1 (PreProcessor), D4 (Parser, IrConverter, Layout), D7 (PostProcess, Analysis), D8 (EmissionContributor), D9 (Linking), D13 (Emission). |
+| ~~E1~~ | ~~Wire `CompilerFeature` registration in Compiler.java~~ — **absorbed into Phase D**. D1 introduces wiring infrastructure. Cutover steps eliminate `initialize()`/`initializeWithDefaults()`: D1 (PreProcessor), D4b (Parser), D4c (IrConverter), D4d (Layout), D7 (PostProcess, Analysis), D8 (EmissionContributor), D9 (Linking), D13 (Emission). |
 | E2 | Delete empty `frontend/*/features/` directories. |
 | E3 | Move remaining shared types (SymbolTable, Symbol, ModuleId, ModuleDescriptor, DependencyGraph, ModuleContextTracker, SourceLoader) to `compiler/model/` and `compiler/util/`. |
 
