@@ -7,7 +7,7 @@ import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.module.IDependencyScanHandler;
 import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
 import org.evochora.compiler.frontend.postprocess.IPostProcessHandler;
-import org.evochora.compiler.frontend.preprocessor.IPreProcessorDirectiveHandler;
+import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
 import org.evochora.compiler.frontend.semantics.analysis.ISymbolCollector;
 import org.evochora.compiler.frontend.tokenmap.ITokenMapContributor;
@@ -41,12 +41,14 @@ public interface IFeatureRegistrationContext {
 	// Phase 2: Preprocessing
 
 	/**
-	 * Registers a preprocessor directive handler for Phase 2.
+	 * Registers a preprocessor handler for Phase 2. Handlers registered here are
+	 * static (initialization-time). Dynamic runtime registration (e.g., macro
+	 * expansion handlers) happens through {@code PreProcessor.registerHandler()}.
 	 *
-	 * @param directive The directive name (e.g., ".MACRO", ".SOURCE").
-	 * @param handler   The handler that processes this directive.
+	 * @param name    The token text that triggers this handler (e.g., ".MACRO", ".SOURCE").
+	 * @param handler The handler that processes matching tokens.
 	 */
-	void preprocessor(String directive, IPreProcessorDirectiveHandler handler);
+	void preprocessor(String name, IPreProcessorHandler handler);
 
 	// Phase 3: Parsing
 

@@ -5,7 +5,7 @@ import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.module.PlacementContext;
-import org.evochora.compiler.frontend.preprocessor.IPreProcessorDirectiveHandler;
+import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
 import java.io.IOException;
@@ -25,7 +25,7 @@ import java.util.List;
  * to the base URL (e.g., {@code https://example.com/lib/macros.evo} sourcing {@code ./helpers.evo}
  * resolves to {@code https://example.com/lib/helpers.evo}).</p>
  */
-public class SourceDirectiveHandler implements IPreProcessorDirectiveHandler {
+public class SourceDirectiveHandler implements IPreProcessorHandler {
 
     @Override
     public void process(PreProcessor preProcessor, PreProcessorContext preProcessorContext) {

@@ -40,7 +40,7 @@ registration file. No phase code is touched.
 | 9 | **import** | 0, 2, 3, 4, 7 | ImportNode, ImportSourceHandler, ImportDirectiveHandler, ImportSymbolCollector, ImportAnalysisHandler, ImportNodeConverter |
 | 10 | **require** | 0, 3, 4, 7 | RequireNode, RequireDirectiveHandler, RequireSymbolCollector, RequireAnalysisHandler, RequireNodeConverter |
 | 11 | **source** | 0, 2 | SourceDirectiveHandler, SourceLoader |
-| 12 | **macro** | 2 | MacroDirectiveHandler, MacroDefinition, + hardcoded expandMacro() in PreProcessor |
+| 12 | **macro** | 2 | MacroDirectiveHandler, MacroDefinition, MacroExpansionHandler |
 | 13 | **repeat** | 2 | RepeatDirectiveHandler, CaretDirectiveHandler |
 | 14 | **ctx** | 2, 3, 7, 9 | PushCtxNode, PopCtxNode, PopCtxDirectiveHandler (preprocessor), PushCtxDirectiveHandler (parser), PopCtxDirectiveHandler (parser), PushCtxNodeConverter, PopCtxNodeConverter, PushCtxLayoutHandler, PopCtxLayoutHandler |
 
@@ -50,7 +50,7 @@ registration file. No phase code is touched.
 
 | Phase | Registry | Interface | Key Type |
 |-------|----------|-----------|----------|
-| Phase 2 (PreProcessor) | `PreProcessorDirectiveRegistry` | `IPreProcessorDirectiveHandler` | Directive name string |
+| Phase 2 (PreProcessor) | `PreProcessorHandlerRegistry` | `IPreProcessorHandler` | Token text string |
 | Phase 3 (Parser) | `ParserDirectiveRegistry` | `IParserDirectiveHandler` | Directive name string |
 | Phase 3 (Parser) | `InstructionParsingRegistry` | `IInstructionParsingHandler` | Opcode string |
 | Phase 4 (Semantics) | `AnalysisHandlerRegistry` | `IAnalysisHandler` + `ISymbolCollector` | AST node class |
@@ -203,7 +203,7 @@ org.evochora.compiler
 │   ├── macro/
 │   │   ├── MacroDirectiveHandler.java
 │   │   ├── MacroDefinition.java
-│   │   ├── MacroExpansionHandler.java  # NEW (extracted from PreProcessor)
+│   │   ├── MacroExpansionHandler.java
 │   │   └── MacroFeature.java
 │   ├── repeat/
 │   │   ├── RepeatDirectiveHandler.java
@@ -262,7 +262,7 @@ public interface IFeatureRegistrationContext {
     // Phase 0: Dependency Scanning
     void dependencyScanHandler(IDependencyScanHandler handler);
     // Phase 2: Preprocessing
-    void preprocessor(String directive, IPreProcessorDirectiveHandler handler);
+    void preprocessor(String name, IPreProcessorHandler handler);
     // Phase 3: Parsing
     void parser(String directive, IParserDirectiveHandler handler);
     void instructionParser(String opcode, IInstructionParsingHandler handler);
@@ -372,7 +372,7 @@ is resolved:
 |-----------|-------------------|
 | Shared types in phase packages | Token/TokenType in `compiler/model/`, core AST in `compiler/model/ast/`, feature nodes in `features/*/` |
 | SourceDirectiveHandler calls Lexer | Pre-lexed tokens via `FeatureRegistrationContext.sourceTokens()` |
-| Macro expansion hardcoded in PreProcessor | Extracted to `MacroExpansionHandler`, registered as fallback handler |
+| Macro expansion hardcoded in PreProcessor | **RESOLVED** in C9: Extracted to `MacroExpansionHandler`, dynamically registered by `MacroDirectiveHandler` via unified `PreProcessorHandlerRegistry` |
 | Parser handlers downcast ParsingContext | `ParsingContext` extended with `expression()`, `declaration()`, `state()`. `ParserState` is a generic type-safe container — features store their own state classes, phase code has no feature imports. Only `registerProcedure()` cast remains (resolved in D13). |
 | Compiler.java contains business logic | Procedure metadata extraction moves to `ProcFeature` components |
 | IrGenContext instanceof chains | `ISourceLocatable.sourceInfo()` — IrGenContext uses SourceInfo via capability interface |
@@ -448,7 +448,7 @@ Create the interfaces and registries needed for feature consolidation.
 | C6 | EXPORT Prefix Syntax — see C6 details below. |
 | C7 | Placement-Aware Module Naming (Import Alias Chains). Includes Emitter Registry: create `IEmissionContributor` + `EmissionContributorRegistry` in `backend/emit/`, extract `ProcedureEmissionContributor` from Compiler.java. See C7 details below. |
 | C8 | Create `PostProcessHandlerRegistry` in `frontend/postprocess/`. Refactor `AstPostProcessor.collectPass()` to dispatch `IPostProcessHandler.collect()` per AST node class via registry (same pattern as `AnalysisHandlerRegistry`). Extract three handlers: `RegPostProcessHandler` (register alias collection), `DefinePostProcessHandler` (constant collection), `PregPostProcessHandler` (procedure register alias collection, higher priority than Reg). `IdentifierNode` replacement in `replacePass()` remains in `AstPostProcessor` as orchestrator infrastructure (not feature-specific — it applies all collected replacements generically). Handler execution order: handlers are called in registration order; `PregPostProcessHandler` must be registered before `RegPostProcessHandler` so PR aliases shadow DR/LR aliases on name conflict. |
-| C9 | Extract `MacroExpansionHandler` from `PreProcessor.expandMacro()`, register as handler in `PreProcessorDirectiveRegistry`. |
+| C9 | Rename `IPreProcessorDirectiveHandler` → `IPreProcessorHandler` and `PreProcessorDirectiveRegistry` → `PreProcessorHandlerRegistry` (the registry now handles all preprocessing operations, not just directives). Extract `MacroExpansionHandler` from `PreProcessor.expandMacro()`, implementing `IPreProcessorHandler`. `MacroDirectiveHandler` dynamically registers a `MacroExpansionHandler` per macro name via `PreProcessor.registerHandler()` when parsing `.MACRO` definitions. Unify `PreProcessor.expand()` dispatch: both DIRECTIVE and IDENTIFIER tokens go through the single registry — no collision risk (directives start with `.`, macro names are plain identifiers). Remove `macroTable`/`registerMacro()`/`getMacro()` from `PreProcessorContext` — the registry is the single source of truth. Note: `PreProcessorHandlerRegistry` is the only compiler registry that is mutated at processing time (macro definitions are user-defined). In Phase E, `MacroFeature.register()` registers only `.MACRO → MacroDirectiveHandler` (static). Dynamic expansion handlers are created at compile-time by the directive handler itself. |
 | C10 | Extract `CallSiteBindingRule` from `Linker`, move CALL detection into linking rule. |
 | C11 | Create `IScopedParserState` interface in `parser/`. Add `pushScope()`/`popScope()` to `ParserState` — propagates to all registered `IScopedParserState` objects. Pure parser infrastructure, no feature imports. |
 

@@ -7,7 +7,7 @@ import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.module.IDependencyScanHandler;
 import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
 import org.evochora.compiler.frontend.postprocess.IPostProcessHandler;
-import org.evochora.compiler.frontend.preprocessor.IPreProcessorDirectiveHandler;
+import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
 import org.evochora.compiler.frontend.semantics.analysis.ISymbolCollector;
 import org.evochora.compiler.frontend.tokenmap.ITokenMapContributor;
@@ -32,7 +32,7 @@ import java.util.Map;
 public class FeatureRegistry implements IFeatureRegistrationContext {
 
 	private final List<IDependencyScanHandler> dependencyScanHandlers = new ArrayList<>();
-	private final Map<String, IPreProcessorDirectiveHandler> preprocessorHandlers = new HashMap<>();
+	private final Map<String, IPreProcessorHandler> preprocessorHandlers = new HashMap<>();
 	private final Map<String, IParserDirectiveHandler> parserHandlers = new HashMap<>();
 	private final Map<Class<? extends AstNode>, ISymbolCollector> symbolCollectors = new HashMap<>();
 	private final Map<Class<? extends AstNode>, IAnalysisHandler> analysisHandlers = new HashMap<>();
@@ -51,8 +51,8 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	}
 
 	@Override
-	public void preprocessor(String directive, IPreProcessorDirectiveHandler handler) {
-		preprocessorHandlers.put(directive.toUpperCase(), handler);
+	public void preprocessor(String name, IPreProcessorHandler handler) {
+		preprocessorHandlers.put(name.toUpperCase(), handler);
 	}
 
 	@Override
@@ -106,7 +106,7 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 		return Collections.unmodifiableList(dependencyScanHandlers);
 	}
 
-	public Map<String, IPreProcessorDirectiveHandler> preprocessorHandlers() {
+	public Map<String, IPreProcessorHandler> preprocessorHandlers() {
 		return Collections.unmodifiableMap(preprocessorHandlers);
 	}
 

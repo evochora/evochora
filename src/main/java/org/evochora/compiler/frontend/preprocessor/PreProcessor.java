@@ -4,7 +4,6 @@ import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.module.SourceRootResolver;
-import org.evochora.compiler.frontend.preprocessor.features.macro.MacroDefinition;
 import java.util.*;
 import java.util.Deque;
 
@@ -17,7 +16,7 @@ public class PreProcessor {
 
     private final List<Token> tokens;
     private final DiagnosticsEngine diagnostics;
-    private final PreProcessorDirectiveRegistry directiveRegistry;
+    private final PreProcessorHandlerRegistry directiveRegistry;
     private final SourceRootResolver resolver;
     private int current = 0;
     private final Deque<String> sourceChain = new ArrayDeque<>();
@@ -40,7 +39,7 @@ public class PreProcessor {
         this.tokens = new ArrayList<>(initialTokens);
         this.diagnostics = diagnostics;
         this.resolver = resolver;
-        this.directiveRegistry = PreProcessorDirectiveRegistry.initialize(moduleTokens);
+        this.directiveRegistry = PreProcessorHandlerRegistry.initialize(moduleTokens);
         this.ppContext = new PreProcessorContext(rootAliasChain);
     }
 
@@ -62,16 +61,10 @@ public class PreProcessor {
             Token token = peek();
             boolean streamWasModified = false;
 
-            if (token.type() == TokenType.DIRECTIVE) {
-                Optional<IPreProcessorDirectiveHandler> handlerOpt = directiveRegistry.get(token.text());
+            if (token.type() == TokenType.DIRECTIVE || token.type() == TokenType.IDENTIFIER) {
+                Optional<IPreProcessorHandler> handlerOpt = directiveRegistry.get(token.text());
                 if (handlerOpt.isPresent()) {
                     handlerOpt.get().process(this, ppContext);
-                    streamWasModified = true;
-                }
-            } else if (token.type() == TokenType.IDENTIFIER) {
-                Optional<MacroDefinition> macroOpt = ppContext.getMacro(token.text());
-                if (macroOpt.isPresent()) {
-                    expandMacro(macroOpt.get());
                     streamWasModified = true;
                 }
             }
@@ -90,60 +83,6 @@ public class PreProcessor {
      */
     public void addSourceContent(String path, String content) {
         includedFileContents.put(path, content);
-    }
-
-    private void expandMacro(MacroDefinition macro) {
-        int callSiteIndex = this.current;
-        advance();
-        List<List<Token>> actualArgs = new ArrayList<>();
-        while (!isAtEnd() && peek().type() != TokenType.NEWLINE) {
-            List<Token> arg = new ArrayList<>();
-            Token t = peek();
-            if (t.type() == TokenType.IDENTIFIER && (current + 2) < tokens.size()
-                    && tokens.get(current + 1).type() == TokenType.COLON
-                    && tokens.get(current + 2).type() == TokenType.NUMBER) {
-                arg.add(advance());
-                arg.add(advance());
-                arg.add(advance());
-            }
-            else if (t.type() == TokenType.NUMBER) {
-                arg.add(advance());
-                while (!isAtEnd() && peek().type() == TokenType.PIPE) {
-                    arg.add(advance());
-                    if (!isAtEnd()) arg.add(advance());
-                    else break;
-                }
-            } else {
-                arg.add(advance());
-            }
-            actualArgs.add(arg);
-        }
-
-        if (actualArgs.size() != macro.parameters().size()) {
-            diagnostics.reportError("Macro '" + macro.name().text() + "' expects " + macro.parameters().size() + " arguments, but got " + actualArgs.size(), "preprocessor", macro.name().line());
-            this.current = callSiteIndex + 1;
-            return;
-        }
-
-        Map<String, List<Token>> argMap = new HashMap<>();
-        for (int i = 0; i < macro.parameters().size(); i++) {
-            argMap.put(macro.parameters().get(i).text().toUpperCase(), actualArgs.get(i));
-        }
-
-        List<Token> expandedBody = new ArrayList<>();
-        for (Token bodyToken : macro.body()) {
-            List<Token> replacement = argMap.get(bodyToken.text().toUpperCase());
-            if (replacement != null) expandedBody.addAll(replacement);
-            else expandedBody.add(bodyToken);
-        }
-
-        int removed = 1;
-        for (List<Token> g : actualArgs) removed += g.size();
-        tokens.subList(callSiteIndex, callSiteIndex + removed).clear();
-
-        tokens.addAll(callSiteIndex, expandedBody);
-
-        this.current = callSiteIndex;
     }
 
     // --- Token stream navigation ---
@@ -227,6 +166,19 @@ public class PreProcessor {
      */
     public boolean isAtEnd() {
         return current >= tokens.size() || tokens.get(current).type() == TokenType.END_OF_FILE;
+    }
+
+    // --- Handler registration (used by directive handlers) ---
+
+    /**
+     * Registers a handler at runtime. Used by directive handlers that define new
+     * processing rules during compilation (e.g., .MACRO defines expansion handlers).
+     *
+     * @param name    The token text that triggers this handler.
+     * @param handler The handler to register.
+     */
+    public void registerHandler(String name, IPreProcessorHandler handler) {
+        directiveRegistry.register(name, handler);
     }
 
     // --- Token stream manipulation (used by directive handlers) ---
@@ -320,6 +272,14 @@ public class PreProcessor {
      */
     public Token getToken(int index) {
         return tokens.get(index);
+    }
+
+    /**
+     * Returns the number of tokens in the stream.
+     * @return The token count.
+     */
+    public int streamSize() {
+        return tokens.size();
     }
 
     /**

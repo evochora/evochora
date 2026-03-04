@@ -7,6 +7,8 @@ import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.runtime.isa.Instruction;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
 
@@ -20,6 +22,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * These are unit tests and do not require external resources.
  */
 public class MacroDirectiveTest {
+
+    @BeforeAll
+    static void setUp() {
+        Instruction.init();
+    }
 
     /**
      * Verifies that the {@link PreProcessor} correctly expands a macro invocation.

@@ -14,29 +14,31 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Registry for preprocessing directive handlers.
- * Maps directive names (e.g., ".SOURCE", ".MACRO") to their handlers.
+ * Registry for preprocessing handlers. Maps token text (directive names like ".SOURCE"
+ * or macro names like "EMIT") to their handlers. Unlike other compiler registries, this
+ * registry is mutated at processing time — macro definitions dynamically register
+ * expansion handlers.
  */
-public class PreProcessorDirectiveRegistry {
+public class PreProcessorHandlerRegistry {
 
-    private final Map<String, IPreProcessorDirectiveHandler> handlers = new HashMap<>();
+    private final Map<String, IPreProcessorHandler> handlers = new HashMap<>();
 
     /**
-     * Registers a handler for a directive name.
-     * @param directiveName The directive name (e.g., ".SOURCE").
-     * @param handler       The handler for this directive.
+     * Registers a handler for a token name.
+     * @param name    The token text that triggers this handler (e.g., ".SOURCE", "MY_MACRO").
+     * @param handler The handler for this token.
      */
-    public void register(String directiveName, IPreProcessorDirectiveHandler handler) {
-        handlers.put(directiveName.toUpperCase(), handler);
+    public void register(String name, IPreProcessorHandler handler) {
+        handlers.put(name.toUpperCase(), handler);
     }
 
     /**
-     * Looks up the handler for a directive name.
-     * @param directiveName The directive name.
-     * @return The handler, or empty if no handler is registered for this directive.
+     * Looks up the handler for a token name.
+     * @param name The token text.
+     * @return The handler, or empty if no handler is registered for this name.
      */
-    public Optional<IPreProcessorDirectiveHandler> get(String directiveName) {
-        return Optional.ofNullable(handlers.get(directiveName.toUpperCase()));
+    public Optional<IPreProcessorHandler> get(String name) {
+        return Optional.ofNullable(handlers.get(name.toUpperCase()));
     }
 
     /**
@@ -46,8 +48,8 @@ public class PreProcessorDirectiveRegistry {
      *                     registers the {@code .IMPORT} handler.
      * @return A new registry instance.
      */
-    public static PreProcessorDirectiveRegistry initialize(Map<String, List<Token>> moduleTokens) {
-        PreProcessorDirectiveRegistry registry = new PreProcessorDirectiveRegistry();
+    public static PreProcessorHandlerRegistry initialize(Map<String, List<Token>> moduleTokens) {
+        PreProcessorHandlerRegistry registry = new PreProcessorHandlerRegistry();
         registry.register(".SOURCE", new SourceDirectiveHandler());
         registry.register(".MACRO", new MacroDirectiveHandler());
         registry.register(".REPEAT", new RepeatDirectiveHandler());

@@ -2,7 +2,7 @@ package org.evochora.compiler.frontend.preprocessor.features.macro;
 
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
-import org.evochora.compiler.frontend.preprocessor.IPreProcessorDirectiveHandler;
+import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
 
@@ -11,10 +11,11 @@ import java.util.List;
 
 /**
  * Handles the <code>.MACRO</code> and <code>.ENDM</code> directives.
- * This handler parses a macro definition and registers it with the {@link PreProcessorContext}.
- * The entire macro definition block is then removed from the token stream.
+ * Parses a macro definition, creates a {@link MacroExpansionHandler} for it, and
+ * dynamically registers that handler in the preprocessor's handler registry under the
+ * macro's name. The entire definition block is then removed from the token stream.
  */
-public class MacroDirectiveHandler implements IPreProcessorDirectiveHandler {
+public class MacroDirectiveHandler implements IPreProcessorHandler {
 
     /**
      * Parses a macro definition.
@@ -42,7 +43,8 @@ public class MacroDirectiveHandler implements IPreProcessorDirectiveHandler {
         preProcessor.consume(TokenType.DIRECTIVE, "Expected .ENDM to close macro definition.");
         preProcessor.match(TokenType.NEWLINE);
 
-        preProcessorContext.registerMacro(new MacroDefinition(name, params, body));
+        MacroDefinition macro = new MacroDefinition(name, params, body);
+        preProcessor.registerHandler(name.text(), new MacroExpansionHandler(macro));
 
         int endIndex = preProcessor.getCurrentIndex();
         // Remove the entire .MACRO...ENDM block

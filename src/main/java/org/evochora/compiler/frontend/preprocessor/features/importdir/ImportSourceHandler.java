@@ -3,7 +3,7 @@ package org.evochora.compiler.frontend.preprocessor.features.importdir;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.module.PlacementContext;
-import org.evochora.compiler.frontend.preprocessor.IPreProcessorDirectiveHandler;
+import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
 
@@ -21,7 +21,7 @@ import java.util.Map;
  * map from resolved absolute path to token list. This handler does not call the Lexer,
  * maintaining strict phase separation.</p>
  */
-public class ImportSourceHandler implements IPreProcessorDirectiveHandler {
+public class ImportSourceHandler implements IPreProcessorHandler {
 
     private final Map<String, List<Token>> moduleTokens;
 

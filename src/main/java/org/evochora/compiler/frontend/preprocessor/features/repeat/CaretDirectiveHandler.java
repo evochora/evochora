@@ -2,7 +2,7 @@ package org.evochora.compiler.frontend.preprocessor.features.repeat;
 
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
-import org.evochora.compiler.frontend.preprocessor.IPreProcessorDirectiveHandler;
+import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
 
@@ -21,7 +21,7 @@ import java.util.List;
  * <p>Labels are preserved and excluded from the repeat body, so
  * {@code L1: NOP^3} becomes {@code L1: .REPEAT 3 NOP}.</p>
  */
-public class CaretDirectiveHandler implements IPreProcessorDirectiveHandler {
+public class CaretDirectiveHandler implements IPreProcessorHandler {
 
     @Override
     public void process(PreProcessor preProcessor, PreProcessorContext preProcessorContext) {

@@ -2,7 +2,7 @@ package org.evochora.compiler.frontend.preprocessor.features.repeat;
 
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
-import org.evochora.compiler.frontend.preprocessor.IPreProcessorDirectiveHandler;
+import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
 
@@ -27,7 +27,7 @@ import java.util.List;
  * .REPEAT 3; NOP; JMPI LOOP; .ENDR  ; expands to: NOP; JMPI LOOP; NOP; JMPI LOOP; NOP; JMPI LOOP
  * </pre>
  */
-public class RepeatDirectiveHandler implements IPreProcessorDirectiveHandler {
+public class RepeatDirectiveHandler implements IPreProcessorHandler {
 
     /**
      * Parses a {@code .REPEAT} directive and expands the body.
