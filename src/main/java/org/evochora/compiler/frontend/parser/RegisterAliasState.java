@@ -12,7 +12,7 @@ import java.util.Map;
  * Each scope (e.g., procedure body) can define local aliases that shadow outer scopes.
  * The global scope is always present at the bottom of the stack.
  */
-public class RegisterAliasState {
+public class RegisterAliasState implements IScopedParserState {
 
     private final Deque<Map<String, Token>> scopes = new ArrayDeque<>();
 

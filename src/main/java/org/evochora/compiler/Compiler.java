@@ -257,7 +257,7 @@ public class Compiler implements ICompiler {
         LayoutResult layout = layoutEngine.layout(rewrittenIr, new RuntimeInstructionSetAdapter(), envProps);
 
         // Phase 10: Linking (resolve cross-references)
-        LinkingRegistry linkingRegistry = LinkingRegistry.initializeWithDefaults(symbolTable);
+        LinkingRegistry linkingRegistry = LinkingRegistry.initializeWithDefaults(symbolTable, new RuntimeInstructionSetAdapter());
         Linker linker = new Linker(linkingRegistry);
         // Reset the linking context's alias chain for the linking pass
         LinkingContext linkContext = new LinkingContext();

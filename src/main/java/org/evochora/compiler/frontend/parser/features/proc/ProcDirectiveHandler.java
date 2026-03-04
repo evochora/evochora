@@ -3,7 +3,6 @@ package org.evochora.compiler.frontend.parser.features.proc;
 import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParsingContext;
-import org.evochora.compiler.frontend.parser.RegisterAliasState;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.model.ast.AstNode;
@@ -67,8 +66,7 @@ public class ProcDirectiveHandler implements IParserDirectiveHandler {
             context.consume(TokenType.NEWLINE, "Expected newline after .PROC declaration.");
         }
 
-        // Open scope for procedure-local aliases
-        context.state().getOrCreate(RegisterAliasState.class, RegisterAliasState::new).pushScope();
+        context.state().pushScope();
 
         List<AstNode> body = new ArrayList<>();
         while (!context.isAtEnd() && !(context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".ENDP"))) {
@@ -79,8 +77,7 @@ public class ProcDirectiveHandler implements IParserDirectiveHandler {
             }
         }
 
-        // Close scope for procedure-local aliases
-        context.state().getOrCreate(RegisterAliasState.class, RegisterAliasState::new).popScope();
+        context.state().popScope();
 
         if (context.isAtEnd() || !(context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".ENDP"))) {
             context.getDiagnostics().reportError("Expected .ENDP to close procedure block.", "Syntax Error", procName.line());

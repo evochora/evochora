@@ -1,6 +1,8 @@
 package org.evochora.compiler.frontend.parser;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Supplier;
 
@@ -12,6 +14,7 @@ import java.util.function.Supplier;
 public class ParserState {
 
     private final Map<Class<?>, Object> state = new HashMap<>();
+    private final List<IScopedParserState> scopedStates = new ArrayList<>();
 
     /**
      * Retrieves the state object associated with the given key type.
@@ -32,7 +35,13 @@ public class ParserState {
      * @return The existing or newly created state object.
      */
     public <T> T getOrCreate(Class<T> key, Supplier<T> factory) {
-        return key.cast(state.computeIfAbsent(key, k -> factory.get()));
+        return key.cast(state.computeIfAbsent(key, k -> {
+            T instance = factory.get();
+            if (instance instanceof IScopedParserState scoped) {
+                scopedStates.add(scoped);
+            }
+            return instance;
+        }));
     }
 
     /**
@@ -43,5 +52,23 @@ public class ParserState {
      */
     public <T> void put(Class<T> key, T value) {
         state.put(key, value);
+    }
+
+    /**
+     * Pushes a new scope on all registered {@link IScopedParserState} objects.
+     */
+    public void pushScope() {
+        for (IScopedParserState s : scopedStates) {
+            s.pushScope();
+        }
+    }
+
+    /**
+     * Pops the current scope from all registered {@link IScopedParserState} objects.
+     */
+    public void popScope() {
+        for (IScopedParserState s : scopedStates) {
+            s.popScope();
+        }
     }
 }
