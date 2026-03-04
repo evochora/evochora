@@ -1,8 +1,8 @@
 package org.evochora.compiler.frontend.tokenmap;
 
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.api.TokenKind;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.semantics.Symbol;
 
 /**
  * Context provided to {@link ITokenMapContributor} implementations during Phase 5 (Token Map Generation).
@@ -18,21 +18,21 @@ public interface ITokenMapContext {
 	 *
 	 * @param sourceInfo The source location of the token.
 	 * @param text       The token text.
-	 * @param type       The semantic type of the token.
+	 * @param type       The semantic classification of the token.
 	 * @param scope      The scope name to associate with the token.
 	 */
-	void addToken(SourceInfo sourceInfo, String text, Symbol.Type type, String scope);
+	void addToken(SourceInfo sourceInfo, String text, TokenKind type, String scope);
 
 	/**
 	 * Adds a token entry to the token map with a module-qualified name for artifact lookups.
 	 *
 	 * @param sourceInfo    The source location of the token.
 	 * @param text          The token text as it appears in source.
-	 * @param type          The semantic type of the token.
+	 * @param type          The semantic classification of the token.
 	 * @param scope         The scope name to associate with the token.
 	 * @param qualifiedName The canonical module-qualified name (e.g., "ENERGY.HARVEST"), or null.
 	 */
-	default void addToken(SourceInfo sourceInfo, String text, Symbol.Type type, String scope, String qualifiedName) {
+	default void addToken(SourceInfo sourceInfo, String text, TokenKind type, String scope, String qualifiedName) {
 		addToken(sourceInfo, text, type, scope);
 	}
 

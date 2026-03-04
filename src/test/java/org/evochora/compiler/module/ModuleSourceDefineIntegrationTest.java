@@ -13,6 +13,7 @@ import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.frontend.postprocess.AstPostProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
+import org.evochora.compiler.frontend.preprocessor.PreProcessorResult;
 import org.evochora.compiler.frontend.semantics.ModuleContextTracker;
 
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
@@ -215,7 +216,7 @@ class ModuleSourceDefineIntegrationTest {
         SourceRootResolver circularResolver = new SourceRootResolver(
                 List.of(new SourceRoot(".", null)), tempDir);
         PreProcessor preProcessor = new PreProcessor(tokens, diagnostics, circularResolver, null);
-        preProcessor.expand();
+        PreProcessorResult ppResult = preProcessor.expand();
 
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.getDiagnostics().stream()
@@ -290,11 +291,11 @@ class ModuleSourceDefineIntegrationTest {
         // Phase 2: Preprocessing (with root alias chain for alias chain tracking)
         PreProcessor preProcessor = new PreProcessor(mainTokens, diagnostics, resolver,
                 moduleTokens.isEmpty() ? null : moduleTokens, rootAliasChain);
-        List<Token> processedTokens = preProcessor.expand();
+        PreProcessorResult ppResult = preProcessor.expand();
         if (diagnostics.hasErrors()) return new PostProcessResult(diagnostics, List.of());
 
         // Phase 3: Parsing
-        Parser parser = new Parser(processedTokens, diagnostics);
+        Parser parser = new Parser(ppResult.tokens(), diagnostics);
         List<AstNode> ast = new ArrayList<>(parser.parse());
         if (diagnostics.hasErrors()) return new PostProcessResult(diagnostics, ast);
 
@@ -305,12 +306,9 @@ class ModuleSourceDefineIntegrationTest {
         if (diagnostics.hasErrors()) return new PostProcessResult(diagnostics, ast);
 
         // Phase 6: AST Post-Processing (skip Phase 5 TokenMap — not needed for these tests)
-        Map<String, String> registerAliases = new HashMap<>();
-        parser.getGlobalRegisterAliases().forEach((name, token) -> registerAliases.put(name, token.text()));
-
         ModuleContextTracker tracker = new ModuleContextTracker(symbolTable);
         symbolTable.setCurrentModule(rootAliasChain);
-        AstPostProcessor postProcessor = new AstPostProcessor(symbolTable, registerAliases, tracker);
+        AstPostProcessor postProcessor = new AstPostProcessor(symbolTable, tracker);
         for (int i = 0; i < ast.size(); i++) {
             ast.set(i, postProcessor.process(ast.get(i)));
         }

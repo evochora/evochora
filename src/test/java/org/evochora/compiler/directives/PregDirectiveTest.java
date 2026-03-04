@@ -80,7 +80,7 @@ public class PregDirectiveTest {
             
             boolean foundAliasInTokenMap = false;
             for (org.evochora.compiler.api.TokenInfo tokenInfo : artifact.tokenMap().values()) {
-                if ("%TMP".equals(tokenInfo.tokenText()) && tokenInfo.tokenType() == org.evochora.compiler.frontend.semantics.Symbol.Type.ALIAS) {
+                if ("%TMP".equals(tokenInfo.tokenText()) && tokenInfo.tokenType() == org.evochora.compiler.api.TokenKind.ALIAS) {
                     foundAliasInTokenMap = true;
                     break;
                 }
@@ -133,10 +133,10 @@ public class PregDirectiveTest {
             boolean foundProc2Alias = false;
             
             for (org.evochora.compiler.api.TokenInfo tokenInfo : artifact.tokenMap().values()) {
-                if ("%TEMP1".equals(tokenInfo.tokenText()) && tokenInfo.tokenType() == org.evochora.compiler.frontend.semantics.Symbol.Type.ALIAS) {
+                if ("%TEMP1".equals(tokenInfo.tokenText()) && tokenInfo.tokenType() == org.evochora.compiler.api.TokenKind.ALIAS) {
                     foundProc1Alias = true;
                 }
-                if ("%TEMP2".equals(tokenInfo.tokenText()) && tokenInfo.tokenType() == org.evochora.compiler.frontend.semantics.Symbol.Type.ALIAS) {
+                if ("%TEMP2".equals(tokenInfo.tokenText()) && tokenInfo.tokenType() == org.evochora.compiler.api.TokenKind.ALIAS) {
                     foundProc2Alias = true;
                 }
             }

@@ -55,9 +55,9 @@ public class PreProcessor {
     /**
      * Runs the preprocessor on the token stream. It iterates through the tokens,
      * handling directives and expanding macros until no more expansions can be made.
-     * @return The final list of tokens after preprocessing.
+     * @return The preprocessing result containing the expanded tokens and included source contents.
      */
-    public List<Token> expand() {
+    public PreProcessorResult expand() {
         while (current < tokens.size()) {
             Token token = peek();
             boolean streamWasModified = false;
@@ -80,15 +80,7 @@ public class PreProcessor {
                 current++;
             }
         }
-        return tokens;
-    }
-
-    /**
-     * Gets the content of all files that were included during preprocessing.
-     * @return A map where keys are file paths and values are file contents.
-     */
-    public Map<String, String> getIncludedFileContents() {
-        return includedFileContents;
+        return new PreProcessorResult(tokens, includedFileContents);
     }
 
     /**

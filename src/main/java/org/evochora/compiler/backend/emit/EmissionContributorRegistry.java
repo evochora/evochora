@@ -34,6 +34,7 @@ public final class EmissionContributorRegistry {
     public static EmissionContributorRegistry initializeWithDefaults() {
         EmissionContributorRegistry registry = new EmissionContributorRegistry();
         registry.register(new ProcedureEmissionContributor());
+        registry.register(new RegisterAliasEmissionContributor());
         return registry;
     }
 }

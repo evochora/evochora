@@ -7,19 +7,11 @@ import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
 import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 
-import java.util.Map;
-
 /**
  * Collects procedure symbols during pass 1: defines the procedure symbol,
  * registers export metadata, enters a scope, and defines formal parameters.
  */
 public class ProcedureSymbolCollector implements ISymbolCollector {
-
-    private final Map<AstNode, SymbolTable.Scope> scopeMap;
-
-    public ProcedureSymbolCollector(Map<AstNode, SymbolTable.Scope> scopeMap) {
-        this.scopeMap = scopeMap;
-    }
 
     @Override
     public void collect(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
@@ -31,7 +23,7 @@ public class ProcedureSymbolCollector implements ISymbolCollector {
             ? currentChain + "." + proc.name().text().toUpperCase()
             : proc.name().text().toUpperCase();
         SymbolTable.Scope newScope = symbolTable.enterScope(scopeName);
-        scopeMap.put(node, newScope);
+        symbolTable.registerNodeScope(node, newScope);
 
         if (proc.parameters() != null) {
             for (Token p : proc.parameters()) {

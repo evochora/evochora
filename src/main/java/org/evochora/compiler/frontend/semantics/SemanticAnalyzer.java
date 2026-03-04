@@ -27,7 +27,6 @@ public class SemanticAnalyzer {
     private final DiagnosticsEngine diagnostics;
     private final SymbolTable symbolTable;
     private final AnalysisHandlerRegistry registry;
-    private final Map<AstNode, SymbolTable.Scope> scopeMap = new HashMap<>();
     private final ModuleContextTracker contextTracker;
 
     /**
@@ -56,7 +55,7 @@ public class SemanticAnalyzer {
         this.diagnostics = diagnostics;
         this.symbolTable = symbolTable;
         this.contextTracker = new ModuleContextTracker(symbolTable);
-        this.registry = AnalysisHandlerRegistry.initializeWithDefaults(symbolTable, scopeMap, diagnostics);
+        this.registry = AnalysisHandlerRegistry.initializeWithDefaults(symbolTable, diagnostics);
 
         if (graph != null && rootAliasChain != null) {
             setupModuleRelationships(graph, mainFilePath, rootAliasChain);
@@ -198,14 +197,6 @@ public class SemanticAnalyzer {
         }
 
         symbolTable.setCurrentModule(rootAliasChain);
-    }
-
-    /**
-     * Gets the scope map that maps AST nodes to their scopes.
-     * @return The scope map
-     */
-    public Map<AstNode, SymbolTable.Scope> getScopeMap() {
-        return scopeMap;
     }
 
     /**

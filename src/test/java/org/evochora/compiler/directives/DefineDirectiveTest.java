@@ -16,8 +16,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeAll;
 
 import java.util.List;
-import java.util.Map;
-import java.util.HashMap;
 import java.util.Objects;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -90,15 +88,7 @@ public class DefineDirectiveTest {
         semanticAnalyzer.analyze(ast);
         
         // AST Post-Processing - Resolves constants
-        // Extract register aliases from parser (same as the real compiler does)
-        Map<String, String> registerAliases = new HashMap<>();
-        Map<String, org.evochora.compiler.model.token.Token> parserAliases = parser.getGlobalRegisterAliases();
-        
-        parserAliases.forEach((aliasName, registerToken) -> {
-            registerAliases.put(aliasName, registerToken.text());
-        });
-        
-        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, registerAliases);
+        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable);
         List<AstNode> processedAst = ast.stream()
             .map(node -> astPostProcessor.process(node))
             .toList();

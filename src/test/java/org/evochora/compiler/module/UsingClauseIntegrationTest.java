@@ -260,7 +260,7 @@ class UsingClauseIntegrationTest {
         // Phase 2: Preprocessing (with root alias chain)
         PreProcessor preProcessor = new PreProcessor(mainTokens, diagnostics, resolver,
                 moduleTokens.isEmpty() ? null : moduleTokens, rootAliasChain);
-        List<Token> processedTokens = preProcessor.expand();
+        List<Token> processedTokens = preProcessor.expand().tokens();
         if (diagnostics.hasErrors()) return new SemanticsResult(diagnostics, null);
 
         // Phase 3: Parsing

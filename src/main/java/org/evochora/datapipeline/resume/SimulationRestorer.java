@@ -15,7 +15,7 @@ import org.evochora.compiler.api.PlacedMolecule;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.TokenInfo;
-import org.evochora.compiler.frontend.semantics.Symbol;
+import org.evochora.compiler.api.TokenKind;
 import org.evochora.datapipeline.api.contracts.CallSiteBinding;
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.ColumnTokenLookup;
@@ -491,7 +491,7 @@ public class SimulationRestorer {
             org.evochora.datapipeline.api.contracts.TokenInfo proto) {
         return new TokenInfo(
             proto.getTokenText(),
-            Symbol.Type.valueOf(proto.getTokenType()),
+            TokenKind.valueOf(proto.getTokenType()),
             proto.getScope()
         );
     }

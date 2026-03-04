@@ -1,6 +1,7 @@
 package org.evochora.compiler.frontend.postprocess;
 
 import org.evochora.compiler.frontend.parser.ast.*;
+import org.evochora.compiler.frontend.parser.features.reg.RegNode;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.InstructionNode;
@@ -35,25 +36,23 @@ class AstPostProcessorTest {
 
     private AstPostProcessor processor;
     private SymbolTable symbolTable;
-    private Map<String, String> registerAliases;
     private DiagnosticsEngine diagnostics;
 
     @BeforeEach
     void setUp() {
         diagnostics = new DiagnosticsEngine();
         symbolTable = new SymbolTable(diagnostics);
-        registerAliases = new HashMap<>();
 
         // Register a default module and set it as current
         symbolTable.registerModule("TEST", "test.s");
         symbolTable.setCurrentModule("TEST");
 
-        // Set up some test register aliases (module-qualified keys)
-        registerAliases.put("TEST.COUNTER", "%DR0");
-        registerAliases.put("TEST.TMP", "%PR0");
-        registerAliases.put("TEST.POS", "%DR1");
+        processor = new AstPostProcessor(symbolTable);
 
-        processor = new AstPostProcessor(symbolTable, registerAliases);
+        // Register aliases by processing RegNode instances (self-extraction)
+        processor.process(new RegNode(createToken("COUNTER", TokenType.IDENTIFIER), createToken("%DR0", TokenType.REGISTER)));
+        processor.process(new RegNode(createToken("TMP", TokenType.IDENTIFIER), createToken("%PR0", TokenType.REGISTER)));
+        processor.process(new RegNode(createToken("POS", TokenType.IDENTIFIER), createToken("%DR1", TokenType.REGISTER)));
     }
 
     @Test
@@ -234,9 +233,9 @@ class AstPostProcessorTest {
     }
 
     @Test
-    void testProcess_EmptyRegisterAliases_NoReplacements() {
-        // Create processor with no register aliases
-        AstPostProcessor emptyProcessor = new AstPostProcessor(symbolTable, new HashMap<>());
+    void testProcess_NoRegNodeProcessed_NoReplacements() {
+        // Create processor without processing any RegNode
+        AstPostProcessor emptyProcessor = new AstPostProcessor(symbolTable);
 
         // Create an identifier that would be an alias
         IdentifierNode idNode = new IdentifierNode("COUNTER", createSourceInfo());
@@ -245,7 +244,7 @@ class AstPostProcessorTest {
         // Process the AST
         AstNode result = emptyProcessor.process(idNode);
 
-        // Should NOT be replaced (no aliases defined)
+        // Should NOT be replaced (no RegNode processed → no aliases known)
         assertThat(result).isSameAs(idNode);
     }
 
@@ -337,7 +336,7 @@ class AstPostProcessorTest {
 
         // Use ModuleContextTracker with alias chains via PushCtxNode
         ModuleContextTracker tracker = new ModuleContextTracker(st);
-        AstPostProcessor moduleProcessor = new AstPostProcessor(st, new HashMap<>(), tracker);
+        AstPostProcessor moduleProcessor = new AstPostProcessor(st, tracker);
 
         List<AstNode> nodes = List.of(
                 new PushCtxNode("/mod_a.evo", modAChain), defineA, instrA, new PopCtxNode(),

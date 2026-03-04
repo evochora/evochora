@@ -44,7 +44,6 @@ public class Emitter {
      * @param layout The layout result, containing coordinate and source mapping.
      * @param linkingContext The context from the linking phase, containing call site bindings.
      * @param isa The instruction set architecture for opcode and register resolution.
-     * @param registerAliasMap A map of register aliases to their physical indices.
      * @param contributorRegistry Registry of emission contributors for extracting metadata from IR.
      * @param sources A map of source file names to their content.
      * @return The final, compiled {@link ProgramArtifact}.
@@ -54,7 +53,6 @@ public class Emitter {
                                 LayoutResult layout,
                                 LinkingContext linkingContext,
                                 IInstructionSet isa,
-                                Map<String, Integer> registerAliasMap,
                                 EmissionContributorRegistry contributorRegistry,
                                 Map<String, List<String>> sources,
                                 Map<SourceInfo, TokenInfo> tokenMap,
@@ -191,7 +189,7 @@ public class Emitter {
                 linkingContext.callSiteBindings(),
                 coordToLinear,
                 linearToCoord,
-                registerAliasMap,
+                emissionContext.registerAliasMap(),
                 emissionContext.procNameToParamNames(),
                 tokenMap,
                 tokenLookup,

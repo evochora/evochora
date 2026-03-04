@@ -1,6 +1,7 @@
 package org.evochora.compiler.frontend.semantics;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.model.ast.AstNode;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -55,6 +56,9 @@ public class SymbolTable {
     private final Scope rootScope;
     private Scope currentScope;
 
+    // --- Node-to-scope mapping (populated by ProcedureSymbolCollector, consumed by TokenMapGenerator) ---
+    private final Map<AstNode, Scope> nodeScopeMap = new HashMap<>();
+
     private final DiagnosticsEngine diagnostics;
 
     /**
@@ -96,14 +100,6 @@ public class SymbolTable {
      */
     public String getCurrentAliasChain() {
         return currentAliasChain;
-    }
-
-    /**
-     * @deprecated Use {@link #getCurrentAliasChain()} instead. Provided for transitional compatibility.
-     */
-    @Deprecated
-    public ModuleId getCurrentModuleId() {
-        return currentAliasChain != null ? new ModuleId(currentAliasChain) : null;
     }
 
     /**
@@ -172,6 +168,20 @@ public class SymbolTable {
      */
     public Scope getRootScope() {
         return this.rootScope;
+    }
+
+    /**
+     * Associates an AST node with its scope. Called by ProcedureSymbolCollector during pass 1.
+     */
+    public void registerNodeScope(AstNode node, Scope scope) {
+        nodeScopeMap.put(node, scope);
+    }
+
+    /**
+     * Returns the scope associated with the given AST node, or null if none.
+     */
+    public Scope getNodeScope(AstNode node) {
+        return nodeScopeMap.get(node);
     }
 
     // === Symbol definition and resolution ===

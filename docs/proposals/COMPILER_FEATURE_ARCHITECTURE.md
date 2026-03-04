@@ -1185,10 +1185,10 @@ include this Token decoupling work.
 | D1 | repeat | RepeatDirectiveHandler, CaretDirectiveHandler | RepeatFeature.java |
 | D2 | source | SourceDirectiveHandler | SourceFeature.java |
 | D3 | macro | MacroDirectiveHandler, MacroDefinition, MacroExpansionHandler | MacroFeature.java |
-| D4 | ctx | PushCtx/PopCtx Nodes + Parser Handlers + Preprocessor PopCtxHandler + Converters + LayoutHandlers | CtxFeature.java |
+| D4 | ctx | PushCtx/PopCtx Nodes + Parser Handlers + Preprocessor PopCtxHandler + Converters + LayoutHandlers. **[+constants]** Replace magic strings `"core"`, `"push_ctx"`, `"pop_ctx"` with shared constants (used in Linker, PushCtxNodeConverter, PopCtxNodeConverter, LayoutProcessor). | CtxFeature.java |
 | D5 | org | OrgNode, OrgDirectiveHandler, OrgNodeConverter, OrgLayoutHandler | OrgFeature.java |
 | D6 | dir | DirNode, DirDirectiveHandler, DirNodeConverter, DirLayoutHandler | DirFeature.java |
-| D7 | define | DefineNode, DefineDirectiveHandler, DefineAnalysisHandler, DefinePostProcessHandler, DefineNodeConverter. **[+decouple]** DefineNode: Token `name` → String + SourceInfo | DefineFeature.java |
+| D7 | define | DefineNode, DefineDirectiveHandler, DefineAnalysisHandler, DefinePostProcessHandler, DefineNodeConverter. **[+decouple]** DefineNode: Token `name` → String + SourceInfo. **[+DRY]** Extract shared `IrGenContext.convertOperand(AstNode)` method from `DefineNodeConverter.toOperand()` and `InstructionNodeConverter.convertOperand()` (identical instanceof chains for NumberLiteralNode/TypedLiteralNode/VectorLiteralNode → IR operand mapping). | DefineFeature.java |
 | D8 | reg | See D8 details below. | RegFeature.java |
 | D9 | label | LabelNode, LabelSymbolCollector, LabelAnalysisHandler, LabelNodeConverter. **[+decouple]** LabelNode: Token `labelToken` → String + SourceInfo | LabelFeature.java |
 | D10 | place | PlaceNode, PlaceDirectiveHandler, PlaceNodeConverter, PlaceLayoutHandler, placement/. **[+decouple]** placement sub-nodes: RangeValueComponent, SingleValueComponent, SteppedRangeValueComponent, WildcardValueComponent — Token fields → extracted values + SourceInfo | PlaceFeature.java |
@@ -1235,7 +1235,7 @@ Additionally:
 
 | Step | Description |
 |------|-------------|
-| F1 | Refactor SourceDirectiveHandler to use pre-lexed tokens (same as ImportSourceHandler). |
+| F1 | Refactor SourceDirectiveHandler to use pre-lexed tokens (same as ImportSourceHandler). Move EOF-token stripping from Compiler.java into Lexer (e.g. `scanTokensWithoutEof()`) or PreProcessor. |
 | F2 | Extract cross-phase data extraction from Compiler.java: register alias data (currently `parser.getGlobalRegisterAliases()`) and procedure table data (currently `parser.getProcedureTable()`) flow through feature-provided mechanisms instead of Parser accessor methods. |
 | F3 | Introduce MachineConstraints, remove runtime Config imports from features. |
 

@@ -43,7 +43,7 @@ public class MacroDirectiveTest {
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")), null);
 
         // Act
-        List<Token> expandedTokens = preProcessor.expand();
+        List<Token> expandedTokens = preProcessor.expand().tokens();
 
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();

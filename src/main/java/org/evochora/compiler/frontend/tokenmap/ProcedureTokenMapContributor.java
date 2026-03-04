@@ -1,8 +1,8 @@
 package org.evochora.compiler.frontend.tokenmap;
 
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.api.TokenKind;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
-import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.token.Token;
 
@@ -11,8 +11,8 @@ import java.util.List;
 /**
  * Token map contributor for {@link ProcedureNode}.
  *
- * <p>Adds the procedure name as a {@link Symbol.Type#PROCEDURE} token in global scope,
- * and all formal parameters as {@link Symbol.Type#VARIABLE} tokens in the procedure's scope.</p>
+ * <p>Adds the procedure name as a {@link TokenKind#PROCEDURE} token in global scope,
+ * and all formal parameters as {@link TokenKind#VARIABLE} tokens in the procedure's scope.</p>
  */
 public class ProcedureTokenMapContributor implements ITokenMapContributor {
 
@@ -24,7 +24,7 @@ public class ProcedureTokenMapContributor implements ITokenMapContributor {
 		String qualifiedName = context.currentScope();
 		context.addToken(
 			new SourceInfo(procNode.name().fileName(), procNode.name().line(), procNode.name().column()),
-			procNode.name().text(), Symbol.Type.PROCEDURE, "global", qualifiedName);
+			procNode.name().text(), TokenKind.PROCEDURE, "global", qualifiedName);
 
 		String procScope = context.currentScope();
 		addParameters(procNode.parameters(), procScope, context);
@@ -37,7 +37,7 @@ public class ProcedureTokenMapContributor implements ITokenMapContributor {
 		for (Token param : params) {
 			context.addToken(
 				new SourceInfo(param.fileName(), param.line(), param.column()),
-				param.text(), Symbol.Type.VARIABLE, scope);
+				param.text(), TokenKind.VARIABLE, scope);
 		}
 	}
 }

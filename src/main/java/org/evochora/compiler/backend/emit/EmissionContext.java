@@ -16,6 +16,7 @@ import java.util.Map;
 public final class EmissionContext {
 
     private final Map<String, List<ParamInfo>> procNameToParamNames = new HashMap<>();
+    private final Map<String, Integer> registerAliasMap = new HashMap<>();
 
     /**
      * Registers a procedure's parameter metadata.
@@ -32,5 +33,22 @@ public final class EmissionContext {
      */
     public Map<String, List<ParamInfo>> procNameToParamNames() {
         return procNameToParamNames;
+    }
+
+    /**
+     * Registers a register alias mapping.
+     *
+     * @param qualifiedName The module-qualified alias name.
+     * @param registerId    The physical register ID.
+     */
+    public void registerAlias(String qualifiedName, int registerId) {
+        registerAliasMap.put(qualifiedName, registerId);
+    }
+
+    /**
+     * Returns the accumulated register alias metadata.
+     */
+    public Map<String, Integer> registerAliasMap() {
+        return registerAliasMap;
     }
 }

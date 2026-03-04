@@ -73,19 +73,17 @@ public final class AnalysisHandlerRegistry {
      * Creates a registry pre-populated with the default handlers and collectors.
      *
      * @param symbolTable The symbol table used by scope-aware handlers.
-     * @param scopeMap    The scope map shared between collectors and handlers.
      * @param diagnostics The diagnostics engine for handlers that need it at construction time.
      * @return A fully initialized registry.
      */
     public static AnalysisHandlerRegistry initializeWithDefaults(
             SymbolTable symbolTable,
-            Map<AstNode, SymbolTable.Scope> scopeMap,
             DiagnosticsEngine diagnostics) {
 
         AnalysisHandlerRegistry registry = new AnalysisHandlerRegistry();
 
         // Pass-1 collectors
-        registry.registerCollector(ProcedureNode.class, new ProcedureSymbolCollector(scopeMap));
+        registry.registerCollector(ProcedureNode.class, new ProcedureSymbolCollector());
         registry.registerCollector(LabelNode.class, new LabelSymbolCollector());
         registry.registerCollector(ImportNode.class, new ImportSymbolCollector());
         registry.registerCollector(RequireNode.class, new RequireSymbolCollector());
@@ -96,7 +94,7 @@ public final class AnalysisHandlerRegistry {
         registry.register(DefineNode.class, new DefineAnalysisHandler());
         registry.register(RegNode.class, new RegAnalysisHandler());
         registry.register(LabelNode.class, new LabelAnalysisHandler());
-        registry.register(ProcedureNode.class, new ProcedureAnalysisHandler(scopeMap));
+        registry.register(ProcedureNode.class, new ProcedureAnalysisHandler());
         registry.register(InstructionNode.class, new InstructionAnalysisHandler(symbolTable, diagnostics));
         registry.register(PregNode.class, new PregAnalysisHandler());
 

@@ -15,10 +15,9 @@ import org.evochora.compiler.frontend.module.DependencyScanner;
 import org.evochora.compiler.frontend.module.ModuleDescriptor;
 import org.evochora.compiler.frontend.module.SourceRootResolver;
 import org.evochora.compiler.frontend.parser.Parser;
-import org.evochora.compiler.frontend.parser.ast.PregNode;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
+import org.evochora.compiler.frontend.preprocessor.PreProcessorResult;
 import org.evochora.compiler.frontend.semantics.ModuleContextTracker;
-import org.evochora.compiler.frontend.semantics.ModuleId;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.AstNode;
@@ -187,7 +186,7 @@ public class Compiler implements ICompiler {
         // Phase 2: Preprocessing (includes, macros)
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, resolver,
                 moduleTokens.isEmpty() ? null : moduleTokens, rootAliasChain);
-        List<Token> processedTokens = preProcessor.expand();
+        PreProcessorResult ppResult = preProcessor.expand();
 
         Map<String, List<String>> sources = new HashMap<>();
         sources.put(mainFilePath, sourceLines);
@@ -196,7 +195,7 @@ public class Compiler implements ICompiler {
                 sources.put(module.sourcePath(), Arrays.asList(module.content().split("\\r?\\n")));
             }
         }
-        preProcessor.getIncludedFileContents().forEach((path, content) ->
+        ppResult.includedSources().forEach((path, content) ->
                 sources.put(path, Arrays.asList(content.split("\\r?\\n"))));
 
         if (diagnostics.hasErrors()) {
@@ -204,7 +203,7 @@ public class Compiler implements ICompiler {
         }
 
         // Phase 3: Parsing (builds AST)
-        Parser parser = new Parser(processedTokens, diagnostics);
+        Parser parser = new Parser(ppResult.tokens(), diagnostics);
         List<AstNode> ast = parser.parse();
 
         if (diagnostics.hasErrors()) {
@@ -225,46 +224,13 @@ public class Compiler implements ICompiler {
         tokenMapRegistry.register(org.evochora.compiler.model.ast.InstructionNode.class, new InstructionTokenMapContributor());
         ModuleContextTracker tokenMapTracker = new ModuleContextTracker(symbolTable);
         symbolTable.setCurrentModule(rootAliasChain);
-        TokenMapGenerator tokenMapGenerator = new TokenMapGenerator(symbolTable, analyzer.getScopeMap(), diagnostics, tokenMapRegistry, tokenMapTracker);
+        TokenMapGenerator tokenMapGenerator = new TokenMapGenerator(symbolTable, diagnostics, tokenMapRegistry, tokenMapTracker);
         Map<SourceInfo, TokenInfo> tokenMap = tokenMapGenerator.generateAll(ast);
 
-        // Phase 6: AST Post-Processing (resolve register aliases)
-        // Extract register aliases from parser (both .REG and .PREG)
-        Map<String, String> astRegisterAliases = new HashMap<>();
-
-        // Extract global register aliases from parser (module-qualified keys)
-        parser.getGlobalRegisterAliases().forEach((aliasName, registerToken) -> {
-            String qualifiedAlias = resolveQualifiedName(aliasName, registerToken.fileName(),
-                    mainFilePath, rootAliasChain);
-            astRegisterAliases.put(qualifiedAlias, registerToken.text());
-        });
-
-        // Extract procedure register aliases from AST (module-qualified keys)
-        extractProcedureRegisterAliases(ast, astRegisterAliases, mainFilePath, rootAliasChain);
-
-        // Create final alias map for emitter (convert register names to IDs)
-        Map<String, Integer> finalAliasMap = new HashMap<>();
-        for (Map.Entry<String, String> entry : astRegisterAliases.entrySet()) {
-            String aliasName = entry.getKey();
-            String registerName = entry.getValue();
-            // Convert register name (e.g., "%PR0", "%FPR0") to register ID
-            if (registerName.startsWith("%FPR")) {
-                int registerIndex = Integer.parseInt(registerName.substring(4));
-                int registerId = org.evochora.runtime.isa.Instruction.FPR_BASE + registerIndex;
-                finalAliasMap.put(aliasName, registerId);
-            } else if (registerName.startsWith("%PR")) {
-                int registerIndex = Integer.parseInt(registerName.substring(3));
-                int registerId = org.evochora.runtime.isa.Instruction.PR_BASE + registerIndex;
-                finalAliasMap.put(aliasName, registerId);
-            } else if (registerName.startsWith("%DR")) {
-                int registerId = Integer.parseInt(registerName.substring(3));
-                finalAliasMap.put(aliasName, registerId);
-            }
-        }
-
+        // Phase 6: AST Post-Processing (resolve register aliases and constants)
         ModuleContextTracker postProcessTracker = new ModuleContextTracker(symbolTable);
         symbolTable.setCurrentModule(rootAliasChain);
-        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, astRegisterAliases, postProcessTracker);
+        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, postProcessTracker);
 
         // Process all AST nodes, not just the first one
         for (int i = 0; i < ast.size(); i++) {
@@ -306,7 +272,7 @@ public class Compiler implements ICompiler {
         try {
             // Generate tokenLookup from tokenMap for efficient line-based lookup
             Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup = TokenMapGenerator.buildTokenLookup(tokenMap);
-            artifact = emitter.emit(linkedIr, layout, linkContext, new RuntimeInstructionSetAdapter(), finalAliasMap, emissionContributorRegistry, sources, tokenMap, tokenLookup);
+            artifact = emitter.emit(linkedIr, layout, linkContext, new RuntimeInstructionSetAdapter(), emissionContributorRegistry, sources, tokenMap, tokenLookup);
         } catch (org.evochora.compiler.api.CompilationException ce) {
             throw ce; // already formatted with file/line
         } catch (RuntimeException re) {
@@ -316,52 +282,6 @@ public class Compiler implements ICompiler {
 
         org.evochora.compiler.diagnostics.CompilerLogger.debug("Compiler: " + programName + " programId:" + artifact.programId());
         return artifact;
-    }
-
-    /**
-     * Extracts procedure register aliases from the AST and adds them to the register aliases map.
-     * This allows the AstPostProcessor to resolve procedure register aliases.
-     *
-     * @param ast the AST to extract aliases from
-     * @param registerAliases the map to populate with procedure register aliases
-     */
-    private void extractProcedureRegisterAliases(List<AstNode> ast, Map<String, String> registerAliases,
-                                                  String mainFilePath, String rootAliasChain) {
-        for (AstNode node : ast) {
-            if (node == null) continue;
-
-            if (node instanceof PregNode pregNode) {
-                String qualifiedAlias = resolveQualifiedName(
-                    pregNode.alias().text(), pregNode.alias().fileName(),
-                    mainFilePath, rootAliasChain);
-                int registerIndex = pregNode.registerIndexValue();
-                String targetRegister = "%PR" + registerIndex;
-                registerAliases.put(qualifiedAlias, targetRegister);
-            }
-
-            extractProcedureRegisterAliases(node.getChildren(), registerAliases,
-                    mainFilePath, rootAliasChain);
-        }
-    }
-
-    /**
-     * Qualifies a local name with its module prefix.
-     * For tokens from the main file, uses rootAliasChain. For imported module tokens,
-     * falls back to file-derived name. This transitional helper will be deleted when
-     * extraction moves to the phases that track alias chains (Issues 6/7).
-     */
-    private static String resolveQualifiedName(String localName, String fileName,
-                                               String mainFilePath, String rootAliasChain) {
-        String moduleName;
-        if (mainFilePath != null && mainFilePath.equals(fileName)) {
-            moduleName = rootAliasChain;
-        } else {
-            moduleName = ModuleId.deriveModuleName(fileName);
-        }
-        if (moduleName != null && !moduleName.isEmpty()) {
-            return moduleName + "." + localName.toUpperCase();
-        }
-        return localName.toUpperCase();
     }
 
 

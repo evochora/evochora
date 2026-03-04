@@ -5,7 +5,9 @@ import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
+import org.evochora.compiler.frontend.parser.ast.PregNode;
 import org.evochora.compiler.frontend.parser.features.def.DefineNode;
+import org.evochora.compiler.frontend.parser.features.reg.RegNode;
 import org.evochora.compiler.frontend.semantics.ModuleContextTracker;
 import org.evochora.compiler.frontend.semantics.ResolvedSymbol;
 import org.evochora.compiler.frontend.semantics.Symbol;
@@ -24,27 +26,25 @@ import java.util.Optional;
 public class AstPostProcessor {
     private final SymbolTable symbolTable;
     private final ModuleContextTracker contextTracker;
-    private final Map<String, String> registerAliases;    // %COUNTER -> %DR0, %TMP -> %PR0
+    // Module-qualified register aliases, self-extracted from RegNode/PregNode during the walk
+    private final Map<String, String> registerAliases = new HashMap<>();
     // Module-qualified constants: aliasChain -> (constantName -> value)
-    private final Map<String, Map<String, TypedLiteralNode>> constants;
+    private final Map<String, Map<String, TypedLiteralNode>> constants = new HashMap<>();
     private final Map<AstNode, AstNode> replacements = new HashMap<>();
 
     /**
      * Constructs a post-processor for single-file compilation (no module context).
      */
-    public AstPostProcessor(SymbolTable symbolTable, Map<String, String> registerAliases) {
-        this(symbolTable, registerAliases, new ModuleContextTracker(symbolTable));
+    public AstPostProcessor(SymbolTable symbolTable) {
+        this(symbolTable, new ModuleContextTracker(symbolTable));
     }
 
     /**
      * Constructs a module-aware post-processor.
      */
-    public AstPostProcessor(SymbolTable symbolTable, Map<String, String> registerAliases,
-                            ModuleContextTracker contextTracker) {
+    public AstPostProcessor(SymbolTable symbolTable, ModuleContextTracker contextTracker) {
         this.symbolTable = symbolTable;
-        this.registerAliases = registerAliases;
         this.contextTracker = contextTracker;
-        this.constants = new HashMap<>();
     }
 
     /**
@@ -67,7 +67,11 @@ public class AstPostProcessor {
         if (node == null) return;
         contextTracker.handleNode(node);
 
-        if (node instanceof DefineNode) {
+        if (node instanceof RegNode regNode) {
+            collectRegisterAlias(regNode.alias().text(), regNode.register().text());
+        } else if (node instanceof PregNode pregNode) {
+            collectRegisterAlias(pregNode.alias().text(), pregNode.targetRegister().text());
+        } else if (node instanceof DefineNode) {
             collectConstants(node);
         } else if (node instanceof IdentifierNode) {
             collectReplacements(node);
@@ -76,6 +80,11 @@ public class AstPostProcessor {
         for (AstNode child : node.getChildren()) {
             collectPass(child);
         }
+    }
+
+    private void collectRegisterAlias(String aliasText, String registerText) {
+        String qualifiedAlias = qualifyAliasName(aliasText.toUpperCase());
+        registerAliases.put(qualifiedAlias, registerText);
     }
 
 

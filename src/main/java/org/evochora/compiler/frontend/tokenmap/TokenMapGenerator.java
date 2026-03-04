@@ -2,6 +2,7 @@ package org.evochora.compiler.frontend.tokenmap;
 
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.TokenInfo;
+import org.evochora.compiler.api.TokenKind;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.RegisterNode;
@@ -36,7 +37,6 @@ import java.util.Optional;
 public class TokenMapGenerator implements ITokenMapContext {
 
     private final SymbolTable symbolTable;
-    private final Map<AstNode, SymbolTable.Scope> scopeMap;
     private final Map<SourceInfo, TokenInfo> tokenMap = new HashMap<>();
     private final DiagnosticsEngine diagnostics;
     private final TokenMapContributorRegistry contributorRegistry;
@@ -48,16 +48,14 @@ public class TokenMapGenerator implements ITokenMapContext {
      * Constructs a TokenMapGenerator.
      *
      * @param symbolTable         The fully resolved symbol table from the semantic analysis phase.
-     * @param scopeMap            The map of AST nodes to their corresponding scopes from SemanticAnalyzer.
      * @param diagnostics         The diagnostics engine for reporting compilation errors.
      * @param contributorRegistry The registry of feature-specific token map contributors.
      * @param contextTracker      The module context tracker for alias chain qualification.
      */
-    public TokenMapGenerator(SymbolTable symbolTable, Map<AstNode, SymbolTable.Scope> scopeMap,
+    public TokenMapGenerator(SymbolTable symbolTable,
                              DiagnosticsEngine diagnostics, TokenMapContributorRegistry contributorRegistry,
                              ModuleContextTracker contextTracker) {
         this.symbolTable = Objects.requireNonNull(symbolTable, "SymbolTable cannot be null.");
-        this.scopeMap = scopeMap;
         this.diagnostics = diagnostics;
         this.contributorRegistry = Objects.requireNonNull(contributorRegistry, "ContributorRegistry cannot be null.");
         this.contextTracker = contextTracker;
@@ -122,12 +120,12 @@ public class TokenMapGenerator implements ITokenMapContext {
     // === ITokenMapContext implementation ===
 
     @Override
-    public void addToken(SourceInfo sourceInfo, String text, Symbol.Type type, String scope) {
+    public void addToken(SourceInfo sourceInfo, String text, TokenKind type, String scope) {
         tokenMap.put(sourceInfo, new TokenInfo(text, type, scope));
     }
 
     @Override
-    public void addToken(SourceInfo sourceInfo, String text, Symbol.Type type, String scope, String qualifiedName) {
+    public void addToken(SourceInfo sourceInfo, String text, TokenKind type, String scope, String qualifiedName) {
         tokenMap.put(sourceInfo, new TokenInfo(text, type, scope, qualifiedName));
     }
 
@@ -144,8 +142,8 @@ public class TokenMapGenerator implements ITokenMapContext {
     // === Tree walking ===
 
     /**
-     * A stateful recursive walk method that manages the current scope via the scopeMap.
-     * Scope transitions are determined generically by looking up the node in the scopeMap,
+     * A stateful recursive walk method that manages the current scope via the SymbolTable's
+     * node-to-scope map. Scope transitions are determined generically by looking up the node,
      * using {@link SymbolTable.Scope#name()} for the display name.
      *
      * @param node The current AST node to visit.
@@ -161,7 +159,7 @@ public class TokenMapGenerator implements ITokenMapContext {
         SymbolTable.Scope previousScopeObj = this.currentScopeObj;
         String previousScopeName = this.currentScopeName;
 
-        SymbolTable.Scope nodeScope = scopeMap.get(node);
+        SymbolTable.Scope nodeScope = symbolTable.getNodeScope(node);
         if (nodeScope != null) {
             this.currentScopeObj = nodeScope;
             this.currentScopeName = nodeScope.name();
@@ -201,7 +199,7 @@ public class TokenMapGenerator implements ITokenMapContext {
                 if (sym.type() == Symbol.Type.PROCEDURE || sym.type() == Symbol.Type.LABEL) {
                     qualifiedName = resolved.qualifiedName();
                 }
-                tokenMap.put(si, new TokenInfo(identifierNode.text(), sym.type(), this.currentScopeName, qualifiedName));
+                tokenMap.put(si, new TokenInfo(identifierNode.text(), TokenKindMapper.map(sym.type()), this.currentScopeName, qualifiedName));
             } else {
                 diagnostics.reportError(
                     "Symbol '" + identifierNode.text() +
@@ -216,7 +214,7 @@ public class TokenMapGenerator implements ITokenMapContext {
                 String qualifiedAlias = qualifyName(registerNode.getOriginalAlias());
                 tokenMap.put(aliasSourceInfo, new TokenInfo(
                     registerNode.getOriginalAlias(),
-                    Symbol.Type.ALIAS,
+                    TokenKind.ALIAS,
                     this.currentScopeName,
                     qualifiedAlias
                 ));
@@ -224,7 +222,7 @@ public class TokenMapGenerator implements ITokenMapContext {
                 SourceInfo regSourceInfo = registerNode.sourceInfo();
                 tokenMap.put(regSourceInfo, new TokenInfo(
                     registerNode.getName(),
-                    Symbol.Type.VARIABLE,
+                    TokenKind.VARIABLE,
                     this.currentScopeName
                 ));
             }

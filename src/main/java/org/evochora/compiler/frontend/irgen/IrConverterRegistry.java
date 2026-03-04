@@ -9,12 +9,15 @@ import org.evochora.compiler.frontend.irgen.converters.OrgNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.PlaceNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.ProcedureNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.PopCtxNodeConverter;
+import org.evochora.compiler.frontend.irgen.converters.PregNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.PushCtxNodeConverter;
+import org.evochora.compiler.frontend.irgen.converters.RegNodeConverter;
 
 import org.evochora.compiler.frontend.irgen.converters.DefineNodeConverter;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.frontend.parser.ast.PopCtxNode;
+import org.evochora.compiler.frontend.parser.ast.PregNode;
 import org.evochora.compiler.frontend.parser.ast.PushCtxNode;
 import org.evochora.compiler.frontend.parser.features.dir.DirNode;
 import org.evochora.compiler.frontend.parser.features.importdir.ImportNode;
@@ -125,6 +128,8 @@ public final class IrConverterRegistry {
 		reg.register(org.evochora.compiler.frontend.parser.features.def.DefineNode.class, new DefineNodeConverter());
 		reg.register(ImportNode.class, new ImportNodeConverter());
 		reg.register(RequireNode.class, new RequireNodeConverter());
+		reg.register(org.evochora.compiler.frontend.parser.features.reg.RegNode.class, new RegNodeConverter());
+		reg.register(PregNode.class, new PregNodeConverter());
 
 		// Internal context directives
 		reg.register(PushCtxNode.class, new PushCtxNodeConverter());
