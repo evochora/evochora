@@ -41,7 +41,6 @@ public class LabelRefLinkingRule implements ILinkingRule {
             IrOperand op = ops.get(i);
             if (op instanceof IrLabelRef ref) {
                 String labelNameToFind = ref.labelName();
-                String instrFile = instruction.source().fileName();
 
                 if (labelNameToFind.contains(".")) {
                     // Cross-module reference: resolve alias to the target module's alias chain

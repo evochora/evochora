@@ -3,7 +3,6 @@ package org.evochora.compiler.backend.emit;
 import org.evochora.runtime.Config;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.MachineInstructionInfo;
-import org.evochora.compiler.api.ParamInfo;
 import org.evochora.compiler.api.PlacedMolecule;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceInfo;

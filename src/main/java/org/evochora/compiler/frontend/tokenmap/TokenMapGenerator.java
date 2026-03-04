@@ -195,10 +195,7 @@ public class TokenMapGenerator implements ITokenMapContext {
                 ResolvedSymbol resolved = symbolOpt.get();
                 Symbol sym = resolved.symbol();
                 SourceInfo si = identifierNode.sourceInfo();
-                String qualifiedName = null;
-                if (sym.type() == Symbol.Type.PROCEDURE || sym.type() == Symbol.Type.LABEL) {
-                    qualifiedName = resolved.qualifiedName();
-                }
+                String qualifiedName = resolved.qualifiedName();
                 tokenMap.put(si, new TokenInfo(identifierNode.text(), TokenKindMapper.map(sym.type()), this.currentScopeName, qualifiedName));
             } else {
                 diagnostics.reportError(

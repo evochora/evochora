@@ -996,11 +996,14 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     }
 
     private static TokenInfo convertTokenInfo(org.evochora.compiler.api.TokenInfo tokenInfo) {
-        return TokenInfo.newBuilder()
+        TokenInfo.Builder builder = TokenInfo.newBuilder()
                 .setTokenText(tokenInfo.tokenText())
                 .setTokenType(tokenInfo.tokenType().name())
-                .setScope(tokenInfo.scope())
-                .build();
+                .setScope(tokenInfo.scope());
+        if (tokenInfo.qualifiedName() != null) {
+            builder.setQualifiedName(tokenInfo.qualifiedName());
+        }
+        return builder.build();
     }
 
     private static Vector convertVector(int[] components) {

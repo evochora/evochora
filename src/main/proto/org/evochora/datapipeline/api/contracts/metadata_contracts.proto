@@ -367,6 +367,10 @@ message TokenInfo {
 
   // Scope information (e.g., "global", "procedure", "local")
   string scope = 3;
+
+  // Module-qualified name for artifact lookups (e.g., "ENERGY.HARVEST").
+  // Empty string if no qualification applies.
+  string qualified_name = 4;
 }
 
 // Top-level token lookup structure for a file.

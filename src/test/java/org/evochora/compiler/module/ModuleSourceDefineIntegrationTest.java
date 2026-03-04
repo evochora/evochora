@@ -216,7 +216,7 @@ class ModuleSourceDefineIntegrationTest {
         SourceRootResolver circularResolver = new SourceRootResolver(
                 List.of(new SourceRoot(".", null)), tempDir);
         PreProcessor preProcessor = new PreProcessor(tokens, diagnostics, circularResolver, null);
-        PreProcessorResult ppResult = preProcessor.expand();
+        preProcessor.expand();
 
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.getDiagnostics().stream()

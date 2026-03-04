@@ -4,7 +4,6 @@ import org.evochora.compiler.Compiler;
 import org.evochora.compiler.CompilerTestBase;
 import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.ProgramArtifact;
-import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.api.TokenInfo;
 import org.evochora.runtime.isa.Instruction;
@@ -14,7 +13,6 @@ import org.junit.jupiter.api.Tag;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
