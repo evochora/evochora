@@ -4,7 +4,6 @@ import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.backend.emit.EmissionRegistry;
 import org.evochora.compiler.backend.emit.IEmissionRule;
 import org.evochora.compiler.backend.emit.features.CallerMarshallingRule;
-import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.model.ir.*;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.BeforeAll;
@@ -42,10 +41,9 @@ public class EmissionCallerMarshallingTest {
 
     private List<IrItem> runEmission(List<IrItem> items) {
         EmissionRegistry reg = EmissionRegistry.initializeWithDefaults();
-        LinkingContext ctx = new LinkingContext();
         List<IrItem> out = items;
         for (IEmissionRule r : reg.rules()) {
-            out = r.apply(out, ctx);
+            out = r.apply(out);
         }
         return out;
     }
@@ -231,8 +229,7 @@ public class EmissionCallerMarshallingTest {
 
         // Apply only the CallerMarshallingRule
         CallerMarshallingRule rule = new CallerMarshallingRule();
-        LinkingContext ctx = new LinkingContext();
-        List<IrItem> emitted = rule.apply(items, ctx);
+        List<IrItem> emitted = rule.apply(items);
 
         // Find the CALL instruction and marshalled instructions in the emitted list
         IrInstruction callInstruction = null;
@@ -290,7 +287,7 @@ public class EmissionCallerMarshallingTest {
             assertThat(((IrReg) ((IrInstruction) out.get(0)).operands().get(0)).name()).isEqualTo("%DR1");
             assertThat(((IrInstruction) out.get(1)).opcode()).isEqualTo("PUSH");
             assertThat(((IrReg) ((IrInstruction) out.get(1)).operands().get(0)).name()).isEqualTo("%DR2");
-            assertThat(out.get(2)).isSameAs(call); // Check that the original call instruction is preserved
+            assertThat(((IrInstruction) out.get(2)).opcode()).isEqualTo("CALL");
             assertThat(((IrInstruction) out.get(3)).opcode()).isEqualTo("POP");
             assertThat(((IrReg) ((IrInstruction) out.get(3)).operands().get(0)).name()).isEqualTo("%DR2");
             assertThat(((IrInstruction) out.get(4)).opcode()).isEqualTo("POP");

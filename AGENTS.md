@@ -358,6 +358,7 @@ throw new InterruptedException();
 **JavaDoc Requirements:**
 - ALL non-private members (public, protected, package-private) MUST have complete JavaDoc in **English**
 - Private members: JavaDoc optional but recommended for complex logic
+- JavaDoc MUST be self-contained: never reference proposals, plan steps, ticket numbers, or conversation context (e.g., "will be added in step C4", "created in ticket #123"). A reader must understand the comment without any external context. Describe what the code *is* and *does*, not what *changed* or *will change*.
 
 **Class-Level Documentation:**
 - Purpose and responsibility

@@ -3,7 +3,6 @@ package org.evochora.compiler.backend;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.backend.emit.EmissionRegistry;
 import org.evochora.compiler.backend.emit.IEmissionRule;
-import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.model.ir.*;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -28,10 +27,9 @@ class EmissionIfpMarshallingTest {
 
     private List<IrItem> runEmission(List<IrItem> items) {
         EmissionRegistry reg = EmissionRegistry.initializeWithDefaults();
-        LinkingContext ctx = new LinkingContext();
         List<IrItem> out = items;
         for (IEmissionRule r : reg.rules()) {
-            out = r.apply(out, ctx);
+            out = r.apply(out);
         }
         return out;
     }

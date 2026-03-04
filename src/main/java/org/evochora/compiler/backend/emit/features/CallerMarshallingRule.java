@@ -3,7 +3,6 @@ package org.evochora.compiler.backend.emit.features;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.backend.emit.ConditionalUtils;
 import org.evochora.compiler.backend.emit.IEmissionRule;
-import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.model.ir.*;
 
 import java.util.ArrayList;
@@ -19,7 +18,7 @@ public final class CallerMarshallingRule implements IEmissionRule {
     private static final AtomicInteger safeCallCounter = new AtomicInteger(0);
 
     @Override
-    public List<IrItem> apply(List<IrItem> items, LinkingContext linkingContext) {
+    public List<IrItem> apply(List<IrItem> items) {
         List<IrItem> out = new ArrayList<>(items.size() + 8);
         int i = 0;
         while (i < items.size()) {
@@ -120,7 +119,12 @@ public final class CallerMarshallingRule implements IEmissionRule {
         for (String r : actualRegs) {
             out.add(IrInstruction.synthetic("PUSH", List.of(new IrReg(r)), originalSourceInfo));
         }
-        out.add(nextItem); // Add the call
+        // Enrich the CALL with refOperands so the Linker can extract bindings directly from the IR
+        List<IrOperand> enrichedRefOps = actualRegs.stream()
+                .map(r -> (IrOperand) new IrReg(r))
+                .toList();
+        out.add(new IrInstruction(call.opcode(), call.operands(),
+                enrichedRefOps, List.of(), call.source()));
         for (int a = actualRegs.size() - 1; a >= 0; a--) {
             out.add(IrInstruction.synthetic("POP", List.of(new IrReg(actualRegs.get(a))), originalSourceInfo));
         }

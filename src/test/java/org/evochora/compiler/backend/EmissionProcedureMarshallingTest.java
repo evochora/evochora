@@ -4,7 +4,6 @@ import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.backend.emit.EmissionRegistry;
 import org.evochora.compiler.backend.emit.IEmissionRule;
 import org.evochora.compiler.backend.emit.features.ProcedureMarshallingRule;
-import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.model.ir.*;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -26,10 +25,9 @@ public class EmissionProcedureMarshallingTest {
 
     private List<IrItem> runFullEmission(List<IrItem> items) {
         EmissionRegistry reg = EmissionRegistry.initializeWithDefaults();
-        LinkingContext ctx = new LinkingContext();
         List<IrItem> out = items;
         for (IEmissionRule r : reg.rules()) {
-            out = r.apply(out, ctx);
+            out = r.apply(out);
         }
         return out;
     }
@@ -57,7 +55,7 @@ public class EmissionProcedureMarshallingTest {
         items.add(procExit);
 
         ProcedureMarshallingRule rule = new ProcedureMarshallingRule();
-        List<IrItem> rewritten = rule.apply(items, new LinkingContext());
+        List<IrItem> rewritten = rule.apply(items);
 
         List<IrInstruction> instructions = rewritten.stream().filter(i -> i instanceof IrInstruction).map(i -> (IrInstruction) i).collect(Collectors.toList());
 
@@ -102,7 +100,7 @@ public class EmissionProcedureMarshallingTest {
         items.add(procExit);
 
         ProcedureMarshallingRule rule = new ProcedureMarshallingRule();
-        List<IrItem> rewritten = rule.apply(items, new LinkingContext());
+        List<IrItem> rewritten = rule.apply(items);
 
         List<IrInstruction> instructions = rewritten.stream().filter(i -> i instanceof IrInstruction).map(i -> (IrInstruction) i).collect(Collectors.toList());
 

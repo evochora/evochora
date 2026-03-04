@@ -6,10 +6,9 @@ import org.evochora.compiler.model.ast.AstNode;
  * Contributor for Phase 5 (Token Map Generation).
  *
  * <p>Each contributor handles one type of AST node and adds its token information
- * to the token map via the {@link ITokenMapContext}. This replaces the hardcoded
- * {@code instanceof} dispatch chain in {@code TokenMapGenerator}.</p>
- *
- * <p>Implementations will be created in step C3 when the TokenMapGenerator is refactored.</p>
+ * to the token map via the {@link ITokenMapContext}. Contributors are registered per
+ * AST node class in a {@code TokenMapContributorRegistry} and dispatched by
+ * {@code TokenMapGenerator} during the AST walk.</p>
  */
 public interface ITokenMapContributor {
 

@@ -5,11 +5,10 @@ import org.evochora.compiler.model.ast.AstNode;
 /**
  * Handler for Phase 6 (AST Post-Processing).
  *
- * <p>Each handler handles one type of AST node and collects replacements or constants
- * via the {@link IPostProcessContext}. This replaces the hardcoded {@code instanceof}
- * dispatch chain in {@code AstPostProcessor}.</p>
- *
- * <p>Implementations will be created in step C4 when the AstPostProcessor is refactored.</p>
+ * <p>Each handler processes one type of AST node and collects replacements or constants
+ * via the {@link IPostProcessContext}. Handlers are registered per AST node class in a
+ * {@code PostProcessHandlerRegistry} and dispatched by {@code AstPostProcessor} during
+ * the collect pass.</p>
  */
 public interface IPostProcessHandler {
 

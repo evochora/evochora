@@ -2,7 +2,6 @@ package org.evochora.compiler.backend.emit.features;
 
 import org.evochora.compiler.backend.emit.ConditionalUtils;
 import org.evochora.compiler.backend.emit.IEmissionRule;
-import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.model.ir.*;
 
 import java.util.ArrayList;
@@ -21,7 +20,7 @@ public class ProcedureMarshallingRule implements IEmissionRule {
     private static final AtomicInteger safeRetCounter = new AtomicInteger(0);
 
     @Override
-    public List<IrItem> apply(List<IrItem> items, LinkingContext linkingContext) {
+    public List<IrItem> apply(List<IrItem> items) {
         List<IrItem> out = new ArrayList<>(items.size() + 16);
         int i = 0;
         while (i < items.size()) {

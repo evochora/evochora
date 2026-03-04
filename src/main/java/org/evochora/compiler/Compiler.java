@@ -245,10 +245,8 @@ public class Compiler implements ICompiler {
         // Phase 8: IR Rewriting (apply emission rules)
         EmissionRegistry emissionRegistry = EmissionRegistry.initializeWithDefaults();
         java.util.List<org.evochora.compiler.model.ir.IrItem> rewritten = irProgram.items();
-        LinkingContext linkingContext = new LinkingContext();
-        linkingContext.pushAliasChain(rootAliasChain);
         for (IEmissionRule rule : emissionRegistry.rules()) {
-            rewritten = rule.apply(rewritten, linkingContext);
+            rewritten = rule.apply(rewritten);
         }
         IrProgram rewrittenIr = new IrProgram(programName, rewritten);
 

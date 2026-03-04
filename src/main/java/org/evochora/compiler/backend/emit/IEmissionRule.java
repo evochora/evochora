@@ -1,6 +1,5 @@
 package org.evochora.compiler.backend.emit;
 
-import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.model.ir.IrItem;
 
 import java.util.List;
@@ -13,11 +12,10 @@ public interface IEmissionRule {
 	/**
 	 * Applies this rule to the given IR item stream.
 	 *
-	 * @param items          The input IR items (linked).
-	 * @param linkingContext Linking metadata (e.g., call-site bindings), may be empty.
+	 * @param items The input IR items.
 	 * @return The rewritten IR items.
 	 */
-	List<IrItem> apply(List<IrItem> items, LinkingContext linkingContext);
+	List<IrItem> apply(List<IrItem> items);
 }
 
 

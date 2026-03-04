@@ -2,7 +2,6 @@ package org.evochora.compiler.backend;
 
 import org.evochora.compiler.backend.emit.EmissionRegistry;
 import org.evochora.compiler.backend.emit.IEmissionRule;
-import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.irgen.IrConverterRegistry;
 import org.evochora.compiler.frontend.irgen.IrGenerator;
@@ -78,9 +77,8 @@ public class EmissionIntegrationTest {
 
         // Apply emission rules
         EmissionRegistry eReg = EmissionRegistry.initializeWithDefaults();
-        LinkingContext ctx = new LinkingContext();
         List<IrItem> rewritten = items;
-        for (IEmissionRule r : eReg.rules()) rewritten = r.apply(rewritten, ctx);
+        for (IEmissionRule r : eReg.rules()) rewritten = r.apply(rewritten);
 
         // Verify caller marshalling sequence around CALL
         int newCallIdx = -1;

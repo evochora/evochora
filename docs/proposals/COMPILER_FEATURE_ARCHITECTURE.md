@@ -31,7 +31,7 @@ registration file. No phase code is touched.
 |---|---------|-----------------|------------|
 | 1 | **instruction** | 3, 4, 7, 8, 10, 11 | InstructionNode, InstructionAnalysisHandler, InstructionNodeConverter, + violations in Parser, ~~TokenMapGenerator~~ (C3), Linker, IrGenContext |
 | 2 | **label** | 3, 4, 7, 9, 11 | LabelNode, LabelSymbolCollector, LabelAnalysisHandler, LabelNodeConverter, + violation in Parser |
-| 3 | **proc** | 3, 4, 5, 6, 7, 8, 10, 11 | ProcedureNode, ProcDirectiveHandler, PregNode, PregDirectiveHandler, ProcedureSymbolCollector, ProcedureAnalysisHandler, PregAnalysisHandler, ProcedureNodeConverter, ProcedureMarshallingRule, CallerMarshallingRule, CallBindingCaptureRule, RefValBindingCaptureRule, ProcedureEmissionContributor, + violations in ~~TokenMapGenerator~~ (C3), Linker, ~~Compiler~~ (C7). `.PREG` is part of proc because it aliases procedure registers and only exists inside `.PROC` blocks. |
+| 3 | **proc** | 3, 4, 5, 6, 7, 8, 10, 11 | ProcedureNode, ProcDirectiveHandler, PregNode, PregDirectiveHandler, CallInstructionHandler, ProcedureSymbolCollector, ProcedureAnalysisHandler, PregAnalysisHandler, ProcedureNodeConverter, ProcedureMarshallingRule, CallerMarshallingRule, ProcedureEmissionContributor, + violations in ~~TokenMapGenerator~~ (C3), Linker, ~~Compiler~~ (C7). `.PREG` is part of proc because it aliases procedure registers and only exists inside `.PROC` blocks. |
 | 4 | **reg** | 3, 4, 6 | RegNode, RegDirectiveHandler, RegAnalysisHandler, + AstPostProcessor |
 | 5 | **define** | 3, 4, 6, 7 | DefineNode, DefineDirectiveHandler, DefineAnalysisHandler, DefineNodeConverter, + violation in AstPostProcessor |
 | 6 | **org** | 3, 7, 9 | OrgNode, OrgDirectiveHandler, OrgNodeConverter, OrgLayoutHandler |
@@ -52,6 +52,7 @@ registration file. No phase code is touched.
 |-------|----------|-----------|----------|
 | Phase 2 (PreProcessor) | `PreProcessorDirectiveRegistry` | `IPreProcessorDirectiveHandler` | Directive name string |
 | Phase 3 (Parser) | `ParserDirectiveRegistry` | `IParserDirectiveHandler` | Directive name string |
+| Phase 3 (Parser) | `InstructionParsingRegistry` | `IInstructionParsingHandler` | Opcode string |
 | Phase 4 (Semantics) | `AnalysisHandlerRegistry` | `IAnalysisHandler` + `ISymbolCollector` | AST node class |
 | Phase 7 (IrGen) | `IrConverterRegistry` | `IAstNodeToIrConverter<T>` | AST node class |
 | Phase 8 (Emission) | `EmissionRegistry` | `IEmissionRule` | Ordered list (no key) |
@@ -135,6 +136,7 @@ org.evochora.compiler
 │   │   ├── ProcDirectiveHandler.java
 │   │   ├── PregNode.java              # .PREG is part of proc (aliases PRs, only inside .PROC)
 │   │   ├── PregDirectiveHandler.java
+│   │   ├── CallInstructionHandler.java  # NEW (extracted from Parser, D13.8)
 │   │   ├── ProcedureSymbolCollector.java
 │   │   ├── ProcedureAnalysisHandler.java
 │   │   ├── PregAnalysisHandler.java
@@ -143,8 +145,6 @@ org.evochora.compiler
 │   │   ├── ProcedureNodeConverter.java
 │   │   ├── ProcedureMarshallingRule.java
 │   │   ├── CallerMarshallingRule.java
-│   │   ├── CallBindingCaptureRule.java
-│   │   ├── RefValBindingCaptureRule.java
 │   │   ├── CallSiteBindingRule.java    # NEW (extracted from Linker)
 │   │   ├── ProcedureTokenMapContributor.java  # NEW (extracted from TokenMapGenerator)
 │   │   └── ProcFeature.java           # Registration
@@ -265,6 +265,7 @@ public interface IFeatureRegistrationContext {
     void preprocessor(String directive, IPreProcessorDirectiveHandler handler);
     // Phase 3: Parsing
     void parser(String directive, IParserDirectiveHandler handler);
+    void instructionParser(String opcode, IInstructionParsingHandler handler);
     // Phase 4: Semantic Analysis
     void symbolCollector(Class<? extends AstNode> nodeType, ISymbolCollector collector);
     void analysisHandler(Class<? extends AstNode> nodeType, IAnalysisHandler handler);
@@ -317,14 +318,16 @@ public class ProcFeature implements ICompilerFeature {
     public void register(IFeatureRegistrationContext ctx) {
         ctx.parser(".PROC", new ProcDirectiveHandler());
         ctx.parser(".PREG", new PregDirectiveHandler());
+        ctx.instructionParser("CALL", new CallInstructionHandler());
         ctx.symbolCollector(ProcedureNode.class, new ProcedureSymbolCollector());
         ctx.analysisHandler(ProcedureNode.class, new ProcedureAnalysisHandler());
         ctx.analysisHandler(PregNode.class, new PregAnalysisHandler());
         ctx.tokenMapContributor(ProcedureNode.class, new ProcedureTokenMapContributor());
         ctx.postProcessHandler(PregNode.class, new ProcPostProcessHandler());
         ctx.irConverter(ProcedureNode.class, new ProcedureNodeConverter());
-        ctx.emissionRule(new CallBindingCaptureRule());
-        ctx.emissionRule(new RefValBindingCaptureRule());
+        // Emission rules transform IR only (List<IrItem> → List<IrItem>), no side-channel state.
+        // Binding info flows through the IR data stream: CALL instruction's refOperands/valOperands
+        // carry parameter bindings. Phase 10 linking rules read binding info directly from the IR.
         ctx.emissionRule(new ProcedureMarshallingRule());
         ctx.emissionRule(new CallerMarshallingRule());
         ctx.linkingRule(new CallSiteBindingRule());
@@ -444,7 +447,7 @@ Create the interfaces and registries needed for feature consolidation.
 | C5 | Source Root Infrastructure — see C5 details below. |
 | C6 | EXPORT Prefix Syntax — see C6 details below. |
 | C7 | Placement-Aware Module Naming (Import Alias Chains). Includes Emitter Registry: create `IEmissionContributor` + `EmissionContributorRegistry` in `backend/emit/`, extract `ProcedureEmissionContributor` from Compiler.java. See C7 details below. |
-| C8 | Create `IPostProcessHandler` + `PostProcessHandlerRegistry`, refactor `AstPostProcessor` to dispatch through registry. |
+| C8 | Create `PostProcessHandlerRegistry` in `frontend/postprocess/`. Refactor `AstPostProcessor.collectPass()` to dispatch `IPostProcessHandler.collect()` per AST node class via registry (same pattern as `AnalysisHandlerRegistry`). Extract three handlers: `RegPostProcessHandler` (register alias collection), `DefinePostProcessHandler` (constant collection), `PregPostProcessHandler` (procedure register alias collection, higher priority than Reg). `IdentifierNode` replacement in `replacePass()` remains in `AstPostProcessor` as orchestrator infrastructure (not feature-specific — it applies all collected replacements generically). Handler execution order: handlers are called in registration order; `PregPostProcessHandler` must be registered before `RegPostProcessHandler` so PR aliases shadow DR/LR aliases on name conflict. |
 | C9 | Extract `MacroExpansionHandler` from `PreProcessor.expandMacro()`, register as handler in `PreProcessorDirectiveRegistry`. |
 | C10 | Extract `CallSiteBindingRule` from `Linker`, move CALL detection into linking rule. |
 | C11 | Create `IScopedParserState` interface in `parser/`. Add `pushScope()`/`popScope()` to `ParserState` — propagates to all registered `IScopedParserState` objects. Pure parser infrastructure, no feature imports. |
@@ -1213,7 +1216,7 @@ Additionally:
 
 **D13 details (proc — includes preg):**
 
-Move to `features/proc/`: ProcedureNode, ProcDirectiveHandler, PregNode, PregDirectiveHandler, ProcedureSymbolCollector, ProcedureAnalysisHandler, PregAnalysisHandler, ProcedureNodeConverter, ProcedureMarshallingRule, CallerMarshallingRule, CallBindingCaptureRule, RefValBindingCaptureRule, CallSiteBindingRule, ProcedureTokenMapContributor. (ExportNode was removed — EXPORT is handled as a prefix modifier in Parser.statement(), not as a separate AST node.)
+Move to `features/proc/`: ProcedureNode, ProcDirectiveHandler, PregNode, PregDirectiveHandler, ProcedureSymbolCollector, ProcedureAnalysisHandler, PregAnalysisHandler, ProcedureNodeConverter, ProcedureMarshallingRule, CallerMarshallingRule, CallSiteBindingRule, ProcedureTokenMapContributor. (ExportNode was removed — EXPORT is handled as a prefix modifier in Parser.statement(), not as a separate AST node.)
 
 Additionally:
 1. Create `ProcAliasState` (implements `IScopedParserState`) in `features/proc/` — manages PR aliases. PregDirectiveHandler uses ProcAliasState instead of RegisterAliasState.
@@ -1222,6 +1225,8 @@ Additionally:
 4. Remove from Parser: `registerProcedure()`, `getProcedureTable()`, `procedureTable` field.
 5. Update tests: ProcedureDirectiveTest (calls `parser.getProcedureTable()`), PregDirectiveTest.
 6. **[+decouple]** ProcedureNode: Token `name`, `parameters`, `refParameters`, `valParameters` → String/List\<String\> + SourceInfo. PregNode: Token `alias`, `targetRegister` → String + SourceInfo.
+7. IrGenContext: `pushProcedureParams(List<Token>)` → `pushProcedureParams(List<String>)`. Remove Token import from IrGenContext.
+8. Extract `parseCallInstruction()` from Parser. Create `IInstructionParsingHandler` interface in `parser/`. Register `CallInstructionHandler` in `features/proc/`. `Parser.instructionStatement()` dispatches through registry for opcodes with custom syntax.
 
 ### Phase E: Wiring
 

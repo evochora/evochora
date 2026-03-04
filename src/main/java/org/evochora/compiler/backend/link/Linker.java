@@ -5,7 +5,9 @@ import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrItem;
+import org.evochora.compiler.model.ir.IrOperand;
 import org.evochora.compiler.model.ir.IrProgram;
+import org.evochora.compiler.model.ir.IrReg;
 import org.evochora.compiler.model.ir.IrValue;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -59,9 +61,19 @@ public final class Linker {
 
             if (item instanceof IrInstruction ins) {
                 if ("CALL".equalsIgnoreCase(ins.opcode())) {
-                    int[] bindings = context.resolvePendingBinding(ins, isa);
-                    if (bindings != null) {
-                        context.callSiteBindings().put(context.currentAddress(), bindings);
+                    List<String> regNames = new ArrayList<>();
+                    for (IrOperand op : ins.refOperands()) {
+                        if (op instanceof IrReg reg) regNames.add(reg.name());
+                    }
+                    for (IrOperand op : ins.valOperands()) {
+                        if (op instanceof IrReg reg) regNames.add(reg.name());
+                    }
+                    if (!regNames.isEmpty()) {
+                        int[] ids = new int[regNames.size()];
+                        for (int j = 0; j < regNames.size(); j++) {
+                            ids[j] = isa.resolveRegisterToken(regNames.get(j)).orElse(-1);
+                        }
+                        context.callSiteBindings().put(context.currentAddress(), ids);
                     }
                 }
 
