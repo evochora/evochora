@@ -2,6 +2,8 @@ package org.evochora.compiler.frontend;
 
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
+import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
+import org.evochora.compiler.frontend.parser.features.def.DefineDirectiveHandler;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.InstructionNode;
@@ -47,7 +49,7 @@ public class ParserTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics); // KORREKTUR
+        Parser parser = new Parser(tokens, diagnostics, registry()); // KORREKTUR
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -83,7 +85,7 @@ public class ParserTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics); // KORREKTUR
+        Parser parser = new Parser(tokens, diagnostics, registry()); // KORREKTUR
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -115,7 +117,7 @@ public class ParserTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics); // KORREKTUR
+        Parser parser = new Parser(tokens, diagnostics, registry()); // KORREKTUR
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -146,7 +148,7 @@ public class ParserTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics);
+        Parser parser = new Parser(tokens, diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -177,7 +179,7 @@ public class ParserTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics);
+        Parser parser = new Parser(tokens, diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -201,7 +203,7 @@ public class ParserTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics);
+        Parser parser = new Parser(tokens, diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -231,7 +233,7 @@ public class ParserTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics);
+        Parser parser = new Parser(tokens, diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -259,7 +261,7 @@ public class ParserTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics);
+        Parser parser = new Parser(tokens, diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -272,5 +274,11 @@ public class ParserTest {
         DefineNode defineNode = (DefineNode) ast.get(0);
         assertThat(defineNode.name().text()).isEqualTo("MAX_ENERGY");
         assertThat(defineNode.exported()).isFalse();
+    }
+
+    private static ParserDirectiveRegistry registry() {
+        ParserDirectiveRegistry reg = new ParserDirectiveRegistry();
+        reg.register(".DEFINE", new DefineDirectiveHandler());
+        return reg;
     }
 }

@@ -40,11 +40,13 @@ public class Parser implements ParsingContext {
      * Constructs a new Parser.
      * @param tokens The list of tokens to parse.
      * @param diagnostics The engine for reporting errors and warnings.
+     * @param directiveRegistry The pre-built registry of directive handlers.
      */
-    public Parser(List<Token> tokens, DiagnosticsEngine diagnostics) {
+    public Parser(List<Token> tokens, DiagnosticsEngine diagnostics,
+                  ParserDirectiveRegistry directiveRegistry) {
         this.tokens = tokens;
         this.diagnostics = diagnostics;
-        this.directiveRegistry = ParserDirectiveRegistry.initialize();
+        this.directiveRegistry = directiveRegistry;
     }
 
     /**

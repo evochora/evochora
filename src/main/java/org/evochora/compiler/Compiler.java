@@ -15,6 +15,16 @@ import org.evochora.compiler.frontend.module.DependencyScanner;
 import org.evochora.compiler.frontend.module.ModuleDescriptor;
 import org.evochora.compiler.frontend.module.SourceRootResolver;
 import org.evochora.compiler.frontend.parser.Parser;
+import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
+import org.evochora.compiler.frontend.parser.features.def.DefineDirectiveHandler;
+import org.evochora.compiler.frontend.parser.features.dir.DirDirectiveHandler;
+import org.evochora.compiler.frontend.parser.features.importdir.ImportDirectiveHandler;
+import org.evochora.compiler.frontend.parser.features.org.OrgDirectiveHandler;
+import org.evochora.compiler.frontend.parser.features.place.PlaceDirectiveHandler;
+import org.evochora.compiler.frontend.parser.features.proc.PregDirectiveHandler;
+import org.evochora.compiler.frontend.parser.features.proc.ProcDirectiveHandler;
+import org.evochora.compiler.frontend.parser.features.reg.RegDirectiveHandler;
+import org.evochora.compiler.frontend.parser.features.require.RequireDirectiveHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorResult;
@@ -219,7 +229,18 @@ public class Compiler implements ICompiler {
         }
 
         // Phase 3: Parsing (builds AST)
-        Parser parser = new Parser(ppResult.tokens(), diagnostics);
+        ParserDirectiveRegistry parserRegistry = new ParserDirectiveRegistry();
+        featureRegistry.parserHandlers().forEach(parserRegistry::register);
+        parserRegistry.register(".DEFINE", new DefineDirectiveHandler());
+        parserRegistry.register(".REG", new RegDirectiveHandler());
+        parserRegistry.register(".PROC", new ProcDirectiveHandler());
+        parserRegistry.register(".PREG", new PregDirectiveHandler());
+        parserRegistry.register(".ORG", new OrgDirectiveHandler());
+        parserRegistry.register(".DIR", new DirDirectiveHandler());
+        parserRegistry.register(".PLACE", new PlaceDirectiveHandler());
+        parserRegistry.register(".IMPORT", new ImportDirectiveHandler());
+        parserRegistry.register(".REQUIRE", new RequireDirectiveHandler());
+        Parser parser = new Parser(ppResult.tokens(), diagnostics, parserRegistry);
         List<AstNode> ast = parser.parse();
 
         if (diagnostics.hasErrors()) {

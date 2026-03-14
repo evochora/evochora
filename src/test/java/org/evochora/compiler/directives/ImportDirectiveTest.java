@@ -4,6 +4,8 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.frontend.parser.Parser;
+import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
+import org.evochora.compiler.frontend.parser.features.importdir.ImportDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.parser.features.importdir.ImportNode;
 import org.junit.jupiter.api.BeforeAll;
@@ -32,7 +34,7 @@ public class ImportDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics);
+        Parser parser = new Parser(tokens, diagnostics, registry());
 
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
 
@@ -53,7 +55,7 @@ public class ImportDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics);
+        Parser parser = new Parser(tokens, diagnostics, registry());
 
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
 
@@ -76,7 +78,7 @@ public class ImportDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics);
+        Parser parser = new Parser(tokens, diagnostics, registry());
 
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
 
@@ -94,7 +96,7 @@ public class ImportDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics);
+        Parser parser = new Parser(tokens, diagnostics, registry());
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
@@ -107,9 +109,15 @@ public class ImportDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics);
+        Parser parser = new Parser(tokens, diagnostics, registry());
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
+    }
+
+    private static ParserDirectiveRegistry registry() {
+        ParserDirectiveRegistry reg = new ParserDirectiveRegistry();
+        reg.register(".IMPORT", new ImportDirectiveHandler());
+        return reg;
     }
 }

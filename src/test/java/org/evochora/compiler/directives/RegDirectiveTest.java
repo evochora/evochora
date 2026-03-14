@@ -2,6 +2,8 @@ package org.evochora.compiler.directives;
 
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
+import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
+import org.evochora.compiler.frontend.parser.features.reg.RegDirectiveHandler;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.InstructionNode;
@@ -48,7 +50,7 @@ public class RegDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics);
+        Parser parser = new Parser(tokens, diagnostics, registry());
 
         // Act - Run full compiler pipeline up to AstPostProcessor
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -99,7 +101,7 @@ public class RegDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics);
+        Parser parser = new Parser(tokens, diagnostics, registry());
 
         // Act - Run semantic analysis
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -129,7 +131,7 @@ public class RegDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics);
+        Parser parser = new Parser(tokens, diagnostics, registry());
 
         // Act - Run semantic analysis
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -159,7 +161,7 @@ public class RegDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics);
+        Parser parser = new Parser(tokens, diagnostics, registry());
 
         // Act - Run semantic analysis
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -189,7 +191,7 @@ public class RegDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics);
+        Parser parser = new Parser(tokens, diagnostics, registry());
 
         // Act - Run full compiler pipeline up to AstPostProcessor
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -223,5 +225,11 @@ public class RegDirectiveTest {
         assertThat(dplr.arguments().get(0)).isInstanceOf(RegisterNode.class);
         RegisterNode reg = (RegisterNode) dplr.arguments().get(0);
         assertThat(reg.getName()).isEqualTo("%LR0");
+    }
+
+    private static ParserDirectiveRegistry registry() {
+        ParserDirectiveRegistry reg = new ParserDirectiveRegistry();
+        reg.register(".REG", new RegDirectiveHandler());
+        return reg;
     }
 }

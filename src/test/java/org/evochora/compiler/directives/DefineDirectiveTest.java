@@ -4,6 +4,8 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.frontend.parser.Parser;
+import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
+import org.evochora.compiler.frontend.parser.features.def.DefineDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.model.ast.InstructionNode;
@@ -45,7 +47,7 @@ public class DefineDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics); // KORREKTUR
+        Parser parser = new Parser(tokens, diagnostics, registry()); // KORREKTUR
 
 
         // Act
@@ -77,7 +79,7 @@ public class DefineDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics);
+        Parser parser = new Parser(tokens, diagnostics, registry());
 
         // Act - Run full compiler pipeline up to AstPostProcessor
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -107,5 +109,11 @@ public class DefineDirectiveTest {
         assertThat(seti.arguments().get(1)).isInstanceOf(TypedLiteralNode.class);
         TypedLiteralNode constant = (TypedLiteralNode) seti.arguments().get(1);
         assertThat(constant.value()).isEqualTo(42);
+    }
+
+    private static ParserDirectiveRegistry registry() {
+        ParserDirectiveRegistry reg = new ParserDirectiveRegistry();
+        reg.register(".DEFINE", new DefineDirectiveHandler());
+        return reg;
     }
 }

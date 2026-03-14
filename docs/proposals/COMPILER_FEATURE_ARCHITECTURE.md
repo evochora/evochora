@@ -1226,7 +1226,7 @@ include this Token decoupling work.
 | D2 | source | SourceDirectiveHandler (move inline registration from Compiler.java to SourceFeature) **DONE.** | SourceFeature.java |
 | D3 | macro | MacroDirectiveHandler, MacroDefinition, MacroExpansionHandler **DONE.** | MacroFeature.java |
 | D4a | ctx (move) | Move all ctx files into `features/ctx/` and create `CtxFeature.java`. Magic strings remain as-is until D4e extracts directive dispatch. See D4 details below. **DONE.** | CtxFeature.java |
-| D4b | ctx (cutover: Parser) | **[+cutover: ParserDirectiveRegistry]** Delete `initialize()`, `Parser` takes pre-built registry, Compiler.java builds it. See D4 details below. | — |
+| D4b | ctx (cutover: Parser) | **[+cutover: ParserDirectiveRegistry]** Delete `initialize()`, `Parser` takes pre-built registry, Compiler.java builds it. See D4 details below. **DONE.** | — |
 | D4c | ctx (cutover: IrConverter) | **[+cutover: IrConverterRegistry]** Delete `initializeWithDefaults()`, `IrGenerator` takes pre-built registry, Compiler.java builds it. See D4 details below. | — |
 | D4d | ctx (cutover: Layout) | **[+cutover: LayoutDirectiveRegistry]** Delete `initializeWithDefaults()`, `LayoutEngine` takes pre-built registry, Compiler.java builds it. See D4 details below. | — |
 | D4e | Linker directive dispatch | **[+linker-dispatch]** Extract hardcoded `IrDirective` handling from `Linker` into feature-registered handlers via a new `ILinkingDirectiveHandler` interface and `LinkingDirectiveRegistry`. See D4 details below. | ILinkingDirectiveHandler.java, LinkingDirectiveRegistry.java |
@@ -1286,7 +1286,7 @@ builds the registry: feature-contributed handlers (from `FeatureRegistry`) + inl
 registrations for not-yet-migrated features (define, reg, proc, preg, org, dir,
 place, import, require).
 
-13 test files construct `Parser` directly (49 call sites total) and must be updated
+13 test files construct `Parser` directly (44 call sites total) and must be updated
 to provide an explicit registry:
 
 - `ParserTest` (8), `ProcedureDirectiveTest` (8), `RequireDirectiveTest` (6),

@@ -4,6 +4,9 @@ import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
+import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
+import org.evochora.compiler.frontend.parser.features.proc.PregDirectiveHandler;
+import org.evochora.compiler.frontend.parser.features.proc.ProcDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -29,7 +32,7 @@ public class PregDirectiveTest {
                 ".ENDP"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics);
+        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, registry());
 
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
 
@@ -46,7 +49,7 @@ public class PregDirectiveTest {
                 ".ENDP"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics);
+        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, registry());
 
         parser.parse();
 
@@ -147,5 +150,12 @@ public class PregDirectiveTest {
         } catch (Exception e) {
             throw new AssertionError("Compilation failed: " + e.getMessage(), e);
         }
+    }
+
+    private static ParserDirectiveRegistry registry() {
+        ParserDirectiveRegistry reg = new ParserDirectiveRegistry();
+        reg.register(".PROC", new ProcDirectiveHandler());
+        reg.register(".PREG", new PregDirectiveHandler());
+        return reg;
     }
 }

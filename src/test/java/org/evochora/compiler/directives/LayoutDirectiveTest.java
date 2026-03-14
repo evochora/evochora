@@ -2,6 +2,10 @@ package org.evochora.compiler.directives;
 
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
+import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
+import org.evochora.compiler.frontend.parser.features.dir.DirDirectiveHandler;
+import org.evochora.compiler.frontend.parser.features.org.OrgDirectiveHandler;
+import org.evochora.compiler.frontend.parser.features.place.PlaceDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
@@ -31,7 +35,7 @@ public class LayoutDirectiveTest {
     void testOrgDirective() {
         // Arrange
         String source = ".ORG 10|20";
-        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine());
+        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), registry());
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -50,7 +54,7 @@ public class LayoutDirectiveTest {
     void testDirDirective() {
         // Arrange
         String source = ".DIR 1|0";
-        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine());
+        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), registry());
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -70,7 +74,7 @@ public class LayoutDirectiveTest {
     void testPlaceDirective() {
         // Arrange
         String source = ".PLACE DATA:100 5|-5";
-        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine());
+        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), registry());
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -83,5 +87,13 @@ public class LayoutDirectiveTest {
         assertThat(placeNode.literal()).isInstanceOf(TypedLiteralNode.class);
         assertThat(placeNode.placements()).hasSize(1);
         assertThat(placeNode.placements().get(0)).isInstanceOf(VectorPlacementNode.class);
+    }
+
+    private static ParserDirectiveRegistry registry() {
+        ParserDirectiveRegistry reg = new ParserDirectiveRegistry();
+        reg.register(".ORG", new OrgDirectiveHandler());
+        reg.register(".DIR", new DirDirectiveHandler());
+        reg.register(".PLACE", new PlaceDirectiveHandler());
+        return reg;
     }
 }

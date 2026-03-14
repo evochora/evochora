@@ -5,6 +5,18 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.frontend.parser.Parser;
+import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
+import org.evochora.compiler.features.ctx.PopCtxDirectiveHandler;
+import org.evochora.compiler.features.ctx.PushCtxDirectiveHandler;
+import org.evochora.compiler.frontend.parser.features.def.DefineDirectiveHandler;
+import org.evochora.compiler.frontend.parser.features.dir.DirDirectiveHandler;
+import org.evochora.compiler.frontend.parser.features.importdir.ImportDirectiveHandler;
+import org.evochora.compiler.frontend.parser.features.org.OrgDirectiveHandler;
+import org.evochora.compiler.frontend.parser.features.place.PlaceDirectiveHandler;
+import org.evochora.compiler.frontend.parser.features.proc.PregDirectiveHandler;
+import org.evochora.compiler.frontend.parser.features.proc.ProcDirectiveHandler;
+import org.evochora.compiler.frontend.parser.features.reg.RegDirectiveHandler;
+import org.evochora.compiler.frontend.parser.features.require.RequireDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.frontend.semantics.SymbolTable; // NEUER IMPORT
@@ -29,7 +41,7 @@ public class SemanticAnalyzerTest {
         
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics);
+        Parser parser = new Parser(tokens, diagnostics, allHandlers());
         return parser.parse();
     }
 
@@ -599,5 +611,21 @@ public class SemanticAnalyzerTest {
 
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
+    }
+
+    private static ParserDirectiveRegistry allHandlers() {
+        ParserDirectiveRegistry reg = new ParserDirectiveRegistry();
+        reg.register(".DEFINE", new DefineDirectiveHandler());
+        reg.register(".REG", new RegDirectiveHandler());
+        reg.register(".PROC", new ProcDirectiveHandler());
+        reg.register(".PREG", new PregDirectiveHandler());
+        reg.register(".ORG", new OrgDirectiveHandler());
+        reg.register(".DIR", new DirDirectiveHandler());
+        reg.register(".PLACE", new PlaceDirectiveHandler());
+        reg.register(".IMPORT", new ImportDirectiveHandler());
+        reg.register(".REQUIRE", new RequireDirectiveHandler());
+        reg.register(".PUSH_CTX", new PushCtxDirectiveHandler());
+        reg.register(".POP_CTX", new PopCtxDirectiveHandler());
+        return reg;
     }
 }
