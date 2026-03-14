@@ -1,6 +1,5 @@
-package org.evochora.compiler.frontend.irgen.converters;
+package org.evochora.compiler.features.ctx;
 
-import org.evochora.compiler.frontend.parser.ast.PopCtxNode;
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrGenContext;
 import org.evochora.compiler.model.ir.IrDirective;

@@ -1,5 +1,8 @@
-package org.evochora.compiler.frontend.preprocessor;
+package org.evochora.compiler.features.ctx;
 
+import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
+import org.evochora.compiler.frontend.preprocessor.PreProcessor;
+import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
 import org.evochora.compiler.model.token.Token;
 
 /**
@@ -7,7 +10,7 @@ import org.evochora.compiler.model.token.Token;
  * Pops the .SOURCE or .IMPORT inclusion chain when leaving an included block.
  * The token remains in the stream for the parser to create a PopCtxNode.
  */
-public class PopCtxDirectiveHandler implements IPreProcessorHandler {
+public class PopCtxPreProcessorHandler implements IPreProcessorHandler {
 
     @Override
     public void process(PreProcessor preProcessor, PreProcessorContext preProcessorContext) {

@@ -1,8 +1,8 @@
 package org.evochora.compiler.frontend.semantics;
 
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.frontend.parser.ast.PopCtxNode;
-import org.evochora.compiler.frontend.parser.ast.PushCtxNode;
+import org.evochora.compiler.features.ctx.PopCtxNode;
+import org.evochora.compiler.features.ctx.PushCtxNode;
 
 import java.util.ArrayDeque;
 import java.util.Deque;

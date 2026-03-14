@@ -12,7 +12,7 @@ import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.frontend.postprocess.AstPostProcessor;
-import org.evochora.compiler.frontend.preprocessor.PopCtxDirectiveHandler;
+import org.evochora.compiler.features.ctx.PopCtxPreProcessorHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorResult;
@@ -300,7 +300,7 @@ class ModuleSourceDefineIntegrationTest {
         PreProcessorHandlerRegistry ppRegistry = new PreProcessorHandlerRegistry();
         ppRegistry.register(".SOURCE", new SourceDirectiveHandler());
         ppRegistry.register(".MACRO", new MacroDirectiveHandler());
-        ppRegistry.register(".POP_CTX", new PopCtxDirectiveHandler());
+        ppRegistry.register(".POP_CTX", new PopCtxPreProcessorHandler());
         if (!moduleTokens.isEmpty()) {
             ppRegistry.register(".IMPORT", new ImportSourceHandler(moduleTokens));
         }

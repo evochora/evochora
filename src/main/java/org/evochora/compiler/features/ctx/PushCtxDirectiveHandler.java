@@ -1,10 +1,9 @@
-package org.evochora.compiler.frontend.parser.features.ctx;
+package org.evochora.compiler.features.ctx;
 
 import org.evochora.compiler.frontend.module.PlacementContext;
 import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
 import org.evochora.compiler.frontend.parser.ParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.frontend.parser.ast.PushCtxNode;
 
 public class PushCtxDirectiveHandler implements IParserDirectiveHandler {
     @Override

@@ -1,4 +1,4 @@
-package org.evochora.compiler.frontend.parser.ast;
+package org.evochora.compiler.features.ctx;
 
 import org.evochora.compiler.model.ast.AstNode;
 

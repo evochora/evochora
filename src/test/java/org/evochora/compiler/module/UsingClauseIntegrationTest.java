@@ -10,7 +10,7 @@ import org.evochora.compiler.frontend.module.ModuleDescriptor;
 import org.evochora.compiler.frontend.module.SourceRootResolver;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.frontend.preprocessor.PopCtxDirectiveHandler;
+import org.evochora.compiler.features.ctx.PopCtxPreProcessorHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
 import org.evochora.compiler.frontend.preprocessor.features.importdir.ImportSourceHandler;
@@ -266,7 +266,7 @@ class UsingClauseIntegrationTest {
         PreProcessorHandlerRegistry ppRegistry = new PreProcessorHandlerRegistry();
         ppRegistry.register(".SOURCE", new SourceDirectiveHandler());
         ppRegistry.register(".MACRO", new MacroDirectiveHandler());
-        ppRegistry.register(".POP_CTX", new PopCtxDirectiveHandler());
+        ppRegistry.register(".POP_CTX", new PopCtxPreProcessorHandler());
         if (!moduleTokens.isEmpty()) {
             ppRegistry.register(".IMPORT", new ImportSourceHandler(moduleTokens));
         }

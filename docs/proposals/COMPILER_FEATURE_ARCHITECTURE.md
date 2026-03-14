@@ -1225,7 +1225,7 @@ include this Token decoupling work.
 | D1 | repeat | RepeatDirectiveHandler, CaretDirectiveHandler. **[+wiring-infra]** Introduces feature wiring in Compiler.java. **[+cutover: PreProcessorHandlerRegistry]** Deletes `initialize()`, single-constructor `PreProcessor`, all PP tests updated. **DONE.** | RepeatFeature.java |
 | D2 | source | SourceDirectiveHandler (move inline registration from Compiler.java to SourceFeature) **DONE.** | SourceFeature.java |
 | D3 | macro | MacroDirectiveHandler, MacroDefinition, MacroExpansionHandler **DONE.** | MacroFeature.java |
-| D4a | ctx (move) | Move all ctx files into `features/ctx/` and create `CtxFeature.java`. Magic strings remain as-is until D4e extracts directive dispatch. See D4 details below. | CtxFeature.java |
+| D4a | ctx (move) | Move all ctx files into `features/ctx/` and create `CtxFeature.java`. Magic strings remain as-is until D4e extracts directive dispatch. See D4 details below. **DONE.** | CtxFeature.java |
 | D4b | ctx (cutover: Parser) | **[+cutover: ParserDirectiveRegistry]** Delete `initialize()`, `Parser` takes pre-built registry, Compiler.java builds it. See D4 details below. | — |
 | D4c | ctx (cutover: IrConverter) | **[+cutover: IrConverterRegistry]** Delete `initializeWithDefaults()`, `IrGenerator` takes pre-built registry, Compiler.java builds it. See D4 details below. | — |
 | D4d | ctx (cutover: Layout) | **[+cutover: LayoutDirectiveRegistry]** Delete `initializeWithDefaults()`, `LayoutEngine` takes pre-built registry, Compiler.java builds it. See D4 details below. | — |

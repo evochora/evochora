@@ -1,7 +1,7 @@
 package org.evochora.compiler.frontend.parser;
 
-import org.evochora.compiler.frontend.parser.features.ctx.PopCtxDirectiveHandler;
-import org.evochora.compiler.frontend.parser.features.ctx.PushCtxDirectiveHandler;
+import org.evochora.compiler.features.ctx.PopCtxDirectiveHandler;
+import org.evochora.compiler.features.ctx.PushCtxDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.def.DefineDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.dir.DirDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.importdir.ImportDirectiveHandler;
