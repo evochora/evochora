@@ -1,8 +1,14 @@
 package org.evochora.compiler.backend;
 
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.compiler.backend.layout.LayoutDirectiveRegistry;
 import org.evochora.compiler.backend.layout.LayoutEngine;
 import org.evochora.compiler.backend.layout.LayoutResult;
+import org.evochora.compiler.backend.layout.features.DirLayoutHandler;
+import org.evochora.compiler.backend.layout.features.OrgLayoutHandler;
+import org.evochora.compiler.backend.layout.features.PlaceLayoutHandler;
+import org.evochora.compiler.features.ctx.PushCtxLayoutHandler;
+import org.evochora.compiler.features.ctx.PopCtxLayoutHandler;
 import org.evochora.compiler.model.ir.*;
 import org.evochora.compiler.model.ir.placement.IrVectorPlacement;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -50,7 +56,7 @@ public class LayoutEngineTest {
 
         LayoutEngine engine = new LayoutEngine();
         EnvironmentProperties envProps = new EnvironmentProperties(new int[]{10, 10}, true);
-        LayoutResult res = engine.layout(ir, new RuntimeInstructionSetAdapter(), envProps);
+        LayoutResult res = engine.layout(ir, new RuntimeInstructionSetAdapter(), envProps, allLayoutHandlers());
 
         assertThat(res.linearAddressToCoord().get(0)).containsExactly(2, 3);
         assertThat(res.linearAddressToCoord().get(1)).containsExactly(3, 3);
@@ -63,5 +69,15 @@ public class LayoutEngineTest {
         boolean foundPlace = res.initialWorldObjects().keySet().stream()
                 .anyMatch(c -> java.util.Arrays.equals(c, new int[]{11, 3}));
         assertThat(foundPlace).isTrue();
+    }
+
+    private static LayoutDirectiveRegistry allLayoutHandlers() {
+        LayoutDirectiveRegistry reg = new LayoutDirectiveRegistry((directive, context) -> {});
+        reg.register("core", "org", new OrgLayoutHandler());
+        reg.register("core", "dir", new DirLayoutHandler());
+        reg.register("core", "place", new PlaceLayoutHandler());
+        reg.register("core", "push_ctx", new PushCtxLayoutHandler());
+        reg.register("core", "pop_ctx", new PopCtxLayoutHandler());
+        return reg;
     }
 }

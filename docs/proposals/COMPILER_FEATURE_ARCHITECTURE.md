@@ -1228,7 +1228,7 @@ include this Token decoupling work.
 | D4a | ctx (move) | Move all ctx files into `features/ctx/` and create `CtxFeature.java`. Magic strings remain as-is until D4e extracts directive dispatch. See D4 details below. **DONE.** | CtxFeature.java |
 | D4b | ctx (cutover: Parser) | **[+cutover: ParserDirectiveRegistry]** Delete `initialize()`, `Parser` takes pre-built registry, Compiler.java builds it. See D4 details below. **DONE.** | — |
 | D4c | ctx (cutover: IrConverter) | **[+cutover: IrConverterRegistry]** Delete `initializeWithDefaults()`, `IrGenerator` takes pre-built registry, Compiler.java builds it. See D4 details below. **DONE.** | — |
-| D4d | ctx (cutover: Layout) | **[+cutover: LayoutDirectiveRegistry]** Delete `initializeWithDefaults()`, `LayoutEngine` takes pre-built registry, Compiler.java builds it. See D4 details below. | — |
+| D4d | ctx (cutover: Layout) | **[+cutover: LayoutDirectiveRegistry]** Delete `initializeWithDefaults()`, `LayoutEngine` takes pre-built registry, Compiler.java builds it. See D4 details below. **DONE.** | — |
 | D4e | Linker directive dispatch | **[+linker-dispatch]** Extract hardcoded `IrDirective` handling from `Linker` into feature-registered handlers via a new `ILinkingDirectiveHandler` interface and `LinkingDirectiveRegistry`. See D4 details below. | ILinkingDirectiveHandler.java, LinkingDirectiveRegistry.java |
 | D5 | org | OrgNode, OrgDirectiveHandler, OrgNodeConverter, OrgLayoutHandler | OrgFeature.java |
 | D6 | dir | DirNode, DirDirectiveHandler, DirNodeConverter, DirLayoutHandler | DirFeature.java |

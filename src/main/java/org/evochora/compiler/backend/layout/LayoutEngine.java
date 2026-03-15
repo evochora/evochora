@@ -27,9 +27,9 @@ public final class LayoutEngine {
      * @return The result of the layout process.
      * @throws CompilationException if address conflicts are detected during layout.
      */
-    public LayoutResult layout(IrProgram program, IInstructionSet isa, EnvironmentProperties envProps) throws CompilationException {
+    public LayoutResult layout(IrProgram program, IInstructionSet isa, EnvironmentProperties envProps,
+                               LayoutDirectiveRegistry registry) throws CompilationException {
         LayoutContext ctx = new LayoutContext(envProps);
-        LayoutDirectiveRegistry registry = LayoutDirectiveRegistry.initializeWithDefaults();
 
         Map<String, Integer> labelToAddress = new HashMap<>();
 

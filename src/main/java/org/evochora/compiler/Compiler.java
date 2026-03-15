@@ -72,8 +72,12 @@ import java.util.ArrayList;
 import org.evochora.compiler.frontend.postprocess.AstPostProcessor;
 import org.evochora.compiler.frontend.postprocess.PostProcessHandlerRegistry;
 import org.evochora.compiler.model.ir.IrProgram;
+import org.evochora.compiler.backend.layout.LayoutDirectiveRegistry;
 import org.evochora.compiler.backend.layout.LayoutEngine;
 import org.evochora.compiler.backend.layout.LayoutResult;
+import org.evochora.compiler.backend.layout.features.DirLayoutHandler;
+import org.evochora.compiler.backend.layout.features.OrgLayoutHandler;
+import org.evochora.compiler.backend.layout.features.PlaceLayoutHandler;
 import org.evochora.compiler.backend.link.Linker;
 import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.backend.link.LinkingRegistry;
@@ -324,8 +328,15 @@ public class Compiler implements ICompiler {
         IrProgram rewrittenIr = new IrProgram(programName, rewritten);
 
         // Phase 9: Layout (assign addresses to instructions)
+        LayoutDirectiveRegistry layoutRegistry = new LayoutDirectiveRegistry((directive, context) -> {
+            // default: ignore unknown directives in layout
+        });
+        layoutRegistry.registerAll(featureRegistry.layoutHandlers());
+        layoutRegistry.register("core", "org", new OrgLayoutHandler());
+        layoutRegistry.register("core", "dir", new DirLayoutHandler());
+        layoutRegistry.register("core", "place", new PlaceLayoutHandler());
         LayoutEngine layoutEngine = new LayoutEngine();
-        LayoutResult layout = layoutEngine.layout(rewrittenIr, new RuntimeInstructionSetAdapter(), envProps);
+        LayoutResult layout = layoutEngine.layout(rewrittenIr, new RuntimeInstructionSetAdapter(), envProps, layoutRegistry);
 
         // Phase 10: Linking (resolve cross-references)
         LinkingRegistry linkingRegistry = LinkingRegistry.initializeWithDefaults(symbolTable, new RuntimeInstructionSetAdapter());

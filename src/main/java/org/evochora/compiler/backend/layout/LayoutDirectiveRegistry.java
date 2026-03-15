@@ -1,10 +1,5 @@
 package org.evochora.compiler.backend.layout;
 
-import org.evochora.compiler.backend.layout.features.DirLayoutHandler;
-import org.evochora.compiler.backend.layout.features.OrgLayoutHandler;
-import org.evochora.compiler.backend.layout.features.PlaceLayoutHandler;
-import org.evochora.compiler.features.ctx.PopCtxLayoutHandler;
-import org.evochora.compiler.features.ctx.PushCtxLayoutHandler;
 import org.evochora.compiler.model.ir.IrDirective;
 
 import java.util.HashMap;
@@ -56,20 +51,14 @@ public final class LayoutDirectiveRegistry {
 	}
 
 	/**
-	 * Initializes a new layout directive registry with the default handlers.
-	 * @return A new registry with default handlers.
+	 * Registers all handlers from a pre-keyed map where keys are in "namespace:name" format.
+	 * Bridges the map format produced by {@code FeatureRegistry.layoutHandlers()} with
+	 * this registry's internal storage.
+	 *
+	 * @param handlers Map of "namespace:name" keys to their handlers.
 	 */
-	public static LayoutDirectiveRegistry initializeWithDefaults() {
-		LayoutDirectiveRegistry reg = new LayoutDirectiveRegistry((directive, context) -> {
-			// default: ignore unknown directives in layout
-		});
-		// Built-in handlers registered here
-        reg.register("core", "org", new OrgLayoutHandler());
-        reg.register("core", "dir", new DirLayoutHandler());
-        reg.register("core", "place", new PlaceLayoutHandler());
-        reg.register("core", "push_ctx", new PushCtxLayoutHandler());
-        reg.register("core", "pop_ctx", new PopCtxLayoutHandler());
-		return reg;
+	public void registerAll(Map<String, ILayoutDirectiveHandler> handlers) {
+		this.handlers.putAll(handlers);
 	}
 }
 
