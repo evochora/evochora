@@ -1,10 +1,7 @@
-package org.evochora.compiler.frontend.parser.ast.placement;
-
-import org.evochora.compiler.model.token.Token;
+package org.evochora.compiler.features.place.placement;
 
 /**
  * Represents the '*' wildcard for a full dimension.
- * @param star The token for the '*' character.
  */
-public record WildcardValueComponent(Token star) implements IPlacementComponent {
+public record WildcardValueComponent() implements IPlacementComponent {
 }

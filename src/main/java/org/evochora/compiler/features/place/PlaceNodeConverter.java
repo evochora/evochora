@@ -1,11 +1,10 @@
-package org.evochora.compiler.frontend.irgen.converters;
+package org.evochora.compiler.features.place;
 
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrGenContext;
 import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
-import org.evochora.compiler.frontend.parser.ast.placement.*;
-import org.evochora.compiler.frontend.parser.features.place.PlaceNode;
+import org.evochora.compiler.features.place.placement.*;
 import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrValue;
 import org.evochora.compiler.model.ir.placement.*;
@@ -62,20 +61,14 @@ public final class PlaceNodeConverter implements IAstNodeToIrConverter<PlaceNode
 
     private IIrPlacementComponent convertPlacementComponent(IPlacementComponent component) {
         if (component instanceof SingleValueComponent svc) {
-            return new IrSingleValueComponent(Integer.parseInt(svc.value().text()));
+            return new IrSingleValueComponent(svc.value());
         } else if (component instanceof RangeValueComponent rvc) {
-            int start = Integer.parseInt(rvc.start().text());
-            int end = Integer.parseInt(rvc.end().text());
-            return new IrRangeValueComponent(start, end);
+            return new IrRangeValueComponent(rvc.start(), rvc.end());
         } else if (component instanceof SteppedRangeValueComponent srvc) {
-            int start = Integer.parseInt(srvc.start().text());
-            int step = Integer.parseInt(srvc.step().text());
-            int end = Integer.parseInt(srvc.end().text());
-            return new IrSteppedRangeValueComponent(start, step, end);
+            return new IrSteppedRangeValueComponent(srvc.start(), srvc.step(), srvc.end());
         } else if (component instanceof WildcardValueComponent) {
             return new IrWildcardValueComponent();
         }
-        // Should not happen
         throw new IllegalStateException("Unknown IPlacementComponent type: " + component.getClass().getName());
     }
 }

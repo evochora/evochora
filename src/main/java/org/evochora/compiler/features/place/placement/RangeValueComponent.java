@@ -1,11 +1,9 @@
-package org.evochora.compiler.frontend.parser.ast.placement;
-
-import org.evochora.compiler.model.token.Token;
+package org.evochora.compiler.features.place.placement;
 
 /**
  * Represents a continuous range with a start and end value (e.g., 1..10).
- * @param start The token for the start value.
- * @param end The token for the end value.
+ * @param start The start value of the range.
+ * @param end The end value of the range.
  */
-public record RangeValueComponent(Token start, Token end) implements IPlacementComponent {
+public record RangeValueComponent(int start, int end) implements IPlacementComponent {
 }

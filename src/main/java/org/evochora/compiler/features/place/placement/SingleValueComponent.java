@@ -1,10 +1,8 @@
-package org.evochora.compiler.frontend.parser.ast.placement;
-
-import org.evochora.compiler.model.token.Token;
+package org.evochora.compiler.features.place.placement;
 
 /**
  * Represents a single integer value in a .PLACE directive.
- * @param value The token containing the integer value.
+ * @param value The integer value for this dimension.
  */
-public record SingleValueComponent(Token value) implements IPlacementComponent {
+public record SingleValueComponent(int value) implements IPlacementComponent {
 }

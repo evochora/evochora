@@ -5,14 +5,14 @@ import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
 import org.evochora.compiler.features.dir.DirDirectiveHandler;
 import org.evochora.compiler.features.org.OrgDirectiveHandler;
-import org.evochora.compiler.frontend.parser.features.place.PlaceDirectiveHandler;
+import org.evochora.compiler.features.place.PlaceDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
-import org.evochora.compiler.frontend.parser.ast.placement.VectorPlacementNode;
+import org.evochora.compiler.features.place.placement.VectorPlacementNode;
 import org.evochora.compiler.features.dir.DirNode;
 import org.evochora.compiler.features.org.OrgNode;
-import org.evochora.compiler.frontend.parser.features.place.PlaceNode;
+import org.evochora.compiler.features.place.PlaceNode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
 

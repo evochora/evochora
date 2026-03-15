@@ -6,7 +6,7 @@ import org.evochora.compiler.backend.layout.LayoutEngine;
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.features.dir.DirLayoutHandler;
 import org.evochora.compiler.features.org.OrgLayoutHandler;
-import org.evochora.compiler.backend.layout.features.PlaceLayoutHandler;
+import org.evochora.compiler.features.place.PlaceLayoutHandler;
 import org.evochora.compiler.features.ctx.PushCtxLayoutHandler;
 import org.evochora.compiler.features.ctx.PopCtxLayoutHandler;
 import org.evochora.compiler.model.ir.*;

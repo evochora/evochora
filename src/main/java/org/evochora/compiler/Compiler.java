@@ -17,7 +17,6 @@ import org.evochora.compiler.frontend.module.SourceRootResolver;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
 import org.evochora.compiler.frontend.parser.features.importdir.ImportDirectiveHandler;
-import org.evochora.compiler.frontend.parser.features.place.PlaceDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.proc.PregDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.proc.ProcDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.require.RequireDirectiveHandler;
@@ -34,7 +33,6 @@ import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.frontend.parser.ast.PregNode;
 import org.evochora.compiler.frontend.parser.features.importdir.ImportNode;
-import org.evochora.compiler.frontend.parser.features.place.PlaceNode;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
 import org.evochora.compiler.frontend.parser.features.require.RequireNode;
 import org.evochora.compiler.frontend.irgen.DefaultAstNodeToIrConverter;
@@ -42,7 +40,6 @@ import org.evochora.compiler.frontend.irgen.IrConverterRegistry;
 import org.evochora.compiler.frontend.irgen.IrGenerator;
 import org.evochora.compiler.frontend.irgen.converters.ImportNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.InstructionNodeConverter;
-import org.evochora.compiler.frontend.irgen.converters.PlaceNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.PregNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.ProcedureNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.RequireNodeConverter;
@@ -60,7 +57,6 @@ import org.evochora.compiler.model.ir.IrProgram;
 import org.evochora.compiler.backend.layout.LayoutDirectiveRegistry;
 import org.evochora.compiler.backend.layout.LayoutEngine;
 import org.evochora.compiler.backend.layout.LayoutResult;
-import org.evochora.compiler.backend.layout.features.PlaceLayoutHandler;
 import org.evochora.compiler.backend.link.Linker;
 import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.backend.link.LinkingDirectiveRegistry;
@@ -245,7 +241,6 @@ public class Compiler implements ICompiler {
         featureRegistry.parserHandlers().forEach(parserRegistry::register);
         parserRegistry.register(".PROC", new ProcDirectiveHandler());
         parserRegistry.register(".PREG", new PregDirectiveHandler());
-        parserRegistry.register(".PLACE", new PlaceDirectiveHandler());
         parserRegistry.register(".IMPORT", new ImportDirectiveHandler());
         parserRegistry.register(".REQUIRE", new RequireDirectiveHandler());
         Parser parser = new Parser(ppResult.tokens(), diagnostics, parserRegistry);
@@ -300,7 +295,6 @@ public class Compiler implements ICompiler {
         IrConverterRegistry irRegistry = IrConverterRegistry.initialize(new DefaultAstNodeToIrConverter());
         irRegistry.registerAll(featureRegistry.irConverters());
         irRegistry.register(InstructionNode.class, new InstructionNodeConverter());
-        irRegistry.register(PlaceNode.class, new PlaceNodeConverter());
         irRegistry.register(ProcedureNode.class, new ProcedureNodeConverter());
         irRegistry.register(ImportNode.class, new ImportNodeConverter());
         irRegistry.register(RequireNode.class, new RequireNodeConverter());
@@ -321,7 +315,6 @@ public class Compiler implements ICompiler {
             // default: ignore unknown directives in layout
         });
         layoutRegistry.registerAll(featureRegistry.layoutHandlers());
-        layoutRegistry.register("core", "place", new PlaceLayoutHandler());
         LayoutEngine layoutEngine = new LayoutEngine();
         LayoutResult layout = layoutEngine.layout(rewrittenIr, new RuntimeInstructionSetAdapter(), envProps, layoutRegistry);
 

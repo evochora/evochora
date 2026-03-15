@@ -1,12 +1,10 @@
-package org.evochora.compiler.frontend.parser.ast.placement;
-
-import org.evochora.compiler.model.token.Token;
+package org.evochora.compiler.features.place.placement;
 
 /**
  * Represents a range with a start, step, and end value (e.g., 10:2:20).
- * @param start The token for the start value.
- * @param step The token for the step value.
- * @param end The token for the end value.
+ * @param start The start value of the range.
+ * @param step The step value between elements.
+ * @param end The end value of the range.
  */
-public record SteppedRangeValueComponent(Token start, Token step, Token end) implements IPlacementComponent {
+public record SteppedRangeValueComponent(int start, int step, int end) implements IPlacementComponent {
 }

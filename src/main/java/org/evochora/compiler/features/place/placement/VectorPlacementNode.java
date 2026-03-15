@@ -1,4 +1,4 @@
-package org.evochora.compiler.frontend.parser.ast.placement;
+package org.evochora.compiler.features.place.placement;
 
 import org.evochora.compiler.model.ast.VectorLiteralNode;
 

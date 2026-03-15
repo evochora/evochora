@@ -6,6 +6,7 @@ import org.evochora.compiler.features.dir.DirFeature;
 import org.evochora.compiler.features.macro.MacroFeature;
 import org.evochora.compiler.features.org.OrgFeature;
 import org.evochora.compiler.features.label.LabelFeature;
+import org.evochora.compiler.features.place.PlaceFeature;
 import org.evochora.compiler.features.reg.RegFeature;
 import org.evochora.compiler.features.repeat.RepeatFeature;
 import org.evochora.compiler.features.source.SourceFeature;
@@ -30,7 +31,8 @@ public final class StandardFeatures {
             new DirFeature(),
             new DefineFeature(),
             new RegFeature(),
-            new LabelFeature()
+            new LabelFeature(),
+            new PlaceFeature()
         );
     }
 }
