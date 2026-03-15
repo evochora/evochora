@@ -1,6 +1,5 @@
-package org.evochora.compiler.frontend.parser.features.require;
+package org.evochora.compiler.features.require;
 
-import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.ISourceLocatable;
@@ -13,16 +12,13 @@ import org.evochora.compiler.model.ast.ISourceLocatable;
  * <p>Declares an unsatisfied dependency on a module. The importer of this module
  * must provide the required module via a {@code USING} clause on the {@code .IMPORT} directive.
  *
- * @param path  The string literal token containing the required file path or URL.
- * @param alias The identifier token for the local alias name.
+ * @param path       The required file path (unquoted string value from the token).
+ * @param alias      The local alias name for the required module.
+ * @param sourceInfo The source location of the alias token.
  */
 public record RequireNode(
-        Token path,
-        Token alias
+        String path,
+        String alias,
+        SourceInfo sourceInfo
 ) implements AstNode, ISourceLocatable {
-
-    @Override
-    public SourceInfo sourceInfo() {
-        return alias.toSourceInfo();
-    }
 }

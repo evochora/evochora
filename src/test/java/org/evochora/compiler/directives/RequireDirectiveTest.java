@@ -5,9 +5,9 @@ import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
-import org.evochora.compiler.frontend.parser.features.require.RequireDirectiveHandler;
+import org.evochora.compiler.features.require.RequireDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.frontend.parser.features.require.RequireNode;
+import org.evochora.compiler.features.require.RequireNode;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -43,8 +43,8 @@ public class RequireDirectiveTest {
         assertThat(ast.get(0)).isInstanceOf(RequireNode.class);
 
         RequireNode node = (RequireNode) ast.get(0);
-        assertThat((String) node.path().value()).isEqualTo("dependency.evo");
-        assertThat(node.alias().text()).isEqualToIgnoringCase("DEP");
+        assertThat(node.path()).isEqualTo("dependency.evo");
+        assertThat(node.alias()).isEqualToIgnoringCase("DEP");
     }
 
     @Test

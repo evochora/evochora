@@ -1,4 +1,4 @@
-package org.evochora.compiler.frontend.parser.features.require;
+package org.evochora.compiler.features.require;
 
 import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
 import org.evochora.compiler.model.token.Token;
@@ -36,6 +36,6 @@ public class RequireDirectiveHandler implements IParserDirectiveHandler {
         Token aliasToken = context.consume(TokenType.IDENTIFIER, "Expected an alias name after AS.");
         if (aliasToken == null) return null;
 
-        return new RequireNode(pathToken, aliasToken);
+        return new RequireNode((String) pathToken.value(), aliasToken.text(), aliasToken.toSourceInfo());
     }
 }

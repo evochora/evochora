@@ -16,7 +16,7 @@ import org.evochora.compiler.features.place.PlaceDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.proc.PregDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.proc.ProcDirectiveHandler;
 import org.evochora.compiler.features.reg.RegDirectiveHandler;
-import org.evochora.compiler.frontend.parser.features.require.RequireDirectiveHandler;
+import org.evochora.compiler.features.require.RequireDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.semantics.AnalysisHandlerRegistry;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;

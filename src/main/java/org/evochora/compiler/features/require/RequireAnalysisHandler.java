@@ -1,8 +1,8 @@
-package org.evochora.compiler.frontend.semantics.analysis;
+package org.evochora.compiler.features.require;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.frontend.parser.features.require.RequireNode;
 import org.evochora.compiler.frontend.semantics.ModuleScope;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 
@@ -18,24 +18,24 @@ public class RequireAnalysisHandler implements IAnalysisHandler {
     @Override
     public void analyze(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         RequireNode requireNode = (RequireNode) node;
-        String alias = requireNode.alias().text().toUpperCase();
+        String alias = requireNode.alias().toUpperCase();
 
         String currentChain = symbolTable.getCurrentAliasChain();
         ModuleScope modScope = symbolTable.getModuleScope(currentChain).orElse(null);
         if (modScope == null) {
             diagnostics.reportError(
                     "Internal error: no module scope registered for current module.",
-                    requireNode.alias().fileName(),
-                    requireNode.alias().line());
+                    requireNode.sourceInfo().fileName(),
+                    requireNode.sourceInfo().lineNumber());
             return;
         }
 
         if (!modScope.requires().containsKey(alias)) {
             diagnostics.reportError(
-                    "Require alias '" + requireNode.alias().text()
+                    "Require alias '" + requireNode.alias()
                             + "' was not found in dependency scan results.",
-                    requireNode.alias().fileName(),
-                    requireNode.alias().line());
+                    requireNode.sourceInfo().fileName(),
+                    requireNode.sourceInfo().lineNumber());
         }
     }
 }
