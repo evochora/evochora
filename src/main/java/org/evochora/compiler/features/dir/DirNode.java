@@ -1,4 +1,4 @@
-package org.evochora.compiler.frontend.parser.features.dir;
+package org.evochora.compiler.features.dir;
 
 import org.evochora.compiler.model.ast.AstNode;
 

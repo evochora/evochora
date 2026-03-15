@@ -1,9 +1,8 @@
-package org.evochora.compiler.frontend.irgen.converters;
+package org.evochora.compiler.features.dir;
 
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrGenContext;
 import org.evochora.compiler.model.ast.VectorLiteralNode;
-import org.evochora.compiler.frontend.parser.features.dir.DirNode;
 import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrValue;
 
@@ -33,5 +32,3 @@ public final class DirNodeConverter implements IAstNodeToIrConverter<DirNode> {
 		}
 	}
 }
-
-
