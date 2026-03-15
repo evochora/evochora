@@ -1,10 +1,9 @@
-package org.evochora.compiler.frontend.parser.features.reg;
+package org.evochora.compiler.features.reg;
 
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
 import org.evochora.compiler.frontend.parser.ParsingContext;
-import org.evochora.compiler.frontend.parser.RegisterAliasState;
 import org.evochora.compiler.model.ast.AstNode;
 
 /**
@@ -42,7 +41,7 @@ public class RegDirectiveHandler implements IParserDirectiveHandler {
             Token numTok = context.advance();
             int idx = (int) numTok.value();
             String text = "%DR" + idx;
-            register = new org.evochora.compiler.model.token.Token(
+            register = new Token(
                     TokenType.REGISTER,
                     text,
                     null,
@@ -55,9 +54,7 @@ public class RegDirectiveHandler implements IParserDirectiveHandler {
         }
 
         if (name != null && register != null) {
-            context.state().getOrCreate(RegisterAliasState.class, RegisterAliasState::new)
-                .addAlias(name.text(), register);
-            return new RegNode(name, register);
+            return new RegNode(name.text(), register.text(), name.toSourceInfo());
         }
 
         return null;

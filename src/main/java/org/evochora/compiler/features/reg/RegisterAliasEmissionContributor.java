@@ -1,4 +1,7 @@
-package org.evochora.compiler.backend.emit;
+package org.evochora.compiler.features.reg;
+
+import org.evochora.compiler.backend.emit.EmissionContext;
+import org.evochora.compiler.backend.emit.IEmissionContributor;
 
 import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrItem;

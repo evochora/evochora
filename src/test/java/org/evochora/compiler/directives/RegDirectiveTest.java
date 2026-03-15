@@ -3,7 +3,7 @@ package org.evochora.compiler.directives;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
-import org.evochora.compiler.frontend.parser.features.reg.RegDirectiveHandler;
+import org.evochora.compiler.features.reg.RegDirectiveHandler;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.InstructionNode;
@@ -76,7 +76,7 @@ public class RegDirectiveTest {
         assertThat(processedAst).hasSize(2);
 
         // First node should be the RegNode
-        assertThat(processedAst.get(0)).isInstanceOf(org.evochora.compiler.frontend.parser.features.reg.RegNode.class);
+        assertThat(processedAst.get(0)).isInstanceOf(org.evochora.compiler.features.reg.RegNode.class);
 
         // Second node should be the InstructionNode
         assertThat(processedAst.get(1)).isInstanceOf(InstructionNode.class);
@@ -217,7 +217,7 @@ public class RegDirectiveTest {
         assertThat(processedAst).hasSize(2);
 
         // First node should be the RegNode
-        assertThat(processedAst.get(0)).isInstanceOf(org.evochora.compiler.frontend.parser.features.reg.RegNode.class);
+        assertThat(processedAst.get(0)).isInstanceOf(org.evochora.compiler.features.reg.RegNode.class);
 
         // Second node should be the InstructionNode
         assertThat(processedAst.get(1)).isInstanceOf(InstructionNode.class);

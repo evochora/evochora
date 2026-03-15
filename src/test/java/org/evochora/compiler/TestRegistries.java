@@ -5,11 +5,9 @@ import org.evochora.compiler.frontend.parser.ast.PregNode;
 import org.evochora.compiler.frontend.parser.features.importdir.ImportNode;
 import org.evochora.compiler.frontend.parser.features.label.LabelNode;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
-import org.evochora.compiler.frontend.parser.features.reg.RegNode;
 import org.evochora.compiler.frontend.parser.features.require.RequireNode;
 import org.evochora.compiler.frontend.postprocess.PostProcessHandlerRegistry;
 import org.evochora.compiler.frontend.postprocess.PregPostProcessHandler;
-import org.evochora.compiler.frontend.postprocess.RegPostProcessHandler;
 import org.evochora.compiler.frontend.semantics.AnalysisHandlerRegistry;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.frontend.semantics.analysis.ImportAnalysisHandler;
@@ -20,7 +18,6 @@ import org.evochora.compiler.frontend.semantics.analysis.LabelSymbolCollector;
 import org.evochora.compiler.frontend.semantics.analysis.PregAnalysisHandler;
 import org.evochora.compiler.frontend.semantics.analysis.ProcedureAnalysisHandler;
 import org.evochora.compiler.frontend.semantics.analysis.ProcedureSymbolCollector;
-import org.evochora.compiler.frontend.semantics.analysis.RegAnalysisHandler;
 import org.evochora.compiler.frontend.semantics.analysis.RequireAnalysisHandler;
 import org.evochora.compiler.frontend.semantics.analysis.RequireSymbolCollector;
 import org.evochora.compiler.model.ast.InstructionNode;
@@ -52,7 +49,6 @@ public final class TestRegistries {
         registry.registerCollector(RequireNode.class, new RequireSymbolCollector());
         registry.register(ImportNode.class, new ImportAnalysisHandler());
         registry.register(RequireNode.class, new RequireAnalysisHandler());
-        registry.register(RegNode.class, new RegAnalysisHandler());
         registry.register(LabelNode.class, new LabelAnalysisHandler());
         registry.register(ProcedureNode.class, new ProcedureAnalysisHandler());
         registry.register(InstructionNode.class, new InstructionAnalysisHandler(symbolTable, diagnostics));
@@ -73,7 +69,6 @@ public final class TestRegistries {
 
         // Inline registrations for not-yet-migrated features (mirrors Compiler.java Phase 6)
         registry.register(PregNode.class, new PregPostProcessHandler());
-        registry.register(RegNode.class, new RegPostProcessHandler());
 
         return registry;
     }

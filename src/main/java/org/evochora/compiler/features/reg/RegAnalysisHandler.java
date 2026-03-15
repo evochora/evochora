@@ -1,11 +1,10 @@
-package org.evochora.compiler.frontend.semantics.analysis;
+package org.evochora.compiler.features.reg;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.model.token.Token;
-import org.evochora.compiler.frontend.parser.features.reg.RegNode;
 import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
+import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
 import org.evochora.runtime.Config;
 
 /**
@@ -22,31 +21,18 @@ public class RegAnalysisHandler implements IAnalysisHandler {
     }
 
     private void processRegDirective(RegNode regNode, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
-        // Validate that the target is actually a register
-        if (regNode.register().type() != org.evochora.compiler.model.token.TokenType.REGISTER) {
-            diagnostics.reportError(
-                "Target in .REG directive must be a register.",
-                regNode.register().fileName(),
-                regNode.register().line()
-            );
-            return;
-        }
-
-        // Validate register bounds and format
-        String registerText = regNode.register().text();
+        String registerText = regNode.register();
         if (!isValidRegister(registerText)) {
             diagnostics.reportError(
-                String.format("Invalid register '%s'. .REG directive supports data registers %%DR0-%%DR%d and location registers %%LR0-%%LR%d.", 
+                String.format("Invalid register '%s'. .REG directive supports data registers %%DR0-%%DR%d and location registers %%LR0-%%LR%d.",
                     registerText, Config.NUM_DATA_REGISTERS - 1, Config.NUM_LOCATION_REGISTERS - 1),
-                regNode.register().fileName(),
-                regNode.register().line()
+                regNode.sourceInfo().fileName(),
+                regNode.sourceInfo().lineNumber()
             );
             return;
         }
 
-        // Everything is valid, so define the alias in the symbol table
-        Token alias = regNode.alias();
-        symbolTable.define(new Symbol(alias.text(), alias.toSourceInfo(), Symbol.Type.ALIAS));
+        symbolTable.define(new Symbol(regNode.alias(), regNode.sourceInfo(), Symbol.Type.ALIAS));
     }
 
     /**
@@ -59,23 +45,23 @@ public class RegAnalysisHandler implements IAnalysisHandler {
         if (registerText == null || !registerText.startsWith("%")) {
             return false;
         }
-        
-        if (registerText.length() < 4) { // Minimum: %DR0 or %LR0
+
+        if (registerText.length() < 4) {
             return false;
         }
-        
-        String registerType = registerText.substring(1, 3); // Extract "DR" or "LR"
-        
+
+        String registerType = registerText.substring(1, 3);
+
         try {
             int registerNumber = Integer.parseInt(registerText.substring(3));
-            
+
             if (registerType.equals("DR")) {
                 return registerNumber >= 0 && registerNumber < Config.NUM_DATA_REGISTERS;
             } else if (registerType.equals("LR")) {
                 return registerNumber >= 0 && registerNumber < Config.NUM_LOCATION_REGISTERS;
             }
-            
-            return false; // Unknown register type
+
+            return false;
         } catch (NumberFormatException e) {
             return false;
         }

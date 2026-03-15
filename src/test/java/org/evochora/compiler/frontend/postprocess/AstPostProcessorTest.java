@@ -3,7 +3,7 @@ package org.evochora.compiler.frontend.postprocess;
 import org.evochora.compiler.frontend.parser.ast.*;
 import org.evochora.compiler.features.ctx.PushCtxNode;
 import org.evochora.compiler.features.ctx.PopCtxNode;
-import org.evochora.compiler.frontend.parser.features.reg.RegNode;
+import org.evochora.compiler.features.reg.RegNode;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.InstructionNode;
@@ -14,8 +14,6 @@ import org.evochora.compiler.features.define.DefineNode;
 import org.evochora.compiler.frontend.semantics.ModuleContextTracker;
 import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
-import org.evochora.compiler.model.token.Token;
-import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.TestRegistries;
@@ -50,9 +48,9 @@ class AstPostProcessorTest {
         processor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable), TestRegistries.postProcessRegistry());
 
         // Register aliases by processing RegNode instances (self-extraction)
-        processor.process(new RegNode(createToken("COUNTER", TokenType.IDENTIFIER), createToken("%DR0", TokenType.REGISTER)));
-        processor.process(new RegNode(createToken("TMP", TokenType.IDENTIFIER), createToken("%PR0", TokenType.REGISTER)));
-        processor.process(new RegNode(createToken("POS", TokenType.IDENTIFIER), createToken("%DR1", TokenType.REGISTER)));
+        processor.process(new RegNode("COUNTER", "%DR0", createSourceInfo()));
+        processor.process(new RegNode("TMP", "%PR0", createSourceInfo()));
+        processor.process(new RegNode("POS", "%DR1", createSourceInfo()));
     }
 
     @Test
@@ -379,11 +377,6 @@ class AstPostProcessorTest {
         assertThat(resultInstr).isInstanceOf(InstructionNode.class);
         assertThat(((InstructionNode) resultInstr).arguments().get(1)).isInstanceOf(TypedLiteralNode.class);
         assertThat(((TypedLiteralNode) ((InstructionNode) resultInstr).arguments().get(1)).value()).isEqualTo(99);
-    }
-
-    // Helper methods
-    private Token createToken(String text, TokenType type) {
-        return new Token(type, text, null, 10, 5, "test.s");
     }
 
     private SourceInfo createSourceInfo() {

@@ -50,15 +50,6 @@ public class Parser implements ParsingContext {
     }
 
     /**
-     * Gets the global register aliases.
-     * @return A map of global register aliases.
-     */
-    public Map<String, Token> getGlobalRegisterAliases() {
-        RegisterAliasState aliases = parserState.get(RegisterAliasState.class);
-        return aliases != null ? aliases.getGlobalAliases() : new HashMap<>();
-    }
-
-    /**
      * Parses the entire token stream and returns a list of top-level AST nodes.
      * @return A list of parsed {@link AstNode}s.
      */

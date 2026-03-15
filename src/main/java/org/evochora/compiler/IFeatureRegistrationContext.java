@@ -1,5 +1,6 @@
 package org.evochora.compiler;
 
+import org.evochora.compiler.backend.emit.IEmissionContributor;
 import org.evochora.compiler.backend.emit.IEmissionRule;
 import org.evochora.compiler.backend.layout.ILayoutDirectiveHandler;
 import org.evochora.compiler.backend.link.ILinkingDirectiveHandler;
@@ -24,9 +25,7 @@ import org.evochora.compiler.model.ast.AstNode;
  * <p>The concrete implementation ({@link FeatureRegistry}) collects all registrations
  * and provides getter methods for the compiler to read them back.</p>
  *
- * <p>Phase 1 (Lexing) and Phase 11 (Emission) have no extension points because they are
- * genuinely feature-agnostic: the lexer uses generic token types, and the emitter dispatches
- * on IR operand types.</p>
+ * <p>Phase 1 (Lexing) has no extension points because the lexer uses generic token types.</p>
  */
 public interface IFeatureRegistrationContext {
 
@@ -147,4 +146,14 @@ public interface IFeatureRegistrationContext {
 	 * @param handler   The handler that processes matching IR directives during linking.
 	 */
 	void linkingDirectiveHandler(String namespace, String name, ILinkingDirectiveHandler handler);
+
+	// Phase 11: Emission Contributors
+
+	/**
+	 * Registers an emission contributor for Phase 11.
+	 *
+	 * @param contributor The contributor that processes IR directives during emission
+	 *                    (e.g., register alias collection, procedure table building).
+	 */
+	void emissionContributor(IEmissionContributor contributor);
 }

@@ -151,7 +151,7 @@ org.evochora.compiler
 │   │   ├── RegNode.java
 │   │   ├── RegDirectiveHandler.java
 │   │   ├── RegAnalysisHandler.java
-│   │   ├── RegisterAliasState.java    # DR+LR alias state, implements IScopedParserState
+│   │   ├── RegisterAliasEmissionContributor.java  # resolves reg aliases in emission phase
 │   │   ├── RegPostProcessHandler.java  # NEW (extracted from AstPostProcessor)
 │   │   └── RegFeature.java
 │   ├── define/
@@ -1237,7 +1237,7 @@ include this Token decoupling work.
 | D7b | (refactoring) | No feature move. **[+DRY]** Extracted `IrGenContext.convertOperand(AstNode)` — single method handling all AST→IR operand mapping (registers, literals, identifiers with procedure-param/constant/label resolution). `InstructionNodeConverter` delegates via `ctx.convertOperand()`. `DefineNodeConverter` simplified from 30 lines to 3 lines. **[+fix]** Silent fallback `return new IrLabelRef(node.toString())` for unrecognized node types needs to be replaced with `throw new IllegalArgumentException` — see D7c. **DONE.** | — |
 | D7c | (refactoring) | No feature move. **[+fix]** Replaced silent fallback `return new IrLabelRef(node.toString())` in `IrGenContext.convertOperand()` with `throw new IllegalArgumentException("Unsupported operand node type: " + node.getClass().getSimpleName())`. Unhandled node types now cause an immediate, diagnosable error instead of producing invalid IR silently. **DONE.** | — |
 | D7d | (refactoring) | No feature move. **[+DRY]** Introduced `Token.toSourceInfo()` method in `model/token/Token.java` returning `new SourceInfo(fileName(), line(), column())`. Replaced all 23 `new SourceInfo(t.fileName(), t.line(), t.column())` call sites across 13 files with `t.toSourceInfo()`. Affected: Parser (8×), ProcedureSymbolCollector (4×), ProcedureTokenMapContributor (2×), LabelNode, RequireNode, ImportNode, ProcedureNode, DefineDirectiveHandler, LabelSymbolCollector, RegAnalysisHandler, PregAnalysisHandler, ImportSymbolCollector, RequireSymbolCollector. All subsequent `[+decouple]` steps (D8–D13) must use `Token.toSourceInfo()` for new extraction sites. **DONE.** | — |
-| D8 | reg | See D8 details below. **[+cutover: EmissionContributorRegistry]** (Symbol already decoupled in D7a.) | RegFeature.java |
+| D8 | reg | See D8 details below. **[+cutover: EmissionContributorRegistry]** (Symbol already decoupled in D7a.) Moved 6 files to `features/reg/`: RegNode (decoupled Token→String+SourceInfo), RegDirectiveHandler, RegAnalysisHandler, RegPostProcessHandler, RegNodeConverter, RegisterAliasEmissionContributor. Deleted `RegisterAliasState` entirely (write-only store — alias resolution runs through AST path, not parser state). Created RegFeature.java with 5 registrations (parser, analysis, postprocess, irconverter, emissionContributor). Added `emissionContributor()` to IFeatureRegistrationContext/FeatureRegistry. Removed `EmissionContributorRegistry.initializeWithDefaults()`. Removed dead `Parser.getGlobalRegisterAliases()`. **DONE.** | RegFeature.java |
 | D9 | label | LabelNode, LabelSymbolCollector, LabelAnalysisHandler, LabelNodeConverter. **[+decouple]** LabelNode: Token `labelToken` → String + SourceInfo (Symbol already decoupled in D7a). **[+cutover: LinkingRegistry]** | LabelFeature.java |
 | D10 | place | PlaceNode, PlaceDirectiveHandler, PlaceNodeConverter, PlaceLayoutHandler, placement/. **[+decouple]** placement sub-nodes: RangeValueComponent, SingleValueComponent, SteppedRangeValueComponent, WildcardValueComponent — Token fields → extracted values + SourceInfo | PlaceFeature.java |
 | D11 | require | RequireNode, RequireDirectiveHandler, RequireSymbolCollector, RequireAnalysisHandler, RequireNodeConverter. **[+decouple]** RequireNode: Token `path`, `alias` → String + SourceInfo (Symbol already decoupled in D7a). | RequireFeature.java |
@@ -1371,8 +1371,8 @@ same property that `LayoutEngine` already has via `LayoutDirectiveRegistry`.
 Move to `features/reg/`: RegNode, RegDirectiveHandler, RegAnalysisHandler, RegPostProcessHandler (NEW, extracted from AstPostProcessor).
 
 Additionally:
-1. Move `RegisterAliasState` from `parser/` (temporary C2 location) to `features/reg/`. Add `implements IScopedParserState`.
-2. Remove `getGlobalRegisterAliases()` from Parser. Compiler.java reads aliases via `parser.state().get(RegisterAliasState.class).getGlobalAliases()` (or equivalent extraction pattern).
+1. ~~Move `RegisterAliasState` from `parser/` to `features/reg/`.~~ **Deleted entirely** — `RegisterAliasState` was a write-only store. The `addAlias()` calls in RegDirectiveHandler and PregDirectiveHandler had no readers; alias resolution runs entirely through the AST path (RegNode → RegPostProcessHandler → AstPostProcessor register replacement). Removed `addAlias()` calls from both directive handlers and deleted RegisterAliasState.java.
+2. Remove `getGlobalRegisterAliases()` from Parser (dead method after RegisterAliasState removal).
 3. Update tests that call `parser.getGlobalRegisterAliases()`: RegDirectiveTest, DefineDirectiveTest, ModuleSourceDefineIntegrationTest.
 4. **[+decouple]** RegNode: Token `alias`, `register` → String + SourceInfo. `RegAnalysisHandler` passes `new Symbol(name, sourceInfo, ...)` directly (Symbol already decoupled in D7a).
 
@@ -1381,9 +1381,8 @@ Additionally:
 Move to `features/proc/`: ProcedureNode, ProcDirectiveHandler, PregNode, PregDirectiveHandler, ProcedureSymbolCollector, ProcedureAnalysisHandler, PregAnalysisHandler, ProcedureNodeConverter, ProcedureMarshallingRule, CallerMarshallingRule, CallSiteBindingRule, ProcedureTokenMapContributor. (ExportNode was removed — EXPORT is handled as a prefix modifier in Parser.statement(), not as a separate AST node.)
 
 Additionally:
-1. Create `ProcAliasState` (implements `IScopedParserState`) in `features/proc/` — manages PR aliases. PregDirectiveHandler uses ProcAliasState instead of RegisterAliasState.
-2. Create `ProcPostProcessHandler` in `features/proc/` — resolves PR aliases in AST. Registered with higher priority than RegPostProcessHandler so PR aliases shadow DR/LR aliases on name conflict.
-3. ProcDirectiveHandler: replace `context.state().getOrCreate(RegisterAliasState.class, ...)` with `context.state().pushScope()` / `context.state().popScope()` (generic, no feature imports). Replace `context.declaration()` (already done in C2). Resolve `registerProcedure()` cast — procedure registration moves to ProcFeature or a clean cross-phase extraction pattern.
+1. Create `ProcPostProcessHandler` in `features/proc/` — resolves PR aliases in AST. Registered with higher priority than RegPostProcessHandler so PR aliases shadow DR/LR aliases on name conflict.
+2. ProcDirectiveHandler: replace `context.state().pushScope()` / `context.state().popScope()` (generic, no feature imports). Replace `context.declaration()` (already done in C2). Resolve `registerProcedure()` cast — procedure registration moves to ProcFeature or a clean cross-phase extraction pattern. (Note: `RegisterAliasState` was deleted in D8 — PregDirectiveHandler no longer writes to any parser alias state.)
 4. Remove from Parser: `registerProcedure()`, `getProcedureTable()`, `procedureTable` field.
 5. Update tests: ProcedureDirectiveTest (calls `parser.getProcedureTable()`), PregDirectiveTest.
 6. **[+decouple]** ProcedureNode: Token `name`, `parameters`, `refParameters`, `valParameters` → String/List\<String\> + SourceInfo. PregNode: Token `alias`, `targetRegister` → String + SourceInfo. `ProcedureSymbolCollector` and `PregAnalysisHandler` pass `new Symbol(name, sourceInfo, ...)` directly (Symbol already decoupled in D7a).

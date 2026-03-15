@@ -1,6 +1,7 @@
-package org.evochora.compiler.frontend.postprocess;
+package org.evochora.compiler.features.reg;
 
-import org.evochora.compiler.frontend.parser.features.reg.RegNode;
+import org.evochora.compiler.frontend.postprocess.IPostProcessContext;
+import org.evochora.compiler.frontend.postprocess.IPostProcessHandler;
 import org.evochora.compiler.model.ast.AstNode;
 
 /**
@@ -15,6 +16,6 @@ public class RegPostProcessHandler implements IPostProcessHandler {
 	@Override
 	public void collect(AstNode node, IPostProcessContext context) {
 		RegNode regNode = (RegNode) node;
-		context.collectRegisterAlias(regNode.alias().text(), regNode.register().text());
+		context.collectRegisterAlias(regNode.alias(), regNode.register());
 	}
 }
