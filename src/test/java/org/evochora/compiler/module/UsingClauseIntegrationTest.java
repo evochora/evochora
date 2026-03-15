@@ -14,7 +14,7 @@ import org.evochora.compiler.features.ctx.PopCtxDirectiveHandler;
 import org.evochora.compiler.features.ctx.PushCtxDirectiveHandler;
 import org.evochora.compiler.features.define.DefineDirectiveHandler;
 import org.evochora.compiler.features.dir.DirDirectiveHandler;
-import org.evochora.compiler.frontend.parser.features.importdir.ImportDirectiveHandler;
+import org.evochora.compiler.features.importdir.ImportDirectiveHandler;
 import org.evochora.compiler.features.org.OrgDirectiveHandler;
 import org.evochora.compiler.features.place.PlaceDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.proc.PregDirectiveHandler;
@@ -24,8 +24,9 @@ import org.evochora.compiler.features.require.RequireDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.features.ctx.PopCtxPreProcessorHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
+import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
-import org.evochora.compiler.frontend.preprocessor.features.importdir.ImportSourceHandler;
+import org.evochora.compiler.features.importdir.ImportSourceHandler;
 import org.evochora.compiler.features.macro.MacroDirectiveHandler;
 import org.evochora.compiler.features.source.SourceDirectiveHandler;
 
@@ -280,11 +281,10 @@ class UsingClauseIntegrationTest {
         ppRegistry.register(".SOURCE", new SourceDirectiveHandler());
         ppRegistry.register(".MACRO", new MacroDirectiveHandler());
         ppRegistry.register(".POP_CTX", new PopCtxPreProcessorHandler());
-        if (!moduleTokens.isEmpty()) {
-            ppRegistry.register(".IMPORT", new ImportSourceHandler(moduleTokens));
-        }
+        ppRegistry.register(".IMPORT", new ImportSourceHandler());
+        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, moduleTokens);
         PreProcessor preProcessor = new PreProcessor(mainTokens, diagnostics, resolver,
-                ppRegistry, rootAliasChain);
+                ppRegistry, ppContext);
         List<Token> processedTokens = preProcessor.expand().tokens();
         if (diagnostics.hasErrors()) return new SemanticsResult(diagnostics, null);
 

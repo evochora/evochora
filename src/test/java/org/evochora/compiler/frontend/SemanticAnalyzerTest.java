@@ -10,7 +10,7 @@ import org.evochora.compiler.features.ctx.PopCtxDirectiveHandler;
 import org.evochora.compiler.features.ctx.PushCtxDirectiveHandler;
 import org.evochora.compiler.features.define.DefineDirectiveHandler;
 import org.evochora.compiler.features.dir.DirDirectiveHandler;
-import org.evochora.compiler.frontend.parser.features.importdir.ImportDirectiveHandler;
+import org.evochora.compiler.features.importdir.ImportDirectiveHandler;
 import org.evochora.compiler.features.org.OrgDirectiveHandler;
 import org.evochora.compiler.features.place.PlaceDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.proc.PregDirectiveHandler;

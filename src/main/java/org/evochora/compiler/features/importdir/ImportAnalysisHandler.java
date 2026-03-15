@@ -1,8 +1,8 @@
-package org.evochora.compiler.frontend.semantics.analysis;
+package org.evochora.compiler.features.importdir;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.frontend.parser.features.importdir.ImportNode;
 import org.evochora.compiler.frontend.semantics.ModuleScope;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 
@@ -21,49 +21,49 @@ public class ImportAnalysisHandler implements IAnalysisHandler {
     @Override
     public void analyze(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         ImportNode importNode = (ImportNode) node;
-        String alias = importNode.alias().text().toUpperCase();
+        String alias = importNode.alias().toUpperCase();
 
         ModuleScope currentModScope = symbolTable.getModuleScope(symbolTable.getCurrentAliasChain()).orElse(null);
         if (currentModScope == null) {
             diagnostics.reportError(
                     "Internal error: no module scope registered for current module.",
-                    importNode.alias().fileName(),
-                    importNode.alias().line());
+                    importNode.sourceInfo().fileName(),
+                    importNode.sourceInfo().lineNumber());
             return;
         }
 
         String importedAliasChain = currentModScope.imports().get(alias);
         if (importedAliasChain == null) {
             diagnostics.reportError(
-                    "Import alias '" + importNode.alias().text()
+                    "Import alias '" + importNode.alias()
                             + "' is not registered in the module scope.",
-                    importNode.alias().fileName(),
-                    importNode.alias().line());
+                    importNode.sourceInfo().fileName(),
+                    importNode.sourceInfo().lineNumber());
             return;
         }
 
         ModuleScope importedModScope = symbolTable.getModuleScope(importedAliasChain).orElse(null);
 
         for (ImportNode.UsingClause using : importNode.usings()) {
-            String sourceAlias = using.sourceAlias().text().toUpperCase();
-            String targetAlias = using.targetAlias().text().toUpperCase();
+            String sourceAlias = using.sourceAlias().toUpperCase();
+            String targetAlias = using.targetAlias().toUpperCase();
 
             // USING source must be a known import alias in the current module
             if (!currentModScope.imports().containsKey(sourceAlias)) {
                 diagnostics.reportError(
-                        "USING source '" + using.sourceAlias().text()
+                        "USING source '" + using.sourceAlias()
                                 + "' is not a known import alias in the current module.",
-                        using.sourceAlias().fileName(),
-                        using.sourceAlias().line());
+                        using.sourceSourceInfo().fileName(),
+                        using.sourceSourceInfo().lineNumber());
             }
 
             // USING target must match a .REQUIRE in the imported module
             if (importedModScope != null && !importedModScope.requires().containsKey(targetAlias)) {
                 diagnostics.reportError(
-                        "USING target '" + using.targetAlias().text()
+                        "USING target '" + using.targetAlias()
                                 + "' does not match any .REQUIRE in the imported module.",
-                        using.targetAlias().fileName(),
-                        using.targetAlias().line());
+                        using.targetSourceInfo().fileName(),
+                        using.targetSourceInfo().lineNumber());
             }
         }
 
@@ -71,13 +71,13 @@ public class ImportAnalysisHandler implements IAnalysisHandler {
         if (importedModScope != null) {
             for (String requiredAlias : importedModScope.requires().keySet()) {
                 boolean satisfied = importNode.usings().stream()
-                        .anyMatch(u -> u.targetAlias().text().equalsIgnoreCase(requiredAlias));
+                        .anyMatch(u -> u.targetAlias().equalsIgnoreCase(requiredAlias));
                 if (!satisfied) {
                     diagnostics.reportError(
                             "Imported module requires '" + requiredAlias
                                     + "' but no USING clause provides it.",
-                            importNode.alias().fileName(),
-                            importNode.alias().line());
+                            importNode.sourceInfo().fileName(),
+                            importNode.sourceInfo().lineNumber());
                 }
             }
         }

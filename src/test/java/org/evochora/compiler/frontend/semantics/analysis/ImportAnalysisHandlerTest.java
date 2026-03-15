@@ -1,12 +1,12 @@
 package org.evochora.compiler.frontend.semantics.analysis;
 
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.parser.features.importdir.ImportNode;
+import org.evochora.compiler.features.importdir.ImportAnalysisHandler;
+import org.evochora.compiler.features.importdir.ImportNode;
 import org.evochora.compiler.frontend.semantics.ModuleScope;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
-import org.evochora.compiler.model.token.Token;
-import org.evochora.compiler.model.token.TokenType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -160,15 +160,14 @@ class ImportAnalysisHandlerTest {
     // --- Helper methods ---
 
     private ImportNode importNode(String path, String alias, List<ImportNode.UsingClause> usings) {
-        Token pathToken = new Token(TokenType.STRING, "\"" + path + "\"", path, 1, 0, MAIN_FILE);
-        Token aliasToken = new Token(TokenType.IDENTIFIER, alias, null, 1, 20, MAIN_FILE);
-        return new ImportNode(pathToken, aliasToken, usings);
+        SourceInfo sourceInfo = new SourceInfo(MAIN_FILE, 1, 20);
+        return new ImportNode(path, alias, usings, false, sourceInfo);
     }
 
     private ImportNode.UsingClause usingClause(String sourceAlias, String targetAlias) {
-        Token source = new Token(TokenType.IDENTIFIER, sourceAlias, null, 1, 30, MAIN_FILE);
-        Token target = new Token(TokenType.IDENTIFIER, targetAlias, null, 1, 40, MAIN_FILE);
-        return new ImportNode.UsingClause(source, target);
+        SourceInfo sourceSourceInfo = new SourceInfo(MAIN_FILE, 1, 30);
+        SourceInfo targetSourceInfo = new SourceInfo(MAIN_FILE, 1, 40);
+        return new ImportNode.UsingClause(sourceAlias, targetAlias, sourceSourceInfo, targetSourceInfo);
     }
 
     private void assertNoErrors() {

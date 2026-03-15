@@ -1,4 +1,4 @@
-package org.evochora.compiler.frontend.preprocessor.features.importdir;
+package org.evochora.compiler.features.importdir;
 
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
@@ -17,25 +17,17 @@ import java.util.Map;
  * PUSH_CTX/POP_CTX for relative .ORG support. The directive tokens remain in the
  * stream for the parser to create an {@code ImportNode}.
  *
- * <p>Module tokens are pre-lexed in Phase 1 (Lexical Analysis) and passed through as a
- * map from resolved absolute path to token list. This handler does not call the Lexer,
+ * <p>Module tokens are pre-lexed in Phase 1 (Lexical Analysis) and made available via
+ * {@link PreProcessorContext#moduleTokens()}. This handler does not call the Lexer,
  * maintaining strict phase separation.</p>
  */
 public class ImportSourceHandler implements IPreProcessorHandler {
 
-    private final Map<String, List<Token>> moduleTokens;
-
-    /**
-     * @param moduleTokens Map of absolute resolved path to pre-lexed module tokens
-     *                     (EOF removed, ready for preprocessing).
-     *                     Built from the DependencyGraph in Phase 1 of the Compiler.
-     */
-    public ImportSourceHandler(Map<String, List<Token>> moduleTokens) {
-        this.moduleTokens = moduleTokens;
-    }
-
     @Override
     public void process(PreProcessor preProcessor, PreProcessorContext preProcessorContext) {
+        Map<String, List<Token>> moduleTokens = preProcessorContext.moduleTokens();
+        if (moduleTokens.isEmpty()) return;
+
         Token importToken = preProcessor.peek();
         preProcessor.advance(); // consume .IMPORT
 

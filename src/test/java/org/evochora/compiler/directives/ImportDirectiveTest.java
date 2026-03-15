@@ -5,9 +5,9 @@ import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
-import org.evochora.compiler.frontend.parser.features.importdir.ImportDirectiveHandler;
+import org.evochora.compiler.features.importdir.ImportDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.frontend.parser.features.importdir.ImportNode;
+import org.evochora.compiler.features.importdir.ImportNode;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -43,8 +43,8 @@ public class ImportDirectiveTest {
         assertThat(ast.get(0)).isInstanceOf(ImportNode.class);
 
         ImportNode node = (ImportNode) ast.get(0);
-        assertThat((String) node.path().value()).isEqualTo("lib.evo");
-        assertThat(node.alias().text()).isEqualToIgnoringCase("LIB");
+        assertThat(node.path()).isEqualTo("lib.evo");
+        assertThat(node.alias()).isEqualToIgnoringCase("LIB");
         assertThat(node.usings()).isEmpty();
     }
 
@@ -64,11 +64,11 @@ public class ImportDirectiveTest {
         assertThat(ast.get(0)).isInstanceOf(ImportNode.class);
 
         ImportNode node = (ImportNode) ast.get(0);
-        assertThat((String) node.path().value()).isEqualTo("lib.evo");
-        assertThat(node.alias().text()).isEqualToIgnoringCase("LIB");
+        assertThat(node.path()).isEqualTo("lib.evo");
+        assertThat(node.alias()).isEqualToIgnoringCase("LIB");
         assertThat(node.usings()).hasSize(1);
-        assertThat(node.usings().get(0).sourceAlias().text()).isEqualToIgnoringCase("DEP");
-        assertThat(node.usings().get(0).targetAlias().text()).isEqualToIgnoringCase("REQUIRED_DEP");
+        assertThat(node.usings().get(0).sourceAlias()).isEqualToIgnoringCase("DEP");
+        assertThat(node.usings().get(0).targetAlias()).isEqualToIgnoringCase("REQUIRED_DEP");
     }
 
     @Test

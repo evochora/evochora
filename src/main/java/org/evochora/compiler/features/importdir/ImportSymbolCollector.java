@@ -1,9 +1,8 @@
-package org.evochora.compiler.frontend.semantics.analysis;
+package org.evochora.compiler.features.importdir;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.frontend.semantics.analysis.ISymbolCollector;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.model.token.Token;
-import org.evochora.compiler.frontend.parser.features.importdir.ImportNode;
 import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 
@@ -21,7 +20,6 @@ public class ImportSymbolCollector implements ISymbolCollector {
     @Override
     public void collect(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         ImportNode importNode = (ImportNode) node;
-        Token t = importNode.alias();
-        symbolTable.define(new Symbol(t.text(), t.toSourceInfo(), Symbol.Type.ALIAS, importNode));
+        symbolTable.define(new Symbol(importNode.alias(), importNode.sourceInfo(), Symbol.Type.ALIAS, importNode));
     }
 }

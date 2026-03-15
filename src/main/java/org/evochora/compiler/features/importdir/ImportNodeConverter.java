@@ -1,8 +1,7 @@
-package org.evochora.compiler.frontend.irgen.converters;
+package org.evochora.compiler.features.importdir;
 
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrGenContext;
-import org.evochora.compiler.frontend.parser.features.importdir.ImportNode;
 
 /**
  * IR converter for {@code .IMPORT} directives. This is intentionally a no-op:

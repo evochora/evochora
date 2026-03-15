@@ -1,7 +1,11 @@
 package org.evochora.compiler.frontend.preprocessor;
 
+import org.evochora.compiler.model.token.Token;
+
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.List;
+import java.util.Map;
 
 /**
  * A shared context for the preprocessor phase.
@@ -10,17 +14,28 @@ import java.util.Deque;
  */
 public class PreProcessorContext {
     private final Deque<String> aliasChainStack = new ArrayDeque<>();
+    private final Map<String, List<Token>> moduleTokens;
 
     /**
      * @param rootAliasChain The alias chain for the compilation root module (e.g., "MAIN").
      *                       Empty string for the default/root module.
+     * @param moduleTokens   Pre-lexed module tokens keyed by resolved absolute path.
+     *                       Empty map when no modules are imported.
      */
-    public PreProcessorContext(String rootAliasChain) {
+    public PreProcessorContext(String rootAliasChain, Map<String, List<Token>> moduleTokens) {
         aliasChainStack.push(rootAliasChain != null ? rootAliasChain : "");
+        this.moduleTokens = moduleTokens != null ? moduleTokens : Map.of();
     }
 
     public PreProcessorContext() {
-        this("");
+        this("", Map.of());
+    }
+
+    /**
+     * Returns the pre-lexed module tokens keyed by resolved absolute path.
+     */
+    public Map<String, List<Token>> moduleTokens() {
+        return moduleTokens;
     }
 
     /**

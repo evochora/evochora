@@ -31,16 +31,15 @@ public class PreProcessor {
      * @param diagnostics    The engine for reporting errors and warnings.
      * @param resolver       The source root resolver for path resolution.
      * @param registry       The pre-built handler registry for this preprocessing run.
-     * @param rootAliasChain The alias chain for the compilation root module (e.g., "MAIN"),
-     *                       or empty string for default.
+     * @param ppContext       The shared preprocessor context (alias chains, module tokens, etc.).
      */
     public PreProcessor(List<Token> initialTokens, DiagnosticsEngine diagnostics, SourceRootResolver resolver,
-                        PreProcessorHandlerRegistry registry, String rootAliasChain) {
+                        PreProcessorHandlerRegistry registry, PreProcessorContext ppContext) {
         this.tokens = new ArrayList<>(initialTokens);
         this.diagnostics = diagnostics;
         this.resolver = resolver;
         this.directiveRegistry = registry;
-        this.ppContext = new PreProcessorContext(rootAliasChain);
+        this.ppContext = ppContext;
     }
 
     /**

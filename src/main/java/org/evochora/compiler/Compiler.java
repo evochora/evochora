@@ -16,13 +16,12 @@ import org.evochora.compiler.frontend.module.ModuleDescriptor;
 import org.evochora.compiler.frontend.module.SourceRootResolver;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
-import org.evochora.compiler.frontend.parser.features.importdir.ImportDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.proc.PregDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.proc.ProcDirectiveHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
+import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorResult;
-import org.evochora.compiler.frontend.preprocessor.features.importdir.ImportSourceHandler;
 import org.evochora.compiler.frontend.semantics.AnalysisHandlerRegistry;
 import org.evochora.compiler.frontend.semantics.ModuleContextTracker;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
@@ -31,12 +30,10 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.frontend.parser.ast.PregNode;
-import org.evochora.compiler.frontend.parser.features.importdir.ImportNode;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
 import org.evochora.compiler.frontend.irgen.DefaultAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrConverterRegistry;
 import org.evochora.compiler.frontend.irgen.IrGenerator;
-import org.evochora.compiler.frontend.irgen.converters.ImportNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.InstructionNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.PregNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.ProcedureNodeConverter;
@@ -212,11 +209,9 @@ public class Compiler implements ICompiler {
         // Phase 2: Preprocessing (includes, macros)
         PreProcessorHandlerRegistry ppRegistry = new PreProcessorHandlerRegistry();
         featureRegistry.preprocessorHandlers().forEach(ppRegistry::register);
-        if (!moduleTokens.isEmpty()) {
-            ppRegistry.register(".IMPORT", new ImportSourceHandler(moduleTokens));
-        }
+        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, moduleTokens);
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, resolver,
-                ppRegistry, rootAliasChain);
+                ppRegistry, ppContext);
         PreProcessorResult ppResult = preProcessor.expand();
 
         Map<String, List<String>> sources = new HashMap<>();
@@ -238,7 +233,6 @@ public class Compiler implements ICompiler {
         featureRegistry.parserHandlers().forEach(parserRegistry::register);
         parserRegistry.register(".PROC", new ProcDirectiveHandler());
         parserRegistry.register(".PREG", new PregDirectiveHandler());
-        parserRegistry.register(".IMPORT", new ImportDirectiveHandler());
         Parser parser = new Parser(ppResult.tokens(), diagnostics, parserRegistry);
         List<AstNode> ast = parser.parse();
 
@@ -252,8 +246,6 @@ public class Compiler implements ICompiler {
         analysisRegistry.registerAll(featureRegistry.analysisHandlers());
         analysisRegistry.registerAllCollectors(featureRegistry.symbolCollectors());
         analysisRegistry.registerCollector(ProcedureNode.class, new ProcedureSymbolCollector());
-        analysisRegistry.registerCollector(ImportNode.class, new ImportSymbolCollector());
-        analysisRegistry.register(ImportNode.class, new ImportAnalysisHandler());
         analysisRegistry.register(ProcedureNode.class, new ProcedureAnalysisHandler());
         analysisRegistry.register(InstructionNode.class, new InstructionAnalysisHandler(symbolTable, diagnostics));
         analysisRegistry.register(PregNode.class, new PregAnalysisHandler());
@@ -290,7 +282,6 @@ public class Compiler implements ICompiler {
         irRegistry.registerAll(featureRegistry.irConverters());
         irRegistry.register(InstructionNode.class, new InstructionNodeConverter());
         irRegistry.register(ProcedureNode.class, new ProcedureNodeConverter());
-        irRegistry.register(ImportNode.class, new ImportNodeConverter());
         irRegistry.register(PregNode.class, new PregNodeConverter());
         IrGenerator irGenerator = new IrGenerator(diagnostics, irRegistry);
         IrProgram irProgram = irGenerator.generate(ast, programName, rootAliasChain);

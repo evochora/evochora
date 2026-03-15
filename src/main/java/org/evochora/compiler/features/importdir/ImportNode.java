@@ -1,6 +1,5 @@
-package org.evochora.compiler.frontend.parser.features.importdir;
+package org.evochora.compiler.features.importdir;
 
-import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.ISourceLocatable;
@@ -12,35 +11,32 @@ import java.util.List;
  *
  * <p>Syntax: {@code [EXPORT] .IMPORT "path" AS ALIAS [USING source AS target]*}
  *
- * @param path     The string literal token containing the file path or URL.
- * @param alias    The identifier token for the local alias name.
- * @param usings   The USING clauses providing dependencies to the imported module.
- * @param exported Whether this import is re-exported to parent modules via the EXPORT prefix.
+ * @param path       The imported file path (unquoted string value from the token).
+ * @param alias      The local alias name for the imported module.
+ * @param usings     The USING clauses providing dependencies to the imported module.
+ * @param exported   Whether this import is re-exported to parent modules via the EXPORT prefix.
+ * @param sourceInfo The source location of the alias token.
  */
 public record ImportNode(
-        Token path,
-        Token alias,
+        String path,
+        String alias,
         List<UsingClause> usings,
-        boolean exported
+        boolean exported,
+        SourceInfo sourceInfo
 ) implements AstNode, ISourceLocatable {
-
-    /**
-     * Backward-compatible constructor without exported flag (defaults to false).
-     */
-    public ImportNode(Token path, Token alias, List<UsingClause> usings) {
-        this(path, alias, usings, false);
-    }
-
-    @Override
-    public SourceInfo sourceInfo() {
-        return alias.toSourceInfo();
-    }
 
     /**
      * A USING clause on an import, providing a module to satisfy a dependency.
      *
-     * @param sourceAlias The alias being provided (must be a known import in the current module).
-     * @param targetAlias The alias being satisfied (must match a .REQUIRE in the imported module).
+     * @param sourceAlias      The alias being provided (must be a known import in the current module).
+     * @param targetAlias      The alias being satisfied (must match a .REQUIRE in the imported module).
+     * @param sourceSourceInfo The source location of the source alias token.
+     * @param targetSourceInfo The source location of the target alias token.
      */
-    public record UsingClause(Token sourceAlias, Token targetAlias) {}
+    public record UsingClause(
+            String sourceAlias,
+            String targetAlias,
+            SourceInfo sourceSourceInfo,
+            SourceInfo targetSourceInfo
+    ) {}
 }

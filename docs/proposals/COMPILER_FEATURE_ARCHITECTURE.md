@@ -1241,7 +1241,7 @@ include this Token decoupling work.
 | D9 | label | See D9 details below. **[+decouple]** LabelNode: Token `labelToken` → String `name` + SourceInfo. **[+cutover: LinkingRegistry]** via LinkingContext expansion: added `symbolTable()` and `isa()` to LinkingContext (runtime deps via phase context, not constructor params). LabelRefLinkingRule + CallSiteBindingRule refactored to parameterless constructors. Moved 5 files to `features/label/`: LabelNode, LabelSymbolCollector, LabelAnalysisHandler, LabelNodeConverter, LabelRefLinkingRule. Deleted `LinkingRegistry.initializeWithDefaults()`. Added `registerAll()` to LinkingRegistry. Linker reads ISA from context instead of creating locally. **DONE.** | LabelFeature.java |
 | D10 | place | Moved 12 files to `features/place/` (+ `features/place/placement/` sub-package for AST placement types). **[+decouple]** 4 placement components: SingleValueComponent (Token→int), RangeValueComponent (Token pair→int pair), SteppedRangeValueComponent (Token triple→int triple), WildcardValueComponent (Token→pure marker, no data). PlaceNode: added SourceInfo + ISourceLocatable. PlaceNodeConverter simplified (direct int access, no Integer.parseInt). PlaceDirectiveHandler extracts int values at parse boundary. Created PlaceFeature with 3 registrations (parser, irConverter, layoutHandler). **DONE.** | PlaceFeature.java |
 | D11 | require | Moved 5 files to `features/require/`. **[+decouple]** RequireNode: Token `path`, `alias` → String `path` (unquoted via Token.value()), String `alias` + SourceInfo. RequireSymbolCollector/RequireAnalysisHandler updated to use decoupled fields. Created RequireFeature with 4 registrations (parser, symbolCollector, analysisHandler, irConverter). **DONE.** | RequireFeature.java |
-| D12 | importdir | ImportNode, ImportSourceHandler, ImportDirectiveHandler, ImportSymbolCollector, ImportAnalysisHandler, ImportNodeConverter. **[+decouple]** ImportNode: Token `path`, `alias` + UsingClause Tokens → String + SourceInfo (Symbol already decoupled in D7a). | ImportFeature.java |
+| D12 | importdir | Move 6 files to `features/importdir/`. **[+decouple]** ImportNode: Token `path`, `alias` + UsingClause Tokens → String + SourceInfo (Symbol already decoupled in D7a). **[+context]** PreProcessorContext expanded with `moduleTokens` (constructor injection, immutable). PreProcessor constructor changed: `String rootAliasChain` → `PreProcessorContext ppContext`. ImportSourceHandler becomes parameterless, reads `moduleTokens` from context at execution time. Conditional registration (`if !empty`) removed from Compiler.java — handler checks data availability itself. ImportFeature registers all 5 handlers (preprocessor, parser, symbolCollector, analysisHandler, irConverter), part of StandardFeatures. 7 PreProcessor call sites updated (Compiler.java + 6 tests). **DONE.** | ImportFeature.java |
 | D13 | proc | See D13 details below. **[+cutover: EmissionRegistry]** (Symbol already decoupled in D7a.) | ProcFeature.java |
 | D14 | instruction | InstructionAnalysisHandler, InstructionNodeConverter, InstructionTokenMapContributor | InstructionFeature.java |
 
@@ -1409,6 +1409,33 @@ Moved to `features/place/`: PlaceNode (+ISourceLocatable, +SourceInfo), PlaceDir
 Moved to `features/place/placement/`: IPlacementComponent, IPlacementArgumentNode, SingleValueComponent, RangeValueComponent, SteppedRangeValueComponent, WildcardValueComponent, VectorPlacementNode, RangeExpressionNode.
 IR placement types (`model/ir/placement/`) unchanged — belong to IR data format layer.
 Token decoupling: 4 placement components stripped of Token fields → extracted int values at parse boundary. WildcardValueComponent became a pure marker record (no fields). PlaceNodeConverter simplified: direct int field access replaces `Integer.parseInt(token.text())`.
+
+**D12 details (importdir):**
+
+Two parts: infrastructure (PreProcessorContext expansion), then feature consolidation.
+
+**Part 1: PreProcessorContext infrastructure**
+
+`ImportSourceHandler` needs `moduleTokens` — a Phase 1 artifact (pre-lexed module tokens) not available at feature registration time. Fix: move runtime dependency into `PreProcessorContext`, matching the established pattern (LinkingContext in D9).
+
+1. Expand `PreProcessorContext`: add `Map<String, List<Token>> moduleTokens` as constructor parameter (constructor injection, immutable). Add getter `moduleTokens()`. Constructor signature: `PreProcessorContext(String rootAliasChain, Map<String, List<Token>> moduleTokens)`.
+2. Change `PreProcessor` constructor: replace `String rootAliasChain` parameter with `PreProcessorContext ppContext`. PreProcessor no longer creates its own context internally.
+3. Refactor `ImportSourceHandler`: remove `moduleTokens` constructor parameter. Read from `preProcessorContext.moduleTokens()` in `process()`.
+4. Remove conditional registration from `Compiler.java`: `if (!moduleTokens.isEmpty()) { ppRegistry.register(...) }` is deleted. The handler checks data availability itself.
+5. Update 7 PreProcessor call sites: `Compiler.java` + 6 tests (`UsingClauseIntegrationTest`, `ModuleSourceDefineIntegrationTest` ×2, `RepeatDirectiveTest`, `MacroDirectiveTest`, `PreProcessorTest`). Tests without modules pass `new PreProcessorContext()` (empty map default).
+
+**Part 2: Feature consolidation + Token decoupling**
+
+Move to `features/importdir/`: ImportNode, ImportDirectiveHandler, ImportSourceHandler, ImportSymbolCollector, ImportAnalysisHandler, ImportNodeConverter.
+
+Token decoupling:
+- `ImportNode`: `Token path` → `String path` (unquoted via `Token.value()`), `Token alias` → `String alias`, add `SourceInfo sourceInfo` (record accessor replaces explicit `alias.toSourceInfo()` delegation). Retains `ISourceLocatable`. Remove backward-compatible 3-arg constructor.
+- `UsingClause`: `Token sourceAlias, Token targetAlias` → `String sourceAlias, String targetAlias, SourceInfo sourceSourceInfo, SourceInfo targetSourceInfo`. Both SourceInfo needed because `ImportAnalysisHandler` reports errors at both source and target locations independently.
+- `ImportDirectiveHandler`: extracts String values and SourceInfo at parse boundary via `Token.value()`, `Token.text()`, `Token.toSourceInfo()`.
+- `ImportSymbolCollector`: `t.text()` → `importNode.alias()`, `t.toSourceInfo()` → `importNode.sourceInfo()`. Remove Token import.
+- `ImportAnalysisHandler`: all `.text()` → direct String fields, all `.fileName()`/`.line()` → SourceInfo fields. Remove Token access.
+
+Create `ImportFeature.java` with 5 registrations (preprocessor, parser, symbolCollector, analysisHandler, irConverter). Add to `StandardFeatures.all()`.
 
 **D13 details (proc — includes preg):**
 

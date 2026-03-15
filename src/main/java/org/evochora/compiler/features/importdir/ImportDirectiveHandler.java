@@ -1,4 +1,4 @@
-package org.evochora.compiler.frontend.parser.features.importdir;
+package org.evochora.compiler.features.importdir;
 
 import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
 import org.evochora.compiler.model.token.Token;
@@ -59,7 +59,9 @@ public class ImportDirectiveHandler implements IParserDirectiveHandler {
                 Token targetAlias = context.consume(TokenType.IDENTIFIER, "Expected a target alias after AS.");
                 if (targetAlias == null) break;
 
-                usings.add(new ImportNode.UsingClause(sourceAlias, targetAlias));
+                usings.add(new ImportNode.UsingClause(
+                        sourceAlias.text(), targetAlias.text(),
+                        sourceAlias.toSourceInfo(), targetAlias.toSourceInfo()));
             } else {
                 context.getDiagnostics().reportError(
                         "Unexpected token '" + context.peek().text() + "' in .IMPORT directive.",
@@ -68,6 +70,8 @@ public class ImportDirectiveHandler implements IParserDirectiveHandler {
             }
         }
 
-        return new ImportNode(pathToken, aliasToken, usings, exported);
+        return new ImportNode(
+                (String) pathToken.value(), aliasToken.text(), usings, exported,
+                aliasToken.toSourceInfo());
     }
 }
