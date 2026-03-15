@@ -43,7 +43,7 @@ public final class Linker {
      */
     public IrProgram link(IrProgram program, LayoutResult layout, LinkingContext context, EnvironmentProperties envProps) throws CompilationException {
         List<IrItem> out = new ArrayList<>();
-        IInstructionSet isa = new org.evochora.compiler.isa.RuntimeInstructionSetAdapter();
+        IInstructionSet isa = context.isa();
 
         for (IrItem item : program.items()) {
             if (item instanceof IrDirective dir) {

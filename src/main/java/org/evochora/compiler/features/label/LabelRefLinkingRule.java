@@ -1,4 +1,4 @@
-package org.evochora.compiler.backend.link.features;
+package org.evochora.compiler.features.label;
 
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.backend.link.ILinkingRule;
@@ -18,21 +18,9 @@ import java.util.Optional;
  */
 public class LabelRefLinkingRule implements ILinkingRule {
 
-    private final SymbolTable symbolTable;
-
-    /**
-     * Constructs a new label reference linking rule.
-     * @param symbolTable The symbol table for resolving symbols.
-     */
-    public LabelRefLinkingRule(SymbolTable symbolTable) {
-        this.symbolTable = symbolTable;
-    }
-
-    /**
-     * {@inheritDoc}
-     */
     @Override
     public IrInstruction apply(IrInstruction instruction, LinkingContext context, LayoutResult layout) {
+        SymbolTable symbolTable = context.symbolTable();
         List<IrOperand> ops = instruction.operands();
         if (ops == null || ops.isEmpty()) return instruction;
 

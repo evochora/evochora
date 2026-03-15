@@ -3,6 +3,7 @@ package org.evochora.compiler.backend.link.features;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.backend.link.LinkingContext;
+import org.evochora.compiler.features.label.LabelRefLinkingRule;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
@@ -38,8 +39,8 @@ class LabelRefLinkingRuleTest {
     void setUp() {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        rule = new LabelRefLinkingRule(symbolTable);
-        context = new LinkingContext();
+        rule = new LabelRefLinkingRule();
+        context = new LinkingContext(symbolTable, null);
         context.pushAliasChain("TEST");
         dummySource = new SourceInfo("test.s", 1, 0);
     }
@@ -186,11 +187,9 @@ class LabelRefLinkingRuleTest {
         symbolTable.setCurrentModule(mainChain);
         symbolTable.getModuleScope(mainChain).orElseThrow().imports().put("LIB", libChain);
 
-        // Create rule with this symbol table
-        LabelRefLinkingRule ruleWithExport = new LabelRefLinkingRule(symbolTable);
-
-        // Set up linking context with MAIN alias chain
-        LinkingContext exportContext = new LinkingContext();
+        // Set up linking context with MAIN alias chain and symbol table
+        LabelRefLinkingRule ruleWithExport = new LabelRefLinkingRule();
+        LinkingContext exportContext = new LinkingContext(symbolTable, null);
         exportContext.pushAliasChain(mainChain);
 
         // Given: A layout with module-qualified label "LIB.TARGET"
@@ -242,10 +241,8 @@ class LabelRefLinkingRuleTest {
         symbolTable.setCurrentModule(mainChain);
         symbolTable.getModuleScope(mainChain).orElseThrow().imports().put("LIB", libChain);
 
-        LabelRefLinkingRule ruleWithNonExport = new LabelRefLinkingRule(symbolTable);
-
-        // Set up linking context with MAIN alias chain
-        LinkingContext nonExportContext = new LinkingContext();
+        LabelRefLinkingRule ruleWithNonExport = new LabelRefLinkingRule();
+        LinkingContext nonExportContext = new LinkingContext(symbolTable, null);
         nonExportContext.pushAliasChain(mainChain);
 
         // Layout contains the label

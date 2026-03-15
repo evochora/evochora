@@ -18,14 +18,9 @@ import java.util.List;
  */
 public class CallSiteBindingRule implements ILinkingRule {
 
-    private final IInstructionSet isa;
-
-    public CallSiteBindingRule(IInstructionSet isa) {
-        this.isa = isa;
-    }
-
     @Override
     public IrInstruction apply(IrInstruction instruction, LinkingContext context, LayoutResult layout) {
+        IInstructionSet isa = context.isa();
         if (!"CALL".equalsIgnoreCase(instruction.opcode())) return instruction;
 
         List<String> regNames = new ArrayList<>();

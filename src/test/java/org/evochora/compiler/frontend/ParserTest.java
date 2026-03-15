@@ -12,7 +12,7 @@ import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.model.ast.VectorLiteralNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.features.define.DefineNode;
-import org.evochora.compiler.frontend.parser.features.label.LabelNode;
+import org.evochora.compiler.features.label.LabelNode;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
@@ -96,7 +96,7 @@ public class ParserTest {
         assertThat(ast.get(0)).isInstanceOf(LabelNode.class);
 
         LabelNode labelNode = (LabelNode) ast.get(0);
-        assertThat(labelNode.labelToken().text()).isEqualTo("L1");
+        assertThat(labelNode.name()).isEqualTo("L1");
         assertThat(labelNode.statement()).isInstanceOf(InstructionNode.class);
 
         InstructionNode nopNode = (InstructionNode) labelNode.statement();
@@ -159,7 +159,7 @@ public class ParserTest {
         assertThat(ast.get(0)).isInstanceOf(LabelNode.class);
 
         LabelNode labelNode = (LabelNode) ast.get(0);
-        assertThat(labelNode.labelToken().text()).isEqualTo("L1");
+        assertThat(labelNode.name()).isEqualTo("L1");
         assertThat(labelNode.exported()).isTrue();
         assertThat(labelNode.statement()).isInstanceOf(InstructionNode.class);
 
@@ -213,7 +213,7 @@ public class ParserTest {
         assertThat(ast).hasSize(1);
 
         LabelNode labelNode = (LabelNode) ast.get(0);
-        assertThat(labelNode.labelToken().text()).isEqualTo("L1");
+        assertThat(labelNode.name()).isEqualTo("L1");
         assertThat(labelNode.exported()).isTrue();
         assertThat(labelNode.statement()).isInstanceOf(InstructionNode.class);
 

@@ -33,8 +33,8 @@ class CallSiteBindingRuleTest {
     @BeforeEach
     void setUp() {
         IInstructionSet stubIsa = new StubInstructionSet();
-        rule = new CallSiteBindingRule(stubIsa);
-        context = new LinkingContext();
+        rule = new CallSiteBindingRule();
+        context = new LinkingContext(null, stubIsa);
         layout = new LayoutResult(
                 Collections.emptyMap(), Collections.emptyMap(),
                 Collections.emptyMap(), Collections.emptyMap(), Collections.emptyMap()

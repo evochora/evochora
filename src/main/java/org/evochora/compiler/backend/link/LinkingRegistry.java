@@ -1,10 +1,5 @@
 package org.evochora.compiler.backend.link;
 
-import org.evochora.compiler.backend.link.features.CallSiteBindingRule;
-import org.evochora.compiler.backend.link.features.LabelRefLinkingRule;
-import org.evochora.compiler.frontend.semantics.SymbolTable;
-import org.evochora.compiler.isa.IInstructionSet;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -22,20 +17,13 @@ public class LinkingRegistry {
     public void register(ILinkingRule rule) { rules.add(rule); }
 
     /**
+     * Registers all linking rules from the given list.
+     * @param rules The rules to register.
+     */
+    public void registerAll(List<ILinkingRule> rules) { this.rules.addAll(rules); }
+
+    /**
      * @return The list of registered linking rules.
      */
     public List<ILinkingRule> rules() { return rules; }
-
-    /**
-     * Initializes a new linking registry with the default rules.
-     * @param symbolTable The symbol table for resolving symbols.
-     * @param isa         The instruction set adapter for register resolution.
-     * @return A new registry with default rules.
-     */
-    public static LinkingRegistry initializeWithDefaults(SymbolTable symbolTable, IInstructionSet isa) {
-        LinkingRegistry reg = new LinkingRegistry();
-        reg.register(new LabelRefLinkingRule(symbolTable));
-        reg.register(new CallSiteBindingRule(isa));
-        return reg;
-    }
 }

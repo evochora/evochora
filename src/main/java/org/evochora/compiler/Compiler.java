@@ -34,7 +34,6 @@ import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.frontend.parser.ast.PregNode;
 import org.evochora.compiler.frontend.parser.features.importdir.ImportNode;
-import org.evochora.compiler.frontend.parser.features.label.LabelNode;
 import org.evochora.compiler.frontend.parser.features.place.PlaceNode;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
 import org.evochora.compiler.frontend.parser.features.require.RequireNode;
@@ -43,7 +42,6 @@ import org.evochora.compiler.frontend.irgen.IrConverterRegistry;
 import org.evochora.compiler.frontend.irgen.IrGenerator;
 import org.evochora.compiler.frontend.irgen.converters.ImportNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.InstructionNodeConverter;
-import org.evochora.compiler.frontend.irgen.converters.LabelNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.PlaceNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.PregNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.ProcedureNodeConverter;
@@ -67,6 +65,7 @@ import org.evochora.compiler.backend.link.Linker;
 import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.backend.link.LinkingDirectiveRegistry;
 import org.evochora.compiler.backend.link.LinkingRegistry;
+import org.evochora.compiler.backend.link.features.CallSiteBindingRule;
 import org.evochora.compiler.backend.emit.EmissionRegistry;
 import org.evochora.compiler.backend.emit.IEmissionRule;
 import org.evochora.compiler.backend.emit.Emitter;
@@ -262,12 +261,10 @@ public class Compiler implements ICompiler {
         analysisRegistry.registerAll(featureRegistry.analysisHandlers());
         analysisRegistry.registerAllCollectors(featureRegistry.symbolCollectors());
         analysisRegistry.registerCollector(ProcedureNode.class, new ProcedureSymbolCollector());
-        analysisRegistry.registerCollector(LabelNode.class, new LabelSymbolCollector());
         analysisRegistry.registerCollector(ImportNode.class, new ImportSymbolCollector());
         analysisRegistry.registerCollector(RequireNode.class, new RequireSymbolCollector());
         analysisRegistry.register(ImportNode.class, new ImportAnalysisHandler());
         analysisRegistry.register(RequireNode.class, new RequireAnalysisHandler());
-        analysisRegistry.register(LabelNode.class, new LabelAnalysisHandler());
         analysisRegistry.register(ProcedureNode.class, new ProcedureAnalysisHandler());
         analysisRegistry.register(InstructionNode.class, new InstructionAnalysisHandler(symbolTable, diagnostics));
         analysisRegistry.register(PregNode.class, new PregAnalysisHandler());
@@ -303,7 +300,6 @@ public class Compiler implements ICompiler {
         IrConverterRegistry irRegistry = IrConverterRegistry.initialize(new DefaultAstNodeToIrConverter());
         irRegistry.registerAll(featureRegistry.irConverters());
         irRegistry.register(InstructionNode.class, new InstructionNodeConverter());
-        irRegistry.register(LabelNode.class, new LabelNodeConverter());
         irRegistry.register(PlaceNode.class, new PlaceNodeConverter());
         irRegistry.register(ProcedureNode.class, new ProcedureNodeConverter());
         irRegistry.register(ImportNode.class, new ImportNodeConverter());
@@ -330,12 +326,13 @@ public class Compiler implements ICompiler {
         LayoutResult layout = layoutEngine.layout(rewrittenIr, new RuntimeInstructionSetAdapter(), envProps, layoutRegistry);
 
         // Phase 10: Linking (resolve cross-references)
-        LinkingRegistry linkingRegistry = LinkingRegistry.initializeWithDefaults(symbolTable, new RuntimeInstructionSetAdapter());
+        LinkingRegistry linkingRegistry = new LinkingRegistry();
+        linkingRegistry.registerAll(featureRegistry.linkingRules());
+        linkingRegistry.register(new CallSiteBindingRule());
         LinkingDirectiveRegistry linkingDirRegistry = new LinkingDirectiveRegistry((d, c) -> {});
         linkingDirRegistry.registerAll(featureRegistry.linkingDirectiveHandlers());
         Linker linker = new Linker(linkingRegistry, linkingDirRegistry);
-        // Reset the linking context's alias chain for the linking pass
-        LinkingContext linkContext = new LinkingContext();
+        LinkingContext linkContext = new LinkingContext(symbolTable, new RuntimeInstructionSetAdapter());
         linkContext.pushAliasChain(rootAliasChain);
         IrProgram linkedIr = linker.link(rewrittenIr, layout, linkContext, envProps);
 

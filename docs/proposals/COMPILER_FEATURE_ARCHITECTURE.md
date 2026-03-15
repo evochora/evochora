@@ -1238,7 +1238,7 @@ include this Token decoupling work.
 | D7c | (refactoring) | No feature move. **[+fix]** Replaced silent fallback `return new IrLabelRef(node.toString())` in `IrGenContext.convertOperand()` with `throw new IllegalArgumentException("Unsupported operand node type: " + node.getClass().getSimpleName())`. Unhandled node types now cause an immediate, diagnosable error instead of producing invalid IR silently. **DONE.** | — |
 | D7d | (refactoring) | No feature move. **[+DRY]** Introduced `Token.toSourceInfo()` method in `model/token/Token.java` returning `new SourceInfo(fileName(), line(), column())`. Replaced all 23 `new SourceInfo(t.fileName(), t.line(), t.column())` call sites across 13 files with `t.toSourceInfo()`. Affected: Parser (8×), ProcedureSymbolCollector (4×), ProcedureTokenMapContributor (2×), LabelNode, RequireNode, ImportNode, ProcedureNode, DefineDirectiveHandler, LabelSymbolCollector, RegAnalysisHandler, PregAnalysisHandler, ImportSymbolCollector, RequireSymbolCollector. All subsequent `[+decouple]` steps (D8–D13) must use `Token.toSourceInfo()` for new extraction sites. **DONE.** | — |
 | D8 | reg | See D8 details below. **[+cutover: EmissionContributorRegistry]** (Symbol already decoupled in D7a.) Moved 6 files to `features/reg/`: RegNode (decoupled Token→String+SourceInfo), RegDirectiveHandler, RegAnalysisHandler, RegPostProcessHandler, RegNodeConverter, RegisterAliasEmissionContributor. Deleted `RegisterAliasState` entirely (write-only store — alias resolution runs through AST path, not parser state). Created RegFeature.java with 5 registrations (parser, analysis, postprocess, irconverter, emissionContributor). Added `emissionContributor()` to IFeatureRegistrationContext/FeatureRegistry. Removed `EmissionContributorRegistry.initializeWithDefaults()`. Removed dead `Parser.getGlobalRegisterAliases()`. **DONE.** | RegFeature.java |
-| D9 | label | LabelNode, LabelSymbolCollector, LabelAnalysisHandler, LabelNodeConverter. **[+decouple]** LabelNode: Token `labelToken` → String + SourceInfo (Symbol already decoupled in D7a). **[+cutover: LinkingRegistry]** | LabelFeature.java |
+| D9 | label | See D9 details below. **[+decouple]** LabelNode: Token `labelToken` → String `name` + SourceInfo. **[+cutover: LinkingRegistry]** via LinkingContext expansion: added `symbolTable()` and `isa()` to LinkingContext (runtime deps via phase context, not constructor params). LabelRefLinkingRule + CallSiteBindingRule refactored to parameterless constructors. Moved 5 files to `features/label/`: LabelNode, LabelSymbolCollector, LabelAnalysisHandler, LabelNodeConverter, LabelRefLinkingRule. Deleted `LinkingRegistry.initializeWithDefaults()`. Added `registerAll()` to LinkingRegistry. Linker reads ISA from context instead of creating locally. **DONE.** | LabelFeature.java |
 | D10 | place | PlaceNode, PlaceDirectiveHandler, PlaceNodeConverter, PlaceLayoutHandler, placement/. **[+decouple]** placement sub-nodes: RangeValueComponent, SingleValueComponent, SteppedRangeValueComponent, WildcardValueComponent — Token fields → extracted values + SourceInfo | PlaceFeature.java |
 | D11 | require | RequireNode, RequireDirectiveHandler, RequireSymbolCollector, RequireAnalysisHandler, RequireNodeConverter. **[+decouple]** RequireNode: Token `path`, `alias` → String + SourceInfo (Symbol already decoupled in D7a). | RequireFeature.java |
 | D12 | importdir | ImportNode, ImportSourceHandler, ImportDirectiveHandler, ImportSymbolCollector, ImportAnalysisHandler, ImportNodeConverter. **[+decouple]** ImportNode: Token `path`, `alias` + UsingClause Tokens → String + SourceInfo (Symbol already decoupled in D7a). | ImportFeature.java |
@@ -1376,9 +1376,36 @@ Additionally:
 3. Update tests that call `parser.getGlobalRegisterAliases()`: RegDirectiveTest, DefineDirectiveTest, ModuleSourceDefineIntegrationTest.
 4. **[+decouple]** RegNode: Token `alias`, `register` → String + SourceInfo. `RegAnalysisHandler` passes `new Symbol(name, sourceInfo, ...)` directly (Symbol already decoupled in D7a).
 
+**D9 details (label):**
+
+Two parts, executed in order: infrastructure (LinkingContext expansion + LinkingRegistry cutover), then feature consolidation.
+
+**Part 1: LinkingContext infrastructure**
+
+`LabelRefLinkingRule` needs `SymbolTable` and `CallSiteBindingRule` needs `IInstructionSet` — but only at execution time (in `apply()`), not at construction time. Currently both receive these via constructor parameters, which blocks parameterless feature registration. Fix: move runtime dependencies into `LinkingContext`, matching the established pattern in all other phases (IrGenContext, EmissionContext, LayoutContext).
+
+1. Expand `LinkingContext`: add `SymbolTable symbolTable()` and `IInstructionSet isa()` fields, set at construction time by the `Linker`.
+2. Refactor `LabelRefLinkingRule`: remove `SymbolTable` constructor parameter. Read from `context.symbolTable()` in `apply()`.
+3. Refactor `CallSiteBindingRule`: remove `IInstructionSet` constructor parameter. Read from `context.isa()` in `apply()`. (This benefits D13 — CallSiteBindingRule becomes parameterless and can be registered via `ctx.linkingRule()` when it moves to `features/proc/`.)
+4. Update `Linker`: pass `SymbolTable` and `IInstructionSet` when constructing `LinkingContext` (or via setter before `link()` is called). Remove local `IInstructionSet isa = new RuntimeInstructionSetAdapter()` in Linker line 46 — read from `context.isa()` instead.
+5. Delete `LinkingRegistry.initializeWithDefaults()` — hardcodes feature knowledge into a phase registry.
+6. Update `Compiler.java`: register both rules parameterlessly. Pass `SymbolTable` + `IInstructionSet` to LinkingContext construction instead of to rule constructors.
+
+**Part 2: Label feature consolidation**
+
+Move to `features/label/`: LabelNode, LabelSymbolCollector, LabelAnalysisHandler, LabelNodeConverter, LabelRefLinkingRule.
+
+1. **[+decouple]** `LabelNode`: `Token labelToken` → `String name` + `SourceInfo sourceInfo`. The 2-arg convenience constructor `LabelNode(Token, AstNode)` is removed — `Parser.statement()` (only call site) passes extracted values. `reconstructWithChildren()` uses String fields.
+2. Update `LabelSymbolCollector`: `lbl.labelToken().text()` → `lbl.name()`, `lbl.labelToken().toSourceInfo()` → `lbl.sourceInfo()`.
+3. Update `LabelNodeConverter`: `node.labelToken().text()` → `node.name()`.
+4. Create `LabelFeature.java` with registrations: symbolCollector, analysisHandler, irConverter, linkingRule.
+5. Add `new LabelFeature()` to `StandardFeatures.all()`.
+6. Remove hardcoded label registrations from `Compiler.java` and `TestRegistries.java`.
+7. Update all import references in tests.
+
 **D13 details (proc — includes preg):**
 
-Move to `features/proc/`: ProcedureNode, ProcDirectiveHandler, PregNode, PregDirectiveHandler, ProcedureSymbolCollector, ProcedureAnalysisHandler, PregAnalysisHandler, ProcedureNodeConverter, ProcedureMarshallingRule, CallerMarshallingRule, CallSiteBindingRule, ProcedureTokenMapContributor. (ExportNode was removed — EXPORT is handled as a prefix modifier in Parser.statement(), not as a separate AST node.)
+Move to `features/proc/`: ProcedureNode, ProcDirectiveHandler, PregNode, PregDirectiveHandler, ProcedureSymbolCollector, ProcedureAnalysisHandler, PregAnalysisHandler, ProcedureNodeConverter, ProcedureMarshallingRule, CallerMarshallingRule, CallSiteBindingRule, ProcedureEmissionContributor, ProcedureTokenMapContributor. (ExportNode was removed — EXPORT is handled as a prefix modifier in Parser.statement(), not as a separate AST node.) CallSiteBindingRule is already parameterless after D9's LinkingContext expansion — register via `ctx.linkingRule(new CallSiteBindingRule())`.
 
 Additionally:
 1. Create `ProcPostProcessHandler` in `features/proc/` — resolves PR aliases in AST. Registered with higher priority than RegPostProcessHandler so PR aliases shadow DR/LR aliases on name conflict.
