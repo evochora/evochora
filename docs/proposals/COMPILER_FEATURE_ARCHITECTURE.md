@@ -1230,7 +1230,7 @@ include this Token decoupling work.
 | D4c | ctx (cutover: IrConverter) | **[+cutover: IrConverterRegistry]** Delete `initializeWithDefaults()`, `IrGenerator` takes pre-built registry, Compiler.java builds it. See D4 details below. **DONE.** | — |
 | D4d | ctx (cutover: Layout) | **[+cutover: LayoutDirectiveRegistry]** Delete `initializeWithDefaults()`, `LayoutEngine` takes pre-built registry, Compiler.java builds it. See D4 details below. **DONE.** | — |
 | D4e | Linker directive dispatch | **[+linker-dispatch]** Extract hardcoded `IrDirective` handling from `Linker` into feature-registered handlers via a new `ILinkingDirectiveHandler` interface and `LinkingDirectiveRegistry`. See D4 details below. **DONE.** | ILinkingDirectiveHandler.java, LinkingDirectiveRegistry.java |
-| D5 | org | OrgNode, OrgDirectiveHandler, OrgNodeConverter, OrgLayoutHandler | OrgFeature.java |
+| D5 | org | OrgNode, OrgDirectiveHandler, OrgNodeConverter, OrgLayoutHandler **DONE.** | OrgFeature.java |
 | D6 | dir | DirNode, DirDirectiveHandler, DirNodeConverter, DirLayoutHandler | DirFeature.java |
 | D7 | define | DefineNode, DefineDirectiveHandler, DefineAnalysisHandler, DefinePostProcessHandler, DefineNodeConverter. **[+decouple]** DefineNode: Token `name` → String + SourceInfo. **[+cutover: PostProcessHandlerRegistry, AnalysisHandlerRegistry]** | DefineFeature.java |
 | D7b | (refactoring) | No feature move. **[+DRY]** Extract shared `IrGenContext.convertOperand(AstNode)` method from `DefineNodeConverter.toOperand()` and `InstructionNodeConverter.convertOperand()` (identical instanceof chains for NumberLiteralNode/TypedLiteralNode/VectorLiteralNode → IR operand mapping). Touches define + instruction features — separated from D7 to keep the cutover step focused. | — |

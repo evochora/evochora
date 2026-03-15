@@ -5,7 +5,7 @@ import org.evochora.compiler.backend.layout.LayoutDirectiveRegistry;
 import org.evochora.compiler.backend.layout.LayoutEngine;
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.backend.layout.features.DirLayoutHandler;
-import org.evochora.compiler.backend.layout.features.OrgLayoutHandler;
+import org.evochora.compiler.features.org.OrgLayoutHandler;
 import org.evochora.compiler.backend.layout.features.PlaceLayoutHandler;
 import org.evochora.compiler.features.ctx.PushCtxLayoutHandler;
 import org.evochora.compiler.features.ctx.PopCtxLayoutHandler;

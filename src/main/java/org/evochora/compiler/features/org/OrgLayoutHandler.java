@@ -1,4 +1,4 @@
-package org.evochora.compiler.backend.layout.features;
+package org.evochora.compiler.features.org;
 
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.backend.layout.ILayoutDirectiveHandler;

@@ -19,7 +19,7 @@ import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
 import org.evochora.compiler.frontend.parser.features.def.DefineDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.dir.DirDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.importdir.ImportDirectiveHandler;
-import org.evochora.compiler.frontend.parser.features.org.OrgDirectiveHandler;
+import org.evochora.compiler.features.org.OrgFeature;
 import org.evochora.compiler.frontend.parser.features.place.PlaceDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.proc.PregDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.proc.ProcDirectiveHandler;
@@ -43,7 +43,6 @@ import org.evochora.compiler.frontend.parser.features.def.DefineNode;
 import org.evochora.compiler.frontend.parser.features.dir.DirNode;
 import org.evochora.compiler.frontend.parser.features.importdir.ImportNode;
 import org.evochora.compiler.frontend.parser.features.label.LabelNode;
-import org.evochora.compiler.frontend.parser.features.org.OrgNode;
 import org.evochora.compiler.frontend.parser.features.place.PlaceNode;
 import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
 import org.evochora.compiler.frontend.parser.features.reg.RegNode;
@@ -56,7 +55,6 @@ import org.evochora.compiler.frontend.irgen.converters.DirNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.ImportNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.InstructionNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.LabelNodeConverter;
-import org.evochora.compiler.frontend.irgen.converters.OrgNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.PlaceNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.PregNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.ProcedureNodeConverter;
@@ -76,7 +74,6 @@ import org.evochora.compiler.backend.layout.LayoutDirectiveRegistry;
 import org.evochora.compiler.backend.layout.LayoutEngine;
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.backend.layout.features.DirLayoutHandler;
-import org.evochora.compiler.backend.layout.features.OrgLayoutHandler;
 import org.evochora.compiler.backend.layout.features.PlaceLayoutHandler;
 import org.evochora.compiler.backend.link.Linker;
 import org.evochora.compiler.backend.link.LinkingContext;
@@ -207,7 +204,7 @@ public class Compiler implements ICompiler {
 
         // Feature registration
         FeatureRegistry featureRegistry = new FeatureRegistry();
-        List.of(new RepeatFeature(), new SourceFeature(), new MacroFeature(), new CtxFeature()).forEach(f -> f.register(featureRegistry));
+        List.of(new RepeatFeature(), new SourceFeature(), new MacroFeature(), new CtxFeature(), new OrgFeature()).forEach(f -> f.register(featureRegistry));
 
         // Phase 0: Dependency Scanning (load imported modules)
         DependencyScanner depScanner = new DependencyScanner(diagnostics, resolver);
@@ -263,7 +260,6 @@ public class Compiler implements ICompiler {
         parserRegistry.register(".REG", new RegDirectiveHandler());
         parserRegistry.register(".PROC", new ProcDirectiveHandler());
         parserRegistry.register(".PREG", new PregDirectiveHandler());
-        parserRegistry.register(".ORG", new OrgDirectiveHandler());
         parserRegistry.register(".DIR", new DirDirectiveHandler());
         parserRegistry.register(".PLACE", new PlaceDirectiveHandler());
         parserRegistry.register(".IMPORT", new ImportDirectiveHandler());
@@ -308,7 +304,6 @@ public class Compiler implements ICompiler {
         irRegistry.registerAll(featureRegistry.irConverters());
         irRegistry.register(InstructionNode.class, new InstructionNodeConverter());
         irRegistry.register(LabelNode.class, new LabelNodeConverter());
-        irRegistry.register(OrgNode.class, new OrgNodeConverter());
         irRegistry.register(DirNode.class, new DirNodeConverter());
         irRegistry.register(PlaceNode.class, new PlaceNodeConverter());
         irRegistry.register(ProcedureNode.class, new ProcedureNodeConverter());
@@ -333,7 +328,6 @@ public class Compiler implements ICompiler {
             // default: ignore unknown directives in layout
         });
         layoutRegistry.registerAll(featureRegistry.layoutHandlers());
-        layoutRegistry.register("core", "org", new OrgLayoutHandler());
         layoutRegistry.register("core", "dir", new DirLayoutHandler());
         layoutRegistry.register("core", "place", new PlaceLayoutHandler());
         LayoutEngine layoutEngine = new LayoutEngine();

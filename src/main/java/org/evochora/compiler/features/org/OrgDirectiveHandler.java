@@ -1,4 +1,4 @@
-package org.evochora.compiler.frontend.parser.features.org;
+package org.evochora.compiler.features.org;
 
 import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
 import org.evochora.compiler.frontend.parser.ParsingContext;
