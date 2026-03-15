@@ -6,7 +6,6 @@ import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrItem;
 import org.evochora.compiler.model.ir.IrProgram;
-import org.evochora.compiler.model.ir.IrValue;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.runtime.model.EnvironmentProperties;
 
@@ -21,12 +20,17 @@ import java.util.Optional;
 public final class Linker {
 
     private final LinkingRegistry registry;
+    private final LinkingDirectiveRegistry directiveRegistry;
 
     /**
      * Constructs a new linker.
-     * @param registry The registry of linking rules to apply.
+     * @param registry The registry of linking rules to apply to instructions.
+     * @param directiveRegistry The registry of directive handlers for context mutations.
      */
-    public Linker(LinkingRegistry registry) { this.registry = registry; }
+    public Linker(LinkingRegistry registry, LinkingDirectiveRegistry directiveRegistry) {
+        this.registry = registry;
+        this.directiveRegistry = directiveRegistry;
+    }
 
     /**
      * Links the given IR program, resolving symbolic references.
@@ -42,19 +46,8 @@ public final class Linker {
         IInstructionSet isa = new org.evochora.compiler.isa.RuntimeInstructionSetAdapter();
 
         for (IrItem item : program.items()) {
-            // Track alias chain from push_ctx/pop_ctx directives
-            if (item instanceof IrDirective dir && "core".equals(dir.namespace())) {
-                if ("push_ctx".equals(dir.name())) {
-                    IrValue chainValue = dir.args().get("aliasChain");
-                    if (chainValue instanceof IrValue.Str s) {
-                        context.pushAliasChain(s.value());
-                    } else {
-                        // .SOURCE: no aliasChain arg. Push current chain so pop is symmetric.
-                        context.pushAliasChain(context.currentAliasChain());
-                    }
-                } else if ("pop_ctx".equals(dir.name())) {
-                    context.popAliasChain();
-                }
+            if (item instanceof IrDirective dir) {
+                directiveRegistry.resolve(dir).handle(dir, context);
             }
 
             if (item instanceof IrInstruction ins) {

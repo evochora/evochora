@@ -2,6 +2,7 @@ package org.evochora.compiler;
 
 import org.evochora.compiler.backend.emit.IEmissionRule;
 import org.evochora.compiler.backend.layout.ILayoutDirectiveHandler;
+import org.evochora.compiler.backend.link.ILinkingDirectiveHandler;
 import org.evochora.compiler.backend.link.ILinkingRule;
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.module.IDependencyScanHandler;
@@ -137,4 +138,13 @@ public interface IFeatureRegistrationContext {
 	 * @param rule The rule that transforms instructions during linking (e.g., label resolution).
 	 */
 	void linkingRule(ILinkingRule rule);
+
+	/**
+	 * Registers a linking directive handler for Phase 10.
+	 *
+	 * @param namespace The directive namespace (e.g., "core").
+	 * @param name      The directive name (e.g., "push_ctx", "pop_ctx").
+	 * @param handler   The handler that processes matching IR directives during linking.
+	 */
+	void linkingDirectiveHandler(String namespace, String name, ILinkingDirectiveHandler handler);
 }

@@ -33,5 +33,9 @@ public class CtxFeature implements ICompilerFeature {
         // Phase 9: Layout
         ctx.layoutHandler("core", "push_ctx", new PushCtxLayoutHandler());
         ctx.layoutHandler("core", "pop_ctx", new PopCtxLayoutHandler());
+
+        // Phase 10: Linking
+        ctx.linkingDirectiveHandler("core", "push_ctx", new PushCtxLinkingHandler());
+        ctx.linkingDirectiveHandler("core", "pop_ctx", new PopCtxLinkingHandler());
     }
 }

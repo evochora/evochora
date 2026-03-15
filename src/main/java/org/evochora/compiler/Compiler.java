@@ -80,6 +80,7 @@ import org.evochora.compiler.backend.layout.features.OrgLayoutHandler;
 import org.evochora.compiler.backend.layout.features.PlaceLayoutHandler;
 import org.evochora.compiler.backend.link.Linker;
 import org.evochora.compiler.backend.link.LinkingContext;
+import org.evochora.compiler.backend.link.LinkingDirectiveRegistry;
 import org.evochora.compiler.backend.link.LinkingRegistry;
 import org.evochora.compiler.backend.emit.EmissionRegistry;
 import org.evochora.compiler.backend.emit.IEmissionRule;
@@ -340,7 +341,9 @@ public class Compiler implements ICompiler {
 
         // Phase 10: Linking (resolve cross-references)
         LinkingRegistry linkingRegistry = LinkingRegistry.initializeWithDefaults(symbolTable, new RuntimeInstructionSetAdapter());
-        Linker linker = new Linker(linkingRegistry);
+        LinkingDirectiveRegistry linkingDirRegistry = new LinkingDirectiveRegistry((d, c) -> {});
+        linkingDirRegistry.registerAll(featureRegistry.linkingDirectiveHandlers());
+        Linker linker = new Linker(linkingRegistry, linkingDirRegistry);
         // Reset the linking context's alias chain for the linking pass
         LinkingContext linkContext = new LinkingContext();
         linkContext.pushAliasChain(rootAliasChain);

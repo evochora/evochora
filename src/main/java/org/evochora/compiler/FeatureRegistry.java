@@ -2,6 +2,7 @@ package org.evochora.compiler;
 
 import org.evochora.compiler.backend.emit.IEmissionRule;
 import org.evochora.compiler.backend.layout.ILayoutDirectiveHandler;
+import org.evochora.compiler.backend.link.ILinkingDirectiveHandler;
 import org.evochora.compiler.backend.link.ILinkingRule;
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.module.IDependencyScanHandler;
@@ -42,6 +43,7 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	private final List<IEmissionRule> emissionRules = new ArrayList<>();
 	private final Map<String, ILayoutDirectiveHandler> layoutHandlers = new HashMap<>();
 	private final List<ILinkingRule> linkingRules = new ArrayList<>();
+	private final Map<String, ILinkingDirectiveHandler> linkingDirectiveHandlers = new HashMap<>();
 
 	// --- IFeatureRegistrationContext implementation (write side) ---
 
@@ -100,6 +102,11 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 		linkingRules.add(rule);
 	}
 
+	@Override
+	public void linkingDirectiveHandler(String namespace, String name, ILinkingDirectiveHandler handler) {
+		linkingDirectiveHandlers.put((namespace + ":" + name).toLowerCase(), handler);
+	}
+
 	// --- Getter methods (read side, used by Compiler) ---
 
 	public List<IDependencyScanHandler> dependencyScanHandlers() {
@@ -144,5 +151,9 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 
 	public List<ILinkingRule> linkingRules() {
 		return Collections.unmodifiableList(linkingRules);
+	}
+
+	public Map<String, ILinkingDirectiveHandler> linkingDirectiveHandlers() {
+		return Collections.unmodifiableMap(linkingDirectiveHandlers);
 	}
 }
