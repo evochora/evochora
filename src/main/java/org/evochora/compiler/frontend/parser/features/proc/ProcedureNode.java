@@ -28,7 +28,7 @@ public record ProcedureNode(
 
     @Override
     public SourceInfo sourceInfo() {
-        return new SourceInfo(name.fileName(), name.line(), name.column());
+        return name.toSourceInfo();
     }
 
     @Override

@@ -204,7 +204,7 @@ public final class IrGenContext {
 			}
 			return new IrLabelRef(id.text());
 		}
-		return new IrLabelRef(node.toString());
+		throw new IllegalArgumentException("Unsupported operand node type: " + node.getClass().getSimpleName());
 	}
 
 	// --- Constant registry for .DEFINE ---

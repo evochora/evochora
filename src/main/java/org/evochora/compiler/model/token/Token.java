@@ -1,5 +1,7 @@
 package org.evochora.compiler.model.token;
 
+import org.evochora.compiler.api.SourceInfo;
+
 /**
  * Represents a single token extracted from the source code by the Lexer.
  *
@@ -19,4 +21,12 @@ public record Token(
         int column,
         String fileName
 ) {
+    /**
+     * Converts this token's location into a {@link SourceInfo}.
+     *
+     * @return A SourceInfo with this token's file name, line, and column.
+     */
+    public SourceInfo toSourceInfo() {
+        return new SourceInfo(fileName(), line(), column());
+    }
 }

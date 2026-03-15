@@ -1,6 +1,5 @@
 package org.evochora.compiler.frontend.semantics.analysis;
 
-import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.token.Token;
@@ -18,6 +17,6 @@ public class LabelSymbolCollector implements ISymbolCollector {
     public void collect(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         LabelNode lbl = (LabelNode) node;
         Token t = lbl.labelToken();
-        symbolTable.define(new Symbol(t.text(), new SourceInfo(t.fileName(), t.line(), t.column()), Symbol.Type.LABEL, null, lbl.exported()));
+        symbolTable.define(new Symbol(t.text(), t.toSourceInfo(), Symbol.Type.LABEL, null, lbl.exported()));
     }
 }

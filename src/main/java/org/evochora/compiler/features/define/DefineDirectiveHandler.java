@@ -1,6 +1,5 @@
 package org.evochora.compiler.features.define;
 
-import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
@@ -31,7 +30,6 @@ public class DefineDirectiveHandler implements IParserDirectiveHandler {
             return null;
         }
 
-        SourceInfo sourceInfo = new SourceInfo(name.fileName(), name.line(), name.column());
-        return new DefineNode(name.text(), sourceInfo, valueNode, exported);
+        return new DefineNode(name.text(), name.toSourceInfo(), valueNode, exported);
     }
 }

@@ -1,6 +1,5 @@
 package org.evochora.compiler.frontend.semantics.analysis;
 
-import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.ast.AstNode;
@@ -18,7 +17,7 @@ public class ProcedureSymbolCollector implements ISymbolCollector {
     public void collect(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         ProcedureNode proc = (ProcedureNode) node;
         Token nameToken = proc.name();
-        symbolTable.define(new Symbol(nameToken.text(), new SourceInfo(nameToken.fileName(), nameToken.line(), nameToken.column()), Symbol.Type.PROCEDURE, proc, proc.exported()));
+        symbolTable.define(new Symbol(nameToken.text(), nameToken.toSourceInfo(), Symbol.Type.PROCEDURE, proc, proc.exported()));
 
         String currentChain = symbolTable.getCurrentAliasChain();
         String scopeName = (currentChain != null && !currentChain.isEmpty())
@@ -29,17 +28,17 @@ public class ProcedureSymbolCollector implements ISymbolCollector {
 
         if (proc.parameters() != null) {
             for (Token p : proc.parameters()) {
-                symbolTable.define(new Symbol(p.text(), new SourceInfo(p.fileName(), p.line(), p.column()), Symbol.Type.VARIABLE));
+                symbolTable.define(new Symbol(p.text(), p.toSourceInfo(), Symbol.Type.VARIABLE));
             }
         }
         if (proc.refParameters() != null) {
             for (Token p : proc.refParameters()) {
-                symbolTable.define(new Symbol(p.text(), new SourceInfo(p.fileName(), p.line(), p.column()), Symbol.Type.VARIABLE));
+                symbolTable.define(new Symbol(p.text(), p.toSourceInfo(), Symbol.Type.VARIABLE));
             }
         }
         if (proc.valParameters() != null) {
             for (Token p : proc.valParameters()) {
-                symbolTable.define(new Symbol(p.text(), new SourceInfo(p.fileName(), p.line(), p.column()), Symbol.Type.VARIABLE));
+                symbolTable.define(new Symbol(p.text(), p.toSourceInfo(), Symbol.Type.VARIABLE));
             }
         }
     }

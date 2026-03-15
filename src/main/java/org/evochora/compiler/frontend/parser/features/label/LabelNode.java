@@ -22,7 +22,7 @@ public record LabelNode(
 
     @Override
     public SourceInfo sourceInfo() {
-        return new SourceInfo(labelToken.fileName(), labelToken.line(), labelToken.column());
+        return labelToken.toSourceInfo();
     }
 
     /**

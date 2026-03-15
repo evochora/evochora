@@ -1,6 +1,5 @@
 package org.evochora.compiler.frontend.semantics.analysis;
 
-import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.token.Token;
@@ -23,6 +22,6 @@ public class RequireSymbolCollector implements ISymbolCollector {
     public void collect(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         RequireNode requireNode = (RequireNode) node;
         Token t = requireNode.alias();
-        symbolTable.define(new Symbol(t.text(), new SourceInfo(t.fileName(), t.line(), t.column()), Symbol.Type.ALIAS, requireNode));
+        symbolTable.define(new Symbol(t.text(), t.toSourceInfo(), Symbol.Type.ALIAS, requireNode));
     }
 }

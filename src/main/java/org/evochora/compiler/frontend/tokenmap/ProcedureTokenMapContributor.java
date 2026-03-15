@@ -23,7 +23,7 @@ public class ProcedureTokenMapContributor implements ITokenMapContributor {
 		// qualifiedName = module-qualified scope name (e.g., "ENERGY.HARVEST")
 		String qualifiedName = context.currentScope();
 		context.addToken(
-			new SourceInfo(procNode.name().fileName(), procNode.name().line(), procNode.name().column()),
+			procNode.name().toSourceInfo(),
 			procNode.name().text(), TokenKind.PROCEDURE, "global", qualifiedName);
 
 		String procScope = context.currentScope();
@@ -36,7 +36,7 @@ public class ProcedureTokenMapContributor implements ITokenMapContributor {
 		if (params == null) return;
 		for (Token param : params) {
 			context.addToken(
-				new SourceInfo(param.fileName(), param.line(), param.column()),
+				param.toSourceInfo(),
 				param.text(), TokenKind.VARIABLE, scope);
 		}
 	}

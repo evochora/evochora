@@ -23,6 +23,6 @@ public record RequireNode(
 
     @Override
     public SourceInfo sourceInfo() {
-        return new SourceInfo(alias.fileName(), alias.line(), alias.column());
+        return alias.toSourceInfo();
     }
 }

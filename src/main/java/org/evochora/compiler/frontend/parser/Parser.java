@@ -148,8 +148,7 @@ public class Parser implements ParsingContext {
             while (!isAtEnd() && !check(TokenType.NEWLINE)) {
                 arguments.add(expression());
             }
-            return new InstructionNode(opcode.text(), arguments,
-                    new SourceInfo(opcode.fileName(), opcode.line(), opcode.column()));
+            return new InstructionNode(opcode.text(), arguments, opcode.toSourceInfo());
         }
 
         Token unexpected = advance();
@@ -191,15 +190,13 @@ public class Parser implements ParsingContext {
                     break;
                 }
             }
-            SourceInfo si = new SourceInfo(opcode.fileName(), opcode.line(), opcode.column());
-            return new InstructionNode(opcode.text(), arguments, refArguments, valArguments, si);
+            return new InstructionNode(opcode.text(), arguments, refArguments, valArguments, opcode.toSourceInfo());
         } else {
             // Old syntax: CALL proc [WITH] arg1, arg2, ...
             while (!isAtEnd() && !check(TokenType.NEWLINE)) {
                 arguments.add(expression());
             }
-            return new InstructionNode(opcode.text(), arguments,
-                    new SourceInfo(opcode.fileName(), opcode.line(), opcode.column()));
+            return new InstructionNode(opcode.text(), arguments, opcode.toSourceInfo());
         }
     }
 
@@ -218,7 +215,7 @@ public class Parser implements ParsingContext {
                 values.add((int) comp.value());
             }
             return new VectorLiteralNode(java.util.Collections.unmodifiableList(values),
-                    new SourceInfo(first.fileName(), first.line(), first.column()));
+                    first.toSourceInfo());
         }
 
         if (check(TokenType.IDENTIFIER) && checkNext(TokenType.COLON)) {
@@ -226,22 +223,22 @@ public class Parser implements ParsingContext {
             advance();
             Token valueTok = consume(TokenType.NUMBER, "Expected a number after the literal type.");
             return new TypedLiteralNode(type.text(), (int) valueTok.value(),
-                    new SourceInfo(type.fileName(), type.line(), type.column()));
+                    type.toSourceInfo());
         }
 
         if (match(TokenType.NUMBER)) {
             Token num = previous();
-            return new NumberLiteralNode((int) num.value(), new SourceInfo(num.fileName(), num.line(), num.column()));
+            return new NumberLiteralNode((int) num.value(), num.toSourceInfo());
         }
 
         if (match(TokenType.REGISTER)) {
             Token reg = previous();
-            return new RegisterNode(reg.text(), new SourceInfo(reg.fileName(), reg.line(), reg.column()));
+            return new RegisterNode(reg.text(), reg.toSourceInfo());
         }
 
         if (match(TokenType.IDENTIFIER)) {
             Token identifier = previous();
-            return new IdentifierNode(identifier.text(), new SourceInfo(identifier.fileName(), identifier.line(), identifier.column()));
+            return new IdentifierNode(identifier.text(), identifier.toSourceInfo());
         }
 
         Token unexpected = advance();
