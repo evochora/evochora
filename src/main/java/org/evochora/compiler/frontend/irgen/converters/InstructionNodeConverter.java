@@ -5,10 +5,7 @@ import org.evochora.compiler.frontend.irgen.IrGenContext;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.InstructionNode;
-import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.model.ast.RegisterNode;
-import org.evochora.compiler.model.ast.TypedLiteralNode;
-import org.evochora.compiler.model.ast.VectorLiteralNode;
 import org.evochora.compiler.model.ir.*;
 
 import java.util.ArrayList;
@@ -37,15 +34,15 @@ public final class InstructionNodeConverter implements IAstNodeToIrConverter<Ins
             List<IrOperand> operands = new ArrayList<>();
             // The first argument is the procedure name
             if (!node.arguments().isEmpty()) {
-                operands.add(convertOperand(node.arguments().get(0), ctx));
+                operands.add(ctx.convertOperand(node.arguments().get(0)));
             }
 
             List<IrOperand> refOperands = node.refArguments().stream()
-                .map(arg -> convertOperand(arg, ctx))
+                .map(arg -> ctx.convertOperand(arg))
                 .toList();
 
             List<IrOperand> valOperands = node.valArguments().stream()
-                .map(arg -> convertOperand(arg, ctx))
+                .map(arg -> ctx.convertOperand(arg))
                 .toList();
 
             ctx.emit(new IrInstruction(opcode, operands, refOperands, valOperands, ctx.sourceOf(node)));
@@ -71,7 +68,7 @@ public final class InstructionNodeConverter implements IAstNodeToIrConverter<Ins
 
         int end = withIdx >= 0 ? withIdx : node.arguments().size();
         for (int i = 0; i < end; i++) {
-            operands.add(convertOperand(node.arguments().get(i), ctx));
+            operands.add(ctx.convertOperand(node.arguments().get(i)));
         }
 
         if (withIdx >= 0) {
@@ -94,39 +91,6 @@ public final class InstructionNodeConverter implements IAstNodeToIrConverter<Ins
         }
 
         ctx.emit(new IrInstruction(opcode, operands, ctx.sourceOf(node)));
-    }
-
-    /**
-     * Converts an AST node for an instruction argument into an {@link IrOperand}.
-     * This involves resolving identifiers as constants, procedure parameters, or labels.
-     *
-     * @param arg The AST node of the argument.
-     * @param ctx The generation context for resolving symbols.
-     * @return The corresponding {@link IrOperand}.
-     */
-    private IrOperand convertOperand(AstNode arg, IrGenContext ctx) {
-        if (arg instanceof RegisterNode r) {
-            return new IrReg(r.getName());
-        } else if (arg instanceof NumberLiteralNode n) {
-            return new IrImm(n.value());
-        } else if (arg instanceof TypedLiteralNode t) {
-            return new IrTypedImm(t.typeName(), t.value());
-        } else if (arg instanceof VectorLiteralNode v) {
-            int[] comps = v.values().stream().mapToInt(Integer::intValue).toArray();
-            return new IrVec(comps);
-        } else if (arg instanceof IdentifierNode id) {
-            String nameU = id.text().toUpperCase();
-            java.util.Optional<Integer> idxOpt = ctx.resolveProcedureParam(nameU);
-            if (idxOpt.isPresent()) {
-                return new IrReg("%FPR" + idxOpt.get());
-            }
-            java.util.Optional<IrOperand> constOpt = ctx.resolveConstant(nameU);
-            if (constOpt.isPresent()) {
-                return constOpt.get();
-            }
-            return new IrLabelRef(id.text());
-        }
-        return new IrLabelRef(arg.toString());
     }
 
 }
