@@ -7,8 +7,34 @@
 package org.evochora.compiler.frontend;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.frontend.irgen.DefaultAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrConverterRegistry;
 import org.evochora.compiler.frontend.irgen.IrGenerator;
+import org.evochora.compiler.frontend.irgen.converters.DefineNodeConverter;
+import org.evochora.compiler.frontend.irgen.converters.DirNodeConverter;
+import org.evochora.compiler.frontend.irgen.converters.ImportNodeConverter;
+import org.evochora.compiler.frontend.irgen.converters.InstructionNodeConverter;
+import org.evochora.compiler.frontend.irgen.converters.LabelNodeConverter;
+import org.evochora.compiler.frontend.irgen.converters.OrgNodeConverter;
+import org.evochora.compiler.frontend.irgen.converters.PlaceNodeConverter;
+import org.evochora.compiler.frontend.irgen.converters.PregNodeConverter;
+import org.evochora.compiler.frontend.irgen.converters.ProcedureNodeConverter;
+import org.evochora.compiler.frontend.irgen.converters.RegNodeConverter;
+import org.evochora.compiler.frontend.irgen.converters.RequireNodeConverter;
+import org.evochora.compiler.features.ctx.PopCtxNode;
+import org.evochora.compiler.features.ctx.PopCtxNodeConverter;
+import org.evochora.compiler.features.ctx.PushCtxNode;
+import org.evochora.compiler.features.ctx.PushCtxNodeConverter;
+import org.evochora.compiler.frontend.parser.ast.PregNode;
+import org.evochora.compiler.frontend.parser.features.def.DefineNode;
+import org.evochora.compiler.frontend.parser.features.dir.DirNode;
+import org.evochora.compiler.frontend.parser.features.importdir.ImportNode;
+import org.evochora.compiler.frontend.parser.features.label.LabelNode;
+import org.evochora.compiler.frontend.parser.features.org.OrgNode;
+import org.evochora.compiler.frontend.parser.features.place.PlaceNode;
+import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
+import org.evochora.compiler.frontend.parser.features.reg.RegNode;
+import org.evochora.compiler.frontend.parser.features.require.RequireNode;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.frontend.parser.Parser;
@@ -25,6 +51,7 @@ import org.evochora.compiler.frontend.parser.features.proc.ProcDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.reg.RegDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.require.RequireDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.model.ir.*;
@@ -72,7 +99,7 @@ public class IrGeneratorTest {
             fail("Semantic analysis errors: " + diagnostics.summary());
         }
 
-        IrConverterRegistry registry = IrConverterRegistry.initializeWithDefaults();
+        IrConverterRegistry registry = allConverters();
         IrGenerator irGen = new IrGenerator(diagnostics, registry);
         IrProgram ir = irGen.generate(ast, "TestProg", rootAliasChain);
         if (diagnostics.hasErrors()) {
@@ -311,6 +338,24 @@ public class IrGeneratorTest {
         reg.register(".REQUIRE", new RequireDirectiveHandler());
         reg.register(".PUSH_CTX", new PushCtxDirectiveHandler());
         reg.register(".POP_CTX", new PopCtxDirectiveHandler());
+        return reg;
+    }
+
+    private static IrConverterRegistry allConverters() {
+        IrConverterRegistry reg = IrConverterRegistry.initialize(new DefaultAstNodeToIrConverter());
+        reg.register(InstructionNode.class, new InstructionNodeConverter());
+        reg.register(LabelNode.class, new LabelNodeConverter());
+        reg.register(OrgNode.class, new OrgNodeConverter());
+        reg.register(DirNode.class, new DirNodeConverter());
+        reg.register(PlaceNode.class, new PlaceNodeConverter());
+        reg.register(ProcedureNode.class, new ProcedureNodeConverter());
+        reg.register(DefineNode.class, new DefineNodeConverter());
+        reg.register(ImportNode.class, new ImportNodeConverter());
+        reg.register(RequireNode.class, new RequireNodeConverter());
+        reg.register(RegNode.class, new RegNodeConverter());
+        reg.register(PregNode.class, new PregNodeConverter());
+        reg.register(PushCtxNode.class, new PushCtxNodeConverter());
+        reg.register(PopCtxNode.class, new PopCtxNodeConverter());
         return reg;
     }
 }

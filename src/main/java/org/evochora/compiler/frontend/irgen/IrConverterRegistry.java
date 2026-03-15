@@ -1,32 +1,6 @@
 package org.evochora.compiler.frontend.irgen;
 
-import org.evochora.compiler.frontend.irgen.converters.DirNodeConverter;
-import org.evochora.compiler.frontend.irgen.converters.ImportNodeConverter;
-import org.evochora.compiler.frontend.irgen.converters.InstructionNodeConverter;
-import org.evochora.compiler.frontend.irgen.converters.RequireNodeConverter;
-import org.evochora.compiler.frontend.irgen.converters.LabelNodeConverter;
-import org.evochora.compiler.frontend.irgen.converters.OrgNodeConverter;
-import org.evochora.compiler.frontend.irgen.converters.PlaceNodeConverter;
-import org.evochora.compiler.frontend.irgen.converters.ProcedureNodeConverter;
-import org.evochora.compiler.frontend.irgen.converters.PregNodeConverter;
-import org.evochora.compiler.frontend.irgen.converters.RegNodeConverter;
-
-import org.evochora.compiler.frontend.irgen.converters.DefineNodeConverter;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.model.ast.InstructionNode;
-import org.evochora.compiler.frontend.parser.ast.PregNode;
-import org.evochora.compiler.features.ctx.PopCtxNode;
-import org.evochora.compiler.features.ctx.PopCtxNodeConverter;
-import org.evochora.compiler.features.ctx.PushCtxNode;
-import org.evochora.compiler.features.ctx.PushCtxNodeConverter;
-import org.evochora.compiler.frontend.parser.features.dir.DirNode;
-import org.evochora.compiler.frontend.parser.features.importdir.ImportNode;
-import org.evochora.compiler.frontend.parser.features.label.LabelNode;
-import org.evochora.compiler.frontend.parser.features.require.RequireNode;
-import org.evochora.compiler.frontend.parser.features.org.OrgNode;
-import org.evochora.compiler.frontend.parser.features.place.PlaceNode;
-import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
-
 
 import java.util.HashMap;
 import java.util.Map;
@@ -56,6 +30,19 @@ public final class IrConverterRegistry {
 	 */
 	public <T extends AstNode> void register(Class<T> nodeType, IAstNodeToIrConverter<T> converter) {
 		byClass.put(nodeType, converter);
+	}
+
+	/**
+	 * Registers all converters from the given map. This is a bulk-registration method
+	 * that bridges the wildcard-typed maps produced by {@code FeatureRegistry} with the
+	 * type-safe single-entry {@link #register} method.
+	 *
+	 * @param converters Map of AST node classes to their converters.
+	 */
+	@SuppressWarnings("unchecked")
+	public void registerAll(Map<Class<? extends AstNode>, IAstNodeToIrConverter<?>> converters) {
+		converters.forEach((nodeType, converter) ->
+				byClass.put(nodeType, (IAstNodeToIrConverter<? extends AstNode>) converter));
 	}
 
 	/**
@@ -111,31 +98,6 @@ public final class IrConverterRegistry {
 		return new IrConverterRegistry(defaultConverter);
 	}
 
-	/**
-	 * Initializes a registry with the default converter and registers all built-in converters.
-	 * Mirrors the style of DirectiveHandlerRegistry.initialize().
-	 *
-	 * @return A registry pre-populated with the standard converters.
-	 */
-	public static IrConverterRegistry initializeWithDefaults() {
-		IrConverterRegistry reg = initialize(new DefaultAstNodeToIrConverter());
-		reg.register(InstructionNode.class, new InstructionNodeConverter());
-		reg.register(LabelNode.class, new LabelNodeConverter());
-		reg.register(OrgNode.class, new OrgNodeConverter());
-		reg.register(DirNode.class, new DirNodeConverter());
-		reg.register(PlaceNode.class, new PlaceNodeConverter());
-		reg.register(ProcedureNode.class, new ProcedureNodeConverter());
-		reg.register(org.evochora.compiler.frontend.parser.features.def.DefineNode.class, new DefineNodeConverter());
-		reg.register(ImportNode.class, new ImportNodeConverter());
-		reg.register(RequireNode.class, new RequireNodeConverter());
-		reg.register(org.evochora.compiler.frontend.parser.features.reg.RegNode.class, new RegNodeConverter());
-		reg.register(PregNode.class, new PregNodeConverter());
-
-		// Internal context directives
-		reg.register(PushCtxNode.class, new PushCtxNodeConverter());
-		reg.register(PopCtxNode.class, new PopCtxNodeConverter());
-		return reg;
-	}
 }
 
 

@@ -37,8 +37,31 @@ import org.evochora.compiler.frontend.semantics.ModuleContextTracker;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.InstructionNode;
+import org.evochora.compiler.frontend.parser.ast.PregNode;
+import org.evochora.compiler.frontend.parser.features.def.DefineNode;
+import org.evochora.compiler.frontend.parser.features.dir.DirNode;
+import org.evochora.compiler.frontend.parser.features.importdir.ImportNode;
+import org.evochora.compiler.frontend.parser.features.label.LabelNode;
+import org.evochora.compiler.frontend.parser.features.org.OrgNode;
+import org.evochora.compiler.frontend.parser.features.place.PlaceNode;
+import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
+import org.evochora.compiler.frontend.parser.features.reg.RegNode;
+import org.evochora.compiler.frontend.parser.features.require.RequireNode;
+import org.evochora.compiler.frontend.irgen.DefaultAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrConverterRegistry;
 import org.evochora.compiler.frontend.irgen.IrGenerator;
+import org.evochora.compiler.frontend.irgen.converters.DefineNodeConverter;
+import org.evochora.compiler.frontend.irgen.converters.DirNodeConverter;
+import org.evochora.compiler.frontend.irgen.converters.ImportNodeConverter;
+import org.evochora.compiler.frontend.irgen.converters.InstructionNodeConverter;
+import org.evochora.compiler.frontend.irgen.converters.LabelNodeConverter;
+import org.evochora.compiler.frontend.irgen.converters.OrgNodeConverter;
+import org.evochora.compiler.frontend.irgen.converters.PlaceNodeConverter;
+import org.evochora.compiler.frontend.irgen.converters.PregNodeConverter;
+import org.evochora.compiler.frontend.irgen.converters.ProcedureNodeConverter;
+import org.evochora.compiler.frontend.irgen.converters.RegNodeConverter;
+import org.evochora.compiler.frontend.irgen.converters.RequireNodeConverter;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.frontend.tokenmap.InstructionTokenMapContributor;
 import org.evochora.compiler.frontend.tokenmap.ProcedureTokenMapContributor;
@@ -276,7 +299,19 @@ public class Compiler implements ICompiler {
         }
 
         // Phase 7: IR Generation (convert AST to intermediate representation)
-        IrConverterRegistry irRegistry = IrConverterRegistry.initializeWithDefaults();
+        IrConverterRegistry irRegistry = IrConverterRegistry.initialize(new DefaultAstNodeToIrConverter());
+        irRegistry.registerAll(featureRegistry.irConverters());
+        irRegistry.register(InstructionNode.class, new InstructionNodeConverter());
+        irRegistry.register(LabelNode.class, new LabelNodeConverter());
+        irRegistry.register(OrgNode.class, new OrgNodeConverter());
+        irRegistry.register(DirNode.class, new DirNodeConverter());
+        irRegistry.register(PlaceNode.class, new PlaceNodeConverter());
+        irRegistry.register(ProcedureNode.class, new ProcedureNodeConverter());
+        irRegistry.register(DefineNode.class, new DefineNodeConverter());
+        irRegistry.register(ImportNode.class, new ImportNodeConverter());
+        irRegistry.register(RequireNode.class, new RequireNodeConverter());
+        irRegistry.register(RegNode.class, new RegNodeConverter());
+        irRegistry.register(PregNode.class, new PregNodeConverter());
         IrGenerator irGenerator = new IrGenerator(diagnostics, irRegistry);
         IrProgram irProgram = irGenerator.generate(ast, programName, rootAliasChain);
 
