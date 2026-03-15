@@ -1232,21 +1232,24 @@ include this Token decoupling work.
 | D4e | Linker directive dispatch | **[+linker-dispatch]** Extract hardcoded `IrDirective` handling from `Linker` into feature-registered handlers via a new `ILinkingDirectiveHandler` interface and `LinkingDirectiveRegistry`. See D4 details below. **DONE.** | ILinkingDirectiveHandler.java, LinkingDirectiveRegistry.java |
 | D5 | org | OrgNode, OrgDirectiveHandler, OrgNodeConverter, OrgLayoutHandler **DONE.** | OrgFeature.java |
 | D6 | dir | DirNode, DirDirectiveHandler, DirNodeConverter, DirLayoutHandler **DONE.** | DirFeature.java |
-| D7 | define | DefineNode, DefineDirectiveHandler, DefineAnalysisHandler, DefinePostProcessHandler, DefineNodeConverter. **[+decouple]** DefineNode: Token `name` → String + SourceInfo. **[+cutover: PostProcessHandlerRegistry, AnalysisHandlerRegistry]** | DefineFeature.java |
+| D7 | define | DefineNode, DefineDirectiveHandler, DefineAnalysisHandler, DefinePostProcessHandler, DefineNodeConverter. **[+cutover: PostProcessHandlerRegistry, AnalysisHandlerRegistry]** Introduced `StandardFeatures.java` (Single Source of Truth for built-in features) and `TestRegistries.java` (test helper mirroring Compiler.java registry building). Eliminated convenience constructors on SemanticAnalyzer and AstPostProcessor — callers must pass explicit registries. Token decoupling handled in D7a. **DONE.** | DefineFeature.java, StandardFeatures.java, TestRegistries.java (test) |
+| D7a | (refactoring) | No feature move. **[+decouple: Symbol, DefineNode]** Two-part decoupling: (1) `Symbol` record: `Token name` → `String name` + `SourceInfo sourceInfo`. Adapts `SymbolTable.define()` and all callers of `new Symbol(Token, ...)` (all Analysis-Handlers, ~18 test sites). This unblocks all subsequent `[+decouple]` steps in D8–D13 because they can pass `new Symbol(name, sourceInfo, ...)` directly. (2) `DefineNode`: `Token name` → `String name` + `SourceInfo sourceInfo`. `DefineDirectiveHandler` extracts values from Token at parse time. `DefineAnalysisHandler`, `DefinePostProcessHandler`, `DefineNodeConverter` use String fields. **DONE.** | — |
 | D7b | (refactoring) | No feature move. **[+DRY]** Extract shared `IrGenContext.convertOperand(AstNode)` method from `DefineNodeConverter.toOperand()` and `InstructionNodeConverter.convertOperand()` (identical instanceof chains for NumberLiteralNode/TypedLiteralNode/VectorLiteralNode → IR operand mapping). Touches define + instruction features — separated from D7 to keep the cutover step focused. | — |
-| D8 | reg | See D8 details below. **[+cutover: EmissionContributorRegistry]** | RegFeature.java |
-| D9 | label | LabelNode, LabelSymbolCollector, LabelAnalysisHandler, LabelNodeConverter. **[+decouple]** LabelNode: Token `labelToken` → String + SourceInfo. **[+cutover: LinkingRegistry]** | LabelFeature.java |
+| D8 | reg | See D8 details below. **[+cutover: EmissionContributorRegistry]** (Symbol already decoupled in D7a.) | RegFeature.java |
+| D9 | label | LabelNode, LabelSymbolCollector, LabelAnalysisHandler, LabelNodeConverter. **[+decouple]** LabelNode: Token `labelToken` → String + SourceInfo (Symbol already decoupled in D7a). **[+cutover: LinkingRegistry]** | LabelFeature.java |
 | D10 | place | PlaceNode, PlaceDirectiveHandler, PlaceNodeConverter, PlaceLayoutHandler, placement/. **[+decouple]** placement sub-nodes: RangeValueComponent, SingleValueComponent, SteppedRangeValueComponent, WildcardValueComponent — Token fields → extracted values + SourceInfo | PlaceFeature.java |
-| D11 | require | RequireNode, RequireDirectiveHandler, RequireSymbolCollector, RequireAnalysisHandler, RequireNodeConverter. **[+decouple]** RequireNode: Token `path`, `alias` → String + SourceInfo | RequireFeature.java |
-| D12 | importdir | ImportNode, ImportSourceHandler, ImportDirectiveHandler, ImportSymbolCollector, ImportAnalysisHandler, ImportNodeConverter. **[+decouple]** ImportNode: Token `path`, `alias` + UsingClause Tokens → String + SourceInfo | ImportFeature.java |
-| D13 | proc | See D13 details below. **[+cutover: EmissionRegistry]** | ProcFeature.java |
+| D11 | require | RequireNode, RequireDirectiveHandler, RequireSymbolCollector, RequireAnalysisHandler, RequireNodeConverter. **[+decouple]** RequireNode: Token `path`, `alias` → String + SourceInfo (Symbol already decoupled in D7a). | RequireFeature.java |
+| D12 | importdir | ImportNode, ImportSourceHandler, ImportDirectiveHandler, ImportSymbolCollector, ImportAnalysisHandler, ImportNodeConverter. **[+decouple]** ImportNode: Token `path`, `alias` + UsingClause Tokens → String + SourceInfo (Symbol already decoupled in D7a). | ImportFeature.java |
+| D13 | proc | See D13 details below. **[+cutover: EmissionRegistry]** (Symbol already decoupled in D7a.) | ProcFeature.java |
 | D14 | instruction | InstructionAnalysisHandler, InstructionNodeConverter, InstructionTokenMapContributor | InstructionFeature.java |
 
 Order rationale: start with simple features (few phases), end with complex ones
 (proc spans 6+ phases). Each step is independently committable with all tests green.
-D1-D6 have no Token decoupling; D7-D13 include Token decoupling of their feature nodes.
-D7b is a pure refactoring step (no feature move) separated from D7 to keep the
-cutover step focused.
+D1–D6 have no Token decoupling. D7a decouples `Symbol` (Token → String + SourceInfo)
+and `DefineNode`, establishing the foundation for all subsequent `[+decouple]` steps.
+D8–D13 decouple their feature AST nodes; because `Symbol` is already decoupled,
+each handler can pass `new Symbol(name, sourceInfo, ...)` directly.
+D7b is a pure DRY refactoring step separated from D7 to keep the cutover step focused.
 
 **D4 details (ctx — split into D4a-D4d):**
 
@@ -1366,7 +1369,7 @@ Additionally:
 1. Move `RegisterAliasState` from `parser/` (temporary C2 location) to `features/reg/`. Add `implements IScopedParserState`.
 2. Remove `getGlobalRegisterAliases()` from Parser. Compiler.java reads aliases via `parser.state().get(RegisterAliasState.class).getGlobalAliases()` (or equivalent extraction pattern).
 3. Update tests that call `parser.getGlobalRegisterAliases()`: RegDirectiveTest, DefineDirectiveTest, ModuleSourceDefineIntegrationTest.
-4. **[+decouple]** RegNode: Token `alias`, `register` → String + SourceInfo.
+4. **[+decouple]** RegNode: Token `alias`, `register` → String + SourceInfo. `RegAnalysisHandler` passes `new Symbol(name, sourceInfo, ...)` directly (Symbol already decoupled in D7a).
 
 **D13 details (proc — includes preg):**
 
@@ -1378,7 +1381,7 @@ Additionally:
 3. ProcDirectiveHandler: replace `context.state().getOrCreate(RegisterAliasState.class, ...)` with `context.state().pushScope()` / `context.state().popScope()` (generic, no feature imports). Replace `context.declaration()` (already done in C2). Resolve `registerProcedure()` cast — procedure registration moves to ProcFeature or a clean cross-phase extraction pattern.
 4. Remove from Parser: `registerProcedure()`, `getProcedureTable()`, `procedureTable` field.
 5. Update tests: ProcedureDirectiveTest (calls `parser.getProcedureTable()`), PregDirectiveTest.
-6. **[+decouple]** ProcedureNode: Token `name`, `parameters`, `refParameters`, `valParameters` → String/List\<String\> + SourceInfo. PregNode: Token `alias`, `targetRegister` → String + SourceInfo.
+6. **[+decouple]** ProcedureNode: Token `name`, `parameters`, `refParameters`, `valParameters` → String/List\<String\> + SourceInfo. PregNode: Token `alias`, `targetRegister` → String + SourceInfo. `ProcedureSymbolCollector` and `PregAnalysisHandler` pass `new Symbol(name, sourceInfo, ...)` directly (Symbol already decoupled in D7a).
 7. IrGenContext: `pushProcedureParams(List<Token>)` → `pushProcedureParams(List<String>)`. Remove Token import from IrGenContext.
 8. Extract `parseCallInstruction()` from Parser. Create `IInstructionParsingHandler` interface in `parser/`. Register `CallInstructionHandler` in `features/proc/`. `Parser.instructionStatement()` dispatches through registry for opcodes with custom syntax.
 
@@ -1458,7 +1461,7 @@ After ALL steps are complete:
 5. **Compiler.java is thin** — only phase orchestration and feature discovery
 6. **All phase registries are populated via FeatureRegistrationContext** — no `initializeWithDefaults()`
 7. **Data format layer purity**: `model/token/` has zero imports from `model/ast/` or `model/ir/`; `model/ast/` has zero imports from `model/token/` or `model/ir/`; `model/ir/` has zero imports from `model/token/` or `model/ast/`. The only shared type across layers is `SourceInfo`.
-8. **AST nodes store no Token references** — only extracted values (String, int, etc.) + SourceInfo
+8. **AST nodes and Symbol records store no Token references** — only extracted values (String, int, etc.) + SourceInfo
 9. **`SourceLocatable` modernized to `ISourceLocatable`** in `model/ast/` — returns `SourceInfo` instead of `String getSourceFileName()`; all source-tracked AST nodes implement it, synthetic nodes (PushCtxNode, PopCtxNode) do not
 10. **All tests green** after each step
 

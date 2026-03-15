@@ -3,9 +3,9 @@ package org.evochora.compiler.frontend.semantics;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.module.DependencyGraph;
 import org.evochora.compiler.frontend.module.ModuleDescriptor;
-import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
 import org.evochora.compiler.frontend.semantics.analysis.ISymbolCollector;
+import org.evochora.compiler.model.ast.AstNode;
 
 import java.util.HashMap;
 import java.util.List;
@@ -30,32 +30,22 @@ public class SemanticAnalyzer {
     private final ModuleContextTracker contextTracker;
 
     /**
-     * Constructs a semantic analyzer without module support.
-     * Suitable for single-file compilation and tests.
-     *
-     * @param diagnostics The diagnostics engine for reporting errors.
-     * @param symbolTable The symbol table to use for analysis.
-     */
-    public SemanticAnalyzer(DiagnosticsEngine diagnostics, SymbolTable symbolTable) {
-        this(diagnostics, symbolTable, null, null, null);
-    }
-
-    /**
-     * Constructs a module-aware semantic analyzer.
+     * Constructs a semantic analyzer with an externally built analysis registry.
      *
      * @param diagnostics    The diagnostics engine for reporting errors.
      * @param symbolTable    The symbol table to use for analysis.
      * @param graph          The dependency graph from Phase 0. Null for single-file compilation.
      * @param mainFilePath   The absolute path of the main source file. Null when graph is null.
      * @param rootAliasChain The alias chain for the root module (e.g., "MAIN"). Null when graph is null.
+     * @param registry       The pre-built analysis handler registry.
      */
     public SemanticAnalyzer(DiagnosticsEngine diagnostics, SymbolTable symbolTable,
                             DependencyGraph graph, String mainFilePath,
-                            String rootAliasChain) {
+                            String rootAliasChain, AnalysisHandlerRegistry registry) {
         this.diagnostics = diagnostics;
         this.symbolTable = symbolTable;
         this.contextTracker = new ModuleContextTracker(symbolTable);
-        this.registry = AnalysisHandlerRegistry.initializeWithDefaults(symbolTable, diagnostics);
+        this.registry = registry;
 
         if (graph != null && rootAliasChain != null) {
             setupModuleRelationships(graph, mainFilePath, rootAliasChain);

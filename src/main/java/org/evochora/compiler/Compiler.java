@@ -16,10 +16,7 @@ import org.evochora.compiler.frontend.module.ModuleDescriptor;
 import org.evochora.compiler.frontend.module.SourceRootResolver;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
-import org.evochora.compiler.frontend.parser.features.def.DefineDirectiveHandler;
-import org.evochora.compiler.features.dir.DirFeature;
 import org.evochora.compiler.frontend.parser.features.importdir.ImportDirectiveHandler;
-import org.evochora.compiler.features.org.OrgFeature;
 import org.evochora.compiler.frontend.parser.features.place.PlaceDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.proc.PregDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.proc.ProcDirectiveHandler;
@@ -29,17 +26,14 @@ import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorResult;
 import org.evochora.compiler.frontend.preprocessor.features.importdir.ImportSourceHandler;
-import org.evochora.compiler.features.ctx.CtxFeature;
-import org.evochora.compiler.features.macro.MacroFeature;
-import org.evochora.compiler.features.repeat.RepeatFeature;
-import org.evochora.compiler.features.source.SourceFeature;
+import org.evochora.compiler.frontend.semantics.AnalysisHandlerRegistry;
 import org.evochora.compiler.frontend.semantics.ModuleContextTracker;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
+import org.evochora.compiler.frontend.semantics.analysis.*;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.frontend.parser.ast.PregNode;
-import org.evochora.compiler.frontend.parser.features.def.DefineNode;
 import org.evochora.compiler.frontend.parser.features.importdir.ImportNode;
 import org.evochora.compiler.frontend.parser.features.label.LabelNode;
 import org.evochora.compiler.frontend.parser.features.place.PlaceNode;
@@ -49,7 +43,6 @@ import org.evochora.compiler.frontend.parser.features.require.RequireNode;
 import org.evochora.compiler.frontend.irgen.DefaultAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrConverterRegistry;
 import org.evochora.compiler.frontend.irgen.IrGenerator;
-import org.evochora.compiler.frontend.irgen.converters.DefineNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.ImportNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.InstructionNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.LabelNodeConverter;
@@ -67,6 +60,8 @@ import org.evochora.compiler.frontend.tokenmap.TokenMapGenerator;
 import java.util.ArrayList;
 import org.evochora.compiler.frontend.postprocess.AstPostProcessor;
 import org.evochora.compiler.frontend.postprocess.PostProcessHandlerRegistry;
+import org.evochora.compiler.frontend.postprocess.PregPostProcessHandler;
+import org.evochora.compiler.frontend.postprocess.RegPostProcessHandler;
 import org.evochora.compiler.model.ir.IrProgram;
 import org.evochora.compiler.backend.layout.LayoutDirectiveRegistry;
 import org.evochora.compiler.backend.layout.LayoutEngine;
@@ -201,7 +196,7 @@ public class Compiler implements ICompiler {
 
         // Feature registration
         FeatureRegistry featureRegistry = new FeatureRegistry();
-        List.of(new RepeatFeature(), new SourceFeature(), new MacroFeature(), new CtxFeature(), new OrgFeature(), new DirFeature()).forEach(f -> f.register(featureRegistry));
+        StandardFeatures.all().forEach(f -> f.register(featureRegistry));
 
         // Phase 0: Dependency Scanning (load imported modules)
         DependencyScanner depScanner = new DependencyScanner(diagnostics, resolver);
@@ -253,7 +248,6 @@ public class Compiler implements ICompiler {
         // Phase 3: Parsing (builds AST)
         ParserDirectiveRegistry parserRegistry = new ParserDirectiveRegistry();
         featureRegistry.parserHandlers().forEach(parserRegistry::register);
-        parserRegistry.register(".DEFINE", new DefineDirectiveHandler());
         parserRegistry.register(".REG", new RegDirectiveHandler());
         parserRegistry.register(".PROC", new ProcDirectiveHandler());
         parserRegistry.register(".PREG", new PregDirectiveHandler());
@@ -269,7 +263,21 @@ public class Compiler implements ICompiler {
 
         // Phase 4: Semantic Analysis (symbol resolution, type checking)
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainFilePath, rootAliasChain);
+        AnalysisHandlerRegistry analysisRegistry = new AnalysisHandlerRegistry();
+        analysisRegistry.registerAll(featureRegistry.analysisHandlers());
+        analysisRegistry.registerAllCollectors(featureRegistry.symbolCollectors());
+        analysisRegistry.registerCollector(ProcedureNode.class, new ProcedureSymbolCollector());
+        analysisRegistry.registerCollector(LabelNode.class, new LabelSymbolCollector());
+        analysisRegistry.registerCollector(ImportNode.class, new ImportSymbolCollector());
+        analysisRegistry.registerCollector(RequireNode.class, new RequireSymbolCollector());
+        analysisRegistry.register(ImportNode.class, new ImportAnalysisHandler());
+        analysisRegistry.register(RequireNode.class, new RequireAnalysisHandler());
+        analysisRegistry.register(RegNode.class, new RegAnalysisHandler());
+        analysisRegistry.register(LabelNode.class, new LabelAnalysisHandler());
+        analysisRegistry.register(ProcedureNode.class, new ProcedureAnalysisHandler());
+        analysisRegistry.register(InstructionNode.class, new InstructionAnalysisHandler(symbolTable, diagnostics));
+        analysisRegistry.register(PregNode.class, new PregAnalysisHandler());
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainFilePath, rootAliasChain, analysisRegistry);
         analyzer.analyze(ast);
         if (diagnostics.hasErrors()) {
             throw new CompilationException(diagnostics.summary());
@@ -285,7 +293,10 @@ public class Compiler implements ICompiler {
         Map<SourceInfo, TokenInfo> tokenMap = tokenMapGenerator.generateAll(ast);
 
         // Phase 6: AST Post-Processing (resolve register aliases and constants)
-        PostProcessHandlerRegistry postProcessRegistry = PostProcessHandlerRegistry.initializeWithDefaults();
+        PostProcessHandlerRegistry postProcessRegistry = new PostProcessHandlerRegistry();
+        postProcessRegistry.registerAll(featureRegistry.postProcessHandlers());
+        postProcessRegistry.register(PregNode.class, new PregPostProcessHandler());
+        postProcessRegistry.register(RegNode.class, new RegPostProcessHandler());
         ModuleContextTracker postProcessTracker = new ModuleContextTracker(symbolTable);
         symbolTable.setCurrentModule(rootAliasChain);
         AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, postProcessTracker, postProcessRegistry);
@@ -302,7 +313,6 @@ public class Compiler implements ICompiler {
         irRegistry.register(LabelNode.class, new LabelNodeConverter());
         irRegistry.register(PlaceNode.class, new PlaceNodeConverter());
         irRegistry.register(ProcedureNode.class, new ProcedureNodeConverter());
-        irRegistry.register(DefineNode.class, new DefineNodeConverter());
         irRegistry.register(ImportNode.class, new ImportNodeConverter());
         irRegistry.register(RequireNode.class, new RequireNodeConverter());
         irRegistry.register(RegNode.class, new RegNodeConverter());

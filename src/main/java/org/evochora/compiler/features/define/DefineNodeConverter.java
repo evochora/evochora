@@ -1,4 +1,4 @@
-package org.evochora.compiler.frontend.irgen.converters;
+package org.evochora.compiler.features.define;
 
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrGenContext;
@@ -7,7 +7,6 @@ import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.model.ast.VectorLiteralNode;
-import org.evochora.compiler.frontend.parser.features.def.DefineNode;
 import org.evochora.compiler.model.ir.IrImm;
 import org.evochora.compiler.model.ir.IrOperand;
 import org.evochora.compiler.model.ir.IrTypedImm;
@@ -30,7 +29,7 @@ public final class DefineNodeConverter implements IAstNodeToIrConverter<DefineNo
      */
     @Override
     public void convert(DefineNode node, IrGenContext ctx) {
-        String nameUpper = node.name().text().toUpperCase();
+        String nameUpper = node.name().toUpperCase();
         IrOperand value = toOperand(node.value());
         if (value != null) {
             ctx.registerConstant(nameUpper, value);
@@ -61,5 +60,3 @@ public final class DefineNodeConverter implements IAstNodeToIrConverter<DefineNo
         return null;
     }
 }
-
-

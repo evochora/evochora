@@ -1,8 +1,5 @@
 package org.evochora.compiler.frontend.postprocess;
 
-import org.evochora.compiler.frontend.parser.ast.PregNode;
-import org.evochora.compiler.frontend.parser.features.def.DefineNode;
-import org.evochora.compiler.frontend.parser.features.reg.RegNode;
 import org.evochora.compiler.model.ast.AstNode;
 
 import java.util.HashMap;
@@ -31,6 +28,15 @@ public final class PostProcessHandlerRegistry {
 	}
 
 	/**
+	 * Bulk-registers handlers from a feature registry map.
+	 *
+	 * @param handlers Map of AST node classes to their post-process handlers.
+	 */
+	public void registerAll(Map<Class<? extends AstNode>, IPostProcessHandler> handlers) {
+		this.handlers.putAll(handlers);
+	}
+
+	/**
 	 * Looks up the handler for the given AST node type.
 	 *
 	 * @param nodeType The AST node class to look up.
@@ -38,19 +44,5 @@ public final class PostProcessHandlerRegistry {
 	 */
 	public Optional<IPostProcessHandler> get(Class<? extends AstNode> nodeType) {
 		return Optional.ofNullable(handlers.get(nodeType));
-	}
-
-	/**
-	 * Initializes a new registry with the default handlers for register alias and
-	 * constant collection.
-	 *
-	 * @return A new registry with default handlers.
-	 */
-	public static PostProcessHandlerRegistry initializeWithDefaults() {
-		PostProcessHandlerRegistry registry = new PostProcessHandlerRegistry();
-		registry.register(PregNode.class, new PregPostProcessHandler());
-		registry.register(RegNode.class, new RegPostProcessHandler());
-		registry.register(DefineNode.class, new DefinePostProcessHandler());
-		return registry;
 	}
 }

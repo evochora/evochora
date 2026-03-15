@@ -3,7 +3,7 @@ package org.evochora.compiler.frontend;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
-import org.evochora.compiler.frontend.parser.features.def.DefineDirectiveHandler;
+import org.evochora.compiler.features.define.DefineDirectiveHandler;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.InstructionNode;
@@ -11,7 +11,7 @@ import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.model.ast.VectorLiteralNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.parser.features.def.DefineNode;
+import org.evochora.compiler.features.define.DefineNode;
 import org.evochora.compiler.frontend.parser.features.label.LabelNode;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.BeforeAll;
@@ -244,7 +244,7 @@ public class ParserTest {
         assertThat(ast.get(0)).isInstanceOf(DefineNode.class);
 
         DefineNode defineNode = (DefineNode) ast.get(0);
-        assertThat(defineNode.name().text()).isEqualTo("MAX_ENERGY");
+        assertThat(defineNode.name()).isEqualTo("MAX_ENERGY");
         assertThat(defineNode.exported()).isTrue();
         assertThat(defineNode.value()).isInstanceOf(NumberLiteralNode.class);
         assertThat(((NumberLiteralNode) defineNode.value()).value()).isEqualTo(42);
@@ -272,7 +272,7 @@ public class ParserTest {
         assertThat(ast.get(0)).isInstanceOf(DefineNode.class);
 
         DefineNode defineNode = (DefineNode) ast.get(0);
-        assertThat(defineNode.name().text()).isEqualTo("MAX_ENERGY");
+        assertThat(defineNode.name()).isEqualTo("MAX_ENERGY");
         assertThat(defineNode.exported()).isFalse();
     }
 

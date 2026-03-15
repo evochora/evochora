@@ -1,5 +1,6 @@
 package org.evochora.compiler.frontend.semantics.analysis;
 
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.ast.AstNode;
@@ -16,28 +17,29 @@ public class ProcedureSymbolCollector implements ISymbolCollector {
     @Override
     public void collect(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         ProcedureNode proc = (ProcedureNode) node;
-        symbolTable.define(new Symbol(proc.name(), Symbol.Type.PROCEDURE, proc, proc.exported()));
+        Token nameToken = proc.name();
+        symbolTable.define(new Symbol(nameToken.text(), new SourceInfo(nameToken.fileName(), nameToken.line(), nameToken.column()), Symbol.Type.PROCEDURE, proc, proc.exported()));
 
         String currentChain = symbolTable.getCurrentAliasChain();
         String scopeName = (currentChain != null && !currentChain.isEmpty())
-            ? currentChain + "." + proc.name().text().toUpperCase()
-            : proc.name().text().toUpperCase();
+            ? currentChain + "." + nameToken.text().toUpperCase()
+            : nameToken.text().toUpperCase();
         SymbolTable.Scope newScope = symbolTable.enterScope(scopeName);
         symbolTable.registerNodeScope(node, newScope);
 
         if (proc.parameters() != null) {
             for (Token p : proc.parameters()) {
-                symbolTable.define(new Symbol(p, Symbol.Type.VARIABLE));
+                symbolTable.define(new Symbol(p.text(), new SourceInfo(p.fileName(), p.line(), p.column()), Symbol.Type.VARIABLE));
             }
         }
         if (proc.refParameters() != null) {
             for (Token p : proc.refParameters()) {
-                symbolTable.define(new Symbol(p, Symbol.Type.VARIABLE));
+                symbolTable.define(new Symbol(p.text(), new SourceInfo(p.fileName(), p.line(), p.column()), Symbol.Type.VARIABLE));
             }
         }
         if (proc.valParameters() != null) {
             for (Token p : proc.valParameters()) {
-                symbolTable.define(new Symbol(p, Symbol.Type.VARIABLE));
+                symbolTable.define(new Symbol(p.text(), new SourceInfo(p.fileName(), p.line(), p.column()), Symbol.Type.VARIABLE));
             }
         }
     }

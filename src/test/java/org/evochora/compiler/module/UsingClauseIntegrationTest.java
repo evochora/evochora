@@ -12,7 +12,7 @@ import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
 import org.evochora.compiler.features.ctx.PopCtxDirectiveHandler;
 import org.evochora.compiler.features.ctx.PushCtxDirectiveHandler;
-import org.evochora.compiler.frontend.parser.features.def.DefineDirectiveHandler;
+import org.evochora.compiler.features.define.DefineDirectiveHandler;
 import org.evochora.compiler.features.dir.DirDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.importdir.ImportDirectiveHandler;
 import org.evochora.compiler.features.org.OrgDirectiveHandler;
@@ -29,6 +29,7 @@ import org.evochora.compiler.frontend.preprocessor.features.importdir.ImportSour
 import org.evochora.compiler.features.macro.MacroDirectiveHandler;
 import org.evochora.compiler.features.source.SourceDirectiveHandler;
 
+import org.evochora.compiler.TestRegistries;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
@@ -198,7 +199,7 @@ class UsingClauseIntegrationTest {
         var resolved = st.resolve("DEP.HARVEST", depPath);
         assertThat(resolved).isPresent();
         assertThat(resolved.get().symbol().type()).isEqualTo(Symbol.Type.LABEL);
-        assertThat(resolved.get().symbol().name().text()).isEqualToIgnoringCase("HARVEST");
+        assertThat(resolved.get().symbol().name()).isEqualToIgnoringCase("HARVEST");
     }
 
     @Test
@@ -294,7 +295,7 @@ class UsingClauseIntegrationTest {
 
         // Phase 4: Semantic analysis (uses rootAliasChain instead of fileToModule)
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainPath, rootAliasChain);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainPath, rootAliasChain, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         analyzer.analyze(ast);
 
         return new SemanticsResult(diagnostics, symbolTable);

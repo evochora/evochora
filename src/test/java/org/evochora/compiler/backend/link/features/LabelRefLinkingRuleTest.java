@@ -4,8 +4,6 @@ import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.model.token.Token;
-import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.model.ir.IrImm;
@@ -182,8 +180,7 @@ class LabelRefLinkingRuleTest {
 
         // Define the label in LIB module
         symbolTable.setCurrentModule(libChain);
-        Token labelToken = new Token(TokenType.IDENTIFIER, "TARGET", null, 1, 0, "lib.s");
-        symbolTable.define(new Symbol(labelToken, Symbol.Type.LABEL, null, true));
+        symbolTable.define(new Symbol("TARGET", new SourceInfo("lib.s", 1, 0), Symbol.Type.LABEL, null, true));
 
         // Register the import alias: in MAIN, LIB -> libChain
         symbolTable.setCurrentModule(mainChain);
@@ -239,8 +236,7 @@ class LabelRefLinkingRuleTest {
 
         // Define the label in LIB module (NOT exported)
         symbolTable.setCurrentModule(libChain);
-        Token labelToken = new Token(TokenType.IDENTIFIER, "PRIVATE", null, 1, 0, "lib.s");
-        symbolTable.define(new Symbol(labelToken, Symbol.Type.LABEL));
+        symbolTable.define(new Symbol("PRIVATE", new SourceInfo("lib.s", 1, 0), Symbol.Type.LABEL));
 
         // Register the import alias
         symbolTable.setCurrentModule(mainChain);

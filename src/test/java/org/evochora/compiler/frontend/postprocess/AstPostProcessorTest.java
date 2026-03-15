@@ -10,7 +10,7 @@ import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
-import org.evochora.compiler.frontend.parser.features.def.DefineNode;
+import org.evochora.compiler.features.define.DefineNode;
 import org.evochora.compiler.frontend.semantics.ModuleContextTracker;
 import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
@@ -18,6 +18,7 @@ import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.TestRegistries;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
@@ -46,7 +47,7 @@ class AstPostProcessorTest {
         symbolTable.registerModule("TEST", "test.s");
         symbolTable.setCurrentModule("TEST");
 
-        processor = new AstPostProcessor(symbolTable);
+        processor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable), TestRegistries.postProcessRegistry());
 
         // Register aliases by processing RegNode instances (self-extraction)
         processor.process(new RegNode(createToken("COUNTER", TokenType.IDENTIFIER), createToken("%DR0", TokenType.REGISTER)));
@@ -72,7 +73,7 @@ class AstPostProcessorTest {
         IdentifierNode idNode = new IdentifierNode("COUNTER", createSourceInfo());
 
         // Add the symbol to the symbol table
-        symbolTable.define(new Symbol(createToken("COUNTER", TokenType.IDENTIFIER), Symbol.Type.ALIAS));
+        symbolTable.define(new Symbol("COUNTER", createSourceInfo(), Symbol.Type.ALIAS));
 
         // Process the AST
         AstNode result = processor.process(idNode);
@@ -96,9 +97,9 @@ class AstPostProcessorTest {
         IdentifierNode posNode = new IdentifierNode("POS", createSourceInfo());
 
         // Add all symbols to the symbol table
-        symbolTable.define(new Symbol(createToken("COUNTER", TokenType.IDENTIFIER), Symbol.Type.ALIAS));
-        symbolTable.define(new Symbol(createToken("TMP", TokenType.IDENTIFIER), Symbol.Type.ALIAS));
-        symbolTable.define(new Symbol(createToken("POS", TokenType.IDENTIFIER), Symbol.Type.ALIAS));
+        symbolTable.define(new Symbol("COUNTER", createSourceInfo(), Symbol.Type.ALIAS));
+        symbolTable.define(new Symbol("TMP", createSourceInfo(), Symbol.Type.ALIAS));
+        symbolTable.define(new Symbol("POS", createSourceInfo(), Symbol.Type.ALIAS));
 
         // Create a simple AST with these identifiers
         InstructionNode instruction = new InstructionNode(
@@ -134,7 +135,7 @@ class AstPostProcessorTest {
         IdentifierNode idNode = new IdentifierNode("SOME_LABEL", createSourceInfo());
 
         // Add it as a LABEL symbol (not ALIAS)
-        symbolTable.define(new Symbol(createToken("SOME_LABEL", TokenType.IDENTIFIER), Symbol.Type.LABEL));
+        symbolTable.define(new Symbol("SOME_LABEL", createSourceInfo(), Symbol.Type.LABEL));
 
         // Process the AST
         AstNode result = processor.process(idNode);
@@ -161,7 +162,7 @@ class AstPostProcessorTest {
         IdentifierNode idNode = new IdentifierNode("SOME_ALIAS", createSourceInfo());
 
         // Add it as an ALIAS symbol
-        symbolTable.define(new Symbol(createToken("SOME_ALIAS", TokenType.IDENTIFIER), Symbol.Type.ALIAS));
+        symbolTable.define(new Symbol("SOME_ALIAS", createSourceInfo(), Symbol.Type.ALIAS));
 
         // Process the AST
         AstNode result = processor.process(idNode);
@@ -178,8 +179,8 @@ class AstPostProcessorTest {
         NumberLiteralNode numberNode = new NumberLiteralNode(42, createSourceInfo());
 
         // Add symbols to symbol table
-        symbolTable.define(new Symbol(createToken("COUNTER", TokenType.IDENTIFIER), Symbol.Type.ALIAS));
-        symbolTable.define(new Symbol(createToken("SOME_LABEL", TokenType.IDENTIFIER), Symbol.Type.LABEL));
+        symbolTable.define(new Symbol("COUNTER", createSourceInfo(), Symbol.Type.ALIAS));
+        symbolTable.define(new Symbol("SOME_LABEL", createSourceInfo(), Symbol.Type.LABEL));
 
         // Create instruction with mixed arguments
         InstructionNode instruction = new InstructionNode(
@@ -234,11 +235,11 @@ class AstPostProcessorTest {
     @Test
     void testProcess_NoRegNodeProcessed_NoReplacements() {
         // Create processor without processing any RegNode
-        AstPostProcessor emptyProcessor = new AstPostProcessor(symbolTable);
+        AstPostProcessor emptyProcessor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable), TestRegistries.postProcessRegistry());
 
         // Create an identifier that would be an alias
         IdentifierNode idNode = new IdentifierNode("COUNTER", createSourceInfo());
-        symbolTable.define(new Symbol(createToken("COUNTER", TokenType.IDENTIFIER), Symbol.Type.ALIAS));
+        symbolTable.define(new Symbol("COUNTER", createSourceInfo(), Symbol.Type.ALIAS));
 
         // Process the AST
         AstNode result = emptyProcessor.process(idNode);
@@ -253,7 +254,7 @@ class AstPostProcessorTest {
         IdentifierNode idNode = new IdentifierNode("COUNTER", createSourceInfo());
 
         // Add to symbol table
-        symbolTable.define(new Symbol(createToken("COUNTER", TokenType.IDENTIFIER), Symbol.Type.ALIAS));
+        symbolTable.define(new Symbol("COUNTER", createSourceInfo(), Symbol.Type.ALIAS));
 
         // Process the AST
         AstNode result = processor.process(idNode);
@@ -275,7 +276,7 @@ class AstPostProcessorTest {
         IdentifierNode idNode = new IdentifierNode("COUNTER", createSourceInfo());
 
         // Add to symbol table
-        symbolTable.define(new Symbol(createToken("COUNTER", TokenType.IDENTIFIER), Symbol.Type.ALIAS));
+        symbolTable.define(new Symbol("COUNTER", createSourceInfo(), Symbol.Type.ALIAS));
 
         // Process the AST
         AstNode result = processor.process(idNode);
@@ -307,21 +308,21 @@ class AstPostProcessorTest {
 
         // Define STEP=10 in module A context
         st.setCurrentModule(modAChain);
-        Token stepTokenA = new Token(TokenType.IDENTIFIER, "STEP", null, 1, 1, "/mod_a.evo");
-        st.define(new Symbol(stepTokenA, Symbol.Type.CONSTANT));
+        SourceInfo siA = new SourceInfo("/mod_a.evo", 1, 1);
+        st.define(new Symbol("STEP", siA, Symbol.Type.CONSTANT));
 
         // Define STEP=1 in module B context
         st.setCurrentModule(modBChain);
-        Token stepTokenB = new Token(TokenType.IDENTIFIER, "STEP", null, 1, 1, "/mod_b.evo");
-        st.define(new Symbol(stepTokenB, Symbol.Type.CONSTANT));
+        SourceInfo siB = new SourceInfo("/mod_b.evo", 1, 1);
+        st.define(new Symbol("STEP", siB, Symbol.Type.CONSTANT));
 
         st.setCurrentModule(mainChain);
 
-        TypedLiteralNode valueA = new TypedLiteralNode("DATA", 10, new SourceInfo("/mod_a.evo", 1, 1));
-        TypedLiteralNode valueB = new TypedLiteralNode("DATA", 1, new SourceInfo("/mod_b.evo", 1, 1));
+        TypedLiteralNode valueA = new TypedLiteralNode("DATA", 10, siA);
+        TypedLiteralNode valueB = new TypedLiteralNode("DATA", 1, siB);
 
-        DefineNode defineA = new DefineNode(stepTokenA, valueA);
-        DefineNode defineB = new DefineNode(stepTokenB, valueB);
+        DefineNode defineA = new DefineNode("STEP", siA, valueA);
+        DefineNode defineB = new DefineNode("STEP", siB, valueB);
 
         IdentifierNode useA = new IdentifierNode("STEP", new SourceInfo("/mod_a.evo", 2, 1));
         IdentifierNode useB = new IdentifierNode("STEP", new SourceInfo("/mod_b.evo", 2, 1));
@@ -335,7 +336,7 @@ class AstPostProcessorTest {
 
         // Use ModuleContextTracker with alias chains via PushCtxNode
         ModuleContextTracker tracker = new ModuleContextTracker(st);
-        AstPostProcessor moduleProcessor = new AstPostProcessor(st, tracker);
+        AstPostProcessor moduleProcessor = new AstPostProcessor(st, tracker, TestRegistries.postProcessRegistry());
 
         List<AstNode> nodes = List.of(
                 new PushCtxNode("/mod_a.evo", modAChain), defineA, instrA, new PopCtxNode(),
@@ -361,11 +362,10 @@ class AstPostProcessorTest {
     @Test
     void testProcess_SingleFileConstantResolutionStillWorks() {
         // Verify single-file mode (no module context) still resolves constants
-        Token nameToken = createToken("MY_CONST", TokenType.IDENTIFIER);
-        symbolTable.define(new Symbol(nameToken, Symbol.Type.CONSTANT));
+        symbolTable.define(new Symbol("MY_CONST", createSourceInfo(), Symbol.Type.CONSTANT));
 
         TypedLiteralNode constValue = new TypedLiteralNode("DATA", 99, new SourceInfo("test.s", 1, 1));
-        DefineNode defineNode = new DefineNode(nameToken, constValue);
+        DefineNode defineNode = new DefineNode("MY_CONST", createSourceInfo(), constValue);
 
         IdentifierNode useNode = new IdentifierNode("MY_CONST", createSourceInfo());
         InstructionNode instr = new InstructionNode(

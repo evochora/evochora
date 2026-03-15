@@ -31,21 +31,7 @@ public class AstPostProcessor implements IPostProcessContext {
     private final Map<AstNode, AstNode> replacements = new HashMap<>();
 
     /**
-     * Constructs a post-processor for single-file compilation (no module context).
-     */
-    public AstPostProcessor(SymbolTable symbolTable) {
-        this(symbolTable, new ModuleContextTracker(symbolTable), PostProcessHandlerRegistry.initializeWithDefaults());
-    }
-
-    /**
-     * Constructs a module-aware post-processor with default handlers.
-     */
-    public AstPostProcessor(SymbolTable symbolTable, ModuleContextTracker contextTracker) {
-        this(symbolTable, contextTracker, PostProcessHandlerRegistry.initializeWithDefaults());
-    }
-
-    /**
-     * Constructs a module-aware post-processor with an explicit handler registry.
+     * Constructs a post-processor with an explicit handler registry and module context tracker.
      */
     public AstPostProcessor(SymbolTable symbolTable, ModuleContextTracker contextTracker,
                             PostProcessHandlerRegistry registry) {
@@ -163,4 +149,5 @@ public class AstPostProcessor implements IPostProcessContext {
         );
         replacements.put(originalNode, replacement);
     }
+
 }

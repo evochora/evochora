@@ -5,11 +5,13 @@ import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
-import org.evochora.compiler.frontend.parser.features.def.DefineDirectiveHandler;
+import org.evochora.compiler.features.define.DefineDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.model.ast.InstructionNode;
-import org.evochora.compiler.frontend.parser.features.def.DefineNode;
+import org.evochora.compiler.features.define.DefineNode;
+import org.evochora.compiler.TestRegistries;
+import org.evochora.compiler.frontend.semantics.ModuleContextTracker;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.frontend.postprocess.AstPostProcessor;
@@ -60,7 +62,7 @@ public class DefineDirectiveTest {
         assertThat(ast.get(0)).isInstanceOf(DefineNode.class);
 
         DefineNode defineNode = (DefineNode) ast.get(0);
-        assertThat(defineNode.name().text()).isEqualTo("MY_CONST");
+        assertThat(defineNode.name()).isEqualTo("MY_CONST");
         assertThat(defineNode.value()).isInstanceOf(TypedLiteralNode.class);
     }
     
@@ -86,11 +88,11 @@ public class DefineDirectiveTest {
         
         // Semantic Analysis - Populates symbol table with constants
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         semanticAnalyzer.analyze(ast);
-        
+
         // AST Post-Processing - Resolves constants
-        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable);
+        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable), TestRegistries.postProcessRegistry());
         List<AstNode> processedAst = ast.stream()
             .map(node -> astPostProcessor.process(node))
             .toList();

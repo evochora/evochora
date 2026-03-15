@@ -1,18 +1,8 @@
 package org.evochora.compiler.frontend.semantics;
 
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.model.ast.InstructionNode;
-import org.evochora.compiler.frontend.parser.ast.PregNode;
-import org.evochora.compiler.frontend.parser.features.def.DefineNode;
-import org.evochora.compiler.frontend.parser.features.importdir.ImportNode;
-import org.evochora.compiler.frontend.parser.features.label.LabelNode;
-import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
-import org.evochora.compiler.frontend.parser.features.reg.RegNode;
-import org.evochora.compiler.frontend.parser.features.require.RequireNode;
-
-
-import org.evochora.compiler.frontend.semantics.analysis.*;
-import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
+import org.evochora.compiler.frontend.semantics.analysis.ISymbolCollector;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -70,34 +60,20 @@ public final class AnalysisHandlerRegistry {
     }
 
     /**
-     * Creates a registry pre-populated with the default handlers and collectors.
+     * Bulk-registers pass-2 analysis handlers from a feature registry map.
      *
-     * @param symbolTable The symbol table used by scope-aware handlers.
-     * @param diagnostics The diagnostics engine for handlers that need it at construction time.
-     * @return A fully initialized registry.
+     * @param handlers Map of AST node classes to their analysis handlers.
      */
-    public static AnalysisHandlerRegistry initializeWithDefaults(
-            SymbolTable symbolTable,
-            DiagnosticsEngine diagnostics) {
+    public void registerAll(Map<Class<? extends AstNode>, IAnalysisHandler> handlers) {
+        this.handlers.putAll(handlers);
+    }
 
-        AnalysisHandlerRegistry registry = new AnalysisHandlerRegistry();
-
-        // Pass-1 collectors
-        registry.registerCollector(ProcedureNode.class, new ProcedureSymbolCollector());
-        registry.registerCollector(LabelNode.class, new LabelSymbolCollector());
-        registry.registerCollector(ImportNode.class, new ImportSymbolCollector());
-        registry.registerCollector(RequireNode.class, new RequireSymbolCollector());
-
-        // Pass-2 handlers
-        registry.register(ImportNode.class, new ImportAnalysisHandler());
-        registry.register(RequireNode.class, new RequireAnalysisHandler());
-        registry.register(DefineNode.class, new DefineAnalysisHandler());
-        registry.register(RegNode.class, new RegAnalysisHandler());
-        registry.register(LabelNode.class, new LabelAnalysisHandler());
-        registry.register(ProcedureNode.class, new ProcedureAnalysisHandler());
-        registry.register(InstructionNode.class, new InstructionAnalysisHandler(symbolTable, diagnostics));
-        registry.register(PregNode.class, new PregAnalysisHandler());
-
-        return registry;
+    /**
+     * Bulk-registers pass-1 symbol collectors from a feature registry map.
+     *
+     * @param collectors Map of AST node classes to their symbol collectors.
+     */
+    public void registerAllCollectors(Map<Class<? extends AstNode>, ISymbolCollector> collectors) {
+        this.collectors.putAll(collectors);
     }
 }

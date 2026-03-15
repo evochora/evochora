@@ -6,7 +6,7 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.irgen.DefaultAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrConverterRegistry;
 import org.evochora.compiler.frontend.irgen.IrGenerator;
-import org.evochora.compiler.frontend.irgen.converters.DefineNodeConverter;
+import org.evochora.compiler.features.define.DefineNodeConverter;
 import org.evochora.compiler.features.dir.DirNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.ImportNodeConverter;
 import org.evochora.compiler.frontend.irgen.converters.InstructionNodeConverter;
@@ -23,7 +23,7 @@ import org.evochora.compiler.features.ctx.PushCtxNode;
 import org.evochora.compiler.features.ctx.PushCtxNodeConverter;
 import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.frontend.parser.ast.PregNode;
-import org.evochora.compiler.frontend.parser.features.def.DefineNode;
+import org.evochora.compiler.features.define.DefineNode;
 import org.evochora.compiler.features.dir.DirNode;
 import org.evochora.compiler.frontend.parser.features.importdir.ImportNode;
 import org.evochora.compiler.frontend.parser.features.label.LabelNode;
@@ -38,7 +38,7 @@ import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
 import org.evochora.compiler.features.ctx.PopCtxDirectiveHandler;
 import org.evochora.compiler.features.ctx.PushCtxDirectiveHandler;
-import org.evochora.compiler.frontend.parser.features.def.DefineDirectiveHandler;
+import org.evochora.compiler.features.define.DefineDirectiveHandler;
 import org.evochora.compiler.features.dir.DirDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.importdir.ImportDirectiveHandler;
 import org.evochora.compiler.features.org.OrgDirectiveHandler;
@@ -48,8 +48,9 @@ import org.evochora.compiler.frontend.parser.features.proc.ProcDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.reg.RegDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.require.RequireDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.TestRegistries;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
-import org.evochora.compiler.frontend.semantics.SymbolTable; // NEUER IMPORT
+import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrItem;
@@ -103,9 +104,8 @@ public class EmissionIntegrationTest {
         Parser parser = new Parser(tokens, diags, allHandlers());
         List<AstNode> ast = parser.parse();
 
-        // KORREKTUR: Erstelle eine SymbolTable und übergib sie.
         SymbolTable symbolTable = new SymbolTable(diags);
-        new SemanticAnalyzer(diags, symbolTable).analyze(ast);
+        new SemanticAnalyzer(diags, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diags)).analyze(ast);
 
         assertThat(diags.hasErrors()).as(diags.summary()).isFalse();
 

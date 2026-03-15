@@ -8,7 +8,7 @@ import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
 import org.evochora.compiler.features.ctx.PopCtxDirectiveHandler;
 import org.evochora.compiler.features.ctx.PushCtxDirectiveHandler;
-import org.evochora.compiler.frontend.parser.features.def.DefineDirectiveHandler;
+import org.evochora.compiler.features.define.DefineDirectiveHandler;
 import org.evochora.compiler.features.dir.DirDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.importdir.ImportDirectiveHandler;
 import org.evochora.compiler.features.org.OrgDirectiveHandler;
@@ -18,8 +18,10 @@ import org.evochora.compiler.frontend.parser.features.proc.ProcDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.reg.RegDirectiveHandler;
 import org.evochora.compiler.frontend.parser.features.require.RequireDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.frontend.semantics.AnalysisHandlerRegistry;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
-import org.evochora.compiler.frontend.semantics.SymbolTable; // NEUER IMPORT
+import org.evochora.compiler.frontend.semantics.SymbolTable;
+import org.evochora.compiler.TestRegistries;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -64,7 +66,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         analyzer.analyze(ast);
 
         // Assert
@@ -98,7 +100,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         analyzer.analyze(ast);
 
         // Assert
@@ -127,7 +129,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         analyzer.analyze(ast);
 
         // Assert
@@ -152,7 +154,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         analyzer.analyze(ast);
 
         // Assert
@@ -175,7 +177,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         analyzer.analyze(ast);
 
         // Assert
@@ -198,7 +200,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         analyzer.analyze(ast);
 
         // Assert
@@ -219,7 +221,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         analyzer.analyze(ast);
 
         // Assert
@@ -242,7 +244,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         analyzer.analyze(ast);
 
         // Assert
@@ -267,7 +269,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         analyzer.analyze(ast);
 
         // Assert
@@ -295,7 +297,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         analyzer.analyze(ast);
 
         // Assert
@@ -325,7 +327,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         analyzer.analyze(ast);
 
         // Assert
@@ -352,7 +354,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         analyzer.analyze(ast);
 
         // Assert
@@ -375,7 +377,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         analyzer.analyze(ast);
 
         // Assert
@@ -401,7 +403,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         analyzer.analyze(ast);
 
         // Assert
@@ -421,7 +423,7 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         analyzer.analyze(ast);
 
         assertThat(diagnostics.hasErrors()).isTrue();
@@ -442,7 +444,7 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         analyzer.analyze(ast);
 
         assertThat(diagnostics.hasErrors()).isTrue();
@@ -463,7 +465,7 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         analyzer.analyze(ast);
 
         assertThat(diagnostics.hasErrors()).isTrue();
@@ -491,7 +493,7 @@ public class SemanticAnalyzerTest {
         List<AstNode> ast = getAst(source, diagnostics);
 
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         analyzer.analyze(ast);
 
         // Assert
@@ -515,7 +517,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         analyzer.analyze(ast);
 
         // Assert
@@ -537,7 +539,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         analyzer.analyze(ast);
 
         // Assert
@@ -560,7 +562,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         analyzer.analyze(ast);
 
         // Assert
@@ -583,7 +585,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         analyzer.analyze(ast);
 
         // Assert
@@ -606,7 +608,7 @@ public class SemanticAnalyzerTest {
 
         // Act
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         analyzer.analyze(ast);
 
         // Assert

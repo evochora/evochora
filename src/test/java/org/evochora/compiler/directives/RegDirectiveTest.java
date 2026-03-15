@@ -9,6 +9,8 @@ import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.TestRegistries;
+import org.evochora.compiler.frontend.semantics.ModuleContextTracker;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.frontend.postprocess.AstPostProcessor;
@@ -60,11 +62,11 @@ public class RegDirectiveTest {
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         symbolTable.registerModule(rootAliasChain, "<memory>");
         symbolTable.setCurrentModule(rootAliasChain);
-        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         semanticAnalyzer.analyze(ast);
 
         // AST Post-Processing - Resolves register aliases
-        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable);
+        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable), TestRegistries.postProcessRegistry());
         List<AstNode> processedAst = ast.stream()
             .map(node -> astPostProcessor.process(node))
             .toList();
@@ -106,7 +108,7 @@ public class RegDirectiveTest {
         // Act - Run semantic analysis
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         semanticAnalyzer.analyze(ast);
 
         // Assert - Should have compilation error
@@ -136,7 +138,7 @@ public class RegDirectiveTest {
         // Act - Run semantic analysis
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         semanticAnalyzer.analyze(ast);
 
         // Assert - Should have compilation error
@@ -166,7 +168,7 @@ public class RegDirectiveTest {
         // Act - Run semantic analysis
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         semanticAnalyzer.analyze(ast);
 
         // Assert - Should have compilation error
@@ -201,11 +203,11 @@ public class RegDirectiveTest {
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         symbolTable.registerModule(rootAliasChain, "<memory>");
         symbolTable.setCurrentModule(rootAliasChain);
-        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
         semanticAnalyzer.analyze(ast);
 
         // AST Post-Processing - Resolves register aliases
-        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable);
+        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable), TestRegistries.postProcessRegistry());
         List<AstNode> processedAst = ast.stream()
             .map(node -> astPostProcessor.process(node))
             .toList();

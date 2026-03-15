@@ -1,7 +1,9 @@
 package org.evochora.compiler.frontend.semantics.analysis;
 
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.frontend.parser.features.reg.RegNode;
 import org.evochora.compiler.frontend.semantics.Symbol;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
@@ -44,7 +46,8 @@ public class RegAnalysisHandler implements IAnalysisHandler {
         }
 
         // Everything is valid, so define the alias in the symbol table
-        symbolTable.define(new Symbol(regNode.alias(), Symbol.Type.ALIAS));
+        Token alias = regNode.alias();
+        symbolTable.define(new Symbol(alias.text(), new SourceInfo(alias.fileName(), alias.line(), alias.column()), Symbol.Type.ALIAS));
     }
 
     /**

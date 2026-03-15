@@ -1,7 +1,9 @@
 package org.evochora.compiler.frontend.semantics.analysis;
 
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.frontend.parser.ast.PregNode;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.frontend.semantics.Symbol;
@@ -51,18 +53,8 @@ public class PregAnalysisHandler implements IAnalysisHandler {
         }
 
         // Add the alias to the symbol table with ALIAS type
-        // Create a token for the alias name
-        org.evochora.compiler.model.token.Token aliasToken = new org.evochora.compiler.model.token.Token(
-            pregNode.alias().type(),
-            pregNode.alias().text(),
-            pregNode.alias().value(),
-            pregNode.alias().line(),
-            pregNode.alias().column(),
-            pregNode.alias().fileName()
-        );
-        
-        Symbol aliasSymbol = new Symbol(aliasToken, Symbol.Type.ALIAS);
-        symbolTable.define(aliasSymbol);
+        Token alias = pregNode.alias();
+        symbolTable.define(new Symbol(alias.text(), new SourceInfo(alias.fileName(), alias.line(), alias.column()), Symbol.Type.ALIAS));
     }
 
     /**

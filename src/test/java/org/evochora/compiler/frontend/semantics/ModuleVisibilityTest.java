@@ -1,8 +1,7 @@
 package org.evochora.compiler.frontend.semantics;
 
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.model.token.Token;
-import org.evochora.compiler.model.token.TokenType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -39,13 +38,11 @@ public class ModuleVisibilityTest {
 
         // Define an exported label in the lib module
         symbolTable.setCurrentModule(LIB_CHAIN);
-        Token exportedLabelToken = new Token(TokenType.IDENTIFIER, "HARVEST", null, 1, 0, "/test/lib.evo");
-        Symbol exportedSymbol = new Symbol(exportedLabelToken, Symbol.Type.LABEL, null, true);
+        Symbol exportedSymbol = new Symbol("HARVEST", new SourceInfo("/test/lib.evo", 1, 0), Symbol.Type.LABEL, null, true);
         symbolTable.define(exportedSymbol);
 
         // Define a non-exported label in the lib module
-        Token privateLabelToken = new Token(TokenType.IDENTIFIER, "INTERNAL", null, 2, 0, "/test/lib.evo");
-        Symbol privateSymbol = new Symbol(privateLabelToken, Symbol.Type.LABEL, null, false);
+        Symbol privateSymbol = new Symbol("INTERNAL", new SourceInfo("/test/lib.evo", 2, 0), Symbol.Type.LABEL, null, false);
         symbolTable.define(privateSymbol);
     }
 
@@ -56,7 +53,7 @@ public class ModuleVisibilityTest {
         Optional<ResolvedSymbol> result = symbolTable.resolve("LIB.HARVEST", "/test/main.evo");
 
         assertThat(result).isPresent();
-        assertThat(result.get().symbol().name().text()).isEqualToIgnoringCase("HARVEST");
+        assertThat(result.get().symbol().name()).isEqualToIgnoringCase("HARVEST");
     }
 
     @Test
@@ -101,6 +98,6 @@ public class ModuleVisibilityTest {
         Optional<ResolvedSymbol> result = symbolTable.resolve("DEP.HARVEST", "/test/main.evo");
 
         assertThat(result).isPresent();
-        assertThat(result.get().symbol().name().text()).isEqualToIgnoringCase("HARVEST");
+        assertThat(result.get().symbol().name()).isEqualToIgnoringCase("HARVEST");
     }
 }

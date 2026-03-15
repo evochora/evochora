@@ -1,6 +1,7 @@
-package org.evochora.compiler.frontend.postprocess;
+package org.evochora.compiler.features.define;
 
-import org.evochora.compiler.frontend.parser.features.def.DefineNode;
+import org.evochora.compiler.frontend.postprocess.IPostProcessHandler;
+import org.evochora.compiler.frontend.postprocess.IPostProcessContext;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
 
@@ -17,7 +18,7 @@ public class DefinePostProcessHandler implements IPostProcessHandler {
 	public void collect(AstNode node, IPostProcessContext context) {
 		DefineNode defineNode = (DefineNode) node;
 		if (defineNode.value() instanceof TypedLiteralNode typedValue) {
-			context.collectConstant(defineNode.name().text(), typedValue);
+			context.collectConstant(defineNode.name(), typedValue);
 		}
 	}
 }

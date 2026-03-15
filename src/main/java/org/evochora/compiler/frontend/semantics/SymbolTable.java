@@ -192,8 +192,8 @@ public class SymbolTable {
      * @param symbol The symbol to define.
      */
     public void define(Symbol symbol) {
-        String name = symbol.name().text().toUpperCase();
-        String file = symbol.name().fileName();
+        String name = symbol.name().toUpperCase();
+        String file = symbol.sourceInfo().fileName();
 
         // In module context, use the module's source path as file key.
         // This makes .SOURCE-included symbols resolvable from the module's own tokens.
@@ -207,8 +207,8 @@ public class SymbolTable {
         if (perFile.containsKey(file)) {
             diagnostics.reportError(
                     "Symbol '" + name + "' is already defined in this scope.",
-                    symbol.name().fileName(),
-                    symbol.name().line()
+                    symbol.sourceInfo().fileName(),
+                    symbol.sourceInfo().lineNumber()
             );
         } else {
             perFile.put(file, symbol);
