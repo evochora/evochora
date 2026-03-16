@@ -1,8 +1,5 @@
 package org.evochora.compiler.backend.emit;
 
-import org.evochora.compiler.backend.emit.features.ProcedureMarshallingRule;
-import org.evochora.compiler.backend.emit.features.CallerMarshallingRule;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -20,20 +17,13 @@ public final class EmissionRegistry {
 	public void register(IEmissionRule rule) { rules.add(rule); }
 
 	/**
+	 * Registers all emission rules from the given list.
+	 * @param rules The rules to register.
+	 */
+	public void registerAll(List<IEmissionRule> rules) { this.rules.addAll(rules); }
+
+	/**
 	 * @return The list of registered emission rules.
 	 */
 	public List<IEmissionRule> rules() { return rules; }
-
-	/**
-	 * Initializes a new emission registry with the default rules.
-	 * @return A new registry with default rules.
-	 */
-	public static EmissionRegistry initializeWithDefaults() {
-		EmissionRegistry reg = new EmissionRegistry();
-		reg.register(new ProcedureMarshallingRule());
-		reg.register(new CallerMarshallingRule());
-		return reg;
-	}
 }
-
-

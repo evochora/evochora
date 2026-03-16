@@ -1,4 +1,4 @@
-package org.evochora.compiler.backend.link.features;
+package org.evochora.compiler.features.proc;
 
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.backend.link.ILinkingRule;

@@ -16,8 +16,6 @@ import org.evochora.compiler.frontend.module.ModuleDescriptor;
 import org.evochora.compiler.frontend.module.SourceRootResolver;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
-import org.evochora.compiler.frontend.parser.features.proc.PregDirectiveHandler;
-import org.evochora.compiler.frontend.parser.features.proc.ProcDirectiveHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
@@ -29,24 +27,18 @@ import org.evochora.compiler.frontend.semantics.analysis.*;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.InstructionNode;
-import org.evochora.compiler.frontend.parser.ast.PregNode;
-import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
 import org.evochora.compiler.frontend.irgen.DefaultAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrConverterRegistry;
 import org.evochora.compiler.frontend.irgen.IrGenerator;
 import org.evochora.compiler.frontend.irgen.converters.InstructionNodeConverter;
-import org.evochora.compiler.frontend.irgen.converters.PregNodeConverter;
-import org.evochora.compiler.frontend.irgen.converters.ProcedureNodeConverter;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.frontend.tokenmap.InstructionTokenMapContributor;
-import org.evochora.compiler.frontend.tokenmap.ProcedureTokenMapContributor;
 import org.evochora.compiler.frontend.tokenmap.TokenMapContributorRegistry;
 import org.evochora.compiler.frontend.tokenmap.TokenMapGenerator;
 
 import java.util.ArrayList;
 import org.evochora.compiler.frontend.postprocess.AstPostProcessor;
 import org.evochora.compiler.frontend.postprocess.PostProcessHandlerRegistry;
-import org.evochora.compiler.frontend.postprocess.PregPostProcessHandler;
 import org.evochora.compiler.model.ir.IrProgram;
 import org.evochora.compiler.backend.layout.LayoutDirectiveRegistry;
 import org.evochora.compiler.backend.layout.LayoutEngine;
@@ -55,7 +47,6 @@ import org.evochora.compiler.backend.link.Linker;
 import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.backend.link.LinkingDirectiveRegistry;
 import org.evochora.compiler.backend.link.LinkingRegistry;
-import org.evochora.compiler.backend.link.features.CallSiteBindingRule;
 import org.evochora.compiler.backend.emit.EmissionRegistry;
 import org.evochora.compiler.backend.emit.IEmissionRule;
 import org.evochora.compiler.backend.emit.Emitter;
@@ -231,8 +222,6 @@ public class Compiler implements ICompiler {
         // Phase 3: Parsing (builds AST)
         ParserDirectiveRegistry parserRegistry = new ParserDirectiveRegistry();
         featureRegistry.parserHandlers().forEach(parserRegistry::register);
-        parserRegistry.register(".PROC", new ProcDirectiveHandler());
-        parserRegistry.register(".PREG", new PregDirectiveHandler());
         Parser parser = new Parser(ppResult.tokens(), diagnostics, parserRegistry);
         List<AstNode> ast = parser.parse();
 
@@ -245,10 +234,7 @@ public class Compiler implements ICompiler {
         AnalysisHandlerRegistry analysisRegistry = new AnalysisHandlerRegistry();
         analysisRegistry.registerAll(featureRegistry.analysisHandlers());
         analysisRegistry.registerAllCollectors(featureRegistry.symbolCollectors());
-        analysisRegistry.registerCollector(ProcedureNode.class, new ProcedureSymbolCollector());
-        analysisRegistry.register(ProcedureNode.class, new ProcedureAnalysisHandler());
         analysisRegistry.register(InstructionNode.class, new InstructionAnalysisHandler(symbolTable, diagnostics));
-        analysisRegistry.register(PregNode.class, new PregAnalysisHandler());
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainFilePath, rootAliasChain, analysisRegistry);
         analyzer.analyze(ast);
         if (diagnostics.hasErrors()) {
@@ -257,7 +243,7 @@ public class Compiler implements ICompiler {
 
         // Phase 5: Token Map Generation (for debugger)
         TokenMapContributorRegistry tokenMapRegistry = new TokenMapContributorRegistry();
-        tokenMapRegistry.register(org.evochora.compiler.frontend.parser.features.proc.ProcedureNode.class, new ProcedureTokenMapContributor());
+        tokenMapRegistry.registerAll(featureRegistry.tokenMapContributors());
         tokenMapRegistry.register(org.evochora.compiler.model.ast.InstructionNode.class, new InstructionTokenMapContributor());
         ModuleContextTracker tokenMapTracker = new ModuleContextTracker(symbolTable);
         symbolTable.setCurrentModule(rootAliasChain);
@@ -267,7 +253,6 @@ public class Compiler implements ICompiler {
         // Phase 6: AST Post-Processing (resolve register aliases and constants)
         PostProcessHandlerRegistry postProcessRegistry = new PostProcessHandlerRegistry();
         postProcessRegistry.registerAll(featureRegistry.postProcessHandlers());
-        postProcessRegistry.register(PregNode.class, new PregPostProcessHandler());
         ModuleContextTracker postProcessTracker = new ModuleContextTracker(symbolTable);
         symbolTable.setCurrentModule(rootAliasChain);
         AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, postProcessTracker, postProcessRegistry);
@@ -281,13 +266,12 @@ public class Compiler implements ICompiler {
         IrConverterRegistry irRegistry = IrConverterRegistry.initialize(new DefaultAstNodeToIrConverter());
         irRegistry.registerAll(featureRegistry.irConverters());
         irRegistry.register(InstructionNode.class, new InstructionNodeConverter());
-        irRegistry.register(ProcedureNode.class, new ProcedureNodeConverter());
-        irRegistry.register(PregNode.class, new PregNodeConverter());
         IrGenerator irGenerator = new IrGenerator(diagnostics, irRegistry);
         IrProgram irProgram = irGenerator.generate(ast, programName, rootAliasChain);
 
         // Phase 8: IR Rewriting (apply emission rules)
-        EmissionRegistry emissionRegistry = EmissionRegistry.initializeWithDefaults();
+        EmissionRegistry emissionRegistry = new EmissionRegistry();
+        emissionRegistry.registerAll(featureRegistry.emissionRules());
         java.util.List<org.evochora.compiler.model.ir.IrItem> rewritten = irProgram.items();
         for (IEmissionRule rule : emissionRegistry.rules()) {
             rewritten = rule.apply(rewritten);
@@ -305,7 +289,6 @@ public class Compiler implements ICompiler {
         // Phase 10: Linking (resolve cross-references)
         LinkingRegistry linkingRegistry = new LinkingRegistry();
         linkingRegistry.registerAll(featureRegistry.linkingRules());
-        linkingRegistry.register(new CallSiteBindingRule());
         LinkingDirectiveRegistry linkingDirRegistry = new LinkingDirectiveRegistry((d, c) -> {});
         linkingDirRegistry.registerAll(featureRegistry.linkingDirectiveHandlers());
         Linker linker = new Linker(linkingRegistry, linkingDirRegistry);
@@ -319,7 +302,6 @@ public class Compiler implements ICompiler {
         for (org.evochora.compiler.backend.emit.IEmissionContributor c : featureRegistry.emissionContributors()) {
             emissionContributorRegistry.register(c);
         }
-        emissionContributorRegistry.register(new org.evochora.compiler.backend.emit.ProcedureEmissionContributor());
         Emitter emitter = new Emitter();
         ProgramArtifact artifact;
         try {

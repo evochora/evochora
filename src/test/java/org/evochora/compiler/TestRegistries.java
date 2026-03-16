@@ -1,16 +1,10 @@
 package org.evochora.compiler;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.parser.ast.PregNode;
-import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
 import org.evochora.compiler.frontend.postprocess.PostProcessHandlerRegistry;
-import org.evochora.compiler.frontend.postprocess.PregPostProcessHandler;
 import org.evochora.compiler.frontend.semantics.AnalysisHandlerRegistry;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
 import org.evochora.compiler.frontend.semantics.analysis.InstructionAnalysisHandler;
-import org.evochora.compiler.frontend.semantics.analysis.PregAnalysisHandler;
-import org.evochora.compiler.frontend.semantics.analysis.ProcedureAnalysisHandler;
-import org.evochora.compiler.frontend.semantics.analysis.ProcedureSymbolCollector;
 import org.evochora.compiler.model.ast.InstructionNode;
 
 /**
@@ -34,10 +28,7 @@ public final class TestRegistries {
         registry.registerAllCollectors(featureRegistry.symbolCollectors());
 
         // Inline registrations for not-yet-migrated features (mirrors Compiler.java Phase 4)
-        registry.registerCollector(ProcedureNode.class, new ProcedureSymbolCollector());
-        registry.register(ProcedureNode.class, new ProcedureAnalysisHandler());
         registry.register(InstructionNode.class, new InstructionAnalysisHandler(symbolTable, diagnostics));
-        registry.register(PregNode.class, new PregAnalysisHandler());
 
         return registry;
     }
@@ -51,9 +42,6 @@ public final class TestRegistries {
 
         PostProcessHandlerRegistry registry = new PostProcessHandlerRegistry();
         registry.registerAll(featureRegistry.postProcessHandlers());
-
-        // Inline registrations for not-yet-migrated features (mirrors Compiler.java Phase 6)
-        registry.register(PregNode.class, new PregPostProcessHandler());
 
         return registry;
     }

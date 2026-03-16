@@ -1,8 +1,10 @@
-package org.evochora.compiler.frontend.tokenmap;
+package org.evochora.compiler.features.proc;
 
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.TokenKind;
-import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
+import org.evochora.compiler.frontend.tokenmap.ITokenMapContext;
+import org.evochora.compiler.frontend.tokenmap.ITokenMapContributor;
+
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.token.Token;
 

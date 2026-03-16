@@ -28,6 +28,15 @@ public final class TokenMapContributorRegistry {
 	}
 
 	/**
+	 * Registers all contributors from the given map.
+	 *
+	 * @param contributors The contributors to register.
+	 */
+	public void registerAll(Map<Class<? extends AstNode>, ITokenMapContributor> contributors) {
+		this.contributors.putAll(contributors);
+	}
+
+	/**
 	 * Looks up the contributor for the given AST node type.
 	 *
 	 * @param nodeType The AST node class to look up.

@@ -3,14 +3,14 @@ package org.evochora.compiler.directives;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
-import org.evochora.compiler.frontend.parser.features.proc.PregDirectiveHandler;
-import org.evochora.compiler.frontend.parser.features.proc.ProcDirectiveHandler;
+import org.evochora.compiler.features.proc.PregDirectiveHandler;
+import org.evochora.compiler.features.proc.ProcDirectiveHandler;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.parser.ast.PregNode;
-import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
+import org.evochora.compiler.features.proc.PregNode;
+import org.evochora.compiler.features.proc.ProcedureNode;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;

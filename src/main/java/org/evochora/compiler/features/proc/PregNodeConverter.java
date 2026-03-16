@@ -1,8 +1,8 @@
-package org.evochora.compiler.frontend.irgen.converters;
+package org.evochora.compiler.features.proc;
 
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrGenContext;
-import org.evochora.compiler.frontend.parser.ast.PregNode;
+
 import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrValue;
 

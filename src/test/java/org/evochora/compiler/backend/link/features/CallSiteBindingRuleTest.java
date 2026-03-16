@@ -2,6 +2,7 @@ package org.evochora.compiler.backend.link.features;
 
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.backend.layout.LayoutResult;
+import org.evochora.compiler.features.proc.CallSiteBindingRule;
 import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.model.ir.IrImm;

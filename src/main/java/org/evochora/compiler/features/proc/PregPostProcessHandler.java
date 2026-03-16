@@ -1,6 +1,8 @@
-package org.evochora.compiler.frontend.postprocess;
+package org.evochora.compiler.features.proc;
 
-import org.evochora.compiler.frontend.parser.ast.PregNode;
+
+import org.evochora.compiler.frontend.postprocess.IPostProcessContext;
+import org.evochora.compiler.frontend.postprocess.IPostProcessHandler;
 import org.evochora.compiler.model.ast.AstNode;
 
 /**

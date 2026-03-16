@@ -26,7 +26,9 @@ class EmissionIfpMarshallingTest {
     }
 
     private List<IrItem> runEmission(List<IrItem> items) {
-        EmissionRegistry reg = EmissionRegistry.initializeWithDefaults();
+        EmissionRegistry reg = new EmissionRegistry();
+        reg.register(new org.evochora.compiler.features.proc.ProcedureMarshallingRule());
+        reg.register(new org.evochora.compiler.features.proc.CallerMarshallingRule());
         List<IrItem> out = items;
         for (IEmissionRule r : reg.rules()) {
             out = r.apply(out);

@@ -3,7 +3,7 @@ package org.evochora.compiler.backend;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.backend.emit.EmissionRegistry;
 import org.evochora.compiler.backend.emit.IEmissionRule;
-import org.evochora.compiler.backend.emit.features.ProcedureMarshallingRule;
+import org.evochora.compiler.features.proc.ProcedureMarshallingRule;
 import org.evochora.compiler.model.ir.*;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -24,7 +24,9 @@ public class EmissionProcedureMarshallingTest {
     }
 
     private List<IrItem> runFullEmission(List<IrItem> items) {
-        EmissionRegistry reg = EmissionRegistry.initializeWithDefaults();
+        EmissionRegistry reg = new EmissionRegistry();
+        reg.register(new ProcedureMarshallingRule());
+        reg.register(new org.evochora.compiler.features.proc.CallerMarshallingRule());
         List<IrItem> out = items;
         for (IEmissionRule r : reg.rules()) {
             out = r.apply(out);

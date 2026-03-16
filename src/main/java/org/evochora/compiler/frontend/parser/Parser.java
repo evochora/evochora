@@ -12,7 +12,7 @@ import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.model.ast.VectorLiteralNode;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.features.label.LabelNode;
-import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
+import org.evochora.compiler.features.proc.ProcedureNode;
 
 import java.util.ArrayList;
 import java.util.HashMap;

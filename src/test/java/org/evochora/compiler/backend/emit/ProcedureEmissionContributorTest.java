@@ -1,5 +1,6 @@
 package org.evochora.compiler.backend.emit;
 
+import org.evochora.compiler.features.proc.ProcedureEmissionContributor;
 import org.evochora.compiler.api.ParamInfo;
 import org.evochora.compiler.api.ParamType;
 import org.evochora.compiler.model.ir.IrDirective;

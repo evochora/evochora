@@ -52,7 +52,7 @@ registration file. No phase code is touched.
 |-------|----------|-----------|----------|
 | Phase 2 (PreProcessor) | `PreProcessorHandlerRegistry` | `IPreProcessorHandler` | Token text string |
 | Phase 3 (Parser) | `ParserDirectiveRegistry` | `IParserDirectiveHandler` | Directive name string |
-| Phase 3 (Parser) | `InstructionParsingRegistry` | `IInstructionParsingHandler` | Opcode string |
+| Phase 3 (Parser) | `InstructionParsingRegistry` | `IInstructionParsingHandler` | Opcode string | *(created in D13d)* |
 | Phase 4 (Semantics) | `AnalysisHandlerRegistry` | `IAnalysisHandler` + `ISymbolCollector` | AST node class |
 | Phase 7 (IrGen) | `IrConverterRegistry` | `IAstNodeToIrConverter<T>` | AST node class |
 | Phase 8 (Emission) | `EmissionRegistry` | `IEmissionRule` | Ordered list (no key) |
@@ -139,8 +139,7 @@ org.evochora.compiler
 │   │   ├── ProcedureSymbolCollector.java
 │   │   ├── ProcedureAnalysisHandler.java
 │   │   ├── PregAnalysisHandler.java
-│   │   ├── ProcAliasState.java        # NEW — PR alias state, implements IScopedParserState
-│   │   ├── ProcPostProcessHandler.java # NEW — resolves PR aliases (runs before RegPostProcessHandler)
+│   │   ├── PregPostProcessHandler.java
 │   │   ├── ProcedureNodeConverter.java
 │   │   ├── ProcedureMarshallingRule.java
 │   │   ├── CallerMarshallingRule.java
@@ -323,7 +322,7 @@ public class ProcFeature implements ICompilerFeature {
         ctx.analysisHandler(ProcedureNode.class, new ProcedureAnalysisHandler());
         ctx.analysisHandler(PregNode.class, new PregAnalysisHandler());
         ctx.tokenMapContributor(ProcedureNode.class, new ProcedureTokenMapContributor());
-        ctx.postProcessHandler(PregNode.class, new ProcPostProcessHandler());
+        ctx.postProcessHandler(PregNode.class, new PregPostProcessHandler());
         ctx.irConverter(ProcedureNode.class, new ProcedureNodeConverter());
         // Emission rules transform IR only (List<IrItem> → List<IrItem>), no side-channel state.
         // Binding info flows through the IR data stream: CALL instruction's refOperands/valOperands
@@ -1242,7 +1241,10 @@ include this Token decoupling work.
 | D10 | place | Moved 12 files to `features/place/` (+ `features/place/placement/` sub-package for AST placement types). **[+decouple]** 4 placement components: SingleValueComponent (Token→int), RangeValueComponent (Token pair→int pair), SteppedRangeValueComponent (Token triple→int triple), WildcardValueComponent (Token→pure marker, no data). PlaceNode: added SourceInfo + ISourceLocatable. PlaceNodeConverter simplified (direct int access, no Integer.parseInt). PlaceDirectiveHandler extracts int values at parse boundary. Created PlaceFeature with 3 registrations (parser, irConverter, layoutHandler). **DONE.** | PlaceFeature.java |
 | D11 | require | Moved 5 files to `features/require/`. **[+decouple]** RequireNode: Token `path`, `alias` → String `path` (unquoted via Token.value()), String `alias` + SourceInfo. RequireSymbolCollector/RequireAnalysisHandler updated to use decoupled fields. Created RequireFeature with 4 registrations (parser, symbolCollector, analysisHandler, irConverter). **DONE.** | RequireFeature.java |
 | D12 | importdir | Move 6 files to `features/importdir/`. **[+decouple]** ImportNode: Token `path`, `alias` + UsingClause Tokens → String + SourceInfo (Symbol already decoupled in D7a). **[+context]** PreProcessorContext expanded with `moduleTokens` (constructor injection, immutable). PreProcessor constructor changed: `String rootAliasChain` → `PreProcessorContext ppContext`. ImportSourceHandler becomes parameterless, reads `moduleTokens` from context at execution time. Conditional registration (`if !empty`) removed from Compiler.java — handler checks data availability itself. ImportFeature registers all 5 handlers (preprocessor, parser, symbolCollector, analysisHandler, irConverter), part of StandardFeatures. 7 PreProcessor call sites updated (Compiler.java + 6 tests). **DONE.** | ImportFeature.java |
-| D13 | proc | See D13 details below. **[+cutover: EmissionRegistry]** (Symbol already decoupled in D7a.) | ProcFeature.java |
+| D13a | proc | File Move: 15 files → `features/proc/`. ProcFeature.java with 13 registrations. **[+cutover: EmissionRegistry]** — added `EmissionRegistry.registerAll()`, wired `featureRegistry.emissionRules()` in Compiler.java Phase 8, deleted `EmissionRegistry.initializeWithDefaults()`. **[+cutover: TokenMapContributorRegistry]** — added `TokenMapContributorRegistry.registerAll()`, wired `featureRegistry.tokenMapContributors()` in Compiler.java Phase 5, removed inline registration. Deleted `frontend/parser/ast/`, `frontend/parser/features/proc/`, `backend/emit/features/`, `backend/link/features/`. **DONE.** | ProcFeature.java |
+| D13b | proc | Delete `procedureTable`, `registerProcedure()`, `getProcedureTable()` from Parser. Remove `((Parser) context).registerProcedure()` cast from ProcDirectiveHandler. Duplicate checking runs via SymbolTable only. Update ProcedureDirectiveTest. |  |
+| D13c | proc | **[+decouple]** ProcedureNode: Token `name` → String + SourceInfo + ISourceLocatable. `List<Token> parameters/refParameters/valParameters` → `List<ParamDecl>` (inner record `ParamDecl(String name, SourceInfo sourceInfo)`). PregNode: Token `alias`, `targetRegister` → String + ISourceLocatable (SourceInfo field already present). IrGenContext: `pushProcedureParams(List<Token>)` → `pushProcedureParams(List<String>)`. ProcedureTokenMapContributor updated to use ParamDecl fields. |  |
+| D13d | proc | **[+infra]** Create `IInstructionParsingHandler` + `InstructionParsingRegistry` (planned in Phase C, never implemented). Add `ctx.instructionParser()` to IFeatureRegistrationContext/FeatureRegistry. Extract `parseCallInstruction()` from Parser into `CallInstructionHandler`. Parser dispatches through registry. |  |
 | D14 | instruction | InstructionAnalysisHandler, InstructionNodeConverter, InstructionTokenMapContributor | InstructionFeature.java |
 
 Order rationale: start with simple features (few phases), end with complex ones
@@ -1439,16 +1441,89 @@ Create `ImportFeature.java` with 5 registrations (preprocessor, parser, symbolCo
 
 **D13 details (proc — includes preg):**
 
-Move to `features/proc/`: ProcedureNode, ProcDirectiveHandler, PregNode, PregDirectiveHandler, ProcedureSymbolCollector, ProcedureAnalysisHandler, PregAnalysisHandler, ProcedureNodeConverter, ProcedureMarshallingRule, CallerMarshallingRule, CallSiteBindingRule, ProcedureEmissionContributor, ProcedureTokenMapContributor. (ExportNode was removed — EXPORT is handled as a prefix modifier in Parser.statement(), not as a separate AST node.) CallSiteBindingRule is already parameterless after D9's LinkingContext expansion — register via `ctx.linkingRule(new CallSiteBindingRule())`.
+Split into 4 sub-steps (D13a → D13b → D13c → D13d) due to complexity. D13b (procedureTable deletion) before D13c (Token decoupling) because removing the write-only procedureTable eliminates Token dependencies that simplify subsequent decoupling.
 
-Additionally:
-1. Create `ProcPostProcessHandler` in `features/proc/` — resolves PR aliases in AST. Registered with higher priority than RegPostProcessHandler so PR aliases shadow DR/LR aliases on name conflict.
-2. ProcDirectiveHandler: replace `context.state().pushScope()` / `context.state().popScope()` (generic, no feature imports). Replace `context.declaration()` (already done in C2). Resolve `registerProcedure()` cast — procedure registration moves to ProcFeature or a clean cross-phase extraction pattern. (Note: `RegisterAliasState` was deleted in D8 — PregDirectiveHandler no longer writes to any parser alias state.)
-4. Remove from Parser: `registerProcedure()`, `getProcedureTable()`, `procedureTable` field.
-5. Update tests: ProcedureDirectiveTest (calls `parser.getProcedureTable()`), PregDirectiveTest.
-6. **[+decouple]** ProcedureNode: Token `name`, `parameters`, `refParameters`, `valParameters` → String/List\<String\> + SourceInfo. PregNode: Token `alias`, `targetRegister` → String + SourceInfo. `ProcedureSymbolCollector` and `PregAnalysisHandler` pass `new Symbol(name, sourceInfo, ...)` directly (Symbol already decoupled in D7a).
-7. IrGenContext: `pushProcedureParams(List<Token>)` → `pushProcedureParams(List<String>)`. Remove Token import from IrGenContext.
-8. Extract `parseCallInstruction()` from Parser. Create `IInstructionParsingHandler` interface in `parser/`. Register `CallInstructionHandler` in `features/proc/`. `Parser.instructionStatement()` dispatches through registry for opcodes with custom syntax.
+**D13a — File Move + ProcFeature + EmissionRegistry Cutover:**
+
+Move 15 files to `features/proc/`:
+- Already in `frontend/parser/features/proc/`: ProcDirectiveHandler, ProcedureNode, PregDirectiveHandler
+- Move from `frontend/parser/ast/`: PregNode
+- Move from `frontend/semantics/analysis/`: ProcedureSymbolCollector, ProcedureAnalysisHandler, PregAnalysisHandler
+- Move from `frontend/tokenmap/`: ProcedureTokenMapContributor
+- Move from `frontend/postprocess/`: PregPostProcessHandler
+- Move from `frontend/irgen/converters/`: ProcedureNodeConverter, PregNodeConverter
+- Already in `backend/emit/features/`: ProcedureMarshallingRule, CallerMarshallingRule
+- Move from `backend/emit/`: ProcedureEmissionContributor
+- Already in `backend/link/features/`: CallSiteBindingRule
+
+EmissionRegistry cutover (last `initializeWithDefaults()`):
+1. `ctx.emissionRule()` already exists on `IFeatureRegistrationContext` + `FeatureRegistry`
+2. Add `EmissionRegistry.registerAll(List<IEmissionRule>)` method (same pattern as `LinkingRegistry.registerAll()`)
+3. Wire in Compiler.java Phase 8: `emissionRegistry.registerAll(featureRegistry.emissionRules())` — replaces `initializeWithDefaults()`
+4. Delete `EmissionRegistry.initializeWithDefaults()`
+5. ProcFeature registers ProcedureMarshallingRule + CallerMarshallingRule via `ctx.emissionRule()`
+
+TokenMapContributorRegistry cutover:
+1. Add `TokenMapContributorRegistry.registerAll(Map<Class<? extends AstNode>, ITokenMapContributor>)` method
+2. Wire in Compiler.java Phase 5: `tokenMapRegistry.registerAll(featureRegistry.tokenMapContributors())`
+3. Remove inline registration of ProcedureTokenMapContributor from Compiler.java
+
+Create ProcFeature.java with 13 registrations: parser ×2 (.PROC, .PREG), symbolCollector, analysisHandler ×2, tokenMapContributor, postProcessHandler, irConverter ×2, emissionRule ×2, linkingRule, emissionContributor.
+
+CallSiteBindingRule is already parameterless after D9.
+
+**D13b — Procedure Table Deletion:**
+
+`procedureTable` is a Parser-internal `Map<String, ProcedureNode>` that duplicates the SymbolTable's role. The only runtime writer is `ProcDirectiveHandler` via `((Parser) context).registerProcedure()` — a framework cast that embeds feature knowledge. The only reader is `ProcedureDirectiveTest`. No compilation phase reads it.
+
+1. Delete from Parser: `procedureTable` field, `registerProcedure()`, `getProcedureTable()`
+2. Remove `((Parser) context).registerProcedure(procNode)` from ProcDirectiveHandler
+3. Update ProcedureDirectiveTest: verify procedure registration via SymbolTable instead of procedureTable
+
+**D13c — Token Decoupling:**
+
+ProcedureNode:
+- `Token name` → `String name` + `SourceInfo sourceInfo` (ISourceLocatable)
+- `List<Token> parameters/refParameters/valParameters` → `List<ParamDecl>` each
+- Inner record: `ParamDecl(String name, SourceInfo sourceInfo)` — analogous to `ImportNode.UsingClause`, needed because ProcedureTokenMapContributor requires per-parameter SourceInfo for IDE/LSP support
+- Remove backward-compatible constructors if any
+
+PregNode:
+- `Token alias` → `String alias`
+- `Token targetRegister` → `String targetRegister`
+- Add `implements ISourceLocatable` (SourceInfo field already exists, accessor already present)
+- Helper methods `aliasName()`, `registerIndexValue()`, `fullAliasText()` operate on String fields directly
+
+PregDirectiveHandler (parse boundary extraction):
+- Extract alias/targetRegister as String at parse boundary, pass SourceInfo via `Token.toSourceInfo()` (fixes D7d violation: manual `new SourceInfo(fileName, line, column)` → `alias.toSourceInfo()`)
+
+PregAnalysisHandler:
+- Remove `isValidProcedureRegister()` and `isValidAliasName()` — both check `Token.type()` (TokenType.REGISTER, TokenType.IDENTIFIER) which is unavailable after decoupling. PregDirectiveHandler already performs identical validations at parse time (alias type check lines 31-37, register validation lines 44-72). The duplicate validation is redundant.
+- Remaining logic: `symbolTable.define(...)` using decoupled String/SourceInfo fields directly
+
+IrGenContext:
+- `pushProcedureParams(List<Token>)` → `pushProcedureParams(List<String>)` — method body already only extracts `token.text().toUpperCase()`
+- Remove Token import from IrGenContext
+
+Update consumers: ProcedureSymbolCollector, ProcedureAnalysisHandler, PregAnalysisHandler, ProcedureNodeConverter, PregNodeConverter, ProcedureTokenMapContributor, PregPostProcessHandler.
+
+**D13d — CALL-Parsing Extraction:**
+
+`parseCallInstruction()` is feature-specific syntax hardcoded in Parser.instructionStatement(). Requires creating the instruction parsing infrastructure first (was planned for Phase C but never implemented).
+
+Infrastructure (new files in `frontend/parser/`):
+1. Create `IInstructionParsingHandler` interface with `AstNode parse(ParsingContext context, Token opcodeToken)` method
+2. Create `InstructionParsingRegistry` — opcode-keyed registry (same pattern as ParserDirectiveRegistry)
+3. Add `ctx.instructionParser(String opcode, IInstructionParsingHandler)` to `IFeatureRegistrationContext` + `FeatureRegistry`
+4. Parser receives `InstructionParsingRegistry` (constructor injection, same as `ParserDirectiveRegistry`)
+
+Feature extraction:
+5. Create `CallInstructionHandler implements IInstructionParsingHandler` in `features/proc/`
+6. Move `parseCallInstruction()` logic into `CallInstructionHandler.parse()`
+7. Parser.instructionStatement(): replace `if ("CALL".equalsIgnoreCase(...))` with registry lookup + dispatch
+8. ProcFeature registers via `ctx.instructionParser("CALL", new CallInstructionHandler())`
+
+Note: ProcDirectiveHandler's use of `context.state().pushScope()`/`popScope()` is already clean generic `ParserState` API — no extraction or refactoring needed.
 
 ### Phase E: Cleanup & Relocation
 

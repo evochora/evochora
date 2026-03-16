@@ -1,4 +1,4 @@
-package org.evochora.compiler.frontend.parser.features.proc;
+package org.evochora.compiler.features.proc;
 
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.api.SourceInfo;

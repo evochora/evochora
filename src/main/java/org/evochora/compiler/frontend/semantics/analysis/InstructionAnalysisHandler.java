@@ -78,7 +78,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                     }
 
                     Symbol procSymbol = procSymbolOpt.get().symbol();
-                    if (!(procSymbol.node() instanceof org.evochora.compiler.frontend.parser.features.proc.ProcedureNode procedureNode)) {
+                    if (!(procSymbol.node() instanceof org.evochora.compiler.features.proc.ProcedureNode procedureNode)) {
                         diagnostics.reportError("Internal error: Symbol for procedure '" + procIdentifier.text() + "' does not contain a valid ProcedureNode.", procIdentifier.sourceInfo().fileName(), procIdentifier.sourceInfo().lineNumber());
                         return;
                     }
