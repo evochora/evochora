@@ -1,7 +1,6 @@
 package org.evochora.compiler.features.proc;
 
 import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
-import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParsingContext;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
@@ -86,7 +85,6 @@ public class ProcDirectiveHandler implements IParserDirectiveHandler {
         }
 
         ProcedureNode procNode = new ProcedureNode(procName, exported, parameters, refParameters, valParameters, body);
-        ((Parser) context).registerProcedure(procNode);
         return procNode;
     }
 }

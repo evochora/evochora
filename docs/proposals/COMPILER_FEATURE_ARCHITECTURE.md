@@ -51,8 +51,7 @@ registration file. No phase code is touched.
 | Phase | Registry | Interface | Key Type |
 |-------|----------|-----------|----------|
 | Phase 2 (PreProcessor) | `PreProcessorHandlerRegistry` | `IPreProcessorHandler` | Token text string |
-| Phase 3 (Parser) | `ParserDirectiveRegistry` | `IParserDirectiveHandler` | Directive name string |
-| Phase 3 (Parser) | `InstructionParsingRegistry` | `IInstructionParsingHandler` | Opcode string | *(created in D13d)* |
+| Phase 3 (Parser) | `ParserStatementRegistry` | `IParserStatementHandler` | Keyword string + default handler | *(renamed from ParserDirectiveRegistry in D13d)* |
 | Phase 4 (Semantics) | `AnalysisHandlerRegistry` | `IAnalysisHandler` + `ISymbolCollector` | AST node class |
 | Phase 7 (IrGen) | `IrConverterRegistry` | `IAstNodeToIrConverter<T>` | AST node class |
 | Phase 8 (Emission) | `EmissionRegistry` | `IEmissionRule` | Ordered list (no key) |
@@ -1242,10 +1241,13 @@ include this Token decoupling work.
 | D11 | require | Moved 5 files to `features/require/`. **[+decouple]** RequireNode: Token `path`, `alias` → String `path` (unquoted via Token.value()), String `alias` + SourceInfo. RequireSymbolCollector/RequireAnalysisHandler updated to use decoupled fields. Created RequireFeature with 4 registrations (parser, symbolCollector, analysisHandler, irConverter). **DONE.** | RequireFeature.java |
 | D12 | importdir | Move 6 files to `features/importdir/`. **[+decouple]** ImportNode: Token `path`, `alias` + UsingClause Tokens → String + SourceInfo (Symbol already decoupled in D7a). **[+context]** PreProcessorContext expanded with `moduleTokens` (constructor injection, immutable). PreProcessor constructor changed: `String rootAliasChain` → `PreProcessorContext ppContext`. ImportSourceHandler becomes parameterless, reads `moduleTokens` from context at execution time. Conditional registration (`if !empty`) removed from Compiler.java — handler checks data availability itself. ImportFeature registers all 5 handlers (preprocessor, parser, symbolCollector, analysisHandler, irConverter), part of StandardFeatures. 7 PreProcessor call sites updated (Compiler.java + 6 tests). **DONE.** | ImportFeature.java |
 | D13a | proc | File Move: 15 files → `features/proc/`. ProcFeature.java with 13 registrations. **[+cutover: EmissionRegistry]** — added `EmissionRegistry.registerAll()`, wired `featureRegistry.emissionRules()` in Compiler.java Phase 8, deleted `EmissionRegistry.initializeWithDefaults()`. **[+cutover: TokenMapContributorRegistry]** — added `TokenMapContributorRegistry.registerAll()`, wired `featureRegistry.tokenMapContributors()` in Compiler.java Phase 5, removed inline registration. Deleted `frontend/parser/ast/`, `frontend/parser/features/proc/`, `backend/emit/features/`, `backend/link/features/`. **DONE.** | ProcFeature.java |
-| D13b | proc | Delete `procedureTable`, `registerProcedure()`, `getProcedureTable()` from Parser. Remove `((Parser) context).registerProcedure()` cast from ProcDirectiveHandler. Duplicate checking runs via SymbolTable only. Update ProcedureDirectiveTest. |  |
+| D13b | proc | Delete `procedureTable`, `registerProcedure()`, `getProcedureTable()` from Parser. Remove `((Parser) context).registerProcedure()` cast from ProcDirectiveHandler. Duplicate checking runs via SymbolTable only. Removed `HashMap`/`Map` imports and `ProcedureNode` import from Parser. Updated ProcedureDirectiveTest (removed procedureTable assertions). **DONE.** |  |
 | D13c | proc | **[+decouple]** ProcedureNode: Token `name` → String + SourceInfo + ISourceLocatable. `List<Token> parameters/refParameters/valParameters` → `List<ParamDecl>` (inner record `ParamDecl(String name, SourceInfo sourceInfo)`). PregNode: Token `alias`, `targetRegister` → String + ISourceLocatable (SourceInfo field already present). IrGenContext: `pushProcedureParams(List<Token>)` → `pushProcedureParams(List<String>)`. ProcedureTokenMapContributor updated to use ParamDecl fields. |  |
-| D13d | proc | **[+infra]** Create `IInstructionParsingHandler` + `InstructionParsingRegistry` (planned in Phase C, never implemented). Add `ctx.instructionParser()` to IFeatureRegistrationContext/FeatureRegistry. Extract `parseCallInstruction()` from Parser into `CallInstructionHandler`. Parser dispatches through registry. |  |
-| D14 | instruction | InstructionAnalysisHandler, InstructionNodeConverter, InstructionTokenMapContributor | InstructionFeature.java |
+| D13d | parser | **[+infra]** `ParserDirectiveRegistry` → `ParserStatementRegistry` with keyword-based dispatch + default handler. `IParserDirectiveHandler` → `IParserStatementHandler`. `Parser.statement()` simplified to pure registry dispatch (no feature imports). `ctx.parser()` renamed to `ctx.parserStatement()` on IFeatureRegistrationContext. All existing directive handlers work unchanged. |  |
+| D13e | label | **[+rewrite]** Label syntax (`NAME:`) rewritten in preprocessor to `.LABEL NAME` (same pattern as `^` → `.REPEAT`). Create `LabelPreProcessorHandler` + `LabelDirectiveHandler` in `features/label/`. LabelFeature registers both. Remove hardcoded label parsing from `Parser.statement()`. Parser import of LabelNode eliminated. |  |
+| D13f | proc | Extract `parseCallInstruction()` from Parser into `CallStatementHandler` in `features/proc/`. ProcFeature registers `CALL` as keyword in ParserStatementRegistry. Remove hardcoded CALL check from Parser. |  |
+| D13g | ctx | **[+interface]** Create `IModuleContextBoundary` capability interface in `model/ast/`. PushCtxNode + PopCtxNode implement it. ModuleContextTracker uses interface instead of concrete types — all `features/ctx/` imports eliminated. After D13g: zero framework→feature imports in `frontend/` and `backend/`. |  |
+| D14 | instruction | Default handler for generic instructions (MOV, ADD, etc.) extracted from Parser. InstructionAnalysisHandler, InstructionNodeConverter, InstructionTokenMapContributor consolidated. | InstructionFeature.java |
 
 Order rationale: start with simple features (few phases), end with complex ones
 (proc spans 6+ phases). Each step is independently committable with all tests green.
@@ -1439,9 +1441,9 @@ Token decoupling:
 
 Create `ImportFeature.java` with 5 registrations (preprocessor, parser, symbolCollector, analysisHandler, irConverter). Add to `StandardFeatures.all()`.
 
-**D13 details (proc — includes preg):**
+**D13 details (proc — includes preg + parser unification):**
 
-Split into 4 sub-steps (D13a → D13b → D13c → D13d) due to complexity. D13b (procedureTable deletion) before D13c (Token decoupling) because removing the write-only procedureTable eliminates Token dependencies that simplify subsequent decoupling.
+Split into 7 sub-steps (D13a → D13b → D13c → D13d → D13e → D13f → D13g) due to complexity. D13a-c focus on the proc feature consolidation. D13d-f resolve Parser dependency violations by unifying all statement dispatch through a single `ParserStatementRegistry`. D13g resolves the ModuleContextTracker dependency violation via a capability interface. After D13g, zero framework→feature imports remain.
 
 **D13a — File Move + ProcFeature + EmissionRegistry Cutover:**
 
@@ -1507,23 +1509,68 @@ IrGenContext:
 
 Update consumers: ProcedureSymbolCollector, ProcedureAnalysisHandler, PregAnalysisHandler, ProcedureNodeConverter, PregNodeConverter, ProcedureTokenMapContributor, PregPostProcessHandler.
 
-**D13d — CALL-Parsing Extraction:**
+**D13d — Unified ParserStatementRegistry:**
 
-`parseCallInstruction()` is feature-specific syntax hardcoded in Parser.instructionStatement(). Requires creating the instruction parsing infrastructure first (was planned for Phase C but never implemented).
+Parser (framework code) currently imports from feature packages: `LabelNode` from `features/label/` and `ProcedureNode` from `features/proc/`. This violates the dependency direction rule (framework must never depend on features). Root cause: Parser can only dispatch directives (`.XXX` prefix) generically via `ParserDirectiveRegistry`. Labels (`NAME:`) and the special case `CALL` are hardcoded directly in Parser.
 
-Infrastructure (new files in `frontend/parser/`):
-1. Create `IInstructionParsingHandler` interface with `AstNode parse(ParsingContext context, Token opcodeToken)` method
-2. Create `InstructionParsingRegistry` — opcode-keyed registry (same pattern as ParserDirectiveRegistry)
-3. Add `ctx.instructionParser(String opcode, IInstructionParsingHandler)` to `IFeatureRegistrationContext` + `FeatureRegistry`
-4. Parser receives `InstructionParsingRegistry` (constructor injection, same as `ParserDirectiveRegistry`)
+Solution: Generalize the Parser dispatch so that **every statement** is dispatched through a registry keyed by keyword. The Parser knows no features — it only knows the registry.
 
-Feature extraction:
-5. Create `CallInstructionHandler implements IInstructionParsingHandler` in `features/proc/`
-6. Move `parseCallInstruction()` logic into `CallInstructionHandler.parse()`
-7. Parser.instructionStatement(): replace `if ("CALL".equalsIgnoreCase(...))` with registry lookup + dispatch
-8. ProcFeature registers via `ctx.instructionParser("CALL", new CallInstructionHandler())`
+Infrastructure changes:
+1. Rename `ParserDirectiveRegistry` → `ParserStatementRegistry` — dispatches any keyword (case-insensitive), not just directive names
+2. Rename `IParserDirectiveHandler` → `IParserStatementHandler` — same contract: `AstNode parse(ParsingContext context)`
+3. Add support for exactly one **default handler** — invoked when no keyword matches (handles generic instructions like MOV, ADD). Double registration of keywords or double default registration throws immediately.
+4. Rename `ctx.parser(String, IParserDirectiveHandler)` → `ctx.parserStatement(String keyword, IParserStatementHandler)` on `IFeatureRegistrationContext` + `FeatureRegistry`. Add `ctx.defaultParserStatement(IParserStatementHandler)` for the default handler.
+5. Consolidate `declaration()` and `statement()` into a single dispatch path. Currently `declaration()` checks for DIRECTIVE → `directiveStatement()`, then falls through to `statement()` which checks for label, DIRECTIVE again, and instructions — two dispatch points for the same registry. After D13d: `declaration()` skips newlines, handles EXPORT keyword, then dispatches through the registry (single lookup). The separate `directiveStatement()` method is deleted. EXPORT handling stays in `declaration()` — it is recognized before the registry lookup, and the export flag is passed to handlers via `ParsingContext`.
+6. Parser constructor takes `ParserStatementRegistry` instead of `ParserDirectiveRegistry`
+7. All existing directive handlers work unchanged — directives are just keywords with a `.` prefix
+8. Update all call sites constructing `ParserDirectiveRegistry` (Compiler.java + tests)
 
 Note: ProcDirectiveHandler's use of `context.state().pushScope()`/`popScope()` is already clean generic `ParserState` API — no extraction or refactoring needed.
+
+**D13e — Label Preprocessor Rewrite:**
+
+Label syntax (`NAME:`) is currently parsed directly in `Parser.statement()` (line 112-116), creating a `LabelNode` and importing it from `features/label/`. This violates dependency direction.
+
+Solution: Rewrite label syntax in Phase 2 (preprocessor), following the established `CaretDirectiveHandler` pattern (`^` → `.REPEAT`).
+
+Prerequisite — Preprocessor dispatch expansion:
+The preprocessor currently only looks up DIRECTIVE and IDENTIFIER tokens in the registry (`PreProcessor.expand()` line 55: `if (token.type() == TokenType.DIRECTIVE || token.type() == TokenType.IDENTIFIER)`). A handler registered for `:` (COLON token) would never fire. Fix: Remove the TokenType restriction — the preprocessor looks up every token in the registry. No handler registered → token is skipped as before. This is safe because the registry lookup is a no-op for unregistered tokens.
+
+Label rewrite:
+1. Create `ColonLabelHandler implements IPreProcessorHandler` in `features/label/` — detects `IDENTIFIER COLON` pattern in token stream, rewrites to `.LABEL IDENTIFIER` tokens (plus the rest of the line as the labeled statement)
+2. Create `LabelDirectiveHandler implements IParserStatementHandler` in `features/label/` — parses `.LABEL NAME <statement>` syntax, creates `LabelNode`. Handles EXPORT flag from ParsingContext.
+3. LabelFeature registers both: `ctx.preprocessor(":", new ColonLabelHandler())` and `ctx.parserStatement(".LABEL", new LabelDirectiveHandler())`
+4. Remove hardcoded label detection from `Parser.declaration()` (formerly in `statement()`, consolidated in D13d)
+5. Parser import of `LabelNode` eliminated
+6. Existing assembly files unchanged — `NAME:` remains valid syntax (rewritten transparently)
+
+**D13f — CALL Keyword Extraction:**
+
+`parseCallInstruction()` is feature-specific syntax hardcoded in `Parser.instructionStatement()`. With `ParserStatementRegistry` from D13d, CALL becomes a registered keyword.
+
+1. Create `CallStatementHandler implements IParserStatementHandler` in `features/proc/`
+2. Move `parseCallInstruction()` logic into `CallStatementHandler.parse()`
+3. ProcFeature registers via `ctx.parserStatement("CALL", new CallStatementHandler())`
+4. Remove `parseCallInstruction()` from Parser
+5. Parser import of `ProcedureNode` eliminated (already removed in D13b for procedureTable; this removes the last usage)
+
+**D13g — ModuleContextTracker Dependency Decoupling:**
+
+`ModuleContextTracker` (framework code, `frontend/semantics/`) imports `PushCtxNode` and `PopCtxNode` from `features/ctx/` and uses `instanceof` to detect module context boundaries during AST traversal. This violates the dependency direction rule.
+
+Module context tracking is a framework concern — multiple phases (SemanticAnalyzer, TokenMapGenerator, AstPostProcessor) need to know which module context they are in. The ctx feature *creates* the context boundaries in the AST, but *using* those boundaries is framework responsibility. Analogous to SymbolTable: it is framework, even though features write the symbols.
+
+Solution: A capability interface in `model/ast/` — the same pattern as `ISourceLocatable`. The framework checks only the interface; the feature nodes implement it.
+
+1. Create `IModuleContextBoundary` in `model/ast/`:
+   - `boolean isPush()` — true for context entry, false for context exit
+   - `String aliasChain()` — the module alias chain for push (null for pop and for .SOURCE-type push where parent context is preserved)
+2. `PushCtxNode implements IModuleContextBoundary` — `isPush()` returns `true`, `aliasChain()` returns the existing field
+3. `PopCtxNode implements IModuleContextBoundary` — `isPush()` returns `false`, `aliasChain()` returns `null`
+4. `ModuleContextTracker.handleNode()`: replace `instanceof PushCtxNode`/`PopCtxNode` with `instanceof IModuleContextBoundary boundary`, then `boundary.isPush()` to distinguish push/pop
+5. Remove imports of `PushCtxNode` and `PopCtxNode` from `ModuleContextTracker`
+
+**Completion criterion:** After D13g, zero imports from `features/` packages exist in `frontend/` and `backend/` packages. The dependency direction rule is fully enforced: features depend on the framework, never the reverse.
 
 ### Phase E: Cleanup & Relocation
 

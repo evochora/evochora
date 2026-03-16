@@ -75,11 +75,6 @@ public class ProcedureDirectiveTest {
 
         InstructionNode nopNode = (InstructionNode) bodyWithoutNulls.get(0);
         assertThat(nopNode.opcode()).isEqualTo("NOP");
-
-        var procTable = parser.getProcedureTable();
-        assertThat(procTable).hasSize(1);
-        assertThat(procTable).containsKey("MY_PROC");
-        assertThat(procTable.get("MY_PROC")).isSameAs(procNode);
     }
 
     /**

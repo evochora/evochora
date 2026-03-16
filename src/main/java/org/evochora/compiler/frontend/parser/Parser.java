@@ -12,12 +12,10 @@ import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.model.ast.VectorLiteralNode;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.features.label.LabelNode;
-import org.evochora.compiler.features.proc.ProcedureNode;
+
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -33,7 +31,6 @@ public class Parser implements ParsingContext {
     private int current = 0;
 
     private final ParserState parserState = new ParserState();
-    private final Map<String, ProcedureNode> procedureTable = new HashMap<>();
     private boolean currentExported = false;
 
     /**
@@ -302,24 +299,6 @@ public class Parser implements ParsingContext {
         throw new RuntimeException(errorMessage);
     }
 
-    /**
-     * Registers a new procedure in the parser's procedure table.
-     * @param procedure The procedure node to register.
-     */
-    public void registerProcedure(ProcedureNode procedure) {
-        String name = procedure.name().text().toUpperCase();
-        if (procedureTable.containsKey(name)) {
-            getDiagnostics().reportError("Procedure '" + name + "' is already defined.", procedure.name().fileName(), procedure.name().line());
-        } else {
-            procedureTable.put(name, procedure);
-        }
-    }
-
-    /**
-     * Gets the table of defined procedures.
-     * @return The procedure table.
-     */
-    public Map<String, ProcedureNode> getProcedureTable() { return procedureTable; }
     @Override public DiagnosticsEngine getDiagnostics() { return diagnostics; }
     @Override public ParserState state() { return parserState; }
     @Override public boolean isExported() { return currentExported; }
