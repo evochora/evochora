@@ -58,27 +58,20 @@ public final class Linker {
 
                 context.nextAddress();
 
-                Integer opcodeId = isa.getInstructionIdByName(ins.opcode()).orElse(null);
-                if (opcodeId != null) {
-                    Optional<IInstructionSet.Signature> sigOpt = isa.getSignatureById(opcodeId);
-                    if (sigOpt.isPresent()) {
-                        for (IInstructionSet.ArgKind kind : sigOpt.get().argumentTypes()) {
-                            if (kind == IInstructionSet.ArgKind.VECTOR) {
-                                // VECTOR operands occupy worldDimensions slots (one per dimension)
-                                if (envProps == null || envProps.getWorldShape() == null || envProps.getWorldShape().length == 0) {
-                                    throw new CompilationException("Instruction " + ins.opcode() + " requires vector arguments, which need a world context, but no environment properties were provided.", ins.source());
-                                }
-                                int worldDimensions = envProps.getWorldShape().length;
-                                for (int k = 0; k < worldDimensions; k++) context.nextAddress();
-                            } else {
-                                // REGISTER, LOCATION_REGISTER, LITERAL, LABEL → one slot each
-                                // Note: LABEL used to be N-dimensional coordinates, now it's a single hash value
-                                context.nextAddress();
-                            }
+                final IrInstruction linked = ins;
+                int opcodeId = isa.getInstructionIdByName(linked.opcode())
+                        .orElseThrow(() -> new CompilationException("Unknown instruction '" + linked.opcode() + "'.", linked.source()));
+                IInstructionSet.Signature sig = isa.getSignatureById(opcodeId)
+                        .orElseThrow(() -> new CompilationException("No ISA signature for instruction '" + linked.opcode() + "'.", linked.source()));
+                for (IInstructionSet.ArgKind kind : sig.argumentTypes()) {
+                    if (kind == IInstructionSet.ArgKind.VECTOR) {
+                        if (envProps == null || envProps.getWorldShape() == null || envProps.getWorldShape().length == 0) {
+                            throw new CompilationException("Instruction " + ins.opcode() + " requires vector arguments, which need a world context, but no environment properties were provided.", ins.source());
                         }
+                        int worldDimensions = envProps.getWorldShape().length;
+                        for (int k = 0; k < worldDimensions; k++) context.nextAddress();
                     } else {
-                        int arity = ins.operands() != null ? ins.operands().size() : 0;
-                        for (int i = 0; i < arity; i++) context.nextAddress();
+                        context.nextAddress();
                     }
                 }
             } else {

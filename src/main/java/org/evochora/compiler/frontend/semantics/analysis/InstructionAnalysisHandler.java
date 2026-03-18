@@ -408,7 +408,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
         }
         if (node instanceof NumberLiteralNode || node instanceof TypedLiteralNode) return InstructionArgumentType.LITERAL;
         if (node instanceof VectorLiteralNode) return InstructionArgumentType.VECTOR;
-        if (node instanceof IdentifierNode) return InstructionArgumentType.LABEL; // Is treated as a label until the symbol is resolved
-        return null;
+        if (node instanceof IdentifierNode) return InstructionArgumentType.LABEL;
+        throw new IllegalArgumentException("Unsupported argument node type: " + node.getClass().getSimpleName());
     }
 }

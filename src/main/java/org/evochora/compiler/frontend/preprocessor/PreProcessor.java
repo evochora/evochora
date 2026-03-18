@@ -279,7 +279,9 @@ public class PreProcessor {
      * @param count The number of tokens to remove.
      */
     public void removeTokens(int startIndex, int count) {
-        if (startIndex < 0 || (startIndex + count) > tokens.size()) return;
+        if (startIndex < 0 || (startIndex + count) > tokens.size()) {
+            throw new IllegalArgumentException("Invalid token removal bounds: startIndex=" + startIndex + ", count=" + count + ", tokens.size()=" + tokens.size());
+        }
         tokens.subList(startIndex, startIndex + count).clear();
         this.current = startIndex;
     }

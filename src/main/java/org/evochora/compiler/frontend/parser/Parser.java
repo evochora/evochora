@@ -97,9 +97,12 @@ public class Parser implements ParsingContext {
                 return handler.get().parse(this);
             }
 
-            // Unregistered directive: skip (preprocessing-only directives like .REPEAT, .SOURCE, .MACRO)
+            // After preprocessing, all remaining directives must have a registered handler
             if (check(TokenType.DIRECTIVE)) {
-                advance();
+                Token directive = advance();
+                diagnostics.reportError(
+                        "Unregistered directive '" + directive.text() + "'.",
+                        directive.fileName(), directive.line());
                 return null;
             }
 
