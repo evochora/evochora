@@ -27,9 +27,9 @@ public class ProcDirectiveHandler implements IParserDirectiveHandler {
 
         Token procName = context.consume(TokenType.IDENTIFIER, "Expected procedure name after .PROC.");
         boolean exported = context.isExported();
-        List<Token> parameters = new ArrayList<>();
-        List<Token> refParameters = new ArrayList<>();
-        List<Token> valParameters = new ArrayList<>();
+        List<ProcedureNode.ParamDecl> parameters = new ArrayList<>();
+        List<ProcedureNode.ParamDecl> refParameters = new ArrayList<>();
+        List<ProcedureNode.ParamDecl> valParameters = new ArrayList<>();
         // Flexible loop to parse optional keywords like WITH, REF, and VAL
         while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
             if (context.check(TokenType.IDENTIFIER)) {
@@ -38,18 +38,21 @@ public class ProcDirectiveHandler implements IParserDirectiveHandler {
                     context.advance();
                     // After WITH, only parameters follow until newline
                     while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
-                        parameters.add(context.consume(TokenType.IDENTIFIER, "Expected a formal parameter name after WITH."));
+                        Token p = context.consume(TokenType.IDENTIFIER, "Expected a formal parameter name after WITH.");
+                        parameters.add(new ProcedureNode.ParamDecl(p.text(), p.toSourceInfo()));
                     }
                     break; // No other keywords should follow WITH on the same line
                 } else if ("REF".equalsIgnoreCase(keyword)) {
                     context.advance();
                     while (!context.isAtEnd() && context.check(TokenType.IDENTIFIER) && !"VAL".equalsIgnoreCase(context.peek().text())) {
-                        refParameters.add(context.consume(TokenType.IDENTIFIER, "Expected a formal parameter name after REF."));
+                        Token p = context.consume(TokenType.IDENTIFIER, "Expected a formal parameter name after REF.");
+                        refParameters.add(new ProcedureNode.ParamDecl(p.text(), p.toSourceInfo()));
                     }
                 } else if ("VAL".equalsIgnoreCase(keyword)) {
                     context.advance();
                     while (!context.isAtEnd() && context.check(TokenType.IDENTIFIER) && !"REF".equalsIgnoreCase(context.peek().text())) {
-                        valParameters.add(context.consume(TokenType.IDENTIFIER, "Expected a formal parameter name after VAL."));
+                        Token p = context.consume(TokenType.IDENTIFIER, "Expected a formal parameter name after VAL.");
+                        valParameters.add(new ProcedureNode.ParamDecl(p.text(), p.toSourceInfo()));
                     }
                 } else {
                     // Unknown keyword in declaration
@@ -84,7 +87,6 @@ public class ProcDirectiveHandler implements IParserDirectiveHandler {
             context.advance(); // consume .ENDP
         }
 
-        ProcedureNode procNode = new ProcedureNode(procName, exported, parameters, refParameters, valParameters, body);
-        return procNode;
+        return new ProcedureNode(procName.text(), exported, parameters, refParameters, valParameters, body, procName.toSourceInfo());
     }
 }

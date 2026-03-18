@@ -1,59 +1,41 @@
 package org.evochora.compiler.features.proc;
 
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.ISourceLocatable;
 import org.evochora.compiler.api.SourceInfo;
-import org.evochora.compiler.model.token.Token;
 
 /**
  * AST node representing a .PREG directive within a procedure.
  * This directive creates a procedure-local register alias.
+ *
+ * @param sourceInfo the source location information
+ * @param alias the alias name (e.g., %TMP)
+ * @param targetRegister the target procedure register (e.g., %PR0)
  */
 public record PregNode(
         SourceInfo sourceInfo,
-        Token alias,
-        Token targetRegister
-) implements AstNode {
-    
+        String alias,
+        String targetRegister
+) implements AstNode, ISourceLocatable {
+
     /**
-     * Creates a new PregNode with the specified components.
-     *
-     * @param sourceInfo the source location information
-     * @param alias the alias token (e.g., %TMP)
-     * @param registerIndex the procedure register index token (0 or 1)
-     */
-    public PregNode {
-        // No validation needed - the compiler architecture handles this through diagnostics
-    }
-    
-    @Override
-    public SourceInfo sourceInfo() {
-        return sourceInfo;
-    }
-    
-    /**
-     * Gets the alias name as a string.
-     *
-     * @return the alias name without the % prefix
+     * Gets the alias name without the % prefix.
      */
     public String aliasName() {
-        return alias.text().substring(1); // Remove % prefix
+        return alias.substring(1);
     }
-    
+
     /**
      * Gets the procedure register index as an integer.
-     *
-     * @return the procedure register index (0 or 1)
      */
     public int registerIndexValue() {
-        return Integer.parseInt(targetRegister.text().substring(3)); // Extract index from %PR0 or %PR1
+        return Integer.parseInt(targetRegister.substring(3));
     }
-    
+
     /**
      * Gets the full alias text including the % prefix.
-     *
-     * @return the full alias text (e.g., %TMP)
      */
     public String fullAliasText() {
-        return alias.text();
+        return alias;
     }
 }

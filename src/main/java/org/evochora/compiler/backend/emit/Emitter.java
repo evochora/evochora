@@ -166,7 +166,10 @@ public class Emitter {
         Map<int[], Integer> sortedMachineCodeLayout = sortMapByCoordinate(machineCodeLayout);
         Map<int[], PlacedMolecule> sortedInitialObjects = sortMapByCoordinate(initialObjects);
 
-        String programId = Integer.toHexString(machineCodeLayout.hashCode());
+        int contentHash = sortedMachineCodeLayout.entrySet().stream()
+                .mapToInt(e -> java.util.Arrays.hashCode(e.getKey()) * 31 + e.getValue().hashCode())
+                .sum();
+        String programId = Integer.toHexString(contentHash);
 
         // Build label hash maps for fuzzy jump matching visualization
         Map<Integer, String> labelValueToName = new HashMap<>();

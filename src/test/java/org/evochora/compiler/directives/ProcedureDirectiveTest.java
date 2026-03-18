@@ -66,7 +66,7 @@ public class ProcedureDirectiveTest {
         assertThat(ast.get(0)).isInstanceOf(ProcedureNode.class);
 
         ProcedureNode procNode = (ProcedureNode) ast.get(0);
-        assertThat(procNode.name().text()).isEqualTo("MY_PROC");
+        assertThat(procNode.name()).isEqualTo("MY_PROC");
         assertThat(procNode.exported()).isFalse();
 
         List<AstNode> bodyWithoutNulls = procNode.body().stream().filter(Objects::nonNull).toList();
@@ -104,11 +104,11 @@ public class ProcedureDirectiveTest {
         assertThat(ast.get(0)).isInstanceOf(ProcedureNode.class);
 
         ProcedureNode procNode = (ProcedureNode) ast.get(0);
-        assertThat(procNode.name().text()).isEqualTo("ADD");
+        assertThat(procNode.name()).isEqualTo("ADD");
         assertThat(procNode.exported()).isFalse();
         assertThat(procNode.refParameters()).hasSize(2);
-        assertThat(procNode.refParameters().get(0).text()).isEqualTo("A");
-        assertThat(procNode.refParameters().get(1).text()).isEqualTo("B");
+        assertThat(procNode.refParameters().get(0).name()).isEqualTo("A");
+        assertThat(procNode.refParameters().get(1).name()).isEqualTo("B");
     }
 
     /**
@@ -139,9 +139,9 @@ public class ProcedureDirectiveTest {
         assertThat(ast.get(0)).isInstanceOf(ProcedureNode.class);
 
         ProcedureNode procNode = (ProcedureNode) ast.get(0);
-        assertThat(procNode.name().text()).isEqualTo("FULL_PROC");
+        assertThat(procNode.name()).isEqualTo("FULL_PROC");
         assertThat(procNode.exported()).isTrue();
-        assertThat(procNode.refParameters()).hasSize(1).extracting(Token::text).containsExactly("A");
+        assertThat(procNode.refParameters()).hasSize(1).extracting(ProcedureNode.ParamDecl::name).containsExactly("A");
 
         List<AstNode> bodyDirectives = procNode.body().stream()
                 .filter(n -> !(n instanceof InstructionNode))
@@ -165,8 +165,8 @@ public class ProcedureDirectiveTest {
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(ast).hasSize(1);
         ProcedureNode procNode = (ProcedureNode) ast.get(0);
-        assertThat(procNode.name().text()).isEqualTo("myProc");
-        assertThat(procNode.refParameters()).hasSize(2).extracting(Token::text).containsExactly("rA", "rB");
+        assertThat(procNode.name()).isEqualTo("myProc");
+        assertThat(procNode.refParameters()).hasSize(2).extracting(ProcedureNode.ParamDecl::name).containsExactly("rA", "rB");
         assertThat(procNode.valParameters()).isEmpty();
         assertThat(procNode.parameters()).isEmpty();
     }
@@ -186,8 +186,8 @@ public class ProcedureDirectiveTest {
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(ast).hasSize(1);
         ProcedureNode procNode = (ProcedureNode) ast.get(0);
-        assertThat(procNode.name().text()).isEqualTo("myProc");
-        assertThat(procNode.valParameters()).hasSize(2).extracting(Token::text).containsExactly("v1", "v2");
+        assertThat(procNode.name()).isEqualTo("myProc");
+        assertThat(procNode.valParameters()).hasSize(2).extracting(ProcedureNode.ParamDecl::name).containsExactly("v1", "v2");
         assertThat(procNode.refParameters()).isEmpty();
         assertThat(procNode.parameters()).isEmpty();
     }
@@ -207,9 +207,9 @@ public class ProcedureDirectiveTest {
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(ast).hasSize(1);
         ProcedureNode procNode = (ProcedureNode) ast.get(0);
-        assertThat(procNode.name().text()).isEqualTo("myProc");
-        assertThat(procNode.refParameters()).hasSize(1).extracting(Token::text).containsExactly("rA");
-        assertThat(procNode.valParameters()).hasSize(1).extracting(Token::text).containsExactly("v1");
+        assertThat(procNode.name()).isEqualTo("myProc");
+        assertThat(procNode.refParameters()).hasSize(1).extracting(ProcedureNode.ParamDecl::name).containsExactly("rA");
+        assertThat(procNode.valParameters()).hasSize(1).extracting(ProcedureNode.ParamDecl::name).containsExactly("v1");
         assertThat(procNode.parameters()).isEmpty();
     }
 
@@ -228,9 +228,9 @@ public class ProcedureDirectiveTest {
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(ast).hasSize(1);
         ProcedureNode procNode = (ProcedureNode) ast.get(0);
-        assertThat(procNode.name().text()).isEqualTo("myProc");
-        assertThat(procNode.valParameters()).hasSize(1).extracting(Token::text).containsExactly("v1");
-        assertThat(procNode.refParameters()).hasSize(1).extracting(Token::text).containsExactly("rA");
+        assertThat(procNode.name()).isEqualTo("myProc");
+        assertThat(procNode.valParameters()).hasSize(1).extracting(ProcedureNode.ParamDecl::name).containsExactly("v1");
+        assertThat(procNode.refParameters()).hasSize(1).extracting(ProcedureNode.ParamDecl::name).containsExactly("rA");
         assertThat(procNode.parameters()).isEmpty();
     }
 
@@ -249,7 +249,7 @@ public class ProcedureDirectiveTest {
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(ast).hasSize(1);
         ProcedureNode procNode = (ProcedureNode) ast.get(0);
-        assertThat(procNode.name().text()).isEqualTo("myProc");
+        assertThat(procNode.name()).isEqualTo("myProc");
         assertThat(procNode.refParameters()).isEmpty();
         assertThat(procNode.valParameters()).isEmpty();
         assertThat(procNode.parameters()).isEmpty();

@@ -17,6 +17,6 @@ public class PregPostProcessHandler implements IPostProcessHandler {
 	@Override
 	public void collect(AstNode node, IPostProcessContext context) {
 		PregNode pregNode = (PregNode) node;
-		context.collectRegisterAlias(pregNode.alias().text(), pregNode.targetRegister().text());
+		context.collectRegisterAlias(pregNode.alias(), pregNode.targetRegister());
 	}
 }

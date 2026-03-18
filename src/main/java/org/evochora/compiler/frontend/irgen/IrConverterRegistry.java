@@ -39,7 +39,6 @@ public final class IrConverterRegistry {
 	 *
 	 * @param converters Map of AST node classes to their converters.
 	 */
-	@SuppressWarnings("unchecked")
 	public void registerAll(Map<Class<? extends AstNode>, IAstNodeToIrConverter<?>> converters) {
 		converters.forEach((nodeType, converter) ->
 				byClass.put(nodeType, (IAstNodeToIrConverter<? extends AstNode>) converter));

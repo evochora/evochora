@@ -1,12 +1,10 @@
 package org.evochora.compiler.features.proc;
 
-import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.api.TokenKind;
 import org.evochora.compiler.frontend.tokenmap.ITokenMapContext;
 import org.evochora.compiler.frontend.tokenmap.ITokenMapContributor;
 
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.model.token.Token;
 
 import java.util.List;
 
@@ -22,11 +20,10 @@ public class ProcedureTokenMapContributor implements ITokenMapContributor {
 	public void contribute(AstNode node, ITokenMapContext context) {
 		ProcedureNode procNode = (ProcedureNode) node;
 
-		// qualifiedName = module-qualified scope name (e.g., "ENERGY.HARVEST")
 		String qualifiedName = context.currentScope();
 		context.addToken(
-			procNode.name().toSourceInfo(),
-			procNode.name().text(), TokenKind.PROCEDURE, "global", qualifiedName);
+			procNode.sourceInfo(),
+			procNode.name(), TokenKind.PROCEDURE, "global", qualifiedName);
 
 		String procScope = context.currentScope();
 		addParameters(procNode.parameters(), procScope, context);
@@ -34,12 +31,12 @@ public class ProcedureTokenMapContributor implements ITokenMapContributor {
 		addParameters(procNode.valParameters(), procScope, context);
 	}
 
-	private void addParameters(List<Token> params, String scope, ITokenMapContext context) {
+	private void addParameters(List<ProcedureNode.ParamDecl> params, String scope, ITokenMapContext context) {
 		if (params == null) return;
-		for (Token param : params) {
+		for (ProcedureNode.ParamDecl param : params) {
 			context.addToken(
-				param.toSourceInfo(),
-				param.text(), TokenKind.VARIABLE, scope);
+				param.sourceInfo(),
+				param.name(), TokenKind.VARIABLE, scope);
 		}
 	}
 }

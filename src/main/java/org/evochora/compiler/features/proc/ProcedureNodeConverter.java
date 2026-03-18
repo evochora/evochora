@@ -6,7 +6,9 @@ import org.evochora.compiler.frontend.irgen.IrGenContext;
 import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrValue;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -16,47 +18,35 @@ import java.util.stream.Collectors;
  */
 public final class ProcedureNodeConverter implements IAstNodeToIrConverter<ProcedureNode> {
 
-	/**
-	 * {@inheritDoc}
-	 * <p>
-	 * This implementation converts the {@link ProcedureNode} to a sequence of
-	 * `proc_enter` directive, the converted body, and a `proc_exit` directive.
-	 * It also manages the procedure parameter scope.
-	 *
-	 * @param node The node to convert.
-	 * @param ctx  The generation context.
-	 */
 	@Override
 	public void convert(ProcedureNode node, IrGenContext ctx) {
-		// Define a module-qualified label at the procedure entry so CALL <name> can link to it
-		String qualifiedName = ctx.qualifyName(node.name().text());
+		String qualifiedName = ctx.qualifyName(node.name());
 		ctx.emit(new org.evochora.compiler.model.ir.IrLabelDef(qualifiedName, ctx.sourceOf(node)));
-		// Install parameter names for this procedure scope so identifiers can resolve to %FPRx
-		// Collect all parameters (old-style, REF, and VAL) into a single list
-		java.util.List<org.evochora.compiler.model.token.Token> allParams = new java.util.ArrayList<>();
+
+		List<String> allParams = new ArrayList<>();
 		if (node.parameters() != null) {
-			allParams.addAll(node.parameters());
+			node.parameters().stream().map(ProcedureNode.ParamDecl::name).forEach(allParams::add);
 		}
 		if (node.refParameters() != null) {
-			allParams.addAll(node.refParameters());
+			node.refParameters().stream().map(ProcedureNode.ParamDecl::name).forEach(allParams::add);
 		}
 		if (node.valParameters() != null) {
-			allParams.addAll(node.valParameters());
+			node.valParameters().stream().map(ProcedureNode.ParamDecl::name).forEach(allParams::add);
 		}
 		ctx.pushProcedureParams(allParams);
+
 		Map<String, IrValue> enterArgs = new HashMap<>();
 		enterArgs.put("name", new IrValue.Str(qualifiedName));
 		enterArgs.put("arity", new IrValue.Int64(node.parameters() != null ? node.parameters().size() : 0));
 		enterArgs.put("exported", new IrValue.Bool(node.exported()));
 		if (node.refParameters() != null) {
-			enterArgs.put("refParams", new IrValue.ListVal(node.refParameters().stream().map(t -> new IrValue.Str(t.text())).collect(Collectors.toList())));
+			enterArgs.put("refParams", new IrValue.ListVal(node.refParameters().stream().map(p -> new IrValue.Str(p.name())).collect(Collectors.toList())));
 		}
 		if (node.valParameters() != null) {
-			enterArgs.put("valParams", new IrValue.ListVal(node.valParameters().stream().map(t -> new IrValue.Str(t.text())).collect(Collectors.toList())));
+			enterArgs.put("valParams", new IrValue.ListVal(node.valParameters().stream().map(p -> new IrValue.Str(p.name())).collect(Collectors.toList())));
 		}
 		ctx.emit(new IrDirective("core", "proc_enter", enterArgs, ctx.sourceOf(node)));
 
-		// Convert body inline to preserve logical grouping
 		node.body().forEach(ctx::convert);
 
 		Map<String, IrValue> exitArgs = new HashMap<>();
@@ -64,14 +54,12 @@ public final class ProcedureNodeConverter implements IAstNodeToIrConverter<Proce
 		exitArgs.put("arity", new IrValue.Int64(node.parameters() != null ? node.parameters().size() : 0));
 		exitArgs.put("exported", new IrValue.Bool(node.exported()));
 		if (node.refParameters() != null) {
-			exitArgs.put("refParams", new IrValue.ListVal(node.refParameters().stream().map(t -> new IrValue.Str(t.text())).collect(Collectors.toList())));
+			exitArgs.put("refParams", new IrValue.ListVal(node.refParameters().stream().map(p -> new IrValue.Str(p.name())).collect(Collectors.toList())));
 		}
 		if (node.valParameters() != null) {
-			exitArgs.put("valParams", new IrValue.ListVal(node.valParameters().stream().map(t -> new IrValue.Str(t.text())).collect(Collectors.toList())));
+			exitArgs.put("valParams", new IrValue.ListVal(node.valParameters().stream().map(p -> new IrValue.Str(p.name())).collect(Collectors.toList())));
 		}
 		ctx.emit(new IrDirective("core", "proc_exit", exitArgs, ctx.sourceOf(node)));
 		ctx.popProcedureParams();
 	}
 }
-
-

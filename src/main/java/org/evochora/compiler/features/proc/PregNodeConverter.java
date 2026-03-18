@@ -19,8 +19,8 @@ public final class PregNodeConverter implements IAstNodeToIrConverter<PregNode> 
 
     @Override
     public void convert(PregNode node, IrGenContext ctx) {
-        String qualifiedName = ctx.qualifyName(node.alias().text());
-        String registerName = node.targetRegister().text();
+        String qualifiedName = ctx.qualifyName(node.alias());
+        String registerName = node.targetRegister();
 
         ctx.emit(new IrDirective("reg", "reg_alias", Map.of(
                 "name", new IrValue.Str(qualifiedName),

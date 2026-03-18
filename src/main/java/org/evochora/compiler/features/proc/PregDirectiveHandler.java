@@ -6,7 +6,6 @@ import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.model.ast.AstNode;
 
-import org.evochora.compiler.api.SourceInfo;
 import org.evochora.runtime.Config;
 
 /**
@@ -71,12 +70,6 @@ public class PregDirectiveHandler implements IParserDirectiveHandler {
             return null;
         }
 
-        SourceInfo sourceInfo = new SourceInfo(
-            alias.fileName(),
-            alias.line(),
-            alias.column()
-        );
-
-        return new PregNode(sourceInfo, alias, targetRegister);
+        return new PregNode(alias.toSourceInfo(), alias.text(), targetRegister.text());
     }
 }

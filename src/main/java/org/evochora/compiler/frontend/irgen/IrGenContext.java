@@ -2,7 +2,7 @@ package org.evochora.compiler.frontend.irgen;
 
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.model.token.Token;
+
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.ISourceLocatable;
@@ -100,13 +100,13 @@ public final class IrGenContext {
 
 	/**
 	 * Pushes a new parameter scope for a procedure.
-	 * @param params The list of parameter name tokens.
+	 * @param params The list of parameter names.
 	 */
-	public void pushProcedureParams(List<Token> params) {
+	public void pushProcedureParams(List<String> params) {
 		Map<String, Integer> map = new HashMap<>();
 		if (params != null) {
 			for (int i = 0; i < params.size(); i++) {
-				String name = params.get(i).text().toUpperCase();
+				String name = params.get(i).toUpperCase();
 				map.put(name, i);
 			}
 		}

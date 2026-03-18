@@ -10,7 +10,6 @@ import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.model.ast.VectorLiteralNode;
-import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.features.label.LabelNode;
 
 

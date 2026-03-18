@@ -85,10 +85,10 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
 
                     // Validate argument counts
                     if (instructionNode.refArguments().size() != procedureNode.refParameters().size()) {
-                        diagnostics.reportError(String.format("Procedure '%s' expects %d REF argument(s), but received %d.", procedureNode.name().text(), procedureNode.refParameters().size(), instructionNode.refArguments().size()), instructionNode.sourceInfo().fileName(), instructionNode.sourceInfo().lineNumber());
+                        diagnostics.reportError(String.format("Procedure '%s' expects %d REF argument(s), but received %d.", procedureNode.name(), procedureNode.refParameters().size(), instructionNode.refArguments().size()), instructionNode.sourceInfo().fileName(), instructionNode.sourceInfo().lineNumber());
                     }
                     if (instructionNode.valArguments().size() != procedureNode.valParameters().size()) {
-                        diagnostics.reportError(String.format("Procedure '%s' expects %d VAL argument(s), but received %d.", procedureNode.name().text(), procedureNode.valParameters().size(), instructionNode.valArguments().size()), instructionNode.sourceInfo().fileName(), instructionNode.sourceInfo().lineNumber());
+                        diagnostics.reportError(String.format("Procedure '%s' expects %d VAL argument(s), but received %d.", procedureNode.name(), procedureNode.valParameters().size(), instructionNode.valArguments().size()), instructionNode.sourceInfo().fileName(), instructionNode.sourceInfo().lineNumber());
                     }
 
                     // Validate REF argument types
