@@ -2,7 +2,7 @@ package org.evochora.compiler.features.reg;
 
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
-import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
+import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.parser.ParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
 
@@ -10,7 +10,7 @@ import org.evochora.compiler.model.ast.AstNode;
  * Handler for the .REG directive.
  * Parses a register alias and adds it to the parser's alias table.
  */
-public class RegDirectiveHandler implements IParserDirectiveHandler {
+public class RegDirectiveHandler implements IParserStatementHandler {
 
     /**
      * Parses a .REG directive.

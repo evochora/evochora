@@ -1,6 +1,6 @@
 package org.evochora.compiler.features.org;
 
-import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
+import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.parser.ParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.VectorLiteralNode;
@@ -9,7 +9,7 @@ import org.evochora.compiler.model.ast.VectorLiteralNode;
  * Handles the parsing of the <code>.ORG</code> directive.
  * This directive sets the origin (the starting position) for subsequent code.
  */
-public class OrgDirectiveHandler implements IParserDirectiveHandler {
+public class OrgDirectiveHandler implements IParserStatementHandler {
 
     /**
      * Parses an <code>.ORG</code> directive.

@@ -3,17 +3,18 @@ package org.evochora.compiler.frontend.parser;
 import org.evochora.compiler.model.ast.AstNode;
 
 /**
- * Handler interface for directives processed during the parsing phase.
- * Parser handlers consume directive tokens and produce AST nodes.
+ * Handler interface for statements processed during the parsing phase.
+ * Statement handlers consume tokens and produce AST nodes.
+ * Statements are dispatched by keyword (directives, opcodes, or other identifiers).
  */
-public interface IParserDirectiveHandler {
+public interface IParserStatementHandler {
 
     /**
-     * Parses the directive and its arguments from the token stream.
+     * Parses the statement and its arguments from the token stream.
      *
      * @param context The parsing context providing access to the token stream.
-     * @return An AST node representing this directive, or {@code null} if the
-     *         directive does not produce a node (e.g., .DEFINE, .REG).
+     * @return An AST node representing this statement, or {@code null} if the
+     *         statement does not produce a node (e.g., .DEFINE, .REG).
      */
     AstNode parse(ParsingContext context);
 }

@@ -17,7 +17,7 @@ public class OrgFeature implements ICompilerFeature {
     @Override
     public void register(IFeatureRegistrationContext ctx) {
         // Phase 3: Parsing
-        ctx.parser(".ORG", new OrgDirectiveHandler());
+        ctx.parserStatement(".ORG", new OrgDirectiveHandler());
 
         // Phase 7: IR Generation
         ctx.irConverter(OrgNode.class, new OrgNodeConverter());

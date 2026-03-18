@@ -7,7 +7,7 @@ import org.evochora.compiler.backend.link.ILinkingDirectiveHandler;
 import org.evochora.compiler.backend.link.ILinkingRule;
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.module.IDependencyScanHandler;
-import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
+import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.postprocess.IPostProcessHandler;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
@@ -35,7 +35,8 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 
 	private final List<IDependencyScanHandler> dependencyScanHandlers = new ArrayList<>();
 	private final Map<String, IPreProcessorHandler> preprocessorHandlers = new HashMap<>();
-	private final Map<String, IParserDirectiveHandler> parserHandlers = new HashMap<>();
+	private final Map<String, IParserStatementHandler> parserStatementHandlers = new HashMap<>();
+	private IParserStatementHandler defaultParserStatementHandler;
 	private final Map<Class<? extends AstNode>, ISymbolCollector> symbolCollectors = new HashMap<>();
 	private final Map<Class<? extends AstNode>, IAnalysisHandler> analysisHandlers = new HashMap<>();
 	private final Map<Class<? extends AstNode>, ITokenMapContributor> tokenMapContributors = new HashMap<>();
@@ -60,8 +61,13 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	}
 
 	@Override
-	public void parser(String directive, IParserDirectiveHandler handler) {
-		parserHandlers.put(directive.toUpperCase(), handler);
+	public void parserStatement(String keyword, IParserStatementHandler handler) {
+		parserStatementHandlers.put(keyword.toUpperCase(), handler);
+	}
+
+	@Override
+	public void defaultParserStatement(IParserStatementHandler handler) {
+		this.defaultParserStatementHandler = handler;
 	}
 
 	@Override
@@ -124,8 +130,12 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 		return Collections.unmodifiableMap(preprocessorHandlers);
 	}
 
-	public Map<String, IParserDirectiveHandler> parserHandlers() {
-		return Collections.unmodifiableMap(parserHandlers);
+	public Map<String, IParserStatementHandler> parserStatementHandlers() {
+		return Collections.unmodifiableMap(parserStatementHandlers);
+	}
+
+	public IParserStatementHandler defaultParserStatementHandler() {
+		return defaultParserStatementHandler;
 	}
 
 	public Map<Class<? extends AstNode>, ISymbolCollector> symbolCollectors() {

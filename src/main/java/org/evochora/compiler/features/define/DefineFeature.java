@@ -17,7 +17,7 @@ public class DefineFeature implements ICompilerFeature {
     @Override
     public void register(IFeatureRegistrationContext ctx) {
         // Phase 3: Parsing
-        ctx.parser(".DEFINE", new DefineDirectiveHandler());
+        ctx.parserStatement(".DEFINE", new DefineDirectiveHandler());
 
         // Phase 4: Semantic Analysis
         ctx.analysisHandler(DefineNode.class, new DefineAnalysisHandler());

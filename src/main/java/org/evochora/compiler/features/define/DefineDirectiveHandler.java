@@ -1,6 +1,6 @@
 package org.evochora.compiler.features.define;
 
-import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
+import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.parser.ParsingContext;
@@ -10,7 +10,7 @@ import org.evochora.compiler.model.ast.AstNode;
  * Handler for the <code>.DEFINE</code> directive.
  * Parses a constant definition and creates a {@link DefineNode} in the AST.
  */
-public class DefineDirectiveHandler implements IParserDirectiveHandler {
+public class DefineDirectiveHandler implements IParserStatementHandler {
 
     /**
      * Parses a <code>.DEFINE</code> directive.

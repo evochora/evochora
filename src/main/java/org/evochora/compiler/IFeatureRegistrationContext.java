@@ -7,7 +7,7 @@ import org.evochora.compiler.backend.link.ILinkingDirectiveHandler;
 import org.evochora.compiler.backend.link.ILinkingRule;
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.module.IDependencyScanHandler;
-import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
+import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.postprocess.IPostProcessHandler;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
@@ -53,12 +53,20 @@ public interface IFeatureRegistrationContext {
 	// Phase 3: Parsing
 
 	/**
-	 * Registers a parser directive handler for Phase 3.
+	 * Registers a parser statement handler for Phase 3.
 	 *
-	 * @param directive The directive name (e.g., ".ORG", ".PROC", ".DEFINE").
-	 * @param handler   The handler that parses this directive into an AST node.
+	 * @param keyword The keyword that triggers this handler (e.g., ".ORG", ".PROC", "CALL").
+	 * @param handler The handler that parses this statement into an AST node.
 	 */
-	void parser(String directive, IParserDirectiveHandler handler);
+	void parserStatement(String keyword, IParserStatementHandler handler);
+
+	/**
+	 * Registers the default parser statement handler for Phase 3.
+	 * The default handler is invoked for unrecognized keywords (e.g., generic instructions).
+	 *
+	 * @param handler The default handler.
+	 */
+	void defaultParserStatement(IParserStatementHandler handler);
 
 	// Phase 4: Semantic Analysis
 

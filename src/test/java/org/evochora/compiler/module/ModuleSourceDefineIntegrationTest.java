@@ -8,7 +8,7 @@ import org.evochora.compiler.frontend.module.DependencyScanner;
 import org.evochora.compiler.frontend.module.ModuleDescriptor;
 import org.evochora.compiler.frontend.module.SourceRootResolver;
 import org.evochora.compiler.frontend.parser.Parser;
-import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
+import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.features.ctx.PopCtxDirectiveHandler;
 import org.evochora.compiler.features.ctx.PushCtxDirectiveHandler;
 import org.evochora.compiler.features.define.DefineDirectiveHandler;
@@ -354,8 +354,8 @@ class ModuleSourceDefineIntegrationTest {
         }
     }
 
-    private static ParserDirectiveRegistry allHandlers() {
-        ParserDirectiveRegistry reg = new ParserDirectiveRegistry();
+    private static ParserStatementRegistry allHandlers() {
+        ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".DEFINE", new DefineDirectiveHandler());
         reg.register(".REG", new RegDirectiveHandler());
         reg.register(".PROC", new ProcDirectiveHandler());

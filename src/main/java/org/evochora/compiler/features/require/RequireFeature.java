@@ -17,7 +17,7 @@ public class RequireFeature implements ICompilerFeature {
 
     @Override
     public void register(IFeatureRegistrationContext ctx) {
-        ctx.parser(".REQUIRE", new RequireDirectiveHandler());
+        ctx.parserStatement(".REQUIRE", new RequireDirectiveHandler());
         ctx.symbolCollector(RequireNode.class, new RequireSymbolCollector());
         ctx.analysisHandler(RequireNode.class, new RequireAnalysisHandler());
         ctx.irConverter(RequireNode.class, new RequireNodeConverter());

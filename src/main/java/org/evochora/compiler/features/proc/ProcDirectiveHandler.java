@@ -1,6 +1,6 @@
 package org.evochora.compiler.features.proc;
 
-import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
+import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.parser.ParsingContext;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
@@ -13,7 +13,7 @@ import java.util.List;
  * Handles the parsing of the <code>.PROC</code> and <code>.ENDP</code> directives, which define a procedure block.
  * Procedures can be exported and can have parameters.
  */
-public class ProcDirectiveHandler implements IParserDirectiveHandler {
+public class ProcDirectiveHandler implements IParserStatementHandler {
 
     /**
      * Parses a procedure definition, including its body, until an <code>.ENDP</code> directive is found.

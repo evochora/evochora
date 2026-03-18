@@ -4,7 +4,7 @@ import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
-import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
+import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.features.proc.PregDirectiveHandler;
 import org.evochora.compiler.features.proc.ProcDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
@@ -152,8 +152,8 @@ public class PregDirectiveTest {
         }
     }
 
-    private static ParserDirectiveRegistry registry() {
-        ParserDirectiveRegistry reg = new ParserDirectiveRegistry();
+    private static ParserStatementRegistry registry() {
+        ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".PROC", new ProcDirectiveHandler());
         reg.register(".PREG", new PregDirectiveHandler());
         return reg;

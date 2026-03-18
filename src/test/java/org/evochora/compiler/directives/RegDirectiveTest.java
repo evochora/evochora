@@ -2,7 +2,7 @@ package org.evochora.compiler.directives;
 
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
-import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
+import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.features.reg.RegDirectiveHandler;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.ast.AstNode;
@@ -229,8 +229,8 @@ public class RegDirectiveTest {
         assertThat(reg.getName()).isEqualTo("%LR0");
     }
 
-    private static ParserDirectiveRegistry registry() {
-        ParserDirectiveRegistry reg = new ParserDirectiveRegistry();
+    private static ParserStatementRegistry registry() {
+        ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".REG", new RegDirectiveHandler());
         return reg;
     }

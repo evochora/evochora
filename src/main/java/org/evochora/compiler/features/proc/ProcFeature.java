@@ -15,8 +15,8 @@ public class ProcFeature implements ICompilerFeature {
 
     @Override
     public void register(IFeatureRegistrationContext ctx) {
-        ctx.parser(".PROC", new ProcDirectiveHandler());
-        ctx.parser(".PREG", new PregDirectiveHandler());
+        ctx.parserStatement(".PROC", new ProcDirectiveHandler());
+        ctx.parserStatement(".PREG", new PregDirectiveHandler());
         ctx.symbolCollector(ProcedureNode.class, new ProcedureSymbolCollector());
         ctx.analysisHandler(ProcedureNode.class, new ProcedureAnalysisHandler());
         ctx.analysisHandler(PregNode.class, new PregAnalysisHandler());

@@ -12,7 +12,6 @@ import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.model.ast.VectorLiteralNode;
 import org.evochora.compiler.features.label.LabelNode;
 
-
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -20,13 +19,13 @@ import java.util.Optional;
 /**
  * The main parser for the assembly language. It consumes a list of tokens
  * from the {@link org.evochora.compiler.frontend.lexer.Lexer} and produces an Abstract Syntax Tree (AST).
- * The parser is also responsible for handling directives and managing scopes.
+ * All statement dispatch goes through the {@link ParserStatementRegistry}.
  */
 public class Parser implements ParsingContext {
 
     private final List<Token> tokens;
     private final DiagnosticsEngine diagnostics;
-    private final ParserDirectiveRegistry directiveRegistry;
+    private final ParserStatementRegistry statementRegistry;
     private int current = 0;
 
     private final ParserState parserState = new ParserState();
@@ -36,13 +35,13 @@ public class Parser implements ParsingContext {
      * Constructs a new Parser.
      * @param tokens The list of tokens to parse.
      * @param diagnostics The engine for reporting errors and warnings.
-     * @param directiveRegistry The pre-built registry of directive handlers.
+     * @param statementRegistry The pre-built registry of statement handlers.
      */
     public Parser(List<Token> tokens, DiagnosticsEngine diagnostics,
-                  ParserDirectiveRegistry directiveRegistry) {
+                  ParserStatementRegistry statementRegistry) {
         this.tokens = tokens;
         this.diagnostics = diagnostics;
-        this.directiveRegistry = directiveRegistry;
+        this.statementRegistry = statementRegistry;
     }
 
     /**
@@ -64,7 +63,9 @@ public class Parser implements ParsingContext {
     }
 
     /**
-     * Parses a single declaration, which can be a directive or a statement.
+     * Parses a single declaration. Handles EXPORT keyword, then dispatches
+     * through the statement registry by keyword. Label syntax and generic
+     * instructions are handled as fallbacks.
      * @return The parsed {@link AstNode}, or null if an error occurs.
      */
     @Override
@@ -75,54 +76,47 @@ public class Parser implements ParsingContext {
             }
             if (isAtEnd()) return null;
 
-            if (check(TokenType.DIRECTIVE)) {
-                return directiveStatement();
+            currentExported = false;
+            if (check(TokenType.IDENTIFIER) && "EXPORT".equalsIgnoreCase(peek().text())) {
+                currentExported = true;
+                advance();
             }
-            return statement();
+
+            // Label syntax: IDENTIFIER COLON (will be moved to preprocessor in D13e)
+            if (check(TokenType.IDENTIFIER) && checkNext(TokenType.COLON)) {
+                Token labelToken = advance();
+                advance(); // consume ':'
+                boolean exported = currentExported;
+                return new LabelNode(labelToken.text(), labelToken.toSourceInfo(), declaration(), exported);
+            }
+
+            // Keyword lookup in statement registry (directives, opcodes, etc.)
+            Token keyword = peek();
+            Optional<IParserStatementHandler> handler = statementRegistry.get(keyword.text());
+            if (handler.isPresent()) {
+                return handler.get().parse(this);
+            }
+
+            // Unregistered directive: skip (preprocessing-only directives like .REPEAT, .SOURCE, .MACRO)
+            if (check(TokenType.DIRECTIVE)) {
+                advance();
+                return null;
+            }
+
+            // EXPORT only valid before label or registered keyword
+            if (currentExported) {
+                Token errorToken = isAtEnd() ? previous() : peek();
+                diagnostics.reportError(
+                        "EXPORT can only precede a label definition or a directive (.PROC, .IMPORT, .DEFINE).",
+                        errorToken.fileName(), errorToken.line());
+            }
+
+            // Generic instructions (will be moved to default handler in D14)
+            return instructionStatement();
         } catch (RuntimeException ex) {
             synchronize();
             return null;
         }
-    }
-
-    private AstNode directiveStatement() {
-        Token directiveToken = peek();
-        Optional<IParserDirectiveHandler> handlerOptional = directiveRegistry.get(directiveToken.text());
-
-        if (handlerOptional.isPresent()) {
-            return handlerOptional.get().parse(this);
-        } else {
-            // Directive not registered in the parser (e.g., preprocessing-only directives)
-            advance();
-            return null;
-        }
-    }
-
-    private AstNode statement() {
-        currentExported = false;
-        if (check(TokenType.IDENTIFIER) && "EXPORT".equalsIgnoreCase(peek().text())) {
-            currentExported = true;
-            advance(); // consume EXPORT
-        }
-
-        if (check(TokenType.IDENTIFIER) && checkNext(TokenType.COLON)) {
-            Token labelToken = advance();
-            advance(); // consume ':'
-            boolean exported = currentExported;
-            return new LabelNode(labelToken.text(), labelToken.toSourceInfo(), declaration(), exported);
-        }
-
-        if (check(TokenType.DIRECTIVE)) {
-            return directiveStatement();
-        }
-
-        if (currentExported) {
-            Token errorToken = isAtEnd() ? previous() : peek();
-            diagnostics.reportError(
-                    "EXPORT can only precede a label definition or a directive (.PROC, .IMPORT, .DEFINE).",
-                    errorToken.fileName(), errorToken.line());
-        }
-        return instructionStatement();
     }
 
     private AstNode instructionStatement() {

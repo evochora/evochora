@@ -1,6 +1,6 @@
 package org.evochora.compiler.features.require;
 
-import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
+import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.parser.ParsingContext;
@@ -15,7 +15,7 @@ import org.evochora.compiler.model.ast.AstNode;
  * provide the required module through a {@code USING} clause. This enables compile-time
  * dependency injection for reusable library modules.
  */
-public class RequireDirectiveHandler implements IParserDirectiveHandler {
+public class RequireDirectiveHandler implements IParserStatementHandler {
 
     @Override
     public AstNode parse(ParsingContext context) {

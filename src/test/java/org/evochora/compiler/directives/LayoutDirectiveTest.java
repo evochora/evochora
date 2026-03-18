@@ -2,7 +2,7 @@ package org.evochora.compiler.directives;
 
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
-import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
+import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.features.dir.DirDirectiveHandler;
 import org.evochora.compiler.features.org.OrgDirectiveHandler;
 import org.evochora.compiler.features.place.PlaceDirectiveHandler;
@@ -89,8 +89,8 @@ public class LayoutDirectiveTest {
         assertThat(placeNode.placements().get(0)).isInstanceOf(VectorPlacementNode.class);
     }
 
-    private static ParserDirectiveRegistry registry() {
-        ParserDirectiveRegistry reg = new ParserDirectiveRegistry();
+    private static ParserStatementRegistry registry() {
+        ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".ORG", new OrgDirectiveHandler());
         reg.register(".DIR", new DirDirectiveHandler());
         reg.register(".PLACE", new PlaceDirectiveHandler());

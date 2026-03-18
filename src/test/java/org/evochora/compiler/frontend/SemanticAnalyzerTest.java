@@ -5,7 +5,7 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.frontend.parser.Parser;
-import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
+import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.features.ctx.PopCtxDirectiveHandler;
 import org.evochora.compiler.features.ctx.PushCtxDirectiveHandler;
 import org.evochora.compiler.features.define.DefineDirectiveHandler;
@@ -614,8 +614,8 @@ public class SemanticAnalyzerTest {
         assertThat(diagnostics.hasErrors()).isFalse();
     }
 
-    private static ParserDirectiveRegistry allHandlers() {
-        ParserDirectiveRegistry reg = new ParserDirectiveRegistry();
+    private static ParserStatementRegistry allHandlers() {
+        ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".DEFINE", new DefineDirectiveHandler());
         reg.register(".REG", new RegDirectiveHandler());
         reg.register(".PROC", new ProcDirectiveHandler());

@@ -4,7 +4,7 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.frontend.parser.Parser;
-import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
+import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.features.require.RequireDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.features.require.RequireNode;
@@ -118,8 +118,8 @@ public class RequireDirectiveTest {
         assertThat(node.getChildren()).isEmpty();
     }
 
-    private static ParserDirectiveRegistry registry() {
-        ParserDirectiveRegistry reg = new ParserDirectiveRegistry();
+    private static ParserStatementRegistry registry() {
+        ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".REQUIRE", new RequireDirectiveHandler());
         return reg;
     }

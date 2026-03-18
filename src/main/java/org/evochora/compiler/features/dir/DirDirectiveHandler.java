@@ -1,6 +1,6 @@
 package org.evochora.compiler.features.dir;
 
-import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
+import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.parser.ParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.VectorLiteralNode;
@@ -9,7 +9,7 @@ import org.evochora.compiler.model.ast.VectorLiteralNode;
  * Handles the parsing of the <code>.DIR</code> directive.
  * This directive sets the default direction for subsequent instructions.
  */
-public class DirDirectiveHandler implements IParserDirectiveHandler {
+public class DirDirectiveHandler implements IParserStatementHandler {
 
     /**
      * Parses a <code>.DIR</code> directive.

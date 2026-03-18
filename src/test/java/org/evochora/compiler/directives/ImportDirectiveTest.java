@@ -4,7 +4,7 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.frontend.parser.Parser;
-import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
+import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.features.importdir.ImportDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.features.importdir.ImportNode;
@@ -115,8 +115,8 @@ public class ImportDirectiveTest {
         assertThat(diagnostics.hasErrors()).isTrue();
     }
 
-    private static ParserDirectiveRegistry registry() {
-        ParserDirectiveRegistry reg = new ParserDirectiveRegistry();
+    private static ParserStatementRegistry registry() {
+        ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".IMPORT", new ImportDirectiveHandler());
         return reg;
     }

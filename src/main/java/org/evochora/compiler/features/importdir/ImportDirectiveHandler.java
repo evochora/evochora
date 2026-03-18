@@ -1,6 +1,6 @@
 package org.evochora.compiler.features.importdir;
 
-import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
+import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.parser.ParsingContext;
@@ -17,7 +17,7 @@ import java.util.List;
  * <p>This handler produces an {@link ImportNode} AST node. The actual module loading
  * is handled by Phase 0 (DependencyScanner) and preprocessing (ImportSourceHandler).
  */
-public class ImportDirectiveHandler implements IParserDirectiveHandler {
+public class ImportDirectiveHandler implements IParserStatementHandler {
 
     @Override
     public AstNode parse(ParsingContext context) {

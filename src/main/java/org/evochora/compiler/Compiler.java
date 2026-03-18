@@ -15,7 +15,7 @@ import org.evochora.compiler.frontend.module.DependencyScanner;
 import org.evochora.compiler.frontend.module.ModuleDescriptor;
 import org.evochora.compiler.frontend.module.SourceRootResolver;
 import org.evochora.compiler.frontend.parser.Parser;
-import org.evochora.compiler.frontend.parser.ParserDirectiveRegistry;
+import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
@@ -220,8 +220,8 @@ public class Compiler implements ICompiler {
         }
 
         // Phase 3: Parsing (builds AST)
-        ParserDirectiveRegistry parserRegistry = new ParserDirectiveRegistry();
-        featureRegistry.parserHandlers().forEach(parserRegistry::register);
+        ParserStatementRegistry parserRegistry = new ParserStatementRegistry();
+        featureRegistry.parserStatementHandlers().forEach(parserRegistry::register);
         Parser parser = new Parser(ppResult.tokens(), diagnostics, parserRegistry);
         List<AstNode> ast = parser.parse();
 

@@ -1,6 +1,6 @@
 package org.evochora.compiler.features.proc;
 
-import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
+import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.parser.ParsingContext;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
@@ -12,7 +12,7 @@ import org.evochora.runtime.Config;
  * Handles the <code>.PREG</code> directive, which defines an alias for a procedure register (%PR0 or %PR1).
  * This allows using symbolic names for procedure registers, enhancing readability.
  */
-public class PregDirectiveHandler implements IParserDirectiveHandler {
+public class PregDirectiveHandler implements IParserStatementHandler {
 
     /**
      * Parses a <code>.PREG</code> directive.

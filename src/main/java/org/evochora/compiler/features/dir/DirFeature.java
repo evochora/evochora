@@ -17,7 +17,7 @@ public class DirFeature implements ICompilerFeature {
     @Override
     public void register(IFeatureRegistrationContext ctx) {
         // Phase 3: Parsing
-        ctx.parser(".DIR", new DirDirectiveHandler());
+        ctx.parserStatement(".DIR", new DirDirectiveHandler());
 
         // Phase 7: IR Generation
         ctx.irConverter(DirNode.class, new DirNodeConverter());

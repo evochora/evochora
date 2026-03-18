@@ -1,7 +1,7 @@
 package org.evochora.compiler.features.place;
 
 import org.evochora.compiler.api.SourceInfo;
-import org.evochora.compiler.frontend.parser.IParserDirectiveHandler;
+import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.parser.ParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
@@ -18,7 +18,7 @@ import java.util.List;
  * Handles the parsing of the <code>.PLACE</code> directive.
  * This directive is used to place a literal at a specific position in the world.
  */
-public class PlaceDirectiveHandler implements IParserDirectiveHandler {
+public class PlaceDirectiveHandler implements IParserStatementHandler {
 
     /**
      * Parses a <code>.PLACE</code> directive.

@@ -18,7 +18,7 @@ public class ImportFeature implements ICompilerFeature {
     @Override
     public void register(IFeatureRegistrationContext ctx) {
         ctx.preprocessor(".IMPORT", new ImportSourceHandler());
-        ctx.parser(".IMPORT", new ImportDirectiveHandler());
+        ctx.parserStatement(".IMPORT", new ImportDirectiveHandler());
         ctx.symbolCollector(ImportNode.class, new ImportSymbolCollector());
         ctx.analysisHandler(ImportNode.class, new ImportAnalysisHandler());
         ctx.irConverter(ImportNode.class, new ImportNodeConverter());

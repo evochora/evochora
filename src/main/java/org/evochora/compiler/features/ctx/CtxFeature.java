@@ -23,8 +23,8 @@ public class CtxFeature implements ICompilerFeature {
         ctx.preprocessor(".POP_CTX", new PopCtxPreProcessorHandler());
 
         // Phase 3: Parsing
-        ctx.parser(".PUSH_CTX", new PushCtxDirectiveHandler());
-        ctx.parser(".POP_CTX", new PopCtxDirectiveHandler());
+        ctx.parserStatement(".PUSH_CTX", new PushCtxDirectiveHandler());
+        ctx.parserStatement(".POP_CTX", new PopCtxDirectiveHandler());
 
         // Phase 7: IR Generation
         ctx.irConverter(PushCtxNode.class, new PushCtxNodeConverter());
