@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -68,8 +69,18 @@ public class PreProcessorTest {
         PreProcessorHandlerRegistry registry = new PreProcessorHandlerRegistry();
         registry.register(".SOURCE", new SourceDirectiveHandler());
         registry.register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
+
+        // Pre-lex .SOURCE files (simulating Phase 1)
+        String sourceContent = Files.readString(libFile);
+        if (!sourceContent.endsWith("\n")) sourceContent += "\n";
+        String resolvedSourcePath = resolver.resolve("test.s", mainFile.toString());
+        Lexer sourceLexer = new Lexer(sourceContent, diagnostics, resolvedSourcePath);
+        List<Token> sourceTokenList = sourceLexer.scanTokens();
+        Lexer.stripEofToken(sourceTokenList);
+        Map<String, List<Token>> sourceTokens = Map.of(resolvedSourcePath, sourceTokenList);
+
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, resolver,
-                registry, new PreProcessorContext());
+                registry, new PreProcessorContext("", Map.of(), sourceTokens));
 
         // Act
         List<Token> expandedTokens = preProcessor.expand().tokens();

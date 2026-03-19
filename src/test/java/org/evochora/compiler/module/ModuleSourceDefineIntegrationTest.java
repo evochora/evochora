@@ -237,8 +237,21 @@ class ModuleSourceDefineIntegrationTest {
         PreProcessorHandlerRegistry registry = new PreProcessorHandlerRegistry();
         registry.register(".SOURCE", new SourceDirectiveHandler());
         registry.register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
+
+        // Pre-lex .SOURCE files for the circular test
+        Map<String, List<Token>> circularSourceTokens = new HashMap<>();
+        for (String fileName : List.of("a.evo", "b.evo")) {
+            String resolvedPath = circularResolver.resolve(fileName, mainPath);
+            String content = Files.readString(Path.of(resolvedPath));
+            if (!content.endsWith("\n")) content += "\n";
+            Lexer srcLexer = new Lexer(content, diagnostics, resolvedPath);
+            List<Token> srcTokens = srcLexer.scanTokens();
+            Lexer.stripEofToken(srcTokens);
+            circularSourceTokens.put(resolvedPath, srcTokens);
+        }
+
         PreProcessor preProcessor = new PreProcessor(tokens, diagnostics, circularResolver,
-                registry, new PreProcessorContext());
+                registry, new PreProcessorContext("", Map.of(), circularSourceTokens));
         preProcessor.expand();
 
         assertThat(diagnostics.hasErrors()).isTrue();
@@ -303,9 +316,7 @@ class ModuleSourceDefineIntegrationTest {
             if (!source.endsWith("\n")) source += "\n";
             Lexer moduleLexer = new Lexer(source, diagnostics, module.sourcePath());
             List<Token> tokens = moduleLexer.scanTokens();
-            if (!tokens.isEmpty() && tokens.getLast().type() == TokenType.END_OF_FILE) {
-                tokens.removeLast();
-            }
+            Lexer.stripEofToken(tokens);
             moduleTokens.put(module.sourcePath(), tokens);
         }
         Lexer mainLexer = new Lexer(mainSource, diagnostics, mainPath);
@@ -318,7 +329,18 @@ class ModuleSourceDefineIntegrationTest {
         ppRegistry.register(".POP_CTX", new PopCtxPreProcessorHandler());
         ppRegistry.register(".IMPORT", new ImportSourceHandler());
         ppRegistry.register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
-        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, moduleTokens);
+        // Pre-lex .SOURCE files
+        Map<String, List<Token>> sourceTokens = new HashMap<>();
+        for (Map.Entry<String, String> entry : scanner.sourceContents().entrySet()) {
+            String srcPath = entry.getKey();
+            String srcContent = entry.getValue();
+            if (!srcContent.endsWith("\n")) srcContent += "\n";
+            Lexer srcLexer = new Lexer(srcContent, diagnostics, srcPath);
+            List<Token> srcTokens = srcLexer.scanTokens();
+            Lexer.stripEofToken(srcTokens);
+            sourceTokens.put(srcPath, srcTokens);
+        }
+        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, moduleTokens, sourceTokens);
         PreProcessor preProcessor = new PreProcessor(mainTokens, diagnostics, resolver,
                 ppRegistry, ppContext);
         PreProcessorResult ppResult = preProcessor.expand();

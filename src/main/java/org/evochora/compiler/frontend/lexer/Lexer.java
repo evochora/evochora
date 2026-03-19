@@ -56,6 +56,17 @@ public class Lexer {
         return tokens;
     }
 
+    /**
+     * Removes the trailing EOF token from a token list, if present.
+     * Used when pre-lexed tokens are injected into another token stream
+     * that already has its own EOF.
+     */
+    public static void stripEofToken(List<Token> tokens) {
+        if (!tokens.isEmpty() && tokens.getLast().type() == TokenType.END_OF_FILE) {
+            tokens.removeLast();
+        }
+    }
+
     private void scanToken() {
         char c = advance();
         switch (c) {

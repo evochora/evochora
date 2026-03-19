@@ -22,7 +22,6 @@ public class PreProcessor {
     private final Deque<String> sourceChain = new ArrayDeque<>();
     private final Deque<String> importChain = new ArrayDeque<>();
     private final PreProcessorContext ppContext;
-    private final Map<String, String> includedFileContents = new HashMap<>();
 
     /**
      * Constructs a new PreProcessor.
@@ -62,16 +61,7 @@ public class PreProcessor {
                 current++;
             }
         }
-        return new PreProcessorResult(tokens, includedFileContents);
-    }
-
-    /**
-     * Adds the content of a source file to the tracking map.
-     * @param path The path of the file.
-     * @param content The content of the file.
-     */
-    public void addSourceContent(String path, String content) {
-        includedFileContents.put(path, content);
+        return new PreProcessorResult(tokens);
     }
 
     // --- Token stream navigation ---

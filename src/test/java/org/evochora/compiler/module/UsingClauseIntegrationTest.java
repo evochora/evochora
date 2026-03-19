@@ -268,9 +268,7 @@ class UsingClauseIntegrationTest {
             if (!source.endsWith("\n")) source += "\n";
             Lexer moduleLexer = new Lexer(source, diagnostics, module.sourcePath());
             List<Token> tokens = moduleLexer.scanTokens();
-            if (!tokens.isEmpty() && tokens.getLast().type() == TokenType.END_OF_FILE) {
-                tokens.removeLast();
-            }
+            Lexer.stripEofToken(tokens);
             moduleTokens.put(module.sourcePath(), tokens);
         }
         Lexer mainLexer = new Lexer(mainSource, diagnostics, mainPath);
@@ -283,7 +281,18 @@ class UsingClauseIntegrationTest {
         ppRegistry.register(".POP_CTX", new PopCtxPreProcessorHandler());
         ppRegistry.register(".IMPORT", new ImportSourceHandler());
         ppRegistry.register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
-        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, moduleTokens);
+        // Pre-lex .SOURCE files
+        Map<String, List<Token>> sourceTokens = new java.util.HashMap<>();
+        for (Map.Entry<String, String> entry : scanner.sourceContents().entrySet()) {
+            String srcPath = entry.getKey();
+            String srcContent = entry.getValue();
+            if (!srcContent.endsWith("\n")) srcContent += "\n";
+            Lexer srcLexer = new Lexer(srcContent, diagnostics, srcPath);
+            List<Token> srcTokens = srcLexer.scanTokens();
+            Lexer.stripEofToken(srcTokens);
+            sourceTokens.put(srcPath, srcTokens);
+        }
+        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, moduleTokens, sourceTokens);
         PreProcessor preProcessor = new PreProcessor(mainTokens, diagnostics, resolver,
                 ppRegistry, ppContext);
         List<Token> processedTokens = preProcessor.expand().tokens();

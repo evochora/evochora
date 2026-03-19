@@ -1,29 +1,23 @@
 package org.evochora.compiler.features.source;
 
-import org.evochora.compiler.util.SourceLoader;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
-import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.module.PlacementContext;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
+
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Handles the {@code .SOURCE} directive in the preprocessor phase.
- * This directive reads another source file and injects its tokens into the current token stream.
- * Supports local filesystem paths, classpath resources, and HTTP/HTTPS URLs.
+ * Reads pre-lexed tokens from the {@link PreProcessorContext} and injects them
+ * into the current token stream, wrapped with context management directives.
  *
- * <p>{@code .SOURCE} files must not contain {@code .IMPORT} or {@code .REQUIRE} directives.
- * Module dependencies belong in the file that uses the code, not in sourced macro/constant files.</p>
- *
- * <p>For HTTP-sourced files, relative {@code .SOURCE} paths within them are resolved relative
- * to the base URL (e.g., {@code https://example.com/lib/macros.evo} sourcing {@code ./helpers.evo}
- * resolves to {@code https://example.com/lib/helpers.evo}).</p>
+ * <p>{@code .SOURCE} is textual inclusion — no module identity, no alias,
+ * no scope. The parent module context is preserved.</p>
  */
 public class SourceDirectiveHandler implements IPreProcessorHandler {
 
@@ -38,108 +32,43 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
         int endIndex = preProcessor.getCurrentIndex();
         String pathValue = (String) pathToken.value();
 
+        // Resolve path
+        String resolvedPath;
         try {
-            SourceLoader.LoadResult result;
-            try {
-                result = loadContent(pathValue, pathToken, preProcessor);
-            } catch (org.evochora.compiler.util.SourceRootResolver.UnknownPrefixException e) {
-                preProcessor.getDiagnostics().reportError(e.getMessage(), pathToken.fileName(), pathToken.line());
-                preProcessor.removeTokens(startIndex, endIndex - startIndex);
-                return;
-            }
-            String content = result.content();
-            String logicalName = result.logicalName();
-
-            if (preProcessor.isInSourceChain(logicalName)) {
-                preProcessor.getDiagnostics().reportError(
-                        "Circular .SOURCE detected: " + pathValue, pathToken.fileName(), pathToken.line());
-                preProcessor.removeTokens(startIndex, endIndex - startIndex);
-                return;
-            }
-            preProcessor.pushSourceChain(logicalName);
-            preProcessor.addSourceContent(logicalName, content);
-
-            Lexer lexer = new Lexer(content, preProcessor.getDiagnostics(), logicalName);
-            List<Token> newTokens = lexer.scanTokens();
-
-            // Remove the EOF token from the sourced file
-            if (!newTokens.isEmpty() && newTokens.getLast().type() == TokenType.END_OF_FILE) {
-                newTokens.removeLast();
-            }
-
-            // Validate: .SOURCE files must not contain .IMPORT or .REQUIRE directives
-            for (Token t : newTokens) {
-                if (t.type() == TokenType.DIRECTIVE) {
-                    String text = t.text().toUpperCase();
-                    if (".IMPORT".equals(text) || ".REQUIRE".equals(text)) {
-                        preProcessor.getDiagnostics().reportError(
-                                ".SOURCE files must not contain " + text + " directives.",
-                                t.fileName(), t.line());
-                        return;
-                    }
-                }
-            }
-
-            // Inject context management directives — null alias chain preserves parent's context
-            PlacementContext placementCtx = new PlacementContext(logicalName, null);
-            newTokens.add(0, new Token(TokenType.DIRECTIVE, ".PUSH_CTX", placementCtx, pathToken.line(), 0, pathToken.fileName()));
-            newTokens.add(new Token(TokenType.DIRECTIVE, ".POP_CTX", "SOURCE", pathToken.line(), 0, pathToken.fileName()));
-
+            resolvedPath = preProcessor.getResolver().resolve(pathValue, pathToken.fileName());
+        } catch (org.evochora.compiler.util.SourceRootResolver.UnknownPrefixException e) {
+            preProcessor.getDiagnostics().reportError(e.getMessage(), pathToken.fileName(), pathToken.line());
             preProcessor.removeTokens(startIndex, endIndex - startIndex);
-            preProcessor.injectTokens(newTokens, 0);
-
-        } catch (IOException e) {
-            preProcessor.getDiagnostics().reportError("Could not read sourced file: " + pathValue, pathToken.fileName(), pathToken.line());
-        }
-    }
-
-    /**
-     * Loads content from an HTTP URL, local filesystem, or classpath.
-     * For HTTP-sourced files, the logical name is the full URL.
-     * For local files, relative paths are resolved from the including file's directory.
-     */
-    private SourceLoader.LoadResult loadContent(String pathValue, Token pathToken, PreProcessor preProcessor) throws IOException {
-        // Check if the including file itself was loaded from HTTP
-        String includingFileName = pathToken.fileName();
-        boolean includingIsHttp = SourceLoader.isHttpUrl(includingFileName);
-
-        // HTTP URL (explicit or relative within an HTTP-sourced file)
-        if (SourceLoader.isHttpUrl(pathValue)) {
-            return SourceLoader.loadHttp(pathValue);
+            return;
         }
 
-        // Relative path inside an HTTP-sourced file resolves against the base URL
-        if (includingIsHttp) {
-            String resolvedUrl = SourceLoader.resolveHttpRelative(includingFileName, pathValue);
-            return SourceLoader.loadHttp(resolvedUrl);
+        // Check for circular .SOURCE
+        if (preProcessor.isInSourceChain(resolvedPath)) {
+            preProcessor.getDiagnostics().reportError(
+                    "Circular .SOURCE detected: " + pathValue, pathToken.fileName(), pathToken.line());
+            preProcessor.removeTokens(startIndex, endIndex - startIndex);
+            return;
         }
 
-        // Source-root-relative resolution
-        String resolvedPathStr = preProcessor.getResolver().resolve(pathValue, includingFileName);
-        Path resolvedPath = Path.of(resolvedPathStr);
-
-        if (Files.exists(resolvedPath)) {
-            return SourceLoader.loadFile(resolvedPath);
+        // Get pre-lexed tokens
+        Map<String, List<Token>> sourceTokens = preProcessorContext.sourceTokens();
+        List<Token> preLexed = sourceTokens.get(resolvedPath);
+        if (preLexed == null) {
+            preProcessor.getDiagnostics().reportError(
+                    "Source file not found in pre-lexed sources: " + pathValue, pathToken.fileName(), pathToken.line());
+            preProcessor.removeTokens(startIndex, endIndex - startIndex);
+            return;
         }
 
-        // Fallback to classpath resource resolution
-        String including = includingFileName != null ? includingFileName.replace('\\', '/') : "";
-        String resourceBase = including.contains("/") ? including.substring(0, including.lastIndexOf('/')) : "";
+        preProcessor.pushSourceChain(resolvedPath);
 
-        if (resourceBase.isEmpty()) {
-            resourceBase = "org/evochora/organism/prototypes";
-        }
+        // Copy tokens and wrap with context management directives
+        List<Token> newTokens = new ArrayList<>(preLexed);
+        PlacementContext placementCtx = new PlacementContext(resolvedPath, null);
+        newTokens.add(0, new Token(TokenType.DIRECTIVE, ".PUSH_CTX", placementCtx, pathToken.line(), 0, pathToken.fileName()));
+        newTokens.add(new Token(TokenType.DIRECTIVE, ".POP_CTX", "SOURCE", pathToken.line(), 0, pathToken.fileName()));
 
-        String classpathCandidate = (resourceBase.isEmpty() ? pathValue : resourceBase + "/" + pathValue).replace('\\', '/');
-
-        try {
-            return SourceLoader.loadClasspath(classpathCandidate);
-        } catch (IOException ignored) {
-            // Try alternative classpath resolution using resolved path's parent
-            Path resolvedParent = resolvedPath.getParent();
-            String parentStr = resolvedParent != null ? resolvedParent.toString().replace('\\', '/') : "";
-            String alternativeCandidate = parentStr + "/" + pathValue;
-            return SourceLoader.loadClasspath(alternativeCandidate);
-        }
+        preProcessor.removeTokens(startIndex, endIndex - startIndex);
+        preProcessor.injectTokens(newTokens, 0);
     }
 }

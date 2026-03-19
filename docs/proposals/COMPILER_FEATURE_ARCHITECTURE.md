@@ -1649,9 +1649,8 @@ By D14, all registries are fully feature-driven.
 
 | Step | Description |
 |------|-------------|
-| F1 | Refactor SourceDirectiveHandler to use pre-lexed tokens (same as ImportSourceHandler). Move EOF-token stripping from Compiler.java into Lexer (e.g. `scanTokensWithoutEof()`) or PreProcessor. |
+| F1 | **Source pre-lexing + cleanup.** Part 1: DependencyScanner collects .SOURCE content, Compiler.java pre-lexes in Phase 1, tokens flow via `PreProcessorContext.sourceTokens()`. SourceDirectiveHandler rewritten to read pre-lexed tokens (no Lexer, no file I/O, no loadContent()). Part 2: Dead Classpath-fallback deleted (entire loadContent() method removed). Part 3: EOF-stripping centralized in `Lexer.stripEofToken()`. .SOURCE file contents added to artifact sources via `depScanner.sourceContents()`. **DONE.** |
 | ~~F2~~ | ~~Extract cross-phase data extraction from Compiler.java~~ — **absorbed into Phase D**: `getGlobalRegisterAliases()` removed in D8, `getProcedureTable()` removed in D13. |
-| F3 | Introduce MachineConstraints, remove runtime Config imports from features. |
 
 ### Phase G: LR Parameter Passing (open design — needs discussion before committing)
 

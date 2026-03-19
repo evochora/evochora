@@ -9,7 +9,6 @@ import org.evochora.compiler.api.TokenInfo;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.model.token.Token;
-import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.module.DependencyGraph;
 import org.evochora.compiler.frontend.module.DependencyScanner;
 import org.evochora.compiler.frontend.module.ModuleDescriptor;
@@ -185,18 +184,29 @@ public class Compiler implements ICompiler {
             if (!moduleSource.endsWith("\n")) moduleSource += "\n";
             Lexer moduleLexer = new Lexer(moduleSource, diagnostics, module.sourcePath());
             List<Token> tokens = moduleLexer.scanTokens();
-            if (!tokens.isEmpty() && tokens.getLast().type() == TokenType.END_OF_FILE) {
-                tokens.removeLast();
-            }
+            Lexer.stripEofToken(tokens);
             moduleTokens.put(module.sourcePath(), tokens);
         }
+
+        // Phase 1b: Lex .SOURCE files (collected during dependency scanning)
+        Map<String, List<Token>> sourceTokens = new HashMap<>();
+        for (Map.Entry<String, String> entry : depScanner.sourceContents().entrySet()) {
+            String sourcePath = entry.getKey();
+            String sourceContent = entry.getValue();
+            if (!sourceContent.endsWith("\n")) sourceContent += "\n";
+            Lexer sourceLexer = new Lexer(sourceContent, diagnostics, sourcePath);
+            List<Token> tokens = sourceLexer.scanTokens();
+            Lexer.stripEofToken(tokens);
+            sourceTokens.put(sourcePath, tokens);
+        }
+
         Lexer mainLexer = new Lexer(fullSource, diagnostics, mainFilePath);
         List<Token> initialTokens = new ArrayList<>(mainLexer.scanTokens());
 
         // Phase 2: Preprocessing (includes, macros)
         PreProcessorHandlerRegistry ppRegistry = new PreProcessorHandlerRegistry();
         featureRegistry.preprocessorHandlers().forEach(ppRegistry::register);
-        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, moduleTokens);
+        PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, moduleTokens, sourceTokens);
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, resolver,
                 ppRegistry, ppContext);
         PreProcessorResult ppResult = preProcessor.expand();
@@ -208,8 +218,8 @@ public class Compiler implements ICompiler {
                 sources.put(module.sourcePath(), Arrays.asList(module.content().split("\\r?\\n")));
             }
         }
-        ppResult.includedSources().forEach((path, content) ->
-                sources.put(path, Arrays.asList(content.split("\\r?\\n"))));
+        depScanner.sourceContents().forEach((path, content) ->
+                sources.putIfAbsent(path, Arrays.asList(content.split("\\r?\\n"))));
 
         if (diagnostics.hasErrors()) {
             throw new CompilationException(diagnostics.summary());

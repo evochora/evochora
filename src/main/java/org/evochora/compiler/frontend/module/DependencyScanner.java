@@ -35,6 +35,7 @@ public final class DependencyScanner {
     private final SourceRootResolver resolver;
     private final Map<ModuleId, ModuleDescriptor> descriptors = new LinkedHashMap<>();
     private final Set<ModuleId> visiting = new LinkedHashSet<>();
+    private final Map<String, String> sourceContents = new LinkedHashMap<>();
 
     public DependencyScanner(DiagnosticsEngine diagnostics, SourceRootResolver resolver) {
         this.diagnostics = diagnostics;
@@ -59,6 +60,13 @@ public final class DependencyScanner {
         // Topological sort (Kahn's algorithm)
         List<ModuleDescriptor> sorted = topologicalSort();
         return new DependencyGraph(sorted);
+    }
+
+    /**
+     * Returns all .SOURCE file contents collected during scanning, keyed by resolved path.
+     */
+    public Map<String, String> sourceContents() {
+        return Collections.unmodifiableMap(sourceContents);
     }
 
     private void scanModule(ModuleId moduleId, String sourcePath, String content) {
@@ -140,6 +148,7 @@ public final class DependencyScanner {
                 }
                 try {
                     String sourceContent = loadContent(resolvedPath);
+                    sourceContents.put(resolvedPath, sourceContent);
                     scanSourceFile(resolvedPath, sourceContent);
                 } catch (IOException e) {
                     diagnostics.reportError("Could not load sourced file: " + path, sourcePath, i + 1);
@@ -185,6 +194,7 @@ public final class DependencyScanner {
                 }
                 try {
                     String nestedContent = loadContent(resolvedPath);
+                    sourceContents.put(resolvedPath, nestedContent);
                     scanSourceFile(resolvedPath, nestedContent);
                 } catch (IOException e) {
                     diagnostics.reportError("Could not load sourced file: " + nestedPath, sourcePath, i + 1);

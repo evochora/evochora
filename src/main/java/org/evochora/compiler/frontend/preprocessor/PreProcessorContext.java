@@ -15,27 +15,35 @@ import java.util.Map;
 public class PreProcessorContext {
     private final Deque<String> aliasChainStack = new ArrayDeque<>();
     private final Map<String, List<Token>> moduleTokens;
+    private final Map<String, List<Token>> sourceTokens;
 
     /**
-     * @param rootAliasChain The alias chain for the compilation root module (e.g., "MAIN").
-     *                       Empty string for the default/root module.
-     * @param moduleTokens   Pre-lexed module tokens keyed by resolved absolute path.
-     *                       Empty map when no modules are imported.
+     * @param rootAliasChain The alias chain for the compilation root module.
+     * @param moduleTokens   Pre-lexed .IMPORT module tokens keyed by resolved absolute path.
+     * @param sourceTokens   Pre-lexed .SOURCE file tokens keyed by resolved absolute path.
      */
-    public PreProcessorContext(String rootAliasChain, Map<String, List<Token>> moduleTokens) {
+    public PreProcessorContext(String rootAliasChain, Map<String, List<Token>> moduleTokens, Map<String, List<Token>> sourceTokens) {
         aliasChainStack.push(rootAliasChain != null ? rootAliasChain : "");
         this.moduleTokens = moduleTokens != null ? moduleTokens : Map.of();
+        this.sourceTokens = sourceTokens != null ? sourceTokens : Map.of();
     }
 
     public PreProcessorContext() {
-        this("", Map.of());
+        this("", Map.of(), Map.of());
     }
 
     /**
-     * Returns the pre-lexed module tokens keyed by resolved absolute path.
+     * Returns the pre-lexed .IMPORT module tokens keyed by resolved absolute path.
      */
     public Map<String, List<Token>> moduleTokens() {
         return moduleTokens;
+    }
+
+    /**
+     * Returns the pre-lexed .SOURCE file tokens keyed by resolved absolute path.
+     */
+    public Map<String, List<Token>> sourceTokens() {
+        return sourceTokens;
     }
 
     /**
