@@ -67,6 +67,7 @@ public class PreProcessorTest {
                 List.of(new SourceRoot(".", null)), tempDir);
         PreProcessorHandlerRegistry registry = new PreProcessorHandlerRegistry();
         registry.register(".SOURCE", new SourceDirectiveHandler());
+        registry.register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, resolver,
                 registry, new PreProcessorContext());
 

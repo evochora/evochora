@@ -15,6 +15,8 @@ public class LabelFeature implements ICompilerFeature {
 
     @Override
     public void register(IFeatureRegistrationContext ctx) {
+        ctx.preprocessor(":", new ColonLabelHandler());
+        ctx.parserStatement(".LABEL", new LabelDirectiveHandler());
         ctx.symbolCollector(LabelNode.class, new LabelSymbolCollector());
         ctx.analysisHandler(LabelNode.class, new LabelAnalysisHandler());
         ctx.irConverter(LabelNode.class, new LabelNodeConverter());

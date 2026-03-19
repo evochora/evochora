@@ -11,7 +11,6 @@ import org.evochora.runtime.model.EnvironmentProperties;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
 /**
  * Linking pass: dispatches registered {@link ILinkingRule} implementations to resolve

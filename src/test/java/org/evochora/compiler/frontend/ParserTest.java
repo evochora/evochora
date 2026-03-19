@@ -81,11 +81,11 @@ public class ParserTest {
     @Tag("unit")
     void testParserLabelStatement() {
         // Arrange
-        String source = "L1: NOP";
+        String source = ".LABEL L1 NOP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, registry()); // KORREKTUR
+        Parser parser = new Parser(tokens, diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -144,7 +144,7 @@ public class ParserTest {
     @Tag("unit")
     void testParserExportedLabel() {
         // Arrange
-        String source = "EXPORT L1: NOP";
+        String source = "EXPORT .LABEL L1 NOP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
@@ -175,7 +175,7 @@ public class ParserTest {
     @Tag("unit")
     void testParserNonExportedLabel() {
         // Arrange
-        String source = "L1: NOP";
+        String source = ".LABEL L1 NOP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
@@ -199,7 +199,7 @@ public class ParserTest {
     @Tag("unit")
     void testParserExportedLabelWithStatementOnNextLine() {
         // Arrange
-        String source = "EXPORT L1:\nNOP";
+        String source = "EXPORT .LABEL L1\nNOP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
@@ -279,6 +279,7 @@ public class ParserTest {
     private static ParserStatementRegistry registry() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".DEFINE", new DefineDirectiveHandler());
+        reg.register(".LABEL", new org.evochora.compiler.features.label.LabelDirectiveHandler());
         return reg;
     }
 }

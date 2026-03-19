@@ -49,10 +49,11 @@ public class CaretDirectiveHandler implements IPreProcessorHandler {
             }
         }
 
-        // Skip label if present (IDENTIFIER followed by COLON)
+        // Skip label if present (.LABEL directive followed by IDENTIFIER)
         if (bodyStart + 1 < caretIndex
-                && preProcessor.getToken(bodyStart).type() == TokenType.IDENTIFIER
-                && preProcessor.getToken(bodyStart + 1).type() == TokenType.COLON) {
+                && preProcessor.getToken(bodyStart).type() == TokenType.DIRECTIVE
+                && ".LABEL".equalsIgnoreCase(preProcessor.getToken(bodyStart).text())
+                && preProcessor.getToken(bodyStart + 1).type() == TokenType.IDENTIFIER) {
             bodyStart += 2;
         }
 

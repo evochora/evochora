@@ -236,6 +236,7 @@ class ModuleSourceDefineIntegrationTest {
                 List.of(new SourceRoot(".", null)), tempDir);
         PreProcessorHandlerRegistry registry = new PreProcessorHandlerRegistry();
         registry.register(".SOURCE", new SourceDirectiveHandler());
+        registry.register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
         PreProcessor preProcessor = new PreProcessor(tokens, diagnostics, circularResolver,
                 registry, new PreProcessorContext());
         preProcessor.expand();
@@ -316,6 +317,7 @@ class ModuleSourceDefineIntegrationTest {
         ppRegistry.register(".MACRO", new MacroDirectiveHandler());
         ppRegistry.register(".POP_CTX", new PopCtxPreProcessorHandler());
         ppRegistry.register(".IMPORT", new ImportSourceHandler());
+        ppRegistry.register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
         PreProcessorContext ppContext = new PreProcessorContext(rootAliasChain, moduleTokens);
         PreProcessor preProcessor = new PreProcessor(mainTokens, diagnostics, resolver,
                 ppRegistry, ppContext);
@@ -367,6 +369,7 @@ class ModuleSourceDefineIntegrationTest {
         reg.register(".REQUIRE", new RequireDirectiveHandler());
         reg.register(".PUSH_CTX", new PushCtxDirectiveHandler());
         reg.register(".POP_CTX", new PopCtxDirectiveHandler());
+        reg.register(".LABEL", new org.evochora.compiler.features.label.LabelDirectiveHandler());
         return reg;
     }
 }

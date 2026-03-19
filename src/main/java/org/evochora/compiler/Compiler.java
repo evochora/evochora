@@ -280,7 +280,8 @@ public class Compiler implements ICompiler {
 
         // Phase 9: Layout (assign addresses to instructions)
         LayoutDirectiveRegistry layoutRegistry = new LayoutDirectiveRegistry((directive, context) -> {
-            // default: ignore unknown directives in layout
+            // IR directives without a layout handler are silently skipped — not every
+            // directive needs layout-phase processing (e.g., core:proc_enter, core:org)
         });
         layoutRegistry.registerAll(featureRegistry.layoutHandlers());
         LayoutEngine layoutEngine = new LayoutEngine();
@@ -289,7 +290,10 @@ public class Compiler implements ICompiler {
         // Phase 10: Linking (resolve cross-references)
         LinkingRegistry linkingRegistry = new LinkingRegistry();
         linkingRegistry.registerAll(featureRegistry.linkingRules());
-        LinkingDirectiveRegistry linkingDirRegistry = new LinkingDirectiveRegistry((d, c) -> {});
+        LinkingDirectiveRegistry linkingDirRegistry = new LinkingDirectiveRegistry((d, c) -> {
+            // IR directives without a linking handler are silently skipped — not every
+            // directive needs linking-phase processing (e.g., core:place, core:org)
+        });
         linkingDirRegistry.registerAll(featureRegistry.linkingDirectiveHandlers());
         Linker linker = new Linker(linkingRegistry, linkingDirRegistry);
         LinkingContext linkContext = new LinkingContext(symbolTable, new RuntimeInstructionSetAdapter());

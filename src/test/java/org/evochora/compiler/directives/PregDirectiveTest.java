@@ -156,6 +156,7 @@ public class PregDirectiveTest {
         ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".PROC", new ProcDirectiveHandler());
         reg.register(".PREG", new PregDirectiveHandler());
+        reg.register(".LABEL", new org.evochora.compiler.features.label.LabelDirectiveHandler());
         return reg;
     }
 }

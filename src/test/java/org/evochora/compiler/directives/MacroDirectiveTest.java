@@ -52,6 +52,7 @@ public class MacroDirectiveTest {
         List<Token> initialTokens = lexer.scanTokens();
         PreProcessorHandlerRegistry registry = new PreProcessorHandlerRegistry();
         registry.register(".MACRO", new MacroDirectiveHandler());
+        registry.register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
         PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics,
                 new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")),
                 registry, new PreProcessorContext());

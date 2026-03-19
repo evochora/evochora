@@ -35,6 +35,7 @@ public class RepeatDirectiveTest {
         PreProcessorHandlerRegistry registry = new PreProcessorHandlerRegistry();
         registry.register(".REPEAT", new RepeatDirectiveHandler());
         registry.register("^", new CaretDirectiveHandler());
+        registry.register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
         return new PreProcessor(initialTokens, diagnostics,
                 new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")),
                 registry, new PreProcessorContext());
@@ -369,11 +370,11 @@ public class RepeatDirectiveTest {
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
         List<TokenType> types = expandedTokens.stream().map(Token::type).toList();
-        // LOOP : NOP NEWLINE NOP EOF
+        // .LABEL LOOP NOP NEWLINE NOP EOF
         // The label should NOT be repeated, only the NOP instruction
         assertThat(types).containsExactly(
+                TokenType.DIRECTIVE,   // .LABEL
                 TokenType.IDENTIFIER,  // LOOP
-                TokenType.COLON,       // :
                 TokenType.OPCODE,      // NOP
                 TokenType.NEWLINE,
                 TokenType.OPCODE,      // NOP
@@ -401,10 +402,10 @@ public class RepeatDirectiveTest {
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
         List<TokenType> types = expandedTokens.stream().map(Token::type).toList();
-        // LOOP : JMPI START NEWLINE JMPI START EOF
+        // .LABEL LOOP JMPI START NEWLINE JMPI START EOF
         assertThat(types).containsExactly(
+                TokenType.DIRECTIVE,   // .LABEL
                 TokenType.IDENTIFIER,  // LOOP
-                TokenType.COLON,       // :
                 TokenType.OPCODE,      // JMPI
                 TokenType.IDENTIFIER,  // START
                 TokenType.NEWLINE,

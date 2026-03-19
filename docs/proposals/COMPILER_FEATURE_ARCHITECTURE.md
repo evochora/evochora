@@ -1244,10 +1244,10 @@ include this Token decoupling work.
 | D13b | proc | Delete `procedureTable`, `registerProcedure()`, `getProcedureTable()` from Parser. Remove `((Parser) context).registerProcedure()` cast from ProcDirectiveHandler. Duplicate checking runs via SymbolTable only. Removed `HashMap`/`Map` imports and `ProcedureNode` import from Parser. Updated ProcedureDirectiveTest (removed procedureTable assertions). **DONE.** |  |
 | D13c | proc | **[+decouple]** ProcedureNode: Token `name` → String + SourceInfo + ISourceLocatable. `List<Token>` ×3 → `List<ParamDecl>` (inner record `ParamDecl(String name, SourceInfo sourceInfo)`). PregNode: Token `alias`, `targetRegister` → String + ISourceLocatable. PregAnalysisHandler: removed redundant Token-type validation (PregDirectiveHandler validates at parse time). IrGenContext: `pushProcedureParams(List<Token>)` → `pushProcedureParams(List<String>)`, Token import eliminated. PregDirectiveHandler: D7d fix (`new SourceInfo(...)` → `Token.toSourceInfo()`). Also fixed Emitter programId bug: `HashMap.hashCode()` (identity-based) → `Arrays.hashCode()` (content-based) for deterministic builds. **DONE.** |  |
 | D13d | parser | **[+infra]** `ParserDirectiveRegistry` → `ParserStatementRegistry` with keyword-based dispatch + default handler + duplicate-registration guard. `IParserDirectiveHandler` → `IParserStatementHandler`. `declaration()` consolidated as single dispatch point (deleted `directiveStatement()` + `statement()`). `ctx.parser()` → `ctx.parserStatement()` + `ctx.defaultParserStatement()` on IFeatureRegistrationContext/FeatureRegistry. 11 handler files + 9 feature files + 13 test files + Compiler.java updated. **DONE.** |  |
-| D13e | label | **[+rewrite]** Label syntax (`NAME:`) rewritten in preprocessor to `.LABEL NAME` (same pattern as `^` → `.REPEAT`). Create `LabelPreProcessorHandler` + `LabelDirectiveHandler` in `features/label/`. LabelFeature registers both. Remove hardcoded label parsing from `Parser.statement()`. Parser import of LabelNode eliminated. |  |
-| D13f | proc | Extract `parseCallInstruction()` from Parser into `CallStatementHandler` in `features/proc/`. ProcFeature registers `CALL` as keyword in ParserStatementRegistry. Remove hardcoded CALL check from Parser. |  |
+| D13e | label | **[+rewrite]** Label syntax (`NAME:`) rewritten in preprocessor to `.LABEL NAME` via `ColonLabelHandler` (same pattern as `^` → `.REPEAT`). `LabelDirectiveHandler` parses `.LABEL` in the parser. LabelFeature registers both. Preprocessor dispatch expanded (TokenType restriction removed). Label/typed-literal disambiguation via forward look (NUMBER after COLON = typed literal). CaretDirectiveHandler updated to skip `.LABEL IDENTIFIER` instead of `IDENTIFIER COLON`. Parser `LabelNode` import eliminated — zero feature imports in Parser. **DONE.** |  |
+| D13f | proc | **[+ast+ir]** Create `CallNode` (AST) + `IrCallInstruction extends IrInstruction` (IR) in `features/proc/`. Clean up `InstructionNode` (remove refArguments/valArguments) and `IrInstruction` (remove refOperands/valOperands, make non-final). Add `TokenKind.INSTRUCTION` — generic opcode mapping replaces hardcoded CALL/RET. Extract CALL logic from 4 framework classes: Parser → `CallStatementHandler`, InstructionAnalysisHandler → `CallAnalysisHandler`, InstructionNodeConverter → `CallNodeConverter`. No separate CallTokenMapContributor needed (generic INSTRUCTION mapping covers all opcodes). After D13f: zero CALL/proc references in framework. |  |
 | D13g | ctx | **[+interface]** Create `IModuleContextBoundary` capability interface in `model/ast/`. PushCtxNode + PopCtxNode implement it. ModuleContextTracker uses interface instead of concrete types — all `features/ctx/` imports eliminated. After D13g: zero framework→feature imports in `frontend/` and `backend/`. |  |
-| D14 | instruction | Default handler for generic instructions (MOV, ADD, etc.) extracted from Parser. InstructionAnalysisHandler, InstructionNodeConverter, InstructionTokenMapContributor consolidated. | InstructionFeature.java |
+| D14 | instruction | Default handler for generic instructions (MOV, ADD, etc.) extracted from Parser. InstructionAnalysisHandler, InstructionNodeConverter, InstructionTokenMapContributor consolidated — all CALL-free and fully generic after D13f. | InstructionFeature.java |
 
 Order rationale: start with simple features (few phases), end with complex ones
 (proc spans 6+ phases). Each step is independently committable with all tests green.
@@ -1544,15 +1544,74 @@ Label rewrite:
 5. Parser import of `LabelNode` eliminated
 6. Existing assembly files unchanged — `NAME:` remains valid syntax (rewritten transparently)
 
-**D13f — CALL Keyword Extraction:**
+**D13f — CALL Logic Extraction via CallNode + IrCallInstruction:**
 
-`parseCallInstruction()` is feature-specific syntax hardcoded in `Parser.instructionStatement()`. With `ParserStatementRegistry` from D13d, CALL becomes a registered keyword.
+CALL-specific logic is scattered across 4 framework classes at the AST level, and CALL-specific fields exist in both `InstructionNode` (AST) and `IrInstruction` (IR). Both are feature-specific data in generic types.
+
+Solution: CALL gets its own types at both data layers — `CallNode` (AST) in `features/proc/` and `IrCallInstruction` (IR) in `features/proc/`. Both generic types are cleaned up. Additionally, `InstructionTokenMapContributor` is made fully generic by introducing `TokenKind.INSTRUCTION`.
+
+**Part 1: CallNode AST type**
+
+Create `CallNode` record in `features/proc/`:
+- `String procedureName` — the called procedure (extracted from first argument)
+- `List<AstNode> refArguments` — REF arguments (new syntax)
+- `List<AstNode> valArguments` — VAL arguments (new syntax)
+- `List<AstNode> legacyArguments` — old-style WITH arguments (empty for new syntax)
+- `SourceInfo sourceInfo` — source location
+- Implements `AstNode`, `ISourceLocatable`
+
+**Part 2: InstructionNode cleanup**
+
+Remove `refArguments` and `valArguments` from `InstructionNode` (`model/ast/`). The record becomes:
+- `String opcode, List<AstNode> arguments, SourceInfo sourceInfo`
+- Remove the 5-arg constructor, compact constructor null-checks for ref/val, and the `getChildren()`/`reconstructWithChildren()` complexity
+
+**Part 3: IrCallInstruction IR type**
+
+`IrInstruction` currently has `refOperands` and `valOperands` fields that only exist for CALL — same problem as InstructionNode.
+
+1. Make `IrInstruction` non-final (remove `final` modifier). It keeps only: `opcode`, `operands`, `source`, `synthetic`
+2. Remove `refOperands` and `valOperands` from `IrInstruction`
+3. Create `IrCallInstruction extends IrInstruction` in `features/proc/` — adds `refOperands` and `valOperands` fields
+4. `IrCallInstruction` overrides `equals()`/`hashCode()` including the additional fields. `IrInstruction` already uses `getClass()` in equals (not `instanceof`), so subclass comparison is correct.
+5. Framework phases (LayoutEngine, Linker) see `IrInstruction` via inheritance — `opcode()`, `operands()` work transparently
+6. Proc emission rules (`CallerMarshallingRule`, `CallSiteBindingRule`) cast to `IrCallInstruction` to access REF/VAL operands
+
+**Part 4: TokenKind.INSTRUCTION + generic opcode mapping**
+
+`InstructionTokenMapContributor` currently hardcodes CALL and RET with `TokenKind.CONSTANT` — feature knowledge in a generic contributor, and CONSTANT is semantically wrong for opcodes.
+
+1. Add `INSTRUCTION` to the `TokenKind` enum (`api/TokenKind.java`)
+2. `InstructionTokenMapContributor` maps ALL opcodes to `TokenKind.INSTRUCTION` — fully generic, zero feature knowledge
+3. No separate `CallTokenMapContributor` needed — the generic contributor handles all opcodes uniformly
+4. Protobuf serializes tokenType as string — `"INSTRUCTION"` is backward-compatible (new artifacts work with new code)
+
+**Part 5: Parser → CallStatementHandler**
 
 1. Create `CallStatementHandler implements IParserStatementHandler` in `features/proc/`
-2. Move `parseCallInstruction()` logic into `CallStatementHandler.parse()`
+2. Move `parseCallInstruction()` logic into `CallStatementHandler.parse()` — produces `CallNode` instead of `InstructionNode`
 3. ProcFeature registers via `ctx.parserStatement("CALL", new CallStatementHandler())`
-4. Remove `parseCallInstruction()` from Parser
-5. Parser import of `ProcedureNode` eliminated (already removed in D13b for procedureTable; this removes the last usage)
+4. Remove `parseCallInstruction()` and the `if ("CALL".equalsIgnoreCase(...))` check from `Parser.instructionStatement()`
+
+**Part 6: InstructionAnalysisHandler → CallAnalysisHandler**
+
+1. Create `CallAnalysisHandler implements IAnalysisHandler` in `features/proc/`
+2. Move the entire CALL validation block (procedure resolution, `instanceof ProcedureNode`, REF/VAL count validation, argument type validation, legacy WITH validation) into `CallAnalysisHandler.analyze()`
+3. ProcFeature registers via `ctx.analysisHandler(CallNode.class, new CallAnalysisHandler())`
+4. Remove CALL block from `InstructionAnalysisHandler` — including the fully-qualified `instanceof org.evochora.compiler.features.proc.ProcedureNode` reference
+5. `InstructionAnalysisHandler` becomes a pure generic instruction validator
+
+**Part 7: InstructionNodeConverter → CallNodeConverter**
+
+1. Create `CallNodeConverter implements IAstNodeToIrConverter<CallNode>` in `features/proc/`
+2. Move CALL IR generation into `CallNodeConverter.convert()` — emits `IrCallInstruction` (new syntax) or `IrDirective("core", "call_with", ...)` (legacy syntax)
+3. ProcFeature registers via `ctx.irConverter(CallNode.class, new CallNodeConverter())`
+4. Remove CALL branches from `InstructionNodeConverter` — it becomes a pure generic instruction converter
+5. `IrGenContext.resolveProcedureParam()` stays in IrGenContext (generic parameter scope infrastructure)
+
+**Artifact impact:** The `tokenMap` section of the Program Artifact changes — all opcodes get `TokenKind.INSTRUCTION` entries instead of only CALL/RET with `TokenKind.CONSTANT`. The `machineCodeLayout`, `labels`, `procedures`, `registers` sections must remain identical. Verification: diff baseline, confirm only tokenMap differences, set new baseline.
+
+After D13f: zero CALL/proc references in any framework class. `InstructionNode` and `IrInstruction` are pure generic types. All registries remain `Map<Class, Handler>` — no multi-handler complexity.
 
 **D13g — ModuleContextTracker Dependency Decoupling:**
 

@@ -55,9 +55,9 @@ public class SemanticAnalyzerTest {
     void testDuplicateLabelInGlobalScopeIsReported() {
         // Arrange
         String source = String.join("\n",
-                "START:",
+                ".LABEL START",
                 "  NOP",
-                "START:  # Dieses Label ist doppelt",
+                ".LABEL START  # Dieses Label ist doppelt",
                 "  NOP"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -86,11 +86,11 @@ public class SemanticAnalyzerTest {
         // Arrange
         String source = String.join("\n",
                 ".PROC FIRST_PROC",
-                "  MY_LABEL: NOP",
+                "  .LABEL MY_LABEL NOP",
                 "  RET",
                 ".ENDP",
                 ".PROC SECOND_PROC",
-                "  MY_LABEL: NOP",
+                "  .LABEL MY_LABEL NOP",
                 "  RET",
                 ".ENDP"
         );
@@ -118,8 +118,8 @@ public class SemanticAnalyzerTest {
         // Arrange
         String source = String.join("\n",
                 ".PROC MY_PROC",
-                "  LOOP: NOP",
-                "  LOOP: NOP",
+                "  .LABEL LOOP NOP",
+                "  .LABEL LOOP NOP",
                 "  RET",
                 ".ENDP"
         );
@@ -286,7 +286,7 @@ public class SemanticAnalyzerTest {
         // Arrange
         String source = String.join("\n",
                 ".PROC INNER_PROC",
-                "  INNER_LABEL: NOP",
+                "  .LABEL INNER_LABEL NOP",
                 "  RET",
                 ".ENDP",
                 "JMPI INNER_LABEL"
@@ -316,7 +316,7 @@ public class SemanticAnalyzerTest {
         // Arrange
         String source = String.join("\n",
                 ".PROC MY_PROC",
-                "  INTERNAL_LABEL: NOP",
+                "  .LABEL INTERNAL_LABEL NOP",
                 "  RET",
                 ".ENDP",
                 "JMPI INTERNAL_LABEL  # Fehler: Dieses Label ist privat für MY_PROC"
@@ -485,7 +485,7 @@ public class SemanticAnalyzerTest {
                 ".PROC MY_PROC",
                 "  JMPI SUCCESS_LABEL  # Sprung zu einem Label, das nach RET definiert wird",
                 "  RET",
-                "SUCCESS_LABEL: NOP",
+                ".LABEL SUCCESS_LABEL NOP",
                 ".ENDP"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -627,6 +627,7 @@ public class SemanticAnalyzerTest {
         reg.register(".REQUIRE", new RequireDirectiveHandler());
         reg.register(".PUSH_CTX", new PushCtxDirectiveHandler());
         reg.register(".POP_CTX", new PopCtxDirectiveHandler());
+        reg.register(".LABEL", new org.evochora.compiler.features.label.LabelDirectiveHandler());
         return reg;
     }
 }

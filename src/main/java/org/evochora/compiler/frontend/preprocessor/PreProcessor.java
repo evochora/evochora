@@ -52,12 +52,10 @@ public class PreProcessor {
             Token token = peek();
             boolean streamWasModified = false;
 
-            if (token.type() == TokenType.DIRECTIVE || token.type() == TokenType.IDENTIFIER) {
-                Optional<IPreProcessorHandler> handlerOpt = directiveRegistry.get(token.text());
-                if (handlerOpt.isPresent()) {
-                    handlerOpt.get().process(this, ppContext);
-                    streamWasModified = true;
-                }
+            Optional<IPreProcessorHandler> handlerOpt = directiveRegistry.get(token.text());
+            if (handlerOpt.isPresent()) {
+                handlerOpt.get().process(this, ppContext);
+                streamWasModified = true;
             }
 
             if (!streamWasModified) {

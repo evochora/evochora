@@ -10,7 +10,6 @@ import org.evochora.compiler.model.ast.NumberLiteralNode;
 import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
 import org.evochora.compiler.model.ast.VectorLiteralNode;
-import org.evochora.compiler.features.label.LabelNode;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -80,14 +79,6 @@ public class Parser implements ParsingContext {
             if (check(TokenType.IDENTIFIER) && "EXPORT".equalsIgnoreCase(peek().text())) {
                 currentExported = true;
                 advance();
-            }
-
-            // Label syntax: IDENTIFIER COLON (will be moved to preprocessor in D13e)
-            if (check(TokenType.IDENTIFIER) && checkNext(TokenType.COLON)) {
-                Token labelToken = advance();
-                advance(); // consume ':'
-                boolean exported = currentExported;
-                return new LabelNode(labelToken.text(), labelToken.toSourceInfo(), declaration(), exported);
             }
 
             // Keyword lookup in statement registry (directives, opcodes, etc.)
