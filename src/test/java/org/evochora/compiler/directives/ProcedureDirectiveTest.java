@@ -261,6 +261,7 @@ public class ProcedureDirectiveTest {
         reg.register(".PREG", new PregDirectiveHandler());
         reg.register(".LABEL", new org.evochora.compiler.features.label.LabelDirectiveHandler());
         reg.register("CALL", new org.evochora.compiler.features.proc.CallStatementHandler());
+        reg.registerDefault(new org.evochora.compiler.features.instruction.InstructionParsingHandler());
         return reg;
     }
 }

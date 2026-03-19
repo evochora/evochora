@@ -17,4 +17,14 @@ public interface IParserStatementHandler {
      *         statement does not produce a node (e.g., .DEFINE, .REG).
      */
     AstNode parse(ParsingContext context);
+
+    /**
+     * Returns whether this handler supports the EXPORT keyword preceding the statement.
+     * Handlers that return false will cause a compilation error if EXPORT is used.
+     *
+     * @return true if EXPORT is valid before this statement, false otherwise.
+     */
+    default boolean supportsExport() {
+        return false;
+    }
 }

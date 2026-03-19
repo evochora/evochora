@@ -1,22 +1,21 @@
 package org.evochora.compiler.frontend.semantics;
 
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.features.ctx.PopCtxNode;
-import org.evochora.compiler.features.ctx.PushCtxNode;
+import org.evochora.compiler.model.ast.IModuleContextBoundary;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
 
 /**
- * Tracks module context during AST traversal using PushCtxNode/PopCtxNode boundaries.
- * Module identity is determined by the import alias chain carried in PushCtxNode,
- * not by source file path. This allows the same physical file to appear as distinct
- * placements with independent module contexts.
+ * Tracks module context during AST traversal using {@link IModuleContextBoundary} nodes.
+ * Module identity is determined by the import alias chain, not by source file path.
+ * This allows the same physical file to appear as distinct placements with independent
+ * module contexts.
  *
- * <p>When entering an .IMPORT section (PushCtxNode with non-null aliasChain), the current
+ * <p>When entering a context with a non-null alias chain (.IMPORT), the current
  * alias chain is pushed onto a stack and the symbol table switches to the imported module.
- * When entering a .SOURCE section (PushCtxNode with null aliasChain), the parent context
- * is preserved. When leaving (PopCtxNode), the previous context is restored.</p>
+ * When entering a context with null alias chain (.SOURCE), the parent context
+ * is preserved. When leaving (pop boundary), the previous context is restored.</p>
  *
  * <p>Used by SemanticAnalyzer (Phase 4), AstPostProcessor (Phase 6), and TokenMapGenerator (Phase 5)
  * to ensure symbol operations happen in the correct module context.</p>
@@ -37,19 +36,18 @@ public class ModuleContextTracker {
      * @param node the AST node being visited
      */
     public void handleNode(AstNode node) {
-        if (node instanceof PushCtxNode pushCtx) {
-            stack.push(symbolTable.getCurrentAliasChain());
-            if (pushCtx.aliasChain() != null) {
-                symbolTable.setCurrentModule(pushCtx.aliasChain());
-            }
-            // .SOURCE (null aliasChain): parent context preserved
-            return;
-        }
-        if (node instanceof PopCtxNode) {
-            if (!stack.isEmpty()) {
-                String restored = stack.pop();
-                if (restored != null) {
-                    symbolTable.setCurrentModule(restored);
+        if (node instanceof IModuleContextBoundary boundary) {
+            if (boundary.isPush()) {
+                stack.push(symbolTable.getCurrentAliasChain());
+                if (boundary.aliasChain() != null) {
+                    symbolTable.setCurrentModule(boundary.aliasChain());
+                }
+            } else {
+                if (!stack.isEmpty()) {
+                    String restored = stack.pop();
+                    if (restored != null) {
+                        symbolTable.setCurrentModule(restored);
+                    }
                 }
             }
         }

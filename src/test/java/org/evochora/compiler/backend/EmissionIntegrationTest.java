@@ -9,7 +9,7 @@ import org.evochora.compiler.frontend.irgen.IrGenerator;
 import org.evochora.compiler.features.define.DefineNodeConverter;
 import org.evochora.compiler.features.dir.DirNodeConverter;
 import org.evochora.compiler.features.importdir.ImportNodeConverter;
-import org.evochora.compiler.frontend.irgen.converters.InstructionNodeConverter;
+import org.evochora.compiler.features.instruction.InstructionNodeConverter;
 import org.evochora.compiler.features.label.LabelNodeConverter;
 import org.evochora.compiler.features.org.OrgNodeConverter;
 import org.evochora.compiler.features.place.PlaceNodeConverter;
@@ -158,6 +158,7 @@ public class EmissionIntegrationTest {
         reg.register(".POP_CTX", new PopCtxDirectiveHandler());
         reg.register(".LABEL", new org.evochora.compiler.features.label.LabelDirectiveHandler());
         reg.register("CALL", new org.evochora.compiler.features.proc.CallStatementHandler());
+        reg.registerDefault(new org.evochora.compiler.features.instruction.InstructionParsingHandler());
         return reg;
     }
 

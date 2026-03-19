@@ -4,13 +4,10 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.postprocess.PostProcessHandlerRegistry;
 import org.evochora.compiler.frontend.semantics.AnalysisHandlerRegistry;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
-import org.evochora.compiler.frontend.semantics.analysis.InstructionAnalysisHandler;
-import org.evochora.compiler.model.ast.InstructionNode;
 
 /**
  * Builds fully-populated registries for tests, mirroring what {@link Compiler} does.
- * Uses {@link StandardFeatures#all()} as the feature source, plus inline registrations
- * for features not yet migrated to the feature-slicing architecture.
+ * Uses {@link StandardFeatures#all()} as the feature source.
  */
 public final class TestRegistries {
 
@@ -26,9 +23,6 @@ public final class TestRegistries {
         AnalysisHandlerRegistry registry = new AnalysisHandlerRegistry();
         registry.registerAll(featureRegistry.analysisHandlers());
         registry.registerAllCollectors(featureRegistry.symbolCollectors());
-
-        // Inline registrations for not-yet-migrated features (mirrors Compiler.java Phase 4)
-        registry.register(InstructionNode.class, new InstructionAnalysisHandler(symbolTable, diagnostics));
 
         return registry;
     }

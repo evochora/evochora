@@ -116,6 +116,7 @@ public class DefineDirectiveTest {
     private static ParserStatementRegistry registry() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".DEFINE", new DefineDirectiveHandler());
+        reg.registerDefault(new org.evochora.compiler.features.instruction.InstructionParsingHandler());
         return reg;
     }
 }

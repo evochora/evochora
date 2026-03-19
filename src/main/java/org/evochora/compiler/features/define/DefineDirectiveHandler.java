@@ -19,6 +19,9 @@ public class DefineDirectiveHandler implements IParserStatementHandler {
      * @return A {@link DefineNode} representing the constant definition.
      */
     @Override
+    public boolean supportsExport() { return true; }
+
+    @Override
     public AstNode parse(ParsingContext context) {
         context.advance(); // consume .DEFINE
 

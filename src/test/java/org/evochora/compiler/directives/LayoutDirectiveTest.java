@@ -94,6 +94,7 @@ public class LayoutDirectiveTest {
         reg.register(".ORG", new OrgDirectiveHandler());
         reg.register(".DIR", new DirDirectiveHandler());
         reg.register(".PLACE", new PlaceDirectiveHandler());
+        reg.registerDefault(new org.evochora.compiler.features.instruction.InstructionParsingHandler());
         return reg;
     }
 }

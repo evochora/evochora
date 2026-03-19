@@ -20,6 +20,9 @@ import java.util.List;
 public class ImportDirectiveHandler implements IParserStatementHandler {
 
     @Override
+    public boolean supportsExport() { return true; }
+
+    @Override
     public AstNode parse(ParsingContext context) {
         boolean exported = context.isExported();
         context.advance(); // consume .IMPORT

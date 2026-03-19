@@ -1,6 +1,7 @@
 package org.evochora.compiler.features.ctx;
 
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.IModuleContextBoundary;
 
 /**
  * An AST node representing a .PUSH_CTX directive.
@@ -11,7 +12,7 @@ import org.evochora.compiler.model.ast.AstNode;
  * For .SOURCE directives, the alias chain is null — the enclosing module
  * context is preserved.</p>
  */
-public class PushCtxNode implements AstNode {
+public class PushCtxNode implements AstNode, IModuleContextBoundary {
     private final String targetPath;
     private final String aliasChain;
 
@@ -41,5 +42,10 @@ public class PushCtxNode implements AstNode {
      */
     public String aliasChain() {
         return aliasChain;
+    }
+
+    @Override
+    public boolean isPush() {
+        return true;
     }
 }

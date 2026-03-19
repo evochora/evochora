@@ -1,4 +1,7 @@
-package org.evochora.compiler.frontend.tokenmap;
+package org.evochora.compiler.features.instruction;
+
+import org.evochora.compiler.frontend.tokenmap.ITokenMapContext;
+import org.evochora.compiler.frontend.tokenmap.ITokenMapContributor;
 
 import org.evochora.compiler.api.TokenKind;
 import org.evochora.compiler.model.ast.AstNode;

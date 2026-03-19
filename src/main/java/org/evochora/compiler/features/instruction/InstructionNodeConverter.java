@@ -1,4 +1,4 @@
-package org.evochora.compiler.frontend.irgen.converters;
+package org.evochora.compiler.features.instruction;
 
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrGenContext;

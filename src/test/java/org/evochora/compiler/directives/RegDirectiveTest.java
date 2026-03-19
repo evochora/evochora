@@ -232,6 +232,7 @@ public class RegDirectiveTest {
     private static ParserStatementRegistry registry() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".REG", new RegDirectiveHandler());
+        reg.registerDefault(new org.evochora.compiler.features.instruction.InstructionParsingHandler());
         return reg;
     }
 }

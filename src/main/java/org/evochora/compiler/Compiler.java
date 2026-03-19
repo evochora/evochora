@@ -26,13 +26,10 @@ import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.frontend.semantics.analysis.*;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.frontend.irgen.DefaultAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrConverterRegistry;
 import org.evochora.compiler.frontend.irgen.IrGenerator;
-import org.evochora.compiler.frontend.irgen.converters.InstructionNodeConverter;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
-import org.evochora.compiler.frontend.tokenmap.InstructionTokenMapContributor;
 import org.evochora.compiler.frontend.tokenmap.TokenMapContributorRegistry;
 import org.evochora.compiler.frontend.tokenmap.TokenMapGenerator;
 
@@ -222,6 +219,9 @@ public class Compiler implements ICompiler {
         // Phase 3: Parsing (builds AST)
         ParserStatementRegistry parserRegistry = new ParserStatementRegistry();
         featureRegistry.parserStatementHandlers().forEach(parserRegistry::register);
+        if (featureRegistry.defaultParserStatementHandler() != null) {
+            parserRegistry.registerDefault(featureRegistry.defaultParserStatementHandler());
+        }
         Parser parser = new Parser(ppResult.tokens(), diagnostics, parserRegistry);
         List<AstNode> ast = parser.parse();
 
@@ -234,7 +234,6 @@ public class Compiler implements ICompiler {
         AnalysisHandlerRegistry analysisRegistry = new AnalysisHandlerRegistry();
         analysisRegistry.registerAll(featureRegistry.analysisHandlers());
         analysisRegistry.registerAllCollectors(featureRegistry.symbolCollectors());
-        analysisRegistry.register(InstructionNode.class, new InstructionAnalysisHandler(symbolTable, diagnostics));
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainFilePath, rootAliasChain, analysisRegistry);
         analyzer.analyze(ast);
         if (diagnostics.hasErrors()) {
@@ -244,7 +243,6 @@ public class Compiler implements ICompiler {
         // Phase 5: Token Map Generation (for debugger)
         TokenMapContributorRegistry tokenMapRegistry = new TokenMapContributorRegistry();
         tokenMapRegistry.registerAll(featureRegistry.tokenMapContributors());
-        tokenMapRegistry.register(org.evochora.compiler.model.ast.InstructionNode.class, new InstructionTokenMapContributor());
         ModuleContextTracker tokenMapTracker = new ModuleContextTracker(symbolTable);
         symbolTable.setCurrentModule(rootAliasChain);
         TokenMapGenerator tokenMapGenerator = new TokenMapGenerator(symbolTable, diagnostics, tokenMapRegistry, tokenMapTracker);
@@ -265,7 +263,6 @@ public class Compiler implements ICompiler {
         // Phase 7: IR Generation (convert AST to intermediate representation)
         IrConverterRegistry irRegistry = IrConverterRegistry.initialize(new DefaultAstNodeToIrConverter());
         irRegistry.registerAll(featureRegistry.irConverters());
-        irRegistry.register(InstructionNode.class, new InstructionNodeConverter());
         IrGenerator irGenerator = new IrGenerator(diagnostics, irRegistry);
         IrProgram irProgram = irGenerator.generate(ast, programName, rootAliasChain);
 

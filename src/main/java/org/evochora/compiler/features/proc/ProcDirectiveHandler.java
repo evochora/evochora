@@ -22,6 +22,9 @@ public class ProcDirectiveHandler implements IParserStatementHandler {
      * @return A {@link ProcedureNode} representing the parsed procedure.
      */
     @Override
+    public boolean supportsExport() { return true; }
+
+    @Override
     public AstNode parse(ParsingContext context) {
         context.advance(); // consume .PROC
 

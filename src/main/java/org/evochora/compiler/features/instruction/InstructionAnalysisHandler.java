@@ -1,4 +1,6 @@
-package org.evochora.compiler.frontend.semantics.analysis;
+package org.evochora.compiler.features.instruction;
+
+import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.AstNode;
@@ -24,24 +26,11 @@ import java.util.Optional;
  */
 public class InstructionAnalysisHandler implements IAnalysisHandler {
 
-    private final SymbolTable symbolTable;
-    private final DiagnosticsEngine diagnostics;
-
-    /**
-     * Constructs a new instruction analysis handler.
-     * @param symbolTable The symbol table for resolving symbols.
-     * @param diagnostics The diagnostics engine for reporting errors.
-     */
-    public InstructionAnalysisHandler(SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
-        this.symbolTable = symbolTable;
-        this.diagnostics = diagnostics;
-    }
-
     /**
      * {@inheritDoc}
      */
     @Override
-    public void analyze(AstNode node, SymbolTable ignored, DiagnosticsEngine ignoredDiags) {
+    public void analyze(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         if (!(node instanceof InstructionNode instructionNode)) {
             return;
         }

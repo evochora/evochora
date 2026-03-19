@@ -14,6 +14,9 @@ import org.evochora.compiler.model.token.TokenType;
 public class LabelDirectiveHandler implements IParserStatementHandler {
 
     @Override
+    public boolean supportsExport() { return true; }
+
+    @Override
     public AstNode parse(ParsingContext context) {
         context.advance(); // consume .LABEL
         Token nameToken = context.consume(TokenType.IDENTIFIER, "Expected label name after .LABEL.");

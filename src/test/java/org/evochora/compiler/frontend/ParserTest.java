@@ -280,6 +280,7 @@ public class ParserTest {
         ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".DEFINE", new DefineDirectiveHandler());
         reg.register(".LABEL", new org.evochora.compiler.features.label.LabelDirectiveHandler());
+        reg.registerDefault(new org.evochora.compiler.features.instruction.InstructionParsingHandler());
         return reg;
     }
 }
