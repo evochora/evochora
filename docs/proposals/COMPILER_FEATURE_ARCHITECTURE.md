@@ -1639,9 +1639,11 @@ By D14, all registries are fully feature-driven.
 
 | Step | Description |
 |------|-------------|
-| ~~E1~~ | ~~Wire `CompilerFeature` registration in Compiler.java~~ — **absorbed into Phase D**. D1 introduces wiring infrastructure. Cutover steps eliminate `initialize()`/`initializeWithDefaults()`: D1 (PreProcessor), D4b (Parser), D4c (IrConverter), D4d (Layout), D7 (PostProcess, Analysis), D8 (EmissionContributor), D9 (Linking), D13 (Emission). |
-| E2 | Delete empty `frontend/*/features/` directories. |
-| E3 | Move remaining shared types (SymbolTable, Symbol, ModuleId, ModuleDescriptor, DependencyGraph, ModuleContextTracker, SourceLoader) to `compiler/model/` and `compiler/util/`. |
+| ~~E1~~ | ~~Wire `CompilerFeature` registration in Compiler.java~~ — **absorbed into Phase D**. **DONE.** |
+| E2 | Delete empty `frontend/*/features/` directories. Deleted: `frontend/parser/features/reg/`, `frontend/parser/features/`, `frontend/irgen/converters/`. **DONE.** |
+| E3a | Moved `SourceRootResolver` to `compiler/util/`. Updated 9 consumers + 2 fully-qualified references. **DONE.** |
+| E3b | Moved SymbolTable, Symbol, ResolvedSymbol, ModuleScope to `compiler/model/symbols/`. Updated 32+ consumers. Added explicit imports for same-package files (SemanticAnalyzer, ModuleVisibilityTest, etc.). **DONE.** |
+| E3c | Moved `ModuleContextTracker` to `compiler/model/`. Updated 7 consumers. **DONE.** |
 
 ### Phase F: Cleanup (optional, low priority)
 

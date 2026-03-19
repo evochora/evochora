@@ -1,7 +1,8 @@
-package org.evochora.compiler.frontend.semantics;
+package org.evochora.compiler.model;
 
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IModuleContextBoundary;
+import org.evochora.compiler.model.symbols.SymbolTable;
 
 import java.util.ArrayDeque;
 import java.util.Deque;

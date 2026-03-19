@@ -1,8 +1,9 @@
 package org.evochora.compiler.frontend.module;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.io.SourceLoader;
+import org.evochora.compiler.util.SourceLoader;
 import org.evochora.compiler.frontend.semantics.ModuleId;
+import org.evochora.compiler.util.SourceRootResolver;
 
 import java.io.IOException;
 import java.nio.file.Files;

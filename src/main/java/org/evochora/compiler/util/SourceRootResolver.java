@@ -1,7 +1,7 @@
-package org.evochora.compiler.frontend.module;
+package org.evochora.compiler.util;
 
 import org.evochora.compiler.api.SourceRoot;
-import org.evochora.compiler.frontend.io.SourceLoader;
+
 
 import java.nio.file.Path;
 import java.util.List;

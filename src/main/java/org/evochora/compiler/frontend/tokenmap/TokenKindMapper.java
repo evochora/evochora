@@ -1,7 +1,7 @@
 package org.evochora.compiler.frontend.tokenmap;
 
 import org.evochora.compiler.api.TokenKind;
-import org.evochora.compiler.frontend.semantics.Symbol;
+import org.evochora.compiler.model.symbols.Symbol;
 
 /**
  * Maps internal {@link Symbol.Type} values to the public {@link TokenKind} API type.

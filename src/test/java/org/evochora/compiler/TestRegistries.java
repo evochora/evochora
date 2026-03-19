@@ -3,7 +3,7 @@ package org.evochora.compiler;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.postprocess.PostProcessHandlerRegistry;
 import org.evochora.compiler.frontend.semantics.AnalysisHandlerRegistry;
-import org.evochora.compiler.frontend.semantics.SymbolTable;
+import org.evochora.compiler.model.symbols.SymbolTable;
 
 /**
  * Builds fully-populated registries for tests, mirroring what {@link Compiler} does.

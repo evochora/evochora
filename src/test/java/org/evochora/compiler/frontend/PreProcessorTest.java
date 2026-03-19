@@ -2,7 +2,7 @@ package org.evochora.compiler.frontend;
 
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.frontend.lexer.Lexer;
-import org.evochora.compiler.frontend.module.SourceRootResolver;
+import org.evochora.compiler.util.SourceRootResolver;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;

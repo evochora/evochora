@@ -3,8 +3,8 @@ package org.evochora.compiler.features.label;
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.backend.link.ILinkingRule;
 import org.evochora.compiler.backend.link.LinkingContext;
-import org.evochora.compiler.frontend.semantics.ModuleScope;
-import org.evochora.compiler.frontend.semantics.SymbolTable;
+import org.evochora.compiler.model.symbols.ModuleScope;
+import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.model.ir.*;
 
 import java.util.ArrayList;

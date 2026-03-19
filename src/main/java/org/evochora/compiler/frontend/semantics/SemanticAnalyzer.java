@@ -6,6 +6,9 @@ import org.evochora.compiler.frontend.module.ModuleDescriptor;
 import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
 import org.evochora.compiler.frontend.semantics.analysis.ISymbolCollector;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ModuleContextTracker;
+import org.evochora.compiler.model.symbols.ModuleScope;
+import org.evochora.compiler.model.symbols.SymbolTable;
 
 import java.util.HashMap;
 import java.util.List;

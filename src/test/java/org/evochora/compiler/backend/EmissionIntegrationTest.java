@@ -50,7 +50,7 @@ import org.evochora.compiler.features.require.RequireDirectiveHandler;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.TestRegistries;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
-import org.evochora.compiler.frontend.semantics.SymbolTable;
+import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrItem;

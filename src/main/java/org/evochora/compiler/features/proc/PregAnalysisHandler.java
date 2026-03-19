@@ -3,8 +3,8 @@ package org.evochora.compiler.features.proc;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.frontend.semantics.SymbolTable;
-import org.evochora.compiler.frontend.semantics.Symbol;
+import org.evochora.compiler.model.symbols.SymbolTable;
+import org.evochora.compiler.model.symbols.Symbol;
 
 /**
  * Semantic analysis handler for .PREG directives.

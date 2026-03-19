@@ -3,7 +3,7 @@ package org.evochora.compiler.features.proc;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.frontend.semantics.SymbolTable;
+import org.evochora.compiler.model.symbols.SymbolTable;
 
 /**
  * Opens a new scope for a procedure and defines its formal parameters as symbols

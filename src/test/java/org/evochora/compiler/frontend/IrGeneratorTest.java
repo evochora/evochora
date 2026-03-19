@@ -54,7 +54,7 @@ import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.TestRegistries;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
-import org.evochora.compiler.frontend.semantics.SymbolTable;
+import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.features.proc.IrCallInstruction;
 import org.evochora.compiler.model.ir.*;
 import org.evochora.runtime.isa.Instruction;

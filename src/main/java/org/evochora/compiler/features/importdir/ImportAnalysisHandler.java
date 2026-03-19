@@ -3,8 +3,8 @@ package org.evochora.compiler.features.importdir;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.compiler.frontend.semantics.ModuleScope;
-import org.evochora.compiler.frontend.semantics.SymbolTable;
+import org.evochora.compiler.model.symbols.ModuleScope;
+import org.evochora.compiler.model.symbols.SymbolTable;
 
 /**
  * Pass-2 analysis handler for {@code .IMPORT} directives.

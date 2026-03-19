@@ -3,7 +3,7 @@ package org.evochora.compiler.frontend.preprocessor;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.module.SourceRootResolver;
+import org.evochora.compiler.util.SourceRootResolver;
 import java.util.*;
 import java.util.Deque;
 

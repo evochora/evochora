@@ -1,4 +1,4 @@
-package org.evochora.compiler.frontend.semantics;
+package org.evochora.compiler.model.symbols;
 
 /**
  * A symbol together with its fully qualified name as resolved by the symbol table.

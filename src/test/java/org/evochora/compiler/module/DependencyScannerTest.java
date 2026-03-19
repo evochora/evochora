@@ -5,7 +5,7 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.module.DependencyGraph;
 import org.evochora.compiler.frontend.module.DependencyScanner;
 import org.evochora.compiler.frontend.module.ModuleDescriptor;
-import org.evochora.compiler.frontend.module.SourceRootResolver;
+import org.evochora.compiler.util.SourceRootResolver;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;

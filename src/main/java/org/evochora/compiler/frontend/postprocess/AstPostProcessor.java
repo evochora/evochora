@@ -5,10 +5,10 @@ import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.model.ast.TypedLiteralNode;
-import org.evochora.compiler.frontend.semantics.ModuleContextTracker;
-import org.evochora.compiler.frontend.semantics.ResolvedSymbol;
-import org.evochora.compiler.frontend.semantics.Symbol;
-import org.evochora.compiler.frontend.semantics.SymbolTable;
+import org.evochora.compiler.model.ModuleContextTracker;
+import org.evochora.compiler.model.symbols.ResolvedSymbol;
+import org.evochora.compiler.model.symbols.Symbol;
+import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.api.SourceInfo;
 
 import java.util.HashMap;

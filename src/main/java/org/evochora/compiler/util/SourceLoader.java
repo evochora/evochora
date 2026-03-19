@@ -1,4 +1,4 @@
-package org.evochora.compiler.frontend.io;
+package org.evochora.compiler.util;
 
 import java.io.BufferedReader;
 import java.io.IOException;

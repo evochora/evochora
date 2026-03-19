@@ -1,6 +1,6 @@
 package org.evochora.compiler.features.source;
 
-import org.evochora.compiler.frontend.io.SourceLoader;
+import org.evochora.compiler.util.SourceLoader;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.lexer.Lexer;
@@ -42,7 +42,7 @@ public class SourceDirectiveHandler implements IPreProcessorHandler {
             SourceLoader.LoadResult result;
             try {
                 result = loadContent(pathValue, pathToken, preProcessor);
-            } catch (org.evochora.compiler.frontend.module.SourceRootResolver.UnknownPrefixException e) {
+            } catch (org.evochora.compiler.util.SourceRootResolver.UnknownPrefixException e) {
                 preProcessor.getDiagnostics().reportError(e.getMessage(), pathToken.fileName(), pathToken.line());
                 preProcessor.removeTokens(startIndex, endIndex - startIndex);
                 return;

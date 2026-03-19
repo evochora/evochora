@@ -1,8 +1,8 @@
 package org.evochora.compiler.module;
 
 import org.evochora.compiler.api.SourceRoot;
-import org.evochora.compiler.frontend.module.SourceRootResolver;
-import org.evochora.compiler.frontend.module.SourceRootResolver.ParsedPath;
+import org.evochora.compiler.util.SourceRootResolver;
+import org.evochora.compiler.util.SourceRootResolver.ParsedPath;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;

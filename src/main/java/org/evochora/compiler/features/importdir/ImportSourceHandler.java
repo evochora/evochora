@@ -51,7 +51,7 @@ public class ImportSourceHandler implements IPreProcessorHandler {
         String resolvedPath;
         try {
             resolvedPath = preProcessor.getResolver().resolve(pathValue, pathToken.fileName());
-        } catch (org.evochora.compiler.frontend.module.SourceRootResolver.UnknownPrefixException e) {
+        } catch (org.evochora.compiler.util.SourceRootResolver.UnknownPrefixException e) {
             preProcessor.getDiagnostics().reportError(e.getMessage(), pathToken.fileName(), pathToken.line());
             return;
         }

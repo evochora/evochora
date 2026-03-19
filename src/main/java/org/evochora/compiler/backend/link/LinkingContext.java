@@ -1,6 +1,6 @@
 package org.evochora.compiler.backend.link;
 
-import org.evochora.compiler.frontend.semantics.SymbolTable;
+import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.isa.IInstructionSet;
 
 import java.util.ArrayDeque;

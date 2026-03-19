@@ -5,7 +5,7 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.features.repeat.CaretDirectiveHandler;
 import org.evochora.compiler.features.repeat.RepeatDirectiveHandler;
 import org.evochora.compiler.frontend.lexer.Lexer;
-import org.evochora.compiler.frontend.module.SourceRootResolver;
+import org.evochora.compiler.util.SourceRootResolver;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;

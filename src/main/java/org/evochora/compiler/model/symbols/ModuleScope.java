@@ -1,4 +1,4 @@
-package org.evochora.compiler.frontend.semantics;
+package org.evochora.compiler.model.symbols;
 
 import java.util.HashMap;
 import java.util.Map;

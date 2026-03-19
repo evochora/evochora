@@ -1,4 +1,4 @@
-package org.evochora.compiler.frontend.semantics;
+package org.evochora.compiler.model.symbols;
 
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;
