@@ -4,6 +4,7 @@ import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.backend.emit.EmissionRegistry;
 import org.evochora.compiler.backend.emit.IEmissionRule;
 import org.evochora.compiler.features.proc.CallerMarshallingRule;
+import org.evochora.compiler.features.proc.IrCallInstruction;
 import org.evochora.compiler.model.ir.*;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.BeforeAll;
@@ -61,7 +62,7 @@ public class EmissionCallerMarshallingTest {
             IrReg rB = new IrReg("%rB");
             IrImm imm123 = new IrImm(123);
             IrLabelRef target = new IrLabelRef("myProc");
-            IrInstruction call = new IrInstruction("CALL", List.of(target), List.of(rB), List.of(imm123), src("main.s", 1));
+            IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rB), List.of(imm123), src("main.s", 1));
 
             List<IrItem> out = runEmission(List.of(call));
 
@@ -81,7 +82,7 @@ public class EmissionCallerMarshallingTest {
             IrReg rX = new IrReg("%rX");
             IrReg rY = new IrReg("%rY");
             IrLabelRef target = new IrLabelRef("p");
-            IrInstruction call = new IrInstruction("CALL", List.of(target), List.of(rX, rY), Collections.emptyList(), src("main.s", 1));
+            IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rX, rY), Collections.emptyList(), src("main.s", 1));
 
             List<IrItem> out = runEmission(List.of(call));
 
@@ -99,7 +100,7 @@ public class EmissionCallerMarshallingTest {
         @DisplayName("Should not marshall a plain CALL instruction")
         void doesNotMarshallPlainCall() {
             // IR for: CALL someLabel
-            IrInstruction call = new IrInstruction("CALL", List.of(new IrLabelRef("someLabel")), src("main.s", 1));
+            IrInstruction call = new IrCallInstruction("CALL", List.of(new IrLabelRef("someLabel")), List.of(), List.of(), src("main.s", 1));
 
             List<IrItem> out = runEmission(List.of(call));
 
@@ -113,7 +114,7 @@ public class EmissionCallerMarshallingTest {
             // IR for: CALL myProc VAL myLabel
             IrLabelRef target = new IrLabelRef("myProc");
             IrLabelRef labelParam = new IrLabelRef("myLabel");
-            IrInstruction call = new IrInstruction("CALL", List.of(target), Collections.emptyList(), List.of(labelParam), src("main.s", 1));
+            IrInstruction call = new IrCallInstruction("CALL", List.of(target), Collections.emptyList(), List.of(labelParam), src("main.s", 1));
 
             List<IrItem> out = runEmission(List.of(call));
 
@@ -132,7 +133,7 @@ public class EmissionCallerMarshallingTest {
             IrImm imm123 = new IrImm(123);
             IrLabelRef target = new IrLabelRef("myProc");
             IrLabelRef labelParam = new IrLabelRef("myLabel");
-            IrInstruction call = new IrInstruction("CALL", List.of(target), List.of(rA), List.of(imm123, labelParam), src("main.s", 1));
+            IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rA), List.of(imm123, labelParam), src("main.s", 1));
 
             List<IrItem> out = runEmission(List.of(call));
 
@@ -153,7 +154,7 @@ public class EmissionCallerMarshallingTest {
             IrReg rA = new IrReg("%rA");
             IrInstruction ifr = new IrInstruction("IFR", List.of(rA), src("main.s", 1));
             IrLabelRef target = new IrLabelRef("myProc");
-            IrInstruction call = new IrInstruction("CALL", List.of(target), List.of(rA), Collections.emptyList(), src("main.s", 2));
+            IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rA), Collections.emptyList(), src("main.s", 2));
 
             List<IrItem> out = runEmission(List.of(ifr, call));
 
@@ -188,7 +189,7 @@ public class EmissionCallerMarshallingTest {
             IrReg rA = new IrReg("%rA");
             IrInstruction ifer = new IrInstruction("IFER", Collections.emptyList(), src("main.s", 1));
             IrLabelRef target = new IrLabelRef("myProc");
-            IrInstruction call = new IrInstruction("CALL", List.of(target), List.of(rA), Collections.emptyList(), src("main.s", 2));
+            IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rA), Collections.emptyList(), src("main.s", 2));
 
             List<IrItem> out = runEmission(List.of(ifer, call));
 
@@ -224,7 +225,7 @@ public class EmissionCallerMarshallingTest {
         IrDirective callWith = new IrDirective("core", "call_with", 
             Map.of("actuals", new IrValue.ListVal(List.of(new IrValue.Str("%DR1")))), 
             src("test.s", 5));
-        IrInstruction call = new IrInstruction("CALL", List.of(new IrVec(new int[]{1, 0})), src("test.s", 5));
+        IrInstruction call = new IrCallInstruction("CALL", List.of(new IrVec(new int[]{1, 0})), List.of(), List.of(), src("test.s", 5));
         IrInstruction nop = new IrInstruction("NOP", Collections.emptyList(), src("test.s", 6));
         
         List<IrItem> items = List.of(callWith, call, nop);
@@ -278,7 +279,7 @@ public class EmissionCallerMarshallingTest {
             args.put("actuals", new IrValue.ListVal(List.of(new IrValue.Str("%DR1"), new IrValue.Str("%DR2"))));
             IrDirective callWith = new IrDirective("core", "call_with", args, src("main.s", 1));
 
-            IrInstruction call = new IrInstruction("CALL", List.of(new IrVec(new int[]{1, 0})), src("main.s", 2));
+            IrInstruction call = new IrCallInstruction("CALL", List.of(new IrVec(new int[]{1, 0})), List.of(), List.of(), src("main.s", 2));
             List<IrItem> items = List.of(callWith, call);
 
             List<IrItem> out = runEmission(items);

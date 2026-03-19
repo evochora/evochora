@@ -20,14 +20,14 @@ public class CallSiteBindingRule implements ILinkingRule {
 
     @Override
     public IrInstruction apply(IrInstruction instruction, LinkingContext context, LayoutResult layout) {
-        IInstructionSet isa = context.isa();
-        if (!"CALL".equalsIgnoreCase(instruction.opcode())) return instruction;
+        if (!(instruction instanceof IrCallInstruction call)) return instruction;
 
+        IInstructionSet isa = context.isa();
         List<String> regNames = new ArrayList<>();
-        for (IrOperand op : instruction.refOperands()) {
+        for (IrOperand op : call.refOperands()) {
             if (op instanceof IrReg reg) regNames.add(reg.name());
         }
-        for (IrOperand op : instruction.valOperands()) {
+        for (IrOperand op : call.valOperands()) {
             if (op instanceof IrReg reg) regNames.add(reg.name());
         }
         if (!regNames.isEmpty()) {

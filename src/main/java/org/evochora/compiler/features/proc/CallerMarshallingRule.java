@@ -26,7 +26,7 @@ public final class CallerMarshallingRule implements IEmissionRule {
 
             // Look for a conditional instruction followed by a CALL.
             if (i + 1 < items.size() && currentItem instanceof IrInstruction conditional && ConditionalUtils.isConditional(conditional.opcode())) {
-                if (items.get(i + 1) instanceof IrInstruction call && "CALL".equals(call.opcode())) {
+                if (items.get(i + 1) instanceof IrCallInstruction call) {
                     // This is a conditional CALL.
                     handleConditionalCall(out, conditional, call);
                     i += 2; // Consumed both the conditional and the CALL.
@@ -35,7 +35,7 @@ public final class CallerMarshallingRule implements IEmissionRule {
             }
 
             // Handle a standard, non-conditional CALL (including REF/VAL).
-            if (currentItem instanceof IrInstruction call && "CALL".equals(call.opcode())) {
+            if (currentItem instanceof IrCallInstruction call) {
                 if (!call.refOperands().isEmpty() || !call.valOperands().isEmpty()) {
                     emitStandardMarshalling(out, call);
                 } else {
@@ -62,7 +62,7 @@ public final class CallerMarshallingRule implements IEmissionRule {
         return out;
     }
 
-    private void handleConditionalCall(List<IrItem> out, IrInstruction conditional, IrInstruction call) {
+    private void handleConditionalCall(List<IrItem> out, IrInstruction conditional, IrCallInstruction call) {
         String label = "_safe_call_" + safeCallCounter.getAndIncrement();
         String negatedOpcode = ConditionalUtils.getNegatedOpcode(conditional.opcode());
 
@@ -77,7 +77,7 @@ public final class CallerMarshallingRule implements IEmissionRule {
         out.add(new IrLabelDef(label, call.source()));
     }
 
-    private void emitStandardMarshalling(List<IrItem> out, IrInstruction call) {
+    private void emitStandardMarshalling(List<IrItem> out, IrCallInstruction call) {
         // Pre-call: Push arguments (VALs then REFs, in reverse order).
         for (int j = call.valOperands().size() - 1; j >= 0; j--) {
             IrOperand operand = call.valOperands().get(j);
@@ -123,7 +123,7 @@ public final class CallerMarshallingRule implements IEmissionRule {
         List<IrOperand> enrichedRefOps = actualRegs.stream()
                 .map(r -> (IrOperand) new IrReg(r))
                 .toList();
-        out.add(new IrInstruction(call.opcode(), call.operands(),
+        out.add(new IrCallInstruction(call.opcode(), call.operands(),
                 enrichedRefOps, List.of(), call.source()));
         for (int a = actualRegs.size() - 1; a >= 0; a--) {
             out.add(IrInstruction.synthetic("POP", List.of(new IrReg(actualRegs.get(a))), originalSourceInfo));

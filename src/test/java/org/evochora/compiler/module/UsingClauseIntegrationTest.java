@@ -316,6 +316,7 @@ class UsingClauseIntegrationTest {
         reg.register(".PUSH_CTX", new PushCtxDirectiveHandler());
         reg.register(".POP_CTX", new PopCtxDirectiveHandler());
         reg.register(".LABEL", new org.evochora.compiler.features.label.LabelDirectiveHandler());
+        reg.register("CALL", new org.evochora.compiler.features.proc.CallStatementHandler());
         return reg;
     }
 

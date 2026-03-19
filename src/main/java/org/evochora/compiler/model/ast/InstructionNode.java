@@ -2,92 +2,35 @@ package org.evochora.compiler.model.ast;
 
 import org.evochora.compiler.api.SourceInfo;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 /**
- * An AST node that represents a single machine instruction.
+ * An AST node that represents a single generic machine instruction.
  *
- * @param opcode The opcode mnemonic (e.g., "SETI").
+ * @param opcode The opcode mnemonic (e.g., "SETI", "NOP", "MOV").
  * @param arguments A list of AST nodes that represent the arguments of the instruction.
- * @param refArguments A list of AST nodes for REF arguments, specific to CALL.
- * @param valArguments A list of AST nodes for VAL arguments, specific to CALL.
  * @param sourceInfo The source location of the instruction.
  */
 public record InstructionNode(
         String opcode,
         List<AstNode> arguments,
-        List<AstNode> refArguments,
-        List<AstNode> valArguments,
         SourceInfo sourceInfo
 ) implements AstNode, ISourceLocatable {
 
-    /**
-     * Compact constructor to ensure lists are never null.
-     */
     public InstructionNode {
         if (arguments == null) {
             arguments = Collections.emptyList();
         }
-        if (refArguments == null) {
-            refArguments = Collections.emptyList();
-        }
-        if (valArguments == null) {
-            valArguments = Collections.emptyList();
-        }
-    }
-
-    /**
-     * Constructor for instructions that do not use REF/VAL arguments.
-     * @param opcode The instruction's opcode mnemonic.
-     * @param arguments The instruction's arguments.
-     * @param sourceInfo The source location.
-     */
-    public InstructionNode(String opcode, List<AstNode> arguments, SourceInfo sourceInfo) {
-        this(opcode, arguments, Collections.emptyList(), Collections.emptyList(), sourceInfo);
     }
 
     @Override
     public List<AstNode> getChildren() {
-        // The children of an instruction are its arguments, refArguments, and valArguments.
-        List<AstNode> allChildren = new ArrayList<>();
-        allChildren.addAll(arguments);
-        allChildren.addAll(refArguments);
-        allChildren.addAll(valArguments);
-        return allChildren;
+        return arguments;
     }
 
     @Override
     public AstNode reconstructWithChildren(List<AstNode> newChildren) {
-        // Split newChildren back into arguments, refArguments, and valArguments
-        // The order is: arguments, then refArguments, then valArguments
-        int argumentsSize = this.arguments.size();
-        int refArgumentsSize = this.refArguments.size();
-        int valArgumentsSize = this.valArguments.size();
-
-        List<AstNode> newArguments = new ArrayList<>();
-        List<AstNode> newRefArguments = new ArrayList<>();
-        List<AstNode> newValArguments = new ArrayList<>();
-
-        // Split the newChildren back into their respective lists
-        int index = 0;
-
-        // Add arguments
-        for (int i = 0; i < argumentsSize && index < newChildren.size(); i++) {
-            newArguments.add(newChildren.get(index++));
-        }
-
-        // Add refArguments
-        for (int i = 0; i < refArgumentsSize && index < newChildren.size(); i++) {
-            newRefArguments.add(newChildren.get(index++));
-        }
-
-        // Add valArguments
-        for (int i = 0; i < valArgumentsSize && index < newChildren.size(); i++) {
-            newValArguments.add(newChildren.get(index++));
-        }
-
-        return new InstructionNode(opcode, newArguments, newRefArguments, newValArguments, sourceInfo);
+        return new InstructionNode(opcode, newChildren, sourceInfo);
     }
 }

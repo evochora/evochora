@@ -5,6 +5,7 @@ import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.features.proc.CallSiteBindingRule;
 import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.isa.IInstructionSet;
+import org.evochora.compiler.features.proc.IrCallInstruction;
 import org.evochora.compiler.model.ir.IrImm;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrReg;
@@ -45,7 +46,7 @@ class CallSiteBindingRuleTest {
 
     @Test
     void collectsRefOperandBindings() {
-        IrInstruction call = new IrInstruction(
+        IrInstruction call = new IrCallInstruction(
                 "CALL",
                 List.of(new IrImm(0)),
                 List.of(new IrReg("%DR0"), new IrReg("%DR1")),
@@ -62,7 +63,7 @@ class CallSiteBindingRuleTest {
 
     @Test
     void collectsValOperandBindings() {
-        IrInstruction call = new IrInstruction(
+        IrInstruction call = new IrCallInstruction(
                 "CALL",
                 List.of(new IrImm(0)),
                 List.of(),
@@ -77,7 +78,7 @@ class CallSiteBindingRuleTest {
 
     @Test
     void collectsMixedRefAndValBindings() {
-        IrInstruction call = new IrInstruction(
+        IrInstruction call = new IrCallInstruction(
                 "CALL",
                 List.of(new IrImm(0)),
                 List.of(new IrReg("%DR2")),
@@ -92,7 +93,7 @@ class CallSiteBindingRuleTest {
 
     @Test
     void doesNotCreateBindingForCallWithoutRegisterOperands() {
-        IrInstruction call = new IrInstruction(
+        IrInstruction call = new IrCallInstruction(
                 "CALL",
                 List.of(new IrImm(0)),
                 List.of(),
@@ -124,7 +125,7 @@ class CallSiteBindingRuleTest {
         context.nextAddress(); // advance to address 1
         context.nextAddress(); // advance to address 2
 
-        IrInstruction call = new IrInstruction(
+        IrInstruction call = new IrCallInstruction(
                 "CALL",
                 List.of(new IrImm(0)),
                 List.of(new IrReg("%DR0")),
@@ -140,7 +141,7 @@ class CallSiteBindingRuleTest {
 
     @Test
     void resolvesUnknownRegisterToMinusOne() {
-        IrInstruction call = new IrInstruction(
+        IrInstruction call = new IrCallInstruction(
                 "CALL",
                 List.of(new IrImm(0)),
                 List.of(new IrReg("%UNKNOWN")),

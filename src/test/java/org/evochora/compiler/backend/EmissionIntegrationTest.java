@@ -157,6 +157,7 @@ public class EmissionIntegrationTest {
         reg.register(".PUSH_CTX", new PushCtxDirectiveHandler());
         reg.register(".POP_CTX", new PopCtxDirectiveHandler());
         reg.register(".LABEL", new org.evochora.compiler.features.label.LabelDirectiveHandler());
+        reg.register("CALL", new org.evochora.compiler.features.proc.CallStatementHandler());
         return reg;
     }
 
@@ -173,6 +174,7 @@ public class EmissionIntegrationTest {
         reg.register(RequireNode.class, new RequireNodeConverter());
         reg.register(RegNode.class, new RegNodeConverter());
         reg.register(PregNode.class, new PregNodeConverter());
+        reg.register(org.evochora.compiler.features.proc.CallNode.class, new org.evochora.compiler.features.proc.CallNodeConverter());
         reg.register(PushCtxNode.class, new PushCtxNodeConverter());
         reg.register(PopCtxNode.class, new PopCtxNodeConverter());
         return reg;

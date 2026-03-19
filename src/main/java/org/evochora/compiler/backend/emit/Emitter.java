@@ -204,8 +204,9 @@ public class Emitter {
     /**
      * Formats operands of an instruction as a string for display in the frontend.
      * 
-     * Note: For CALL instructions, refOperands and valOperands are emitted as separate PUSH/POP instructions,
-     * so we only format the main operands() here (which contains the procedure address/label).
+     * Note: For CALL instructions, REF/VAL operands (on {@code IrCallInstruction}) are emitted
+     * as separate PUSH/POP instructions by the marshalling rules, so only the main operands
+     * (procedure address/label) are formatted here.
      * 
      * @param ins The IR instruction.
      * @param layout The layout result for resolving label addresses.

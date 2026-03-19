@@ -55,6 +55,7 @@ import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.TestRegistries;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.frontend.semantics.SymbolTable;
+import org.evochora.compiler.features.proc.IrCallInstruction;
 import org.evochora.compiler.model.ir.*;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -118,14 +119,13 @@ public class IrGeneratorTest {
             .ENDP
             """;
         IrProgram ir = compileToIr(src);
-        Optional<IrInstruction> callInstructionOpt = ir.items().stream()
-                .filter(IrInstruction.class::isInstance)
-                .map(IrInstruction.class::cast)
-                .filter(i -> "CALL".equalsIgnoreCase(i.opcode()))
+        Optional<IrCallInstruction> callInstructionOpt = ir.items().stream()
+                .filter(IrCallInstruction.class::isInstance)
+                .map(IrCallInstruction.class::cast)
                 .findFirst();
 
         assertTrue(callInstructionOpt.isPresent(), "CALL instruction not found in IR");
-        IrInstruction callInstruction = callInstructionOpt.get();
+        IrCallInstruction callInstruction = callInstructionOpt.get();
 
         assertEquals(1, callInstruction.operands().size());
         assertInstanceOf(IrLabelRef.class, callInstruction.operands().get(0));
@@ -149,14 +149,13 @@ public class IrGeneratorTest {
             .ENDP
             """;
         IrProgram ir = compileToIr(src);
-        Optional<IrInstruction> callInstructionOpt = ir.items().stream()
-                .filter(IrInstruction.class::isInstance)
-                .map(IrInstruction.class::cast)
-                .filter(i -> "CALL".equalsIgnoreCase(i.opcode()))
+        Optional<IrCallInstruction> callInstructionOpt = ir.items().stream()
+                .filter(IrCallInstruction.class::isInstance)
+                .map(IrCallInstruction.class::cast)
                 .findFirst();
 
         assertTrue(callInstructionOpt.isPresent(), "CALL instruction not found in IR");
-        IrInstruction callInstruction = callInstructionOpt.get();
+        IrCallInstruction callInstruction = callInstructionOpt.get();
 
         assertEquals(1, callInstruction.operands().size());
         assertInstanceOf(IrLabelRef.class, callInstruction.operands().get(0));
@@ -301,14 +300,13 @@ public class IrGeneratorTest {
         IrProgram ir = compileToIr(src);
         
         // Find the CALL instruction within the outer procedure
-        Optional<IrInstruction> callInstructionOpt = ir.items().stream()
-                .filter(IrInstruction.class::isInstance)
-                .map(IrInstruction.class::cast)
-                .filter(i -> "CALL".equalsIgnoreCase(i.opcode()))
+        Optional<IrCallInstruction> callInstructionOpt = ir.items().stream()
+                .filter(IrCallInstruction.class::isInstance)
+                .map(IrCallInstruction.class::cast)
                 .findFirst();
 
         assertTrue(callInstructionOpt.isPresent(), "CALL instruction not found in IR");
-        IrInstruction callInstruction = callInstructionOpt.get();
+        IrCallInstruction callInstruction = callInstructionOpt.get();
 
         // Check that the CALL has the correct operands
         assertEquals(1, callInstruction.operands().size());
@@ -340,6 +338,7 @@ public class IrGeneratorTest {
         reg.register(".PUSH_CTX", new PushCtxDirectiveHandler());
         reg.register(".POP_CTX", new PopCtxDirectiveHandler());
         reg.register(".LABEL", new org.evochora.compiler.features.label.LabelDirectiveHandler());
+        reg.register("CALL", new org.evochora.compiler.features.proc.CallStatementHandler());
         return reg;
     }
 
@@ -356,6 +355,7 @@ public class IrGeneratorTest {
         reg.register(RequireNode.class, new RequireNodeConverter());
         reg.register(RegNode.class, new RegNodeConverter());
         reg.register(PregNode.class, new PregNodeConverter());
+        reg.register(org.evochora.compiler.features.proc.CallNode.class, new org.evochora.compiler.features.proc.CallNodeConverter());
         reg.register(PushCtxNode.class, new PushCtxNodeConverter());
         reg.register(PopCtxNode.class, new PopCtxNodeConverter());
         return reg;

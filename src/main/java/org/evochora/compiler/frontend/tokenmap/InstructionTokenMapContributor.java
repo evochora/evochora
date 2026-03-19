@@ -6,18 +6,13 @@ import org.evochora.compiler.model.ast.InstructionNode;
 
 /**
  * Token map contributor for {@link InstructionNode}.
- *
- * <p>Adds CALL and RET opcodes as {@link TokenKind#CONSTANT} tokens in the current scope.
- * Other instructions are not added to the token map.</p>
+ * Adds every opcode as a {@link TokenKind#INSTRUCTION} token in the current scope.
  */
 public class InstructionTokenMapContributor implements ITokenMapContributor {
 
 	@Override
 	public void contribute(AstNode node, ITokenMapContext context) {
 		InstructionNode instructionNode = (InstructionNode) node;
-		String opcode = instructionNode.opcode();
-		if ("CALL".equalsIgnoreCase(opcode) || "RET".equalsIgnoreCase(opcode)) {
-			context.addToken(instructionNode.sourceInfo(), opcode, TokenKind.CONSTANT, context.currentScope());
-		}
+		context.addToken(instructionNode.sourceInfo(), instructionNode.opcode(), TokenKind.INSTRUCTION, context.currentScope());
 	}
 }

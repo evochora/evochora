@@ -14,5 +14,7 @@ public enum TokenKind {
     /** A variable, such as a procedure parameter. */
     VARIABLE,
     /** A register alias defined with .REG or .PREG. */
-    ALIAS
+    ALIAS,
+    /** An instruction opcode (e.g., CALL, RET, NOP, MOV). */
+    INSTRUCTION
 }

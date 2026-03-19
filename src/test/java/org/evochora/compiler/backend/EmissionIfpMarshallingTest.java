@@ -3,6 +3,7 @@ package org.evochora.compiler.backend;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.backend.emit.EmissionRegistry;
 import org.evochora.compiler.backend.emit.IEmissionRule;
+import org.evochora.compiler.features.proc.IrCallInstruction;
 import org.evochora.compiler.model.ir.*;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -44,7 +45,7 @@ class EmissionIfpMarshallingTest {
         IrReg rA = new IrReg("%rA");
         IrInstruction ifpr = new IrInstruction("IFPR", List.of(vecReg), src("main.s", 1));
         IrLabelRef target = new IrLabelRef("myProc");
-        IrInstruction call = new IrInstruction("CALL", List.of(target), List.of(rA), Collections.emptyList(), src("main.s", 2));
+        IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rA), Collections.emptyList(), src("main.s", 2));
 
         List<IrItem> out = runEmission(List.of(ifpr, call));
 
@@ -78,7 +79,7 @@ class EmissionIfpMarshallingTest {
         IrReg rA = new IrReg("%rA");
         IrInstruction ifpi = new IrInstruction("IFPI", List.of(new IrReg("1|0")), src("main.s", 1));
         IrLabelRef target = new IrLabelRef("myProc");
-        IrInstruction call = new IrInstruction("CALL", List.of(target), List.of(rA), Collections.emptyList(), src("main.s", 2));
+        IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rA), Collections.emptyList(), src("main.s", 2));
 
         List<IrItem> out = runEmission(List.of(ifpi, call));
 
@@ -112,7 +113,7 @@ class EmissionIfpMarshallingTest {
         IrReg rA = new IrReg("%rA");
         IrInstruction ifps = new IrInstruction("IFPS", Collections.emptyList(), src("main.s", 1));
         IrLabelRef target = new IrLabelRef("myProc");
-        IrInstruction call = new IrInstruction("CALL", List.of(target), List.of(rA), Collections.emptyList(), src("main.s", 2));
+        IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rA), Collections.emptyList(), src("main.s", 2));
 
         List<IrItem> out = runEmission(List.of(ifps, call));
 

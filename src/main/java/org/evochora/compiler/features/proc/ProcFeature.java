@@ -17,7 +17,10 @@ public class ProcFeature implements ICompilerFeature {
     public void register(IFeatureRegistrationContext ctx) {
         ctx.parserStatement(".PROC", new ProcDirectiveHandler());
         ctx.parserStatement(".PREG", new PregDirectiveHandler());
+        ctx.parserStatement("CALL", new CallStatementHandler());
         ctx.symbolCollector(ProcedureNode.class, new ProcedureSymbolCollector());
+        ctx.analysisHandler(CallNode.class, new CallAnalysisHandler());
+        ctx.irConverter(CallNode.class, new CallNodeConverter());
         ctx.analysisHandler(ProcedureNode.class, new ProcedureAnalysisHandler());
         ctx.analysisHandler(PregNode.class, new PregAnalysisHandler());
         ctx.tokenMapContributor(ProcedureNode.class, new ProcedureTokenMapContributor());

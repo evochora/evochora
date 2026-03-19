@@ -59,117 +59,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
             InstructionSignature signature = signatureOpt.get();
             int expectedArity = signature.getArity();
 
-            // Special case: CALL ... [WITH] ACTUALS
-            // For CALL, only the target (1 argument) counts. Additional operands
-            // after the target or after WITH are tolerated as 'actuals'.
-            java.util.List<AstNode> argsForSignature = instructionNode.arguments();
-            if ("CALL".equalsIgnoreCase(instructionName)) {
-                // Handle new CALL ... REF ... VAL syntax
-                if (!instructionNode.refArguments().isEmpty() || !instructionNode.valArguments().isEmpty()) {
-                    if (instructionNode.arguments().isEmpty() || !(instructionNode.arguments().get(0) instanceof IdentifierNode procIdentifier)) {
-                        diagnostics.reportError("CALL with REF/VAL requires a procedure name.", instructionNode.sourceInfo().fileName(), instructionNode.sourceInfo().lineNumber());
-                        return; // Stop analysis for this instruction
-                    }
-
-                    Optional<ResolvedSymbol> procSymbolOpt = symbolTable.resolve(procIdentifier.text(), procIdentifier.sourceInfo().fileName());
-                    if (procSymbolOpt.isEmpty() || procSymbolOpt.get().symbol().type() != Symbol.Type.PROCEDURE) {
-                        diagnostics.reportError("Procedure '" + procIdentifier.text() + "' not found or is not a procedure.", procIdentifier.sourceInfo().fileName(), procIdentifier.sourceInfo().lineNumber());
-                        return;
-                    }
-
-                    Symbol procSymbol = procSymbolOpt.get().symbol();
-                    if (!(procSymbol.node() instanceof org.evochora.compiler.features.proc.ProcedureNode procedureNode)) {
-                        diagnostics.reportError("Internal error: Symbol for procedure '" + procIdentifier.text() + "' does not contain a valid ProcedureNode.", procIdentifier.sourceInfo().fileName(), procIdentifier.sourceInfo().lineNumber());
-                        return;
-                    }
-
-                    // Validate argument counts
-                    if (instructionNode.refArguments().size() != procedureNode.refParameters().size()) {
-                        diagnostics.reportError(String.format("Procedure '%s' expects %d REF argument(s), but received %d.", procedureNode.name(), procedureNode.refParameters().size(), instructionNode.refArguments().size()), instructionNode.sourceInfo().fileName(), instructionNode.sourceInfo().lineNumber());
-                    }
-                    if (instructionNode.valArguments().size() != procedureNode.valParameters().size()) {
-                        diagnostics.reportError(String.format("Procedure '%s' expects %d VAL argument(s), but received %d.", procedureNode.name(), procedureNode.valParameters().size(), instructionNode.valArguments().size()), instructionNode.sourceInfo().fileName(), instructionNode.sourceInfo().lineNumber());
-                    }
-
-                    // Validate REF argument types
-                    for (AstNode refArg : instructionNode.refArguments()) {
-                        if (refArg instanceof RegisterNode) continue;
-                        if (refArg instanceof IdentifierNode id) {
-                            var res = symbolTable.resolve(id.text(), id.sourceInfo().fileName());
-                            if (res.isPresent() && (res.get().symbol().type() == Symbol.Type.VARIABLE || res.get().symbol().type() == Symbol.Type.ALIAS))
-                                continue;
-                            // Check if this is a parameter name (will be resolved to %FPRx later)
-                            // Parameter names are valid in REF arguments
-                            continue;
-                        }
-                        diagnostics.reportError("REF arguments must be registers.", instructionNode.sourceInfo().fileName(), instructionNode.sourceInfo().lineNumber());
-                    }
-                    
-                    // Validate VAL argument types
-                    for (AstNode valArg : instructionNode.valArguments()) {
-                        if (valArg instanceof RegisterNode) continue;
-                        if (valArg instanceof NumberLiteralNode) continue;
-                        if (valArg instanceof TypedLiteralNode) continue;
-                        if (valArg instanceof IdentifierNode id) {
-                            var res = symbolTable.resolve(id.text(), id.sourceInfo().fileName());
-                            if (res.isPresent()) {
-                                // Allow labels as VAL parameters
-                                if (res.get().symbol().type() == Symbol.Type.LABEL) {
-                                    continue;
-                                }
-                                // Allow variables and aliases as VAL parameters
-                                if (res.get().symbol().type() == Symbol.Type.VARIABLE || res.get().symbol().type() == Symbol.Type.ALIAS) {
-                                    continue;
-                                }
-                            }
-                            // Check if this is a parameter name (will be resolved to %FPRx later)
-                            // Parameter names are valid in VAL arguments
-                            continue;
-                        }
-                        diagnostics.reportError("VAL arguments must be registers, literals, or labels.", instructionNode.sourceInfo().fileName(), instructionNode.sourceInfo().lineNumber());
-                    }
-                    // Since we've handled the new syntax, we can skip the rest of the generic analysis.
-                    // The main argument (proc name) will be checked against the instruction signature below.
-                    argsForSignature = instructionNode.arguments().subList(0, 1);
-                } else {
-                    // Only count the target label as a signature argument
-                    if (!instructionNode.arguments().isEmpty()) {
-                        argsForSignature = instructionNode.arguments().subList(0, 1);
-                    }
-                    // Validation of actuals: allow registers or formal parameter names
-                    int withIdx = -1;
-                    for (int i = 0; i < instructionNode.arguments().size(); i++) {
-                        AstNode a = instructionNode.arguments().get(i);
-                        if (a instanceof IdentifierNode id) {
-                            String t = id.text().toUpperCase();
-                            if ("WITH".equals(t) || ".WITH".equals(t)) {
-                                withIdx = i;
-                                break;
-                            }
-                        }
-                    }
-                    // Do not allow additional tokens between target and WITH
-                    int unexpectedEnd = withIdx >= 0 ? withIdx : instructionNode.arguments().size();
-                    if (unexpectedEnd > 1) {
-                        diagnostics.reportError("CALL syntax error: unexpected token before WITH.", instructionNode.sourceInfo().fileName(), instructionNode.sourceInfo().lineNumber());
-                        return;
-                    }
-                    int actualsStart = withIdx >= 0 ? withIdx + 1 : 1;
-                    for (int j = actualsStart; j < instructionNode.arguments().size(); j++) {
-                        AstNode arg = instructionNode.arguments().get(j);
-                        if (arg instanceof RegisterNode) continue;
-                        if (arg instanceof IdentifierNode id) {
-                            var res = symbolTable.resolve(id.text(), id.sourceInfo().fileName());
-                            if (res.isPresent() && (res.get().symbol().type() == Symbol.Type.VARIABLE || res.get().symbol().type() == Symbol.Type.ALIAS))
-                                continue;
-                        }
-                        diagnostics.reportError("CALL actuals must be registers or parameter names.", instructionNode.sourceInfo().fileName(), instructionNode.sourceInfo().lineNumber());
-                        return;
-                    }
-                }
-            }
-
-            int actualArity = argsForSignature.size();
+            int actualArity = instructionNode.arguments().size();
 
             if (expectedArity != actualArity) {
                 diagnostics.reportError(
@@ -182,7 +72,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
             }
 
             for (int i = 0; i < expectedArity; i++) {
-                AstNode argumentNode = argsForSignature.get(i);
+                AstNode argumentNode = instructionNode.arguments().get(i);
                 InstructionArgumentType expectedType = signature.argumentTypes().get(i);
 
                 // Handle constant substitution
