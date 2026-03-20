@@ -1,5 +1,7 @@
 package org.evochora.compiler.module;
 
+import org.evochora.compiler.FeatureRegistry;
+import org.evochora.compiler.StandardFeatures;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.lexer.Lexer;
@@ -303,7 +305,9 @@ class ModuleSourceDefineIntegrationTest {
         // Phase 0: Dependency scanning
         SourceRootResolver resolver = new SourceRootResolver(
                 List.of(new SourceRoot(".", null)), tempDir);
-        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver);
+        FeatureRegistry featureRegistry = new FeatureRegistry();
+        StandardFeatures.all().forEach(f -> f.register(featureRegistry));
+        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, featureRegistry.dependencyScanHandlers());
         DependencyGraph graph = scanner.scan(mainSource, mainPath);
         if (diagnostics.hasErrors()) return new PostProcessResult(diagnostics, List.of());
 

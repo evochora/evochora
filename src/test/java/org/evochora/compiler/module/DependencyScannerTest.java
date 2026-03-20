@@ -1,9 +1,12 @@
 package org.evochora.compiler.module;
 
+import org.evochora.compiler.FeatureRegistry;
+import org.evochora.compiler.StandardFeatures;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.module.DependencyGraph;
 import org.evochora.compiler.frontend.module.DependencyScanner;
+import org.evochora.compiler.frontend.module.IDependencyScanHandler;
 import org.evochora.compiler.frontend.module.ModuleDescriptor;
 import org.evochora.compiler.util.SourceRootResolver;
 import org.junit.jupiter.api.Tag;
@@ -29,13 +32,19 @@ public class DependencyScannerTest {
         return new SourceRootResolver(List.of(new SourceRoot(".", null)), root);
     }
 
+    private List<IDependencyScanHandler> defaultHandlers() {
+        FeatureRegistry featureRegistry = new FeatureRegistry();
+        StandardFeatures.all().forEach(f -> f.register(featureRegistry));
+        return featureRegistry.dependencyScanHandlers();
+    }
+
     @Test
     @Tag("unit")
     void singleFileProducesSingleModuleGraph() {
         String source = "NOP\nSETI %DR0 42\n";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         SourceRootResolver resolver = defaultResolver(Path.of("/test"));
-        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver);
+        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, defaultHandlers());
 
         DependencyGraph graph = scanner.scan(source, "/test/main.evo");
 
@@ -55,7 +64,7 @@ public class DependencyScannerTest {
 
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         SourceRootResolver resolver = defaultResolver(tempDir);
-        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver);
+        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, defaultHandlers());
         DependencyGraph graph = scanner.scan(mainSource, mainPath);
 
         assertThat(diagnostics.hasErrors()).isFalse();
@@ -79,7 +88,7 @@ public class DependencyScannerTest {
         String aSource = Files.readString(aFile);
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         SourceRootResolver resolver = defaultResolver(tempDir);
-        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver);
+        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, defaultHandlers());
         scanner.scan(aSource, aFile.toString());
 
         assertThat(diagnostics.hasErrors()).isTrue();
@@ -97,7 +106,7 @@ public class DependencyScannerTest {
 
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         SourceRootResolver resolver = defaultResolver(tempDir);
-        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver);
+        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, defaultHandlers());
         scanner.scan(mainSource, mainPath);
 
         assertThat(diagnostics.hasErrors()).isTrue();
@@ -118,7 +127,7 @@ public class DependencyScannerTest {
 
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         SourceRootResolver resolver = defaultResolver(tempDir);
-        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver);
+        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, defaultHandlers());
         DependencyGraph graph = scanner.scan(mainSource, mainPath);
 
         assertThat(diagnostics.hasErrors()).isFalse();
@@ -143,7 +152,7 @@ public class DependencyScannerTest {
 
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         SourceRootResolver resolver = defaultResolver(tempDir);
-        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver);
+        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, defaultHandlers());
         DependencyGraph graph = scanner.scan(source, mainPath);
 
         assertThat(diagnostics.hasErrors()).isFalse();

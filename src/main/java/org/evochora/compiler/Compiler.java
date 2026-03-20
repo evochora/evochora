@@ -170,7 +170,7 @@ public class Compiler implements ICompiler {
         StandardFeatures.all().forEach(f -> f.register(featureRegistry));
 
         // Phase 0: Dependency Scanning (load imported modules)
-        DependencyScanner depScanner = new DependencyScanner(diagnostics, resolver);
+        DependencyScanner depScanner = new DependencyScanner(diagnostics, resolver, featureRegistry.dependencyScanHandlers());
         DependencyGraph graph = depScanner.scan(fullSource, mainFilePath);
         if (diagnostics.hasErrors()) {
             throw new CompilationException(diagnostics.summary());

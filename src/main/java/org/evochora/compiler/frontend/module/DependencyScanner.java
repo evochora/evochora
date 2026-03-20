@@ -10,44 +10,29 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
- * Phase 0: Scans source files for module directives ({@code .IMPORT}, {@code .REQUIRE},
- * {@code .SOURCE}) and builds a {@link DependencyGraph}.
- *
- * <p>This is a lightweight text-based scan — it does not invoke the lexer or parser.
- * It loads all referenced files, detects circular dependencies, and produces a
- * topological ordering of modules.</p>
+ * Phase 0: Scans source files for dependency directives and builds a {@link DependencyGraph}.
+ * Dispatches to registered {@link IDependencyScanHandler} implementations for all directive
+ * detection and processing. The scanner itself has zero knowledge of specific directives.
  */
 public final class DependencyScanner {
 
-    private static final Pattern IMPORT_PATTERN = Pattern.compile(
-            "(?i)^\\.IMPORT\\s+\"([^\"]+)\"\\s+AS\\s+(\\w+)((?:\\s+USING\\s+\\w+\\s+AS\\s+\\w+)*)\\s*$");
-    private static final Pattern REQUIRE_PATTERN = Pattern.compile(
-            "(?i)^\\.REQUIRE\\s+\"([^\"]+)\"\\s+AS\\s+(\\w+)\\s*$");
-    private static final Pattern SOURCE_PATTERN = Pattern.compile(
-            "(?i)^\\.SOURCE\\s+\"([^\"]+)\"\\s*$");
-    private static final Pattern USING_PATTERN = Pattern.compile(
-            "(?i)USING\\s+(\\w+)\\s+AS\\s+(\\w+)");
-
     private final DiagnosticsEngine diagnostics;
     private final SourceRootResolver resolver;
+    private final List<IDependencyScanHandler> handlers;
     private final Map<ModuleId, ModuleDescriptor> descriptors = new LinkedHashMap<>();
     private final Set<ModuleId> visiting = new LinkedHashSet<>();
     private final Map<String, String> sourceContents = new LinkedHashMap<>();
 
-    public DependencyScanner(DiagnosticsEngine diagnostics, SourceRootResolver resolver) {
+    public DependencyScanner(DiagnosticsEngine diagnostics, SourceRootResolver resolver, List<IDependencyScanHandler> handlers) {
         this.diagnostics = diagnostics;
         this.resolver = resolver;
+        this.handlers = handlers;
     }
 
     /**
      * Scans the main file and all its transitive dependencies, building a dependency graph.
-     *
-     * @param mainContent  The source content of the main file.
-     * @param mainPath     The resolved, normalized path of the main file.
-     * @return A dependency graph with modules in topological order.
      */
     public DependencyGraph scan(String mainContent, String mainPath) {
         ModuleId mainId = new ModuleId(mainPath);
@@ -57,7 +42,6 @@ public final class DependencyScanner {
             return new DependencyGraph(List.of());
         }
 
-        // Topological sort (Kahn's algorithm)
         List<ModuleDescriptor> sorted = topologicalSort();
         return new DependencyGraph(sorted);
     }
@@ -73,86 +57,27 @@ public final class DependencyScanner {
         if (descriptors.containsKey(moduleId)) return;
 
         if (visiting.contains(moduleId)) {
-            diagnostics.reportError(
-                    "Circular dependency detected: " + moduleId.path(),
-                    sourcePath, 0);
+            diagnostics.reportError("Circular dependency detected: " + moduleId.path(), sourcePath, 0);
             return;
         }
         visiting.add(moduleId);
 
+        List<IDependencyInfo> dependencies = scanLines(sourcePath, content, false);
+
+        // Build ModuleDescriptor with both generic and typed dependency lists (transition)
         List<ModuleDescriptor.ImportDecl> imports = new ArrayList<>();
         List<ModuleDescriptor.RequireDecl> requires = new ArrayList<>();
         List<String> sourceFiles = new ArrayList<>();
-
-        String[] lines = content.split("\\r?\\n");
-        for (int i = 0; i < lines.length; i++) {
-            String line = lines[i].trim();
-            // Skip comments
-            int commentIdx = line.indexOf('#');
-            if (commentIdx >= 0) {
-                line = line.substring(0, commentIdx).trim();
-            }
-            if (line.isEmpty()) continue;
-
-            Matcher importMatcher = IMPORT_PATTERN.matcher(line);
-            if (importMatcher.matches()) {
-                String path = importMatcher.group(1);
-                String alias = importMatcher.group(2);
-                String usingsPart = importMatcher.group(3);
-
-                List<ModuleDescriptor.UsingDecl> usings = new ArrayList<>();
-                if (usingsPart != null && !usingsPart.isBlank()) {
-                    Matcher usingMatcher = USING_PATTERN.matcher(usingsPart);
-                    while (usingMatcher.find()) {
-                        usings.add(new ModuleDescriptor.UsingDecl(usingMatcher.group(1), usingMatcher.group(2)));
-                    }
-                }
-                // Recursively scan the imported module
-                String resolvedPath;
-                try {
-                    resolvedPath = resolver.resolve(path, sourcePath);
-                } catch (SourceRootResolver.UnknownPrefixException e) {
-                    diagnostics.reportError(e.getMessage(), sourcePath, i + 1);
-                    continue;
-                }
-                ModuleId importId = new ModuleId(resolvedPath);
-                imports.add(new ModuleDescriptor.ImportDecl(path, alias, usings, importId));
-                try {
-                    String importContent = loadContent(resolvedPath);
-                    scanModule(importId, resolvedPath, importContent);
-                } catch (IOException e) {
-                    diagnostics.reportError("Could not load imported module: " + path, sourcePath, i + 1);
-                }
-                continue;
-            }
-
-            Matcher requireMatcher = REQUIRE_PATTERN.matcher(line);
-            if (requireMatcher.matches()) {
-                String path = requireMatcher.group(1);
-                String alias = requireMatcher.group(2);
-                requires.add(new ModuleDescriptor.RequireDecl(path, alias));
-                continue;
-            }
-
-            Matcher sourceMatcher = SOURCE_PATTERN.matcher(line);
-            if (sourceMatcher.matches()) {
-                String path = sourceMatcher.group(1);
-                sourceFiles.add(path);
-                // Scan .SOURCE files for nested .SOURCE directives and validate no .IMPORT/.REQUIRE
-                String resolvedPath;
-                try {
-                    resolvedPath = resolver.resolve(path, sourcePath);
-                } catch (SourceRootResolver.UnknownPrefixException e) {
-                    diagnostics.reportError(e.getMessage(), sourcePath, i + 1);
-                    continue;
-                }
-                try {
-                    String sourceContent = loadContent(resolvedPath);
-                    sourceContents.put(resolvedPath, sourceContent);
-                    scanSourceFile(resolvedPath, sourceContent);
-                } catch (IOException e) {
-                    diagnostics.reportError("Could not load sourced file: " + path, sourcePath, i + 1);
-                }
+        for (IDependencyInfo dep : dependencies) {
+            if (dep instanceof org.evochora.compiler.features.importdir.ImportDependencyInfo imp) {
+                List<ModuleDescriptor.UsingDecl> usings = imp.usings().stream()
+                        .map(u -> new ModuleDescriptor.UsingDecl(u.sourceAlias(), u.targetAlias()))
+                        .toList();
+                imports.add(new ModuleDescriptor.ImportDecl(imp.path(), imp.alias(), usings, new ModuleId(imp.resolvedPath())));
+            } else if (dep instanceof org.evochora.compiler.features.require.RequireDependencyInfo req) {
+                requires.add(new ModuleDescriptor.RequireDecl(req.path(), req.alias()));
+            } else if (dep instanceof org.evochora.compiler.features.source.SourceDependencyInfo src) {
+                sourceFiles.add(src.path());
             }
         }
 
@@ -162,10 +87,22 @@ public final class DependencyScanner {
     }
 
     /**
-     * Scans a .SOURCE file for validation: must not contain .IMPORT or .REQUIRE,
-     * but may contain nested .SOURCE.
+     * Scans a .SOURCE file for nested directives. Only .SOURCE is valid;
+     * any other directive match is reported as an error.
      */
     private void scanSourceFile(String sourcePath, String content) {
+        scanLines(sourcePath, content, true);
+    }
+
+    /**
+     * Core line-by-line scanning with generic handler dispatch.
+     * @param sourceFileMode If true, only SourceDependencyInfo is valid — other dependencies trigger errors.
+     */
+    private List<IDependencyInfo> scanLines(String sourcePath, String content, boolean sourceFileMode) {
+        List<IDependencyInfo> dependencies = new ArrayList<>();
+
+        ScanContext ctx = new ScanContext(sourcePath);
+
         String[] lines = content.split("\\r?\\n");
         for (int i = 0; i < lines.length; i++) {
             String line = lines[i].trim();
@@ -175,35 +112,32 @@ public final class DependencyScanner {
             }
             if (line.isEmpty()) continue;
 
-            if (IMPORT_PATTERN.matcher(line).matches()) {
-                diagnostics.reportError(".SOURCE files must not contain .IMPORT directives.", sourcePath, i + 1);
-            }
-            if (REQUIRE_PATTERN.matcher(line).matches()) {
-                diagnostics.reportError(".SOURCE files must not contain .REQUIRE directives.", sourcePath, i + 1);
-            }
+            ctx.setLineNumber(i + 1);
 
-            Matcher sourceMatcher = SOURCE_PATTERN.matcher(line);
-            if (sourceMatcher.matches()) {
-                String nestedPath = sourceMatcher.group(1);
-                String resolvedPath;
-                try {
-                    resolvedPath = resolver.resolve(nestedPath, sourcePath);
-                } catch (SourceRootResolver.UnknownPrefixException e) {
-                    diagnostics.reportError(e.getMessage(), sourcePath, i + 1);
-                    continue;
-                }
-                try {
-                    String nestedContent = loadContent(resolvedPath);
-                    sourceContents.put(resolvedPath, nestedContent);
-                    scanSourceFile(resolvedPath, nestedContent);
-                } catch (IOException e) {
-                    diagnostics.reportError("Could not load sourced file: " + nestedPath, sourcePath, i + 1);
+            for (IDependencyScanHandler handler : handlers) {
+                Matcher matcher = handler.pattern().matcher(line);
+                if (matcher.matches()) {
+                    handler.handleMatch(matcher, ctx);
+                    break;
                 }
             }
         }
+
+        // Collect dependencies and validate source-file mode
+        for (IDependencyInfo dep : ctx.collectedDependencies()) {
+            if (sourceFileMode && !dep.allowedInSourceFile()) {
+                diagnostics.reportError(
+                        ".SOURCE files must not contain " + dep.directiveName() + " directives.",
+                        sourcePath, 0);
+            } else {
+                dependencies.add(dep);
+            }
+        }
+
+        return dependencies;
     }
 
-    private String loadContent(String resolvedPath) throws IOException {
+    String loadContent(String resolvedPath) throws IOException {
         if (SourceLoader.isHttpUrl(resolvedPath)) {
             return SourceLoader.loadHttp(resolvedPath).content();
         }
@@ -218,7 +152,6 @@ public final class DependencyScanner {
      * Topological sort using Kahn's algorithm.
      */
     private List<ModuleDescriptor> topologicalSort() {
-        // Build adjacency: module -> set of modules it depends on (imports)
         Map<ModuleId, Set<ModuleId>> dependencies = new LinkedHashMap<>();
         Map<ModuleId, Set<ModuleId>> dependents = new LinkedHashMap<>();
 
@@ -237,7 +170,6 @@ public final class DependencyScanner {
             }
         }
 
-        // Kahn's algorithm
         Queue<ModuleId> ready = new ArrayDeque<>();
         for (Map.Entry<ModuleId, Set<ModuleId>> entry : dependencies.entrySet()) {
             if (entry.getValue().isEmpty()) {
@@ -262,5 +194,71 @@ public final class DependencyScanner {
         }
 
         return sorted;
+    }
+
+    /**
+     * Inner context implementation passed to handlers during scanning.
+     */
+    private class ScanContext implements IDependencyScanContext {
+        private final String sourcePath;
+        private int lineNumber;
+        private final List<IDependencyInfo> collected = new ArrayList<>();
+
+        ScanContext(String sourcePath) {
+            this.sourcePath = sourcePath;
+        }
+
+        void setLineNumber(int lineNumber) {
+            this.lineNumber = lineNumber;
+        }
+
+        List<IDependencyInfo> collectedDependencies() {
+            return collected;
+        }
+
+        @Override
+        public String resolve(String path) throws SourceRootResolver.UnknownPrefixException {
+            return resolver.resolve(path, sourcePath);
+        }
+
+        @Override
+        public String loadContent(String resolvedPath) throws IOException {
+            return DependencyScanner.this.loadContent(resolvedPath);
+        }
+
+        @Override
+        public void registerSourceContent(String resolvedPath, String content) {
+            sourceContents.put(resolvedPath, content);
+        }
+
+        @Override
+        public void reportError(String message) {
+            diagnostics.reportError(message, sourcePath, lineNumber);
+        }
+
+        @Override
+        public void scanNestedModule(String resolvedPath, String content) {
+            DependencyScanner.this.scanModule(new ModuleId(resolvedPath), resolvedPath, content);
+        }
+
+        @Override
+        public void scanNestedSourceFile(String resolvedPath, String content) {
+            DependencyScanner.this.scanSourceFile(resolvedPath, content);
+        }
+
+        @Override
+        public void addDependency(IDependencyInfo info) {
+            collected.add(info);
+        }
+
+        @Override
+        public String sourcePath() {
+            return sourcePath;
+        }
+
+        @Override
+        public int lineNumber() {
+            return lineNumber;
+        }
     }
 }

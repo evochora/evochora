@@ -18,6 +18,7 @@ public class SourceFeature implements ICompilerFeature {
 
     @Override
     public void register(IFeatureRegistrationContext ctx) {
+        ctx.dependencyScanHandler(new SourceDependencyScanHandler());
         ctx.preprocessor(".SOURCE", new SourceDirectiveHandler());
     }
 }

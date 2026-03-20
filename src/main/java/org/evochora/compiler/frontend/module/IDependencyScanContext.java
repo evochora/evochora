@@ -1,67 +1,73 @@
 package org.evochora.compiler.frontend.module;
 
-import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.util.SourceRootResolver;
 
-import java.nio.file.Path;
-import java.util.List;
+import java.io.IOException;
 
 /**
  * Context provided to {@link IDependencyScanHandler} implementations during Phase 0.
- *
- * <p>Allows handlers to record discovered dependencies (imports, requires, source files)
- * and access information about the file currently being scanned.</p>
+ * Offers generic operations for path resolution, content loading, error reporting,
+ * and recursive scanning. Handlers use these to implement feature-specific logic
+ * without the scanner knowing any directive semantics.
  */
 public interface IDependencyScanContext {
 
-	/**
-	 * Records an {@code .IMPORT} dependency.
-	 *
-	 * @param path   The relative or absolute path of the imported module.
-	 * @param alias  The alias under which the module is imported.
-	 * @param usings The list of USING clause declarations for selective imports.
-	 */
-	void addImport(String path, String alias, List<ModuleDescriptor.UsingDecl> usings);
+    /**
+     * Resolves a relative path against the current source file.
+     * @param path The relative path from the directive.
+     * @return The resolved absolute path.
+     * @throws SourceRootResolver.UnknownPrefixException if the path prefix is unknown.
+     */
+    String resolve(String path) throws SourceRootResolver.UnknownPrefixException;
 
-	/**
-	 * Records a {@code .REQUIRE} dependency.
-	 *
-	 * @param path  The relative or absolute path of the required module.
-	 * @param alias The alias under which the module is required.
-	 */
-	void addRequire(String path, String alias);
+    /**
+     * Loads file content from the given resolved path (filesystem or HTTP).
+     * @param resolvedPath The resolved absolute path.
+     * @return The file content.
+     * @throws IOException if the file cannot be loaded.
+     */
+    String loadContent(String resolvedPath) throws IOException;
 
-	/**
-	 * Records a {@code .SOURCE} file inclusion.
-	 *
-	 * @param path The relative or absolute path of the source file to include.
-	 */
-	void addSourceFile(String path);
+    /**
+     * Registers source file content for Phase 1 pre-lexing.
+     * @param resolvedPath The resolved absolute path.
+     * @param content The file content.
+     */
+    void registerSourceContent(String resolvedPath, String content);
 
-	/**
-	 * Returns the path of the file currently being scanned.
-	 *
-	 * @return The source file path.
-	 */
-	String sourcePath();
+    /**
+     * Reports an error at the current line in the current file.
+     * @param message The error message.
+     */
+    void reportError(String message);
 
-	/**
-	 * Returns the base directory for resolving relative paths.
-	 *
-	 * @return The base path of the current source file.
-	 */
-	Path basePath();
+    /**
+     * Triggers recursive scanning of an imported module.
+     * @param resolvedPath The resolved absolute path.
+     * @param content The module content.
+     */
+    void scanNestedModule(String resolvedPath, String content);
 
-	/**
-	 * Returns the diagnostics engine for reporting scan errors and warnings.
-	 *
-	 * @return The diagnostics engine.
-	 */
-	DiagnosticsEngine diagnostics();
+    /**
+     * Triggers recursive scanning of a .SOURCE file (for nested .SOURCE detection and validation).
+     * @param resolvedPath The resolved absolute path.
+     * @param content The source file content.
+     */
+    void scanNestedSourceFile(String resolvedPath, String content);
 
-	/**
-	 * Returns the current line number in the file being scanned (1-based).
-	 *
-	 * @return The line number of the current directive.
-	 */
-	int lineNumber();
+    /**
+     * Reports a discovered dependency.
+     * @param info The feature-specific dependency data.
+     */
+    void addDependency(IDependencyInfo info);
+
+    /**
+     * Returns the path of the file currently being scanned.
+     */
+    String sourcePath();
+
+    /**
+     * Returns the current line number (1-based).
+     */
+    int lineNumber();
 }
