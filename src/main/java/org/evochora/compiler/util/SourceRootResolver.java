@@ -69,7 +69,7 @@ public final class SourceRootResolver {
      *                       retained for HTTP relative resolution).
      * @return The resolved absolute path.
      */
-    public String resolve(String directivePath, String sourceFilePath) {
+    public String resolve(String directivePath, String sourceFilePath) throws UnknownPrefixException {
         if (SourceLoader.isHttpUrl(directivePath)) {
             return directivePath;
         }
@@ -89,21 +89,23 @@ public final class SourceRootResolver {
         return rootPath.resolve(parsed.filePath()).normalize().toString().replace('\\', '/');
     }
 
-    private SourceRoot findRoot(String prefix) {
+    private SourceRoot findRoot(String prefix) throws UnknownPrefixException {
         if (prefix == null) {
-            return sourceRoots.stream()
-                    .filter(SourceRoot::isDefault)
-                    .findFirst()
-                    .orElseThrow(() -> new UnknownPrefixException(
-                            "No source root configured for unprefixed paths. "
-                            + "Add a source root without prefix or qualify the path with a prefix (e.g., MYLIB:path.evo)."));
+            var result = sourceRoots.stream().filter(SourceRoot::isDefault).findFirst();
+            if (result.isEmpty()) {
+                throw new UnknownPrefixException(
+                        "No source root configured for unprefixed paths. "
+                        + "Add a source root without prefix or qualify the path with a prefix (e.g., MYLIB:path.evo).");
+            }
+            return result.get();
         }
-        return sourceRoots.stream()
-                .filter(r -> prefix.equals(r.prefix()))
-                .findFirst()
-                .orElseThrow(() -> new UnknownPrefixException(
-                        "No source root configured for prefix '" + prefix + "'. "
-                        + "Available prefixes: " + availablePrefixes()));
+        var result = sourceRoots.stream().filter(r -> prefix.equals(r.prefix())).findFirst();
+        if (result.isEmpty()) {
+            throw new UnknownPrefixException(
+                    "No source root configured for prefix '" + prefix + "'. "
+                    + "Available prefixes: " + availablePrefixes());
+        }
+        return result.get();
     }
 
     private String availablePrefixes() {
@@ -116,7 +118,7 @@ public final class SourceRootResolver {
     /**
      * Thrown when a directive path references a prefix with no matching source root.
      */
-    public static class UnknownPrefixException extends RuntimeException {
+    public static class UnknownPrefixException extends Exception {
         public UnknownPrefixException(String message) {
             super(message);
         }

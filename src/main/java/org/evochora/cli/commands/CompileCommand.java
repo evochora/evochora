@@ -77,8 +77,8 @@ public class CompileCommand implements Callable<Integer> {
             int colonIdx = arg.lastIndexOf(':');
             if (colonIdx > 0 && colonIdx < arg.length() - 1) {
                 String candidate = arg.substring(colonIdx + 1);
-                // Only treat as PREFIX if it matches the prefix pattern (all uppercase)
-                if (candidate.matches("[A-Z][A-Z0-9_]*")) {
+                // Prefix must be at least 2 chars to avoid collision with Windows drive letters
+                if (candidate.matches("[A-Z][A-Z0-9_]+")) {
                     roots.add(new SourceRoot(arg.substring(0, colonIdx), candidate));
                     continue;
                 }

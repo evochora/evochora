@@ -19,6 +19,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * While they test the entire pipeline, they are tagged as "unit" tests because they do not
  * rely on external resources like the filesystem or network.
  */
+@Tag("unit")
 public class CompilerEndToEndTest {
 
 	private final EnvironmentProperties testEnvProps = new EnvironmentProperties(new int[]{100, 100}, true);
@@ -36,7 +37,6 @@ public class CompilerEndToEndTest {
 	 * @throws Exception if compilation fails.
 	 */
 	@Test
-    @Tag("unit")
 	void compilesProcedureAndCallEndToEnd() throws Exception {
 		String source = String.join("\n",
 				"EXPORT .PROC ADD2 REF A B",
@@ -71,7 +71,6 @@ public class CompilerEndToEndTest {
 	 * @throws Exception if compilation fails.
 	 */
 	@Test
-    @Tag("unit")
 	void acceptsExportOnProcHeader() throws Exception {
 		String source = String.join("\n",
 				"EXPORT .PROC BAR",
@@ -85,6 +84,46 @@ public class CompilerEndToEndTest {
 		Compiler compiler = new Compiler();
 		ProgramArtifact artifact = compiler.compile(lines, "proc_export_header.s", testEnvProps);
 		assertThat(artifact).isNotNull();
+		assertThat(artifact.machineCodeLayout()).isNotEmpty();
+	}
+
+	/**
+	 * Compiles a program exercising multiple features simultaneously:
+	 * labels, procedures with REF/VAL, CALL, .DEFINE, .REG, .MACRO.
+	 */
+	@Test
+	void compilesMultiFeatureProgram() throws Exception {
+		String source = String.join("\n",
+				".DEFINE MAX_VAL DATA:42",
+				".REG %TEMP %DR1",
+				"",
+				".MACRO INC R",
+				"  ADDI R DATA:1",
+				".ENDM",
+				"",
+				".ORG 0|0",
+				".PROC ADD_TWO REF A B",
+				"  ADDS",
+				"  RET",
+				".ENDP",
+				"",
+				"START: SETI %DR0 MAX_VAL",
+				"  SETR %TEMP %DR0",
+				"  INC %TEMP",
+				"  CALL ADD_TWO REF %DR0 %TEMP",
+				"  JMPI START",
+				"");
+
+		Compiler compiler = new Compiler();
+		ProgramArtifact artifact = compiler.compile(
+				Arrays.asList(source.split("\n")), "multi_feature_test", testEnvProps, null);
+
+		assertThat(artifact.programId()).isNotNull();
+		assertThat(artifact.sources()).isNotEmpty();
+		assertThat(artifact.sourceMap()).isNotEmpty();
+		assertThat(artifact.tokenLookup()).isNotEmpty();
+		assertThat(artifact.registerAliasMap()).isNotEmpty();
+		assertThat(artifact.labelNameToValue()).isNotEmpty();
 		assertThat(artifact.machineCodeLayout()).isNotEmpty();
 	}
 }

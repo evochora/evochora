@@ -52,7 +52,7 @@ public class PreProcessorTest {
      */
     @Test
     @Tag("integration")
-    void testIncludeDirectiveExpandsTokens() throws IOException {
+    void testIncludeDirectiveExpandsTokens() throws Exception {
         // Arrange
         Path libFile = tempDir.resolve("test.s");
         Files.writeString(libFile, "NOP"); // Schreibt NUR "NOP", ohne Zeilenumbruch

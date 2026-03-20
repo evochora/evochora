@@ -81,7 +81,11 @@ public class Compiler implements ICompiler {
             // Explicit source roots: resolve via source roots relative to CWD
             SourceRootResolver resolver = new SourceRootResolver(
                     options.sourceRoots(), Path.of("").toAbsolutePath());
-            resolvedPath = resolver.resolve(programPath, "");
+            try {
+                resolvedPath = resolver.resolve(programPath, "");
+            } catch (SourceRootResolver.UnknownPrefixException e) {
+                throw new CompilationException(e.getMessage());
+            }
         } else {
             // No source roots: treat programPath as CWD-relative file path
             SourceRootResolver.ParsedPath parsed = SourceRootResolver.parsePath(programPath);
@@ -146,7 +150,11 @@ public class Compiler implements ICompiler {
             workingDirectory = Path.of("").toAbsolutePath();
             SourceRootResolver initResolver = new SourceRootResolver(
                     effectiveOptions.sourceRoots(), workingDirectory);
-            mainFilePath = initResolver.resolve(programName, "");
+            try {
+                mainFilePath = initResolver.resolve(programName, "");
+            } catch (SourceRootResolver.UnknownPrefixException e) {
+                throw new CompilationException(e.getMessage());
+            }
         } else {
             // No source roots: resolve relative to program file's parent
             String resolvedFilePath;

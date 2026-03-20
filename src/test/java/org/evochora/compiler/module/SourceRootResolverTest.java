@@ -68,7 +68,7 @@ public class SourceRootResolverTest {
 
     @Test
     @Tag("unit")
-    void resolve_defaultRoot() {
+    void resolve_defaultRoot() throws Exception {
         SourceRootResolver resolver = new SourceRootResolver(
                 List.of(new SourceRoot(".", null)), tempDir);
         String result = resolver.resolve("lib/energy.evo", "main.evo");
@@ -78,7 +78,7 @@ public class SourceRootResolverTest {
 
     @Test
     @Tag("unit")
-    void resolve_namedRoot() {
+    void resolve_namedRoot() throws Exception {
         Path predDir = tempDir.resolve("predator");
         SourceRootResolver resolver = new SourceRootResolver(
                 List.of(new SourceRoot(".", null), new SourceRoot(predDir.toString(), "PRED")),
@@ -110,7 +110,7 @@ public class SourceRootResolverTest {
 
     @Test
     @Tag("unit")
-    void resolve_httpUrl_passesThrough() {
+    void resolve_httpUrl_passesThrough() throws Exception {
         SourceRootResolver resolver = new SourceRootResolver(
                 List.of(new SourceRoot(".", null)), tempDir);
         String result = resolver.resolve("https://example.com/lib.evo", "main.evo");
@@ -119,7 +119,7 @@ public class SourceRootResolverTest {
 
     @Test
     @Tag("unit")
-    void resolve_httpSourceRoot_resolvesRelativePath() {
+    void resolve_httpSourceRoot_resolvesRelativePath() throws Exception {
         SourceRootResolver resolver = new SourceRootResolver(
                 List.of(new SourceRoot("https://example.com/organisms/predator", "PRED")),
                 tempDir);
@@ -129,7 +129,7 @@ public class SourceRootResolverTest {
 
     @Test
     @Tag("unit")
-    void resolve_httpSourceRoot_defaultPrefix() {
+    void resolve_httpSourceRoot_defaultPrefix() throws Exception {
         SourceRootResolver resolver = new SourceRootResolver(
                 List.of(new SourceRoot("https://example.com/organisms", null)),
                 tempDir);
@@ -139,7 +139,7 @@ public class SourceRootResolverTest {
 
     @Test
     @Tag("unit")
-    void resolve_httpSourceRoot_trailingSlash() {
+    void resolve_httpSourceRoot_trailingSlash() throws Exception {
         SourceRootResolver resolver = new SourceRootResolver(
                 List.of(new SourceRoot("https://example.com/organisms/", "PRED")),
                 tempDir);
