@@ -6,7 +6,9 @@ import org.evochora.compiler.backend.layout.ILayoutDirectiveHandler;
 import org.evochora.compiler.backend.link.ILinkingDirectiveHandler;
 import org.evochora.compiler.backend.link.ILinkingRule;
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
+import org.evochora.compiler.frontend.module.IDependencyInfo;
 import org.evochora.compiler.frontend.module.IDependencyScanHandler;
+import org.evochora.compiler.frontend.semantics.IDependencySetupHandler;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.postprocess.IPostProcessHandler;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
@@ -37,6 +39,14 @@ public interface IFeatureRegistrationContext {
 	 * @param handler The handler that matches and processes dependency directives.
 	 */
 	void dependencyScanHandler(IDependencyScanHandler handler);
+
+	/**
+	 * Registers a module setup handler for Phase 4 (module relationship setup).
+	 *
+	 * @param type    The IDependencyInfo subclass this handler processes.
+	 * @param handler The handler that sets up module relationships for this dependency type.
+	 */
+	<T extends IDependencyInfo> void dependencySetupHandler(Class<T> type, IDependencySetupHandler<T> handler);
 
 	// Phase 2: Preprocessing
 

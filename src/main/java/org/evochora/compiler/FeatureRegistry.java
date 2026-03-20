@@ -6,7 +6,9 @@ import org.evochora.compiler.backend.layout.ILayoutDirectiveHandler;
 import org.evochora.compiler.backend.link.ILinkingDirectiveHandler;
 import org.evochora.compiler.backend.link.ILinkingRule;
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
+import org.evochora.compiler.frontend.module.IDependencyInfo;
 import org.evochora.compiler.frontend.module.IDependencyScanHandler;
+import org.evochora.compiler.frontend.semantics.IDependencySetupHandler;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.postprocess.IPostProcessHandler;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
@@ -34,6 +36,7 @@ import java.util.Map;
 public class FeatureRegistry implements IFeatureRegistrationContext {
 
 	private final List<IDependencyScanHandler> dependencyScanHandlers = new ArrayList<>();
+	private final Map<Class<? extends IDependencyInfo>, IDependencySetupHandler<?>> dependencySetupHandlers = new HashMap<>();
 	private final Map<String, IPreProcessorHandler> preprocessorHandlers = new HashMap<>();
 	private final Map<String, IParserStatementHandler> parserStatementHandlers = new HashMap<>();
 	private IParserStatementHandler defaultParserStatementHandler;
@@ -53,6 +56,12 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	@Override
 	public void dependencyScanHandler(IDependencyScanHandler handler) {
 		dependencyScanHandlers.add(handler);
+	}
+
+	@Override
+	public <T extends IDependencyInfo> void dependencySetupHandler(
+			Class<T> type, IDependencySetupHandler<T> handler) {
+		dependencySetupHandlers.put(type, handler);
 	}
 
 	@Override
@@ -124,6 +133,10 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 
 	public List<IDependencyScanHandler> dependencyScanHandlers() {
 		return Collections.unmodifiableList(dependencyScanHandlers);
+	}
+
+	public Map<Class<? extends IDependencyInfo>, IDependencySetupHandler<?>> dependencySetupHandlers() {
+		return Collections.unmodifiableMap(dependencySetupHandlers);
 	}
 
 	public Map<String, IPreProcessorHandler> preprocessorHandlers() {

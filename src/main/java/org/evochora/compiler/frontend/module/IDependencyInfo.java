@@ -1,5 +1,7 @@
 package org.evochora.compiler.frontend.module;
 
+import org.evochora.compiler.frontend.semantics.ModuleId;
+
 /**
  * Marker interface for feature-specific dependency data discovered during Phase 0 scanning.
  * Implemented by feature-specific records (ImportDependencyInfo, RequireDependencyInfo, etc.).
@@ -18,5 +20,13 @@ public interface IDependencyInfo {
      */
     default boolean allowedInSourceFile() {
         return true;
+    }
+
+    /**
+     * Returns the module ID for dependencies that create graph edges (imports).
+     * Returns null for dependencies that don't create graph relationships (require, source).
+     */
+    default ModuleId resolvedModuleId() {
+        return null;
     }
 }

@@ -105,7 +105,7 @@ public class EmissionIntegrationTest {
         List<AstNode> ast = parser.parse();
 
         SymbolTable symbolTable = new SymbolTable(diags);
-        new SemanticAnalyzer(diags, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diags)).analyze(ast);
+        new SemanticAnalyzer(diags, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diags), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry()).analyze(ast);
 
         assertThat(diags.hasErrors()).as(diags.summary()).isFalse();
 

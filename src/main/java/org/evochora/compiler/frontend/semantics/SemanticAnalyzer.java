@@ -2,12 +2,12 @@ package org.evochora.compiler.frontend.semantics;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.module.DependencyGraph;
+import org.evochora.compiler.frontend.module.IDependencyInfo;
 import org.evochora.compiler.frontend.module.ModuleDescriptor;
 import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
 import org.evochora.compiler.frontend.semantics.analysis.ISymbolCollector;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ModuleContextTracker;
-import org.evochora.compiler.model.symbols.ModuleScope;
 import org.evochora.compiler.model.symbols.SymbolTable;
 
 import java.util.HashMap;
@@ -30,6 +30,7 @@ public class SemanticAnalyzer {
     private final DiagnosticsEngine diagnostics;
     private final SymbolTable symbolTable;
     private final AnalysisHandlerRegistry registry;
+    private final ModuleSetupRegistry setupRegistry;
     private final ModuleContextTracker contextTracker;
 
     /**
@@ -44,11 +45,13 @@ public class SemanticAnalyzer {
      */
     public SemanticAnalyzer(DiagnosticsEngine diagnostics, SymbolTable symbolTable,
                             DependencyGraph graph, String mainFilePath,
-                            String rootAliasChain, AnalysisHandlerRegistry registry) {
+                            String rootAliasChain, AnalysisHandlerRegistry registry,
+                            ModuleSetupRegistry setupRegistry) {
         this.diagnostics = diagnostics;
         this.symbolTable = symbolTable;
         this.contextTracker = new ModuleContextTracker(symbolTable);
         this.registry = registry;
+        this.setupRegistry = setupRegistry;
 
         if (graph != null && rootAliasChain != null) {
             setupModuleRelationships(graph, mainFilePath, rootAliasChain);
@@ -119,12 +122,11 @@ public class SemanticAnalyzer {
      * import hierarchy. The root module uses rootAliasChain, imported modules use
      * their import alias appended to the parent's chain.
      */
+    @SuppressWarnings("unchecked")
     private void setupModuleRelationships(DependencyGraph graph, String mainFilePath, String rootAliasChain) {
         List<ModuleDescriptor> topoOrder = graph.topologicalOrder();
 
-        // Pass 1: Compute alias chains for all modules, starting from root.
-        // Reverse topological order processes the root first, then its dependencies,
-        // ensuring parent alias chains are available before child chains.
+        // Pass 1: Compute alias chains (reverse topological — root first, then dependencies).
         Map<String, String> pathToAliasChain = new HashMap<>();
         pathToAliasChain.put(mainFilePath, rootAliasChain);
 
@@ -137,54 +139,39 @@ public class SemanticAnalyzer {
                 moduleAliasChain = ModuleId.deriveModuleName(modulePath);
                 pathToAliasChain.put(modulePath, moduleAliasChain);
             }
-            for (ModuleDescriptor.ImportDecl imp : module.imports()) {
-                String importedPath = imp.resolvedId().path();
-                String importAlias = imp.alias().toUpperCase();
-                String importedAliasChain = moduleAliasChain.isEmpty()
-                        ? importAlias
-                        : moduleAliasChain + "." + importAlias;
-                pathToAliasChain.put(importedPath, importedAliasChain);
+            ModuleSetupContext ctx = new ModuleSetupContext(symbolTable, diagnostics, pathToAliasChain, modulePath);
+            for (IDependencyInfo dep : module.dependencies()) {
+                IDependencySetupHandler handler = setupRegistry.resolve(dep.getClass());
+                if (handler != null) {
+                    handler.registerScope(dep, ctx);
+                }
             }
         }
 
-        // Pass 2: Register all modules under their correct alias chains and populate relationships.
+        // Pass 2: Register all modules, then dispatch relationship registration.
         for (ModuleDescriptor module : topoOrder) {
             String modulePath = module.sourcePath();
             String moduleAliasChain = pathToAliasChain.getOrDefault(modulePath,
                     ModuleId.deriveModuleName(modulePath));
             symbolTable.registerModule(moduleAliasChain, modulePath);
-
-            ModuleScope modScope = symbolTable.getModuleScope(moduleAliasChain).orElseThrow();
-
-            for (ModuleDescriptor.ImportDecl imp : module.imports()) {
-                String importAlias = imp.alias().toUpperCase();
-                String importedAliasChain = pathToAliasChain.get(imp.resolvedId().path());
-                modScope.imports().put(importAlias, importedAliasChain);
-            }
-
-            for (ModuleDescriptor.RequireDecl req : module.requires()) {
-                modScope.requires().put(req.alias().toUpperCase(), req.path());
+        }
+        for (ModuleDescriptor module : topoOrder) {
+            ModuleSetupContext ctx = new ModuleSetupContext(symbolTable, diagnostics, pathToAliasChain, module.sourcePath());
+            for (IDependencyInfo dep : module.dependencies()) {
+                IDependencySetupHandler handler = setupRegistry.resolve(dep.getClass());
+                if (handler != null) {
+                    handler.registerRelationships(dep, ctx);
+                }
             }
         }
 
-        // Pass 3: Set up USING bindings (requires all modules to be registered first).
+        // Pass 3: Resolve cross-module bindings (USING etc.).
         for (ModuleDescriptor module : topoOrder) {
-            String modulePath = module.sourcePath();
-            String moduleAliasChain = pathToAliasChain.get(modulePath);
-            if (moduleAliasChain == null) continue;
-
-            for (ModuleDescriptor.ImportDecl imp : module.imports()) {
-                String importedAliasChain = pathToAliasChain.get(imp.resolvedId().path());
-                ModuleScope importedModScope = symbolTable.getModuleScope(importedAliasChain).orElse(null);
-                if (importedModScope == null) continue;
-
-                for (ModuleDescriptor.UsingDecl using : imp.usings()) {
-                    String sourceAlias = using.sourceAlias().toUpperCase();
-                    ModuleScope importerScope = symbolTable.getModuleScope(moduleAliasChain).orElseThrow();
-                    String sourceAliasChain = importerScope.imports().get(sourceAlias);
-                    if (sourceAliasChain != null) {
-                        importedModScope.usingBindings().put(using.targetAlias().toUpperCase(), sourceAliasChain);
-                    }
+            ModuleSetupContext ctx = new ModuleSetupContext(symbolTable, diagnostics, pathToAliasChain, module.sourcePath());
+            for (IDependencyInfo dep : module.dependencies()) {
+                IDependencySetupHandler handler = setupRegistry.resolve(dep.getClass());
+                if (handler != null) {
+                    handler.resolveBindings(dep, ctx);
                 }
             }
         }

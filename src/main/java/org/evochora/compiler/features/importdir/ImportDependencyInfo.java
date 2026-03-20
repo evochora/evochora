@@ -21,6 +21,9 @@ public record ImportDependencyInfo(
 
     @Override public String directiveName() { return ".IMPORT"; }
     @Override public boolean allowedInSourceFile() { return false; }
+    @Override public org.evochora.compiler.frontend.semantics.ModuleId resolvedModuleId() {
+        return new org.evochora.compiler.frontend.semantics.ModuleId(resolvedPath);
+    }
 
     /**
      * A USING clause on an import declaration.

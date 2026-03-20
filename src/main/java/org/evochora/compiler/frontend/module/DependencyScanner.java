@@ -63,25 +63,7 @@ public final class DependencyScanner {
         visiting.add(moduleId);
 
         List<IDependencyInfo> dependencies = scanLines(sourcePath, content, false);
-
-        // Build ModuleDescriptor with both generic and typed dependency lists (transition)
-        List<ModuleDescriptor.ImportDecl> imports = new ArrayList<>();
-        List<ModuleDescriptor.RequireDecl> requires = new ArrayList<>();
-        List<String> sourceFiles = new ArrayList<>();
-        for (IDependencyInfo dep : dependencies) {
-            if (dep instanceof org.evochora.compiler.features.importdir.ImportDependencyInfo imp) {
-                List<ModuleDescriptor.UsingDecl> usings = imp.usings().stream()
-                        .map(u -> new ModuleDescriptor.UsingDecl(u.sourceAlias(), u.targetAlias()))
-                        .toList();
-                imports.add(new ModuleDescriptor.ImportDecl(imp.path(), imp.alias(), usings, new ModuleId(imp.resolvedPath())));
-            } else if (dep instanceof org.evochora.compiler.features.require.RequireDependencyInfo req) {
-                requires.add(new ModuleDescriptor.RequireDecl(req.path(), req.alias()));
-            } else if (dep instanceof org.evochora.compiler.features.source.SourceDependencyInfo src) {
-                sourceFiles.add(src.path());
-            }
-        }
-
-        ModuleDescriptor descriptor = new ModuleDescriptor(moduleId, sourcePath, content, imports, requires, sourceFiles);
+        ModuleDescriptor descriptor = new ModuleDescriptor(moduleId, sourcePath, content, dependencies);
         descriptors.put(moduleId, descriptor);
         visiting.remove(moduleId);
     }
@@ -161,9 +143,9 @@ public final class DependencyScanner {
         }
 
         for (ModuleDescriptor desc : descriptors.values()) {
-            for (ModuleDescriptor.ImportDecl imp : desc.imports()) {
-                ModuleId depId = imp.resolvedId();
-                if (descriptors.containsKey(depId)) {
+            for (IDependencyInfo dep : desc.dependencies()) {
+                ModuleId depId = dep.resolvedModuleId();
+                if (depId != null && descriptors.containsKey(depId)) {
                     dependencies.get(desc.id()).add(depId);
                     dependents.computeIfAbsent(depId, k -> new LinkedHashSet<>()).add(desc.id());
                 }

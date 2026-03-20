@@ -308,7 +308,9 @@ class UsingClauseIntegrationTest {
 
         // Phase 4: Semantic analysis (uses rootAliasChain instead of fileToModule)
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainPath, rootAliasChain, TestRegistries.analysisRegistry(symbolTable, diagnostics));
+        org.evochora.compiler.frontend.semantics.ModuleSetupRegistry setupRegistry = new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry();
+        featureRegistry.dependencySetupHandlers().forEach((type, handler) -> setupRegistry.register(type, (org.evochora.compiler.frontend.semantics.IDependencySetupHandler) handler));
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainPath, rootAliasChain, TestRegistries.analysisRegistry(symbolTable, diagnostics), setupRegistry);
         analyzer.analyze(ast);
 
         return new SemanticsResult(diagnostics, symbolTable);

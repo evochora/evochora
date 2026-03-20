@@ -134,9 +134,13 @@ public class DependencyScannerTest {
 
         // Find the main module (last in topological order)
         ModuleDescriptor mainModule = graph.topologicalOrder().getLast();
-        assertThat(mainModule.imports()).hasSize(2);
+        List<org.evochora.compiler.features.importdir.ImportDependencyInfo> imports = mainModule.dependencies().stream()
+                .filter(d -> d instanceof org.evochora.compiler.features.importdir.ImportDependencyInfo)
+                .map(d -> (org.evochora.compiler.features.importdir.ImportDependencyInfo) d)
+                .toList();
+        assertThat(imports).hasSize(2);
 
-        ModuleDescriptor.ImportDecl libImport = mainModule.imports().stream()
+        org.evochora.compiler.features.importdir.ImportDependencyInfo libImport = imports.stream()
                 .filter(imp -> imp.alias().equalsIgnoreCase("LIB"))
                 .findFirst().orElseThrow();
         assertThat(libImport.usings()).hasSize(1);
@@ -159,8 +163,12 @@ public class DependencyScannerTest {
         assertThat(graph.topologicalOrder()).hasSize(1);
 
         ModuleDescriptor module = graph.topologicalOrder().get(0);
-        assertThat(module.requires()).hasSize(1);
-        assertThat(module.requires().get(0).alias()).isEqualToIgnoringCase("DEP");
-        assertThat(module.requires().get(0).path()).isEqualTo("dependency.evo");
+        List<org.evochora.compiler.features.require.RequireDependencyInfo> requires = module.dependencies().stream()
+                .filter(d -> d instanceof org.evochora.compiler.features.require.RequireDependencyInfo)
+                .map(d -> (org.evochora.compiler.features.require.RequireDependencyInfo) d)
+                .toList();
+        assertThat(requires).hasSize(1);
+        assertThat(requires.get(0).alias()).isEqualToIgnoringCase("DEP");
+        assertThat(requires.get(0).path()).isEqualTo("dependency.evo");
     }
 }

@@ -62,7 +62,7 @@ public class RegDirectiveTest {
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         symbolTable.registerModule(rootAliasChain, "<memory>");
         symbolTable.setCurrentModule(rootAliasChain);
-        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
+        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         semanticAnalyzer.analyze(ast);
 
         // AST Post-Processing - Resolves register aliases
@@ -108,7 +108,7 @@ public class RegDirectiveTest {
         // Act - Run semantic analysis
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
+        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         semanticAnalyzer.analyze(ast);
 
         // Assert - Should have compilation error
@@ -138,7 +138,7 @@ public class RegDirectiveTest {
         // Act - Run semantic analysis
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
+        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         semanticAnalyzer.analyze(ast);
 
         // Assert - Should have compilation error
@@ -168,7 +168,7 @@ public class RegDirectiveTest {
         // Act - Run semantic analysis
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
+        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         semanticAnalyzer.analyze(ast);
 
         // Assert - Should have compilation error
@@ -203,7 +203,7 @@ public class RegDirectiveTest {
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         symbolTable.registerModule(rootAliasChain, "<memory>");
         symbolTable.setCurrentModule(rootAliasChain);
-        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics));
+        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         semanticAnalyzer.analyze(ast);
 
         // AST Post-Processing - Resolves register aliases

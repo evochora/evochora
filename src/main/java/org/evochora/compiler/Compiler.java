@@ -20,6 +20,8 @@ import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
 import org.evochora.compiler.frontend.preprocessor.PreProcessorResult;
 import org.evochora.compiler.frontend.semantics.AnalysisHandlerRegistry;
+import org.evochora.compiler.frontend.semantics.IDependencySetupHandler;
+import org.evochora.compiler.frontend.semantics.ModuleSetupRegistry;
 import org.evochora.compiler.model.ModuleContextTracker;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -243,7 +245,9 @@ public class Compiler implements ICompiler {
         AnalysisHandlerRegistry analysisRegistry = new AnalysisHandlerRegistry();
         analysisRegistry.registerAll(featureRegistry.analysisHandlers());
         analysisRegistry.registerAllCollectors(featureRegistry.symbolCollectors());
-        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainFilePath, rootAliasChain, analysisRegistry);
+        ModuleSetupRegistry setupRegistry = new ModuleSetupRegistry();
+        featureRegistry.dependencySetupHandlers().forEach((type, handler) -> setupRegistry.register(type, (IDependencySetupHandler) handler));
+        SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainFilePath, rootAliasChain, analysisRegistry, setupRegistry);
         analyzer.analyze(ast);
         if (diagnostics.hasErrors()) {
             throw new CompilationException(diagnostics.summary());

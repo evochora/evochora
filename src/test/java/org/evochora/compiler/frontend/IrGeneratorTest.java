@@ -96,7 +96,7 @@ public class IrGeneratorTest {
         SymbolTable symbolTable = new SymbolTable(diagnostics);
         symbolTable.registerModule(rootAliasChain, "<memory>");
         symbolTable.setCurrentModule(rootAliasChain);
-        new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics)).analyze(ast);
+        new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry()).analyze(ast);
         if (diagnostics.hasErrors()) {
             fail("Semantic analysis errors: " + diagnostics.summary());
         }
