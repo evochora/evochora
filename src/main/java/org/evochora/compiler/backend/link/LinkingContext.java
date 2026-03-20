@@ -44,9 +44,6 @@ public final class LinkingContext {
     public IInstructionSet isa() { return isa; }
 
     /**
-     * @return The next linear address and increments the cursor.
-     */
-    /**
      * Freezes the context, preventing further modifications.
      * After freeze: pushAliasChain/popAliasChain/nextAddress throw,
      * callSiteBindings returns unmodifiable view.
@@ -57,6 +54,9 @@ public final class LinkingContext {
         if (frozen) throw new IllegalStateException("LinkingContext is frozen — no modifications allowed after Phase 10");
     }
 
+    /**
+     * @return The next linear address and increments the cursor.
+     */
     public int nextAddress() { guardFrozen(); return linearAddressCursor++; }
 
     /**

@@ -4,6 +4,7 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.ast.AstNode;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -133,7 +134,7 @@ public class SymbolTable {
      * Gets the module scope map (for multi-module iteration).
      */
     public Map<String, ModuleScope> getModules() {
-        return modules;
+        return Collections.unmodifiableMap(modules);
     }
 
     // === Scope management ===

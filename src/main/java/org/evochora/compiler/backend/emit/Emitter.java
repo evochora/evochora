@@ -359,6 +359,6 @@ public class Emitter {
         if (src == null) return message;
         String file = src.fileName() != null ? src.fileName() : "<unknown>";
         int line = src.lineNumber();
-        return String.format("[ERROR] %s:%d: %s", file, line, message);
+        return String.format("%s:%d: %s", file, line, message);
     }
 }

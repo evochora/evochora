@@ -3,7 +3,10 @@ package org.evochora.cli.commands;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import org.evochora.compiler.Compiler;
+import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.CompilerOptions;
+
+import java.io.IOException;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.internal.LinearizedProgramArtifact;
@@ -58,14 +61,19 @@ public class CompileCommand implements Callable<Integer> {
         EnvironmentProperties envProps = parseEnvironmentProperties(env);
 
         Compiler compiler = new Compiler();
-        ProgramArtifact artifact = compiler.compile(file, envProps, compilerOptions);
-        LinearizedProgramArtifact linearizedArtifact = artifact.toLinearized(envProps);
+        try {
+            ProgramArtifact artifact = compiler.compile(file, envProps, compilerOptions);
+            LinearizedProgramArtifact linearizedArtifact = artifact.toLinearized(envProps);
 
-        Gson gson = new GsonBuilder().setPrettyPrinting().create();
-        PrintWriter out = spec.commandLine().getOut();
-        out.println(gson.toJson(linearizedArtifact));
+            Gson gson = new GsonBuilder().setPrettyPrinting().create();
+            PrintWriter out = spec.commandLine().getOut();
+            out.println(gson.toJson(linearizedArtifact));
 
-        return 0;
+            return 0;
+        } catch (CompilationException | IOException e) {
+            spec.commandLine().getErr().println(e.getMessage());
+            return 1;
+        }
     }
 
     private CompilerOptions buildCompilerOptions() {
