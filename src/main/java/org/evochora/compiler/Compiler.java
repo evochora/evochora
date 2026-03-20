@@ -290,8 +290,9 @@ public class Compiler implements ICompiler {
             // directive needs layout-phase processing (e.g., core:proc_enter, core:org)
         });
         layoutRegistry.registerAll(featureRegistry.layoutHandlers());
+        RuntimeInstructionSetAdapter isa = new RuntimeInstructionSetAdapter();
         LayoutEngine layoutEngine = new LayoutEngine();
-        LayoutResult layout = layoutEngine.layout(rewrittenIr, new RuntimeInstructionSetAdapter(), envProps, layoutRegistry);
+        LayoutResult layout = layoutEngine.layout(rewrittenIr, isa, envProps, layoutRegistry);
 
         // Phase 10: Linking (resolve cross-references)
         LinkingRegistry linkingRegistry = new LinkingRegistry();
@@ -302,7 +303,7 @@ public class Compiler implements ICompiler {
         });
         linkingDirRegistry.registerAll(featureRegistry.linkingDirectiveHandlers());
         Linker linker = new Linker(linkingRegistry, linkingDirRegistry);
-        LinkingContext linkContext = new LinkingContext(symbolTable, new RuntimeInstructionSetAdapter());
+        LinkingContext linkContext = new LinkingContext(symbolTable, isa);
         linkContext.pushAliasChain(rootAliasChain);
         IrProgram linkedIr = linker.link(rewrittenIr, layout, linkContext, envProps);
 
@@ -317,7 +318,7 @@ public class Compiler implements ICompiler {
         try {
             // Generate tokenLookup from tokenMap for efficient line-based lookup
             Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup = TokenMapGenerator.buildTokenLookup(tokenMap);
-            artifact = emitter.emit(linkedIr, layout, linkContext, new RuntimeInstructionSetAdapter(), emissionContributorRegistry, sources, tokenMap, tokenLookup);
+            artifact = emitter.emit(linkedIr, layout, linkContext, isa, emissionContributorRegistry, sources, tokenMap, tokenLookup);
         } catch (org.evochora.compiler.api.CompilationException ce) {
             throw ce; // already formatted with file/line
         } catch (RuntimeException re) {

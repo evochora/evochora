@@ -25,7 +25,7 @@ registration file. No phase code is touched.
 
 ## Current Feature Inventory
 
-14 features spanning 11 phases, with 7 phase-level registries:
+14 features spanning 11 phases, with 12 phase-level registries (10 existing + 2 planned in F3):
 
 | # | Feature | Phases Active In | Components |
 |---|---------|-----------------|------------|
@@ -50,8 +50,10 @@ registration file. No phase code is touched.
 
 | Phase | Registry | Interface | Key Type |
 |-------|----------|-----------|----------|
+| Phase 0 (DependencyScanning) | `DependencyScanner` | `IDependencyScanHandler` | Pattern-based | *(created in F3a)* |
 | Phase 2 (PreProcessor) | `PreProcessorHandlerRegistry` | `IPreProcessorHandler` | Token text string |
 | Phase 3 (Parser) | `ParserStatementRegistry` | `IParserStatementHandler` | Keyword string + default handler | *(renamed from ParserDirectiveRegistry in D13d)* |
+| Phase 4 (ModuleSetup) | `ModuleSetupRegistry` | `IDependencySetupHandler<T>` | IDependencyInfo class | *(created in F3b, runs before AST walk)* |
 | Phase 4 (Semantics) | `AnalysisHandlerRegistry` | `IAnalysisHandler` + `ISymbolCollector` | AST node class |
 | Phase 7 (IrGen) | `IrConverterRegistry` | `IAstNodeToIrConverter<T>` | AST node class |
 | Phase 8 (Emission) | `EmissionRegistry` | `IEmissionRule` | Ordered list (no key) |
@@ -1651,6 +1653,116 @@ By D14, all registries are fully feature-driven.
 |------|-------------|
 | F1 | **Source pre-lexing + cleanup.** Part 1: DependencyScanner collects .SOURCE content, Compiler.java pre-lexes in Phase 1, tokens flow via `PreProcessorContext.sourceTokens()`. SourceDirectiveHandler rewritten to read pre-lexed tokens (no Lexer, no file I/O, no loadContent()). Part 2: Dead Classpath-fallback deleted (entire loadContent() method removed). Part 3: EOF-stripping centralized in `Lexer.stripEofToken()`. .SOURCE file contents added to artifact sources via `depScanner.sourceContents()`. **DONE.** |
 | ~~F2~~ | ~~Extract cross-phase data extraction from Compiler.java~~ — **absorbed into Phase D**: `getGlobalRegisterAliases()` removed in D8, `getProcedureTable()` removed in D13. |
+| F3a | **DependencyScanner generification.** See F3a details below. |
+| F3b | **Module-setup generification + ModuleDescriptor cleanup.** See F3b details below. |
+
+**F3a details — DependencyScanner Generification:**
+
+DependencyScanner has hardcoded IMPORT_PATTERN, REQUIRE_PATTERN, SOURCE_PATTERN, USING_PATTERN — feature knowledge in framework code. Same violation eliminated in all other phases. Phase 0 is no exception.
+
+**IDependencyInfo marker interface:**
+
+Create `IDependencyInfo` in `frontend/module/` — marker interface for feature-specific dependency data (analogous to `AstNode` for AST). Feature-specific records implement it.
+
+**IDependencyScanContext redesign:**
+
+Replace the three feature-specific methods (`addImport()`, `addRequire()`, `addSourceFile()`) with generic operations:
+- `String resolve(String path)` — resolve path relative to current file via SourceRootResolver
+- `String loadContent(String resolvedPath)` — load file content (filesystem or HTTP)
+- `void registerSourceContent(String resolvedPath, String content)` — register content for Phase 1 pre-lexing
+- `void reportError(String message)` — report error at current line
+- `void scanNestedFile(String resolvedPath, String content)` — trigger recursive scanning of nested file
+- `void addDependency(IDependencyInfo dependency)` — generic method for handlers to report results
+
+**Three feature scan handlers:**
+
+`ImportDependencyScanHandler` in `features/importdir/`:
+- Owns IMPORT_PATTERN + USING_PATTERN (USING is part of IMPORT syntax)
+- On match: parses path, alias, USING clauses; resolves path via `ctx.resolve()`; triggers recursive module scan via `ctx.scanNestedFile()`; reports `ImportDependencyInfo` via `ctx.addDependency()`
+
+`RequireDependencyScanHandler` in `features/require/`:
+- Owns REQUIRE_PATTERN
+- On match: parses path, alias; reports `RequireDependencyInfo` via `ctx.addDependency()`
+
+`SourceDependencyScanHandler` in `features/source/`:
+- Owns SOURCE_PATTERN
+- On match: resolves path, loads content via `ctx.loadContent()`, registers content via `ctx.registerSourceContent()`, triggers recursive .SOURCE scan via `ctx.scanNestedFile()`, validates no forbidden directives (replaces `scanSourceFile()`)
+- Reports `SourceDependencyInfo` via `ctx.addDependency()`
+
+**DependencyScanner becomes generic dispatcher:**
+
+Retains: line-by-line iteration, comment stripping, handler dispatch (iterate handlers, pattern match, call handleMatch on first match), cycle detection, topological sorting, DependencyGraph construction from `IDependencyInfo` objects collected via `addDependency()`.
+
+Loses: all four regex patterns, all match-handling logic, `scanSourceFile()`, direct knowledge of any directive.
+
+Receives `List<IDependencyScanHandler>` from Compiler.java via `featureRegistry.dependencyScanHandlers()`.
+
+**ModuleDescriptor transition:**
+
+ModuleDescriptor gets `List<IDependencyInfo> dependencies()`. In F3a, the existing typed lists (`imports`, `requires`, `sourceFiles`) and inner records (`ImportDecl`, `RequireDecl`, `UsingDecl`) may still exist in parallel as transition — they are cleaned up in F3b.
+
+**Feature registrations:**
+
+- `ImportFeature`: `ctx.dependencyScanHandler(new ImportDependencyScanHandler())`
+- `RequireFeature`: `ctx.dependencyScanHandler(new RequireDependencyScanHandler())`
+- `SourceFeature`: `ctx.dependencyScanHandler(new SourceDependencyScanHandler())`
+
+**Compiler.java wiring:**
+
+```java
+DependencyScanner depScanner = new DependencyScanner(diagnostics, resolver, featureRegistry.dependencyScanHandlers());
+```
+
+After F3a: DependencyScanner has zero feature knowledge. All dependency directive patterns and processing logic live in feature packages.
+
+**F3b details — Module-Setup Generification + ModuleDescriptor Cleanup:**
+
+**Feature-specific dependency records to feature packages:**
+
+- `ModuleDescriptor.ImportDecl` + `ModuleDescriptor.UsingDecl` → `ImportDependencyInfo` record in `features/importdir/` (implements `IDependencyInfo`)
+- `ModuleDescriptor.RequireDecl` → `RequireDependencyInfo` record in `features/require/` (implements `IDependencyInfo`)
+- Source data → `SourceDependencyInfo` record in `features/source/` (implements `IDependencyInfo`)
+
+**ModuleDescriptor cleanup:**
+
+Remove typed lists (`imports`, `requires`, `sourceFiles`) and inner records (`ImportDecl`, `RequireDecl`, `UsingDecl`). Only `List<IDependencyInfo> dependencies()` remains.
+
+**IDependencySetupHandler<T extends IDependencyInfo>:**
+
+New interface in `frontend/semantics/`:
+- `void registerScope(T dependency, ModuleSetupContext ctx)` — Pass 1: set up scopes and alias chains
+- `void resolveBindings(T dependency, ModuleSetupContext ctx)` — Pass 2: resolve cross-references (e.g., USING bindings)
+
+**ModuleSetupRegistry:**
+
+New registry in `frontend/semantics/` — maps `Class<? extends IDependencyInfo>` → `IDependencySetupHandler`. Same dispatch pattern as `AnalysisHandlerRegistry` (class-key → handler lookup).
+
+**ModuleSetupContext:**
+
+Provides SymbolTable, moduleAliasChain, pathToAliasChain mapping — everything handlers need to configure scopes.
+
+**SemanticAnalyzer.setupModuleRelationships() replacement:**
+
+Two passes over all modules in topological order:
+- Pass 1: for each `IDependencyInfo`, look up handler via `ModuleSetupRegistry`, call `handler.registerScope()`
+- Pass 2: for each `IDependencyInfo`, call `handler.resolveBindings()`
+
+Two passes because USING bindings require all import scopes to be registered first. Dispatch via registry (class lookup, no instanceof in framework).
+
+**Two feature setup handlers:**
+
+- `ImportModuleSetupHandler` in `features/importdir/`: registers import alias chains (Pass 1), resolves USING bindings (Pass 2)
+- `RequireModuleSetupHandler` in `features/require/`: registers require relationships (Pass 1), Pass 2 is no-op
+- SourceFeature needs no setup handler (no module scopes)
+
+**Registration:**
+
+New method on `IFeatureRegistrationContext`: `<T extends IDependencyInfo> void dependencySetupHandler(Class<T> type, IDependencySetupHandler<T> handler)` + corresponding getter on `FeatureRegistry`.
+
+- `ImportFeature`: `ctx.dependencySetupHandler(ImportDependencyInfo.class, new ImportModuleSetupHandler())`
+- `RequireFeature`: `ctx.dependencySetupHandler(RequireDependencyInfo.class, new RequireModuleSetupHandler())`
+
+After F3b: ModuleDescriptor is generic (no feature-specific inner types), SemanticAnalyzer.setupModuleRelationships() is pure registry dispatch (no feature knowledge).
 
 ### Phase G: LR Parameter Passing (open design — needs discussion before committing)
 
@@ -1710,7 +1822,9 @@ After ALL steps are complete:
 7. **Data format layer purity**: `model/token/` has zero imports from `model/ast/` or `model/ir/`; `model/ast/` has zero imports from `model/token/` or `model/ir/`; `model/ir/` has zero imports from `model/token/` or `model/ast/`. The only shared type across layers is `SourceInfo`.
 8. **AST nodes and Symbol records store no Token references** — only extracted values (String, int, etc.) + SourceInfo
 9. **`SourceLocatable` modernized to `ISourceLocatable`** in `model/ast/` — returns `SourceInfo` instead of `String getSourceFileName()`; all source-tracked AST nodes implement it, synthetic nodes (PushCtxNode, PopCtxNode) do not
-10. **All tests green** after each step
+10. **Phase 0 (DependencyScanner) has zero feature knowledge** — all dependency directive patterns and processing logic live in feature packages. Dispatch via `IDependencyScanHandler` registry.
+11. **Module setup is registry-driven** — `SemanticAnalyzer.setupModuleRelationships()` dispatches via `ModuleSetupRegistry`, no feature-specific imports or instanceof checks.
+12. **All tests green** after each step
 
 ## Constraints
 
