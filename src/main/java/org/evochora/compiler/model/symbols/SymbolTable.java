@@ -83,6 +83,7 @@ public class SymbolTable {
      */
     public void freeze() {
         this.frozen = true;
+        modules.values().forEach(ModuleScope::freeze);
     }
 
     private void guardFrozen() {

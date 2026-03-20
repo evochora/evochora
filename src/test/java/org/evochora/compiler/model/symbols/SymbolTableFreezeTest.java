@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -87,5 +88,40 @@ class SymbolTableFreezeTest {
     void resolve_allowedAfterFreeze() {
         symbolTable.setCurrentModule("MAIN");
         assertThat(symbolTable.resolve("TEST", "test.evo")).isPresent();
+    }
+
+    @Test
+    void moduleScopeMapsAreImmutableAfterFreeze() {
+        ModuleScope scope = symbolTable.getModuleScope("MAIN").orElseThrow();
+
+        // All 5 map getters must return unmodifiable views after freeze
+        assertThatThrownBy(() -> scope.symbols().put("X", new Symbol("X", new SourceInfo("t", 1, 0), Symbol.Type.LABEL)))
+                .isInstanceOf(UnsupportedOperationException.class);
+        assertThatThrownBy(() -> scope.imports().put("X", "Y"))
+                .isInstanceOf(UnsupportedOperationException.class);
+        assertThatThrownBy(() -> scope.requires().put("X", "Y"))
+                .isInstanceOf(UnsupportedOperationException.class);
+        assertThatThrownBy(() -> scope.usingBindings().put("X", "Y"))
+                .isInstanceOf(UnsupportedOperationException.class);
+        assertThatThrownBy(() -> scope.importExported().put("X", true))
+                .isInstanceOf(UnsupportedOperationException.class);
+
+        // Read operations still work
+        assertThat(scope.symbols().get("TEST")).isNotNull();
+        assertThat(scope.imports().containsKey("NONEXISTENT")).isFalse();
+    }
+
+    @Test
+    void moduleScopeMapsAreMutableBeforeFreeze() {
+        SymbolTable unfrozen = new SymbolTable(new DiagnosticsEngine());
+        unfrozen.registerModule("MOD", "mod.evo");
+        ModuleScope scope = unfrozen.getModuleScope("MOD").orElseThrow();
+
+        // Before freeze, maps are mutable
+        scope.imports().put("LIB", "LIB_CHAIN");
+        assertThat(scope.imports().get("LIB")).isEqualTo("LIB_CHAIN");
+
+        scope.requires().put("DEP", "dep.evo");
+        assertThat(scope.requires().get("DEP")).isEqualTo("dep.evo");
     }
 }
