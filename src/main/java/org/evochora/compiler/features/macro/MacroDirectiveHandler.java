@@ -12,7 +12,7 @@ import java.util.List;
 /**
  * Handles the <code>.MACRO</code> and <code>.ENDM</code> directives.
  * Parses a macro definition, creates a {@link MacroExpansionHandler} for it, and
- * dynamically registers that handler in the preprocessor's handler registry under the
+ * dynamically registers that handler in the {@link PreProcessorContext} under the
  * macro's name. The entire definition block is then removed from the token stream.
  */
 public class MacroDirectiveHandler implements IPreProcessorHandler {
@@ -44,7 +44,7 @@ public class MacroDirectiveHandler implements IPreProcessorHandler {
         preProcessor.match(TokenType.NEWLINE);
 
         MacroDefinition macro = new MacroDefinition(name, params, body);
-        preProcessor.registerHandler(name.text(), new MacroExpansionHandler(macro));
+        preProcessorContext.registerDynamicHandler(name.text(), new MacroExpansionHandler(macro));
 
         int endIndex = preProcessor.getCurrentIndex();
         // Remove the entire .MACRO...ENDM block

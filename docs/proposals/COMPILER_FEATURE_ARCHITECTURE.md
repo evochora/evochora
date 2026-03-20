@@ -1655,6 +1655,7 @@ By D14, all registries are fully feature-driven.
 | ~~F2~~ | ~~Extract cross-phase data extraction from Compiler.java~~ — **absorbed into Phase D**: `getGlobalRegisterAliases()` removed in D8, `getProcedureTable()` removed in D13. |
 | F3a | **DependencyScanner generification.** IDependencyInfo marker interface + directiveName(). IDependencyScanContext redesigned (generic operations). 3 feature scan handlers (ImportDependencyScanHandler, RequireDependencyScanHandler, SourceDependencyScanHandler) with 3 DependencyInfo records. DependencyScanner rewritten as generic line dispatcher — zero regex patterns, zero feature knowledge. scanLines() with sourceFileMode for .SOURCE validation. ModuleDescriptor transition: builds typed lists from IDependencyInfo. **DONE.** |
 | F3b | **Module-setup generification + ModuleDescriptor cleanup.** ModuleDescriptor cleaned up (only `List<IDependencyInfo> dependencies()`, inner records deleted). IDependencySetupHandler<T> + ModuleSetupRegistry + ModuleSetupContext created. ImportModuleSetupHandler + RequireModuleSetupHandler in feature packages. SemanticAnalyzer.setupModuleRelationships() replaced with 3-pass registry dispatch. IDependencyInfo.resolvedModuleId() enables generic topologicalSort(). **DONE.** |
+| F4 | **Macro runtime-registration elimination.** See F4 details below. |
 
 **F3a details — DependencyScanner Generification:**
 
@@ -1763,6 +1764,46 @@ New method on `IFeatureRegistrationContext`: `<T extends IDependencyInfo> void d
 - `RequireFeature`: `ctx.dependencySetupHandler(RequireDependencyInfo.class, new RequireModuleSetupHandler())`
 
 After F3b: ModuleDescriptor is generic (no feature-specific inner types), SemanticAnalyzer.setupModuleRelationships() is pure registry dispatch (no feature knowledge).
+
+**F4 details — Macro Runtime-Registration Elimination:**
+
+`MacroDirectiveHandler` registers a new `MacroExpansionHandler` per macro definition at runtime via `PreProcessor.registerHandler()`. This is an exception to the init-time registration principle.
+
+**Dispatch mechanism: Dynamic handlers on PreProcessorContext.**
+
+The static registry (init-time, immutable) stays unchanged. The PreProcessorContext (mutable during Phase 2) gets an additional handler map for dynamic handlers registered during preprocessing. The PreProcessor checks both sources — first static, then dynamic. Two key-based lookups, no ordering, no singleton slot.
+
+**Separation of concerns:**
+- Static handlers (init-time, immutable) → `PreProcessorHandlerRegistry` (e.g., .MACRO, .SOURCE, .IMPORT, :)
+- Dynamic handlers (runtime, mutable) → `PreProcessorContext` (e.g., macro expansions)
+- Framework has zero feature knowledge — it queries two sources (static registry + context)
+
+**Changes:**
+
+1. `PreProcessorContext` gets a dynamic handler map:
+   - `registerDynamicHandler(String name, IPreProcessorHandler handler)` — with equivalence-based collision policy (see below)
+   - `Optional<IPreProcessorHandler> getDynamicHandler(String name)` — key-based lookup
+
+   **Dynamic handler collision policy:**
+   - No handler registered for key → register it
+   - Handler exists and `handler.equals(newHandler)` → silently ignore (idempotent re-registration)
+   - Handler exists and `!handler.equals(newHandler)` → `IllegalStateException` with message `"Dynamic preprocessor handler conflict for '<KEY>': redefinition with different body"`
+
+   This handles the common case where the same file is `.SOURCE`-included from multiple modules: identical macro definitions are silently deduplicated, while conflicting redefinitions are caught at compile time.
+
+   **Contract for dynamic handlers:** Any `IPreProcessorHandler` registered as a dynamic handler must implement `equals()` and `hashCode()` based on its semantic content. For `MacroExpansionHandler`, equality is delegated to `MacroDefinition` (a record with automatic `equals`/`hashCode` over name, parameters, and body tokens).
+
+2. `PreProcessor.expand()` loop: after static `directiveRegistry.get(token.text())` returns empty, additionally check `ppContext.getDynamicHandler(token.text())`. If a dynamic handler is found, invoke it and set `streamWasModified = true`. No TokenType filter — the PreProcessor generically queries both sources.
+
+3. `MacroDirectiveHandler`: changes from `preProcessor.registerHandler(name, new MacroExpansionHandler(macro))` to `preProcessorContext.registerDynamicHandler(name, new MacroExpansionHandler(macro))`.
+
+4. `MacroExpansionHandler`: instantiated per macro (as before), but registered via Context instead of PreProcessor. Reads `MacroDefinition` from constructor parameter (as before).
+
+5. `PreProcessor.registerHandler()` is deleted.
+
+6. JavaDoc on `IFeatureRegistrationContext` that references `PreProcessor.registerHandler()` is updated.
+
+After F4: zero runtime handler registration on PreProcessor. Dynamic handlers are on the mutable Context (Phase 2 data), static handlers are on the immutable Registry (init-time). Framework-agnostic dispatch over both sources.
 
 ### Phase G: LR Parameter Passing (open design — needs discussion before committing)
 

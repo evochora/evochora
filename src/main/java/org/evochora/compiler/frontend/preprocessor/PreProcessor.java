@@ -58,6 +58,14 @@ public class PreProcessor {
             }
 
             if (!streamWasModified) {
+                Optional<IPreProcessorHandler> dynamicOpt = ppContext.getDynamicHandler(token.text());
+                if (dynamicOpt.isPresent()) {
+                    dynamicOpt.get().process(this, ppContext);
+                    streamWasModified = true;
+                }
+            }
+
+            if (!streamWasModified) {
                 current++;
             }
         }
@@ -145,19 +153,6 @@ public class PreProcessor {
      */
     public boolean isAtEnd() {
         return current >= tokens.size() || tokens.get(current).type() == TokenType.END_OF_FILE;
-    }
-
-    // --- Handler registration (used by directive handlers) ---
-
-    /**
-     * Registers a handler at runtime. Used by directive handlers that define new
-     * processing rules during compilation (e.g., .MACRO defines expansion handlers).
-     *
-     * @param name    The token text that triggers this handler.
-     * @param handler The handler to register.
-     */
-    public void registerHandler(String name, IPreProcessorHandler handler) {
-        directiveRegistry.register(name, handler);
     }
 
     // --- Token stream manipulation (used by directive handlers) ---

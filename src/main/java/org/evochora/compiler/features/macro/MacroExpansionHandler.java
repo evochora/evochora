@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Expands a single macro invocation in the token stream. Each instance holds one
@@ -78,5 +79,17 @@ public class MacroExpansionHandler implements IPreProcessorHandler {
         for (List<Token> g : actualArgs) removed += g.size();
         preProcessor.removeTokens(callSiteIndex, removed);
         preProcessor.injectTokens(expandedBody, 0);
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof MacroExpansionHandler other)) return false;
+        return Objects.equals(macro, other.macro);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hashCode(macro);
     }
 }

@@ -177,13 +177,4 @@ public class SemanticAnalyzer {
 
         symbolTable.setCurrentModule(rootAliasChain);
     }
-
-    /**
-     * Gets the handler registry for external registration of additional handlers.
-     * @return The analysis handler registry
-     */
-    public AnalysisHandlerRegistry getRegistry() {
-        return registry;
-    }
-
 }

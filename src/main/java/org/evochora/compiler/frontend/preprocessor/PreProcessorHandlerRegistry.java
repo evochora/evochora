@@ -5,10 +5,10 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * Registry for preprocessing handlers. Maps token text (directive names like ".SOURCE"
- * or macro names like "EMIT") to their handlers. Unlike other compiler registries, this
- * registry is mutated at processing time — macro definitions dynamically register
- * expansion handlers.
+ * Registry for static preprocessing handlers. Maps token text (directive names like
+ * ".SOURCE" or ".MACRO") to their handlers. This registry is populated at initialization
+ * time and remains immutable during preprocessing. Dynamic runtime handlers (e.g., macro
+ * expansion handlers) are registered on {@link PreProcessorContext} instead.
  */
 public class PreProcessorHandlerRegistry {
 
