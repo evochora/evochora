@@ -5,6 +5,11 @@ import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.parser.ParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
 
+/**
+ * Parser handler for the {@code .PUSH_CTX} directive (Phase 3). Extracts the
+ * placement context (source path and alias chain) carried by the token and
+ * produces a {@link PushCtxNode}.
+ */
 public class PushCtxDirectiveHandler implements IParserStatementHandler {
     @Override
     public AstNode parse(ParsingContext context) {

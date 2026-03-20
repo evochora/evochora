@@ -36,10 +36,16 @@ public final class IrCallInstruction extends IrInstruction {
         this.valOperands = Collections.unmodifiableList(valOperands);
     }
 
+    /**
+     * Returns the REF parameter operands (pass-by-reference registers).
+     */
     public List<IrOperand> refOperands() {
         return refOperands;
     }
 
+    /**
+     * Returns the VAL parameter operands (pass-by-value registers).
+     */
     public List<IrOperand> valOperands() {
         return valOperands;
     }

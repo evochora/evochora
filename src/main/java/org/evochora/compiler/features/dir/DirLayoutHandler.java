@@ -8,7 +8,9 @@ import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrValue;
 
 /**
- * Handles core:dir directive during layout.
+ * Layout handler for the {@code core:dir} IR directive (Phase 9). Sets the
+ * current direction vector on the layout context, controlling the direction
+ * in which subsequent instructions are placed.
  */
 public final class DirLayoutHandler implements ILayoutDirectiveHandler {
 	/**

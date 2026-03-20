@@ -15,6 +15,11 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+/**
+ * Layout handler for the {@code core:place} IR directive (Phase 9). Evaluates
+ * placement arguments (vectors, ranges, wildcards) and writes the resulting
+ * molecules into the initial world object map at the computed coordinates.
+ */
 public final class PlaceLayoutHandler implements ILayoutDirectiveHandler {
 
     @Override

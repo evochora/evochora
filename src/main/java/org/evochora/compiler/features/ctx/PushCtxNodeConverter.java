@@ -8,6 +8,10 @@ import org.evochora.compiler.model.ir.IrValue;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * IR converter for {@link PushCtxNode} (Phase 7). Emits a {@code core:push_ctx}
+ * IR directive and pushes the alias chain onto the IR generation context stack.
+ */
 public class PushCtxNodeConverter implements IAstNodeToIrConverter<PushCtxNode> {
     @Override
     public void convert(PushCtxNode node, IrGenContext context) {

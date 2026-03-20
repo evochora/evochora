@@ -8,7 +8,9 @@ import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrValue;
 
 /**
- * Handles core:org directive during layout.
+ * Layout handler for the {@code core:org} IR directive (Phase 9). Sets the
+ * current layout position to the specified origin vector, relative to the
+ * current base position established by the enclosing module context.
  */
 public final class OrgLayoutHandler implements ILayoutDirectiveHandler {
 	/**
