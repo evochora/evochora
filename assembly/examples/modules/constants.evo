@@ -1,0 +1,7 @@
+# Shared constants for the module example.
+# This file is included via .SOURCE and must not contain .IMPORT or .REQUIRE.
+
+.DEFINE WORLD_MIN DATA:0
+.DEFINE WORLD_MAX DATA:99
+.DEFINE MOVE_COST DATA:1
+.DEFINE MAX_ENERGY DATA:100

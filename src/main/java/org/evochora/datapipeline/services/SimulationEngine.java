@@ -1,8 +1,6 @@
 package org.evochora.datapipeline.services;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -18,7 +16,9 @@ import java.util.concurrent.atomic.AtomicLong;
 
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.CompilationException;
+import org.evochora.compiler.api.CompilerOptions;
 import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.compiler.api.SourceRoot;
 import org.evochora.datapipeline.api.contracts.CallSiteBinding;
 import org.evochora.datapipeline.api.contracts.ColumnTokenLookup;
 import org.evochora.datapipeline.api.contracts.FileTokenLookup;
@@ -373,6 +373,19 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         Map<String, ProgramInfo> programInfo = new HashMap<>();
         Compiler compiler = new Compiler();
 
+        // Build compiler options from config
+        CompilerOptions compilerOptions;
+        if (options.hasPath("compiler.source-roots")) {
+            List<? extends Config> rootConfigs = options.getConfigList("compiler.source-roots");
+            List<SourceRoot> sourceRoots = rootConfigs.stream()
+                    .map(rc -> new SourceRoot(rc.getString("path"),
+                            rc.hasPath("prefix") ? rc.getString("prefix") : null))
+                    .toList();
+            compilerOptions = new CompilerOptions(sourceRoots);
+        } else {
+            compilerOptions = CompilerOptions.defaults();
+        }
+
         String topology = options.getString("environment.topology");
         if (!"TORUS".equalsIgnoreCase(topology) && !"BOUND".equalsIgnoreCase(topology)) {
             throw new IllegalArgumentException(
@@ -392,8 +405,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             String programPath = orgConfig.getString("program");
             if (!programInfo.containsKey(programPath)) {
                 try {
-                    String source = Files.readString(Paths.get(programPath));
-                    ProgramArtifact artifact = compiler.compile(List.of(source.split("\n")), programPath, envProps);
+                    ProgramArtifact artifact = compiler.compile(programPath, envProps, compilerOptions);
                     programInfo.put(programPath, new ProgramInfo(programPath, artifact.programId(), artifact));
                     compiledPrograms.put(artifact.programId(), artifact);
                 } catch (CompilationException e) {
@@ -984,11 +996,14 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     }
 
     private static TokenInfo convertTokenInfo(org.evochora.compiler.api.TokenInfo tokenInfo) {
-        return TokenInfo.newBuilder()
+        TokenInfo.Builder builder = TokenInfo.newBuilder()
                 .setTokenText(tokenInfo.tokenText())
                 .setTokenType(tokenInfo.tokenType().name())
-                .setScope(tokenInfo.scope())
-                .build();
+                .setScope(tokenInfo.scope());
+        if (tokenInfo.qualifiedName() != null) {
+            builder.setQualifiedName(tokenInfo.qualifiedName());
+        }
+        return builder.build();
     }
 
     private static Vector convertVector(int[] components) {

@@ -1,7 +1,6 @@
 # lib/reproduce.evo
 # Exported reproduction procedure for organisms
-.INCLUDE "lib/state.evo"
-.REQUIRE "lib/state.evo" AS STATE
+.SOURCE "lib/state.evo"
 
 .REG %CONTCORD %LR0 # Coordinate to continue reproduction from
 
@@ -13,12 +12,12 @@
 
 # DATA fields in the row above CONTINUE_INIT (x=0..2, y=-1 relative to CONTINUE_INIT)
 .ORG 0|2
-CONTINUE_STATE: EXPORT
+EXPORT CONTINUE_STATE:
 .PLACE DATA:0   1|2       # %DIRMASK
 .PLACE DATA:-1  2|2       # %DIRVEC
 
 .ORG 0|0
-.PROC CONTINUE EXPORT REF ER
+EXPORT .PROC CONTINUE REF ER
 
   .PREG %SHELL   %PR0     # Shell molecule used as terminator symbol
   .PREG %DIRMASK %PR1     # Reproduction direction as bitmask - static local state

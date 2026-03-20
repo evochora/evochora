@@ -2,17 +2,20 @@ package org.evochora.compiler.directives;
 
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
-import org.evochora.compiler.frontend.parser.ast.AstNode;
+import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
+import org.evochora.compiler.features.dir.DirDirectiveHandler;
+import org.evochora.compiler.features.org.OrgDirectiveHandler;
+import org.evochora.compiler.features.place.PlaceDirectiveHandler;
+import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.parser.ast.TypedLiteralNode;
-import org.evochora.compiler.frontend.parser.ast.placement.VectorPlacementNode;
-import org.evochora.compiler.frontend.parser.features.dir.DirNode;
-import org.evochora.compiler.frontend.parser.features.org.OrgNode;
-import org.evochora.compiler.frontend.parser.features.place.PlaceNode;
+import org.evochora.compiler.model.ast.TypedLiteralNode;
+import org.evochora.compiler.features.place.placement.VectorPlacementNode;
+import org.evochora.compiler.features.dir.DirNode;
+import org.evochora.compiler.features.org.OrgNode;
+import org.evochora.compiler.features.place.PlaceNode;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
 
-import java.nio.file.Path;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -32,7 +35,7 @@ public class LayoutDirectiveTest {
     void testOrgDirective() {
         // Arrange
         String source = ".ORG 10|20";
-        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), Path.of(""));
+        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), registry());
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -51,7 +54,7 @@ public class LayoutDirectiveTest {
     void testDirDirective() {
         // Arrange
         String source = ".DIR 1|0";
-        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), Path.of(""));
+        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), registry());
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -71,7 +74,7 @@ public class LayoutDirectiveTest {
     void testPlaceDirective() {
         // Arrange
         String source = ".PLACE DATA:100 5|-5";
-        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), Path.of(""));
+        Parser parser = new Parser(new Lexer(source, new DiagnosticsEngine()).scanTokens(), new DiagnosticsEngine(), registry());
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -84,5 +87,14 @@ public class LayoutDirectiveTest {
         assertThat(placeNode.literal()).isInstanceOf(TypedLiteralNode.class);
         assertThat(placeNode.placements()).hasSize(1);
         assertThat(placeNode.placements().get(0)).isInstanceOf(VectorPlacementNode.class);
+    }
+
+    private static ParserStatementRegistry registry() {
+        ParserStatementRegistry reg = new ParserStatementRegistry();
+        reg.register(".ORG", new OrgDirectiveHandler());
+        reg.register(".DIR", new DirDirectiveHandler());
+        reg.register(".PLACE", new PlaceDirectiveHandler());
+        reg.registerDefault(new org.evochora.compiler.features.instruction.InstructionParsingHandler());
+        return reg;
     }
 }

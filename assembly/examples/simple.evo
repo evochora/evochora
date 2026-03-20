@@ -11,7 +11,7 @@
 .DEFINE INIT_VALUE DATA:1
 
 # Simple procedure that adds two values
-.PROC ADD_TWO EXPORT REF A B
+EXPORT .PROC ADD_TWO REF A B
   ADDR A B
   RET
 .ENDP

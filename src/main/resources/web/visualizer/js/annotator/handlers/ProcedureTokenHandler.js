@@ -31,8 +31,8 @@ export class ProcedureTokenHandler {
      * @throws {Error} If the procedure hash cannot be resolved.
      */
     analyze(tokenText, tokenInfo, organismState, artifact) {
-        // Resolve procedure name to hash value for display
-        const hashValue = AnnotationUtils.resolveLabelNameToHash(tokenText, artifact);
+        // Resolve procedure name to hash value for display (using qualified name for lookup)
+        const hashValue = AnnotationUtils.resolveLabelNameToHash(tokenText, artifact, tokenInfo.qualifiedName);
 
         if (hashValue === null || hashValue === undefined) {
             // Fallback: show "?" if hash not found

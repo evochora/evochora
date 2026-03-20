@@ -28,8 +28,8 @@ public enum CompilerErrorCode {
     INVALID_PREG_OUTSIDE_PROC,
     /** .IMPORT directive has invalid syntax. */
     INVALID_IMPORT_SYNTAX,
-    /** .INCLUDE directive has invalid syntax. */
-    INVALID_INCLUDE_SYNTAX,
+    /** .SOURCE directive has invalid syntax. */
+    INVALID_SOURCE_SYNTAX,
     // endregion
 
     // region Semantic Analysis Errors

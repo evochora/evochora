@@ -1,6 +1,6 @@
 package org.evochora.compiler.frontend;
 
-import org.evochora.compiler.frontend.parser.ast.AstNode;
+import org.evochora.compiler.model.ast.AstNode;
 
 import java.util.ArrayList;
 import java.util.List;

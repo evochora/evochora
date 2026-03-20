@@ -4,13 +4,15 @@ import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
-import org.evochora.compiler.frontend.parser.ast.AstNode;
-import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
+import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
+import org.evochora.compiler.features.proc.PregDirectiveHandler;
+import org.evochora.compiler.features.proc.ProcDirectiveHandler;
+import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.features.proc.ProcedureNode;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 
@@ -30,7 +32,7 @@ public class PregDirectiveTest {
                 ".ENDP"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, Path.of(""));
+        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, registry());
 
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
 
@@ -47,7 +49,7 @@ public class PregDirectiveTest {
                 ".ENDP"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, Path.of(""));
+        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, registry());
 
         parser.parse();
 
@@ -81,7 +83,7 @@ public class PregDirectiveTest {
             
             boolean foundAliasInTokenMap = false;
             for (org.evochora.compiler.api.TokenInfo tokenInfo : artifact.tokenMap().values()) {
-                if ("%TMP".equals(tokenInfo.tokenText()) && tokenInfo.tokenType() == org.evochora.compiler.frontend.semantics.Symbol.Type.ALIAS) {
+                if ("%TMP".equals(tokenInfo.tokenText()) && tokenInfo.tokenType() == org.evochora.compiler.api.TokenKind.ALIAS) {
                     foundAliasInTokenMap = true;
                     break;
                 }
@@ -134,10 +136,10 @@ public class PregDirectiveTest {
             boolean foundProc2Alias = false;
             
             for (org.evochora.compiler.api.TokenInfo tokenInfo : artifact.tokenMap().values()) {
-                if ("%TEMP1".equals(tokenInfo.tokenText()) && tokenInfo.tokenType() == org.evochora.compiler.frontend.semantics.Symbol.Type.ALIAS) {
+                if ("%TEMP1".equals(tokenInfo.tokenText()) && tokenInfo.tokenType() == org.evochora.compiler.api.TokenKind.ALIAS) {
                     foundProc1Alias = true;
                 }
-                if ("%TEMP2".equals(tokenInfo.tokenText()) && tokenInfo.tokenType() == org.evochora.compiler.frontend.semantics.Symbol.Type.ALIAS) {
+                if ("%TEMP2".equals(tokenInfo.tokenText()) && tokenInfo.tokenType() == org.evochora.compiler.api.TokenKind.ALIAS) {
                     foundProc2Alias = true;
                 }
             }
@@ -148,5 +150,15 @@ public class PregDirectiveTest {
         } catch (Exception e) {
             throw new AssertionError("Compilation failed: " + e.getMessage(), e);
         }
+    }
+
+    private static ParserStatementRegistry registry() {
+        ParserStatementRegistry reg = new ParserStatementRegistry();
+        reg.register(".PROC", new ProcDirectiveHandler());
+        reg.register(".PREG", new PregDirectiveHandler());
+        reg.register(".LABEL", new org.evochora.compiler.features.label.LabelDirectiveHandler());
+        reg.register("CALL", new org.evochora.compiler.features.proc.CallStatementHandler());
+        reg.registerDefault(new org.evochora.compiler.features.instruction.InstructionParsingHandler());
+        return reg;
     }
 }

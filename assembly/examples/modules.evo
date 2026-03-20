@@ -1,0 +1,53 @@
+# Evochora Module System Example
+# Demonstrates .IMPORT, .REQUIRE, USING, .SOURCE, and EXPORT.
+#
+# File structure:
+#   modules.evo              (this file — entry point)
+#   modules/constants.evo    (shared constants, loaded via .SOURCE)
+#   modules/math.evo         (standalone math utilities)
+#   modules/movement.evo     (movement, depends on math via .REQUIRE)
+
+# Import the standalone math module
+.IMPORT "modules/math.evo" AS MATH
+
+# Import the movement module, wiring our MATH import to satisfy its .REQUIRE
+.IMPORT "modules/movement.evo" AS MOVE USING MATH AS MATH
+
+# Load shared constants for direct use in this file
+.SOURCE "modules/constants.evo"
+
+# Register aliases
+.REG %POS_X %DR0
+.REG %POS_Y %DR1
+.REG %ENERGY %DR2
+.REG %TEMP %DR3
+
+# Main program
+START:
+  # Initialize position at center of world
+  SETI %POS_X DATA:50
+  SETI %POS_Y DATA:50
+
+  # Initialize energy
+  SETI %ENERGY DATA:50
+
+MAIN_LOOP:
+  # Gain some energy each tick (clamped to MAX_ENERGY)
+  CALL MATH.ADD_CLAMPED REF %ENERGY VAL DATA:3 MAX_ENERGY
+
+  # Only move if we have enough energy
+  LTI %ENERGY MOVE_COST
+  JMPI MAIN_LOOP
+
+  # Move north
+  CALL MOVE.NORTH REF %POS_Y
+
+  # Consume movement cost
+  SUBI %ENERGY MOVE_COST
+
+  # Place current state into the world
+  POKI %POS_X 1|0
+  POKI %POS_Y 2|0
+  POKI %ENERGY 3|0
+
+  JMPI MAIN_LOOP

@@ -1,10 +1,16 @@
 package org.evochora.compiler.directives;
 
+import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.features.repeat.CaretDirectiveHandler;
+import org.evochora.compiler.features.repeat.RepeatDirectiveHandler;
 import org.evochora.compiler.frontend.lexer.Lexer;
-import org.evochora.compiler.frontend.lexer.Token;
-import org.evochora.compiler.frontend.lexer.TokenType;
+import org.evochora.compiler.util.SourceRootResolver;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
+import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
+import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
+import org.evochora.compiler.model.token.Token;
+import org.evochora.compiler.model.token.TokenType;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
@@ -25,6 +31,16 @@ public class RepeatDirectiveTest {
         Instruction.init();
     }
 
+    private PreProcessor createPreProcessor(List<Token> initialTokens, DiagnosticsEngine diagnostics) {
+        PreProcessorHandlerRegistry registry = new PreProcessorHandlerRegistry();
+        registry.register(".REPEAT", new RepeatDirectiveHandler());
+        registry.register("^", new CaretDirectiveHandler());
+        registry.register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
+        return new PreProcessor(initialTokens, diagnostics,
+                new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")),
+                registry, new PreProcessorContext());
+    }
+
     /**
      * Tests inline mode: .REPEAT n INSTRUCTION
      * Should expand to n copies of the instruction separated by NEWLINEs.
@@ -37,10 +53,10 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""));
+        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
         // Act
-        List<Token> expandedTokens = preProcessor.expand();
+        List<Token> expandedTokens = preProcessor.expand().tokens();
 
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
@@ -67,10 +83,10 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""));
+        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
         // Act
-        List<Token> expandedTokens = preProcessor.expand();
+        List<Token> expandedTokens = preProcessor.expand().tokens();
 
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
@@ -97,10 +113,10 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""));
+        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
         // Act
-        List<Token> expandedTokens = preProcessor.expand();
+        List<Token> expandedTokens = preProcessor.expand().tokens();
 
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
@@ -136,10 +152,10 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""));
+        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
         // Act
-        List<Token> expandedTokens = preProcessor.expand();
+        List<Token> expandedTokens = preProcessor.expand().tokens();
 
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
@@ -170,10 +186,10 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""));
+        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
         // Act
-        List<Token> expandedTokens = preProcessor.expand();
+        List<Token> expandedTokens = preProcessor.expand().tokens();
 
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
@@ -192,10 +208,10 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""));
+        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
         // Act
-        List<Token> expandedTokens = preProcessor.expand();
+        List<Token> expandedTokens = preProcessor.expand().tokens();
 
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
@@ -230,10 +246,10 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""));
+        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
         // Act
-        List<Token> expandedTokens = preProcessor.expand();
+        List<Token> expandedTokens = preProcessor.expand().tokens();
 
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
@@ -259,10 +275,10 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""));
+        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
         // Act
-        List<Token> expandedTokens = preProcessor.expand();
+        List<Token> expandedTokens = preProcessor.expand().tokens();
 
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
@@ -288,10 +304,10 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""));
+        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
         // Act
-        List<Token> expandedTokens = preProcessor.expand();
+        List<Token> expandedTokens = preProcessor.expand().tokens();
 
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
@@ -323,10 +339,10 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""));
+        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
         // Act
-        List<Token> expandedTokens = preProcessor.expand();
+        List<Token> expandedTokens = preProcessor.expand().tokens();
 
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
@@ -346,19 +362,19 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""));
+        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
         // Act
-        List<Token> expandedTokens = preProcessor.expand();
+        List<Token> expandedTokens = preProcessor.expand().tokens();
 
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
         List<TokenType> types = expandedTokens.stream().map(Token::type).toList();
-        // LOOP : NOP NEWLINE NOP EOF
+        // .LABEL LOOP NOP NEWLINE NOP EOF
         // The label should NOT be repeated, only the NOP instruction
         assertThat(types).containsExactly(
+                TokenType.DIRECTIVE,   // .LABEL
                 TokenType.IDENTIFIER,  // LOOP
-                TokenType.COLON,       // :
                 TokenType.OPCODE,      // NOP
                 TokenType.NEWLINE,
                 TokenType.OPCODE,      // NOP
@@ -378,18 +394,18 @@ public class RepeatDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""));
+        PreProcessor preProcessor = createPreProcessor(initialTokens, diagnostics);
 
         // Act
-        List<Token> expandedTokens = preProcessor.expand();
+        List<Token> expandedTokens = preProcessor.expand().tokens();
 
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
         List<TokenType> types = expandedTokens.stream().map(Token::type).toList();
-        // LOOP : JMPI START NEWLINE JMPI START EOF
+        // .LABEL LOOP JMPI START NEWLINE JMPI START EOF
         assertThat(types).containsExactly(
+                TokenType.DIRECTIVE,   // .LABEL
                 TokenType.IDENTIFIER,  // LOOP
-                TokenType.COLON,       // :
                 TokenType.OPCODE,      // JMPI
                 TokenType.IDENTIFIER,  // START
                 TokenType.NEWLINE,

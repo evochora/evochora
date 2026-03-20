@@ -1,27 +1,63 @@
 package org.evochora.compiler.backend.link;
 
-import org.evochora.compiler.ir.IrInstruction;
+import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.isa.IInstructionSet;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.IdentityHashMap;
 
 /**
- * Mutable context for the linking phase.
+ * Mutable context for the linking phase. Provides runtime dependencies
+ * (symbol table, instruction set) to linking rules, following the same
+ * pattern as IrGenContext and EmissionContext in other phases.
  */
 public final class LinkingContext {
 
+    private final SymbolTable symbolTable;
+    private final IInstructionSet isa;
     private int linearAddressCursor = 0;
     private final Map<Integer, int[]> callSiteBindings = new HashMap<>();
-    private final Map<IrInstruction, List<String>> pendingBindings = new IdentityHashMap<>();
+    private final Deque<String> aliasChainStack = new ArrayDeque<>();
+    private boolean frozen = false;
 
+    /**
+     * Constructs a new linking context with the given runtime dependencies.
+     *
+     * @param symbolTable The symbol table for resolving symbols during linking.
+     * @param isa         The instruction set adapter for register resolution.
+     */
+    public LinkingContext(SymbolTable symbolTable, IInstructionSet isa) {
+        this.symbolTable = symbolTable;
+        this.isa = isa;
+    }
+
+    /**
+     * @return The symbol table for resolving symbols.
+     */
+    public SymbolTable symbolTable() { return symbolTable; }
+
+    /**
+     * @return The instruction set adapter for register resolution.
+     */
+    public IInstructionSet isa() { return isa; }
+
+    /**
+     * Freezes the context, preventing further modifications.
+     * After freeze: pushAliasChain/popAliasChain/nextAddress throw,
+     * callSiteBindings returns unmodifiable view.
+     */
+    public void freeze() { this.frozen = true; }
+
+    private void guardFrozen() {
+        if (frozen) throw new IllegalStateException("LinkingContext is frozen — no modifications allowed after Phase 10");
+    }
 
     /**
      * @return The next linear address and increments the cursor.
      */
-    public int nextAddress() { return linearAddressCursor++; }
+    public int nextAddress() { guardFrozen(); return linearAddressCursor++; }
 
     /**
      * @return The current linear address.
@@ -31,30 +67,35 @@ public final class LinkingContext {
     /**
      * @return The map of call site bindings.
      */
-    public Map<Integer, int[]> callSiteBindings() { return callSiteBindings; }
+    public Map<Integer, int[]> callSiteBindings() {
+        return frozen ? java.util.Collections.unmodifiableMap(callSiteBindings) : callSiteBindings;
+    }
+
+    // --- Alias chain stack for module context tracking ---
 
     /**
-     * Adds a pending binding for a CALL instruction.
-     * @param call The CALL instruction.
-     * @param registers The list of register names for the binding.
+     * Pushes an alias chain when entering an imported module.
      */
-    public void addPendingBinding(IrInstruction call, List<String> registers) {
-        pendingBindings.put(call, registers);
+    public void pushAliasChain(String aliasChain) {
+        guardFrozen();
+        aliasChainStack.push(aliasChain);
     }
 
     /**
-     * Resolves a pending binding for a CALL instruction.
-     * @param call The CALL instruction.
-     * @param isa The instruction set for resolving register names.
-     * @return An array of register IDs, or null if no binding exists.
+     * Pops the alias chain when leaving an imported module.
      */
-    public int[] resolvePendingBinding(IrInstruction call, IInstructionSet isa) {
-        List<String> regNames = pendingBindings.get(call);
-        if (regNames == null) return null;
-        int[] ids = new int[regNames.size()];
-        for (int i = 0; i < regNames.size(); i++) {
-            ids[i] = isa.resolveRegisterToken(regNames.get(i)).orElse(-1);
+    public void popAliasChain() {
+        guardFrozen();
+        if (aliasChainStack.isEmpty()) {
+            throw new IllegalStateException("Cannot pop alias chain: stack is empty");
         }
-        return ids;
+        aliasChainStack.pop();
+    }
+
+    /**
+     * Returns the current alias chain, or empty string if the stack is empty.
+     */
+    public String currentAliasChain() {
+        return aliasChainStack.isEmpty() ? "" : aliasChainStack.peek();
     }
 }

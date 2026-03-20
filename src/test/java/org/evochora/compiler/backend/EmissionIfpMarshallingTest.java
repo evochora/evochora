@@ -3,8 +3,8 @@ package org.evochora.compiler.backend;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.backend.emit.EmissionRegistry;
 import org.evochora.compiler.backend.emit.IEmissionRule;
-import org.evochora.compiler.backend.link.LinkingContext;
-import org.evochora.compiler.ir.*;
+import org.evochora.compiler.features.proc.IrCallInstruction;
+import org.evochora.compiler.model.ir.*;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -27,11 +27,12 @@ class EmissionIfpMarshallingTest {
     }
 
     private List<IrItem> runEmission(List<IrItem> items) {
-        EmissionRegistry reg = EmissionRegistry.initializeWithDefaults();
-        LinkingContext ctx = new LinkingContext();
+        EmissionRegistry reg = new EmissionRegistry();
+        reg.register(new org.evochora.compiler.features.proc.ProcedureMarshallingRule());
+        reg.register(new org.evochora.compiler.features.proc.CallerMarshallingRule());
         List<IrItem> out = items;
         for (IEmissionRule r : reg.rules()) {
-            out = r.apply(out, ctx);
+            out = r.apply(out);
         }
         return out;
     }
@@ -44,7 +45,7 @@ class EmissionIfpMarshallingTest {
         IrReg rA = new IrReg("%rA");
         IrInstruction ifpr = new IrInstruction("IFPR", List.of(vecReg), src("main.s", 1));
         IrLabelRef target = new IrLabelRef("myProc");
-        IrInstruction call = new IrInstruction("CALL", List.of(target), List.of(rA), Collections.emptyList(), src("main.s", 2));
+        IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rA), Collections.emptyList(), src("main.s", 2));
 
         List<IrItem> out = runEmission(List.of(ifpr, call));
 
@@ -62,9 +63,9 @@ class EmissionIfpMarshallingTest {
         String labelName = ((IrLabelRef) jmpi.operands().get(0)).labelName();
         assertThat(labelName).startsWith("_safe_call_");
 
-        assertThat(out.get(2)).isEqualTo(new IrInstruction("PUSH", List.of(rA), call.source()));
+        assertThat(out.get(2)).isEqualTo(IrInstruction.synthetic("PUSH", List.of(rA), call.source()));
         assertThat(out.get(3)).isEqualTo(call);
-        assertThat(out.get(4)).isEqualTo(new IrInstruction("POP", List.of(rA), call.source()));
+        assertThat(out.get(4)).isEqualTo(IrInstruction.synthetic("POP", List.of(rA), call.source()));
 
         assertThat(out.get(5)).isInstanceOf(IrLabelDef.class);
         IrLabelDef labelDef = (IrLabelDef) out.get(5);
@@ -78,7 +79,7 @@ class EmissionIfpMarshallingTest {
         IrReg rA = new IrReg("%rA");
         IrInstruction ifpi = new IrInstruction("IFPI", List.of(new IrReg("1|0")), src("main.s", 1));
         IrLabelRef target = new IrLabelRef("myProc");
-        IrInstruction call = new IrInstruction("CALL", List.of(target), List.of(rA), Collections.emptyList(), src("main.s", 2));
+        IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rA), Collections.emptyList(), src("main.s", 2));
 
         List<IrItem> out = runEmission(List.of(ifpi, call));
 
@@ -96,9 +97,9 @@ class EmissionIfpMarshallingTest {
         String labelName = ((IrLabelRef) jmpi.operands().get(0)).labelName();
         assertThat(labelName).startsWith("_safe_call_");
 
-        assertThat(out.get(2)).isEqualTo(new IrInstruction("PUSH", List.of(rA), call.source()));
+        assertThat(out.get(2)).isEqualTo(IrInstruction.synthetic("PUSH", List.of(rA), call.source()));
         assertThat(out.get(3)).isEqualTo(call);
-        assertThat(out.get(4)).isEqualTo(new IrInstruction("POP", List.of(rA), call.source()));
+        assertThat(out.get(4)).isEqualTo(IrInstruction.synthetic("POP", List.of(rA), call.source()));
 
         assertThat(out.get(5)).isInstanceOf(IrLabelDef.class);
         IrLabelDef labelDef = (IrLabelDef) out.get(5);
@@ -112,7 +113,7 @@ class EmissionIfpMarshallingTest {
         IrReg rA = new IrReg("%rA");
         IrInstruction ifps = new IrInstruction("IFPS", Collections.emptyList(), src("main.s", 1));
         IrLabelRef target = new IrLabelRef("myProc");
-        IrInstruction call = new IrInstruction("CALL", List.of(target), List.of(rA), Collections.emptyList(), src("main.s", 2));
+        IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rA), Collections.emptyList(), src("main.s", 2));
 
         List<IrItem> out = runEmission(List.of(ifps, call));
 
@@ -130,9 +131,9 @@ class EmissionIfpMarshallingTest {
         String labelName = ((IrLabelRef) jmpi.operands().get(0)).labelName();
         assertThat(labelName).startsWith("_safe_call_");
 
-        assertThat(out.get(2)).isEqualTo(new IrInstruction("PUSH", List.of(rA), call.source()));
+        assertThat(out.get(2)).isEqualTo(IrInstruction.synthetic("PUSH", List.of(rA), call.source()));
         assertThat(out.get(3)).isEqualTo(call);
-        assertThat(out.get(4)).isEqualTo(new IrInstruction("POP", List.of(rA), call.source()));
+        assertThat(out.get(4)).isEqualTo(IrInstruction.synthetic("POP", List.of(rA), call.source()));
 
         assertThat(out.get(5)).isInstanceOf(IrLabelDef.class);
         IrLabelDef labelDef = (IrLabelDef) out.get(5);

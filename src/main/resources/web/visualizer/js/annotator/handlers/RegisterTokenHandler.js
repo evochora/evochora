@@ -36,7 +36,7 @@ export class RegisterTokenHandler {
             throw new Error(`Cannot annotate register token "${token}": token does not start with '%' (expected register token).`);
         }
 
-        const canonicalReg = AnnotationUtils.resolveToCanonicalRegister(token, artifact);
+        const canonicalReg = AnnotationUtils.resolveToCanonicalRegister(token, artifact, tokenInfo.qualifiedName);
         const lookupName = canonicalReg || token;
         
         // getRegisterValue now throws Error directly if register not found or invalid input

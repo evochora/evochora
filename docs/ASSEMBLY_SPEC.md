@@ -184,10 +184,10 @@ START_LOOP:
 
 #### Exported Labels
 
-By default, labels are only visible within the file where they are defined. To make a label accessible from other modules, add the `EXPORT` keyword after the colon:
+By default, labels are only visible within the file where they are defined. To make a label accessible from other modules, add the `EXPORT` keyword before the label:
 
 ```
-MY_ENTRY_POINT: EXPORT
+EXPORT MY_ENTRY_POINT:
   ...
 ```
 
@@ -195,7 +195,7 @@ Exported labels can be referenced from other files using qualified names (simila
 
 ```
 # In lib.evo
-DATA_TABLE: EXPORT
+EXPORT DATA_TABLE:
   .PLACE DATA:42 0|0
 
 # In main.evo
@@ -205,6 +205,20 @@ DATA_TABLE: EXPORT
 START:
   JMPI LIB.DATA_TABLE  # Jump to the exported label
   ...
+```
+
+#### Exported Constants
+
+Constants defined with `.DEFINE` can also be exported. This allows modules to expose configuration values as part of their API:
+
+```
+# In lib.evo
+EXPORT .DEFINE MAX_ENERGY DATA:1000
+EXPORT .DEFINE STEP_SIZE 1|0
+
+# In main.evo
+.IMPORT "lib.evo" AS LIB
+SETI %DR0 LIB.MAX_ENERGY
 ```
 
 ### Case-Insensitivity
@@ -520,7 +534,7 @@ Directives are special commands that instruct the compiler on how to assemble th
 
 ### Definitions and Aliases
 
-* `.DEFINE <NAME> <VALUE>`: Creates a simple text substitution. The compiler will replace every occurrence of `<NAME>` with `<VALUE>` before parsing.
+* `[EXPORT] .DEFINE <NAME> <VALUE>`: Creates a compile-time constant. The compiler will replace every occurrence of `<NAME>` with `<VALUE>`. The optional `EXPORT` prefix makes the constant visible to importing modules.
 * `.REG <%ALIAS> <%REGISTER>`: Assigns a custom name (`<%ALIAS>`) to a register. Supports both data registers (e.g., `.REG %COUNTER %DR0`) and location registers (e.g., `.REG %POSITION %LR0`).
 
 ### Layout Control
@@ -582,10 +596,45 @@ Both syntaxes produce identical results—the shorthand is transformed into `.RE
 
 ### Modules and Procedures
 
-A **module** is a source file (e.g., `lib.evo`) containing one or more `.PROC` definitions that can be reused. To create and use modules effectively, you combine `.PROC`, `.REQUIRE`, and `.INCLUDE`.
+The module system allows splitting programs across multiple files. Three directives work together to manage module dependencies:
 
-* `.PROC <Name> [EXPORT] [REF <param1> ...] [VAL <param2> ...] / .ENDP`: Defines a procedure.
-    - `EXPORT`: Makes the procedure visible to other modules.
+* **`.IMPORT`** — imports a module: establishes a dependency and inlines the module's code.
+* **`.REQUIRE`** — declares an unsatisfied dependency that must be provided by the importer via a `USING` clause.
+* **`.SOURCE`** — includes raw source text (macros, constants) without creating a module relationship.
+
+#### `.IMPORT`
+
+* **Syntax**: `.IMPORT "<path>" AS <Alias> [USING <source> AS <target>]*`
+* **Effect**: Declares a dependency on the module at `<path>`, assigns it the local alias `<Alias>`, and inlines the module's code at this location. Exported labels and procedures in the imported module become accessible as `<Alias>.<Name>`.
+* **USING clauses**: Provide compile-time dependency injection. Each `USING` clause wires a module from the current scope (identified by `<source>` alias) into the imported module to satisfy one of its `.REQUIRE` declarations (identified by `<target>` alias).
+    - `<source>` must be a known import alias in the current module.
+    - `<target>` must match a `.REQUIRE` alias in the imported module.
+    - Every `.REQUIRE` in the imported module must be satisfied by a `USING` clause.
+
+#### `.REQUIRE`
+
+* **Syntax**: `.REQUIRE "<path>" AS <Alias>`
+* **Effect**: Declares that this module depends on the module at `<path>` under the alias `<Alias>`, but does **not** inline any code. The dependency must be satisfied by the importer through a `USING` clause on its `.IMPORT` directive. Within this module, symbols from the required module can be accessed as `<Alias>.<Name>`.
+
+#### `.SOURCE`
+
+* **Syntax**: `.SOURCE "<path>"`
+* **Effect**: Reads the file at `<path>` and inlines its tokens at the directive location. This is a pure text inclusion mechanism for sharing macros, constants, and other non-module code. `.SOURCE` files must **not** contain `.IMPORT` or `.REQUIRE` directives. Supports local paths, classpath resources, and HTTP/HTTPS URLs.
+
+#### Path Resolution
+
+All paths in `.IMPORT`, `.REQUIRE`, and `.SOURCE` are resolved against configured **source roots**. A source root is a base directory (or HTTP URL) from which paths are resolved. Source roots are configured via `compiler.source-roots` in the configuration file or via the `--source-root` CLI flag.
+
+* **Unprefixed paths** (e.g., `"lib/energy.evo"`) resolve against the default (unprefixed) source root.
+* **Prefixed paths** use `PREFIX:path` syntax (e.g., `"PRED:lib/move.evo"`) to target a named source root. Prefixes must match `[A-Z][A-Z0-9_]*`.
+* **HTTP URLs** as source root paths are fully supported. A source root like `https://example.com/organisms` resolves `"lib/move.evo"` to `https://example.com/organisms/lib/move.evo`.
+* If no source roots are configured, the main file's directory is used as the default root.
+
+#### `.PROC`
+
+* **Syntax**: `[EXPORT] .PROC <Name> [REF <param1> ...] [VAL <param2> ...] / .ENDP`
+* **Effect**: Defines a procedure.
+    - `EXPORT`: Prefix modifier that makes the procedure visible to other modules.
     - `REF`: Defines **call-by-reference** parameters. The procedure receives a direct reference to the caller's register. Any modification inside the procedure affects the original register.
     - `VAL`: Defines **call-by-value** parameters. The procedure receives a copy of the value from the caller's register. Modifications are local and do not affect the original register.
     - **Example**:
@@ -596,70 +645,127 @@ A **module** is a source file (e.g., `lib.evo`) containing one or more `.PROC` d
         RET
       .ENDP
       ```
-* `.REQUIRE "<path>" AS <Alias>`: Declares a logical dependency on a module. A library file should use this to declare its own dependencies on other libraries.
-* `.INCLUDE "<path>"`: Inlines the content of another source file. The main program file must use this directive to include the source code for all required modules, which gives the main program full control over the physical layout of the code in the environment.
+
 * `.PREG <%ALIAS> <%PROCREGISTER>`: Within a `.PROC` block, assigns an alias to a procedure-local register (`%PR0` or `%PR1`).
 
-#### Example of a Modular Program:
+#### Example: Simple Module Import
 
-**File 1: `lib/math.evo`**
 ```
-# This module provides a simple math function.
-.PROC MATH.ADD EXPORT VAL A B  # Make this procedure public
+# lib.evo — a reusable library
+EXPORT .PROC LIB.DOUBLE REF X
+  PUSH X
+  PUSH X
   ADDS
+  POP X        # X = X + X, modifies the caller's register
   RET
 .ENDP
 ```
 
-**File 2: `lib/utils.evo`**
 ```
-# This module depends on the math library.
-.REQUIRE "lib/math.evo" AS MATH
+# main.evo — imports the library
+.IMPORT "lib.evo" AS LIB
 
-.PROC UTILS.INCREMENT_BOTH EXPORT REF REG1 REG2
-  # Use the procedure from the math library
-  PUSH %REG1
-  PUSI DATA:1
-  CALL MATH.ADD
-  POP %REG1
+START:
+  SETI %DR0 DATA:21
+  CALL LIB.DOUBLE REF %DR0    # %DR0 is now 42
+```
 
-  PUSH %REG2
-  PUSI DATA:1
-  CALL MATH.ADD
-  POP %REG2
-  
+#### Example: Dependency Injection with USING
+
+When a library module depends on another library, it declares the dependency with `.REQUIRE`. The main program then wires the modules together with `USING` clauses.
+
+**File 1: `math.evo`**
+```
+# A standalone math library using stack-based conventions.
+EXPORT .PROC MATH.ADD
+  ADDS            # Pops two values from the stack, pushes their sum
   RET
 .ENDP
 ```
 
-**File 3: `main.evo` (The main program)**
+**File 2: `utils.evo`**
 ```
-# 1. Include the source code for all required modules.
-#    This places their machine code into the environment.
-.ORG 50|0
-.INCLUDE "lib/math.evo"
+# This module depends on a math library, but does not import it directly.
+# Instead, it declares the dependency with .REQUIRE.
+.REQUIRE "math.evo" AS MATH
 
-.ORG 100|0
-.INCLUDE "lib/utils.evo"
+EXPORT .PROC UTILS.ADD_ONE REF X
+  PUSH X          # Push the register value onto the stack
+  PUSI DATA:1     # Push 1
+  CALL MATH.ADD   # Stack now has X+1
+  POP X           # Store result back in the caller's register
+  RET
+.ENDP
+```
 
-# 2. Declare the dependency for the main program's code.
-.REQUIRE "lib/utils.evo" AS UTILS
+**File 3: `main.evo`**
+```
+# The main program imports both modules and wires them together.
+.IMPORT "math.evo" AS M
+.IMPORT "utils.evo" AS UTILS USING M AS MATH  # Provides M to satisfy utils' .REQUIRE
 
-# 3. Main program logic starts here.
-.ORG 0|0
 START:
   SETI %DR0 DATA:10
-  SETI %DR1 DATA:20
-  
-  # Call the procedure from the utils library
-  CALL UTILS.INCREMENT_BOTH REF %DR0 %DR1
-  
-  # %DR0 is now 11, %DR1 is now 21
-  ...
+  CALL UTILS.ADD_ONE REF %DR0
+  # %DR0 is now 11
+```
+
+The `USING M AS MATH` clause tells the compiler: "the module that `utils.evo` knows as `MATH` (from its `.REQUIRE`) is the same module that `main.evo` imported as `M`." This allows `utils.evo` to call `MATH.ADD` without knowing where the math library comes from — the main program controls the wiring.
+
+#### Example: Using .SOURCE for Shared Constants
+
+`.SOURCE` is used for non-module includes like shared macros or constants. Unlike `.IMPORT`, it does not create module relationships.
+
+```
+# constants.evo — shared constants (no .IMPORT or .REQUIRE allowed)
+.DEFINE MAX_ENERGY DATA:1000
+.DEFINE STEP_SIZE 1|0
+```
+
+```
+# main.evo
+.SOURCE "constants.evo"
+
+START:
+  SETI %DR0 MAX_ENERGY    # Uses the constant from the sourced file
+  SETV %DR1 STEP_SIZE
 ```
 
 ### Scopes
 
 * `.SCOPE <Name> / .ENDS`: Defines a named scope. Labels defined inside a scope are only visible within that scope, preventing name collisions.
 
+```
+.SCOPE INNER
+  LOOP: NOP
+  JMPI LOOP      # Refers to INNER.LOOP
+.ENDS
+```
+
+---
+
+## 8. Examples
+
+Complete, compilable example programs are provided in [`assembly/examples/`](../assembly/examples/):
+
+| File | Description |
+|---|---|
+| [`simple.evo`](../assembly/examples/simple.evo) | Basic syntax: register aliases, `.DEFINE`, `.PROC`, labels, loops |
+| [`complex.evo`](../assembly/examples/complex.evo) | Advanced features: `.PLACE`, `.MACRO`, `.REPEAT`, `.SOURCE`, multiple `.ORG` regions |
+| [`modules.evo`](../assembly/examples/modules.evo) | Module system: `.IMPORT`, `.REQUIRE`, `USING`, `.SOURCE` for shared constants, `EXPORT` |
+
+The module example consists of multiple files:
+
+| File | Role |
+|---|---|
+| [`modules/constants.evo`](../assembly/examples/modules/constants.evo) | Shared constants loaded via `.SOURCE` |
+| [`modules/math.evo`](../assembly/examples/modules/math.evo) | Standalone math utilities (no dependencies) |
+| [`modules/movement.evo`](../assembly/examples/modules/movement.evo) | Movement procedures, depends on math via `.REQUIRE` |
+
+To compile the examples using the CLI:
+
+```bash
+evochora compile --source-root assembly/examples --file=simple.evo
+evochora compile --source-root assembly/examples --file=complex.evo
+evochora compile --source-root assembly/examples --file=modules.evo
 ```

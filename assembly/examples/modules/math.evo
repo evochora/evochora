@@ -1,0 +1,33 @@
+# Math utilities module.
+# Standalone module with no dependencies — can be imported directly.
+
+.SOURCE "modules/constants.evo"
+
+# Exported label (demonstrates cross-module label access via ALIAS.LABEL)
+EXPORT MATH_READY:
+  NOP
+
+# Clamps VALUE into the range [WORLD_MIN, WORLD_MAX].
+# If VALUE < WORLD_MIN, sets VALUE = WORLD_MIN. If VALUE > WORLD_MAX, sets VALUE = WORLD_MAX.
+EXPORT .PROC CLAMP REF VALUE VAL MIN MAX
+  LTR VALUE MIN
+  JMPI CLAMP_TO_MIN
+  LTR MAX VALUE
+  JMPI CLAMP_DONE
+  SETR VALUE MAX
+  RET
+CLAMP_TO_MIN:
+  SETR VALUE MIN
+CLAMP_DONE:
+  RET
+.ENDP
+
+# Adds AMOUNT to VALUE, then clamps the result to not exceed MAX.
+EXPORT .PROC ADD_CLAMPED REF VALUE VAL AMOUNT MAX
+  ADDR VALUE AMOUNT
+  LTR MAX VALUE
+  JMPI ADD_CLAMPED_DONE
+  SETR VALUE MAX
+ADD_CLAMPED_DONE:
+  RET
+.ENDP

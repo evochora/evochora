@@ -1,6 +1,8 @@
 package org.evochora.compiler.frontend.lexer;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.model.token.Token;
+import org.evochora.compiler.model.token.TokenType;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -54,6 +56,17 @@ public class Lexer {
         return tokens;
     }
 
+    /**
+     * Removes the trailing EOF token from a token list, if present.
+     * Used when pre-lexed tokens are injected into another token stream
+     * that already has its own EOF.
+     */
+    public static void stripEofToken(List<Token> tokens) {
+        if (!tokens.isEmpty() && tokens.getLast().type() == TokenType.END_OF_FILE) {
+            tokens.removeLast();
+        }
+    }
+
     private void scanToken() {
         char c = advance();
         switch (c) {
@@ -62,7 +75,7 @@ public class Lexer {
             case '|': addToken(TokenType.PIPE); break;
             case ':': addToken(TokenType.COLON); break;
             case '*': addToken(TokenType.STAR); break;
-            case '^': addToken(TokenType.CARET); break;
+            case '^': addToken(TokenType.DIRECTIVE); break;
             case ';':
                 // Semicolon acts as a statement terminator, allowing multiple instructions per line.
                 addToken(TokenType.NEWLINE);

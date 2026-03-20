@@ -1,0 +1,34 @@
+# Movement module.
+# Declares a dependency on a math module via .REQUIRE.
+# The importer must satisfy this dependency with a USING clause.
+
+.REQUIRE "math.evo" AS MATH
+.SOURCE "modules/constants.evo"
+
+# Move north (Y - 1), clamped to world bounds.
+EXPORT .PROC NORTH REF Y
+  SUBI Y DATA:1
+  CALL MATH.CLAMP REF Y VAL WORLD_MIN WORLD_MAX
+  RET
+.ENDP
+
+# Move south (Y + 1), clamped to world bounds.
+EXPORT .PROC SOUTH REF Y
+  ADDI Y DATA:1
+  CALL MATH.CLAMP REF Y VAL WORLD_MIN WORLD_MAX
+  RET
+.ENDP
+
+# Move east (X + 1), clamped to world bounds.
+EXPORT .PROC EAST REF X
+  ADDI X DATA:1
+  CALL MATH.CLAMP REF X VAL WORLD_MIN WORLD_MAX
+  RET
+.ENDP
+
+# Move west (X - 1), clamped to world bounds.
+EXPORT .PROC WEST REF X
+  SUBI X DATA:1
+  CALL MATH.CLAMP REF X VAL WORLD_MIN WORLD_MAX
+  RET
+.ENDP

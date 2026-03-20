@@ -1,86 +1,46 @@
 package org.evochora.compiler.frontend.parser;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.CompilerPhase;
-import org.evochora.compiler.frontend.directive.IDirectiveHandler;
-import org.evochora.compiler.frontend.directive.DirectiveHandlerRegistry;
-import org.evochora.compiler.frontend.lexer.Token;
-import org.evochora.compiler.frontend.lexer.TokenType;
-import org.evochora.compiler.frontend.parser.ast.*;
-import org.evochora.compiler.api.SourceInfo;
-import org.evochora.compiler.frontend.parser.features.label.LabelNode;
-import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
+import org.evochora.compiler.model.token.Token;
+import org.evochora.compiler.model.token.TokenType;
+import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.IdentifierNode;
 
-import java.nio.file.Path;
-import java.util.ArrayDeque;
+import org.evochora.compiler.model.ast.NumberLiteralNode;
+import org.evochora.compiler.model.ast.RegisterNode;
+import org.evochora.compiler.model.ast.TypedLiteralNode;
+import org.evochora.compiler.model.ast.VectorLiteralNode;
+
 import java.util.ArrayList;
-import java.util.Deque;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 /**
  * The main parser for the assembly language. It consumes a list of tokens
  * from the {@link org.evochora.compiler.frontend.lexer.Lexer} and produces an Abstract Syntax Tree (AST).
- * The parser is also responsible for handling directives and managing scopes.
+ * All statement dispatch goes through the {@link ParserStatementRegistry}.
  */
 public class Parser implements ParsingContext {
 
     private final List<Token> tokens;
     private final DiagnosticsEngine diagnostics;
-    private final DirectiveHandlerRegistry directiveRegistry;
-    private final Path basePath;
+    private final ParserStatementRegistry statementRegistry;
     private int current = 0;
 
-    private final Deque<Map<String, Token>> registerAliasScopes = new ArrayDeque<>();
-    private final Map<String, ProcedureNode> procedureTable = new HashMap<>();
+    private final ParserState parserState = new ParserState();
+    private boolean currentExported = false;
 
     /**
      * Constructs a new Parser.
      * @param tokens The list of tokens to parse.
      * @param diagnostics The engine for reporting errors and warnings.
-     * @param basePath The base path of the source file, used for resolving includes.
+     * @param statementRegistry The pre-built registry of statement handlers.
      */
-    public Parser(List<Token> tokens, DiagnosticsEngine diagnostics, Path basePath) {
+    public Parser(List<Token> tokens, DiagnosticsEngine diagnostics,
+                  ParserStatementRegistry statementRegistry) {
         this.tokens = tokens;
         this.diagnostics = diagnostics;
-        this.basePath = basePath;
-        this.directiveRegistry = DirectiveHandlerRegistry.initialize();
-        registerAliasScopes.push(new HashMap<>());
-    }
-
-    /**
-     * Pushes a new scope for register aliases onto the stack. Used for procedures and scopes.
-     */
-    public void pushRegisterAliasScope() {
-        registerAliasScopes.push(new HashMap<>());
-    }
-
-    /**
-     * Pops the current register alias scope from the stack.
-     */
-    public void popRegisterAliasScope() {
-        if (registerAliasScopes.size() > 1) {
-            registerAliasScopes.pop();
-        }
-    }
-
-    /**
-     * Adds a new register alias to the current scope.
-     * @param name The alias name.
-     * @param registerToken The token representing the actual register.
-     */
-    public void addRegisterAlias(String name, Token registerToken) {
-        registerAliasScopes.peek().put(name.toUpperCase(), registerToken);
-    }
-
-        /**
-     * Gets the global register aliases.
-     * @return A map of global register aliases.
-     */
-    public Map<String, Token> getGlobalRegisterAliases() {
-        return new HashMap<>(registerAliasScopes.getLast()); // Global scope is the last element
+        this.statementRegistry = statementRegistry;
     }
 
     /**
@@ -102,9 +62,12 @@ public class Parser implements ParsingContext {
     }
 
     /**
-     * Parses a single declaration, which can be a directive or a statement.
+     * Parses a single declaration. Handles EXPORT keyword, then dispatches
+     * through the statement registry by keyword. Label syntax and generic
+     * instructions are handled as fallbacks.
      * @return The parsed {@link AstNode}, or null if an error occurs.
      */
+    @Override
     public AstNode declaration() {
         try {
             while (check(TokenType.NEWLINE)) {
@@ -112,107 +75,53 @@ public class Parser implements ParsingContext {
             }
             if (isAtEnd()) return null;
 
-            if (check(TokenType.DIRECTIVE)) {
-                return directiveStatement();
+            currentExported = false;
+            if (check(TokenType.IDENTIFIER) && "EXPORT".equalsIgnoreCase(peek().text())) {
+                currentExported = true;
+                advance();
             }
-            return statement();
+
+            // Keyword lookup in statement registry (directives, opcodes, etc.)
+            Token keyword = peek();
+            Optional<IParserStatementHandler> handler = statementRegistry.get(keyword.text());
+            if (handler.isPresent()) {
+                if (currentExported && !handler.get().supportsExport()) {
+                    diagnostics.reportError(
+                            "EXPORT is not supported before '" + keyword.text() + "'.",
+                            keyword.fileName(), keyword.line());
+                }
+                return handler.get().parse(this);
+            }
+
+            // After preprocessing, all remaining directives must have a registered handler
+            if (check(TokenType.DIRECTIVE)) {
+                Token directive = advance();
+                diagnostics.reportError(
+                        "Unregistered directive '" + directive.text() + "'.",
+                        directive.fileName(), directive.line());
+                return null;
+            }
+
+            // Default handler for generic instructions
+            Optional<IParserStatementHandler> defaultHandler = statementRegistry.getDefault();
+            if (defaultHandler.isPresent()) {
+                if (currentExported) {
+                    diagnostics.reportError(
+                            "EXPORT is not supported before '" + keyword.text() + "'.",
+                            keyword.fileName(), keyword.line());
+                }
+                return defaultHandler.get().parse(this);
+            }
+
+            Token unexpected = advance();
+            if (unexpected.type() != TokenType.END_OF_FILE && unexpected.type() != TokenType.NEWLINE) {
+                diagnostics.reportError("Expected instruction or directive, but got '" + unexpected.text() + "'.",
+                        unexpected.fileName(), unexpected.line());
+            }
+            return null;
         } catch (RuntimeException ex) {
             synchronize();
             return null;
-        }
-    }
-
-    private AstNode directiveStatement() {
-        Token directiveToken = peek();
-        Optional<IDirectiveHandler> handlerOptional = directiveRegistry.get(directiveToken.text());
-
-        if (handlerOptional.isPresent()) {
-            IDirectiveHandler handler = handlerOptional.get();
-            if (handler.getPhase() == CompilerPhase.PARSING) {
-                return handler.parse(this);
-            }
-            advance();
-            return null;
-        } else {
-            diagnostics.reportError("Unknown directive: " + directiveToken.text(), directiveToken.fileName(), directiveToken.line());
-            advance();
-            return null;
-        }
-    }
-
-    private AstNode statement() {
-        if (check(TokenType.IDENTIFIER) && checkNext(TokenType.COLON)) {
-            Token labelToken = advance();
-            advance(); // consume ':'
-            boolean exported = false;
-            if (check(TokenType.IDENTIFIER) && "EXPORT".equalsIgnoreCase(peek().text())) {
-                advance(); // consume 'EXPORT'
-                exported = true;
-            }
-            return new LabelNode(labelToken, declaration(), exported);
-        }
-        return instructionStatement();
-    }
-
-    private AstNode instructionStatement() {
-        if (match(TokenType.OPCODE)) {
-            Token opcode = previous();
-            if ("CALL".equalsIgnoreCase(opcode.text())) {
-                return parseCallInstruction(opcode);
-            }
-            List<AstNode> arguments = new ArrayList<>();
-            while (!isAtEnd() && !check(TokenType.NEWLINE)) {
-                arguments.add(expression());
-            }
-            return new InstructionNode(opcode, arguments);
-        }
-
-        Token unexpected = advance();
-        if (unexpected.type() != TokenType.END_OF_FILE && unexpected.type() != TokenType.NEWLINE) {
-            diagnostics.reportError("Expected instruction or directive, but got '" + unexpected.text() + "'.", unexpected.fileName(), unexpected.line());
-        }
-        return null;
-    }
-
-    private InstructionNode parseCallInstruction(Token opcode) {
-        AstNode procName = expression();
-
-        List<AstNode> arguments = new ArrayList<>();
-        arguments.add(procName);
-
-        // Check for new syntax (REF/VAL)
-        if (check(TokenType.IDENTIFIER) && ("REF".equalsIgnoreCase(peek().text()) || "VAL".equalsIgnoreCase(peek().text()))) {
-            List<AstNode> refArguments = new ArrayList<>();
-            List<AstNode> valArguments = new ArrayList<>();
-            boolean refParsed = false;
-            boolean valParsed = false;
-
-            while (!isAtEnd() && !check(TokenType.NEWLINE)) {
-                if (!refParsed && check(TokenType.IDENTIFIER) && "REF".equalsIgnoreCase(peek().text())) {
-                    advance(); // Consume REF
-                    refParsed = true;
-                    while (!isAtEnd() && !check(TokenType.NEWLINE) && !(check(TokenType.IDENTIFIER) && "VAL".equalsIgnoreCase(peek().text()))) {
-                        refArguments.add(expression());
-                    }
-                } else if (!valParsed && check(TokenType.IDENTIFIER) && "VAL".equalsIgnoreCase(peek().text())) {
-                    advance(); // Consume VAL
-                    valParsed = true;
-                    while (!isAtEnd() && !check(TokenType.NEWLINE) && !(check(TokenType.IDENTIFIER) && "REF".equalsIgnoreCase(peek().text()))) {
-                        valArguments.add(expression());
-                    }
-                } else {
-                    Token unexpected = advance();
-                    diagnostics.reportError("Unexpected token '" + unexpected.text() + "' in CALL statement. Expected REF, VAL, or newline.", unexpected.fileName(), unexpected.line());
-                    break;
-                }
-            }
-            return new InstructionNode(opcode, arguments, refArguments, valArguments);
-        } else {
-            // Old syntax: CALL proc [WITH] arg1, arg2, ...
-            while (!isAtEnd() && !check(TokenType.NEWLINE)) {
-                arguments.add(expression());
-            }
-            return new InstructionNode(opcode, arguments);
         }
     }
 
@@ -220,33 +129,41 @@ public class Parser implements ParsingContext {
      * Parses an expression, which can be a literal, a register, an identifier, or a vector.
      * @return The parsed {@link AstNode} for the expression.
      */
+    @Override
     public AstNode expression() {
         if (check(TokenType.NUMBER) && checkNext(TokenType.PIPE)) {
-            List<Token> components = new ArrayList<>();
-            components.add(consume(TokenType.NUMBER, "Expected number component for vector."));
+            Token first = consume(TokenType.NUMBER, "Expected number component for vector.");
+            List<Integer> values = new ArrayList<>();
+            values.add((int) first.value());
             while(match(TokenType.PIPE)) {
-                components.add(consume(TokenType.NUMBER, "Expected number component after '|'."));
+                Token comp = consume(TokenType.NUMBER, "Expected number component after '|'.");
+                values.add((int) comp.value());
             }
-            return new VectorLiteralNode(components);
+            return new VectorLiteralNode(java.util.Collections.unmodifiableList(values),
+                    first.toSourceInfo());
         }
 
         if (check(TokenType.IDENTIFIER) && checkNext(TokenType.COLON)) {
             Token type = advance();
             advance();
-            Token value = consume(TokenType.NUMBER, "Expected a number after the literal type.");
-            return new TypedLiteralNode(type, value);
+            Token valueTok = consume(TokenType.NUMBER, "Expected a number after the literal type.");
+            return new TypedLiteralNode(type.text(), (int) valueTok.value(),
+                    type.toSourceInfo());
         }
 
-        if (match(TokenType.NUMBER)) return new NumberLiteralNode(previous());
+        if (match(TokenType.NUMBER)) {
+            Token num = previous();
+            return new NumberLiteralNode((int) num.value(), num.toSourceInfo());
+        }
 
         if (match(TokenType.REGISTER)) {
             Token reg = previous();
-            return new RegisterNode(reg.text(), new SourceInfo(reg.fileName(), reg.line(), reg.column()), reg);
+            return new RegisterNode(reg.text(), reg.toSourceInfo());
         }
 
         if (match(TokenType.IDENTIFIER)) {
             Token identifier = previous();
-            return new IdentifierNode(identifier);
+            return new IdentifierNode(identifier.text(), identifier.toSourceInfo());
         }
 
         Token unexpected = advance();
@@ -319,32 +236,7 @@ public class Parser implements ParsingContext {
         throw new RuntimeException(errorMessage);
     }
 
-    /**
-     * Registers a new procedure in the parser's procedure table.
-     * @param procedure The procedure node to register.
-     */
-    public void registerProcedure(ProcedureNode procedure) {
-        String name = procedure.name().text().toUpperCase();
-        if (procedureTable.containsKey(name)) {
-            getDiagnostics().reportError("Procedure '" + name + "' is already defined.", procedure.name().fileName(), procedure.name().line());
-        } else {
-            procedureTable.put(name, procedure);
-        }
-    }
-
-    /**
-     * Gets the table of defined procedures.
-     * @return The procedure table.
-     */
-    public Map<String, ProcedureNode> getProcedureTable() { return procedureTable; }
     @Override public DiagnosticsEngine getDiagnostics() { return diagnostics; }
-    @Override public void injectTokens(List<Token> tokens, int tokensToRemove) { throw new UnsupportedOperationException("Not supported in parsing phase."); }
-
-    @Override
-    public Path getBasePath() {
-        return this.basePath;
-    }
-
-    @Override public boolean hasAlreadyIncluded(String path) { throw new UnsupportedOperationException("Not supported in parsing phase."); }
-    @Override public void markAsIncluded(String path) { throw new UnsupportedOperationException("Not supported in parsing phase."); }
+    @Override public ParserState state() { return parserState; }
+    @Override public boolean isExported() { return currentExported; }
 }

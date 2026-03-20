@@ -1,53 +1,61 @@
 package org.evochora.compiler.frontend.semantics;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.parser.ast.AstNode;
-import org.evochora.compiler.frontend.parser.ast.InstructionNode;
-import org.evochora.compiler.frontend.parser.ast.PregNode;
-import org.evochora.compiler.frontend.parser.features.def.DefineNode;
-import org.evochora.compiler.frontend.parser.features.label.LabelNode;
-import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
-import org.evochora.compiler.frontend.parser.features.reg.RegNode;
-import org.evochora.compiler.frontend.parser.features.require.RequireNode;
-import org.evochora.compiler.frontend.parser.features.scope.ScopeNode;
-import org.evochora.compiler.frontend.semantics.analysis.*;
+import org.evochora.compiler.frontend.module.DependencyGraph;
+import org.evochora.compiler.frontend.module.IDependencyInfo;
+import org.evochora.compiler.frontend.module.ModuleDescriptor;
+import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
+import org.evochora.compiler.frontend.semantics.analysis.ISymbolCollector;
+import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ModuleContextTracker;
+import org.evochora.compiler.model.symbols.SymbolTable;
 
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.nio.file.Path; // NEW IMPORT
+import java.util.Optional;
 
 /**
  * Performs semantic analysis on the AST. This includes tasks like symbol table management,
  * type checking (in a broader sense), and ensuring that the program logic is sound.
  * It operates by traversing the AST and dispatching nodes to specific handlers.
+ *
+ * <p>In multi-module compilation, the analyzer receives a {@link DependencyGraph} at construction
+ * time and sets up module relationships (imports, requires, USING bindings) in the symbol table
+ * before analysis begins. During traversal, it switches module context using PushCtxNode/PopCtxNode
+ * markers carrying alias chains from the preprocessor.</p>
  */
 public class SemanticAnalyzer {
 
     private final DiagnosticsEngine diagnostics;
     private final SymbolTable symbolTable;
-    private final Map<Class<? extends AstNode>, IAnalysisHandler> handlers = new HashMap<>();
-    private final Map<AstNode, SymbolTable.Scope> scopeMap = new HashMap<>();
+    private final AnalysisHandlerRegistry registry;
+    private final ModuleSetupRegistry setupRegistry;
+    private final ModuleContextTracker contextTracker;
 
     /**
-     * Constructs a new semantic analyzer.
-     * @param diagnostics The diagnostics engine for reporting errors.
-     * @param symbolTable The symbol table to use for analysis.
+     * Constructs a semantic analyzer with an externally built analysis registry.
+     *
+     * @param diagnostics    The diagnostics engine for reporting errors.
+     * @param symbolTable    The symbol table to use for analysis.
+     * @param graph          The dependency graph from Phase 0. Null for single-file compilation.
+     * @param mainFilePath   The absolute path of the main source file. Null when graph is null.
+     * @param rootAliasChain The alias chain for the root module (e.g., "MAIN"). Null when graph is null.
+     * @param registry       The pre-built analysis handler registry.
      */
-    public SemanticAnalyzer(DiagnosticsEngine diagnostics, SymbolTable symbolTable) {
+    public SemanticAnalyzer(DiagnosticsEngine diagnostics, SymbolTable symbolTable,
+                            DependencyGraph graph, String mainFilePath,
+                            String rootAliasChain, AnalysisHandlerRegistry registry,
+                            ModuleSetupRegistry setupRegistry) {
         this.diagnostics = diagnostics;
         this.symbolTable = symbolTable;
-        registerDefaultHandlers();
-    }
+        this.contextTracker = new ModuleContextTracker(symbolTable);
+        this.registry = registry;
+        this.setupRegistry = setupRegistry;
 
-    private void registerDefaultHandlers() {
-        handlers.put(DefineNode.class, new DefineAnalysisHandler());
-        handlers.put(RegNode.class, new RegAnalysisHandler());
-        handlers.put(LabelNode.class, new LabelAnalysisHandler());
-        handlers.put(ScopeNode.class, new ScopeAnalysisHandler(this.scopeMap));
-        handlers.put(ProcedureNode.class, new ProcedureAnalysisHandler(this.scopeMap));
-        handlers.put(InstructionNode.class, new InstructionAnalysisHandler(symbolTable, diagnostics));
-        handlers.put(PregNode.class, new PregAnalysisHandler());
+        if (graph != null && rootAliasChain != null) {
+            setupModuleRelationships(graph, mainFilePath, rootAliasChain);
+        }
     }
 
     /**
@@ -55,10 +63,29 @@ public class SemanticAnalyzer {
      * This is the main entry point for the semantic analysis phase.
      * It performs two passes: one to collect top-level symbols (labels, procedures),
      * and a second to analyze the statements in detail.
+     *
      * @param statements The list of top-level AST nodes to analyze.
      */
     public void analyze(List<AstNode> statements) {
+        collectSymbols(statements);
+        analyzeStatements(statements);
+    }
+
+    /**
+     * Pass 1: Collects top-level symbols (labels, procedures, constants) from the AST.
+     *
+     * @param statements The list of top-level AST nodes to collect symbols from.
+     */
+    private void collectSymbols(List<AstNode> statements) {
         collectLabels(statements);
+    }
+
+    /**
+     * Pass 2: Analyzes the statements in detail (type checking, reference resolution).
+     *
+     * @param statements The list of top-level AST nodes to analyze.
+     */
+    private void analyzeStatements(List<AstNode> statements) {
         symbolTable.resetScope();
         traverseAndAnalyze(statements);
     }
@@ -66,79 +93,88 @@ public class SemanticAnalyzer {
     private void collectLabels(List<AstNode> nodes) {
         for (AstNode node : nodes) {
             if (node == null) continue;
-
-            if (node instanceof ProcedureNode proc) {
-                symbolTable.define(new Symbol(proc.name(), Symbol.Type.PROCEDURE, proc));
-                symbolTable.registerProcedureMeta(proc.name(), proc.exported());
-            }
-            if (node instanceof RequireNode req) {
-                if (req.alias() != null && req.path() != null && req.path().value() instanceof String) {
-                    String aliasU = req.alias().text().toUpperCase();
-                    String file = req.alias().fileName();
-                    String target = (String) req.path().value();
-
-                    // CORRECTION: Ensure that the path is normalized
-                    String normalizedTarget = Path.of(target).normalize().toString().replace('\\', '/');
-                    symbolTable.registerRequireAlias(file, aliasU, normalizedTarget);
-                }
-            }
-            if (node instanceof LabelNode lbl) {
-                symbolTable.define(new Symbol(lbl.labelToken(), Symbol.Type.LABEL));
-                symbolTable.registerLabelMeta(lbl.labelToken(), lbl.exported());
-            }
-
-            if (node instanceof ScopeNode || node instanceof ProcedureNode) {
-                SymbolTable.Scope newScope = symbolTable.enterScope();
-                scopeMap.put(node, newScope);
-
-                if (node instanceof ProcedureNode proc2) {
-                    // Define old-style parameters
-                    if (proc2.parameters() != null) {
-                        for (org.evochora.compiler.frontend.lexer.Token p : proc2.parameters()) {
-                            symbolTable.define(new Symbol(p, Symbol.Type.VARIABLE));
-                        }
-                    }
-                    // Define REF parameters
-                    if (proc2.refParameters() != null) {
-                        for (org.evochora.compiler.frontend.lexer.Token p : proc2.refParameters()) {
-                            symbolTable.define(new Symbol(p, Symbol.Type.VARIABLE));
-                        }
-                    }
-                    // Define VAL parameters
-                    if (proc2.valParameters() != null) {
-                        for (org.evochora.compiler.frontend.lexer.Token p : proc2.valParameters()) {
-                            symbolTable.define(new Symbol(p, Symbol.Type.VARIABLE));
-                        }
-                    }
-                }
-
-                collectLabels(node.getChildren());
-                symbolTable.leaveScope();
-            } else {
-                collectLabels(node.getChildren());
-            }
+            switchModuleContext(node);
+            Optional<ISymbolCollector> collector = registry.resolveCollector(node.getClass());
+            collector.ifPresent(c -> c.collect(node, symbolTable, diagnostics));
+            collectLabels(node.getChildren());
+            collector.ifPresent(c -> c.collectAfterChildren(node, symbolTable, diagnostics));
         }
     }
 
     private void traverseAndAnalyze(List<AstNode> nodes) {
         for (AstNode node : nodes) {
             if (node == null) continue;
-            IAnalysisHandler handler = handlers.get(node.getClass());
-            if (handler != null) {
-                handler.analyze(node, symbolTable, diagnostics);
-            }
+            switchModuleContext(node);
+            Optional<IAnalysisHandler> handler = registry.resolveHandler(node.getClass());
+            handler.ifPresent(h -> h.analyze(node, symbolTable, diagnostics));
             traverseAndAnalyze(node.getChildren());
-            if (handler instanceof ScopeAnalysisHandler scopeHandler) {
-                scopeHandler.afterChildren(symbolTable);
-            }
+            handler.ifPresent(h -> h.afterChildren(node, symbolTable, diagnostics));
         }
     }
-    
+
+    private void switchModuleContext(AstNode node) {
+        contextTracker.handleNode(node);
+    }
+
     /**
-     * Gets the scope map that maps AST nodes to their scopes.
-     * @return The scope map
+     * Sets up module relationships in the symbol table from the dependency graph.
+     * Each module is registered under its alias chain, which is computed from the
+     * import hierarchy. The root module uses rootAliasChain, imported modules use
+     * their import alias appended to the parent's chain.
      */
-    public Map<AstNode, SymbolTable.Scope> getScopeMap() {
-        return scopeMap;
+    private void setupModuleRelationships(DependencyGraph graph, String mainFilePath, String rootAliasChain) {
+        List<ModuleDescriptor> topoOrder = graph.topologicalOrder();
+
+        // Pass 1: Compute alias chains (reverse topological — root first, then dependencies).
+        Map<String, String> pathToAliasChain = new HashMap<>();
+        pathToAliasChain.put(mainFilePath, rootAliasChain);
+
+        List<ModuleDescriptor> fromRoot = new java.util.ArrayList<>(topoOrder);
+        java.util.Collections.reverse(fromRoot);
+        for (ModuleDescriptor module : fromRoot) {
+            String modulePath = module.sourcePath();
+            String moduleAliasChain = pathToAliasChain.get(modulePath);
+            if (moduleAliasChain == null) {
+                moduleAliasChain = ModuleId.deriveModuleName(modulePath);
+                pathToAliasChain.put(modulePath, moduleAliasChain);
+            }
+            ModuleSetupContext ctx = new ModuleSetupContext(symbolTable, diagnostics, pathToAliasChain, modulePath);
+            for (IDependencyInfo dep : module.dependencies()) {
+                IDependencySetupHandler<IDependencyInfo> handler = setupRegistry.resolve(dep.getClass());
+                if (handler != null) {
+                    handler.registerScope(dep, ctx);
+                }
+            }
+        }
+
+        // Pass 2: Register all modules, then dispatch relationship registration.
+        for (ModuleDescriptor module : topoOrder) {
+            String modulePath = module.sourcePath();
+            String moduleAliasChain = pathToAliasChain.getOrDefault(modulePath,
+                    ModuleId.deriveModuleName(modulePath));
+            symbolTable.registerModule(moduleAliasChain, modulePath);
+        }
+        for (ModuleDescriptor module : topoOrder) {
+            ModuleSetupContext ctx = new ModuleSetupContext(symbolTable, diagnostics, pathToAliasChain, module.sourcePath());
+            for (IDependencyInfo dep : module.dependencies()) {
+                IDependencySetupHandler<IDependencyInfo> handler = setupRegistry.resolve(dep.getClass());
+                if (handler != null) {
+                    handler.registerRelationships(dep, ctx);
+                }
+            }
+        }
+
+        // Pass 3: Resolve cross-module bindings (USING etc.).
+        for (ModuleDescriptor module : topoOrder) {
+            ModuleSetupContext ctx = new ModuleSetupContext(symbolTable, diagnostics, pathToAliasChain, module.sourcePath());
+            for (IDependencyInfo dep : module.dependencies()) {
+                IDependencySetupHandler<IDependencyInfo> handler = setupRegistry.resolve(dep.getClass());
+                if (handler != null) {
+                    handler.resolveBindings(dep, ctx);
+                }
+            }
+        }
+
+        symbolTable.setCurrentModule(rootAliasChain);
     }
 }

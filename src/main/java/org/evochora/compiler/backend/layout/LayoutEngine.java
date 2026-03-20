@@ -2,11 +2,11 @@ package org.evochora.compiler.backend.layout;
 
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.SourceInfo;
-import org.evochora.compiler.ir.IrDirective;
-import org.evochora.compiler.ir.IrInstruction;
-import org.evochora.compiler.ir.IrItem;
-import org.evochora.compiler.ir.IrLabelDef;
-import org.evochora.compiler.ir.IrProgram;
+import org.evochora.compiler.model.ir.IrDirective;
+import org.evochora.compiler.model.ir.IrInstruction;
+import org.evochora.compiler.model.ir.IrItem;
+import org.evochora.compiler.model.ir.IrLabelDef;
+import org.evochora.compiler.model.ir.IrProgram;
 import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.runtime.model.EnvironmentProperties;
 
@@ -27,9 +27,9 @@ public final class LayoutEngine {
      * @return The result of the layout process.
      * @throws CompilationException if address conflicts are detected during layout.
      */
-    public LayoutResult layout(IrProgram program, IInstructionSet isa, EnvironmentProperties envProps) throws CompilationException {
+    public LayoutResult layout(IrProgram program, IInstructionSet isa, EnvironmentProperties envProps,
+                               LayoutDirectiveRegistry registry) throws CompilationException {
         LayoutContext ctx = new LayoutContext(envProps);
-        LayoutDirectiveRegistry registry = LayoutDirectiveRegistry.initializeWithDefaults();
 
         Map<String, Integer> labelToAddress = new HashMap<>();
 
@@ -51,27 +51,18 @@ public final class LayoutEngine {
                 ctx.placeOpcode(src);
 
                 int opcodeId = isa.getInstructionIdByName(ins.opcode()).orElseThrow(() -> new IllegalArgumentException("Unknown opcode: " + ins.opcode()));
-                var sigOpt = isa.getSignatureById(opcodeId);
-                if (sigOpt.isPresent()) {
-                    for (IInstructionSet.ArgKind kind : sigOpt.get().argumentTypes()) {
-                        if (kind == IInstructionSet.ArgKind.VECTOR) {
-                            // VECTOR operands occupy worldDimensions slots (one per dimension)
-                            if (ctx.getEnvProps() == null || ctx.getEnvProps().getWorldShape() == null || ctx.getEnvProps().getWorldShape().length == 0) {
-                                throw new CompilationException("Instruction " + ins.opcode() + " requires vector arguments, which need a world context, but no environment properties were provided.", src);
-                            }
-                            int dims = ctx.getEnvProps().getWorldShape().length;
-                            for (int k = 0; k < dims; k++) {
-                                ctx.placeOperand(src);
-                            }
-                        } else {
-                            // REGISTER, LOCATION_REGISTER, LITERAL, LABEL → one slot each
-                            // Note: LABEL used to be N-dimensional coordinates, now it's a single hash value
+                IInstructionSet.Signature sig = isa.getSignatureById(opcodeId)
+                        .orElseThrow(() -> new IllegalArgumentException("No ISA signature for instruction '" + ins.opcode() + "'."));
+                for (IInstructionSet.ArgKind kind : sig.argumentTypes()) {
+                    if (kind == IInstructionSet.ArgKind.VECTOR) {
+                        if (ctx.getEnvProps() == null || ctx.getEnvProps().getWorldShape() == null || ctx.getEnvProps().getWorldShape().length == 0) {
+                            throw new CompilationException("Instruction " + ins.opcode() + " requires vector arguments, which need a world context, but no environment properties were provided.", src);
+                        }
+                        int dims = ctx.getEnvProps().getWorldShape().length;
+                        for (int k = 0; k < dims; k++) {
                             ctx.placeOperand(src);
                         }
-                    }
-                } else {
-                    int arity = ins.operands() != null ? ins.operands().size() : 0;
-                    for (int i = 0; i < arity; i++) {
+                    } else {
                         ctx.placeOperand(src);
                     }
                 }

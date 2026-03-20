@@ -15,6 +15,7 @@ out/
 /qodana.yaml
 
 ### Eclipse ###
+workspace/.metadata/
 .apt_generated
 .classpath
 .factorypath

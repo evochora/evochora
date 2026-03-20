@@ -2,22 +2,23 @@ package org.evochora.compiler.directives;
 
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
-import org.evochora.compiler.frontend.lexer.Token;
-import org.evochora.compiler.frontend.parser.ast.AstNode;
-import org.evochora.compiler.frontend.parser.ast.InstructionNode;
-import org.evochora.compiler.frontend.parser.ast.RegisterNode;
+import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
+import org.evochora.compiler.features.reg.RegDirectiveHandler;
+import org.evochora.compiler.model.token.Token;
+import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.InstructionNode;
+import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.TestRegistries;
+import org.evochora.compiler.model.ModuleContextTracker;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
-import org.evochora.compiler.frontend.semantics.SymbolTable;
+import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.frontend.postprocess.AstPostProcessor;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeAll;
 
-import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
-import java.util.HashMap;
 import java.util.Objects;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -51,26 +52,21 @@ public class RegDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, Path.of("")); // KORREKTUR
+        Parser parser = new Parser(tokens, diagnostics, registry());
 
         // Act - Run full compiler pipeline up to AstPostProcessor
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
-        
+
         // Semantic Analysis - Populates symbol table with aliases
+        String rootAliasChain = "";
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        symbolTable.registerModule(rootAliasChain, "<memory>");
+        symbolTable.setCurrentModule(rootAliasChain);
+        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         semanticAnalyzer.analyze(ast);
-        
+
         // AST Post-Processing - Resolves register aliases
-        // Extract register aliases from parser (same as the real compiler does)
-        Map<String, String> registerAliases = new HashMap<>();
-        Map<String, org.evochora.compiler.frontend.lexer.Token> parserAliases = parser.getGlobalRegisterAliases();
-        
-        parserAliases.forEach((aliasName, registerToken) -> {
-            registerAliases.put(aliasName, registerToken.text());
-        });
-        
-        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, registerAliases);
+        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable), TestRegistries.postProcessRegistry());
         List<AstNode> processedAst = ast.stream()
             .map(node -> astPostProcessor.process(node))
             .toList();
@@ -78,10 +74,10 @@ public class RegDirectiveTest {
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(processedAst).hasSize(2);
-        
+
         // First node should be the RegNode
-        assertThat(processedAst.get(0)).isInstanceOf(org.evochora.compiler.frontend.parser.features.reg.RegNode.class);
-        
+        assertThat(processedAst.get(0)).isInstanceOf(org.evochora.compiler.features.reg.RegNode.class);
+
         // Second node should be the InstructionNode
         assertThat(processedAst.get(1)).isInstanceOf(InstructionNode.class);
         InstructionNode seti = (InstructionNode) processedAst.get(1);
@@ -89,7 +85,7 @@ public class RegDirectiveTest {
 
         assertThat(seti.arguments().get(0)).isInstanceOf(RegisterNode.class);
         RegisterNode reg = (RegisterNode) seti.arguments().get(0);
-        assertThat(reg.registerToken().text()).isEqualTo("%DR7");
+        assertThat(reg.getName()).isEqualTo("%DR7");
     }
 
     /**
@@ -107,12 +103,12 @@ public class RegDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, Path.of(""));
+        Parser parser = new Parser(tokens, diagnostics, registry());
 
         // Act - Run semantic analysis
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         semanticAnalyzer.analyze(ast);
 
         // Assert - Should have compilation error
@@ -137,12 +133,12 @@ public class RegDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, Path.of(""));
+        Parser parser = new Parser(tokens, diagnostics, registry());
 
         // Act - Run semantic analysis
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         semanticAnalyzer.analyze(ast);
 
         // Assert - Should have compilation error
@@ -167,12 +163,12 @@ public class RegDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, Path.of(""));
+        Parser parser = new Parser(tokens, diagnostics, registry());
 
         // Act - Run semantic analysis
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         semanticAnalyzer.analyze(ast);
 
         // Assert - Should have compilation error
@@ -197,25 +193,21 @@ public class RegDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, Path.of(""));
+        Parser parser = new Parser(tokens, diagnostics, registry());
 
         // Act - Run full compiler pipeline up to AstPostProcessor
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
-        
+
         // Semantic Analysis - Populates symbol table with aliases
+        String rootAliasChain = "";
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable);
+        symbolTable.registerModule(rootAliasChain, "<memory>");
+        symbolTable.setCurrentModule(rootAliasChain);
+        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         semanticAnalyzer.analyze(ast);
-        
+
         // AST Post-Processing - Resolves register aliases
-        Map<String, String> registerAliases = new HashMap<>();
-        Map<String, org.evochora.compiler.frontend.lexer.Token> parserAliases = parser.getGlobalRegisterAliases();
-        
-        parserAliases.forEach((aliasName, registerToken) -> {
-            registerAliases.put(aliasName, registerToken.text());
-        });
-        
-        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, registerAliases);
+        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable), TestRegistries.postProcessRegistry());
         List<AstNode> processedAst = ast.stream()
             .map(node -> astPostProcessor.process(node))
             .toList();
@@ -223,10 +215,10 @@ public class RegDirectiveTest {
         // Assert - Should compile successfully
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(processedAst).hasSize(2);
-        
+
         // First node should be the RegNode
-        assertThat(processedAst.get(0)).isInstanceOf(org.evochora.compiler.frontend.parser.features.reg.RegNode.class);
-        
+        assertThat(processedAst.get(0)).isInstanceOf(org.evochora.compiler.features.reg.RegNode.class);
+
         // Second node should be the InstructionNode
         assertThat(processedAst.get(1)).isInstanceOf(InstructionNode.class);
         InstructionNode dplr = (InstructionNode) processedAst.get(1);
@@ -234,6 +226,13 @@ public class RegDirectiveTest {
 
         assertThat(dplr.arguments().get(0)).isInstanceOf(RegisterNode.class);
         RegisterNode reg = (RegisterNode) dplr.arguments().get(0);
-        assertThat(reg.registerToken().text()).isEqualTo("%LR0");
+        assertThat(reg.getName()).isEqualTo("%LR0");
+    }
+
+    private static ParserStatementRegistry registry() {
+        ParserStatementRegistry reg = new ParserStatementRegistry();
+        reg.register(".REG", new RegDirectiveHandler());
+        reg.registerDefault(new org.evochora.compiler.features.instruction.InstructionParsingHandler());
+        return reg;
     }
 }

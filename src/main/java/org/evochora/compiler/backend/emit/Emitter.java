@@ -10,7 +10,7 @@ import org.evochora.compiler.api.TokenInfo;
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.isa.IInstructionSet;
-import org.evochora.compiler.ir.*;
+import org.evochora.compiler.model.ir.*;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.MoleculeTypeRegistry;
 
@@ -34,12 +34,16 @@ public class Emitter {
     /**
      * Emits the final program artifact from the IR and layout information.
      *
+     * <p>During the item loop, all registered {@link IEmissionContributor}s are invoked
+     * for each IR item. Contributors populate the {@link EmissionContext} with feature-specific
+     * metadata (e.g., procedure parameter info). The Emitter reads the accumulated metadata
+     * when building the final {@link ProgramArtifact}.</p>
+     *
      * @param program The linked IR program.
      * @param layout The layout result, containing coordinate and source mapping.
      * @param linkingContext The context from the linking phase, containing call site bindings.
      * @param isa The instruction set architecture for opcode and register resolution.
-     * @param registerAliasMap A map of register aliases to their physical indices.
-     * @param procNameToParamNames A map of procedure names to their parameter information (name and type).
+     * @param contributorRegistry Registry of emission contributors for extracting metadata from IR.
      * @param sources A map of source file names to their content.
      * @return The final, compiled {@link ProgramArtifact}.
      * @throws CompilationException if an error occurs during emission.
@@ -48,8 +52,7 @@ public class Emitter {
                                 LayoutResult layout,
                                 LinkingContext linkingContext,
                                 IInstructionSet isa,
-                                Map<String, Integer> registerAliasMap,
-                                Map<String, List<org.evochora.compiler.api.ParamInfo>> procNameToParamNames,
+                                EmissionContributorRegistry contributorRegistry,
                                 Map<String, List<String>> sources,
                                 Map<SourceInfo, TokenInfo> tokenMap,
                                 Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup) throws CompilationException {
@@ -62,6 +65,15 @@ public class Emitter {
         // Map to collect machine instructions per source line for frontend visualization
         // Key: "fileName:lineNumber", Value: List of machine instructions (sorted by linear address)
         Map<String, List<MachineInstructionInfo>> sourceLineToInstructions = new HashMap<>();
+
+        // Invoke emission contributors to extract feature-specific metadata from IR
+        EmissionContext emissionContext = new EmissionContext();
+        List<IEmissionContributor> contributors = contributorRegistry.contributors();
+        for (IrItem item : program.items()) {
+            for (IEmissionContributor contributor : contributors) {
+                contributor.onItem(item, emissionContext);
+            }
+        }
 
         int address = 0;
         for (IrItem item : program.items()) {
@@ -154,7 +166,10 @@ public class Emitter {
         Map<int[], Integer> sortedMachineCodeLayout = sortMapByCoordinate(machineCodeLayout);
         Map<int[], PlacedMolecule> sortedInitialObjects = sortMapByCoordinate(initialObjects);
 
-        String programId = Integer.toHexString(machineCodeLayout.hashCode());
+        int contentHash = sortedMachineCodeLayout.entrySet().stream()
+                .mapToInt(e -> java.util.Arrays.hashCode(e.getKey()) * 31 + e.getValue().hashCode())
+                .sum();
+        String programId = Integer.toHexString(contentHash);
 
         // Build label hash maps for fuzzy jump matching visualization
         Map<Integer, String> labelValueToName = new HashMap<>();
@@ -176,8 +191,8 @@ public class Emitter {
                 linkingContext.callSiteBindings(),
                 coordToLinear,
                 linearToCoord,
-                registerAliasMap,
-                procNameToParamNames,
+                emissionContext.registerAliasMap(),
+                emissionContext.procNameToParamNames(),
                 tokenMap,
                 tokenLookup,
                 sortedSourceLineToInstructions,
@@ -189,8 +204,9 @@ public class Emitter {
     /**
      * Formats operands of an instruction as a string for display in the frontend.
      * 
-     * Note: For CALL instructions, refOperands and valOperands are emitted as separate PUSH/POP instructions,
-     * so we only format the main operands() here (which contains the procedure address/label).
+     * Note: For CALL instructions, REF/VAL operands (on {@code IrCallInstruction}) are emitted
+     * as separate PUSH/POP instructions by the marshalling rules, so only the main operands
+     * (procedure address/label) are formatted here.
      * 
      * @param ins The IR instruction.
      * @param layout The layout result for resolving label addresses.
@@ -343,6 +359,6 @@ public class Emitter {
         if (src == null) return message;
         String file = src.fileName() != null ? src.fileName() : "<unknown>";
         int line = src.lineNumber();
-        return String.format("[ERROR] %s:%d: %s", file, line, message);
+        return String.format("%s:%d: %s", file, line, message);
     }
 }

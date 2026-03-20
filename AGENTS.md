@@ -84,9 +84,11 @@ When the node is running, it exposes a REST API for controlling and monitoring t
 ## Assembly Compile System
 The compiler can be invoked in multiple equivalent ways. For details and examples, see the **Compile** section in `docs/CLI_USAGE.md`.
 
-- Primary user-facing entry point: `bin/evochora compile --file=<path> [--env=<dimensions>[:<toroidal>]]`
+- Primary user-facing entry point: `bin/evochora compile --source-root <root> --file=<path> [--env=<dimensions>[:<toroidal>]]`
 - Developer entry point via JAR (after `./gradlew jar`):
-  `java -jar build/libs/evochora.jar compile --file=<path> [--env=<dimensions>[:<toroidal>]]`
+  `java -jar build/libs/evochora.jar compile --source-root <root> --file=<path> [--env=<dimensions>[:<toroidal>]]`
+
+Source roots define base directories (or HTTP URLs) from which module paths are resolved. Use `--source-root path:PREFIX` for named roots and `PREFIX:path` in directives to target them.
 
 The compiler produces a JSON `ProgramArtifact` with machine code layout, labels, registers, procedures, environment properties, and source/ token maps that can be used for debugging and analysis.
 
@@ -140,6 +142,11 @@ There is a central document for AI agent guidelines that defines architectural p
 - **Handler Pattern**: Phase main classes (PreProcessor, Parser, SemanticAnalyzer, IrGenerator, LayoutEngine, Linker, Emitter) must use their corresponding handlers/plugins system
 - **Thin Orchestrators**: All logic goes into handlers/plugins; main classes stay clean as distributors
 - **Registry-Based**: Use DirectiveHandlerRegistry, IrConverterRegistry, LayoutDirectiveRegistry, LinkingRegistry, EmissionRegistry for extensibility
+- **Feature-Slicing**: Features (not phases) are the unit of code organization. Each feature is a self-contained package with all its components (parser handler, AST node, semantics handler, IR converter, etc.). Features register themselves into phase registries.
+- **Feature-Agnostic Core**: Core infrastructure (phases, SymbolTable, data formats) must never reference specific features. Features depend on phases, not vice versa. The only place that knows which features exist is the registration list in Compiler.java.
+- **Three Pure Data Formats**: Token (`model/token/`), AST (`model/ast/`), IR (`model/ir/`) are strictly separated. No cross-dependencies between them. `SourceInfo` is the only shared type.
+- **Stateless Features**: Features have no constructor parameters and no mutable state. Compilation data flows through phase contexts (e.g., PreProcessorContext, IrGenContext), not through features.
+- **Pure Data Records**: Core data types (Symbol, AstNode subtypes, IR items) are pure records. Placement/scoping knowledge lives in the SymbolTable and phase contexts, not in the data records themselves.
 
 ## Runtime (`src/main/java/org/evochora/runtime/`)
 
@@ -351,6 +358,7 @@ throw new InterruptedException();
 **JavaDoc Requirements:**
 - ALL non-private members (public, protected, package-private) MUST have complete JavaDoc in **English**
 - Private members: JavaDoc optional but recommended for complex logic
+- JavaDoc MUST be self-contained: never reference proposals, plan steps, ticket numbers, or conversation context (e.g., "will be added in step C4", "created in ticket #123"). A reader must understand the comment without any external context. Describe what the code *is* and *does*, not what *changed* or *will change*.
 
 **Class-Level Documentation:**
 - Purpose and responsibility

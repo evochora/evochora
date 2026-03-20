@@ -1,11 +1,11 @@
 package org.evochora.compiler.frontend.semantics.analysis;
 
+import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.lexer.Token;
-import org.evochora.compiler.frontend.lexer.TokenType;
-import org.evochora.compiler.frontend.parser.features.reg.RegNode;
-import org.evochora.compiler.frontend.semantics.Symbol;
-import org.evochora.compiler.frontend.semantics.SymbolTable;
+import org.evochora.compiler.features.reg.RegAnalysisHandler;
+import org.evochora.compiler.features.reg.RegNode;
+import org.evochora.compiler.model.symbols.Symbol;
+import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.runtime.Config;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,6 +24,8 @@ class RegAnalysisHandlerTest {
     private SymbolTable symbolTable;
     private DiagnosticsEngine diagnostics;
 
+    private static final SourceInfo TEST_SOURCE = new SourceInfo("test.s", 1, 1);
+
     @BeforeEach
     void setUp() {
         handler = new RegAnalysisHandler();
@@ -33,115 +35,83 @@ class RegAnalysisHandlerTest {
 
     @Test
     void testValidDataRegister() {
-        // Test valid data register alias
-        Token alias = new Token(TokenType.IDENTIFIER, "COUNTER", null, 1, 1, "test.s");
-        Token register = new Token(TokenType.REGISTER, "%DR0", null, 1, 10, "test.s");
-        RegNode regNode = new RegNode(alias, register);
+        RegNode regNode = new RegNode("COUNTER", "%DR0", TEST_SOURCE);
 
         handler.analyze(regNode, symbolTable, diagnostics);
 
         assertFalse(diagnostics.hasErrors());
-        Token counterToken = new Token(TokenType.IDENTIFIER, "COUNTER", null, 1, 1, "test.s");
-        assertTrue(symbolTable.resolve(counterToken).isPresent());
-        assertEquals(Symbol.Type.ALIAS, symbolTable.resolve(counterToken).get().type());
+        assertTrue(symbolTable.resolve("COUNTER", "test.s").isPresent());
+        assertEquals(Symbol.Type.ALIAS, symbolTable.resolve("COUNTER", "test.s").get().symbol().type());
     }
 
     @Test
     void testValidLocationRegister() {
-        // Test valid location register alias
-        Token alias = new Token(TokenType.IDENTIFIER, "POSITION", null, 1, 1, "test.s");
-        Token register = new Token(TokenType.REGISTER, "%LR0", null, 1, 12, "test.s");
-        RegNode regNode = new RegNode(alias, register);
+        RegNode regNode = new RegNode("POSITION", "%LR0", TEST_SOURCE);
 
         handler.analyze(regNode, symbolTable, diagnostics);
 
         assertFalse(diagnostics.hasErrors());
-        Token positionToken = new Token(TokenType.IDENTIFIER, "POSITION", null, 1, 1, "test.s");
-        assertTrue(symbolTable.resolve(positionToken).isPresent());
-        assertEquals(Symbol.Type.ALIAS, symbolTable.resolve(positionToken).get().type());
+        assertTrue(symbolTable.resolve("POSITION", "test.s").isPresent());
+        assertEquals(Symbol.Type.ALIAS, symbolTable.resolve("POSITION", "test.s").get().symbol().type());
     }
 
     @Test
     void testValidLocationRegisterMaxIndex() {
-        // Test valid location register with maximum index
-        Token alias = new Token(TokenType.IDENTIFIER, "TARGET", null, 1, 1, "test.s");
-        Token register = new Token(TokenType.REGISTER, "%LR" + (Config.NUM_LOCATION_REGISTERS - 1), null, 1, 10, "test.s");
-        RegNode regNode = new RegNode(alias, register);
+        RegNode regNode = new RegNode("TARGET", "%LR" + (Config.NUM_LOCATION_REGISTERS - 1), TEST_SOURCE);
 
         handler.analyze(regNode, symbolTable, diagnostics);
 
         assertFalse(diagnostics.hasErrors());
-        Token targetToken = new Token(TokenType.IDENTIFIER, "TARGET", null, 1, 1, "test.s");
-        assertTrue(symbolTable.resolve(targetToken).isPresent());
+        assertTrue(symbolTable.resolve("TARGET", "test.s").isPresent());
     }
 
     @Test
     void testInvalidLocationRegisterOutOfBounds() {
-        // Test location register out of bounds
-        Token alias = new Token(TokenType.IDENTIFIER, "INVALID", null, 1, 1, "test.s");
-        Token register = new Token(TokenType.REGISTER, "%LR" + Config.NUM_LOCATION_REGISTERS, null, 1, 10, "test.s");
-        RegNode regNode = new RegNode(alias, register);
+        RegNode regNode = new RegNode("INVALID", "%LR" + Config.NUM_LOCATION_REGISTERS, TEST_SOURCE);
 
         handler.analyze(regNode, symbolTable, diagnostics);
 
         assertTrue(diagnostics.hasErrors());
-        Token invalidToken = new Token(TokenType.IDENTIFIER, "INVALID", null, 1, 1, "test.s");
-        assertFalse(symbolTable.resolve(invalidToken).isPresent());
+        assertFalse(symbolTable.resolve("INVALID", "test.s").isPresent());
     }
 
     @Test
     void testInvalidDataRegisterOutOfBounds() {
-        // Test data register out of bounds
-        Token alias = new Token(TokenType.IDENTIFIER, "INVALID", null, 1, 1, "test.s");
-        Token register = new Token(TokenType.REGISTER, "%DR" + Config.NUM_DATA_REGISTERS, null, 1, 10, "test.s");
-        RegNode regNode = new RegNode(alias, register);
+        RegNode regNode = new RegNode("INVALID", "%DR" + Config.NUM_DATA_REGISTERS, TEST_SOURCE);
 
         handler.analyze(regNode, symbolTable, diagnostics);
 
         assertTrue(diagnostics.hasErrors());
-        Token invalidToken = new Token(TokenType.IDENTIFIER, "INVALID", null, 1, 1, "test.s");
-        assertFalse(symbolTable.resolve(invalidToken).isPresent());
+        assertFalse(symbolTable.resolve("INVALID", "test.s").isPresent());
     }
 
     @Test
     void testInvalidRegisterType() {
-        // Test unsupported register type (e.g., %PRx)
-        Token alias = new Token(TokenType.IDENTIFIER, "INVALID", null, 1, 1, "test.s");
-        Token register = new Token(TokenType.REGISTER, "%PR0", null, 1, 10, "test.s");
-        RegNode regNode = new RegNode(alias, register);
+        RegNode regNode = new RegNode("INVALID", "%PR0", TEST_SOURCE);
 
         handler.analyze(regNode, symbolTable, diagnostics);
 
         assertTrue(diagnostics.hasErrors());
-        Token invalidToken = new Token(TokenType.IDENTIFIER, "INVALID", null, 1, 1, "test.s");
-        assertFalse(symbolTable.resolve(invalidToken).isPresent());
+        assertFalse(symbolTable.resolve("INVALID", "test.s").isPresent());
     }
 
     @Test
     void testInvalidRegisterFormat() {
-        // Test malformed register
-        Token alias = new Token(TokenType.IDENTIFIER, "INVALID", null, 1, 1, "test.s");
-        Token register = new Token(TokenType.REGISTER, "%INVALID", null, 1, 10, "test.s");
-        RegNode regNode = new RegNode(alias, register);
+        RegNode regNode = new RegNode("INVALID", "%INVALID", TEST_SOURCE);
 
         handler.analyze(regNode, symbolTable, diagnostics);
 
         assertTrue(diagnostics.hasErrors());
-        Token invalidToken = new Token(TokenType.IDENTIFIER, "INVALID", null, 1, 1, "test.s");
-        assertFalse(symbolTable.resolve(invalidToken).isPresent());
+        assertFalse(symbolTable.resolve("INVALID", "test.s").isPresent());
     }
 
     @Test
-    void testNonRegisterToken() {
-        // Test non-register token
-        Token alias = new Token(TokenType.IDENTIFIER, "INVALID", null, 1, 1, "test.s");
-        Token register = new Token(TokenType.IDENTIFIER, "NOT_A_REGISTER", null, 1, 10, "test.s");
-        RegNode regNode = new RegNode(alias, register);
+    void testNonRegisterString() {
+        RegNode regNode = new RegNode("INVALID", "NOT_A_REGISTER", TEST_SOURCE);
 
         handler.analyze(regNode, symbolTable, diagnostics);
 
         assertTrue(diagnostics.hasErrors());
-        Token invalidToken = new Token(TokenType.IDENTIFIER, "INVALID", null, 1, 1, "test.s");
-        assertFalse(symbolTable.resolve(invalidToken).isPresent());
+        assertFalse(symbolTable.resolve("INVALID", "test.s").isPresent());
     }
 }

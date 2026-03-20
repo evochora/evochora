@@ -1,0 +1,64 @@
+package org.evochora.compiler.backend.link;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
+import org.junit.jupiter.api.Test;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+@Tag("unit")
+class LinkingContextFreezeTest {
+
+    private LinkingContext context;
+
+    @BeforeEach
+    void setUp() {
+        context = new LinkingContext(null, null);
+        context.pushAliasChain("ROOT");
+        context.nextAddress();
+        context.callSiteBindings().put(0, new int[]{1, 2});
+        context.freeze();
+    }
+
+    @Test
+    void pushAliasChain_throwsAfterFreeze() {
+        assertThatThrownBy(() -> context.pushAliasChain("MOD"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("frozen");
+    }
+
+    @Test
+    void popAliasChain_throwsAfterFreeze() {
+        assertThatThrownBy(() -> context.popAliasChain())
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("frozen");
+    }
+
+    @Test
+    void nextAddress_throwsAfterFreeze() {
+        assertThatThrownBy(() -> context.nextAddress())
+                .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void callSiteBindings_returnsUnmodifiableAfterFreeze() {
+        assertThatThrownBy(() -> context.callSiteBindings().put(99, new int[]{0}))
+                .isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    @Test
+    void currentAddress_allowedAfterFreeze() {
+        assertThat(context.currentAddress()).isEqualTo(1);
+    }
+
+    @Test
+    void currentAliasChain_allowedAfterFreeze() {
+        assertThat(context.currentAliasChain()).isEqualTo("ROOT");
+    }
+
+    @Test
+    void callSiteBindings_readableAfterFreeze() {
+        assertThat(context.callSiteBindings()).containsKey(0);
+    }
+}

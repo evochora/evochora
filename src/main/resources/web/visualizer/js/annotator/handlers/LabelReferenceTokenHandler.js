@@ -31,8 +31,8 @@ export class LabelReferenceTokenHandler {
      * @throws {Error} If the label hash cannot be resolved.
      */
     analyze(tokenText, tokenInfo, organismState, artifact) {
-        // Resolve label name to hash value for display
-        const hashValue = AnnotationUtils.resolveLabelNameToHash(tokenText, artifact);
+        // Resolve label name to hash value for display (using qualified name for lookup)
+        const hashValue = AnnotationUtils.resolveLabelNameToHash(tokenText, artifact, tokenInfo.qualifiedName);
 
         if (hashValue === null || hashValue === undefined) {
             // Fallback: show "?" if hash not found

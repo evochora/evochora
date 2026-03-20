@@ -40,40 +40,37 @@ MESSAGE_BUFFER:
 # PROCEDURES
 # =============================================================================
 
-# Procedure with REF parameters (modifies original values)
-.PROC ADD_ENERGY EXPORT REF ENERGY AMOUNT
+# Procedure with mixed REF/VAL parameters (REF modifies original, VAL is read-only)
+EXPORT .PROC ADD_ENERGY REF ENERGY VAL AMOUNT
   ADDR ENERGY AMOUNT
   RET
 .ENDP
 
-# Procedure with VAL parameters (value-only, doesn't modify originals)
-.PROC CALCULATE_DISTANCE EXPORT VAL X1 Y1 X2 Y2 RESULT
-  # Calculate distance between two points (simplified)
+# Procedure with REF output and VAL inputs (Manhattan distance, simplified)
+EXPORT .PROC CALCULATE_DISTANCE REF RESULT VAL X1 Y1 X2 Y2
+  # Manhattan distance: |X2 - X1| + |Y2 - Y1| (without absolute value)
   SUBR X2 X1
-  MULR RESULT RESULT
   SUBR Y2 Y1
-  MULR RESULT RESULT
-  # Square root would be more complex, so we'll just return the sum
-  ADDR RESULT X1
-  ADDR RESULT Y1
+  SETR RESULT X2
+  ADDR RESULT Y2
   RET
 .ENDP
 
 # Procedure with mixed REF and VAL parameters
-.PROC UPDATE_POSITION EXPORT REF X Y VAL DELTA_X DELTA_Y
+EXPORT .PROC UPDATE_POSITION REF X Y VAL DELTA_X DELTA_Y
   ADDR X DELTA_X
   ADDR Y DELTA_Y
   RET
 .ENDP
 
 # Procedure that returns a value
-.PROC GET_ENERGY_LEVEL EXPORT REF ENERGY RETURN_VAL
+EXPORT .PROC GET_ENERGY_LEVEL REF ENERGY RETURN_VAL
   SETR RETURN_VAL ENERGY
   RET
 .ENDP
 
 # Procedure to consume energy for movement
-.PROC CONSUME_ENERGY EXPORT REF ENERGY
+EXPORT .PROC CONSUME_ENERGY REF ENERGY
   SUBI ENERGY DATA:1
   # Ensure energy doesn't go below 0
   LTI ENERGY DATA:0
@@ -86,31 +83,31 @@ ZERO_ENERGY:
 .ENDP
 
 # Procedure to move north
-.PROC MOVE_NORTH EXPORT REF X Y
+EXPORT .PROC MOVE_NORTH REF X Y
   SUBI Y DATA:1
   RET
 .ENDP
 
 # Procedure to move east
-.PROC MOVE_EAST EXPORT REF X Y
+EXPORT .PROC MOVE_EAST REF X Y
   ADDI X DATA:1
   RET
 .ENDP
 
 # Procedure to move south
-.PROC MOVE_SOUTH EXPORT REF X Y
+EXPORT .PROC MOVE_SOUTH REF X Y
   ADDI Y DATA:1
   RET
 .ENDP
 
 # Procedure to move west
-.PROC MOVE_WEST EXPORT REF X Y
+EXPORT .PROC MOVE_WEST REF X Y
   SUBI X DATA:1
   RET
 .ENDP
 
 # Procedure to check if position is valid (simplified)
-.PROC IS_VALID_POS EXPORT REF X Y RESULT
+EXPORT .PROC IS_VALID_POS REF X Y RESULT
   # Check X >= 0
   LTI X DATA:0
   JMPI INVALID_POS
@@ -129,7 +126,7 @@ INVALID_POS:
 .ENDP
 
 # Procedure with local variables and complex logic
-.PROC FIND_NEAREST_ENERGY EXPORT REF X Y ENERGY FOUND
+EXPORT .PROC FIND_NEAREST_ENERGY REF X Y ENERGY FOUND
   # Local variables (using registers)
   SETI %TEMP DATA:0
   SETI %COUNTER DATA:0
@@ -158,7 +155,7 @@ SEARCH_COMPLETE:
 .ENDP
 
 # Procedure that demonstrates stack operations
-.PROC PUSH_VALUE EXPORT REF STACK_PTR VAL VALUE
+EXPORT .PROC PUSH_VALUE REF STACK_PTR VAL VALUE
   # Push value onto stack
   SETI %TEMP DATA:0
   ADDI %TEMP DATA:1
@@ -168,7 +165,7 @@ SEARCH_COMPLETE:
 .ENDP
 
 # Procedure that initializes system registers
-.PROC SYSTEM_INIT EXPORT REF SYSTEM_FLAGS MEMORY_PTR
+EXPORT .PROC SYSTEM_INIT REF SYSTEM_FLAGS MEMORY_PTR
   # Initialize system registers with default values
   SETI SYSTEM_FLAGS DATA:0    # System flags
   SETI MEMORY_PTR DATA:1000   # Memory pointer
@@ -182,7 +179,7 @@ SEARCH_COMPLETE:
 .ENDP
 
 # Procedure that uses registers for memory operations
-.PROC MEMORY_READ EXPORT REF MEMORY_PTR VAL ADDRESS RESULT
+EXPORT .PROC MEMORY_READ REF MEMORY_PTR RESULT VAL ADDRESS
   # Read from memory using register
   SETR MEMORY_PTR ADDRESS
   # Simulate memory read (simplified)
@@ -191,14 +188,14 @@ SEARCH_COMPLETE:
 .ENDP
 
 # Procedure that demonstrates system flags
-.PROC SET_FLAG EXPORT REF SYSTEM_FLAGS VAL FLAG_BIT
+EXPORT .PROC SET_FLAG REF SYSTEM_FLAGS VAL FLAG_BIT
   # Set a specific flag bit
   SETR SYSTEM_FLAGS FLAG_BIT
   RET
 .ENDP
 
 # Procedure that demonstrates reading state data
-.PROC READ_STATE_DATA EXPORT REF COUNTER ENERGY
+EXPORT .PROC READ_STATE_DATA REF COUNTER ENERGY
   # This procedure simulates reading state from .PLACE data
   # In a real implementation, this would read from the absolute memory locations
   SETI COUNTER DATA:123  # Simulates reading from GLOBAL_COUNTER's .PLACE
@@ -208,7 +205,7 @@ SEARCH_COMPLETE:
 
 
 # Procedure that demonstrates conditional execution
-.PROC CONDITIONAL_MOVE EXPORT REF X Y VAL CONDITION
+EXPORT .PROC CONDITIONAL_MOVE REF X Y VAL CONDITION
   # Only move if condition is true
   LTI CONDITION DATA:0
   JMPI NO_MOVE
@@ -244,12 +241,12 @@ START:
   SETI %TEMP DATA:50
   
   # Initialize system using registers
-  CALL SYSTEM_INIT REF %TEMP %TEMP
+  CALL SYSTEM_INIT REF %TEMP %RESULT
   
   # Main behavior loop
 BEHAVIOR_LOOP:
   # Add some energy
-  CALL ADD_ENERGY REF %ENERGY ENERGY_GAIN
+  CALL ADD_ENERGY REF %ENERGY VAL ENERGY_GAIN
   
   # Cap energy at maximum
   LTI %ENERGY MAX_ENERGY
@@ -310,8 +307,8 @@ NOT_ENOUGH_ENERGY:
 
 # Demonstrate various procedure calls
 DEMO_PROCEDURES:
-  # Call procedure with VAL parameters
-  CALL CALCULATE_DISTANCE VAL %POS_X %POS_Y DATA:100 DATA:200 %RESULT
+  # Call procedure with REF output and VAL inputs
+  CALL CALCULATE_DISTANCE REF %RESULT VAL %POS_X %POS_Y DATA:100 DATA:200
   
   # Call procedure with mixed REF and VAL parameters
   CALL UPDATE_POSITION REF %POS_X %POS_Y VAL DATA:5 DATA:10
@@ -328,8 +325,8 @@ DEMO_PROCEDURES:
   # Call procedure with stack operations
   CALL PUSH_VALUE REF %STACK_PTR VAL %ENERGY
   
-  # Call procedure with registers
-  CALL MEMORY_READ REF %TEMP VAL DATA:50 %TEMP
+  # Call procedure with REF outputs and VAL input
+  CALL MEMORY_READ REF %TEMP %RESULT VAL DATA:50
   
   # Call procedure with system flags
   CALL SET_FLAG REF %TEMP VAL DATA:1

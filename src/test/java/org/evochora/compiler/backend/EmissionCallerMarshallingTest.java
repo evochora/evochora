@@ -3,9 +3,9 @@ package org.evochora.compiler.backend;
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.backend.emit.EmissionRegistry;
 import org.evochora.compiler.backend.emit.IEmissionRule;
-import org.evochora.compiler.backend.emit.features.CallerMarshallingRule;
-import org.evochora.compiler.backend.link.LinkingContext;
-import org.evochora.compiler.ir.*;
+import org.evochora.compiler.features.proc.CallerMarshallingRule;
+import org.evochora.compiler.features.proc.IrCallInstruction;
+import org.evochora.compiler.model.ir.*;
 import org.evochora.runtime.isa.Instruction;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
@@ -41,11 +41,12 @@ public class EmissionCallerMarshallingTest {
     }
 
     private List<IrItem> runEmission(List<IrItem> items) {
-        EmissionRegistry reg = EmissionRegistry.initializeWithDefaults();
-        LinkingContext ctx = new LinkingContext();
+        EmissionRegistry reg = new EmissionRegistry();
+        reg.register(new org.evochora.compiler.features.proc.ProcedureMarshallingRule());
+        reg.register(new CallerMarshallingRule());
         List<IrItem> out = items;
         for (IEmissionRule r : reg.rules()) {
-            out = r.apply(out, ctx);
+            out = r.apply(out);
         }
         return out;
     }
@@ -61,16 +62,16 @@ public class EmissionCallerMarshallingTest {
             IrReg rB = new IrReg("%rB");
             IrImm imm123 = new IrImm(123);
             IrLabelRef target = new IrLabelRef("myProc");
-            IrInstruction call = new IrInstruction("CALL", List.of(target), List.of(rB), List.of(imm123), src("main.s", 1));
+            IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rB), List.of(imm123), src("main.s", 1));
 
             List<IrItem> out = runEmission(List.of(call));
 
             // Expect: PUSI 123, PUSH %rB, CALL myProc, POP %rB
             assertThat(out).hasSize(4);
-            assertThat(out.get(0)).isEqualTo(new IrInstruction("PUSI", List.of(imm123), call.source()));
-            assertThat(out.get(1)).isEqualTo(new IrInstruction("PUSH", List.of(rB), call.source()));
+            assertThat(out.get(0)).isEqualTo(IrInstruction.synthetic("PUSI", List.of(imm123), call.source()));
+            assertThat(out.get(1)).isEqualTo(IrInstruction.synthetic("PUSH", List.of(rB), call.source()));
             assertThat(out.get(2)).isEqualTo(call);
-            assertThat(out.get(3)).isEqualTo(new IrInstruction("POP", List.of(rB), call.source()));
+            assertThat(out.get(3)).isEqualTo(IrInstruction.synthetic("POP", List.of(rB), call.source()));
         }
 
         @Test
@@ -81,17 +82,17 @@ public class EmissionCallerMarshallingTest {
             IrReg rX = new IrReg("%rX");
             IrReg rY = new IrReg("%rY");
             IrLabelRef target = new IrLabelRef("p");
-            IrInstruction call = new IrInstruction("CALL", List.of(target), List.of(rX, rY), Collections.emptyList(), src("main.s", 1));
+            IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rX, rY), Collections.emptyList(), src("main.s", 1));
 
             List<IrItem> out = runEmission(List.of(call));
 
             // Expect: PUSH %rY, PUSH %rX, CALL p, POP %rY, POP %rX (correct post-call cleanup order: LIFO)
             assertThat(out).hasSize(5);
-            assertThat(out.get(0)).isEqualTo(new IrInstruction("PUSH", List.of(rY), call.source()));
-            assertThat(out.get(1)).isEqualTo(new IrInstruction("PUSH", List.of(rX), call.source()));
+            assertThat(out.get(0)).isEqualTo(IrInstruction.synthetic("PUSH", List.of(rY), call.source()));
+            assertThat(out.get(1)).isEqualTo(IrInstruction.synthetic("PUSH", List.of(rX), call.source()));
             assertThat(out.get(2)).isEqualTo(call);
-            assertThat(out.get(3)).isEqualTo(new IrInstruction("POP", List.of(rY), call.source()));
-            assertThat(out.get(4)).isEqualTo(new IrInstruction("POP", List.of(rX), call.source()));
+            assertThat(out.get(3)).isEqualTo(IrInstruction.synthetic("POP", List.of(rY), call.source()));
+            assertThat(out.get(4)).isEqualTo(IrInstruction.synthetic("POP", List.of(rX), call.source()));
         }
 
         @Test
@@ -99,7 +100,7 @@ public class EmissionCallerMarshallingTest {
         @DisplayName("Should not marshall a plain CALL instruction")
         void doesNotMarshallPlainCall() {
             // IR for: CALL someLabel
-            IrInstruction call = new IrInstruction("CALL", List.of(new IrLabelRef("someLabel")), src("main.s", 1));
+            IrInstruction call = new IrCallInstruction("CALL", List.of(new IrLabelRef("someLabel")), List.of(), List.of(), src("main.s", 1));
 
             List<IrItem> out = runEmission(List.of(call));
 
@@ -113,13 +114,13 @@ public class EmissionCallerMarshallingTest {
             // IR for: CALL myProc VAL myLabel
             IrLabelRef target = new IrLabelRef("myProc");
             IrLabelRef labelParam = new IrLabelRef("myLabel");
-            IrInstruction call = new IrInstruction("CALL", List.of(target), Collections.emptyList(), List.of(labelParam), src("main.s", 1));
+            IrInstruction call = new IrCallInstruction("CALL", List.of(target), Collections.emptyList(), List.of(labelParam), src("main.s", 1));
 
             List<IrItem> out = runEmission(List.of(call));
 
             // Expect: PUSV myLabel, CALL myProc
             assertThat(out).hasSize(2);
-            assertThat(out.get(0)).isEqualTo(new IrInstruction("PUSV", List.of(labelParam), call.source()));
+            assertThat(out.get(0)).isEqualTo(IrInstruction.synthetic("PUSV", List.of(labelParam), call.source()));
             assertThat(out.get(1)).isEqualTo(call);
         }
 
@@ -132,17 +133,17 @@ public class EmissionCallerMarshallingTest {
             IrImm imm123 = new IrImm(123);
             IrLabelRef target = new IrLabelRef("myProc");
             IrLabelRef labelParam = new IrLabelRef("myLabel");
-            IrInstruction call = new IrInstruction("CALL", List.of(target), List.of(rA), List.of(imm123, labelParam), src("main.s", 1));
+            IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rA), List.of(imm123, labelParam), src("main.s", 1));
 
             List<IrItem> out = runEmission(List.of(call));
 
             // Expect: PUSV myLabel, PUSI 123, PUSH %rA, CALL myProc, POP %rA
             assertThat(out).hasSize(5);
-            assertThat(out.get(0)).isEqualTo(new IrInstruction("PUSV", List.of(labelParam), call.source()));
-            assertThat(out.get(1)).isEqualTo(new IrInstruction("PUSI", List.of(imm123), call.source()));
-            assertThat(out.get(2)).isEqualTo(new IrInstruction("PUSH", List.of(rA), call.source()));
+            assertThat(out.get(0)).isEqualTo(IrInstruction.synthetic("PUSV", List.of(labelParam), call.source()));
+            assertThat(out.get(1)).isEqualTo(IrInstruction.synthetic("PUSI", List.of(imm123), call.source()));
+            assertThat(out.get(2)).isEqualTo(IrInstruction.synthetic("PUSH", List.of(rA), call.source()));
             assertThat(out.get(3)).isEqualTo(call);
-            assertThat(out.get(4)).isEqualTo(new IrInstruction("POP", List.of(rA), call.source()));
+            assertThat(out.get(4)).isEqualTo(IrInstruction.synthetic("POP", List.of(rA), call.source()));
         }
 
         @Test
@@ -153,7 +154,7 @@ public class EmissionCallerMarshallingTest {
             IrReg rA = new IrReg("%rA");
             IrInstruction ifr = new IrInstruction("IFR", List.of(rA), src("main.s", 1));
             IrLabelRef target = new IrLabelRef("myProc");
-            IrInstruction call = new IrInstruction("CALL", List.of(target), List.of(rA), Collections.emptyList(), src("main.s", 2));
+            IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rA), Collections.emptyList(), src("main.s", 2));
 
             List<IrItem> out = runEmission(List.of(ifr, call));
 
@@ -171,9 +172,9 @@ public class EmissionCallerMarshallingTest {
             String labelName = ((IrLabelRef) jmpi.operands().get(0)).labelName();
             assertThat(labelName).startsWith("_safe_call_");
 
-            assertThat(out.get(2)).isEqualTo(new IrInstruction("PUSH", List.of(rA), call.source()));
+            assertThat(out.get(2)).isEqualTo(IrInstruction.synthetic("PUSH", List.of(rA), call.source()));
             assertThat(out.get(3)).isEqualTo(call);
-            assertThat(out.get(4)).isEqualTo(new IrInstruction("POP", List.of(rA), call.source()));
+            assertThat(out.get(4)).isEqualTo(IrInstruction.synthetic("POP", List.of(rA), call.source()));
 
             assertThat(out.get(5)).isInstanceOf(IrLabelDef.class);
             IrLabelDef labelDef = (IrLabelDef) out.get(5);
@@ -188,7 +189,7 @@ public class EmissionCallerMarshallingTest {
             IrReg rA = new IrReg("%rA");
             IrInstruction ifer = new IrInstruction("IFER", Collections.emptyList(), src("main.s", 1));
             IrLabelRef target = new IrLabelRef("myProc");
-            IrInstruction call = new IrInstruction("CALL", List.of(target), List.of(rA), Collections.emptyList(), src("main.s", 2));
+            IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rA), Collections.emptyList(), src("main.s", 2));
 
             List<IrItem> out = runEmission(List.of(ifer, call));
 
@@ -206,9 +207,9 @@ public class EmissionCallerMarshallingTest {
             String labelName = ((IrLabelRef) jmpi.operands().get(0)).labelName();
             assertThat(labelName).startsWith("_safe_call_");
 
-            assertThat(out.get(2)).isEqualTo(new IrInstruction("PUSH", List.of(rA), call.source()));
+            assertThat(out.get(2)).isEqualTo(IrInstruction.synthetic("PUSH", List.of(rA), call.source()));
             assertThat(out.get(3)).isEqualTo(call);
-            assertThat(out.get(4)).isEqualTo(new IrInstruction("POP", List.of(rA), call.source()));
+            assertThat(out.get(4)).isEqualTo(IrInstruction.synthetic("POP", List.of(rA), call.source()));
 
             assertThat(out.get(5)).isInstanceOf(IrLabelDef.class);
             IrLabelDef labelDef = (IrLabelDef) out.get(5);
@@ -224,15 +225,14 @@ public class EmissionCallerMarshallingTest {
         IrDirective callWith = new IrDirective("core", "call_with", 
             Map.of("actuals", new IrValue.ListVal(List.of(new IrValue.Str("%DR1")))), 
             src("test.s", 5));
-        IrInstruction call = new IrInstruction("CALL", List.of(new IrVec(new int[]{1, 0})), src("test.s", 5));
+        IrInstruction call = new IrCallInstruction("CALL", List.of(new IrVec(new int[]{1, 0})), List.of(), List.of(), src("test.s", 5));
         IrInstruction nop = new IrInstruction("NOP", Collections.emptyList(), src("test.s", 6));
         
         List<IrItem> items = List.of(callWith, call, nop);
 
         // Apply only the CallerMarshallingRule
         CallerMarshallingRule rule = new CallerMarshallingRule();
-        LinkingContext ctx = new LinkingContext();
-        List<IrItem> emitted = rule.apply(items, ctx);
+        List<IrItem> emitted = rule.apply(items);
 
         // Find the CALL instruction and marshalled instructions in the emitted list
         IrInstruction callInstruction = null;
@@ -279,7 +279,7 @@ public class EmissionCallerMarshallingTest {
             args.put("actuals", new IrValue.ListVal(List.of(new IrValue.Str("%DR1"), new IrValue.Str("%DR2"))));
             IrDirective callWith = new IrDirective("core", "call_with", args, src("main.s", 1));
 
-            IrInstruction call = new IrInstruction("CALL", List.of(new IrVec(new int[]{1, 0})), src("main.s", 2));
+            IrInstruction call = new IrCallInstruction("CALL", List.of(new IrVec(new int[]{1, 0})), List.of(), List.of(), src("main.s", 2));
             List<IrItem> items = List.of(callWith, call);
 
             List<IrItem> out = runEmission(items);
@@ -290,7 +290,7 @@ public class EmissionCallerMarshallingTest {
             assertThat(((IrReg) ((IrInstruction) out.get(0)).operands().get(0)).name()).isEqualTo("%DR1");
             assertThat(((IrInstruction) out.get(1)).opcode()).isEqualTo("PUSH");
             assertThat(((IrReg) ((IrInstruction) out.get(1)).operands().get(0)).name()).isEqualTo("%DR2");
-            assertThat(out.get(2)).isSameAs(call); // Check that the original call instruction is preserved
+            assertThat(((IrInstruction) out.get(2)).opcode()).isEqualTo("CALL");
             assertThat(((IrInstruction) out.get(3)).opcode()).isEqualTo("POP");
             assertThat(((IrReg) ((IrInstruction) out.get(3)).operands().get(0)).name()).isEqualTo("%DR2");
             assertThat(((IrInstruction) out.get(4)).opcode()).isEqualTo("POP");

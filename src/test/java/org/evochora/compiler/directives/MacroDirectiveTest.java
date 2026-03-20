@@ -1,10 +1,17 @@
 package org.evochora.compiler.directives;
 
+import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.frontend.lexer.Lexer;
-import org.evochora.compiler.frontend.lexer.Token;
-import org.evochora.compiler.frontend.lexer.TokenType;
+import org.evochora.compiler.util.SourceRootResolver;
 import org.evochora.compiler.frontend.preprocessor.PreProcessor;
+import org.evochora.compiler.frontend.preprocessor.PreProcessorContext;
+import org.evochora.compiler.frontend.preprocessor.PreProcessorHandlerRegistry;
+import org.evochora.compiler.features.macro.MacroDirectiveHandler;
+import org.evochora.compiler.model.token.Token;
+import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.runtime.isa.Instruction;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
 
@@ -18,6 +25,11 @@ import static org.assertj.core.api.Assertions.assertThat;
  * These are unit tests and do not require external resources.
  */
 public class MacroDirectiveTest {
+
+    @BeforeAll
+    static void setUp() {
+        Instruction.init();
+    }
 
     /**
      * Verifies that the {@link PreProcessor} correctly expands a macro invocation.
@@ -38,10 +50,15 @@ public class MacroDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> initialTokens = lexer.scanTokens();
-        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics, Path.of(""));
+        PreProcessorHandlerRegistry registry = new PreProcessorHandlerRegistry();
+        registry.register(".MACRO", new MacroDirectiveHandler());
+        registry.register(":", new org.evochora.compiler.features.label.ColonLabelHandler());
+        PreProcessor preProcessor = new PreProcessor(initialTokens, diagnostics,
+                new SourceRootResolver(List.of(new SourceRoot(".", null)), Path.of("")),
+                registry, new PreProcessorContext());
 
         // Act
-        List<Token> expandedTokens = preProcessor.expand();
+        List<Token> expandedTokens = preProcessor.expand().tokens();
 
         // Assert
         assertThat(diagnostics.hasErrors()).isFalse();

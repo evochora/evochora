@@ -2,18 +2,20 @@ package org.evochora.compiler.directives;
 
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
-import org.evochora.compiler.frontend.lexer.Token;
-import org.evochora.compiler.frontend.parser.ast.AstNode;
-import org.evochora.compiler.frontend.parser.ast.InstructionNode;
+import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
+import org.evochora.compiler.features.proc.PregDirectiveHandler;
+import org.evochora.compiler.features.proc.ProcDirectiveHandler;
+import org.evochora.compiler.model.token.Token;
+import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.frontend.parser.ast.PregNode;
-import org.evochora.compiler.frontend.parser.features.proc.ProcedureNode;
-import org.evochora.compiler.frontend.parser.features.require.RequireNode;
+import org.evochora.compiler.features.proc.PregNode;
+import org.evochora.compiler.features.proc.ProcedureNode;
+
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.BeforeAll;
 
-import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
 
@@ -53,7 +55,7 @@ public class ProcedureDirectiveTest {
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
-        Parser parser = new Parser(tokens, diagnostics, Path.of("")); // KORREKTUR
+        Parser parser = new Parser(tokens, diagnostics, registry()); // KORREKTUR
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -64,7 +66,7 @@ public class ProcedureDirectiveTest {
         assertThat(ast.get(0)).isInstanceOf(ProcedureNode.class);
 
         ProcedureNode procNode = (ProcedureNode) ast.get(0);
-        assertThat(procNode.name().text()).isEqualTo("MY_PROC");
+        assertThat(procNode.name()).isEqualTo("MY_PROC");
         assertThat(procNode.exported()).isFalse();
 
         List<AstNode> bodyWithoutNulls = procNode.body().stream().filter(Objects::nonNull).toList();
@@ -72,12 +74,7 @@ public class ProcedureDirectiveTest {
         assertThat(bodyWithoutNulls.get(0)).isInstanceOf(InstructionNode.class);
 
         InstructionNode nopNode = (InstructionNode) bodyWithoutNulls.get(0);
-        assertThat(nopNode.opcode().text()).isEqualTo("NOP");
-
-        var procTable = parser.getProcedureTable();
-        assertThat(procTable).hasSize(1);
-        assertThat(procTable).containsKey("MY_PROC");
-        assertThat(procTable.get("MY_PROC")).isSameAs(procNode);
+        assertThat(nopNode.opcode()).isEqualTo("NOP");
     }
 
     /**
@@ -96,7 +93,7 @@ public class ProcedureDirectiveTest {
                 ".ENDP"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, Path.of("")); // KORREKTUR
+        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, registry()); // KORREKTUR
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -107,32 +104,31 @@ public class ProcedureDirectiveTest {
         assertThat(ast.get(0)).isInstanceOf(ProcedureNode.class);
 
         ProcedureNode procNode = (ProcedureNode) ast.get(0);
-        assertThat(procNode.name().text()).isEqualTo("ADD");
+        assertThat(procNode.name()).isEqualTo("ADD");
         assertThat(procNode.exported()).isFalse();
         assertThat(procNode.refParameters()).hasSize(2);
-        assertThat(procNode.refParameters().get(0).text()).isEqualTo("A");
-        assertThat(procNode.refParameters().get(1).text()).isEqualTo("B");
+        assertThat(procNode.refParameters().get(0).name()).isEqualTo("A");
+        assertThat(procNode.refParameters().get(1).name()).isEqualTo("B");
     }
 
     /**
      * Verifies that the parser can handle a full procedure definition including the EXPORT keyword,
-     * parameters, and nested directives like `.PREG` and `.REQUIRE`.
+     * parameters, and nested directives like {@code .PREG}.
      * This is a unit test for the parser.
      */
     @Test
     @Tag("unit")
     void testFullProcedureDefinition() {
-        
+
         // Arrange
         String source = String.join("\n",
-                ".PROC FULL_PROC EXPORT REF A",
+                "EXPORT .PROC FULL_PROC REF A",
                 "  .PREG %TMP %PR0",
-                "  .REQUIRE \"lib/utils.s\" AS utils",
                 "  NOP",
                 ".ENDP"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, Path.of("")); // KORREKTUR
+        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse();
@@ -143,22 +139,15 @@ public class ProcedureDirectiveTest {
         assertThat(ast.get(0)).isInstanceOf(ProcedureNode.class);
 
         ProcedureNode procNode = (ProcedureNode) ast.get(0);
-        assertThat(procNode.name().text()).isEqualTo("FULL_PROC");
+        assertThat(procNode.name()).isEqualTo("FULL_PROC");
         assertThat(procNode.exported()).isTrue();
-        assertThat(procNode.refParameters()).hasSize(1).extracting(Token::text).containsExactly("A");
+        assertThat(procNode.refParameters()).hasSize(1).extracting(ProcedureNode.ParamDecl::name).containsExactly("A");
 
         List<AstNode> bodyDirectives = procNode.body().stream()
                 .filter(n -> !(n instanceof InstructionNode))
                 .toList();
-        assertThat(bodyDirectives).hasSize(2); // .PREG and .REQUIRE directives
-
-        // Check that we have both PregNode and RequireNode
+        assertThat(bodyDirectives).hasSize(1);
         assertThat(bodyDirectives.get(0)).isInstanceOf(PregNode.class);
-        assertThat(bodyDirectives.get(1)).isInstanceOf(RequireNode.class);
-        
-        RequireNode requireNode = (RequireNode) bodyDirectives.get(1);
-        assertThat(requireNode.path().value()).isEqualTo("lib/utils.s");
-        assertThat(requireNode.alias().text()).isEqualTo("utils");
     }
 
     @Test
@@ -167,7 +156,7 @@ public class ProcedureDirectiveTest {
         // Arrange
         String source = ".PROC myProc REF rA rB\n.ENDP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, Path.of(""));
+        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -176,8 +165,8 @@ public class ProcedureDirectiveTest {
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(ast).hasSize(1);
         ProcedureNode procNode = (ProcedureNode) ast.get(0);
-        assertThat(procNode.name().text()).isEqualTo("myProc");
-        assertThat(procNode.refParameters()).hasSize(2).extracting(Token::text).containsExactly("rA", "rB");
+        assertThat(procNode.name()).isEqualTo("myProc");
+        assertThat(procNode.refParameters()).hasSize(2).extracting(ProcedureNode.ParamDecl::name).containsExactly("rA", "rB");
         assertThat(procNode.valParameters()).isEmpty();
         assertThat(procNode.parameters()).isEmpty();
     }
@@ -188,7 +177,7 @@ public class ProcedureDirectiveTest {
         // Arrange
         String source = ".PROC myProc VAL v1 v2\n.ENDP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, Path.of(""));
+        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -197,8 +186,8 @@ public class ProcedureDirectiveTest {
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(ast).hasSize(1);
         ProcedureNode procNode = (ProcedureNode) ast.get(0);
-        assertThat(procNode.name().text()).isEqualTo("myProc");
-        assertThat(procNode.valParameters()).hasSize(2).extracting(Token::text).containsExactly("v1", "v2");
+        assertThat(procNode.name()).isEqualTo("myProc");
+        assertThat(procNode.valParameters()).hasSize(2).extracting(ProcedureNode.ParamDecl::name).containsExactly("v1", "v2");
         assertThat(procNode.refParameters()).isEmpty();
         assertThat(procNode.parameters()).isEmpty();
     }
@@ -209,7 +198,7 @@ public class ProcedureDirectiveTest {
         // Arrange
         String source = ".PROC myProc REF rA VAL v1\n.ENDP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, Path.of(""));
+        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -218,9 +207,9 @@ public class ProcedureDirectiveTest {
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(ast).hasSize(1);
         ProcedureNode procNode = (ProcedureNode) ast.get(0);
-        assertThat(procNode.name().text()).isEqualTo("myProc");
-        assertThat(procNode.refParameters()).hasSize(1).extracting(Token::text).containsExactly("rA");
-        assertThat(procNode.valParameters()).hasSize(1).extracting(Token::text).containsExactly("v1");
+        assertThat(procNode.name()).isEqualTo("myProc");
+        assertThat(procNode.refParameters()).hasSize(1).extracting(ProcedureNode.ParamDecl::name).containsExactly("rA");
+        assertThat(procNode.valParameters()).hasSize(1).extracting(ProcedureNode.ParamDecl::name).containsExactly("v1");
         assertThat(procNode.parameters()).isEmpty();
     }
 
@@ -230,7 +219,7 @@ public class ProcedureDirectiveTest {
         // Arrange
         String source = ".PROC myProc VAL v1 REF rA\n.ENDP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, Path.of(""));
+        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -239,9 +228,9 @@ public class ProcedureDirectiveTest {
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(ast).hasSize(1);
         ProcedureNode procNode = (ProcedureNode) ast.get(0);
-        assertThat(procNode.name().text()).isEqualTo("myProc");
-        assertThat(procNode.valParameters()).hasSize(1).extracting(Token::text).containsExactly("v1");
-        assertThat(procNode.refParameters()).hasSize(1).extracting(Token::text).containsExactly("rA");
+        assertThat(procNode.name()).isEqualTo("myProc");
+        assertThat(procNode.valParameters()).hasSize(1).extracting(ProcedureNode.ParamDecl::name).containsExactly("v1");
+        assertThat(procNode.refParameters()).hasSize(1).extracting(ProcedureNode.ParamDecl::name).containsExactly("rA");
         assertThat(procNode.parameters()).isEmpty();
     }
 
@@ -251,7 +240,7 @@ public class ProcedureDirectiveTest {
         // Arrange
         String source = ".PROC myProc\n.ENDP";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
-        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, Path.of(""));
+        Parser parser = new Parser(new Lexer(source, diagnostics).scanTokens(), diagnostics, registry());
 
         // Act
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
@@ -260,9 +249,19 @@ public class ProcedureDirectiveTest {
         assertThat(diagnostics.hasErrors()).isFalse();
         assertThat(ast).hasSize(1);
         ProcedureNode procNode = (ProcedureNode) ast.get(0);
-        assertThat(procNode.name().text()).isEqualTo("myProc");
+        assertThat(procNode.name()).isEqualTo("myProc");
         assertThat(procNode.refParameters()).isEmpty();
         assertThat(procNode.valParameters()).isEmpty();
         assertThat(procNode.parameters()).isEmpty();
+    }
+
+    private static ParserStatementRegistry registry() {
+        ParserStatementRegistry reg = new ParserStatementRegistry();
+        reg.register(".PROC", new ProcDirectiveHandler());
+        reg.register(".PREG", new PregDirectiveHandler());
+        reg.register(".LABEL", new org.evochora.compiler.features.label.LabelDirectiveHandler());
+        reg.register("CALL", new org.evochora.compiler.features.proc.CallStatementHandler());
+        reg.registerDefault(new org.evochora.compiler.features.instruction.InstructionParsingHandler());
+        return reg;
     }
 }

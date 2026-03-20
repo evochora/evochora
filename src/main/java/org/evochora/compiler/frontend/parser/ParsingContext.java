@@ -1,16 +1,13 @@
 package org.evochora.compiler.frontend.parser;
 
-import org.evochora.compiler.frontend.lexer.Token;
-import org.evochora.compiler.frontend.lexer.TokenType;
+import org.evochora.compiler.model.token.Token;
+import org.evochora.compiler.model.token.TokenType;
+import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 
-import java.nio.file.Path;
-import java.util.List;
-
 /**
- * An interface that encapsulates the contextual state during parsing or preprocessing.
- * It provides handlers with access to the token stream and other necessary services
- * without coupling them directly to a specific implementation like the parser.
+ * Provides parser directive handlers with access to the token stream.
+ * This interface decouples handlers from the concrete {@link Parser} implementation.
  */
 public interface ParsingContext {
     /**
@@ -66,33 +63,29 @@ public interface ParsingContext {
      */
     boolean isAtEnd();
 
-    // Methods specific to the PreProcessor
+    /**
+     * Parses an expression (literal, register, identifier, or vector).
+     * @return The parsed {@link AstNode} for the expression.
+     */
+    AstNode expression();
 
     /**
-     * Injects a list of tokens into the stream, replacing a specified number of existing tokens.
-     * This is primarily used for macro expansion.
-     * @param tokens The list of tokens to inject.
-     * @param tokensToRemove The number of tokens to remove from the original stream.
+     * Parses a single declaration (directive or statement).
+     * @return The parsed {@link AstNode}, or null if an error occurs.
      */
-    void injectTokens(List<Token> tokens, int tokensToRemove);
+    AstNode declaration();
 
     /**
-     * Gets the base path of the current file being processed.
-     * This is used to resolve relative paths in include directives.
-     * @return The base path.
+     * Returns the generic parser state container that features use
+     * to store and retrieve their own state objects.
+     * @return The parser state.
      */
-    Path getBasePath();
+    ParserState state();
 
     /**
-     * Checks if a file has already been included to prevent circular dependencies.
-     * @param path The path of the file to check.
-     * @return true if the file has already been included, false otherwise.
+     * Returns whether the current statement was preceded by the EXPORT keyword.
+     * Set by the parser when it consumes an EXPORT prefix.
+     * @return true if the current statement is exported.
      */
-    boolean hasAlreadyIncluded(String path);
-
-    /**
-     * Marks a file as having been included.
-     * @param path The path of the file to mark.
-     */
-    void markAsIncluded(String path);
+    boolean isExported();
 }
