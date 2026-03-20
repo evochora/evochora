@@ -262,6 +262,7 @@ public class Compiler implements ICompiler {
         if (diagnostics.hasErrors()) {
             throw new CompilationException(diagnostics.summary());
         }
+        symbolTable.freeze();
 
         // Phase 5: Token Map Generation (for debugger)
         TokenMapContributorRegistry tokenMapRegistry = new TokenMapContributorRegistry();
@@ -320,6 +321,7 @@ public class Compiler implements ICompiler {
         LinkingContext linkContext = new LinkingContext(symbolTable, isa);
         linkContext.pushAliasChain(rootAliasChain);
         IrProgram linkedIr = linker.link(rewrittenIr, layout, linkContext, envProps);
+        linkContext.freeze();
 
         // Phase 11: Emission (generate final binary)
         EmissionContributorRegistry emissionContributorRegistry = new EmissionContributorRegistry();

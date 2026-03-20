@@ -60,6 +60,7 @@ public class SymbolTable {
     private final Map<AstNode, Scope> nodeScopeMap = new HashMap<>();
 
     private final DiagnosticsEngine diagnostics;
+    private boolean frozen = false;
 
     /**
      * Constructs a new symbol table. The current module must be set via
@@ -72,6 +73,23 @@ public class SymbolTable {
         this.currentScope = this.rootScope;
     }
 
+    // === Freeze support ===
+
+    /**
+     * Freezes the symbol table, preventing structural modifications (define, registerModule,
+     * enterScope, registerNodeScope). Cursor operations (setCurrentModule, setCurrentScope,
+     * leaveScope, resetScope) and all reads remain allowed.
+     */
+    public void freeze() {
+        this.frozen = true;
+    }
+
+    private void guardFrozen() {
+        if (frozen) {
+            throw new IllegalStateException("SymbolTable is frozen — no structural modifications allowed after Phase 4");
+        }
+    }
+
     // === Module management ===
 
     /**
@@ -80,6 +98,7 @@ public class SymbolTable {
      * @param sourcePath The file path or URL of the module source.
      */
     public void registerModule(String aliasChain, String sourcePath) {
+        guardFrozen();
         modules.computeIfAbsent(aliasChain, ac -> new ModuleScope(ac, sourcePath));
     }
 
@@ -91,6 +110,7 @@ public class SymbolTable {
     public void setCurrentModule(String aliasChain) {
         this.currentAliasChain = aliasChain;
         if (!modules.containsKey(aliasChain)) {
+            guardFrozen();
             modules.put(aliasChain, new ModuleScope(aliasChain, aliasChain));
         }
     }
@@ -131,6 +151,7 @@ public class SymbolTable {
      * @return The new scope.
      */
     public Scope enterScope(String name) {
+        guardFrozen();
         Scope newScope = new Scope(currentScope, name);
         currentScope.addChild(newScope);
         currentScope = newScope;
@@ -174,6 +195,7 @@ public class SymbolTable {
      * Associates an AST node with its scope. Called by ProcedureSymbolCollector during pass 1.
      */
     public void registerNodeScope(AstNode node, Scope scope) {
+        guardFrozen();
         nodeScopeMap.put(node, scope);
     }
 
@@ -192,6 +214,7 @@ public class SymbolTable {
      * @param symbol The symbol to define.
      */
     public void define(Symbol symbol) {
+        guardFrozen();
         String name = symbol.name().toUpperCase();
         String file = symbol.sourceInfo().fileName();
 

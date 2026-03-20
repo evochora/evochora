@@ -20,6 +20,7 @@ public final class LinkingContext {
     private int linearAddressCursor = 0;
     private final Map<Integer, int[]> callSiteBindings = new HashMap<>();
     private final Deque<String> aliasChainStack = new ArrayDeque<>();
+    private boolean frozen = false;
 
     /**
      * Constructs a new linking context with the given runtime dependencies.
@@ -45,7 +46,18 @@ public final class LinkingContext {
     /**
      * @return The next linear address and increments the cursor.
      */
-    public int nextAddress() { return linearAddressCursor++; }
+    /**
+     * Freezes the context, preventing further modifications.
+     * After freeze: pushAliasChain/popAliasChain/nextAddress throw,
+     * callSiteBindings returns unmodifiable view.
+     */
+    public void freeze() { this.frozen = true; }
+
+    private void guardFrozen() {
+        if (frozen) throw new IllegalStateException("LinkingContext is frozen — no modifications allowed after Phase 10");
+    }
+
+    public int nextAddress() { guardFrozen(); return linearAddressCursor++; }
 
     /**
      * @return The current linear address.
@@ -55,7 +67,9 @@ public final class LinkingContext {
     /**
      * @return The map of call site bindings.
      */
-    public Map<Integer, int[]> callSiteBindings() { return callSiteBindings; }
+    public Map<Integer, int[]> callSiteBindings() {
+        return frozen ? java.util.Collections.unmodifiableMap(callSiteBindings) : callSiteBindings;
+    }
 
     // --- Alias chain stack for module context tracking ---
 
@@ -63,6 +77,7 @@ public final class LinkingContext {
      * Pushes an alias chain when entering an imported module.
      */
     public void pushAliasChain(String aliasChain) {
+        guardFrozen();
         aliasChainStack.push(aliasChain);
     }
 
@@ -70,6 +85,7 @@ public final class LinkingContext {
      * Pops the alias chain when leaving an imported module.
      */
     public void popAliasChain() {
+        guardFrozen();
         if (aliasChainStack.isEmpty()) {
             throw new IllegalStateException("Cannot pop alias chain: stack is empty");
         }
