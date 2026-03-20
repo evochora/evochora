@@ -157,20 +157,15 @@ public class Compiler implements ICompiler {
             }
         } else {
             // No source roots: resolve relative to program file's parent
-            String resolvedFilePath;
-            Path wd;
             try {
                 Path programFile = Path.of(parsedProgram.filePath()).toAbsolutePath().normalize();
-                resolvedFilePath = programFile.toString().replace('\\', '/');
-                wd = programFile.getParent() != null
+                mainFilePath = programFile.toString().replace('\\', '/');
+                workingDirectory = programFile.getParent() != null
                         ? programFile.getParent()
                         : Path.of("").toAbsolutePath();
-            } catch (Exception e) {
-                resolvedFilePath = programName;
-                wd = Path.of("").toAbsolutePath();
+            } catch (java.nio.file.InvalidPathException e) {
+                throw new CompilationException("Invalid program path: " + programName + " — " + e.getMessage());
             }
-            mainFilePath = resolvedFilePath;
-            workingDirectory = wd;
         }
         SourceRootResolver resolver = new SourceRootResolver(
                 effectiveOptions.sourceRoots(), workingDirectory);

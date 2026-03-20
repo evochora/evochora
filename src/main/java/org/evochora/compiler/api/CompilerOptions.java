@@ -16,14 +16,14 @@ public record CompilerOptions(List<SourceRoot> sourceRoots) {
         return new CompilerOptions(List.of(new SourceRoot(".", null)));
     }
 
-    /**
-     * Validates the configuration: each prefix (including the empty prefix) may appear at most once.
-     *
-     * @throws IllegalArgumentException if duplicate prefixes are found.
-     */
     private static final java.util.regex.Pattern PREFIX_PATTERN =
             java.util.regex.Pattern.compile("^[A-Z][A-Z0-9_]+$");
 
+    /**
+     * Validates the configuration: each prefix (including the empty prefix) may appear at most once.
+     *
+     * @throws IllegalArgumentException if duplicate prefixes or invalid prefix formats are found.
+     */
     public void validate() {
         for (SourceRoot root : sourceRoots) {
             if (root.prefix() != null && !root.prefix().isEmpty()) {
