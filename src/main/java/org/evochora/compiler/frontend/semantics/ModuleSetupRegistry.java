@@ -13,7 +13,6 @@ public class ModuleSetupRegistry {
 
     private final Map<Class<? extends IDependencyInfo>, IDependencySetupHandler<?>> handlers = new HashMap<>();
 
-    @SuppressWarnings("unchecked")
     public <T extends IDependencyInfo> void register(Class<T> type, IDependencySetupHandler<T> handler) {
         handlers.put(type, handler);
     }

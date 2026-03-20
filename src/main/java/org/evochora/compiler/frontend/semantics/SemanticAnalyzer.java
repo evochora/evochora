@@ -122,7 +122,6 @@ public class SemanticAnalyzer {
      * import hierarchy. The root module uses rootAliasChain, imported modules use
      * their import alias appended to the parent's chain.
      */
-    @SuppressWarnings("unchecked")
     private void setupModuleRelationships(DependencyGraph graph, String mainFilePath, String rootAliasChain) {
         List<ModuleDescriptor> topoOrder = graph.topologicalOrder();
 
@@ -141,7 +140,7 @@ public class SemanticAnalyzer {
             }
             ModuleSetupContext ctx = new ModuleSetupContext(symbolTable, diagnostics, pathToAliasChain, modulePath);
             for (IDependencyInfo dep : module.dependencies()) {
-                IDependencySetupHandler handler = setupRegistry.resolve(dep.getClass());
+                IDependencySetupHandler<IDependencyInfo> handler = setupRegistry.resolve(dep.getClass());
                 if (handler != null) {
                     handler.registerScope(dep, ctx);
                 }
@@ -158,7 +157,7 @@ public class SemanticAnalyzer {
         for (ModuleDescriptor module : topoOrder) {
             ModuleSetupContext ctx = new ModuleSetupContext(symbolTable, diagnostics, pathToAliasChain, module.sourcePath());
             for (IDependencyInfo dep : module.dependencies()) {
-                IDependencySetupHandler handler = setupRegistry.resolve(dep.getClass());
+                IDependencySetupHandler<IDependencyInfo> handler = setupRegistry.resolve(dep.getClass());
                 if (handler != null) {
                     handler.registerRelationships(dep, ctx);
                 }
@@ -169,7 +168,7 @@ public class SemanticAnalyzer {
         for (ModuleDescriptor module : topoOrder) {
             ModuleSetupContext ctx = new ModuleSetupContext(symbolTable, diagnostics, pathToAliasChain, module.sourcePath());
             for (IDependencyInfo dep : module.dependencies()) {
-                IDependencySetupHandler handler = setupRegistry.resolve(dep.getClass());
+                IDependencySetupHandler<IDependencyInfo> handler = setupRegistry.resolve(dep.getClass());
                 if (handler != null) {
                     handler.resolveBindings(dep, ctx);
                 }

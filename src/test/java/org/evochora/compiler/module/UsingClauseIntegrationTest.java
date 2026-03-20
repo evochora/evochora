@@ -33,6 +33,8 @@ import org.evochora.compiler.features.macro.MacroDirectiveHandler;
 import org.evochora.compiler.features.source.SourceDirectiveHandler;
 
 import org.evochora.compiler.TestRegistries;
+import org.evochora.compiler.frontend.semantics.IDependencySetupHandler;
+import org.evochora.compiler.frontend.semantics.ModuleSetupRegistry;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
@@ -308,8 +310,8 @@ class UsingClauseIntegrationTest {
 
         // Phase 4: Semantic analysis (uses rootAliasChain instead of fileToModule)
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        org.evochora.compiler.frontend.semantics.ModuleSetupRegistry setupRegistry = new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry();
-        featureRegistry.dependencySetupHandlers().forEach((type, handler) -> setupRegistry.register(type, (org.evochora.compiler.frontend.semantics.IDependencySetupHandler) handler));
+        ModuleSetupRegistry setupRegistry = new ModuleSetupRegistry();
+        featureRegistry.dependencySetupHandlers().forEach((type, handler) -> registerSetupHandler(setupRegistry, type, handler));
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainPath, rootAliasChain, TestRegistries.analysisRegistry(symbolTable, diagnostics), setupRegistry);
         analyzer.analyze(ast);
 
@@ -346,5 +348,11 @@ class UsingClauseIntegrationTest {
             }
             return true;
         });
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T extends org.evochora.compiler.frontend.module.IDependencyInfo> void registerSetupHandler(
+            ModuleSetupRegistry registry, Class<T> type, IDependencySetupHandler<?> handler) {
+        registry.register(type, (IDependencySetupHandler<T>) handler);
     }
 }

@@ -8,14 +8,11 @@ import org.evochora.compiler.frontend.semantics.ModuleSetupContext;
 import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
 import org.evochora.compiler.frontend.semantics.analysis.ISymbolCollector;
 import org.evochora.compiler.features.importdir.ImportDependencyInfo;
-import org.evochora.compiler.frontend.module.IDependencyInfo;
-import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 

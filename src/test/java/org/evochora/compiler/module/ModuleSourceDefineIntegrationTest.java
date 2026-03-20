@@ -37,6 +37,8 @@ import org.evochora.compiler.features.source.SourceDirectiveHandler;
 import org.evochora.compiler.model.ModuleContextTracker;
 
 import org.evochora.compiler.TestRegistries;
+import org.evochora.compiler.frontend.semantics.IDependencySetupHandler;
+import org.evochora.compiler.frontend.semantics.ModuleSetupRegistry;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.model.token.Token;
@@ -356,8 +358,8 @@ class ModuleSourceDefineIntegrationTest {
 
         // Phase 4: Semantic analysis (uses rootAliasChain instead of fileToModule)
         SymbolTable symbolTable = new SymbolTable(diagnostics);
-        org.evochora.compiler.frontend.semantics.ModuleSetupRegistry setupRegistry = new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry();
-        featureRegistry.dependencySetupHandlers().forEach((type, handler) -> setupRegistry.register(type, (org.evochora.compiler.frontend.semantics.IDependencySetupHandler) handler));
+        ModuleSetupRegistry setupRegistry = new ModuleSetupRegistry();
+        featureRegistry.dependencySetupHandlers().forEach((type, handler) -> registerSetupHandler(setupRegistry, type, handler));
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainPath, rootAliasChain, TestRegistries.analysisRegistry(symbolTable, diagnostics), setupRegistry);
         analyzer.analyze(ast);
         if (diagnostics.hasErrors()) return new PostProcessResult(diagnostics, ast);
@@ -400,5 +402,11 @@ class ModuleSourceDefineIntegrationTest {
         reg.register("CALL", new org.evochora.compiler.features.proc.CallStatementHandler());
         reg.registerDefault(new org.evochora.compiler.features.instruction.InstructionParsingHandler());
         return reg;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static <T extends org.evochora.compiler.frontend.module.IDependencyInfo> void registerSetupHandler(
+            ModuleSetupRegistry registry, Class<T> type, IDependencySetupHandler<?> handler) {
+        registry.register(type, (IDependencySetupHandler<T>) handler);
     }
 }
