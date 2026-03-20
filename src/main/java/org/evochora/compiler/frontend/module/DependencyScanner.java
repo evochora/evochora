@@ -15,6 +15,11 @@ import java.util.regex.Matcher;
  * Phase 0: Scans source files for dependency directives and builds a {@link DependencyGraph}.
  * Dispatches to registered {@link IDependencyScanHandler} implementations for all directive
  * detection and processing. The scanner itself has zero knowledge of specific directives.
+ *
+ * <p>This phase scans raw source text via regex rather than running the lexer. This means
+ * directive syntax is maintained in two places: regex patterns in the scan handlers and
+ * token-based parsing in the parser handlers. This is a deliberate trade-off to avoid a
+ * full lex pass solely for dependency discovery.</p>
  */
 public final class DependencyScanner {
 

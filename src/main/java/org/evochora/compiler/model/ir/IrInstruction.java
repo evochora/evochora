@@ -97,12 +97,13 @@ public class IrInstruction implements IrItem {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         IrInstruction that = (IrInstruction) o;
-        return Objects.equals(opcode, that.opcode) &&
+        return synthetic == that.synthetic &&
+                Objects.equals(opcode, that.opcode) &&
                 Objects.equals(operands, that.operands);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(opcode, operands);
+        return Objects.hash(opcode, operands, synthetic);
     }
 }

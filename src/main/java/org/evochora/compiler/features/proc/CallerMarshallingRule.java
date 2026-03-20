@@ -15,6 +15,9 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public final class CallerMarshallingRule implements IEmissionRule {
 
+    // Static counter across compilations — ensures unique label names across programs
+    // compiled in the same JVM process. Prevents label hash collisions when programs
+    // are placed adjacent in the world grid.
     private static final AtomicInteger safeCallCounter = new AtomicInteger(0);
 
     @Override
@@ -101,7 +104,7 @@ public final class CallerMarshallingRule implements IEmissionRule {
         out.add(call);
 
         // Post-call: Clean up stack (pop REF args in correct order to match callee's PUSH).
-        // FIX: Reverse order loop because Stack is LIFO. Last pushed (by callee) must be popped first.
+        // Reverse order: stack is LIFO, so the last-pushed register must be popped first.
         for (int j = call.refOperands().size() - 1; j >= 0; j--) {
             out.add(IrInstruction.synthetic("POP", List.of(call.refOperands().get(j)), call.source()));
         }

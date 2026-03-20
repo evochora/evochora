@@ -63,9 +63,9 @@ class EmissionIfpMarshallingTest {
         String labelName = ((IrLabelRef) jmpi.operands().get(0)).labelName();
         assertThat(labelName).startsWith("_safe_call_");
 
-        assertThat(out.get(2)).isEqualTo(new IrInstruction("PUSH", List.of(rA), call.source()));
+        assertThat(out.get(2)).isEqualTo(IrInstruction.synthetic("PUSH", List.of(rA), call.source()));
         assertThat(out.get(3)).isEqualTo(call);
-        assertThat(out.get(4)).isEqualTo(new IrInstruction("POP", List.of(rA), call.source()));
+        assertThat(out.get(4)).isEqualTo(IrInstruction.synthetic("POP", List.of(rA), call.source()));
 
         assertThat(out.get(5)).isInstanceOf(IrLabelDef.class);
         IrLabelDef labelDef = (IrLabelDef) out.get(5);
@@ -97,9 +97,9 @@ class EmissionIfpMarshallingTest {
         String labelName = ((IrLabelRef) jmpi.operands().get(0)).labelName();
         assertThat(labelName).startsWith("_safe_call_");
 
-        assertThat(out.get(2)).isEqualTo(new IrInstruction("PUSH", List.of(rA), call.source()));
+        assertThat(out.get(2)).isEqualTo(IrInstruction.synthetic("PUSH", List.of(rA), call.source()));
         assertThat(out.get(3)).isEqualTo(call);
-        assertThat(out.get(4)).isEqualTo(new IrInstruction("POP", List.of(rA), call.source()));
+        assertThat(out.get(4)).isEqualTo(IrInstruction.synthetic("POP", List.of(rA), call.source()));
 
         assertThat(out.get(5)).isInstanceOf(IrLabelDef.class);
         IrLabelDef labelDef = (IrLabelDef) out.get(5);
@@ -131,9 +131,9 @@ class EmissionIfpMarshallingTest {
         String labelName = ((IrLabelRef) jmpi.operands().get(0)).labelName();
         assertThat(labelName).startsWith("_safe_call_");
 
-        assertThat(out.get(2)).isEqualTo(new IrInstruction("PUSH", List.of(rA), call.source()));
+        assertThat(out.get(2)).isEqualTo(IrInstruction.synthetic("PUSH", List.of(rA), call.source()));
         assertThat(out.get(3)).isEqualTo(call);
-        assertThat(out.get(4)).isEqualTo(new IrInstruction("POP", List.of(rA), call.source()));
+        assertThat(out.get(4)).isEqualTo(IrInstruction.synthetic("POP", List.of(rA), call.source()));
 
         assertThat(out.get(5)).isInstanceOf(IrLabelDef.class);
         IrLabelDef labelDef = (IrLabelDef) out.get(5);

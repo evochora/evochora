@@ -68,10 +68,10 @@ public class EmissionCallerMarshallingTest {
 
             // Expect: PUSI 123, PUSH %rB, CALL myProc, POP %rB
             assertThat(out).hasSize(4);
-            assertThat(out.get(0)).isEqualTo(new IrInstruction("PUSI", List.of(imm123), call.source()));
-            assertThat(out.get(1)).isEqualTo(new IrInstruction("PUSH", List.of(rB), call.source()));
+            assertThat(out.get(0)).isEqualTo(IrInstruction.synthetic("PUSI", List.of(imm123), call.source()));
+            assertThat(out.get(1)).isEqualTo(IrInstruction.synthetic("PUSH", List.of(rB), call.source()));
             assertThat(out.get(2)).isEqualTo(call);
-            assertThat(out.get(3)).isEqualTo(new IrInstruction("POP", List.of(rB), call.source()));
+            assertThat(out.get(3)).isEqualTo(IrInstruction.synthetic("POP", List.of(rB), call.source()));
         }
 
         @Test
@@ -88,11 +88,11 @@ public class EmissionCallerMarshallingTest {
 
             // Expect: PUSH %rY, PUSH %rX, CALL p, POP %rY, POP %rX (correct post-call cleanup order: LIFO)
             assertThat(out).hasSize(5);
-            assertThat(out.get(0)).isEqualTo(new IrInstruction("PUSH", List.of(rY), call.source()));
-            assertThat(out.get(1)).isEqualTo(new IrInstruction("PUSH", List.of(rX), call.source()));
+            assertThat(out.get(0)).isEqualTo(IrInstruction.synthetic("PUSH", List.of(rY), call.source()));
+            assertThat(out.get(1)).isEqualTo(IrInstruction.synthetic("PUSH", List.of(rX), call.source()));
             assertThat(out.get(2)).isEqualTo(call);
-            assertThat(out.get(3)).isEqualTo(new IrInstruction("POP", List.of(rY), call.source()));
-            assertThat(out.get(4)).isEqualTo(new IrInstruction("POP", List.of(rX), call.source()));
+            assertThat(out.get(3)).isEqualTo(IrInstruction.synthetic("POP", List.of(rY), call.source()));
+            assertThat(out.get(4)).isEqualTo(IrInstruction.synthetic("POP", List.of(rX), call.source()));
         }
 
         @Test
@@ -120,7 +120,7 @@ public class EmissionCallerMarshallingTest {
 
             // Expect: PUSV myLabel, CALL myProc
             assertThat(out).hasSize(2);
-            assertThat(out.get(0)).isEqualTo(new IrInstruction("PUSV", List.of(labelParam), call.source()));
+            assertThat(out.get(0)).isEqualTo(IrInstruction.synthetic("PUSV", List.of(labelParam), call.source()));
             assertThat(out.get(1)).isEqualTo(call);
         }
 
@@ -139,11 +139,11 @@ public class EmissionCallerMarshallingTest {
 
             // Expect: PUSV myLabel, PUSI 123, PUSH %rA, CALL myProc, POP %rA
             assertThat(out).hasSize(5);
-            assertThat(out.get(0)).isEqualTo(new IrInstruction("PUSV", List.of(labelParam), call.source()));
-            assertThat(out.get(1)).isEqualTo(new IrInstruction("PUSI", List.of(imm123), call.source()));
-            assertThat(out.get(2)).isEqualTo(new IrInstruction("PUSH", List.of(rA), call.source()));
+            assertThat(out.get(0)).isEqualTo(IrInstruction.synthetic("PUSV", List.of(labelParam), call.source()));
+            assertThat(out.get(1)).isEqualTo(IrInstruction.synthetic("PUSI", List.of(imm123), call.source()));
+            assertThat(out.get(2)).isEqualTo(IrInstruction.synthetic("PUSH", List.of(rA), call.source()));
             assertThat(out.get(3)).isEqualTo(call);
-            assertThat(out.get(4)).isEqualTo(new IrInstruction("POP", List.of(rA), call.source()));
+            assertThat(out.get(4)).isEqualTo(IrInstruction.synthetic("POP", List.of(rA), call.source()));
         }
 
         @Test
@@ -172,9 +172,9 @@ public class EmissionCallerMarshallingTest {
             String labelName = ((IrLabelRef) jmpi.operands().get(0)).labelName();
             assertThat(labelName).startsWith("_safe_call_");
 
-            assertThat(out.get(2)).isEqualTo(new IrInstruction("PUSH", List.of(rA), call.source()));
+            assertThat(out.get(2)).isEqualTo(IrInstruction.synthetic("PUSH", List.of(rA), call.source()));
             assertThat(out.get(3)).isEqualTo(call);
-            assertThat(out.get(4)).isEqualTo(new IrInstruction("POP", List.of(rA), call.source()));
+            assertThat(out.get(4)).isEqualTo(IrInstruction.synthetic("POP", List.of(rA), call.source()));
 
             assertThat(out.get(5)).isInstanceOf(IrLabelDef.class);
             IrLabelDef labelDef = (IrLabelDef) out.get(5);
@@ -207,9 +207,9 @@ public class EmissionCallerMarshallingTest {
             String labelName = ((IrLabelRef) jmpi.operands().get(0)).labelName();
             assertThat(labelName).startsWith("_safe_call_");
 
-            assertThat(out.get(2)).isEqualTo(new IrInstruction("PUSH", List.of(rA), call.source()));
+            assertThat(out.get(2)).isEqualTo(IrInstruction.synthetic("PUSH", List.of(rA), call.source()));
             assertThat(out.get(3)).isEqualTo(call);
-            assertThat(out.get(4)).isEqualTo(new IrInstruction("POP", List.of(rA), call.source()));
+            assertThat(out.get(4)).isEqualTo(IrInstruction.synthetic("POP", List.of(rA), call.source()));
 
             assertThat(out.get(5)).isInstanceOf(IrLabelDef.class);
             IrLabelDef labelDef = (IrLabelDef) out.get(5);

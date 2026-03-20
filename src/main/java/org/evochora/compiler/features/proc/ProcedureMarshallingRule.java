@@ -17,6 +17,9 @@ import java.util.stream.Stream;
  */
 public class ProcedureMarshallingRule implements IEmissionRule {
 
+    // Static counter across compilations — ensures unique label names across programs
+    // compiled in the same JVM process. Prevents label hash collisions when programs
+    // are placed adjacent in the world grid.
     private static final AtomicInteger safeRetCounter = new AtomicInteger(0);
 
     @Override

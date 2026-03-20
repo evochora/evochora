@@ -1805,49 +1805,6 @@ The static registry (init-time, immutable) stays unchanged. The PreProcessorCont
 
 After F4: zero runtime handler registration on PreProcessor. Dynamic handlers are on the mutable Context (Phase 2 data), static handlers are on the immutable Registry (init-time). Framework-agnostic dispatch over both sources.
 
-### Phase G: LR Parameter Passing (open design — needs discussion before committing)
-
-**Goal:** Enable passing LR values as procedure parameters, giving procedures their own
-location register space without requiring a new register bank (LPR).
-
-**Status:** The design below is a starting point. Several open questions remain (see below).
-This phase is independent of Phases A-F and can be implemented at any time after D13.
-
-**Runtime fact:** FPR stores `Object`, LR values are `int[]` (dimension-agnostic coordinate
-vectors). The data stack is `Deque<Object>`. At the runtime level, LR values can already
-flow through the data stack and FPR without code changes.
-
-**Proposed approach — LR save/restore + location stack marshalling:**
-
-| Step | Description |
-|------|-------------|
-| G1 | Runtime: ProcedureCallHandler saves/restores LRs on CALL/RETURN (same pattern as existing PR/FPR save/restore). This gives procedures their own LR space — a procedure can navigate freely via DP without affecting the caller's coordinates. |
-| G2 | Compiler: ProcedureMarshallingRule generates PUSL/POPL (location stack) instead of PUSH/POP (data stack) for LR parameters. LR values never flow through the data stack or FPR, preserving the LR integrity invariant (LRs can only contain coordinates visited via DP). |
-| G3 | Parser: Allow LR in `.PROC` parameter declarations (REF/VAL). |
-
-**Open questions that must be resolved before implementation:**
-
-1. **LR integrity with FPR path:** The PUSL/POPL approach preserves LR integrity (no data→LR
-   path). But is the location stack the right mechanism, or should there be a more direct
-   LR-to-LR parameter transfer? PUSL/POPL use the shared location stack, which could conflict
-   with user code that also uses the location stack.
-
-2. **Procedure-local LR aliases:** With LR save/restore (G1), a procedure effectively has its
-   own LRs. Should `.REG` aliases for LR inside a `.PROC` work differently than global `.REG`
-   aliases? Currently IScopedParserState handles this (proc-local `.REG %POS %LR0` disappears
-   at `.ENDP`), but the semantics may need refinement — a proc-local LR alias refers to the
-   procedure's saved LR, not the caller's.
-
-3. **Full symmetry with DR/PR:** DRs have their own procedure-local bank (PR). With G1, LRs
-   get save/restore but no separate bank. This means the callee's LRs start as copies of the
-   caller's LRs (then diverge via DP). Is this the desired semantics, or should procedure LRs
-   start uninitialized (like PRs)? If uninitialized, should there be a dedicated `.PREG`-like
-   directive for LR parameter aliasing, or is `.REG` sufficient?
-
-4. **Nested calls and stack depth:** LR save/restore adds 4 coordinate vectors per call frame.
-   For deeply nested or recursive procedures, this increases memory usage. Is this acceptable,
-   or should LR save/restore be opt-in (only for procedures that declare LR parameters)?
-
 ---
 
 ## Verification Criteria

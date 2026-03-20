@@ -30,7 +30,26 @@ public final class SourceLoader {
 
     private static final Duration HTTP_TIMEOUT = Duration.ofSeconds(30);
 
+    private static volatile HttpClient sharedHttpClient;
+
     private SourceLoader() {}
+
+    private static HttpClient httpClient() {
+        HttpClient client = sharedHttpClient;
+        if (client == null) {
+            synchronized (SourceLoader.class) {
+                client = sharedHttpClient;
+                if (client == null) {
+                    client = HttpClient.newBuilder()
+                            .connectTimeout(HTTP_TIMEOUT)
+                            .followRedirects(HttpClient.Redirect.NORMAL)
+                            .build();
+                    sharedHttpClient = client;
+                }
+            }
+        }
+        return client;
+    }
 
     /**
      * Checks whether the given path string represents an HTTP or HTTPS URL.
@@ -48,16 +67,12 @@ public final class SourceLoader {
      */
     public static LoadResult loadHttp(String url) throws IOException {
         try {
-            HttpClient client = HttpClient.newBuilder()
-                    .connectTimeout(HTTP_TIMEOUT)
-                    .followRedirects(HttpClient.Redirect.NORMAL)
-                    .build();
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
                     .timeout(HTTP_TIMEOUT)
                     .GET()
                     .build();
-            HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = httpClient().send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() != 200) {
                 throw new IOException("HTTP " + response.statusCode() + " fetching " + url);
             }
