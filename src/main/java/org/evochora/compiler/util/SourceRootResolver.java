@@ -16,7 +16,8 @@ import java.util.regex.Pattern;
  */
 public final class SourceRootResolver {
 
-    private static final Pattern PREFIX_PATTERN = Pattern.compile("^([A-Z][A-Z0-9_]*):(.+)$");
+    // Prefix must be at least 2 characters to avoid collision with Windows drive letters (C:\)
+    private static final Pattern PREFIX_PATTERN = Pattern.compile("^([A-Z][A-Z0-9_]+):(.+)$");
 
     private final List<SourceRoot> sourceRoots;
     private final Path workingDirectory;
