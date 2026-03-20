@@ -12,7 +12,7 @@ import org.evochora.compiler.IFeatureRegistrationContext;
 public class ImportFeature implements ICompilerFeature {
     @Override
     public String name() {
-        return "importdir";
+        return "importdir"; // "import" is a Java reserved word; name matches the package name
     }
 
     @Override

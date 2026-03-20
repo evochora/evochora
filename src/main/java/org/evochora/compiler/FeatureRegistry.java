@@ -8,10 +8,10 @@ import org.evochora.compiler.backend.link.ILinkingRule;
 import org.evochora.compiler.frontend.irgen.IAstNodeToIrConverter;
 import org.evochora.compiler.frontend.module.IDependencyInfo;
 import org.evochora.compiler.frontend.module.IDependencyScanHandler;
-import org.evochora.compiler.frontend.semantics.IDependencySetupHandler;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.postprocess.IPostProcessHandler;
 import org.evochora.compiler.frontend.preprocessor.IPreProcessorHandler;
+import org.evochora.compiler.frontend.semantics.IDependencySetupHandler;
 import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
 import org.evochora.compiler.frontend.semantics.analysis.ISymbolCollector;
 import org.evochora.compiler.frontend.tokenmap.ITokenMapContributor;
@@ -61,46 +61,59 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	@Override
 	public <T extends IDependencyInfo> void dependencySetupHandler(
 			Class<T> type, IDependencySetupHandler<T> handler) {
+		guardDuplicate(dependencySetupHandlers, type, "dependency setup handler");
 		dependencySetupHandlers.put(type, handler);
 	}
 
 	@Override
 	public void preprocessor(String name, IPreProcessorHandler handler) {
-		preprocessorHandlers.put(name.toUpperCase(), handler);
+		String key = name.toUpperCase();
+		guardDuplicate(preprocessorHandlers, key, "preprocessor handler");
+		preprocessorHandlers.put(key, handler);
 	}
 
 	@Override
 	public void parserStatement(String keyword, IParserStatementHandler handler) {
-		parserStatementHandlers.put(keyword.toUpperCase(), handler);
+		String key = keyword.toUpperCase();
+		guardDuplicate(parserStatementHandlers, key, "parser statement handler");
+		parserStatementHandlers.put(key, handler);
 	}
 
 	@Override
 	public void defaultParserStatement(IParserStatementHandler handler) {
+		if (this.defaultParserStatementHandler != null) {
+			throw new IllegalStateException("Default parser statement handler already registered");
+		}
 		this.defaultParserStatementHandler = handler;
 	}
 
 	@Override
 	public void symbolCollector(Class<? extends AstNode> nodeType, ISymbolCollector collector) {
+		guardDuplicate(symbolCollectors, nodeType, "symbol collector");
 		symbolCollectors.put(nodeType, collector);
 	}
 
 	@Override
 	public void analysisHandler(Class<? extends AstNode> nodeType, IAnalysisHandler handler) {
+		guardDuplicate(analysisHandlers, nodeType, "analysis handler");
 		analysisHandlers.put(nodeType, handler);
 	}
 
 	@Override
 	public void tokenMapContributor(Class<? extends AstNode> nodeType, ITokenMapContributor contributor) {
+		guardDuplicate(tokenMapContributors, nodeType, "token map contributor");
 		tokenMapContributors.put(nodeType, contributor);
 	}
 
 	@Override
 	public void postProcessHandler(Class<? extends AstNode> nodeType, IPostProcessHandler handler) {
+		guardDuplicate(postProcessHandlers, nodeType, "post-process handler");
 		postProcessHandlers.put(nodeType, handler);
 	}
 
 	@Override
 	public <T extends AstNode> void irConverter(Class<T> nodeType, IAstNodeToIrConverter<T> converter) {
+		guardDuplicate(irConverters, nodeType, "IR converter");
 		irConverters.put(nodeType, converter);
 	}
 
@@ -111,7 +124,9 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 
 	@Override
 	public void layoutHandler(String namespace, String name, ILayoutDirectiveHandler handler) {
-		layoutHandlers.put((namespace + ":" + name).toLowerCase(), handler);
+		String key = (namespace + ":" + name).toLowerCase();
+		guardDuplicate(layoutHandlers, key, "layout handler");
+		layoutHandlers.put(key, handler);
 	}
 
 	@Override
@@ -121,7 +136,9 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 
 	@Override
 	public void linkingDirectiveHandler(String namespace, String name, ILinkingDirectiveHandler handler) {
-		linkingDirectiveHandlers.put((namespace + ":" + name).toLowerCase(), handler);
+		String key = (namespace + ":" + name).toLowerCase();
+		guardDuplicate(linkingDirectiveHandlers, key, "linking directive handler");
+		linkingDirectiveHandlers.put(key, handler);
 	}
 
 	@Override
@@ -189,5 +206,11 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 
 	public List<IEmissionContributor> emissionContributors() {
 		return Collections.unmodifiableList(emissionContributors);
+	}
+
+	private static <K> void guardDuplicate(Map<K, ?> map, K key, String description) {
+		if (map.containsKey(key)) {
+			throw new IllegalStateException(description + " already registered for: " + key);
+		}
 	}
 }

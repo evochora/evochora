@@ -46,4 +46,11 @@ class StandardFeaturesTest {
             feature.register(registry);
         }
     }
+
+    @Test
+    void defaultParserStatementHandlerIsRegistered() {
+        FeatureRegistry registry = new FeatureRegistry();
+        StandardFeatures.all().forEach(f -> f.register(registry));
+        assertThat(registry.defaultParserStatementHandler()).isNotNull();
+    }
 }

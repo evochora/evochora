@@ -24,8 +24,11 @@ import org.evochora.compiler.frontend.semantics.IDependencySetupHandler;
 import org.evochora.compiler.frontend.semantics.ModuleSetupRegistry;
 import org.evochora.compiler.model.ModuleContextTracker;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
+import org.evochora.compiler.diagnostics.CompilerLogger;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.frontend.module.IDependencyInfo;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ir.IrItem;
 import org.evochora.compiler.frontend.irgen.DefaultAstNodeToIrConverter;
 import org.evochora.compiler.frontend.irgen.IrConverterRegistry;
 import org.evochora.compiler.frontend.irgen.IrGenerator;
@@ -44,6 +47,7 @@ import org.evochora.compiler.backend.link.Linker;
 import org.evochora.compiler.backend.link.LinkingContext;
 import org.evochora.compiler.backend.link.LinkingDirectiveRegistry;
 import org.evochora.compiler.backend.link.LinkingRegistry;
+import org.evochora.compiler.backend.emit.EmissionContributorRegistry;
 import org.evochora.compiler.backend.emit.EmissionRegistry;
 import org.evochora.compiler.backend.emit.IEmissionRule;
 import org.evochora.compiler.backend.emit.Emitter;
@@ -126,7 +130,7 @@ public class Compiler implements ICompiler {
     public ProgramArtifact compile(List<String> sourceLines, String programName, EnvironmentProperties envProps, CompilerOptions options) throws CompilationException {
 
         if (verbosity >= 0) {
-            org.evochora.compiler.diagnostics.CompilerLogger.setLevel(verbosity);
+            CompilerLogger.setLevel(verbosity);
         }
 
         CompilerOptions effectiveOptions = (options != null) ? options : CompilerOptions.defaults();
@@ -246,7 +250,7 @@ public class Compiler implements ICompiler {
         analysisRegistry.registerAll(featureRegistry.analysisHandlers());
         analysisRegistry.registerAllCollectors(featureRegistry.symbolCollectors());
         ModuleSetupRegistry setupRegistry = new ModuleSetupRegistry();
-        featureRegistry.dependencySetupHandlers().forEach((type, handler) -> setupRegistry.register(type, (IDependencySetupHandler) handler));
+        featureRegistry.dependencySetupHandlers().forEach((type, handler) -> registerSetupHandler(setupRegistry, type, handler));
         SemanticAnalyzer analyzer = new SemanticAnalyzer(diagnostics, symbolTable, graph, mainFilePath, rootAliasChain, analysisRegistry, setupRegistry);
         analyzer.analyze(ast);
         if (diagnostics.hasErrors()) {
@@ -282,7 +286,7 @@ public class Compiler implements ICompiler {
         // Phase 8: IR Rewriting (apply emission rules)
         EmissionRegistry emissionRegistry = new EmissionRegistry();
         emissionRegistry.registerAll(featureRegistry.emissionRules());
-        java.util.List<org.evochora.compiler.model.ir.IrItem> rewritten = irProgram.items();
+        List<IrItem> rewritten = irProgram.items();
         for (IEmissionRule rule : emissionRegistry.rules()) {
             rewritten = rule.apply(rewritten);
         }
@@ -312,25 +316,22 @@ public class Compiler implements ICompiler {
         IrProgram linkedIr = linker.link(rewrittenIr, layout, linkContext, envProps);
 
         // Phase 11: Emission (generate final binary)
-        org.evochora.compiler.backend.emit.EmissionContributorRegistry emissionContributorRegistry =
-                new org.evochora.compiler.backend.emit.EmissionContributorRegistry();
-        for (org.evochora.compiler.backend.emit.IEmissionContributor c : featureRegistry.emissionContributors()) {
-            emissionContributorRegistry.register(c);
-        }
+        EmissionContributorRegistry emissionContributorRegistry = new EmissionContributorRegistry();
+        featureRegistry.emissionContributors().forEach(emissionContributorRegistry::register);
         Emitter emitter = new Emitter();
         ProgramArtifact artifact;
         try {
             // Generate tokenLookup from tokenMap for efficient line-based lookup
             Map<String, Map<Integer, Map<Integer, List<TokenInfo>>>> tokenLookup = TokenMapGenerator.buildTokenLookup(tokenMap);
             artifact = emitter.emit(linkedIr, layout, linkContext, isa, emissionContributorRegistry, sources, tokenMap, tokenLookup);
-        } catch (org.evochora.compiler.api.CompilationException ce) {
+        } catch (CompilationException ce) {
             throw ce; // already formatted with file/line
         } catch (RuntimeException re) {
             // If any runtime exception bubbles up, wrap into CompilationException to present user-friendly message
-            throw new org.evochora.compiler.api.CompilationException(re.getMessage(), re);
+            throw new CompilationException(re.getMessage(), re);
         }
 
-        org.evochora.compiler.diagnostics.CompilerLogger.debug("Compiler: " + programName + " programId:" + artifact.programId());
+        CompilerLogger.debug("Compiler: " + programName + " programId:" + artifact.programId());
         return artifact;
     }
 
@@ -341,5 +342,16 @@ public class Compiler implements ICompiler {
     @Override
     public void setVerbosity(int level) {
         this.verbosity = level;
+    }
+
+    /**
+     * Type-safe bridge for registering setup handlers from the untyped FeatureRegistry map.
+     * The cast is safe because FeatureRegistry.dependencySetupHandler() enforces type consistency
+     * at registration time.
+     */
+    @SuppressWarnings("unchecked")
+    private static <T extends IDependencyInfo> void registerSetupHandler(
+            ModuleSetupRegistry registry, Class<T> type, IDependencySetupHandler<?> handler) {
+        registry.register(type, (IDependencySetupHandler<T>) handler);
     }
 }

@@ -25,6 +25,12 @@ public final class StandardFeatures {
 
     private StandardFeatures() {}
 
+    /**
+     * Returns all built-in compiler features.
+     * Each call creates fresh, stateless feature instances in an unmodifiable list.
+     *
+     * @return An unmodifiable list of all 14 built-in compiler features.
+     */
     public static List<ICompilerFeature> all() {
         return List.of(
             new RepeatFeature(),
@@ -40,7 +46,7 @@ public final class StandardFeatures {
             new RequireFeature(),
             new ImportFeature(),
             new ProcFeature(),
-            new InstructionFeature()
+            new InstructionFeature() // registers the defaultParserStatement handler
         );
     }
 }
