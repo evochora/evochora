@@ -53,4 +53,11 @@ class StandardFeaturesTest {
         StandardFeatures.all().forEach(f -> f.register(registry));
         assertThat(registry.defaultParserStatementHandler()).isNotNull();
     }
+
+    @Test
+    void allFeaturesRegisterWithoutConflict() {
+        FeatureRegistry registry = new FeatureRegistry();
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(
+                () -> StandardFeatures.all().forEach(f -> f.register(registry)));
+    }
 }

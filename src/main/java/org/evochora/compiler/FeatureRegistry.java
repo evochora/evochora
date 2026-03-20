@@ -35,7 +35,7 @@ import java.util.Map;
  */
 public class FeatureRegistry implements IFeatureRegistrationContext {
 
-	private final List<IDependencyScanHandler> dependencyScanHandlers = new ArrayList<>();
+	// Map-based registrations are key-based with guardDuplicate — duplicates are a configuration error.
 	private final Map<Class<? extends IDependencyInfo>, IDependencySetupHandler<?>> dependencySetupHandlers = new HashMap<>();
 	private final Map<String, IPreProcessorHandler> preprocessorHandlers = new HashMap<>();
 	private final Map<String, IParserStatementHandler> parserStatementHandlers = new HashMap<>();
@@ -45,10 +45,14 @@ public class FeatureRegistry implements IFeatureRegistrationContext {
 	private final Map<Class<? extends AstNode>, ITokenMapContributor> tokenMapContributors = new HashMap<>();
 	private final Map<Class<? extends AstNode>, IPostProcessHandler> postProcessHandlers = new HashMap<>();
 	private final Map<Class<? extends AstNode>, IAstNodeToIrConverter<?>> irConverters = new HashMap<>();
-	private final List<IEmissionRule> emissionRules = new ArrayList<>();
 	private final Map<String, ILayoutDirectiveHandler> layoutHandlers = new HashMap<>();
-	private final List<ILinkingRule> linkingRules = new ArrayList<>();
 	private final Map<String, ILinkingDirectiveHandler> linkingDirectiveHandlers = new HashMap<>();
+
+	// List-based registrations preserve registration order. Within a feature, the feature
+	// controls handler ordering. No guardDuplicate — ordered sequential execution is intended.
+	private final List<IDependencyScanHandler> dependencyScanHandlers = new ArrayList<>();
+	private final List<IEmissionRule> emissionRules = new ArrayList<>();
+	private final List<ILinkingRule> linkingRules = new ArrayList<>();
 	private final List<IEmissionContributor> emissionContributors = new ArrayList<>();
 
 	// --- IFeatureRegistrationContext implementation (write side) ---

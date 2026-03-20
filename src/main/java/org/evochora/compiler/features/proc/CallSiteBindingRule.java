@@ -33,7 +33,10 @@ public class CallSiteBindingRule implements ILinkingRule {
         if (!regNames.isEmpty()) {
             int[] ids = new int[regNames.size()];
             for (int j = 0; j < regNames.size(); j++) {
-                ids[j] = isa.resolveRegisterToken(regNames.get(j)).orElse(-1);
+                String regName = regNames.get(j);
+                ids[j] = isa.resolveRegisterToken(regName).orElseThrow(() ->
+                        new IllegalStateException("Cannot resolve register '" + regName
+                                + "' — should have been validated in semantic analysis"));
             }
             context.callSiteBindings().put(context.currentAddress(), ids);
         }

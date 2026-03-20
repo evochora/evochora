@@ -66,7 +66,11 @@ public class ImportSourceHandler implements IPreProcessorHandler {
 
         // Compute alias chain: parent chain + alias
         String parentChain = preProcessorContext.currentAliasChain();
-        String aliasUpper = alias != null ? alias.toUpperCase() : resolvedPath;
+        if (alias == null) {
+            throw new IllegalStateException(
+                    "Import alias is null — parser must enforce AS clause");
+        }
+        String aliasUpper = alias.toUpperCase();
         String aliasChain = (parentChain == null || parentChain.isEmpty())
                 ? aliasUpper
                 : parentChain + "." + aliasUpper;

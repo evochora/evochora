@@ -40,7 +40,11 @@ public final class PlaceLayoutHandler implements ILayoutDirectiveHandler {
     private PlacedMolecule createMolecule(IrDirective directive) throws CompilationException {
         IrValue val = directive.args().get("value");
         IrValue.Str t = (IrValue.Str) directive.args().get("type");
-        String ts = t != null ? t.value() : "DATA";
+        if (t == null) {
+            throw new IllegalStateException(
+                    "Missing 'type' argument in place directive — PlaceNodeConverter must provide it");
+        }
+        String ts = t.value();
         int type;
         try {
             type = MoleculeTypeRegistry.nameToType(ts);

@@ -29,9 +29,13 @@ public final class StandardFeatures {
      * Returns all built-in compiler features.
      * Each call creates fresh, stateless feature instances in an unmodifiable list.
      *
-     * @return An unmodifiable list of all 14 built-in compiler features.
+     * @return An unmodifiable list of all built-in compiler features.
      */
     public static List<ICompilerFeature> all() {
+        // The order is semantically relevant for list-based registrations (emissionRules,
+        // linkingRules, emissionContributors). Features are registered in this order —
+        // within a feature, the registration order determines execution order.
+        // InstructionFeature must be last — it registers the defaultParserStatement handler.
         return List.of(
             new RepeatFeature(),
             new SourceFeature(),
@@ -46,7 +50,7 @@ public final class StandardFeatures {
             new RequireFeature(),
             new ImportFeature(),
             new ProcFeature(),
-            new InstructionFeature() // registers the defaultParserStatement handler
+            new InstructionFeature()
         );
     }
 }

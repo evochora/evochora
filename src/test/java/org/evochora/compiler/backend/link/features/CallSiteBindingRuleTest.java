@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Unit tests for {@link CallSiteBindingRule}.
@@ -140,7 +141,7 @@ class CallSiteBindingRuleTest {
     }
 
     @Test
-    void resolvesUnknownRegisterToMinusOne() {
+    void throwsOnUnresolvableRegister() {
         IrInstruction call = new IrCallInstruction(
                 "CALL",
                 List.of(new IrImm(0)),
@@ -149,9 +150,9 @@ class CallSiteBindingRuleTest {
                 dummySource
         );
 
-        rule.apply(call, context, layout);
-
-        assertThat(context.callSiteBindings().get(0)).containsExactly(-1);
+        assertThatThrownBy(() -> rule.apply(call, context, layout))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("%UNKNOWN");
     }
 
     /**
