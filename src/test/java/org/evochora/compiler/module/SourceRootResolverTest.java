@@ -146,4 +146,20 @@ public class SourceRootResolverTest {
         String result = resolver.resolve("PRED:main.evo", "");
         assertThat(result).isEqualTo("https://example.com/organisms/main.evo");
     }
+
+    @Test
+    @Tag("unit")
+    void parsePath_singleCharPrefix_treatedAsFilePath() {
+        ParsedPath parsed = SourceRootResolver.parsePath("A:file.evo");
+        assertThat(parsed.prefix()).isNull();
+        assertThat(parsed.filePath()).isEqualTo("A:file.evo");
+    }
+
+    @Test
+    @Tag("unit")
+    void parsePath_windowsDriveLetter_treatedAsFilePath() {
+        ParsedPath parsed = SourceRootResolver.parsePath("C:\\Users\\test\\file.evo");
+        assertThat(parsed.prefix()).isNull();
+        assertThat(parsed.filePath()).isEqualTo("C:\\Users\\test\\file.evo");
+    }
 }

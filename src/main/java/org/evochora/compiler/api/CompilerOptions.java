@@ -21,8 +21,20 @@ public record CompilerOptions(List<SourceRoot> sourceRoots) {
      *
      * @throws IllegalArgumentException if duplicate prefixes are found.
      */
+    private static final java.util.regex.Pattern PREFIX_PATTERN =
+            java.util.regex.Pattern.compile("^[A-Z][A-Z0-9_]+$");
+
     public void validate() {
-        // Normalize null and "" to the same key for duplicate detection
+        for (SourceRoot root : sourceRoots) {
+            if (root.prefix() != null && !root.prefix().isEmpty()) {
+                if (!PREFIX_PATTERN.matcher(root.prefix()).matches()) {
+                    throw new IllegalArgumentException(
+                            "Source root prefix '" + root.prefix() + "' is invalid — "
+                            + "prefixes must be at least 2 uppercase characters ([A-Z][A-Z0-9_]+) "
+                            + "to avoid collision with Windows drive letters.");
+                }
+            }
+        }
         long distinctPrefixes = sourceRoots.stream()
                 .map(r -> r.isDefault() ? "" : r.prefix())
                 .distinct()

@@ -70,9 +70,10 @@ public final class LinkingContext {
      * Pops the alias chain when leaving an imported module.
      */
     public void popAliasChain() {
-        if (!aliasChainStack.isEmpty()) {
-            aliasChainStack.pop();
+        if (aliasChainStack.isEmpty()) {
+            throw new IllegalStateException("Cannot pop alias chain: stack is empty");
         }
+        aliasChainStack.pop();
     }
 
     /**

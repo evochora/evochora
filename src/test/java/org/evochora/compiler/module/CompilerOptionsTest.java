@@ -91,4 +91,24 @@ public class CompilerOptionsTest {
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Duplicate");
     }
+
+    @Test
+    @Tag("unit")
+    void validate_singleCharPrefix_fails() {
+        CompilerOptions opts = new CompilerOptions(List.of(
+                new SourceRoot("./a", "A")));
+        assertThatThrownBy(opts::validate)
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("at least 2");
+    }
+
+    @Test
+    @Tag("unit")
+    void validate_lowercasePrefix_fails() {
+        CompilerOptions opts = new CompilerOptions(List.of(
+                new SourceRoot("./a", "pred")));
+        assertThatThrownBy(opts::validate)
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("invalid");
+    }
 }

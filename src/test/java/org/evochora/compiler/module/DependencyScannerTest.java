@@ -171,4 +171,26 @@ public class DependencyScannerTest {
         assertThat(requires.get(0).alias()).isEqualToIgnoringCase("DEP");
         assertThat(requires.get(0).path()).isEqualTo("dependency.evo");
     }
+
+    @Test
+    @Tag("integration")
+    void threeModuleCycle_isDetected() throws Exception {
+        Files.writeString(tempDir.resolve("a.evo"), ".IMPORT \"b.evo\" AS B\nNOP\n");
+        Files.writeString(tempDir.resolve("b.evo"), ".IMPORT \"c.evo\" AS C\nNOP\n");
+        Files.writeString(tempDir.resolve("c.evo"), ".IMPORT \"a.evo\" AS A\nNOP\n");
+
+        String mainSource = ".IMPORT \"a.evo\" AS A\nNOP\n";
+        String mainPath = tempDir.resolve("main.evo").toString();
+
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        SourceRootResolver resolver = defaultResolver(tempDir);
+        DependencyScanner scanner = new DependencyScanner(diagnostics, resolver, defaultHandlers());
+        scanner.scan(mainSource, mainPath);
+
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.getDiagnostics().stream()
+                .anyMatch(d -> d.message().toLowerCase().contains("circular")))
+                .as("Expected circular dependency error")
+                .isTrue();
+    }
 }

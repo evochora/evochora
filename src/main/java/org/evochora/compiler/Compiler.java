@@ -79,10 +79,8 @@ public class Compiler implements ICompiler {
         String resolvedPath;
         if (options != null) {
             // Explicit source roots: resolve via source roots relative to CWD
-            CompilerOptions effectiveOptions = options;
-            effectiveOptions.validate();
             SourceRootResolver resolver = new SourceRootResolver(
-                    effectiveOptions.sourceRoots(), Path.of("").toAbsolutePath());
+                    options.sourceRoots(), Path.of("").toAbsolutePath());
             resolvedPath = resolver.resolve(programPath, "");
         } else {
             // No source roots: treat programPath as CWD-relative file path

@@ -87,7 +87,8 @@ public class ImportSourceHandler implements IPreProcessorHandler {
         newTokens.add(0, new Token(TokenType.DIRECTIVE, ".PUSH_CTX", placementCtx, importToken.line(), 0, importToken.fileName()));
         newTokens.add(new Token(TokenType.DIRECTIVE, ".POP_CTX", "IMPORT", importToken.line(), 0, importToken.fileName()));
 
-        // Push alias chain before injecting tokens (imported module's tokens will see this chain)
+        // Push alias chain before injecting tokens. The corresponding pop happens when the
+        // injected .POP_CTX token is processed by the preprocessor — not in this handler.
         preProcessorContext.pushAliasChain(aliasChain);
 
         // Inject after the .IMPORT directive (tokens remain for the parser)
