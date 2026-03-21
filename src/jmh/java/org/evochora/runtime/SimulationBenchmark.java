@@ -138,19 +138,33 @@ public class SimulationBenchmark {
                       LTI %DR2 DATA:100
                       SCNI %DR4 0|-1
                       JMPI MAIN
+                    """,
+            "PROC_CALL", """
+                    .PROC WORK REF rA VAL vB
+                      ADDI rA DATA:1
+                      ADDI vB DATA:1
+                      RET
+                    .ENDP
+
+                    MAIN:
+                      SETI %DR0 DATA:0
+                      CALL WORK REF %DR0 VAL DATA:42
+                      CALL WORK REF %DR0 VAL DATA:42
+                      CALL WORK REF %DR0 VAL DATA:42
+                      JMPI MAIN
                     """
     );
 
     /** Assembly program to execute. */
-    @Param({/* "ARITHMETIC", "ENVIRONMENT", */ "REALISTIC"})  // uncomment others for targeted benchmarks
+    @Param({/* "ARITHMETIC", "ENVIRONMENT", */ "REALISTIC", "PROC_CALL"})
     private String assembly;
 
     /** Number of organisms in the simulation. */
-    @Param({"20", "100", "500", "2000"})
+    @Param({"100", "500", "2000"})
     private int organisms;
 
     /** Parallelism level for the simulation's Plan and Execute phases. */
-    @Param({"1", "4"})
+    @Param({"4"})
     private int parallelism;
 
     private Map<String, ProgramArtifact> compiledPrograms;

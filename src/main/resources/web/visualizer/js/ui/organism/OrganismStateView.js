@@ -3,7 +3,7 @@ import { AnnotationUtils, INSTRUCTION_CONSTANTS } from '../../annotator/Annotati
 
 /**
  * Renders the dynamic runtime state of an organism in the organism panel.
- * This includes registers (DR, PR, FPR, LR) and stacks (Data, Location, Call).
+ * This includes registers (DR, PDR, FDR, LR) and stacks (Data, Location, Call).
  * It highlights changes between ticks to make debugging easier.
  *
  * @class OrganismStateView
@@ -21,7 +21,7 @@ export class OrganismStateView {
 
     /**
      * Sets the static program context (the ProgramArtifact).
-     * This allows the view to resolve fprBindings from the artifact for debugging purposes.
+     * This allows the view to resolve fdrBindings from the artifact for debugging purposes.
      *
      * @param {object} artifact - The ProgramArtifact containing call site bindings and coordinate mappings.
      */
@@ -157,11 +157,11 @@ export class OrganismStateView {
                         }
                     }
                     
-                    // Fallback: Get fprBindings (for legacy WITH syntax or when artifact unavailable)
-                    let fprBindings = entry.fprBindings;
-                    if ((!fprBindings || Object.keys(fprBindings).length === 0) && this.artifact && staticInfo && entry.absoluteCallIp) {
+                    // Fallback: Get fdrBindings (for legacy WITH syntax or when artifact unavailable)
+                    let fdrBindings = entry.fdrBindings;
+                    if ((!fdrBindings || Object.keys(fdrBindings).length === 0) && this.artifact && staticInfo && entry.absoluteCallIp) {
                         // Try to resolve bindings from artifact at debug time using the CALL instruction address
-                        fprBindings = resolveBindingsFromArtifact(entry.absoluteCallIp, staticInfo);
+                        fdrBindings = resolveBindingsFromArtifact(entry.absoluteCallIp, staticInfo);
                     }
                     
                     // Format parameters using new REF/VAL syntax if parameter info available
@@ -207,20 +207,20 @@ export class OrganismStateView {
                             }
                         }
                         
-                        // Format REF parameters (from current FPRs - consistent with VAL)
-                        // REF parameters are call-by-reference, but we show the FPR register and its current value
+                        // Format REF parameters (from current FDRs - consistent with VAL)
+                        // REF parameters are call-by-reference, but we show the FDR register and its current value
                         // Note: Values are only available after PUSI/POP instructions have been executed
-                        if (refParams.length > 0 && currentState && currentState.formalParamRegisters && Array.isArray(currentState.formalParamRegisters)) {
+                        if (refParams.length > 0 && currentState && currentState.formalDataRegisters && Array.isArray(currentState.formalDataRegisters)) {
                             result += ' REF ';
                             const refStrings = [];
                             for (const refParam of refParams) {
-                                // REF parameters are stored in FPRs after the call
-                                // The index in paramInfo corresponds to the FPR index
-                                if (refParam.index < currentState.formalParamRegisters.length) {
+                                // REF parameters are stored in FDRs after the call
+                                // The index in paramInfo corresponds to the FDR index
+                                if (refParam.index < currentState.formalDataRegisters.length) {
                                     try {
-                                        const fprDisplay = AnnotationUtils.formatRegisterName(INSTRUCTION_CONSTANTS.FPR_BASE + refParam.index);
-                                        const refValue = ValueFormatter.format(currentState.formalParamRegisters[refParam.index]);
-                                        refStrings.push(`${refParam.name}<span class="injected-value">[${fprDisplay}=${refValue}]</span>`);
+                                        const fdrDisplay = AnnotationUtils.formatRegisterName(INSTRUCTION_CONSTANTS.FDR_BASE + refParam.index);
+                                        const refValue = ValueFormatter.format(currentState.formalDataRegisters[refParam.index]);
+                                        refStrings.push(`${refParam.name}<span class="injected-value">[${fdrDisplay}=${refValue}]</span>`);
                                     } catch (error) {
                                         console.error('ValueFormatter failed for REF parameter:', error.message);
                                         refStrings.push(refParam.name);
@@ -232,20 +232,20 @@ export class OrganismStateView {
                             result += refStrings.join(' ');
                         }
                         
-                        // Format VAL parameters (from current FPRs - includes literals)
-                        // VAL parameters are call-by-value, but we show the FPR register and its current value (consistent with REF/WITH)
+                        // Format VAL parameters (from current FDRs - includes literals)
+                        // VAL parameters are call-by-value, but we show the FDR register and its current value (consistent with REF/WITH)
                         // Note: Values are only available after PUSI/POP instructions have been executed
-                        if (valParams.length > 0 && currentState && currentState.formalParamRegisters && Array.isArray(currentState.formalParamRegisters)) {
+                        if (valParams.length > 0 && currentState && currentState.formalDataRegisters && Array.isArray(currentState.formalDataRegisters)) {
                             result += ' VAL ';
                             const valStrings = [];
                             for (const valParam of valParams) {
-                                // VAL parameters are stored in FPRs after the call
-                                // The index in paramInfo corresponds to the FPR index
-                                if (valParam.index < currentState.formalParamRegisters.length) {
+                                // VAL parameters are stored in FDRs after the call
+                                // The index in paramInfo corresponds to the FDR index
+                                if (valParam.index < currentState.formalDataRegisters.length) {
                                     try {
-                                        const fprDisplay = AnnotationUtils.formatRegisterName(INSTRUCTION_CONSTANTS.FPR_BASE + valParam.index);
-                                        const valValue = ValueFormatter.format(currentState.formalParamRegisters[valParam.index]);
-                                        valStrings.push(`${valParam.name}<span class="injected-value">[${fprDisplay}=${valValue}]</span>`);
+                                        const fdrDisplay = AnnotationUtils.formatRegisterName(INSTRUCTION_CONSTANTS.FDR_BASE + valParam.index);
+                                        const valValue = ValueFormatter.format(currentState.formalDataRegisters[valParam.index]);
+                                        valStrings.push(`${valParam.name}<span class="injected-value">[${fdrDisplay}=${valValue}]</span>`);
                                     } catch (error) {
                                         console.error('ValueFormatter failed for VAL parameter:', error.message);
                                         valStrings.push(valParam.name);
@@ -257,20 +257,20 @@ export class OrganismStateView {
                             result += valStrings.join(' ');
                     }
 
-                        // Format WITH parameters (legacy syntax - same as REF, from current FPRs)
-                        // WITH parameters are call-by-reference (legacy), but we show the FPR register and its current value
+                        // Format WITH parameters (legacy syntax - same as REF, from current FDRs)
+                        // WITH parameters are call-by-reference (legacy), but we show the FDR register and its current value
                         // Note: Values are only available after PUSI/POP instructions have been executed
-                        if (withParams.length > 0 && currentState && currentState.formalParamRegisters && Array.isArray(currentState.formalParamRegisters)) {
+                        if (withParams.length > 0 && currentState && currentState.formalDataRegisters && Array.isArray(currentState.formalDataRegisters)) {
                             result += ' WITH ';
                             const withStrings = [];
                             for (const withParam of withParams) {
-                                // WITH parameters are stored in FPRs after the call
-                                // The index in paramInfo corresponds to the FPR index
-                                if (withParam.index < currentState.formalParamRegisters.length) {
+                                // WITH parameters are stored in FDRs after the call
+                                // The index in paramInfo corresponds to the FDR index
+                                if (withParam.index < currentState.formalDataRegisters.length) {
                                     try {
-                                        const fprDisplay = AnnotationUtils.formatRegisterName(INSTRUCTION_CONSTANTS.FPR_BASE + withParam.index);
-                                        const withValue = ValueFormatter.format(currentState.formalParamRegisters[withParam.index]);
-                                        withStrings.push(`${withParam.name}<span class="injected-value">[${fprDisplay}=${withValue}]</span>`);
+                                        const fdrDisplay = AnnotationUtils.formatRegisterName(INSTRUCTION_CONSTANTS.FDR_BASE + withParam.index);
+                                        const withValue = ValueFormatter.format(currentState.formalDataRegisters[withParam.index]);
+                                        withStrings.push(`${withParam.name}<span class="injected-value">[${fdrDisplay}=${withValue}]</span>`);
                                     } catch (error) {
                                         console.error('ValueFormatter failed for WITH parameter:', error.message);
                                         withStrings.push(withParam.name);
@@ -281,12 +281,12 @@ export class OrganismStateView {
                             }
                             result += withStrings.join(' ');
                         }
-                    } else if (fprBindings && Object.keys(fprBindings).length > 0) {
+                    } else if (fdrBindings && Object.keys(fdrBindings).length > 0) {
                         // Fallback: Legacy WITH syntax (when parameter info not available)
                         result += ' WITH ';
                         const paramStrings = [];
-                        for (const [fprIdStr, boundRegisterId] of Object.entries(fprBindings)) {
-                            const fprId = parseInt(fprIdStr);
+                        for (const [fdrIdStr, boundRegisterId] of Object.entries(fdrBindings)) {
+                            const fdrId = parseInt(fdrIdStr);
                             const boundId = typeof boundRegisterId === 'number' ? boundRegisterId : parseInt(boundRegisterId);
                             
                             const registerDisplay = AnnotationUtils.formatRegisterName(boundId);
@@ -302,8 +302,8 @@ export class OrganismStateView {
                                 }
                             }
                             
-                            const fprDisplay = AnnotationUtils.formatRegisterName(fprId);
-                            paramStrings.push(`${fprDisplay}<span class="injected-value">[${registerDisplay}=${registerValue}]</span>`);
+                            const fdrDisplay = AnnotationUtils.formatRegisterName(fdrId);
+                            paramStrings.push(`${fdrDisplay}<span class="injected-value">[${registerDisplay}=${registerValue}]</span>`);
                         }
                         result += paramStrings.join(' ');
                     }
@@ -346,13 +346,13 @@ export class OrganismStateView {
         };
 
         /**
-         * Resolves fprBindings from artifact for a given absolute call IP.
+         * Resolves fdrBindings from artifact for a given absolute call IP.
          * This is used at debug time to reconstruct parameter bindings that weren't
          * available at runtime due to self-modifying code.
          *
          * @param {number[]} absoluteCallIp - The absolute coordinates of the CALL instruction.
          * @param {object} staticInfo - The static organism info containing initialPosition.
-         * @returns {object|null} A map of FPR IDs to bound register IDs, or null if not resolvable.
+         * @returns {object|null} A map of FDR IDs to bound register IDs, or null if not resolvable.
          * @private
          */
         const resolveBindingsFromArtifact = (absoluteCallIp, staticInfo) => {
@@ -400,16 +400,16 @@ export class OrganismStateView {
                 return null;
             }
 
-            // Build fprBindings map: FPR index -> register ID
-            // registerIds array: [drId0, drId1, ...] maps to FPR0, FPR1, ...
-            const fprBindings = {};
+            // Build fdrBindings map: FDR index -> register ID
+            // registerIds array: [drId0, drId1, ...] maps to FDR0, FDR1, ...
+            const fdrBindings = {};
             for (let i = 0; i < binding.registerIds.length; i++) {
                 const registerId = binding.registerIds[i];
-                const fprId = INSTRUCTION_CONSTANTS.FPR_BASE + i;
-                fprBindings[fprId] = registerId;
+                const fdrId = INSTRUCTION_CONSTANTS.FDR_BASE + i;
+                fdrBindings[fdrId] = registerId;
             }
 
-            return fprBindings;
+            return fdrBindings;
         };
 
         // Check for stack changes (only on forward step)
@@ -422,7 +422,7 @@ export class OrganismStateView {
         
         // Format state view (IP, DV, ER, DPs are shown in BasicInfoView changeable-box, not here)
         // Birth, MR, Parent are shown in the separate info section above
-        const stateLines = `DR:  ${formatRegisters(state.dataRegisters, true, previousState?.dataRegisters)}\nPR:  ${formatRegisters(state.procedureRegisters, true, previousState?.procedureRegisters)}\nFPR: ${formatRegisters(state.formalParamRegisters, true, previousState?.formalParamRegisters)}\nLR:  ${formatRegisters(state.locationRegisters, true, previousState?.locationRegisters)}\n${dataStackChanged ? '<div class="changed-line">DS:  ' : 'DS:  '}${formatStack(state.dataStack, state.dataRegisters?.length || 8, true)}${dataStackChanged ? '</div>' : ''}\n${locationStackChanged ? '<div class="changed-line">LS:  ' : 'LS:  '}${formatStack(state.locationStack, state.dataRegisters?.length || 8, true)}${locationStackChanged ? '</div>' : ''}\n${callStackChanged ? '<div class="changed-line">CS:  ' : 'CS:  '}${formatCallStack(state.callStack, state)}${callStackChanged ? '</div>' : ''}`;
+        const stateLines = `DR:  ${formatRegisters(state.dataRegisters, true, previousState?.dataRegisters)}\nPDR: ${formatRegisters(state.procDataRegisters, true, previousState?.procDataRegisters)}\nFDR: ${formatRegisters(state.formalDataRegisters, true, previousState?.formalDataRegisters)}\nLR:  ${formatRegisters(state.locationRegisters, true, previousState?.locationRegisters)}\n${dataStackChanged ? '<div class="changed-line">DS:  ' : 'DS:  '}${formatStack(state.dataStack, state.dataRegisters?.length || 8, true)}${dataStackChanged ? '</div>' : ''}\n${locationStackChanged ? '<div class="changed-line">LS:  ' : 'LS:  '}${formatStack(state.locationStack, state.dataRegisters?.length || 8, true)}${locationStackChanged ? '</div>' : ''}\n${callStackChanged ? '<div class="changed-line">CS:  ' : 'CS:  '}${formatCallStack(state.callStack, state)}${callStackChanged ? '</div>' : ''}`;
 
         el.innerHTML = `<div class="code-view" style="font-size:0.9em;">${stateLines}</div>`;
 

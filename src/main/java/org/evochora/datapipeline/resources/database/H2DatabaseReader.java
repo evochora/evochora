@@ -237,16 +237,16 @@ public class H2DatabaseReader implements IDatabaseReader {
             dataRegs.add(OrganismStateConverter.convertRegisterValue(rv));
         }
         
-        java.util.List<org.evochora.datapipeline.api.resources.database.dto.RegisterValueView> procRegs = 
+        java.util.List<org.evochora.datapipeline.api.resources.database.dto.RegisterValueView> pdrRegs = 
                 new java.util.ArrayList<>();
-        for (var rv : orgState.getProcedureRegistersList()) {
-            procRegs.add(OrganismStateConverter.convertRegisterValue(rv));
+        for (var rv : orgState.getProcDataRegistersList()) {
+            pdrRegs.add(OrganismStateConverter.convertRegisterValue(rv));
         }
         
-        java.util.List<org.evochora.datapipeline.api.resources.database.dto.RegisterValueView> fprRegs = 
+        java.util.List<org.evochora.datapipeline.api.resources.database.dto.RegisterValueView> fdrRegs = 
                 new java.util.ArrayList<>();
-        for (var rv : orgState.getFormalParamRegistersList()) {
-            fprRegs.add(OrganismStateConverter.convertRegisterValue(rv));
+        for (var rv : orgState.getFormalDataRegistersList()) {
+            fdrRegs.add(OrganismStateConverter.convertRegisterValue(rv));
         }
         
         java.util.List<int[]> locationRegs = new java.util.ArrayList<>();
@@ -297,7 +297,7 @@ public class H2DatabaseReader implements IDatabaseReader {
                     orgState.hasDvBeforeFetch() ? OrganismStateConverter.vectorToArray(orgState.getDvBeforeFetch()) : null,
                     orgState.getInstructionFailed(),
                     orgState.hasFailureReason() ? orgState.getFailureReason() : null,
-                    dataRegs, procRegs, fprRegs, locationRegs, envDimensions, registerValuesBefore
+                    dataRegs, pdrRegs, fdrRegs, locationRegs, envDimensions, registerValuesBefore
             );
         }
 
@@ -319,14 +319,14 @@ public class H2DatabaseReader implements IDatabaseReader {
                     dv,
                     false,
                     null,
-                    dataRegs, procRegs, fprRegs, locationRegs, envDimensions, nextRegValues
+                    dataRegs, pdrRegs, fdrRegs, locationRegs, envDimensions, nextRegValues
             );
         }
         InstructionsView instructions = new InstructionsView(lastInstruction, nextInstruction);
 
         return new OrganismRuntimeView(
                 energy, ip, dv, dataPointers, activeDpIndex,
-                dataRegs, procRegs, fprRegs, locationRegs,
+                dataRegs, pdrRegs, fdrRegs, locationRegs,
                 dataStack, locationStack, callStack,
                 orgState.getInstructionFailed(),
                 orgState.hasFailureReason() ? orgState.getFailureReason() : null,

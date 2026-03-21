@@ -24,12 +24,12 @@ EXPORT HARVEST_STATE:
 EXPORT .PROC HARVEST
 
   # Register aliases for clarity
-  .PREG %FWD_MASK %PR0   # Cached forward direction as bitmask
-  .PREG %KIDX     %PR1   # Index 0..3 for prime periods
-  .PREG %KLEFT    %PR2   # Countdown until next periodic turn
-  .PREG %DIR      %PR3   # Current movement direction vector
-  .PREG %MASK     %PR4   # Bitmask from SNTI/SPNR operations
-  .PREG %VEC      %PR5   # Temporary direction vector
+  .PREG %FWD_MASK %PDR0   # Cached forward direction as bitmask
+  .PREG %KIDX     %PDR1   # Index 0..3 for prime periods
+  .PREG %KLEFT    %PDR2   # Countdown until next periodic turn
+  .PREG %DIR      %PDR3   # Current movement direction vector
+  .PREG %MASK     %PDR4   # Bitmask from SNTI/SPNR operations
+  .PREG %VEC      %PDR5   # Temporary direction vector
 
   # Entry point with redundant jumps for mutation resistance
   NOP; JMPI HARVEST_START; NOP^53; JMPI HARVEST_START

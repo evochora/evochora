@@ -27,7 +27,7 @@ import org.slf4j.LoggerFactory;
  * sampling and applies a type-specific mutation:
  * <ul>
  *   <li><b>CODE:</b> Flip to a different registered opcode (operation/family/variant modes)</li>
- *   <li><b>REGISTER:</b> ±1 within bank boundaries (DR stays DR, PR stays PR, etc.)</li>
+ *   <li><b>REGISTER:</b> ±1 within bank boundaries (DR stays DR, PDR stays PDR, etc.)</li>
  *   <li><b>DATA:</b> Scale-proportional perturbation: delta = max(1, round(|value|^exponent))</li>
  *   <li><b>LABEL/LABELREF:</b> Flip N random bits in 19-bit hash</li>
  * </ul>
@@ -292,8 +292,8 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
     /**
      * Mutates a REGISTER molecule's value by ±1, clamped within the register bank.
      * <p>
-     * Bank detection: {@code >=LR_BASE} → LR (3000-3003), {@code >=FPR_BASE} → FPR (2000-2007),
-     * {@code >=PR_BASE} → PR (1000-1007), else DR (0-7).
+     * Bank detection: {@code >=LR_BASE} → LR (3000-3003), {@code >=FDR_BASE} → FDR (2000-2007),
+     * {@code >=PDR_BASE} → PDR (1000-1007), else DR (0-7).
      *
      * @param regValue The current register ID.
      * @return The mutated register ID, clamped to bank boundaries.
@@ -307,12 +307,12 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
         if (regValue >= Instruction.LR_BASE) {
             base = Instruction.LR_BASE;
             maxOffset = Config.NUM_LOCATION_REGISTERS - 1;
-        } else if (regValue >= Instruction.FPR_BASE) {
-            base = Instruction.FPR_BASE;
-            maxOffset = Config.NUM_FORMAL_PARAM_REGISTERS - 1;
-        } else if (regValue >= Instruction.PR_BASE) {
-            base = Instruction.PR_BASE;
-            maxOffset = Config.NUM_PROC_REGISTERS - 1;
+        } else if (regValue >= Instruction.FDR_BASE) {
+            base = Instruction.FDR_BASE;
+            maxOffset = Config.NUM_FDR_REGISTERS - 1;
+        } else if (regValue >= Instruction.PDR_BASE) {
+            base = Instruction.PDR_BASE;
+            maxOffset = Config.NUM_PDR_REGISTERS - 1;
         } else {
             base = 0;
             maxOffset = Config.NUM_DATA_REGISTERS - 1;

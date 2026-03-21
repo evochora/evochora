@@ -145,7 +145,7 @@ public class Lexer {
     
     /**
      * Checks if a token represents a valid register pattern.
-     * Valid patterns are: %DRx, %PRx, %FPRx, %LRx where x is a number.
+     * Valid patterns are: %DRx, %PDRx, %FDRx, %LRx where x is a number.
      * 
      * @param text the token text to check
      * @return true if the text represents a valid register pattern
@@ -156,10 +156,10 @@ public class Lexer {
         }
         
         // Check for valid register patterns
-        if (text.matches("%DR\\d+")) return true;  // %DR0, %DR1, etc.
-        if (text.matches("%PR\\d+")) return true;  // %PR0, %PR1, etc.
-        if (text.matches("%FPR\\d+")) return true; // %FPR0, %FPR1, etc.
-        if (text.matches("%LR\\d+")) return true;  // %LR0, %LR1, etc.
+        if (text.matches("%DR\\d+")) return true;   // %DR0, %DR1, etc.
+        if (text.matches("%PDR\\d+")) return true;  // %PDR0, %PDR1, etc.
+        if (text.matches("%FDR\\d+")) return true;  // %FDR0, %FDR1, etc.
+        if (text.matches("%LR\\d+")) return true;   // %LR0, %LR1, etc.
         
         // Not a valid register pattern
         return false;

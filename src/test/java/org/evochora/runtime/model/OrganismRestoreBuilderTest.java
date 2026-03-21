@@ -72,8 +72,8 @@ class OrganismRestoreBuilderTest {
         // Prepare complex state
         List<int[]> dps = Arrays.asList(new int[]{1, 2}, new int[]{3, 4});
         List<Object> drs = new ArrayList<>(Arrays.asList(100, 200, 300, 400, 500, 600, 700, 800));
-        List<Object> prs = new ArrayList<>(Arrays.asList(10, 20, 30, 40));
-        List<Object> fprs = new ArrayList<>(Arrays.asList(5, 6, 7, 8));
+        List<Object> pdrs = new ArrayList<>(Arrays.asList(10, 20, 30, 40));
+        List<Object> fdrs = new ArrayList<>(Arrays.asList(5, 6, 7, 8));
         List<Object> lrs = new ArrayList<>(Arrays.asList(
             new int[]{0, 0}, new int[]{1, 1}, new int[]{2, 2}, new int[]{3, 3}
         ));
@@ -107,8 +107,8 @@ class OrganismRestoreBuilderTest {
             .dataPointers(dps)
             .activeDpIndex(1)
             .dataRegisters(drs)
-            .procRegisters(prs)
-            .formalParamRegisters(fprs)
+            .procDataRegisters(pdrs)
+            .formalDataRegisters(fdrs)
             .locationRegisters(lrs)
             .dataStack(dataStack)
             .locationStack(locationStack)
@@ -132,10 +132,10 @@ class OrganismRestoreBuilderTest {
         assertThat(org.getDp(1)).isEqualTo(new int[]{3, 4});
         assertThat(org.getDrs()).hasSize(8);
         assertThat(org.getDr(0)).isEqualTo(100);
-        assertThat(org.getPrs()).hasSize(4);
-        assertThat(org.getPr(0)).isEqualTo(10);
-        assertThat(org.getFprs()).hasSize(4);
-        assertThat(org.getFpr(0)).isEqualTo(5);
+        assertThat(org.getPdrs()).hasSize(4);
+        assertThat(org.getPdr(0)).isEqualTo(10);
+        assertThat(org.getFdrs()).hasSize(4);
+        assertThat(org.getFdr(0)).isEqualTo(5);
         assertThat(org.getDataStack()).hasSize(2);
         assertThat(org.getLocationStack()).hasSize(1);
         assertThat(org.getCallStack()).hasSize(1);
@@ -363,8 +363,8 @@ class OrganismRestoreBuilderTest {
         original.addSr(50);
         original.setMr(3);
         original.setDr(0, 42);
-        original.setPr(0, 100);
-        original.setFpr(0, new int[]{1, 2});
+        original.setPdr(0, 100);
+        original.setFdr(0, new int[]{1, 2});
 
         // Restore using builder
         Organism restored = Organism.restore(original.getId(), original.getBirthTick())
@@ -379,8 +379,8 @@ class OrganismRestoreBuilderTest {
             .dataPointers(original.getDps())
             .activeDpIndex(original.getActiveDpIndex())
             .dataRegisters(original.getDrs())
-            .procRegisters(original.getPrs())
-            .formalParamRegisters(original.getFprs())
+            .procDataRegisters(original.getPdrs())
+            .formalDataRegisters(original.getFdrs())
             .locationRegisters(original.getLrs())
             .dataStack(original.getDataStack())
             .locationStack(original.getLocationStack())
@@ -400,7 +400,7 @@ class OrganismRestoreBuilderTest {
         assertThat(restored.getSr()).isEqualTo(original.getSr());
         assertThat(restored.getMr()).isEqualTo(original.getMr());
         assertThat(restored.getDr(0)).isEqualTo(original.getDr(0));
-        assertThat(restored.getPr(0)).isEqualTo(original.getPr(0));
-        assertThat(restored.getFpr(0)).isEqualTo(original.getFpr(0));
+        assertThat(restored.getPdr(0)).isEqualTo(original.getPdr(0));
+        assertThat(restored.getFdr(0)).isEqualTo(original.getFdr(0));
     }
 }

@@ -95,7 +95,7 @@ class SimulationRestorerTest {
             .addDataPointers(createVector(20, 20))
             .setActiveDpIndex(1)
             .addDataRegisters(RegisterValue.newBuilder().setScalar(100).build())
-            .addProcedureRegisters(RegisterValue.newBuilder().setScalar(200).build())
+            .addProcDataRegisters(RegisterValue.newBuilder().setScalar(200).build())
             .setIsDead(false)
             .build();
 
@@ -126,7 +126,7 @@ class SimulationRestorerTest {
         assertThat(org.getMr()).isEqualTo(3);
         assertThat(org.getActiveDpIndex()).isEqualTo(1);
         assertThat(org.getDr(0)).isEqualTo(100);
-        assertThat(org.getPr(0)).isEqualTo(200);
+        assertThat(org.getPdr(0)).isEqualTo(200);
     }
 
     @Test

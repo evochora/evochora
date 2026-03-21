@@ -133,7 +133,7 @@ public class AstPostProcessor implements IPostProcessContext {
      *
      * @param originalNode the original identifier node
      * @param aliasName the alias name (e.g., "TMP")
-     * @param resolvedRegister the resolved register (e.g., "%PR0")
+     * @param resolvedRegister the resolved register (e.g., "%PDR0")
      */
     private void createRegisterReplacement(AstNode originalNode, String aliasName, String resolvedRegister) {
         if (!(originalNode instanceof IdentifierNode idNode)) {

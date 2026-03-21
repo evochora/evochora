@@ -80,7 +80,7 @@ public class VectorParameterTypeLossTest {
         // "V2B requires a unit vector with single non-zero component of magnitude 1"
         // This happens because %DIR loses its vector type information
         
-        // The bug: REF parameters are copied from DR registers to FPR registers
+        // The bug: REF parameters are copied from DR registers to FDR registers
         // During this copy, the type information (VECTOR vs DATA) is lost
         // The runtime then treats the vector parameter as DATA, causing the error
     }
@@ -129,12 +129,12 @@ public class VectorParameterTypeLossTest {
         EnvironmentProperties envProps = new EnvironmentProperties(new int[]{100, 100}, true);
         Compiler compiler = new Compiler();
         
-        // WITH syntax: Parameters are resolved directly to %FPRx
+        // WITH syntax: Parameters are resolved directly to %FDRx
         String withProgram = """
             JMPI START
             
             .PROC WITH_TEST WITH PARAM
-              # %PARAM is directly %FPR0, type information preserved
+              # %PARAM is directly %FDR0, type information preserved
               V2BR %DR1 PARAM
               RET
             .ENDP
@@ -145,12 +145,12 @@ public class VectorParameterTypeLossTest {
               NOP
             """;
         
-        // REF syntax: Parameters are copied from %DRx to %FPRx
+        // REF syntax: Parameters are copied from %DRx to %FDRx
         String refProgram = """
             JMPI START
             
             .PROC REF_TEST REF PARAM
-              # %PARAM is copied from %DR0 to %FPR0, type information lost
+              # %PARAM is copied from %DR0 to %FDR0, type information lost
               V2BR %DR1 PARAM
               RET
             .ENDP
@@ -172,8 +172,8 @@ public class VectorParameterTypeLossTest {
         // WITH syntax preserves both value and type information
         
         // This test documents the exact mechanism of the bug:
-        // 1. WITH: Direct resolution to %FPRx (type preserved)
-        // 2. REF: Copy from %DRx to %FPRx (type lost)
+        // 1. WITH: Direct resolution to %FDRx (type preserved)
+        // 2. REF: Copy from %DRx to %FDRx (type lost)
     }
 }
 

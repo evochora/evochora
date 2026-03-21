@@ -83,7 +83,7 @@ public final class CallNodeConverter implements IAstNodeToIrConverter<CallNode> 
                     String nameU = id.text().toUpperCase();
                     Optional<Integer> idxOpt = ctx.resolveProcedureParam(nameU);
                     if (idxOpt.isPresent()) {
-                        actuals.add(new IrValue.Str("%FPR" + idxOpt.get()));
+                        actuals.add(new IrValue.Str("%FDR" + idxOpt.get()));
                     }
                 }
             }

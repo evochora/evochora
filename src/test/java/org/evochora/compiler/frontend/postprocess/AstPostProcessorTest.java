@@ -48,7 +48,7 @@ class AstPostProcessorTest {
 
         // Register aliases by processing RegNode instances (self-extraction)
         processor.process(new RegNode("COUNTER", "%DR0", createSourceInfo()));
-        processor.process(new RegNode("TMP", "%PR0", createSourceInfo()));
+        processor.process(new RegNode("TMP", "%PDR0", createSourceInfo()));
         processor.process(new RegNode("POS", "%DR1", createSourceInfo()));
     }
 
@@ -122,7 +122,7 @@ class AstPostProcessorTest {
         RegisterNode posReg = (RegisterNode) resultInstruction.arguments().get(2);
 
         assertThat(counterReg.getName()).isEqualTo("%DR0");
-        assertThat(tmpReg.getName()).isEqualTo("%PR0");
+        assertThat(tmpReg.getName()).isEqualTo("%PDR0");
         assertThat(posReg.getName()).isEqualTo("%DR1");
     }
 

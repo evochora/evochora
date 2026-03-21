@@ -341,7 +341,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
     }
 
     /**
-     * Parses register configuration (DR, PR, FPR banks).
+     * Parses register configuration (DR, PDR, FDR banks).
      *
      * @param config The REGISTER sub-config.
      * @return The parsed register config.
@@ -356,8 +356,8 @@ public class GeneInsertionPlugin implements IBirthHandler {
         for (String bank : bankNames) {
             int base = switch (bank.toUpperCase()) {
                 case "DR" -> 0;
-                case "PR" -> Instruction.PR_BASE;
-                case "FPR" -> Instruction.FPR_BASE;
+                case "PDR" -> Instruction.PDR_BASE;
+                case "FDR" -> Instruction.FDR_BASE;
                 default -> throw new IllegalArgumentException("Unknown register bank: " + bank);
             };
             banks.add(new int[]{base, rangeMin, rangeMax});

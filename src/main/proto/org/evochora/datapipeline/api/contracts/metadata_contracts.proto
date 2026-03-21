@@ -305,14 +305,14 @@ message SourceInfo {
 
 // Maps a CALL instruction to its parameter register bindings.
 // Protobuf-compatible representation of Map.Entry<Integer, int[]>.
-// The int[] contains register IDs (DR, PR, FPR) that are bound to the procedure's formal parameter registers.
+// The int[] contains register IDs (DR, PDR, FDR) that are bound to the procedure's formal data registers.
 message CallSiteBinding {
   // Linear address of CALL instruction
   int32 linear_address = 1;
 
-  // Register IDs bound to the procedure's formal parameter registers (FPRs).
-  // These are the source register IDs (DR, PR, FPR) that are passed as parameters.
-  // Example: [0, 5] means DR0 and DR5 are bound to FPR0 and FPR1 respectively.
+  // Register IDs bound to the procedure's formal data registers (FDRs).
+  // These are the source register IDs (DR, PDR, FDR) that are passed as parameters.
+  // Example: [0, 5] means DR0 and DR5 are bound to FDR0 and FDR1 respectively.
   repeated int32 register_ids = 2;
 }
 

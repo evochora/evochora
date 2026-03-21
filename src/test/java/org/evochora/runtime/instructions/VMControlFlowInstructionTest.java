@@ -167,10 +167,10 @@ public class VMControlFlowInstructionTest {
     void testRet() {
         int[] expectedIp = new int[]{6};
         int[] callIp = new int[]{5}; // CALL instruction address
-        Object[] prsSnapshot = org.getPrs().toArray(new Object[0]);
-        Object[] fprsSnapshot = org.getFprs().toArray(new Object[0]);
+        Object[] pdrsSnapshot = org.getPdrs().toArray(new Object[0]);
+        Object[] fdrsSnapshot = org.getFdrs().toArray(new Object[0]);
 
-        org.getCallStack().push(new Organism.ProcFrame("TEST_PROC", expectedIp, callIp, prsSnapshot, fprsSnapshot, java.util.Collections.emptyMap()));
+        org.getCallStack().push(new Organism.ProcFrame("TEST_PROC", expectedIp, callIp, pdrsSnapshot, fdrsSnapshot, java.util.Collections.emptyMap()));
 
         // Place WAIT at expected IP to stop instant-skip loop
         environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), expectedIp);

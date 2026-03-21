@@ -42,20 +42,20 @@ class RegisterAliasEmissionContributorTest {
 
     @Test
     @Tag("unit")
-    @DisplayName("Should resolve %PR register alias")
-    void resolvesPrAlias() {
-        EmissionContext ctx = runContributor(regAliasDirective("MOD.TMP", "%PR2"));
+    @DisplayName("Should resolve %PDR register alias")
+    void resolvesPdrAlias() {
+        EmissionContext ctx = runContributor(regAliasDirective("MOD.TMP", "%PDR2"));
 
-        assertThat(ctx.registerAliasMap()).containsEntry("MOD.TMP", Instruction.PR_BASE + 2);
+        assertThat(ctx.registerAliasMap()).containsEntry("MOD.TMP", Instruction.PDR_BASE + 2);
     }
 
     @Test
     @Tag("unit")
-    @DisplayName("Should resolve %FPR register alias")
-    void resolvesFprAlias() {
-        EmissionContext ctx = runContributor(regAliasDirective("MOD.FLOAT_TMP", "%FPR3"));
+    @DisplayName("Should resolve %FDR register alias")
+    void resolvesFdrAlias() {
+        EmissionContext ctx = runContributor(regAliasDirective("MOD.FLOAT_TMP", "%FDR3"));
 
-        assertThat(ctx.registerAliasMap()).containsEntry("MOD.FLOAT_TMP", Instruction.FPR_BASE + 3);
+        assertThat(ctx.registerAliasMap()).containsEntry("MOD.FLOAT_TMP", Instruction.FDR_BASE + 3);
     }
 
     @Test
@@ -94,12 +94,12 @@ class RegisterAliasEmissionContributorTest {
     void handlesMultipleAliases() {
         EmissionContext ctx = new EmissionContext();
         contributor.onItem(regAliasDirective("A.X", "%DR0"), ctx);
-        contributor.onItem(regAliasDirective("A.Y", "%PR1"), ctx);
+        contributor.onItem(regAliasDirective("A.Y", "%PDR1"), ctx);
         contributor.onItem(regAliasDirective("B.Z", "%LR0"), ctx);
 
         assertThat(ctx.registerAliasMap()).hasSize(3);
         assertThat(ctx.registerAliasMap()).containsEntry("A.X", 0);
-        assertThat(ctx.registerAliasMap()).containsEntry("A.Y", Instruction.PR_BASE + 1);
+        assertThat(ctx.registerAliasMap()).containsEntry("A.Y", Instruction.PDR_BASE + 1);
         assertThat(ctx.registerAliasMap()).containsEntry("B.Z", Instruction.LR_BASE);
     }
 

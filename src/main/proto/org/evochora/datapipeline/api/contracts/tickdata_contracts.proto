@@ -142,15 +142,15 @@ message OrganismState {
   // Used for arithmetic and data manipulation
   repeated RegisterValue data_registers = 11;
 
-  // Procedure registers (PRs) - used for procedure-local variables
-  // Source: Organism.getProcedureRegisters()
+  // Procedure data registers (PDRs) - used for procedure-local variables
+  // Source: Organism.getProcDataRegisters()
   // Saved/restored during procedure calls
-  repeated RegisterValue procedure_registers = 12;
+  repeated RegisterValue proc_data_registers = 12;
 
-  // Formal parameter registers (FPRs) - used for procedure parameters
-  // Source: Organism.getFormalParamRegisters()
+  // Formal data registers (FDRs) - used for procedure parameters
+  // Source: Organism.getFormalDataRegisters()
   // Mapped to actual parameters during procedure calls
-  repeated RegisterValue formal_param_registers = 13;
+  repeated RegisterValue formal_data_registers = 13;
 
   // Location registers (LRs) - store coordinate vectors
   // Source: Organism.getLocationRegisters()
@@ -279,8 +279,8 @@ message OrganismState {
 // Used by OrganismIndexer to store sidebar-only data in a single BLOB.
 message OrganismRuntimeState {
   repeated RegisterValue data_registers = 1;
-  repeated RegisterValue procedure_registers = 2;
-  repeated RegisterValue formal_param_registers = 3;
+  repeated RegisterValue proc_data_registers = 2;
+  repeated RegisterValue formal_data_registers = 3;
   repeated Vector        location_registers = 4;
   repeated RegisterValue data_stack = 5;
   repeated Vector        location_stack = 6;
@@ -365,20 +365,20 @@ message ProcFrame {
   // Stored as absolute coordinates, not relative to program
   Vector absolute_return_ip = 2;
 
-  // Saved procedure registers (PRs) from caller's context
-  // Source: ProcFrame.getSavedPrs()
+  // Saved procedure data registers (PDRs) from caller's context
+  // Source: ProcFrame.getSavedPdrs()
   // Restored when procedure returns
-  repeated RegisterValue saved_prs = 3;
+  repeated RegisterValue saved_pdrs = 3;
 
-  // Saved formal parameter registers (FPRs) from caller's context
-  // Source: ProcFrame.getSavedFprs()
+  // Saved formal data registers (FDRs) from caller's context
+  // Source: ProcFrame.getSavedFdrs()
   // Restored when procedure returns
-  repeated RegisterValue saved_fprs = 4;
+  repeated RegisterValue saved_fdrs = 4;
 
-  // Mapping from formal parameter index to actual parameter value
-  // Source: ProcFrame.getFprBindings()
-  // Key: FPR index, Value: actual parameter value
-  map<int32, int32> fpr_bindings = 5;
+  // Mapping from formal data register index to actual parameter value
+  // Source: ProcFrame.getFdrBindings()
+  // Key: FDR index, Value: actual parameter value
+  map<int32, int32> fdr_bindings = 5;
 
   // Absolute address of the CALL instruction that created this frame
   // Source: ProcFrame.getAbsoluteCallIp()
@@ -389,8 +389,8 @@ message ProcFrame {
 }
 
 // Represents a register value that can be either scalar or vector.
-// This polymorphic type is used for data registers, procedure registers,
-// formal parameter registers, and stack values.
+// This polymorphic type is used for data registers, procedure data registers,
+// formal data registers, and stack values.
 message RegisterValue {
   oneof value {
     // Scalar integer value

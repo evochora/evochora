@@ -452,14 +452,14 @@ public class SemanticAnalyzerTest {
     }
 
     /**
-     * Verifies that direct access to formal parameter registers (e.g., %FPR0) is forbidden
+     * Verifies that direct access to formal parameter registers (e.g., %FDR0) is forbidden
      * outside of the compiler-generated procedure prologue/epilogue.
      * This is a unit test for ISA rule enforcement.
      */
     @Test
     @Tag("unit")
-    void testDirectAccessToFprIsForbidden() {
-        String source = "ADDI %FPR0 DATA:1";
+    void testDirectAccessToFdrIsForbidden() {
+        String source = "ADDI %FDR0 DATA:1";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
@@ -469,7 +469,7 @@ public class SemanticAnalyzerTest {
 
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.getDiagnostics().get(0).message())
-                .contains("Access to formal parameter registers (%FPRx) is not allowed");
+                .contains("Access to formal parameter registers (%FDRx) is not allowed");
     }
 
     /**

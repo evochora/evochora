@@ -303,30 +303,30 @@ class GeneSubstitutionPluginTest {
     }
 
     @Test
-    void registerStaysInPrBank() {
+    void registerStaysInPdrBank() {
         for (int seed = 0; seed < 50; seed++) {
             setUp();
-            placeRegister(5, 5, Instruction.PR_BASE + 3); // PR3
+            placeRegister(5, 5, Instruction.PDR_BASE + 3); // PDR3
             GeneSubstitutionPlugin plugin = registerOnlyPlugin(new SeededRandomProvider(seed));
             plugin.substitute(child, environment);
 
             int newValue = environment.getMolecule(5, 5).value();
             assertThat(newValue).as("seed=%d", seed)
-                    .isBetween(Instruction.PR_BASE, Instruction.PR_BASE + Config.NUM_PROC_REGISTERS - 1);
+                    .isBetween(Instruction.PDR_BASE, Instruction.PDR_BASE + Config.NUM_PDR_REGISTERS - 1);
         }
     }
 
     @Test
-    void registerStaysInFprBank() {
+    void registerStaysInFdrBank() {
         for (int seed = 0; seed < 50; seed++) {
             setUp();
-            placeRegister(5, 5, Instruction.FPR_BASE + 3); // FPR3
+            placeRegister(5, 5, Instruction.FDR_BASE + 3); // FDR3
             GeneSubstitutionPlugin plugin = registerOnlyPlugin(new SeededRandomProvider(seed));
             plugin.substitute(child, environment);
 
             int newValue = environment.getMolecule(5, 5).value();
             assertThat(newValue).as("seed=%d", seed)
-                    .isBetween(Instruction.FPR_BASE, Instruction.FPR_BASE + Config.NUM_FORMAL_PARAM_REGISTERS - 1);
+                    .isBetween(Instruction.FDR_BASE, Instruction.FDR_BASE + Config.NUM_FDR_REGISTERS - 1);
         }
     }
 

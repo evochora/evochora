@@ -23,10 +23,10 @@ public final class OrganismRuntimeView {
 
     /** Data registers (DR0-DR7) with type and value. */
     public final List<RegisterValueView> dataRegisters;
-    /** Procedure registers (PR0-PR7) storing code addresses. */
-    public final List<RegisterValueView> procedureRegisters;
-    /** Formal parameter registers (FPR0-FPR7) for procedure calls. */
-    public final List<RegisterValueView> formalParamRegisters;
+    /** Procedure data registers (PDR0-PDR7) for procedure-local variables. */
+    public final List<RegisterValueView> procDataRegisters;
+    /** Formal data registers (FDR0-FDR7) for procedure parameters. */
+    public final List<RegisterValueView> formalDataRegisters;
     /** Location registers (LR0-LR3) storing coordinate vectors. */
     public final List<int[]> locationRegisters;
     /** Data stack contents (LIFO). */
@@ -58,8 +58,8 @@ public final class OrganismRuntimeView {
      * @param dataPointers            Data pointer coordinates.
      * @param activeDpIndex           Currently active data pointer index.
      * @param dataRegisters           Data registers (DR0-DR7).
-     * @param procedureRegisters      Procedure registers (PR0-PR7).
-     * @param formalParamRegisters    Formal parameter registers (FPR0-FPR7).
+     * @param procDataRegisters       Procedure data registers (PDR0-PDR7).
+     * @param formalDataRegisters     Formal data registers (FDR0-FDR7).
      * @param locationRegisters       Location registers (LR0-LR3).
      * @param dataStack               Data stack contents.
      * @param locationStack           Location stack contents.
@@ -77,8 +77,8 @@ public final class OrganismRuntimeView {
                                int[][] dataPointers,
                                int activeDpIndex,
                                List<RegisterValueView> dataRegisters,
-                               List<RegisterValueView> procedureRegisters,
-                               List<RegisterValueView> formalParamRegisters,
+                               List<RegisterValueView> procDataRegisters,
+                               List<RegisterValueView> formalDataRegisters,
                                List<int[]> locationRegisters,
                                List<RegisterValueView> dataStack,
                                List<int[]> locationStack,
@@ -95,8 +95,8 @@ public final class OrganismRuntimeView {
         this.dataPointers = dataPointers;
         this.activeDpIndex = activeDpIndex;
         this.dataRegisters = dataRegisters;
-        this.procedureRegisters = procedureRegisters;
-        this.formalParamRegisters = formalParamRegisters;
+        this.procDataRegisters = procDataRegisters;
+        this.formalDataRegisters = formalDataRegisters;
         this.locationRegisters = locationRegisters;
         this.dataStack = dataStack;
         this.locationStack = locationStack;

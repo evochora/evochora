@@ -45,11 +45,11 @@ public class ProcedureCallHandler {
         int[] bindings = bindingResolver.resolveBindings();
         int[] ipBeforeFetch = organism.getIpBeforeFetch();
 
-        Map<Integer, Integer> fprBindings = new HashMap<>();
+        Map<Integer, Integer> fdrBindings = new HashMap<>();
         if (bindings != null) {
             for (int i = 0; i < bindings.length; i++) {
-                if (i < organism.getFprs().size()) {
-                    fprBindings.put(Instruction.FPR_BASE + i, bindings[i]);
+                if (i < organism.getFdrs().size()) {
+                    fdrBindings.put(Instruction.FDR_BASE + i, bindings[i]);
                 }
             }
         }
@@ -61,8 +61,8 @@ public class ProcedureCallHandler {
             returnIp = organism.getNextInstructionPosition(returnIp, organism.getDvBeforeFetch(), environment);
         }
 
-        Object[] prsSnapshot = organism.getPrs().toArray();
-        Object[] fprsSnapshot = organism.getFprs().toArray();
+        Object[] pdrsSnapshot = organism.getPdrs().toArray();
+        Object[] fdrsSnapshot = organism.getFdrs().toArray();
 
         String procName = "";
         if (artifact != null && artifact.labelValueToName() != null) {
@@ -70,21 +70,21 @@ public class ProcedureCallHandler {
             if (name != null) procName = name;
         }
 
-        Organism.ProcFrame frame = new Organism.ProcFrame(procName, returnIp, ipBeforeFetch, prsSnapshot, fprsSnapshot, fprBindings);
+        Organism.ProcFrame frame = new Organism.ProcFrame(procName, returnIp, ipBeforeFetch, pdrsSnapshot, fdrsSnapshot, fdrBindings);
         organism.getCallStack().push(frame);
 
         // Note: Parameter passing is handled by compiler-generated PUSH/POP sequences.
         // The compiler generates:
         //   - PUSH instructions before CALL to push arguments onto the stack
-        //   - POP instructions in the procedure prologue to load parameters into FPRs
+        //   - POP instructions in the procedure prologue to load parameters into FDRs
         //   - PUSH instructions before RET to push REF parameters back onto the stack
         //   - POP instructions after CALL to copy REF parameters back to original registers
-        // No manual copy-in from registers to FPRs is needed here.
+        // No manual copy-in from registers to FDRs is needed here.
         /*
         if (bindings != null) {
             for (int i = 0; i < bindings.length; i++) {
                 Object value = organism.readOperand(bindings[i]);
-                organism.setFpr(i, value);
+                organism.setFdr(i, value);
             }
         }
         */
@@ -108,8 +108,8 @@ public class ProcedureCallHandler {
         }
         Organism.ProcFrame returnFrame = organism.getCallStack().pop();
 
-        organism.restorePrs(returnFrame.savedPrs);
-        organism.setIp(returnFrame.absoluteReturnIp);
+        organism.restorePdrs(returnFrame.savedPdrs());
+        organism.setIp(returnFrame.absoluteReturnIp());
         organism.setSkipIpAdvance(true);
     }
 }

@@ -74,8 +74,8 @@ public class Organism {
     private long genomeHash = 0L; // Genome hash computed at birth
     private long deathTick = -1L; // Tick when organism died (-1 if alive)
     private final List<Object> drs;
-    private final List<Object> prs;
-    private final List<Object> fprs;
+    private final List<Object> pdrs;
+    private final List<Object> fdrs;
     private final List<Object> lrs;
     private final Deque<Object> dataStack;
     private final Deque<int[]> locationStack;
@@ -90,33 +90,22 @@ public class Organism {
     /**
      * Represents a single frame on the call stack, created by a CALL instruction.
      * It stores the necessary state to return to the caller correctly.
+     *
+     * @param procName The name of the procedure.
+     * @param absoluteReturnIp The absolute return IP.
+     * @param absoluteCallIp The absolute address of the CALL instruction that created this frame.
+     * @param savedPdrs The saved PDRs (procedure-local data registers).
+     * @param savedFdrs The saved FDRs (formal data registers).
+     * @param fdrBindings The FDR parameter bindings.
      */
-    public static final class ProcFrame {
-        public final String procName;
-        public final int[] absoluteReturnIp;
-        public final int[] absoluteCallIp;
-        public final Object[] savedPrs;
-        public final Object[] savedFprs;
-        public final java.util.Map<Integer, Integer> fprBindings;
-
-        /**
-         * Constructs a new ProcFrame.
-         * @param procName The name of the procedure.
-         * @param absoluteReturnIp The absolute return IP.
-         * @param absoluteCallIp The absolute address of the CALL instruction that created this frame.
-         * @param savedPrs The saved PRs.
-         * @param savedFprs The saved FPRs.
-         * @param fprBindings The FPR bindings.
-         */
-        public ProcFrame(String procName, int[] absoluteReturnIp, int[] absoluteCallIp, Object[] savedPrs, Object[] savedFprs, java.util.Map<Integer, Integer> fprBindings) {
-            this.procName = procName;
-            this.absoluteReturnIp = absoluteReturnIp;
-            this.absoluteCallIp = absoluteCallIp;
-            this.savedPrs = savedPrs;
-            this.savedFprs = savedFprs;
-            this.fprBindings = fprBindings;
-        }
-    }
+    public record ProcFrame(
+            String procName,
+            int[] absoluteReturnIp,
+            int[] absoluteCallIp,
+            Object[] savedPdrs,
+            Object[] savedFdrs,
+            java.util.Map<Integer, Integer> fdrBindings
+    ) {}
     private boolean skipIpAdvance = false;
     private int[] ipBeforeFetch;
     private int[] dvBeforeFetch;
@@ -166,13 +155,13 @@ public class Organism {
         for (int i = 0; i < Config.NUM_DATA_REGISTERS; i++) {
             this.drs.add(0);
         }
-        this.prs = new ArrayList<>(Config.NUM_PROC_REGISTERS);
-        for (int i = 0; i < Config.NUM_PROC_REGISTERS; i++) {
-            this.prs.add(0);
+        this.pdrs = new ArrayList<>(Config.NUM_PDR_REGISTERS);
+        for (int i = 0; i < Config.NUM_PDR_REGISTERS; i++) {
+            this.pdrs.add(0);
         }
-        this.fprs = new ArrayList<>(Config.NUM_FORMAL_PARAM_REGISTERS);
-        for (int i = 0; i < Config.NUM_FORMAL_PARAM_REGISTERS; i++) {
-            this.fprs.add(0);
+        this.fdrs = new ArrayList<>(Config.NUM_FDR_REGISTERS);
+        for (int i = 0; i < Config.NUM_FDR_REGISTERS; i++) {
+            this.fdrs.add(0);
         }
         this.lrs = new ArrayList<>(Config.NUM_LOCATION_REGISTERS);
         for (int i = 0; i < Config.NUM_LOCATION_REGISTERS; i++) {
@@ -248,8 +237,8 @@ public class Organism {
 
         // Copy registers (shallow copy is fine, values are immutable Integer or int[])
         this.drs = new ArrayList<>(b.drs);
-        this.prs = new ArrayList<>(b.prs);
-        this.fprs = new ArrayList<>(b.fprs);
+        this.pdrs = new ArrayList<>(b.pdrs);
+        this.fdrs = new ArrayList<>(b.fdrs);
         this.lrs = new ArrayList<>(b.lrs);
 
         // Copy stacks
@@ -320,8 +309,8 @@ public class Organism {
         private List<int[]> dps = new ArrayList<>();
         private int activeDpIndex = 0;
         private List<Object> drs = new ArrayList<>();
-        private List<Object> prs = new ArrayList<>();
-        private List<Object> fprs = new ArrayList<>();
+        private List<Object> pdrs = new ArrayList<>();
+        private List<Object> fdrs = new ArrayList<>();
         private List<Object> lrs = new ArrayList<>();
         private Deque<Object> dataStack = new ArrayDeque<>();
         private Deque<int[]> locationStack = new ArrayDeque<>();
@@ -415,15 +404,15 @@ public class Organism {
             return this;
         }
 
-        /** Sets all procedure register values. */
-        public RestoreBuilder procRegisters(List<Object> prs) {
-            this.prs = prs;
+        /** Sets all procedure-local data register values. */
+        public RestoreBuilder procDataRegisters(List<Object> pdrs) {
+            this.pdrs = pdrs;
             return this;
         }
 
-        /** Sets all formal parameter register values. */
-        public RestoreBuilder formalParamRegisters(List<Object> fprs) {
-            this.fprs = fprs;
+        /** Sets all formal data register values. */
+        public RestoreBuilder formalDataRegisters(List<Object> fdrs) {
+            this.fdrs = fdrs;
             return this;
         }
 
@@ -775,7 +764,7 @@ public class Organism {
      * Recovers the instruction pointer after a stall (max-skip exceeded).
      * <p>
      * If the call stack is non-empty, pops the top frame and restores the IP
-     * to the frame's return address, also restoring procedure registers (PRs)
+     * to the frame's return address, also restoring procedure-local data registers (PDRs)
      * to the caller's saved state — matching the RET instruction's semantics.
      * <p>
      * If the call stack is empty, falls back to the organism's initial position
@@ -788,8 +777,8 @@ public class Organism {
     private void recoverFromStall() {
         if (!callStack.isEmpty()) {
             ProcFrame frame = callStack.pop();
-            restorePrs(frame.savedPrs);
-            setIp(frame.absoluteReturnIp);
+            restorePdrs(frame.savedPdrs());
+            setIp(frame.absoluteReturnIp());
         } else {
             setIp(Arrays.copyOf(initialPosition, initialPosition.length));
         }
@@ -1169,107 +1158,107 @@ public class Organism {
         return this.callStack;
     }
 
-    /** @return A copy of the list of Procedure-local Registers (PRs). */
-    public List<Object> getPrs() { return new ArrayList<>(this.prs); }
+    /** @return A copy of the list of Procedure-local Data Registers (PDRs). */
+    public List<Object> getPdrs() { return new ArrayList<>(this.pdrs); }
 
     /**
-     * Sets the value of a Procedure-local Register (PR).
+     * Sets the value of a Procedure-local Data Register (PDR).
      *
      * @param index The index of the register.
      * @param value The value to set.
      * @return {@code true} on success, {@code false} on failure.
      */
-    public boolean setPr(int index, Object value) {
-        if (index >= 0 && index < this.prs.size()) {
+    public boolean setPdr(int index, Object value) {
+        if (index >= 0 && index < this.pdrs.size()) {
             if (value instanceof Integer || value instanceof int[]) {
-                this.prs.set(index, value);
+                this.pdrs.set(index, value);
                 return true;
             }
-            this.instructionFailed("Attempted to set unsupported type " + (value != null ? value.getClass().getSimpleName() : "null") + " to PR " + index);
+            this.instructionFailed("Attempted to set unsupported type " + (value != null ? value.getClass().getSimpleName() : "null") + " to PDR" + index);
             return false;
         }
-        this.instructionFailed("PR index out of bounds: " + index);
+        this.instructionFailed("PDR index out of bounds: " + index);
         return false;
     }
 
     /**
-     * Gets the value of a Procedure-local Register (PR).
+     * Gets the value of a Procedure-local Data Register (PDR).
      *
      * @param index The index of the register.
      * @return The value, or {@code null} on failure.
      */
-    public Object getPr(int index) {
-        if (index >= 0 && index < this.prs.size()) {
-            return this.prs.get(index);
+    public Object getPdr(int index) {
+        if (index >= 0 && index < this.pdrs.size()) {
+            return this.pdrs.get(index);
         }
-        this.instructionFailed("PR index out of bounds: " + index);
+        this.instructionFailed("PDR index out of bounds: " + index);
         return null;
     }
 
     /**
-     * Restores the state of all PRs from a snapshot array.
+     * Restores the state of all PDRs from a snapshot array.
      *
      * @param snapshot The snapshot to restore from.
      */
-    public void restorePrs(Object[] snapshot) {
-        if (snapshot == null || snapshot.length != this.prs.size()) {
-            this.instructionFailed("Invalid PR snapshot size: expected " + this.prs.size() + ", got " + (snapshot == null ? "null" : snapshot.length));
+    public void restorePdrs(Object[] snapshot) {
+        if (snapshot == null || snapshot.length != this.pdrs.size()) {
+            this.instructionFailed("Invalid PDR snapshot size: expected " + this.pdrs.size() + ", got " + (snapshot == null ? "null" : snapshot.length));
             return;
         }
         for (int i = 0; i < snapshot.length; i++) {
-            this.prs.set(i, snapshot[i]);
+            this.pdrs.set(i, snapshot[i]);
         }
     }
 
-    /** @return A copy of the list of Formal Parameter Registers (FPRs). */
-    public List<Object> getFprs() { return new ArrayList<>(this.fprs); }
+    /** @return A copy of the list of Formal Data Registers (FDRs). */
+    public List<Object> getFdrs() { return new ArrayList<>(this.fdrs); }
 
     /**
-     * Sets the value of a Formal Parameter Register (FPR).
+     * Sets the value of a Formal Data Register (FDR).
      *
      * @param index The index of the register.
      * @param value The value to set.
      * @return {@code true} on success, {@code false} on failure.
      */
-    public boolean setFpr(int index, Object value) {
-        if (index >= 0 && index < this.fprs.size()) {
+    public boolean setFdr(int index, Object value) {
+        if (index >= 0 && index < this.fdrs.size()) {
             if (value instanceof Integer || value instanceof int[]) {
-                this.fprs.set(index, value);
+                this.fdrs.set(index, value);
                 return true;
             }
-            this.instructionFailed("Attempted to set unsupported type " + (value != null ? value.getClass().getSimpleName() : "null") + " to FPR " + index);
+            this.instructionFailed("Attempted to set unsupported type " + (value != null ? value.getClass().getSimpleName() : "null") + " to FDR" + index);
             return false;
         }
-        this.instructionFailed("FPR index out of bounds: " + index);
+        this.instructionFailed("FDR index out of bounds: " + index);
         return false;
     }
 
     /**
-     * Gets the value of a Formal Parameter Register (FPR).
+     * Gets the value of a Formal Data Register (FDR).
      *
      * @param index The index of the register.
      * @return The value, or {@code null} on failure.
      */
-    public Object getFpr(int index) {
-        if (index >= 0 && index < this.fprs.size()) {
-            return this.fprs.get(index);
+    public Object getFdr(int index) {
+        if (index >= 0 && index < this.fdrs.size()) {
+            return this.fdrs.get(index);
         }
-        this.instructionFailed("FPR index out of bounds: " + index);
+        this.instructionFailed("FDR index out of bounds: " + index);
         return null;
     }
 
     /**
-     * Restores the state of all FPRs from a snapshot array.
+     * Restores the state of all FDRs from a snapshot array.
      *
      * @param snapshot The snapshot to restore from.
      */
-    public void restoreFprs(Object[] snapshot) {
-        if (snapshot == null || snapshot.length > this.fprs.size()) {
-            this.instructionFailed("Invalid FPR snapshot for restore");
+    public void restoreFdrs(Object[] snapshot) {
+        if (snapshot == null || snapshot.length > this.fdrs.size()) {
+            this.instructionFailed("Invalid FDR snapshot for restore");
             return;
         }
         for (int i = 0; i < snapshot.length; i++) {
-            this.fprs.set(i, snapshot[i]);
+            this.fdrs.set(i, snapshot[i]);
         }
     }
 
@@ -1336,20 +1325,20 @@ public class Organism {
     public Deque<ProcFrame> getFailureCallStack() { return this.failureCallStack; }
 
     /**
-     * Reads a value from a register (DR, PR, FPR, or LR) using its full numeric ID.
+     * Reads a value from a register (DR, PDR, FDR, or LR) using its full numeric ID.
      *
-     * @param id The full ID of the register (e.g., 5 for DR5, 1002 for PR2, 3001 for LR1).
+     * @param id The full ID of the register (e.g., 5 for DR5, 1002 for PDR2, 3001 for LR1).
      * @return The value read from the register.
      */
     public Object readOperand(int id) {
         if (id >= Instruction.LR_BASE && id < Instruction.LR_BASE + Config.NUM_LOCATION_REGISTERS) {
             return getLr(id - Instruction.LR_BASE);
         }
-        if (id >= Instruction.FPR_BASE && id < Instruction.FPR_BASE + Config.NUM_FORMAL_PARAM_REGISTERS) {
-            return getFpr(id - Instruction.FPR_BASE);
+        if (id >= Instruction.FDR_BASE && id < Instruction.FDR_BASE + Config.NUM_FDR_REGISTERS) {
+            return getFdr(id - Instruction.FDR_BASE);
         }
-        if (id >= Instruction.PR_BASE && id < Instruction.PR_BASE + Config.NUM_PROC_REGISTERS) {
-            return getPr(id - Instruction.PR_BASE);
+        if (id >= Instruction.PDR_BASE && id < Instruction.PDR_BASE + Config.NUM_PDR_REGISTERS) {
+            return getPdr(id - Instruction.PDR_BASE);
         }
         if (id >= 0 && id < Config.NUM_DATA_REGISTERS) {
             return getDr(id);
@@ -1359,7 +1348,7 @@ public class Organism {
     }
 
     /**
-     * Writes a value to a register (DR, PR, FPR, or LR) using its full numeric ID.
+     * Writes a value to a register (DR, PDR, FDR, or LR) using its full numeric ID.
      *
      * @param id The full ID of the register.
      * @param value The value to write.
@@ -1369,11 +1358,11 @@ public class Organism {
         if (id >= Instruction.LR_BASE && id < Instruction.LR_BASE + Config.NUM_LOCATION_REGISTERS) {
             return setLr(id - Instruction.LR_BASE, (int[]) value);
         }
-        if (id >= Instruction.FPR_BASE && id < Instruction.FPR_BASE + Config.NUM_FORMAL_PARAM_REGISTERS) {
-            return setFpr(id - Instruction.FPR_BASE, value);
+        if (id >= Instruction.FDR_BASE && id < Instruction.FDR_BASE + Config.NUM_FDR_REGISTERS) {
+            return setFdr(id - Instruction.FDR_BASE, value);
         }
-        if (id >= Instruction.PR_BASE && id < Instruction.PR_BASE + Config.NUM_PROC_REGISTERS) {
-            return setPr(id - Instruction.PR_BASE, value);
+        if (id >= Instruction.PDR_BASE && id < Instruction.PDR_BASE + Config.NUM_PDR_REGISTERS) {
+            return setPdr(id - Instruction.PDR_BASE, value);
         }
         if (id >= 0 && id < Config.NUM_DATA_REGISTERS) {
             return setDr(id, value);

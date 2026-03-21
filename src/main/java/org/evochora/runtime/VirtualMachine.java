@@ -282,7 +282,7 @@ public class VirtualMachine {
                 if (argIndex < rawArgs.length) {
                     int registerId = Instruction.extractSignedValue(rawArgs[argIndex]);
 
-                    // Read register value (DR/PR/FPR)
+                    // Read register value (DR/PDR/FDR)
                     Object registerValue = organism.readOperand(registerId);
                     if (registerValue != null) {
                         registerValues.put(registerId, registerValue);

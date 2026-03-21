@@ -28,7 +28,7 @@ public class PregDirectiveTest {
     void testPregIsParsedCorrectlyInsideProc() {
         String source = String.join(System.lineSeparator(),
                 ".PROC MY_PROC",
-                "  .PREG %TMP %PR0",
+                "  .PREG %TMP %PDR0",
                 ".ENDP"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -45,7 +45,7 @@ public class PregDirectiveTest {
     void testPregWithInvalidIndexReportsError() {
         String source = String.join(System.lineSeparator(),
                 ".PROC MY_PROC",
-                "  .PREG %TMP %PR99",
+                "  .PREG %TMP %PDR99",
                 ".ENDP"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -54,7 +54,7 @@ public class PregDirectiveTest {
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("Procedure register '%PR99' is out of bounds. Valid range: %PR0-%PR7");
+        assertThat(diagnostics.summary()).contains("Procedure register '%PDR99' is out of bounds. Valid range: %PDR0-%PDR7");
     }
 
     @Test
@@ -62,7 +62,7 @@ public class PregDirectiveTest {
     void testPregFunctionality_ShowsFullImplementation() {
         String source = String.join(System.lineSeparator(),
                 ".PROC MY_PROC",
-                "  .PREG %TMP %PR0",
+                "  .PREG %TMP %PDR0",
                 "  SETI %TMP DATA:42",
                 "  RET",
                 ".ENDP"
@@ -105,13 +105,13 @@ public class PregDirectiveTest {
     void testPregScoping_ShowsScopingLimitations() {
         String source = String.join(System.lineSeparator(),
                 ".PROC PROC1",
-                "  .PREG %TEMP1 %PR0",
+                "  .PREG %TEMP1 %PDR0",
                 "  SETI %TEMP1 DATA:10",
                 "  RET",
                 ".ENDP",
                 "",
                 ".PROC PROC2",
-                "  .PREG %TEMP2 %PR0",
+                "  .PREG %TEMP2 %PDR0",
                 "  SETI %TEMP2 DATA:20",
                 "  RET",
                 ".ENDP",

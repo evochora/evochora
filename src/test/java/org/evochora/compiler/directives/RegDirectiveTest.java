@@ -125,9 +125,9 @@ public class RegDirectiveTest {
     @Test
     @Tag("unit")
     void testRegDirectiveWithNonDRRegister() {
-        // Arrange - Test with non-DR/LR register (PR and FPR are not allowed in .REG)
+        // Arrange - Test with non-DR/LR register (PDR and FDR are not allowed in .REG)
         String source = String.join("\n",
-                ".REG COUNTER %PR0",  // Invalid: .REG only supports DR and LR registers
+                ".REG COUNTER %PDR0",  // Invalid: .REG only supports DR and LR registers
                 "SETI COUNTER DATA:42"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -143,7 +143,7 @@ public class RegDirectiveTest {
 
         // Assert - Should have compilation error
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("Invalid register '%PR0'");
+        assertThat(diagnostics.summary()).contains("Invalid register '%PDR0'");
         assertThat(diagnostics.summary()).contains(String.format(".REG directive supports data registers %%DR0-%%DR%d and location registers %%LR0-%%LR%d", 
             org.evochora.runtime.Config.NUM_DATA_REGISTERS - 1, 
             org.evochora.runtime.Config.NUM_LOCATION_REGISTERS - 1));
@@ -157,7 +157,7 @@ public class RegDirectiveTest {
     void testRegDirectiveWithInvalidRegisterType() {
         // Arrange - Test with invalid register type
         String source = String.join("\n",
-                ".REG COUNTER %PR0",  // Invalid: .REG only supports DR registers, not PR registers
+                ".REG COUNTER %PDR0",  // Invalid: .REG only supports DR registers, not PDR registers
                 "SETI COUNTER DATA:42"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -173,7 +173,7 @@ public class RegDirectiveTest {
 
         // Assert - Should have compilation error
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("Invalid register '%PR0'");
+        assertThat(diagnostics.summary()).contains("Invalid register '%PDR0'");
         assertThat(diagnostics.summary()).contains(String.format(".REG directive supports data registers %%DR0-%%DR%d and location registers %%LR0-%%LR%d", 
             org.evochora.runtime.Config.NUM_DATA_REGISTERS - 1, 
             org.evochora.runtime.Config.NUM_LOCATION_REGISTERS - 1));

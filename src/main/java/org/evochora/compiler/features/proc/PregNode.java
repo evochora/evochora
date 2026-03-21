@@ -10,7 +10,7 @@ import org.evochora.compiler.api.SourceInfo;
  *
  * @param sourceInfo the source location information
  * @param alias the alias name (e.g., %TMP)
- * @param targetRegister the target procedure register (e.g., %PR0)
+ * @param targetRegister the target procedure register (e.g., %PDR0)
  */
 public record PregNode(
         SourceInfo sourceInfo,
@@ -29,7 +29,7 @@ public record PregNode(
      * Gets the procedure register index as an integer.
      */
     public int registerIndexValue() {
-        return Integer.parseInt(targetRegister.substring(3));
+        return Integer.parseInt(targetRegister.substring(4));
     }
 
     /**

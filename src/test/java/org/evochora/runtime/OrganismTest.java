@@ -165,12 +165,12 @@ public class OrganismTest {
 
     /**
      * Verifies the basic set and get functionality for all main register types:
-     * Data Registers (DR), Pointer Registers (PR), and Formal Parameter Registers (FPR).
+     * Data Registers (DR), Procedure-local Data Registers (PDR), and Formal Data Registers (FDR).
      * This is a unit test for the organism's register state management.
      */
     @Test
     @Tag("unit")
-    void testRegisterAccessDrPrFpr() {
+    void testRegisterAccessDrPdrFdr() {
         Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
 
         // DR
@@ -178,14 +178,14 @@ public class OrganismTest {
         org.setDr(0, dataVal);
         assertThat(org.getDr(0)).isEqualTo(dataVal);
 
-        // PR
-        org.setPr(0, dataVal);
-        assertThat(org.getPr(0)).isEqualTo(dataVal);
+        // PDR
+        org.setPdr(0, dataVal);
+        assertThat(org.getPdr(0)).isEqualTo(dataVal);
 
-        // FPR
+        // FDR
         int[] vec = new int[]{3, 4};
-        org.setFpr(0, vec);
-        assertThat(org.getFpr(0)).isEqualTo(vec);
+        org.setFdr(0, vec);
+        assertThat(org.getFdr(0)).isEqualTo(vec);
     }
 
     // ==================== Cell Accessibility Tests ====================
@@ -352,11 +352,11 @@ public class OrganismTest {
         sim.addOrganism(org);
 
         int[] returnAddr = new int[]{60, 50};
-        Object[] savedPrs = org.getPrs().toArray(new Object[0]);
-        Object[] savedFprs = org.getFprs().toArray(new Object[0]);
+        Object[] savedPdrs = org.getPdrs().toArray(new Object[0]);
+        Object[] savedFdrs = org.getFdrs().toArray(new Object[0]);
         org.getCallStack().push(new Organism.ProcFrame(
                 "PROC", returnAddr, new int[]{55, 50},
-                savedPrs, savedFprs, java.util.Collections.emptyMap()));
+                savedPdrs, savedFdrs, java.util.Collections.emptyMap()));
 
         // Move IP into empty space
         org.setIp(new int[]{80, 50});
@@ -369,36 +369,36 @@ public class OrganismTest {
     }
 
     /**
-     * Verifies that PRs are restored from the popped call frame during stall recovery,
+     * Verifies that PDRs are restored from the popped call frame during stall recovery,
      * matching the RET instruction's semantics.
      */
     @Test
     @Tag("unit")
-    void testMaxSkipRecoveryRestoresPrs() {
+    void testMaxSkipRecoveryRestoresPdrs() {
         int[] initialPos = new int[]{50, 50};
         Organism org = Organism.create(sim, initialPos, 100, sim.getLogger());
         sim.addOrganism(org);
 
-        // Set known PR values and capture snapshot (caller's state)
-        org.setPr(0, 42);
-        org.setPr(1, 99);
-        Object[] callerPrs = org.getPrs().toArray(new Object[0]);
-        Object[] callerFprs = org.getFprs().toArray(new Object[0]);
+        // Set known PDR values and capture snapshot (caller's state)
+        org.setPdr(0, 42);
+        org.setPdr(1, 99);
+        Object[] callerPdrs = org.getPdrs().toArray(new Object[0]);
+        Object[] callerFdrs = org.getFdrs().toArray(new Object[0]);
 
-        // Simulate what a CALL does: push frame with caller's PRs, then change PRs
+        // Simulate what a CALL does: push frame with caller's PDRs, then change PDRs
         org.getCallStack().push(new Organism.ProcFrame(
                 "PROC", new int[]{60, 50}, new int[]{55, 50},
-                callerPrs, callerFprs, java.util.Collections.emptyMap()));
-        org.setPr(0, 777);
-        org.setPr(1, 888);
+                callerPdrs, callerFdrs, java.util.Collections.emptyMap()));
+        org.setPdr(0, 777);
+        org.setPdr(1, 888);
 
         // Move IP into empty space and trigger recovery
         org.setIp(new int[]{80, 50});
         org.skipNopCells(environment);
 
-        // PRs should be restored to caller's saved values
-        assertThat(org.getPr(0)).isEqualTo(42);
-        assertThat(org.getPr(1)).isEqualTo(99);
+        // PDRs should be restored to caller's saved values
+        assertThat(org.getPdr(0)).isEqualTo(42);
+        assertThat(org.getPdr(1)).isEqualTo(99);
     }
 
     /**
@@ -438,15 +438,15 @@ public class OrganismTest {
         // Push two frames (frame 2 on top, frame 1 below)
         int[] returnAddr1 = new int[]{60, 50};
         int[] returnAddr2 = new int[]{70, 50};
-        Object[] prs = org.getPrs().toArray(new Object[0]);
-        Object[] fprs = org.getFprs().toArray(new Object[0]);
+        Object[] pdrs = org.getPdrs().toArray(new Object[0]);
+        Object[] fdrs = org.getFdrs().toArray(new Object[0]);
 
         org.getCallStack().push(new Organism.ProcFrame(
                 "PROC1", returnAddr1, new int[]{55, 50},
-                prs, fprs, java.util.Collections.emptyMap()));
+                pdrs, fdrs, java.util.Collections.emptyMap()));
         org.getCallStack().push(new Organism.ProcFrame(
                 "PROC2", returnAddr2, new int[]{65, 50},
-                prs, fprs, java.util.Collections.emptyMap()));
+                pdrs, fdrs, java.util.Collections.emptyMap()));
 
         // First max-skip: pops PROC2, IP → returnAddr2
         org.setIp(new int[]{80, 50});

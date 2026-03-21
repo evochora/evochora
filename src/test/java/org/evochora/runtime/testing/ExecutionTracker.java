@@ -61,14 +61,14 @@ public class ExecutionTracker {
 
     private static class RegisterState {
         final List<Object> drs;
-        final List<Object> prs;
-        final List<Object> fprs;
+        final List<Object> pdrs;
+        final List<Object> fdrs;
         final int er;
 
         RegisterState(Organism org) {
             this.drs = new ArrayList<>(org.getDrs());
-            this.prs = new ArrayList<>(org.getPrs());
-            this.fprs = new ArrayList<>(org.getFprs());
+            this.pdrs = new ArrayList<>(org.getPdrs());
+            this.fdrs = new ArrayList<>(org.getFdrs());
             this.er = org.getEr();
         }
     }
@@ -205,24 +205,24 @@ public class ExecutionTracker {
             }
             sb.append("\n");
         }
-        if (!state.prs.isEmpty()) {
-            sb.append("    PRs: ");
-            for (int i = 0; i < state.prs.size(); i++) {
-                Object pr = state.prs.get(i);
-                if (pr != null) {
-                    Molecule m = Molecule.fromInt((Integer) pr);
-                    sb.append(String.format("PR%d=%d ", i, m.toScalarValue()));
+        if (!state.pdrs.isEmpty()) {
+            sb.append("    PDRs: ");
+            for (int i = 0; i < state.pdrs.size(); i++) {
+                Object pdr = state.pdrs.get(i);
+                if (pdr != null) {
+                    Molecule m = Molecule.fromInt((Integer) pdr);
+                    sb.append(String.format("PDR%d=%d ", i, m.toScalarValue()));
                 }
             }
             sb.append("\n");
         }
-        if (!state.fprs.isEmpty()) {
-            sb.append("    FPRs: ");
-            for (int i = 0; i < state.fprs.size(); i++) {
-                Object fpr = state.fprs.get(i);
-                if (fpr != null) {
-                    Molecule m = Molecule.fromInt((Integer) fpr);
-                    sb.append(String.format("FPR%d=%d ", i, m.toScalarValue()));
+        if (!state.fdrs.isEmpty()) {
+            sb.append("    FDRs: ");
+            for (int i = 0; i < state.fdrs.size(); i++) {
+                Object fdr = state.fdrs.get(i);
+                if (fdr != null) {
+                    Molecule m = Molecule.fromInt((Integer) fdr);
+                    sb.append(String.format("FDR%d=%d ", i, m.toScalarValue()));
                 }
             }
             sb.append("\n");

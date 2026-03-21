@@ -59,10 +59,10 @@ public class ProcedureMarshallingRule implements IEmissionRule {
     private void handleNewSyntax(List<IrItem> out, IrDirective enterDirective, List<IrItem> body, List<String> refParams, List<String> valParams) {
         List<String> allParams = Stream.concat(refParams.stream(), valParams.stream()).collect(Collectors.toList());
 
-        // Prologue: POP all parameters into FPRs
+        // Prologue: POP all parameters into FDRs
         // Parameters are pushed in reverse order (VALs first, then REFs), so we pop them in the same order
         for (int p = 0; p < allParams.size(); p++) {
-            out.add(IrInstruction.synthetic("POP", List.of(new IrReg("%FPR" + p)), enterDirective.source()));
+            out.add(IrInstruction.synthetic("POP", List.of(new IrReg("%FDR" + p)), enterDirective.source()));
         }
 
         // Process body for RET instructions
@@ -73,9 +73,9 @@ public class ProcedureMarshallingRule implements IEmissionRule {
         long arityLong = enterDirective.args().getOrDefault("arity", new IrValue.Int64(0)) instanceof IrValue.Int64 iv ? iv.value() : 0L;
         int arity = (int) Math.max(0, Math.min(8, arityLong));
 
-        // Prologue: Load parameters from the stack into the %FPR registers
+        // Prologue: Load parameters from the stack into the %FDR registers
         for (int p = arity - 1; p >= 0; p--) {
-            out.add(IrInstruction.synthetic("POP", List.of(new IrReg("%FPR" + p)), enterDirective.source()));
+            out.add(IrInstruction.synthetic("POP", List.of(new IrReg("%FDR" + p)), enterDirective.source()));
         }
 
         // Process body for RET instructions
@@ -124,11 +124,11 @@ public class ProcedureMarshallingRule implements IEmissionRule {
         if (refParams != null) { // New REF/VAL syntax
             // Only push REF parameters back to stack (VAL parameters are call-by-value)
             for (int p = 0; p < refParams.size(); p++) {
-                out.add(IrInstruction.synthetic("PUSH", List.of(new IrReg("%FPR" + p)), ret.source()));
+                out.add(IrInstruction.synthetic("PUSH", List.of(new IrReg("%FDR" + p)), ret.source()));
             }
         } else { // Legacy arity syntax
             for (int p = 0; p < arity; p++) {
-                out.add(IrInstruction.synthetic("PUSH", List.of(new IrReg("%FPR" + p)), ret.source()));
+                out.add(IrInstruction.synthetic("PUSH", List.of(new IrReg("%FDR" + p)), ret.source()));
             }
         }
         out.add(ret);

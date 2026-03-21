@@ -87,7 +87,7 @@ class RegAnalysisHandlerTest {
 
     @Test
     void testInvalidRegisterType() {
-        RegNode regNode = new RegNode("INVALID", "%PR0", TEST_SOURCE);
+        RegNode regNode = new RegNode("INVALID", "%PDR0", TEST_SOURCE);
 
         handler.analyze(regNode, symbolTable, diagnostics);
 

@@ -134,13 +134,13 @@ public abstract class Instruction {
     }
 
     /**
-     * Base address for procedure registers.
+     * Base address for procedure-local data registers (PDR).
      */
-    public static final int PR_BASE = 1000;
+    public static final int PDR_BASE = 1000;
     /**
-     * Base address for formal parameter registers.
+     * Base address for formal data registers (FDR).
      */
-    public static final int FPR_BASE = 2000;
+    public static final int FDR_BASE = 2000;
     /**
      * Base address for location registers.
      */
@@ -560,13 +560,13 @@ public abstract class Instruction {
                 int regNum = Integer.parseInt(u.substring(3));
                 return Optional.of(regNum);
             }
-            if (u.startsWith("%PR")) {
-                int regNum = Integer.parseInt(u.substring(3));
-                return Optional.of(PR_BASE + regNum);
-            }
-            if (u.startsWith("%FPR")) {
+            if (u.startsWith("%PDR")) {
                 int regNum = Integer.parseInt(u.substring(4));
-                return Optional.of(FPR_BASE + regNum);
+                return Optional.of(PDR_BASE + regNum);
+            }
+            if (u.startsWith("%FDR")) {
+                int regNum = Integer.parseInt(u.substring(4));
+                return Optional.of(FDR_BASE + regNum);
             }
             if (u.startsWith("%LR")) {
                 int regNum = Integer.parseInt(u.substring(3));

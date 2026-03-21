@@ -163,7 +163,7 @@ public class IrGeneratorTest {
 
         assertEquals(1, callInstruction.refOperands().size());
         assertInstanceOf(IrReg.class, callInstruction.refOperands().get(0));
-        assertEquals("%FPR0", ((IrReg) callInstruction.refOperands().get(0)).name());
+        assertEquals("%FDR0", ((IrReg) callInstruction.refOperands().get(0)).name());
 
         assertTrue(callInstruction.valOperands().isEmpty());
     }
@@ -242,14 +242,14 @@ public class IrGeneratorTest {
         assertTrue(addrInstructionOpt.isPresent(), "ADDR instruction not found in IR");
         IrInstruction addrInstruction = addrInstructionOpt.get();
 
-        // Check that parameters are resolved to %FPRx registers
+        // Check that parameters are resolved to %FDRx registers
         assertEquals(2, addrInstruction.operands().size());
         assertInstanceOf(IrReg.class, addrInstruction.operands().get(0));
         assertInstanceOf(IrReg.class, addrInstruction.operands().get(1));
         
-        // REF parameter should be %FPR0, VAL parameter should be %FPR1
-        assertEquals("%FPR0", ((IrReg) addrInstruction.operands().get(0)).name());
-        assertEquals("%FPR1", ((IrReg) addrInstruction.operands().get(1)).name());
+        // REF parameter should be %FDR0, VAL parameter should be %FDR1
+        assertEquals("%FDR0", ((IrReg) addrInstruction.operands().get(0)).name());
+        assertEquals("%FDR1", ((IrReg) addrInstruction.operands().get(1)).name());
     }
 
     @Test
@@ -273,14 +273,14 @@ public class IrGeneratorTest {
         assertTrue(addrInstructionOpt.isPresent(), "ADDR instruction not found in IR");
         IrInstruction addrInstruction = addrInstructionOpt.get();
 
-        // Check that parameters are resolved to %FPRx registers
+        // Check that parameters are resolved to %FDRx registers
         assertEquals(2, addrInstruction.operands().size());
         assertInstanceOf(IrReg.class, addrInstruction.operands().get(0));
         assertInstanceOf(IrReg.class, addrInstruction.operands().get(1));
         
-        // VAL parameters should be %FPR0 and %FPR1
-        assertEquals("%FPR0", ((IrReg) addrInstruction.operands().get(0)).name());
-        assertEquals("%FPR1", ((IrReg) addrInstruction.operands().get(1)).name());
+        // VAL parameters should be %FDR0 and %FDR1
+        assertEquals("%FDR0", ((IrReg) addrInstruction.operands().get(0)).name());
+        assertEquals("%FDR1", ((IrReg) addrInstruction.operands().get(1)).name());
     }
 
     @Test
@@ -313,15 +313,15 @@ public class IrGeneratorTest {
         assertInstanceOf(IrLabelRef.class, callInstruction.operands().get(0));
         assertEquals("innerProc", ((IrLabelRef) callInstruction.operands().get(0)).labelName());
 
-        // Check REF operands - should be resolved to %FPRx
+        // Check REF operands - should be resolved to %FDRx
         assertEquals(1, callInstruction.refOperands().size());
         assertInstanceOf(IrReg.class, callInstruction.refOperands().get(0));
-        assertEquals("%FPR0", ((IrReg) callInstruction.refOperands().get(0)).name());
+        assertEquals("%FDR0", ((IrReg) callInstruction.refOperands().get(0)).name());
 
-        // Check VAL operands - should be resolved to %FPRx
+        // Check VAL operands - should be resolved to %FDRx
         assertEquals(1, callInstruction.valOperands().size());
         assertInstanceOf(IrReg.class, callInstruction.valOperands().get(0));
-        assertEquals("%FPR1", ((IrReg) callInstruction.valOperands().get(0)).name());
+        assertEquals("%FDR1", ((IrReg) callInstruction.valOperands().get(0)).name());
     }
 
     private static ParserStatementRegistry allHandlers() {

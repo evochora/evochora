@@ -64,9 +64,9 @@ Registers are the primary working memory of the organism. They can hold either s
 
 * **Global Data Registers (`%DRx`)**: A set of 8 general-purpose registers (`%DR0` to `%DR7`) for storing and manipulating data. Their values persist across procedure calls.
 
-* **Procedure-Local Registers (`%PRx`)**: A set of 2 temporary registers (`%PR0`, `%PR1`) intended for use within a procedure. Their values are automatically saved to the Call Stack upon a `CALL` instruction and restored upon `RET`, making them safe to use without interfering with the caller's state.
+* **Procedure-Local Data Registers (`%PDRx`)**: A set of 8 procedure-local data registers (`%PDR0` to `%PDR7`) intended for use within a procedure. Their values are automatically saved to the Call Stack upon a `CALL` instruction and restored upon `RET`, making them safe to use without interfering with the caller's state.
 
-* **Formal Parameter Registers (`%FPRx`)**: A set of 8 internal registers (`%FPR0` to `%FPR7`) used exclusively for parameter passing in procedures defined with a `.WITH` clause. They cannot be accessed directly by name in the code.
+* **Formal Data Registers (`%FDRx`)**: A set of 8 internal registers (`%FDR0` to `%FDR7`) used exclusively for parameter passing in procedures defined with a `.WITH` clause. They cannot be accessed directly by name in the code.
 
 * **Location Registers (`%LRx`)**: A set of 4 registers (`%LR0` to `%LR3`) for storing vector values (coordinates or direction vectors).
 
@@ -80,7 +80,7 @@ The VM includes three distinct stacks to manage data and control flow.
 
 * **Location Stack (`LS`)**: A dedicated LIFO stack for storing vector values, separate from the `DS`.
 
-* **Call Stack (`CS`)**: This stack is managed automatically by `CALL` and `RET` instructions. It stores return addresses and the state of the `%PRx` registers, enabling structured programming with nested procedure calls.
+* **Call Stack (`CS`)**: This stack is managed automatically by `CALL` and `RET` instructions. It stores return addresses and the state of the `%PDRx` registers, enabling structured programming with nested procedure calls.
 
 ### Thermodynamic Selection Pressure
 
@@ -237,7 +237,7 @@ All values in Evochora are fundamentally represented as **Molecules**, but the a
 
 ### Registers
 
-The most common way to reference a value is through a register. Registers are specified by their name, such as `%DR0` or `%PR1`. They can be used as arguments in most instructions.
+The most common way to reference a value is through a register. Registers are specified by their name, such as `%DR0` or `%PDR1`. They can be used as arguments in most instructions.
 
 ### Typed Literals
 
@@ -646,7 +646,7 @@ All paths in `.IMPORT`, `.REQUIRE`, and `.SOURCE` are resolved against configure
       .ENDP
       ```
 
-* `.PREG <%ALIAS> <%PROCREGISTER>`: Within a `.PROC` block, assigns an alias to a procedure-local register (`%PR0` or `%PR1`).
+* `.PREG <%ALIAS> <%PROCREGISTER>`: Within a `.PROC` block, assigns an alias to a procedure-local data register (`%PDR0` to `%PDR7`).
 
 #### Example: Simple Module Import
 

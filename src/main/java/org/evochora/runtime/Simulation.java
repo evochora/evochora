@@ -579,7 +579,7 @@ public class Simulation {
     private void logInstruction(Instruction instruction) {
         Organism organism = instruction.getOrganism();
         if (organism.isLoggingEnabled()) {
-            LOG.debug("Tick={} Org={} Instr={} Status={} IP={} DP={} DV={} ER={} DR={} PR={} DS={} CS={}",
+            LOG.debug("Tick={} Org={} Instr={} Status={} IP={} DP={} DV={} ER={} DR={} PDR={} DS={} CS={}",
                     currentTick,
                     organism.getId(),
                     instruction.getName(),
@@ -589,7 +589,7 @@ public class Simulation {
                     java.util.Arrays.toString(organism.getDv()),
                     organism.getEr(),
                     organism.getDrs(),
-                    organism.getPrs(),
+                    organism.getPdrs(),
                     organism.getDataStack(),
                     organism.getCallStack());
         }

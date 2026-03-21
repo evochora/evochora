@@ -196,7 +196,7 @@ public final class IrGenContext {
 			String nameU = id.text().toUpperCase();
 			Optional<Integer> idxOpt = resolveProcedureParam(nameU);
 			if (idxOpt.isPresent()) {
-				return new IrReg("%FPR" + idxOpt.get());
+				return new IrReg("%FDR" + idxOpt.get());
 			}
 			Optional<IrOperand> constOpt = resolveConstant(nameU);
 			if (constOpt.isPresent()) {

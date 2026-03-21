@@ -123,7 +123,7 @@ public class ProcedureDirectiveTest {
         // Arrange
         String source = String.join("\n",
                 "EXPORT .PROC FULL_PROC REF A",
-                "  .PREG %TMP %PR0",
+                "  .PREG %TMP %PDR0",
                 "  NOP",
                 ".ENDP"
         );

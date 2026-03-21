@@ -5,7 +5,7 @@ package org.evochora.runtime.isa;
  * This is used by the SemanticAnalyzer to check the correctness of instructions.
  */
 public enum InstructionArgumentType {
-    /** A register (e.g., %DR0, %PR1). */
+    /** A register (e.g., %DR0, %PDR1). */
     REGISTER,
     /** A numeric or typed literal (e.g., 42, DATA:10). */
     LITERAL,

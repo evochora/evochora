@@ -368,7 +368,7 @@ class H2DatabaseReaderInstructionResolutionTest {
                             
                             // Get register value before execution from current registers
                             if (argType == org.evochora.runtime.isa.InstructionArgumentType.REGISTER) {
-                                // DR/PR/FPR register - get from dataRegisters
+                                // DR/PDR/FDR register - get from dataRegisters
                                 if (registerId == 0 && orgBuilder.getDataRegistersCount() > 0) {
                                     orgBuilder.putInstructionRegisterValuesBefore(registerId, orgBuilder.getDataRegisters(0));
                                 }

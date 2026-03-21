@@ -79,7 +79,7 @@ public record SimulationParameters(
      *   <li>Object header + base fields: 80 bytes</li>
      *   <li>Strings (program_id, failure_reason): 60 bytes</li>
      *   <li>7 Vector messages (ip, initial_position, dv, ip_before_fetch, dv_before_fetch, etc.): 280 bytes</li>
-     *   <li>RegisterValue lists (data_registers, procedure_registers, formal_param_registers): 120 bytes</li>
+     *   <li>RegisterValue lists (data_registers, proc_data_registers, formal_data_registers): 120 bytes</li>
      *   <li>Vector lists (location_registers, data_pointers): 80 bytes</li>
      *   <li>Stacks (data_stack, location_stack, call_stack): 120 bytes</li>
      *   <li>Maps (instruction_register_values_before): 60 bytes</li>
@@ -113,7 +113,7 @@ public record SimulationParameters(
      * <p>
      * Breakdown (typical worst case without deep stacks):
      * <ul>
-     *   <li>24 register values (DR+PR+FPR): ~192 bytes</li>
+     *   <li>24 register values (DR+PDR+FDR): ~192 bytes</li>
      *   <li>9 vectors (ip, initial_position, dv, data_pointers, etc.): ~207 bytes</li>
      *   <li>Fixed scalars (ids, energy, flags, counters): ~80 bytes</li>
      *   <li>Strings (program_id): ~30 bytes</li>

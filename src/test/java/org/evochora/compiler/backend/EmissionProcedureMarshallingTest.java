@@ -64,12 +64,12 @@ public class EmissionProcedureMarshallingTest {
         assertThat(instructions).hasSize(5);
         // Assert Logic: POP, POP, NOP, PUSH, RET
         assertThat(instructions.get(0).opcode()).isEqualTo("POP");
-        assertThat(((IrReg) instructions.get(0).operands().get(0)).name()).isEqualTo("%FPR0");
+        assertThat(((IrReg) instructions.get(0).operands().get(0)).name()).isEqualTo("%FDR0");
         assertThat(instructions.get(1).opcode()).isEqualTo("POP");
-        assertThat(((IrReg) instructions.get(1).operands().get(0)).name()).isEqualTo("%FPR1");
+        assertThat(((IrReg) instructions.get(1).operands().get(0)).name()).isEqualTo("%FDR1");
         assertThat(instructions.get(2).opcode()).isEqualTo("NOP");
         assertThat(instructions.get(3).opcode()).isEqualTo("PUSH");
-        assertThat(((IrReg) instructions.get(3).operands().get(0)).name()).isEqualTo("%FPR0");
+        assertThat(((IrReg) instructions.get(3).operands().get(0)).name()).isEqualTo("%FDR0");
         assertThat(instructions.get(4).opcode()).isEqualTo("RET");
 
         // Assert SourceInfo
@@ -152,13 +152,13 @@ public class EmissionProcedureMarshallingTest {
             .map(i -> (IrLabelDef) i)
             .collect(Collectors.toList());
 
-        // Expect: POP %FPR0, POP %FPR1, INR %rB, JMPI _safe_ret_X, PUSH %FPR0, RET, _safe_ret_X:
+        // Expect: POP %FDR0, POP %FDR1, INR %rB, JMPI _safe_ret_X, PUSH %FDR0, RET, _safe_ret_X:
         assertThat(instructions).hasSize(6);
         assertThat(labels).hasSize(1);
 
         // Prologue
-        assertThat(instructions.get(0).opcode()).isEqualTo("POP"); // %FPR0 for %rA
-        assertThat(instructions.get(1).opcode()).isEqualTo("POP"); // %FPR1 for %rB
+        assertThat(instructions.get(0).opcode()).isEqualTo("POP"); // %FDR0 for %rA
+        assertThat(instructions.get(1).opcode()).isEqualTo("POP"); // %FDR1 for %rB
 
         // Conditional RET logic
         IrInstruction negated = instructions.get(2);
@@ -172,8 +172,8 @@ public class EmissionProcedureMarshallingTest {
         assertThat(labelName).startsWith("_safe_ret_");
 
         // Epilogue
-        assertThat(instructions.get(4).opcode()).isEqualTo("PUSH"); // PUSH %FPR0 for ref param %rA
-        assertThat(((IrReg) instructions.get(4).operands().get(0)).name()).isEqualTo("%FPR0");
+        assertThat(instructions.get(4).opcode()).isEqualTo("PUSH"); // PUSH %FDR0 for ref param %rA
+        assertThat(((IrReg) instructions.get(4).operands().get(0)).name()).isEqualTo("%FDR0");
         assertThat(instructions.get(5).opcode()).isEqualTo("RET");
 
         // Label

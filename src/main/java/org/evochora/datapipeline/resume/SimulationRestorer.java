@@ -533,11 +533,11 @@ public class SimulationRestorer {
         if (state.getDataRegistersCount() > 0) {
             builder.dataRegisters(convertRegisterValues(state.getDataRegistersList()));
         }
-        if (state.getProcedureRegistersCount() > 0) {
-            builder.procRegisters(convertRegisterValues(state.getProcedureRegistersList()));
+        if (state.getProcDataRegistersCount() > 0) {
+            builder.procDataRegisters(convertRegisterValues(state.getProcDataRegistersList()));
         }
-        if (state.getFormalParamRegistersCount() > 0) {
-            builder.formalParamRegisters(convertRegisterValues(state.getFormalParamRegistersList()));
+        if (state.getFormalDataRegistersCount() > 0) {
+            builder.formalDataRegisters(convertRegisterValues(state.getFormalDataRegistersList()));
         }
         if (state.getLocationRegistersCount() > 0) {
             List<Object> lrs = new ArrayList<>();
@@ -611,26 +611,26 @@ public class SimulationRestorer {
      */
     private static Organism.ProcFrame convertProcFrame(ProcFrame pf) {
         // Convert saved registers
-        Object[] savedPrs = new Object[pf.getSavedPrsCount()];
-        for (int i = 0; i < pf.getSavedPrsCount(); i++) {
-            savedPrs[i] = convertRegisterValue(pf.getSavedPrs(i));
+        Object[] savedPdrs = new Object[pf.getSavedPdrsCount()];
+        for (int i = 0; i < pf.getSavedPdrsCount(); i++) {
+            savedPdrs[i] = convertRegisterValue(pf.getSavedPdrs(i));
         }
 
-        Object[] savedFprs = new Object[pf.getSavedFprsCount()];
-        for (int i = 0; i < pf.getSavedFprsCount(); i++) {
-            savedFprs[i] = convertRegisterValue(pf.getSavedFprs(i));
+        Object[] savedFdrs = new Object[pf.getSavedFdrsCount()];
+        for (int i = 0; i < pf.getSavedFdrsCount(); i++) {
+            savedFdrs[i] = convertRegisterValue(pf.getSavedFdrs(i));
         }
 
-        // Convert FPR bindings map
-        Map<Integer, Integer> fprBindings = new HashMap<>(pf.getFprBindingsMap());
+        // Convert FDR bindings map
+        Map<Integer, Integer> fdrBindings = new HashMap<>(pf.getFdrBindingsMap());
 
         return new Organism.ProcFrame(
             pf.getProcName(),
             toIntArray(pf.getAbsoluteReturnIp()),
             toIntArray(pf.getAbsoluteCallIp()),
-            savedPrs,
-            savedFprs,
-            fprBindings
+            savedPdrs,
+            savedFdrs,
+            fdrBindings
         );
     }
 

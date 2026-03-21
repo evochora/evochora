@@ -26,7 +26,7 @@ public final class InstructionArgumentView {
     public final RegisterValueView registerValue;
 
     /**
-     * Register type name: "DR", "PR", "FPR", or "LR".
+     * Register type name: "DR", "PDR", "FDR", or "LR".
      * Only present for REGISTER type.
      * This is needed because DR and LR share the same index range (0-3),
      * so we need to explicitly indicate which register type it is.
@@ -82,7 +82,7 @@ public final class InstructionArgumentView {
      *
      * @param registerId    Register ID (e.g., 0 for %DR0)
      * @param registerValue Register value resolved from organism state
-     * @param registerType  Register type: "DR", "PR", "FPR", or "LR"
+     * @param registerType  Register type: "DR", "PDR", "FDR", or "LR"
      * @return InstructionArgumentView for REGISTER type
      */
     public static InstructionArgumentView register(int registerId, RegisterValueView registerValue, String registerType) {

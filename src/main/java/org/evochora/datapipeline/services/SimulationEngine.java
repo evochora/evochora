@@ -763,11 +763,11 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         for (Object rv : o.getDrs()) {
             organismStateBuilder.addDataRegisters(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
         }
-        for (Object rv : o.getPrs()) {
-            organismStateBuilder.addProcedureRegisters(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
+        for (Object rv : o.getPdrs()) {
+            organismStateBuilder.addProcDataRegisters(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
         }
-        for (Object rv : o.getFprs()) {
-            organismStateBuilder.addFormalParamRegisters(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
+        for (Object rv : o.getFdrs()) {
+            organismStateBuilder.addFormalDataRegisters(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
         }
         for (Object loc : o.getLrs()) {
             organismStateBuilder.addLocationRegisters(convertVectorReuse((int[]) loc, vectorBuilder));
@@ -1040,20 +1040,20 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     private org.evochora.datapipeline.api.contracts.ProcFrame convertProcFrameReuse(ProcFrame frame) {
         procFrameBuilder.clear();
         procFrameBuilder
-                .setProcName(frame.procName)
-                .setAbsoluteReturnIp(convertVectorReuse(frame.absoluteReturnIp, vectorBuilder))
-                .setAbsoluteCallIp(convertVectorReuse(frame.absoluteCallIp, vectorBuilder))
-                .putAllFprBindings(frame.fprBindings);
+                .setProcName(frame.procName())
+                .setAbsoluteReturnIp(convertVectorReuse(frame.absoluteReturnIp(), vectorBuilder))
+                .setAbsoluteCallIp(convertVectorReuse(frame.absoluteCallIp(), vectorBuilder))
+                .putAllFdrBindings(frame.fdrBindings());
 
-        if (frame.savedPrs != null) {
-            for (Object rv : frame.savedPrs) {
-                procFrameBuilder.addSavedPrs(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
+        if (frame.savedPdrs() != null) {
+            for (Object rv : frame.savedPdrs()) {
+                procFrameBuilder.addSavedPdrs(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
             }
         }
 
-        if (frame.savedFprs != null) {
-            for (Object rv : frame.savedFprs) {
-                procFrameBuilder.addSavedFprs(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
+        if (frame.savedFdrs() != null) {
+            for (Object rv : frame.savedFdrs()) {
+                procFrameBuilder.addSavedFdrs(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
             }
         }
 

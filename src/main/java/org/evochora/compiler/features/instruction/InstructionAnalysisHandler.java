@@ -133,7 +133,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                     }
 
                     // Additional validations
-                    // 1) Register validity (%DRx, %PRx, %FPRx) - aliases are already replaced in the parser
+                    // 1) Register validity (%DRx, %PDRx, %FDRx) - aliases are already replaced in the parser
                     if (expectedType == InstructionArgumentType.REGISTER && argumentNode instanceof RegisterNode regNode) {
                         String tokenText = regNode.getName();
                         String u = tokenText.toUpperCase();
@@ -159,13 +159,13 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                 );
                                 return;
                             }
-                        } else if (u.startsWith("%PR")) {
+                        } else if (u.startsWith("%PDR")) {
                             try {
-                                int regNum = Integer.parseInt(u.substring(3));
-                                if (regNum < 0 || regNum >= Config.NUM_PROC_REGISTERS) {
+                                int regNum = Integer.parseInt(u.substring(4));
+                                if (regNum < 0 || regNum >= Config.NUM_PDR_REGISTERS) {
                                     diagnostics.reportError(
-                                            String.format("Procedure register '%s' is out of bounds. Valid range: %%PR0-%%PR%d.", 
-                                                tokenText, Config.NUM_PROC_REGISTERS - 1),
+                                            String.format("Procedure register '%s' is out of bounds. Valid range: %%PDR0-%%PDR%d.",
+                                                tokenText, Config.NUM_PDR_REGISTERS - 1),
                                             regNode.sourceInfo().fileName(),
                                             regNode.sourceInfo().lineNumber()
                                     );
@@ -179,13 +179,13 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                 );
                                 return;
                             }
-                        } else if (u.startsWith("%FPR")) {
+                        } else if (u.startsWith("%FDR")) {
                             try {
                                 int regNum = Integer.parseInt(u.substring(4));
-                                if (regNum < 0 || regNum >= Config.NUM_FORMAL_PARAM_REGISTERS) {
+                                if (regNum < 0 || regNum >= Config.NUM_FDR_REGISTERS) {
                                     diagnostics.reportError(
-                                            String.format("Formal parameter register '%s' is out of bounds. Valid range: %%FPR0-%%FPR%d.", 
-                                                tokenText, Config.NUM_FORMAL_PARAM_REGISTERS - 1),
+                                            String.format("Formal parameter register '%s' is out of bounds. Valid range: %%FDR0-%%FDR%d.",
+                                                tokenText, Config.NUM_FDR_REGISTERS - 1),
                                             regNode.sourceInfo().fileName(),
                                             regNode.sourceInfo().lineNumber()
                                     );
@@ -199,10 +199,10 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                 );
                                 return;
                             }
-                            
-                            // Prohibition: Direct access to %FPRx should not be allowed
+
+                            // Prohibition: Direct access to %FDRx should not be allowed
                             diagnostics.reportError(
-                                    "Access to formal parameter registers (%FPRx) is not allowed in user code.",
+                                    "Access to formal parameter registers (%FDRx) is not allowed in user code.",
                                     regNode.sourceInfo().fileName(),
                                     regNode.sourceInfo().lineNumber()
                             );

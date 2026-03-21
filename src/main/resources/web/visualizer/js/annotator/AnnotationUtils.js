@@ -1,6 +1,6 @@
 export const INSTRUCTION_CONSTANTS = {
-    PR_BASE: 1000,
-    FPR_BASE: 2000
+    PDR_BASE: 1000,
+    FDR_BASE: 2000
 };
 
 /**
@@ -10,21 +10,21 @@ export const INSTRUCTION_CONSTANTS = {
  */
 export class AnnotationUtils {
     /**
-     * Resolves a register alias or name (e.g., "%COUNTER", "%PR0") to its canonical form
-     * (e.g., "%PR0"). When a qualifiedName is provided, it takes precedence for the lookup
+     * Resolves a register alias or name (e.g., "%COUNTER", "%PDR0") to its canonical form
+     * (e.g., "%PDR0"). When a qualifiedName is provided, it takes precedence for the lookup
      * since backend keys are module-qualified (e.g., "ENERGY.COUNTER").
      *
      * @param {string} token - The token to resolve.
      * @param {object} artifact - The program artifact containing the register alias map.
      * @param {string} [qualifiedName] - The canonical module-qualified alias name for lookup.
-     * @returns {string|null} The canonical register name (e.g., "%PR0") or null if not a valid alias.
+     * @returns {string|null} The canonical register name (e.g., "%PDR0") or null if not a valid alias.
      */
     static resolveToCanonicalRegister(token, artifact, qualifiedName) {
         const lookupKey = (qualifiedName || token || '').toUpperCase();
         if (artifact.registerAliasMap && artifact.registerAliasMap[lookupKey] !== undefined) {
             const regId = artifact.registerAliasMap[lookupKey];
-            if (regId >= INSTRUCTION_CONSTANTS.FPR_BASE) return `%FPR${regId - INSTRUCTION_CONSTANTS.FPR_BASE}`;
-            if (regId >= INSTRUCTION_CONSTANTS.PR_BASE) return `%PR${regId - INSTRUCTION_CONSTANTS.PR_BASE}`;
+            if (regId >= INSTRUCTION_CONSTANTS.FDR_BASE) return `%FDR${regId - INSTRUCTION_CONSTANTS.FDR_BASE}`;
+            if (regId >= INSTRUCTION_CONSTANTS.PDR_BASE) return `%PDR${regId - INSTRUCTION_CONSTANTS.PDR_BASE}`;
             return `%DR${regId}`;
         }
         return null;
@@ -60,31 +60,31 @@ export class AnnotationUtils {
             }
             return state.dataRegisters[id];
         }
-        if (upper.startsWith('%PR')) {
-            const id = parseInt(upper.substring(3), 10);
-            if (isNaN(id) || id < 0) {
-                throw new Error(`getRegisterValue: invalid PR register ID in "${canonicalName}"`);
-            }
-            if (!state.procedureRegisters || !Array.isArray(state.procedureRegisters)) {
-                throw new Error(`getRegisterValue: state.procedureRegisters is missing or invalid`);
-            }
-            if (id >= state.procedureRegisters.length) {
-                throw new Error(`getRegisterValue: PR register ${id} not found (only ${state.procedureRegisters.length} available)`);
-            }
-            return state.procedureRegisters[id];
-        }
-        if (upper.startsWith('%FPR')) {
+        if (upper.startsWith('%PDR')) {
             const id = parseInt(upper.substring(4), 10);
             if (isNaN(id) || id < 0) {
-                throw new Error(`getRegisterValue: invalid FPR register ID in "${canonicalName}"`);
+                throw new Error(`getRegisterValue: invalid PDR register ID in "${canonicalName}"`);
             }
-            if (!state.formalParamRegisters || !Array.isArray(state.formalParamRegisters)) {
-                throw new Error(`getRegisterValue: state.formalParamRegisters is missing or invalid`);
+            if (!state.procDataRegisters || !Array.isArray(state.procDataRegisters)) {
+                throw new Error(`getRegisterValue: state.procDataRegisters is missing or invalid`);
             }
-            if (id >= state.formalParamRegisters.length) {
-                throw new Error(`getRegisterValue: FPR register ${id} not found (only ${state.formalParamRegisters.length} available)`);
+            if (id >= state.procDataRegisters.length) {
+                throw new Error(`getRegisterValue: PDR register ${id} not found (only ${state.procDataRegisters.length} available)`);
             }
-            return state.formalParamRegisters[id];
+            return state.procDataRegisters[id];
+        }
+        if (upper.startsWith('%FDR')) {
+            const id = parseInt(upper.substring(4), 10);
+            if (isNaN(id) || id < 0) {
+                throw new Error(`getRegisterValue: invalid FDR register ID in "${canonicalName}"`);
+            }
+            if (!state.formalDataRegisters || !Array.isArray(state.formalDataRegisters)) {
+                throw new Error(`getRegisterValue: state.formalDataRegisters is missing or invalid`);
+            }
+            if (id >= state.formalDataRegisters.length) {
+                throw new Error(`getRegisterValue: FDR register ${id} not found (only ${state.formalDataRegisters.length} available)`);
+            }
+            return state.formalDataRegisters[id];
         }
         if (upper.startsWith('%LR')) {
             const id = parseInt(upper.substring(3), 10);
@@ -99,19 +99,19 @@ export class AnnotationUtils {
             }
             return state.locationRegisters[id];
         }
-        throw new Error(`getRegisterValue: invalid register format "${canonicalName}" (must start with %DR, %PR, %FPR, or %LR)`);
+        throw new Error(`getRegisterValue: invalid register format "${canonicalName}" (must start with %DR, %PDR, %FDR, or %LR)`);
     }
 
     /**
-     * Formats a register ID to its canonical display name (e.g., 2000 -> "%FPR0", 1005 -> "%PR5", 3 -> "%DR3").
+     * Formats a register ID to its canonical display name (e.g., 2000 -> "%FDR0", 1005 -> "%PDR5", 3 -> "%DR3").
      * This is a central utility for converting register IDs to their display format.
-     * 
+     *
      * When an explicit registerType is provided, it takes precedence and can distinguish LR from DR.
-     * Without registerType, the method uses ID-based heuristics (FPR >= 2000, PR >= 1000, DR < 1000).
+     * Without registerType, the method uses ID-based heuristics (FDR >= 2000, PDR >= 1000, DR < 1000).
      *
      * @param {number} registerId - The numeric register ID.
-     * @param {string} [registerType] - Optional explicit register type ('FPR', 'PR', 'DR', 'LR'). If provided, takes precedence over ID-based heuristics.
-     * @returns {string} The canonical register name (e.g., "%FPR0", "%PR5", "%DR3", "%LR2").
+     * @param {string} [registerType] - Optional explicit register type ('FDR', 'PDR', 'DR', 'LR'). If provided, takes precedence over ID-based heuristics.
+     * @returns {string} The canonical register name (e.g., "%FDR0", "%PDR5", "%DR3", "%LR2").
      * @throws {Error} If registerId is null, undefined, or not a number.
      */
     static formatRegisterName(registerId, registerType = null) {
@@ -121,14 +121,14 @@ export class AnnotationUtils {
         if (typeof registerId !== 'number' || isNaN(registerId)) {
             throw new Error(`formatRegisterName: registerId must be a valid number, got: ${registerId}`);
         }
-        
+
         // If explicit type is provided, use it (needed for LR which can't be distinguished from DR by ID alone)
         if (registerType) {
             switch (registerType.toUpperCase()) {
-                case 'FPR':
-                    return `%FPR${registerId - INSTRUCTION_CONSTANTS.FPR_BASE}`;
-                case 'PR':
-                    return `%PR${registerId - INSTRUCTION_CONSTANTS.PR_BASE}`;
+                case 'FDR':
+                    return `%FDR${registerId - INSTRUCTION_CONSTANTS.FDR_BASE}`;
+                case 'PDR':
+                    return `%PDR${registerId - INSTRUCTION_CONSTANTS.PDR_BASE}`;
                 case 'LR':
                     return `%LR${registerId}`;
                 case 'DR':
@@ -138,11 +138,11 @@ export class AnnotationUtils {
         }
         
         // ID-based heuristics (can't distinguish LR from DR)
-        if (registerId >= INSTRUCTION_CONSTANTS.FPR_BASE) {
-            return `%FPR${registerId - INSTRUCTION_CONSTANTS.FPR_BASE}`;
+        if (registerId >= INSTRUCTION_CONSTANTS.FDR_BASE) {
+            return `%FDR${registerId - INSTRUCTION_CONSTANTS.FDR_BASE}`;
         }
-        if (registerId >= INSTRUCTION_CONSTANTS.PR_BASE) {
-            return `%PR${registerId - INSTRUCTION_CONSTANTS.PR_BASE}`;
+        if (registerId >= INSTRUCTION_CONSTANTS.PDR_BASE) {
+            return `%PDR${registerId - INSTRUCTION_CONSTANTS.PDR_BASE}`;
         }
         return `%DR${registerId}`;
     }
@@ -188,16 +188,16 @@ export class AnnotationUtils {
 
     /**
      * Resolves the binding chain through the call stack to find the actual register for a procedure parameter.
-     * Starts with an FPR index (parameter index) and walks through FPR bindings in the call stack to find the final DR/PR register.
+     * Starts with an FDR index (parameter index) and walks through FDR bindings in the call stack to find the final DR/PDR register.
      * <p>
      * This method resolves bindings from the ProgramArtifact's callSiteBindings,
-     * as fprBindings in the call stack frames are not populated at runtime (copy-in/copy-out is used instead).
+     * as fdrBindings in the call stack frames are not populated at runtime (copy-in/copy-out is used instead).
      *
      * @param {number} paramIndex - The parameter index (0-based) in the procedure's parameter list.
      * @param {Array} callStack - The call stack frames (array of ProcFrame objects).
      * @param {object} artifact - The ProgramArtifact containing callSiteBindings.
      * @param {object} organismState - The organism state containing initialPosition.
-     * @returns {number} The final register ID (DR/PR/FPR).
+     * @returns {number} The final register ID (DR/PDR/FDR).
      * @throws {Error} If paramIndex, callStack, artifact, or organismState is invalid, or if callStack is empty.
      */
     static resolveBindingChain(paramIndex, callStack, artifact, organismState) {
@@ -220,8 +220,8 @@ export class AnnotationUtils {
             throw new Error(`resolveBindingChain: organismState must be an object, got: ${organismState}`);
         }
 
-        // Start with FPR index (parameter maps to FPR at FPR_BASE + paramIndex)
-        let currentRegId = INSTRUCTION_CONSTANTS.FPR_BASE + paramIndex;
+        // Start with FDR index (parameter maps to FDR at FDR_BASE + paramIndex)
+        let currentRegId = INSTRUCTION_CONSTANTS.FDR_BASE + paramIndex;
 
         // Get initialPosition for coordinate conversion
         let initialPosition = null;
@@ -254,24 +254,24 @@ export class AnnotationUtils {
                     if (Array.isArray(artifact.callSiteBindings)) {
                         const binding = artifact.callSiteBindings.find(csb => csb.linearAddress === linearAddress);
                         if (binding && binding.registerIds && Array.isArray(binding.registerIds)) {
-                            // Build fprBindings map: FPR index -> register ID
+                            // Build fdrBindings map: FDR index -> register ID
                             frameBindings = {};
                             for (let i = 0; i < binding.registerIds.length; i++) {
                                 const registerId = binding.registerIds[i];
-                                const fprId = INSTRUCTION_CONSTANTS.FPR_BASE + i;
-                                frameBindings[fprId] = registerId;
+                                const fdrId = INSTRUCTION_CONSTANTS.FDR_BASE + i;
+                                frameBindings[fdrId] = registerId;
                             }
                         }
                     }
                 }
             }
 
-            // If no bindings from artifact, check runtime fprBindings (fallback, usually empty)
-            if (!frameBindings && frame.fprBindings && typeof frame.fprBindings === 'object') {
-                frameBindings = frame.fprBindings;
+            // If no bindings from artifact, check runtime fdrBindings (fallback, usually empty)
+            if (!frameBindings && frame.fdrBindings && typeof frame.fdrBindings === 'object') {
+                frameBindings = frame.fdrBindings;
             }
 
-            // Check if current FPR is bound to another register in this frame
+            // Check if current FDR is bound to another register in this frame
             if (frameBindings) {
                 const mappedId = frameBindings[currentRegId];
                 if (mappedId !== null && mappedId !== undefined) {
@@ -280,12 +280,12 @@ export class AnnotationUtils {
                         throw new Error(`resolveBindingChain: invalid mapped register ID in bindings: ${mappedId}`);
                     }
                     currentRegId = parsedId;
-                    
-                    // If we've reached a DR or PR register (below FPR_BASE), we're done
-                    if (currentRegId < INSTRUCTION_CONSTANTS.FPR_BASE) {
+
+                    // If we've reached a DR or PDR register (below FDR_BASE), we're done
+                    if (currentRegId < INSTRUCTION_CONSTANTS.FDR_BASE) {
                         return currentRegId;
                     }
-                    // Otherwise, continue with the new FPR ID
+                    // Otherwise, continue with the new FDR ID
                 } else {
                     // End of chain - no more bindings for this register
                     break;
@@ -296,19 +296,19 @@ export class AnnotationUtils {
             }
         }
 
-        // Return the final register ID (could be FPR if chain didn't resolve completely)
+        // Return the final register ID (could be FDR if chain didn't resolve completely)
         return currentRegId;
     }
 
     /**
      * Resolves the binding chain through the call stack and returns the complete path.
      * Similar to resolveBindingChain, but returns an array of register IDs representing
-     * the complete chain from the source DR/PR register to the parameter's FPR.
+     * the complete chain from the source DR/PDR register to the parameter's FDR.
      * <p>
      * The path is returned in display order: from source to target.
-     * For example, if parameter 0 is bound to FPR0, which is bound to FPR1 in the first frame,
-     * which is bound to DR0 in the second frame, this returns [0, 2001, 2000] (DR0 -> FPR1 -> FPR0).
-     * The last element is the current FPR that holds the parameter value.
+     * For example, if parameter 0 is bound to FDR0, which is bound to FDR1 in the first frame,
+     * which is bound to DR0 in the second frame, this returns [0, 2001, 2000] (DR0 -> FDR1 -> FDR0).
+     * The last element is the current FDR that holds the parameter value.
      *
      * @param {number} paramIndex - The parameter index (0-based) in the procedure's parameter list.
      * @param {Array} callStack - The call stack frames (array of ProcFrame objects).
@@ -337,9 +337,9 @@ export class AnnotationUtils {
             throw new Error(`resolveBindingChainWithPath: organismState must be an object, got: ${organismState}`);
         }
 
-        // Start with FPR index (parameter maps to FPR at FPR_BASE + paramIndex)
-        let currentRegId = INSTRUCTION_CONSTANTS.FPR_BASE + paramIndex;
-        const path = [currentRegId]; // Start with the parameter's FPR
+        // Start with FDR index (parameter maps to FDR at FDR_BASE + paramIndex)
+        let currentRegId = INSTRUCTION_CONSTANTS.FDR_BASE + paramIndex;
+        const path = [currentRegId]; // Start with the parameter's FDR
 
         // Get initialPosition for coordinate conversion
         let initialPosition = null;
@@ -372,24 +372,24 @@ export class AnnotationUtils {
                     if (Array.isArray(artifact.callSiteBindings)) {
                         const binding = artifact.callSiteBindings.find(csb => csb.linearAddress === linearAddress);
                         if (binding && binding.registerIds && Array.isArray(binding.registerIds)) {
-                            // Build fprBindings map: FPR index -> register ID
+                            // Build fdrBindings map: FDR index -> register ID
                             frameBindings = {};
                             for (let i = 0; i < binding.registerIds.length; i++) {
                                 const registerId = binding.registerIds[i];
-                                const fprId = INSTRUCTION_CONSTANTS.FPR_BASE + i;
-                                frameBindings[fprId] = registerId;
+                                const fdrId = INSTRUCTION_CONSTANTS.FDR_BASE + i;
+                                frameBindings[fdrId] = registerId;
                             }
                         }
                     }
                 }
             }
 
-            // If no bindings from artifact, check runtime fprBindings (fallback, usually empty)
-            if (!frameBindings && frame.fprBindings && typeof frame.fprBindings === 'object') {
-                frameBindings = frame.fprBindings;
+            // If no bindings from artifact, check runtime fdrBindings (fallback, usually empty)
+            if (!frameBindings && frame.fdrBindings && typeof frame.fdrBindings === 'object') {
+                frameBindings = frame.fdrBindings;
             }
 
-            // Check if current FPR is bound to another register in this frame
+            // Check if current FDR is bound to another register in this frame
             if (frameBindings) {
                 const mappedId = frameBindings[currentRegId];
                 if (mappedId !== null && mappedId !== undefined) {
@@ -399,13 +399,13 @@ export class AnnotationUtils {
                     }
                     currentRegId = parsedId;
                     path.push(currentRegId); // Add to path
-                    
-                    // If we've reached a DR or PR register (below FPR_BASE), we're done
-                    if (currentRegId < INSTRUCTION_CONSTANTS.FPR_BASE) {
-                        // Reverse the path for display: show from source (DR/PR) to current (FPR)
+
+                    // If we've reached a DR or PDR register (below FDR_BASE), we're done
+                    if (currentRegId < INSTRUCTION_CONSTANTS.FDR_BASE) {
+                        // Reverse the path for display: show from source (DR/PDR) to current (FDR)
                         return path.reverse();
                     }
-                    // Otherwise, continue with the new FPR ID
+                    // Otherwise, continue with the new FDR ID
                 } else {
                     // End of chain - no more bindings for this register
                     break;
@@ -416,9 +416,9 @@ export class AnnotationUtils {
             }
         }
 
-        // Reverse the path for display: show from source (DR/PR) to current (FPR)
-        // The path was built as [FPR0, FPR1, DR0] (parameter to source)
-        // Return it as [DR0, FPR1, FPR0] (source to parameter) for display
+        // Reverse the path for display: show from source (DR/PDR) to current (FDR)
+        // The path was built as [FDR0, FDR1, DR0] (parameter to source)
+        // Return it as [DR0, FDR1, FDR0] (source to parameter) for display
         return path.reverse();
     }
 
@@ -439,26 +439,26 @@ export class AnnotationUtils {
             throw new Error(`getRegisterValueById: state must be an object, got: ${state}`);
         }
 
-        if (registerId >= INSTRUCTION_CONSTANTS.FPR_BASE) {
-            const index = registerId - INSTRUCTION_CONSTANTS.FPR_BASE;
-            if (!state.formalParamRegisters || !Array.isArray(state.formalParamRegisters)) {
-                throw new Error(`getRegisterValueById: state.formalParamRegisters is missing or invalid`);
+        if (registerId >= INSTRUCTION_CONSTANTS.FDR_BASE) {
+            const index = registerId - INSTRUCTION_CONSTANTS.FDR_BASE;
+            if (!state.formalDataRegisters || !Array.isArray(state.formalDataRegisters)) {
+                throw new Error(`getRegisterValueById: state.formalDataRegisters is missing or invalid`);
             }
-            if (index < 0 || index >= state.formalParamRegisters.length) {
-                throw new Error(`getRegisterValueById: FPR register ${index} not found (registerId: ${registerId}, only ${state.formalParamRegisters.length} available)`);
+            if (index < 0 || index >= state.formalDataRegisters.length) {
+                throw new Error(`getRegisterValueById: FDR register ${index} not found (registerId: ${registerId}, only ${state.formalDataRegisters.length} available)`);
             }
-            return state.formalParamRegisters[index];
+            return state.formalDataRegisters[index];
         }
-        
-        if (registerId >= INSTRUCTION_CONSTANTS.PR_BASE) {
-            const index = registerId - INSTRUCTION_CONSTANTS.PR_BASE;
-            if (!state.procedureRegisters || !Array.isArray(state.procedureRegisters)) {
-                throw new Error(`getRegisterValueById: state.procedureRegisters is missing or invalid`);
+
+        if (registerId >= INSTRUCTION_CONSTANTS.PDR_BASE) {
+            const index = registerId - INSTRUCTION_CONSTANTS.PDR_BASE;
+            if (!state.procDataRegisters || !Array.isArray(state.procDataRegisters)) {
+                throw new Error(`getRegisterValueById: state.procDataRegisters is missing or invalid`);
             }
-            if (index < 0 || index >= state.procedureRegisters.length) {
-                throw new Error(`getRegisterValueById: PR register ${index} not found (registerId: ${registerId}, only ${state.procedureRegisters.length} available)`);
+            if (index < 0 || index >= state.procDataRegisters.length) {
+                throw new Error(`getRegisterValueById: PDR register ${index} not found (registerId: ${registerId}, only ${state.procDataRegisters.length} available)`);
             }
-            return state.procedureRegisters[index];
+            return state.procDataRegisters[index];
         }
         
         if (registerId >= 0) {

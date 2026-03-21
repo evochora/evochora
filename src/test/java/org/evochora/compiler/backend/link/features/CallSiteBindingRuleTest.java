@@ -68,7 +68,7 @@ class CallSiteBindingRuleTest {
                 "CALL",
                 List.of(new IrImm(0)),
                 List.of(),
-                List.of(new IrReg("%PR1")),
+                List.of(new IrReg("%PDR1")),
                 dummySource
         );
 
@@ -83,7 +83,7 @@ class CallSiteBindingRuleTest {
                 "CALL",
                 List.of(new IrImm(0)),
                 List.of(new IrReg("%DR2")),
-                List.of(new IrReg("%PR0")),
+                List.of(new IrReg("%PDR0")),
                 dummySource
         );
 
@@ -160,15 +160,15 @@ class CallSiteBindingRuleTest {
      * following the standard register bank layout.
      */
     private static class StubInstructionSet implements IInstructionSet {
-        private static final int PR_BASE = 1000;
+        private static final int PDR_BASE = 1000;
 
         @Override
         public Optional<Integer> resolveRegisterToken(String token) {
             String upper = token.toUpperCase().replace("%", "");
             if (upper.startsWith("DR")) {
                 return parseIndex(upper, "DR", 0);
-            } else if (upper.startsWith("PR")) {
-                return parseIndex(upper, "PR", PR_BASE);
+            } else if (upper.startsWith("PDR")) {
+                return parseIndex(upper, "PDR", PDR_BASE);
             }
             return Optional.empty();
         }

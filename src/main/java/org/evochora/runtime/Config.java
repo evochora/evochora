@@ -42,14 +42,14 @@ public final class Config {
     public static final int NUM_DATA_REGISTERS = 8;
 
     /**
-     * The number of procedure registers available for storing code addresses.
+     * The number of procedure-local data registers (PDR) available per call frame.
      */
-    public static final int NUM_PROC_REGISTERS = 8;
+    public static final int NUM_PDR_REGISTERS = 8;
 
     /**
-     * The number of registers used for passing formal parameters to procedures.
+     * The number of formal data registers (FDR) used for passing parameters to procedures.
      */
-    public static final int NUM_FORMAL_PARAM_REGISTERS = 8;
+    public static final int NUM_FDR_REGISTERS = 8;
 
     /**
      * The maximum depth of the data stack.
@@ -171,7 +171,7 @@ public final class Config {
 
     /**
      * The type code for a cell representing a register reference (register operand).
-     * Register references encode register IDs (DR 0-7, PR 1000-1007, FPR 2000-2007, LR 3000-3003)
+     * Register references encode register IDs (DR 0-7, PDR 1000-1007, FDR 2000-2007, LR 3000-3003)
      * so that mutation systems can apply bank-aware mutation strategies.
      */
     public static final int TYPE_REGISTER = (0x06 & ((1 << TYPE_BITS) - 1)) << TYPE_SHIFT;
