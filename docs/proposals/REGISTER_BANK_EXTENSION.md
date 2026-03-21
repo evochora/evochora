@@ -136,7 +136,7 @@ Pure mechanical rename across the entire stack. No new functionality. Establishe
 
 **Estimated scope:** ~80-100 sites across ~20 files. All tests green after rename.
 
-### Phase B: .PREG → .REG Consolidation + Preg Deletion
+### Phase B: .PREG → .REG Consolidation + Preg Deletion — **DONE**
 
 Consolidates `.PREG` into `.REG` and deletes all Preg-specific types. After this phase, `.REG` is the single directive for all register aliases, and RegNode + Reg-handlers process all banks uniformly. All subsequent phases use the unified directive from the start.
 
@@ -149,13 +149,37 @@ Consolidates `.PREG` into `.REG` and deletes all Preg-specific types. After this
 - `ProcFeature.java`: remove all 4 `.PREG` registrations (parserStatement, analysisHandler, postProcessHandler, irConverter)
 
 **Compiler — modifications:**
-- `RegDirectiveHandler.java`: accept all register banks as targets. Scope validation at parse time: proc-scoped banks (PDR, PLR, FDR, FLR, SDR, SLR) can only be aliased inside a `.PROC` block. Validation checks the Parser scope state (`context.state()` — whether a proc scope is active) and the bank ID range. Error message: "Register %PDR0 is procedure-scoped and can only be aliased inside a .PROC block." Zero dependency on the proc feature — the check is based exclusively on bank ID ranges and the generic parser scope state.
-- `RegAnalysisHandler.java`: validate all banks by register prefix and Config bounds (absorbs PregAnalysisHandler logic)
+
+*RegDirectiveHandler.java:*
+- Accept all register banks as targets. The existing NUMBER fallback (lines 40-51, converting naked numbers to `%DR`) is deleted — register targets must always be explicit tokens (`%DR5`, `%PDR2`, etc.). No existing usages with naked numbers exist.
+- **Forbidden-bank check** (hard-coded in handler): If the target register's bank is FDR or FLR, emit error: `"Register %FDR0 cannot be aliased — FDR registers are managed by the CALL binding mechanism."` This is reg-feature knowledge (which banks are inherently non-aliasable), not ParserState infrastructure. The list of forbidden banks grows as formal banks are added: FDR (Phase B), FLR (Phase F).
+- **Scope validation** via `ParserState` available-register-banks mechanism (see below). If the target register's bank is not currently available, emit error: `"Register %PDR0 is not available in the current scope."` Zero dependency on the proc feature — the check queries generic `ParserState` infrastructure.
+- **Bounds validation** at parse time: extract index from register token, validate against Config constant for the bank. Error on out-of-bounds.
+- Validation order: forbidden-bank → scope-availability → bounds. Each check produces a distinct, actionable error message.
+
+*RegAnalysisHandler.isValidRegister():*
+- Rewrite from `substring(1,3)` logic to `startsWith` if-chain. One branch per bank, each extracting the index and checking against Config bounds. In Phase B: `%DR` (NUM_DATA_REGISTERS), `%PDR` (NUM_PDR_REGISTERS), `%FDR` (NUM_FDR_REGISTERS), `%LR` (NUM_LOCATION_REGISTERS). Subsequent phases (D, E, F) add one `startsWith` + bounds-check per new bank. Note: prefix order is irrelevant for correctness — no bank prefix is a prefix of another.
+- Bounds validation at analysis time is intentionally redundant with parse-time validation in RegDirectiveHandler. This is defense-in-depth: the analysis handler validates ALL register references (including those in instructions like `ADDI %PDR99 DATA:1`), not just `.REG` targets. The `.REG`-specific validation in RegDirectiveHandler is an additional fail-fast check.
+
+**ParserState — available-register-banks mechanism:**
+
+`ParserState` maintains a reference-counted set of available register banks:
+- `addAvailableRegisterBanks(String... banks)` — increments counter per bank
+- `removeAvailableRegisterBanks(String... banks)` — decrements counter per bank
+- `isRegisterBankAvailable(String bank)` — returns `count > 0`
+
+Initial state: `{"DR", "LR"}` with counter 1 (global banks, always available — never removed).
+
+`ProcDirectiveHandler`: on scope push calls `state.addAvailableRegisterBanks("PDR")`, on scope pop calls `state.removeAvailableRegisterBanks("PDR")`. FDR is intentionally excluded — formal data registers are populated by the CALL binding mechanism, not by user code. Direct access to FDR is forbidden (`CompilerErrorCode.PARAM_PERCENT`), and a `.REG` alias on FDR would circumvent this restriction. FDR must never appear in `availableRegisterBanks`. Subsequent phases (D, E, F) add `"PLR"`, `"SDR"`, `"SLR"` analogously — `"FLR"` is excluded for the same reason (formal location registers are populated by LREF/LVAL bindings, not directly).
+
+Reference-counting (not boolean) ensures correctness with nested procs — an inner pop does not remove the bank while the outer scope is still active. No coupling between reg and proc features: proc declares what it provides, reg queries what is available, ParserState mediates.
 
 **Assembly files:**
-- All `.PREG %ALIAS %PR0` → `.REG %ALIAS %PDR0` (names already updated in Phase A)
+- 11 sites in 2 files (energy.evo, reproduce.evo): `.PREG %ALIAS %PDR0` → `.REG %ALIAS %PDR0`
 
-**Test (unit):** Parse `.REG %MY_LOCAL %PDR2` inside a `.PROC` block. Assert: alias resolves to PDR bank, register index 2. Parse `.REG %MY_POS %LR1` outside a proc. Assert: alias resolves to LR bank, register index 1. Parse `.REG %TEMP %PDR0` outside a proc block. Assert: compilation error "Register %PDR0 is procedure-scoped and can only be aliased inside a .PROC block."
+**Test migration:**
+- `PregDirectiveTest.java`: **delete**. Test cases are recreated as new tests in `RegDirectiveTest.java`: `.REG %ALIAS %PDR0` inside `.PROC` (success), scope validation outside `.PROC` (error), bounds validation (error).
+- 6 test files updated: `.PREG` → `.REG` in test source strings, `PregNode` imports → `RegNode` imports, `PregNode` assertions → `RegNode` assertions. Affected files: `ProcedureDirectiveTest.java`, `SemanticAnalyzerTest.java`, `IrGeneratorTest.java`, `EmissionIntegrationTest.java`, `ModuleSourceDefineIntegrationTest.java`, `UsingClauseIntegrationTest.java`.
 
 ### Phase C: writeOperand/writeLocationOperand Split
 
@@ -240,7 +264,9 @@ Adds location parameter passing. Depends on Phase D (PLR exists as LREF source).
 
 **Compiler:**
 - `Lexer.java`: `%FLR\\d+` pattern
-- `ProcDirectiveHandler.java`: parse LREF/LVAL parameter declarations
+- `RegDirectiveHandler.java`: add `"FLR"` to the forbidden-bank list (alongside FDR). FLR registers are managed by LREF/LVAL bindings, not directly aliasable. `.REG %ALIAS %FLR0` must always produce an error.
+- `RegAnalysisHandler.java`: add `%FLR` startsWith branch + bounds check against `NUM_FLR_REGISTERS`
+- `ProcDirectiveHandler.java`: parse LREF/LVAL parameter declarations. Note: FLR is NOT added to `availableRegisterBanks` — FLR is a forbidden bank (same as FDR).
 - `ProcedureNode.java`: add `lrefParameters`/`lvalParameters` lists (ParamDecl with location flag)
 - `CallStatementHandler.java`: parse LREF/LVAL at call site
 - `CallNode.java`: add `lrefArguments`/`lvalArguments` fields

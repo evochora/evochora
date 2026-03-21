@@ -5,8 +5,8 @@ import org.evochora.compiler.IFeatureRegistrationContext;
 
 /**
  * Consolidates all procedure-related compiler components into a single feature.
- * Covers .PROC and .PREG directives, including parsing, analysis, post-processing,
- * IR generation, emission rules, linking, and emission contribution.
+ * Covers the .PROC directive and CALL statement, including parsing, analysis,
+ * post-processing, IR generation, emission rules, linking, and emission contribution.
  */
 public class ProcFeature implements ICompilerFeature {
 
@@ -16,17 +16,13 @@ public class ProcFeature implements ICompilerFeature {
     @Override
     public void register(IFeatureRegistrationContext ctx) {
         ctx.parserStatement(".PROC", new ProcDirectiveHandler());
-        ctx.parserStatement(".PREG", new PregDirectiveHandler());
         ctx.parserStatement("CALL", new CallStatementHandler());
         ctx.symbolCollector(ProcedureNode.class, new ProcedureSymbolCollector());
         ctx.analysisHandler(CallNode.class, new CallAnalysisHandler());
         ctx.irConverter(CallNode.class, new CallNodeConverter());
         ctx.analysisHandler(ProcedureNode.class, new ProcedureAnalysisHandler());
-        ctx.analysisHandler(PregNode.class, new PregAnalysisHandler());
         ctx.tokenMapContributor(ProcedureNode.class, new ProcedureTokenMapContributor());
-        ctx.postProcessHandler(PregNode.class, new PregPostProcessHandler());
         ctx.irConverter(ProcedureNode.class, new ProcedureNodeConverter());
-        ctx.irConverter(PregNode.class, new PregNodeConverter());
         ctx.emissionRule(new ProcedureMarshallingRule());
         ctx.emissionRule(new CallerMarshallingRule());
         ctx.linkingRule(new CallSiteBindingRule());

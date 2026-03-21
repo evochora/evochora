@@ -24,7 +24,7 @@ public class AstPostProcessor implements IPostProcessContext {
     private final SymbolTable symbolTable;
     private final ModuleContextTracker contextTracker;
     private final PostProcessHandlerRegistry registry;
-    // Module-qualified register aliases, collected from RegNode/PregNode via handlers
+    // Module-qualified register aliases, collected from RegNode via handlers
     private final Map<String, String> registerAliases = new HashMap<>();
     // Module-qualified constants: aliasChain -> (constantName -> value)
     private final Map<String, Map<String, TypedLiteralNode>> constants = new HashMap<>();

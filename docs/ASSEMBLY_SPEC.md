@@ -646,7 +646,7 @@ All paths in `.IMPORT`, `.REQUIRE`, and `.SOURCE` are resolved against configure
       .ENDP
       ```
 
-* `.PREG <%ALIAS> <%PROCREGISTER>`: Within a `.PROC` block, assigns an alias to a procedure-local data register (`%PDR0` to `%PDR7`).
+* `.REG` also works inside `.PROC` blocks with procedure-local data registers: `.REG %TMP %PDR0` aliases `%PDR0` as `%TMP`. PDR registers are only available inside `.PROC` blocks.
 
 #### Example: Simple Module Import
 

@@ -26,7 +26,7 @@ public record Symbol(String name, SourceInfo sourceInfo, Type type, AstNode node
         PROCEDURE,
         /** A variable, such as a procedure parameter. */
         VARIABLE,
-        /** A register alias defined with .REG or .PREG. */
+        /** A register alias defined with .REG. */
         ALIAS
     }
 

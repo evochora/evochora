@@ -72,6 +72,7 @@ public class ProcDirectiveHandler implements IParserStatementHandler {
         }
 
         context.state().pushScope();
+        context.state().addAvailableRegisterBanks("PDR");
 
         List<AstNode> body = new ArrayList<>();
         while (!context.isAtEnd() && !(context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".ENDP"))) {
@@ -82,10 +83,11 @@ public class ProcDirectiveHandler implements IParserStatementHandler {
             }
         }
 
+        context.state().removeAvailableRegisterBanks("PDR");
         context.state().popScope();
 
         if (context.isAtEnd() || !(context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".ENDP"))) {
-            context.getDiagnostics().reportError("Expected .ENDP to close procedure block.", "Syntax Error", procName.line());
+            context.getDiagnostics().reportError("Expected .ENDP to close procedure block.", procName.fileName(), procName.line());
         } else {
             context.advance(); // consume .ENDP
         }

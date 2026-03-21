@@ -12,7 +12,7 @@ import org.evochora.compiler.model.ir.IrValue;
  * and registers it in the {@link EmissionContext}.
  *
  * <p>The {@code reg_alias} directive is emitted by {@code RegNodeConverter}
- * and {@code PregNodeConverter} in Phase 7. Each directive carries a
+ * in Phase 7. Each directive carries a
  * module-qualified alias name and a target register name (e.g., {@code %DR7},
  * {@code %PDR0}). This contributor converts register names to their numeric IDs
  * so the {@link org.evochora.compiler.api.ProgramArtifact} can include them
