@@ -171,7 +171,7 @@ public final class Config {
 
     /**
      * The type code for a cell representing a register reference (register operand).
-     * Register references encode register IDs (DR 0-7, PDR 1000-1007, FDR 2000-2007, LR 3000-3003)
+     * Register references encode register IDs (DR, PDR, FDR, LR — ranges defined by Instruction.*_BASE and Config.NUM_*_REGISTERS)
      * so that mutation systems can apply bank-aware mutation strategies.
      */
     public static final int TYPE_REGISTER = (0x06 & ((1 << TYPE_BITS) - 1)) << TYPE_SHIFT;

@@ -158,7 +158,7 @@ public class RegDirectiveTest {
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
-        List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
+        parser.parse();
 
         assertThat(diagnostics.hasErrors()).isFalse();
     }

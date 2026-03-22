@@ -1348,15 +1348,28 @@ public class Organism {
     }
 
     /**
-     * Writes a value to a register (DR, PDR, FDR, or LR) using its full numeric ID.
+     * Checks whether a register ID belongs to a location register bank.
+     * Single source of truth — subsequent phases extend this with PLR, SLR, FLR ranges.
      *
-     * @param id The full ID of the register.
-     * @param value The value to write.
-     * @return {@code true} if the write was successful.
+     * @param id the full register ID
+     * @return {@code true} if the ID is in a location register bank
+     */
+    public static boolean isLocationBank(int id) {
+        return id >= Instruction.LR_BASE && id < Instruction.LR_BASE + Config.NUM_LOCATION_REGISTERS;
+    }
+
+    /**
+     * Writes a value to a data register (DR, PDR, or FDR) using its full numeric ID.
+     * Location register writes are rejected — use {@link #writeLocationOperand(int, int[])} instead.
+     *
+     * @param id the full ID of the register
+     * @param value the value to write
+     * @return {@code true} if the write was successful
      */
     public boolean writeOperand(int id, Object value) {
-        if (id >= Instruction.LR_BASE && id < Instruction.LR_BASE + Config.NUM_LOCATION_REGISTERS) {
-            return setLr(id - Instruction.LR_BASE, (int[]) value);
+        if (isLocationBank(id)) {
+            this.instructionFailed("Cannot write to location register via data instruction");
+            return false;
         }
         if (id >= Instruction.FDR_BASE && id < Instruction.FDR_BASE + Config.NUM_FDR_REGISTERS) {
             return setFdr(id - Instruction.FDR_BASE, value);
@@ -1370,5 +1383,24 @@ public class Organism {
         this.instructionFailed("Invalid register ID: " + id);
         return false;
     }
-    
+
+    /**
+     * Writes a vector value to a location register using its full numeric ID.
+     * Only accepts location register banks — data register writes are rejected.
+     *
+     * @param id the full ID of the location register
+     * @param value the vector value to write
+     * @return {@code true} if the write was successful
+     */
+    public boolean writeLocationOperand(int id, int[] value) {
+        if (!isLocationBank(id)) {
+            this.instructionFailed("Cannot write to non-location register via location instruction: " + id);
+            return false;
+        }
+        if (id >= Instruction.LR_BASE && id < Instruction.LR_BASE + Config.NUM_LOCATION_REGISTERS) {
+            return setLr(id - Instruction.LR_BASE, value);
+        }
+        throw new IllegalStateException("isLocationBank() accepted ID " + id + " but no dispatch branch matched");
+    }
+
 }

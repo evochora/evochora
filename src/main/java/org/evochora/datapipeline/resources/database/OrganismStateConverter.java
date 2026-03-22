@@ -186,7 +186,7 @@ public final class OrganismStateConverter {
     /**
      * Resolves a register value by register ID.
      *
-     * @param registerId        Register ID (0-999 for DR, 1000+ for PDR, 2000+ for FDR, 0-3 for LR)
+     * @param registerId        Register ID (dispatched by Instruction.*_BASE ranges)
      * @param dataRegisters     Data registers list
      * @param pdrRegisters     Procedure data registers list
      * @param fdrRegisters      Formal data registers list
@@ -261,7 +261,7 @@ public final class OrganismStateConverter {
      * REGISTER arguments in instructions are always DR/PDR/FDR, never LR.
      * LR registers are accessed via LOCATION_REGISTER argument type (to be implemented).
      *
-     * @param registerId        Register ID (0-999 for DR, 1000-1999 for PDR, 2000+ for FDR)
+     * @param registerId        Register ID (dispatched by Instruction.*_BASE ranges)
      * @param dataRegisters     Data registers list
      * @param pdrRegisters     Procedure data registers list
      * @param fdrRegisters      Formal data registers list

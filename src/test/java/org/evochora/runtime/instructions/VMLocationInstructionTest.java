@@ -189,20 +189,20 @@ public class VMLocationInstructionTest {
         
         // Verify instruction failed
         assertThat(org.isInstructionFailed()).isTrue();
-        assertThat(org.getFailureReason()).contains("Invalid destination LR index");
-        
+        assertThat(org.getFailureReason()).contains("Cannot write to non-location register");
+
         // Reset failure state
         org.resetTickState();
-        
+
         // Test with invalid source LR index
         int validDest = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + 1).toInt();
         int invalidSrc = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + Config.NUM_LOCATION_REGISTERS).toInt();
         placeInstruction(org, "LRLR", validDest, invalidSrc);
         sim.tick();
-        
+
         // Verify instruction failed
         assertThat(org.isInstructionFailed()).isTrue();
-        assertThat(org.getFailureReason()).contains("Invalid source LR index");
+        assertThat(org.getFailureReason()).contains("Invalid register ID");
     }
 
     // --- Location Stack (LS) Tests ---
@@ -624,7 +624,7 @@ public class VMLocationInstructionTest {
 
         // Should fail
         assertThat(org.isInstructionFailed()).isTrue();
-        assertThat(org.getFailureReason()).contains("CRLR: Invalid LR index: 5");
+        assertThat(org.getFailureReason()).contains("Cannot write to non-location register");
     }
 
     /**

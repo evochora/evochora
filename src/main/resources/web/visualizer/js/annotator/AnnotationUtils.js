@@ -1,6 +1,7 @@
 export const INSTRUCTION_CONSTANTS = {
     PDR_BASE: 1000,
-    FDR_BASE: 2000
+    FDR_BASE: 2000,
+    LR_BASE: 3000
 };
 
 /**
@@ -23,6 +24,7 @@ export class AnnotationUtils {
         const lookupKey = (qualifiedName || token || '').toUpperCase();
         if (artifact.registerAliasMap && artifact.registerAliasMap[lookupKey] !== undefined) {
             const regId = artifact.registerAliasMap[lookupKey];
+            if (regId >= INSTRUCTION_CONSTANTS.LR_BASE) return `%LR${regId - INSTRUCTION_CONSTANTS.LR_BASE}`;
             if (regId >= INSTRUCTION_CONSTANTS.FDR_BASE) return `%FDR${regId - INSTRUCTION_CONSTANTS.FDR_BASE}`;
             if (regId >= INSTRUCTION_CONSTANTS.PDR_BASE) return `%PDR${regId - INSTRUCTION_CONSTANTS.PDR_BASE}`;
             return `%DR${regId}`;
@@ -103,11 +105,9 @@ export class AnnotationUtils {
     }
 
     /**
-     * Formats a register ID to its canonical display name (e.g., 2000 -> "%FDR0", 1005 -> "%PDR5", 3 -> "%DR3").
-     * This is a central utility for converting register IDs to their display format.
-     *
-     * When an explicit registerType is provided, it takes precedence and can distinguish LR from DR.
-     * Without registerType, the method uses ID-based heuristics (FDR >= 2000, PDR >= 1000, DR < 1000).
+     * Formats a register ID to its canonical display name.
+     * When an explicit registerType is provided, it takes precedence.
+     * Without registerType, the method uses ID-based heuristics via the BASE constants.
      *
      * @param {number} registerId - The numeric register ID.
      * @param {string} [registerType] - Optional explicit register type ('FDR', 'PDR', 'DR', 'LR'). If provided, takes precedence over ID-based heuristics.
@@ -122,22 +122,25 @@ export class AnnotationUtils {
             throw new Error(`formatRegisterName: registerId must be a valid number, got: ${registerId}`);
         }
 
-        // If explicit type is provided, use it (needed for LR which can't be distinguished from DR by ID alone)
+        // If explicit type is provided, use it directly
         if (registerType) {
             switch (registerType.toUpperCase()) {
+                case 'LR':
+                    return `%LR${registerId - INSTRUCTION_CONSTANTS.LR_BASE}`;
                 case 'FDR':
                     return `%FDR${registerId - INSTRUCTION_CONSTANTS.FDR_BASE}`;
                 case 'PDR':
                     return `%PDR${registerId - INSTRUCTION_CONSTANTS.PDR_BASE}`;
-                case 'LR':
-                    return `%LR${registerId}`;
                 case 'DR':
                 default:
                     return `%DR${registerId}`;
             }
         }
-        
-        // ID-based heuristics (can't distinguish LR from DR)
+
+        // ID-based heuristics, descending by BASE value
+        if (registerId >= INSTRUCTION_CONSTANTS.LR_BASE) {
+            return `%LR${registerId - INSTRUCTION_CONSTANTS.LR_BASE}`;
+        }
         if (registerId >= INSTRUCTION_CONSTANTS.FDR_BASE) {
             return `%FDR${registerId - INSTRUCTION_CONSTANTS.FDR_BASE}`;
         }
@@ -437,6 +440,17 @@ export class AnnotationUtils {
         }
         if (!state || typeof state !== 'object') {
             throw new Error(`getRegisterValueById: state must be an object, got: ${state}`);
+        }
+
+        if (registerId >= INSTRUCTION_CONSTANTS.LR_BASE) {
+            const index = registerId - INSTRUCTION_CONSTANTS.LR_BASE;
+            if (!state.locationRegisters || !Array.isArray(state.locationRegisters)) {
+                throw new Error(`getRegisterValueById: state.locationRegisters is missing or invalid`);
+            }
+            if (index < 0 || index >= state.locationRegisters.length) {
+                throw new Error(`getRegisterValueById: LR register ${index} not found (registerId: ${registerId}, only ${state.locationRegisters.length} available)`);
+            }
+            return state.locationRegisters[index];
         }
 
         if (registerId >= INSTRUCTION_CONSTANTS.FDR_BASE) {

@@ -167,6 +167,18 @@ public abstract class Instruction {
     }
 
     /**
+     * Writes a vector value to a location register.
+     * Only accepts location register banks — data register writes are rejected.
+     *
+     * @param id the full ID of the location register
+     * @param value the vector value to write
+     * @return true if the write was successful, false otherwise
+     */
+    protected boolean writeLocationOperand(int id, int[] value) {
+        return organism.writeLocationOperand(id, value);
+    }
+
+    /**
      * Resolves the operands for this instruction based on their sources.
      * <p>
      * This method is <b>idempotent</b>: the first call resolves and caches the operands,

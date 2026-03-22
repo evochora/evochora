@@ -181,7 +181,7 @@ Reference-counting (not boolean) ensures correctness with nested procs — an in
 - `PregDirectiveTest.java`: **delete**. Test cases are recreated as new tests in `RegDirectiveTest.java`: `.REG %ALIAS %PDR0` inside `.PROC` (success), scope validation outside `.PROC` (error), bounds validation (error).
 - 6 test files updated: `.PREG` → `.REG` in test source strings, `PregNode` imports → `RegNode` imports, `PregNode` assertions → `RegNode` assertions. Affected files: `ProcedureDirectiveTest.java`, `SemanticAnalyzerTest.java`, `IrGeneratorTest.java`, `EmissionIntegrationTest.java`, `ModuleSourceDefineIntegrationTest.java`, `UsingClauseIntegrationTest.java`.
 
-### Phase C: writeOperand/writeLocationOperand Split
+### Phase C: writeOperand/writeLocationOperand Split — **DONE**
 
 Establishes the runtime safety architecture for location register write restriction. Independent from all other phases — only prerequisite is Phase A (naming). Affects only runtime code, no compiler changes.
 
@@ -190,7 +190,7 @@ Establishes the runtime safety architecture for location register write restrict
 - `Organism.writeOperand(int id, Object value)`: reject IDs where `isLocationBank(id)` returns true → `instructionFailed("Cannot write to location register via data instruction")`
 - `Organism.writeLocationOperand(int id, int[] value)`: new method, exclusively for location instructions. Validates that `isLocationBank(id)` returns true. Writes the vector value to the appropriate location register.
 - `Instruction.java`: new protected helper method `writeLocationOperand(int id, int[] value)` analogous to `writeOperand()`, delegates to `organism.writeLocationOperand()`
-- `LocationInstruction.java`: 2 call sites changed from `writeOperand()` to `writeLocationOperand()`
+- `LocationInstruction.java`: All direct `org.setLr()`/`org.getLr()` calls replaced with bank-independent dispatch: 4 write sites (DPLR, POPL, LRLR, CRLR) route through `writeLocationOperand()`, 5 read sites (SKLR, PUSL, LRDR, LRDS, LRLR source) route through `org.readOperand()`. The `toLrIndex()` helper method is deleted. 2 existing `writeOperand()` calls (LRDR, LSDR) remain unchanged — they write to data registers, not location registers.
 - Zero changes to DataInstruction, ArithmeticInstruction, BitwiseInstruction, StateInstruction, VectorInstruction, EnvironmentInteractionInstruction — these continue calling `writeOperand()` and are automatically blocked from writing to location banks
 
 **Test (unit):** Create an Organism. Write via `writeOperand()` to DR → success. Write via `writeOperand()` to LR → `instructionFailed` called, write rejected. Write via `writeLocationOperand()` to LR → success. Write via `writeLocationOperand()` to DR → error (not a location bank).
