@@ -204,24 +204,29 @@ Adds proc-local location registers, saved/restored on CALL/RET like PDR. Depends
 **Runtime:**
 - `Config.java`: `NUM_PLR_REGISTERS = 4`
 - `Instruction.java`: `PLR_BASE = 4000`, `resolveRegToken()` for `%PLR`
-- `Organism.java`: `plrs` list (List<Object>, initialized with zero-vectors), `getPlr()`/`setPlr()`, `readOperand()` dispatch, `writeLocationOperand()` dispatch for PLR range
-- `ProcFrame` record: add `Object[] savedPlrs` component
-- `ProcedureCallHandler.java`: save PLR on CALL, restore on RET
-- `LocationInstruction.java`: validation bounds extended to cover PLR range. Dispatch through `Organism.readOperand()`/`writeLocationOperand()` handles routing.
+- `Organism.java`: `plrs` list (List<Object>, initialized with zero-vectors of `startIp.length` dimensionality), `getPlr()`/`setPlr()`, `readOperand()` dispatch, `writeLocationOperand()` dispatch for PLR range. Extend `isLocationBank()` with PLR range — critical for `writeOperand()` rejection and `writeLocationOperand()` guard.
+- `ProcFrame` record: add `Object[] savedPlrs` component (8 constructor call-sites must be updated)
+- `ProcedureCallHandler.java`: save PLR on CALL, restore on RET (analogous to PDR save/restore)
+- `LocationInstruction.java`: no changes needed — dispatch through `Organism.readOperand()`/`writeLocationOperand()` routes PLR automatically (Phase C architecture)
 - `GeneSubstitutionPlugin.java`: PLR bank detection for mutations
+- `GeneInsertionPlugin.java`: add `"PLR"` and `"LR"` cases to bank-name-to-base-ID switch
 
 **Compiler:**
 - `Lexer.java`: `%PLR\\d+` pattern
-- `RegisterAliasEmissionContributor.java`: `%PLR` prefix
+- `RegisterAliasEmissionContributor.java`: `%PLR` prefix → `Instruction.PLR_BASE + index`
 - `InstructionAnalysisHandler.java`: PLR validation for LOCATION_REGISTER argument type
+- `RegDirectiveHandler.java`: add `"PLR"` bounds check (`Config.NUM_PLR_REGISTERS`) to parse-time validation
+- `RegAnalysisHandler.java`: add `%PLR` startsWith branch + bounds check in `isValidRegister()`
+- `ProcDirectiveHandler.java`: add `"PLR"` to `addAvailableRegisterBanks()`/`removeAvailableRegisterBanks()` alongside `"PDR"`
 
 **Data Pipeline:**
 - `tickdata_contracts.proto`: `repeated Vector proc_location_registers = N;` + ProcFrame extension
 - Serialization/deserialization updated
 
 **Visualizer:**
-- `AnnotationUtils.js`: `PLR_BASE: 4000`, formatRegisterName, getRegisterValueById
-- `OrganismStateView.js`: PLR section in register display
+- `AnnotationUtils.js`: `PLR_BASE: 4000` constant. Add PLR branch to: (a) all ID-based dispatch methods: `formatRegisterName()`, `getRegisterValueById()`, `resolveToCanonicalRegister()` — dispatch order descending by BASE value (PLR > LR > FDR > PDR > DR); (b) the string-based method `getRegisterValue()` — add `startsWith('%PLR')` branch.
+- `OrganismStateView.js`: PLR section in register display, PLR values in call stack frame display
+- All annotation handlers (ParameterTokenHandler, RegisterTokenHandler, etc.) and views (OrganismInstructionView, OrganismSourceView) route through AnnotationUtils — no direct changes needed there.
 
 **Test (integration):** Assembly program with two procedures. PROC_A stores current DP in %PLR0 via `DPLR %PLR0`, then calls PROC_B. PROC_B overwrites %PLR0 with a different position via `DPLR %PLR0`. PROC_B returns. Assert: %PLR0 in PROC_A's context is restored to the original DP position (not PROC_B's overwrite). Verify via register state inspection after compilation and simulated execution.
 
@@ -232,22 +237,27 @@ Adds persistent state registers. Independent from Phase D (PLR). Depends on Phas
 **Runtime:**
 - `Config.java`: `NUM_SDR_REGISTERS = 8`, `NUM_SLR_REGISTERS = 4`
 - `Instruction.java`: `SDR_BASE = 6000`, `SLR_BASE = 7000`, `resolveRegToken()`
-- `Organism.java`: active arrays `sdrs` (List<Object>) and `slrs` (List<Object>) for direct `readOperand()`/`writeOperand()` (SDR) and `writeLocationOperand()` (SLR) access. Backing store: `Map<String, Object[]> sdrState`, `Map<String, int[][]> slrState` keyed by qualified procedure name.
+- `Organism.java`: active arrays `sdrs` (List<Object>) and `slrs` (List<Object>, initialized with zero-vectors) for direct `readOperand()`/`writeOperand()` (SDR) and `writeLocationOperand()` (SLR) access. Extend `isLocationBank()` with SLR range. Backing store: `Map<String, Object[]> sdrState`, `Map<String, int[][]> slrState` keyed by qualified procedure name.
 - `ProcedureCallHandler.java`: on CALL, save caller's active SDR/SLR to map (if caller is a procedure), load callee's SDR/SLR from map into active arrays (or initialize to defaults if first call). On RET, write active SDR/SLR back to map, restore caller's values from map.
 - `GeneSubstitutionPlugin.java`: SDR/SLR bank detection
+- `GeneInsertionPlugin.java`: add `"SDR"`, `"SLR"` cases to bank-name-to-base-ID switch
 
 **Compiler:**
 - `Lexer.java`: `%SDR\\d+`, `%SLR\\d+` patterns
-- `RegisterAliasEmissionContributor.java`: `%SDR`, `%SLR` prefixes
+- `RegisterAliasEmissionContributor.java`: `%SDR` → `SDR_BASE + index`, `%SLR` → `SLR_BASE + index`
 - `InstructionAnalysisHandler.java`: SDR validation for REGISTER type, SLR for LOCATION_REGISTER type
+- `RegDirectiveHandler.java`: add `"SDR"` and `"SLR"` bounds checks to parse-time validation
+- `RegAnalysisHandler.java`: add `%SDR` and `%SLR` startsWith branches + bounds checks in `isValidRegister()`
+- `ProcDirectiveHandler.java`: add `"SDR"`, `"SLR"` to `addAvailableRegisterBanks()`/`removeAvailableRegisterBanks()` alongside `"PDR"`, `"PLR"`
 
 **Data Pipeline:**
 - `tickdata_contracts.proto`: persistent state serialization (active SDR/SLR arrays + backing store map of procedure names to register snapshots)
 - Serialization/deserialization
 
 **Visualizer:**
-- `AnnotationUtils.js`: `SDR_BASE: 6000`, `SLR_BASE: 7000`
-- `OrganismStateView.js`: SDR/SLR sections, displayed per-procedure in call stack view
+- `AnnotationUtils.js`: `SDR_BASE: 6000`, `SLR_BASE: 7000` constants. Add SDR/SLR branches to: (a) all ID-based dispatch methods: `formatRegisterName()`, `getRegisterValueById()`, `resolveToCanonicalRegister()` — dispatch order descending by BASE value; (b) the string-based method `getRegisterValue()` — add `startsWith('%SDR')` and `startsWith('%SLR')` branches.
+- `OrganismStateView.js`: SDR/SLR sections, displayed per-procedure in call stack view. SDR values shown as scalars, SLR as vectors.
+- All annotation handlers route through AnnotationUtils — no direct changes needed there.
 
 **Test (integration):** Assembly program with a procedure COUNTER that increments %SDR0 via `ADDI %SDR0 DATA:1`. Main program calls COUNTER three times. Assert after first call: %SDR0 == 1. Assert after second call: %SDR0 == 2. Assert after third call: %SDR0 == 3. Additionally test isolation: a second procedure COUNTER_B reads its own %SDR0. Assert: COUNTER_B's %SDR0 == 0 (independent from COUNTER's state).
 
@@ -258,14 +268,18 @@ Adds location parameter passing. Depends on Phase D (PLR exists as LREF source).
 **Runtime:**
 - `Config.java`: `NUM_FLR_REGISTERS = 4`
 - `Instruction.java`: `FLR_BASE = 5000`, `resolveRegToken()`
-- `Organism.java`: `flrs` list, `getFlr()`/`setFlr()`, readOperand/writeLocationOperand dispatch
+- `Organism.java`: `flrs` list (List<Object>, initialized with zero-vectors), `getFlr()`/`setFlr()`, `readOperand()`/`writeLocationOperand()` dispatch. Extend `isLocationBank()` with FLR range.
 - `ProcFrame` record: add `Object[] savedFlrs` component + `Map<Integer, Integer> flrBindings`
 - `ProcedureCallHandler.java`: FLR binding on CALL (copy location value from source register to FLR), restore on RET. For LREF: write FLR back to source register before restore.
+- `GeneSubstitutionPlugin.java`: FLR bank detection for mutations
+- `GeneInsertionPlugin.java`: add `"FLR"` case to bank-name-to-base-ID switch
 
 **Compiler:**
 - `Lexer.java`: `%FLR\\d+` pattern
+- `RegisterAliasEmissionContributor.java`: `%FLR` → `FLR_BASE + index`
 - `RegDirectiveHandler.java`: add `"FLR"` to the forbidden-bank list (alongside FDR). FLR registers are managed by LREF/LVAL bindings, not directly aliasable. `.REG %ALIAS %FLR0` must always produce an error.
 - `RegAnalysisHandler.java`: add `%FLR` startsWith branch + bounds check against `NUM_FLR_REGISTERS`
+- `InstructionAnalysisHandler.java`: FLR validation for LOCATION_REGISTER argument type
 - `ProcDirectiveHandler.java`: parse LREF/LVAL parameter declarations. Note: FLR is NOT added to `availableRegisterBanks` — FLR is a forbidden bank (same as FDR).
 - `ProcedureNode.java`: add `lrefParameters`/`lvalParameters` lists (ParamDecl with location flag)
 - `CallStatementHandler.java`: parse LREF/LVAL at call site
@@ -281,9 +295,10 @@ Adds location parameter passing. Depends on Phase D (PLR exists as LREF source).
 - Serialization/deserialization
 
 **Visualizer:**
-- `AnnotationUtils.js`: `FLR_BASE: 5000`, formatting
-- `OrganismStateView.js`: FLR section, location parameter display in call stack
-- `ParameterTokenHandler.js`: location parameter binding chain display
+- `AnnotationUtils.js`: `FLR_BASE: 5000` constant. Add FLR branch to: (a) all ID-based dispatch methods: `formatRegisterName()`, `getRegisterValueById()`, `resolveToCanonicalRegister()` — dispatch order descending by BASE value; (b) the string-based method `getRegisterValue()` — add `startsWith('%FLR')` branch.
+- `OrganismStateView.js`: FLR section in register display, location parameter display in call stack frames (analogous to FDR parameter display but with vector values)
+- `ParameterTokenHandler.js`: location parameter binding chain display (LREF/LVAL chain resolution through FLR, analogous to REF/VAL through FDR)
+- All annotation handlers route through AnnotationUtils — no direct changes needed there.
 
 **Test (integration):** Assembly program: main stores current DP in %LR0 via `DPLR %LR0`. Defines `.PROC NAV LREF lPos` that executes `SKLR lPos` (which resolves to `SKLR %FLR0`) to move DP to the passed location, then returns. Main calls `CALL NAV LREF %LR0`. Assert: after CALL, the DP inside NAV moved to the location that was stored in %LR0. Assert: after RET, the LREF write-back updated %LR0 if NAV modified %FLR0 (or left it unchanged if not).
 
