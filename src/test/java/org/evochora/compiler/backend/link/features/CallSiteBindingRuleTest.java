@@ -1,6 +1,7 @@
 package org.evochora.compiler.backend.link.features;
 
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.runtime.isa.Instruction;
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.features.proc.CallSiteBindingRule;
 import org.evochora.compiler.backend.link.LinkingContext;
@@ -74,7 +75,7 @@ class CallSiteBindingRuleTest {
 
         rule.apply(call, context, layout);
 
-        assertThat(context.callSiteBindings().get(0)).containsExactly(1001);
+        assertThat(context.callSiteBindings().get(0)).containsExactly(Instruction.PDR_BASE + 1);
     }
 
     @Test
@@ -89,7 +90,7 @@ class CallSiteBindingRuleTest {
 
         rule.apply(call, context, layout);
 
-        assertThat(context.callSiteBindings().get(0)).containsExactly(2, 1000);
+        assertThat(context.callSiteBindings().get(0)).containsExactly(2, Instruction.PDR_BASE);
     }
 
     @Test
@@ -160,7 +161,7 @@ class CallSiteBindingRuleTest {
      * following the standard register bank layout.
      */
     private static class StubInstructionSet implements IInstructionSet {
-        private static final int PDR_BASE = 1000;
+        private static final int PDR_BASE = org.evochora.runtime.isa.Instruction.PDR_BASE;
 
         @Override
         public Optional<Integer> resolveRegisterToken(String token) {

@@ -133,18 +133,12 @@ public abstract class Instruction {
         return REGISTERED_INSTRUCTIONS_BY_ID.get(opcodeId);
     }
 
-    /**
-     * Base address for procedure-local data registers (PDR).
-     */
-    public static final int PDR_BASE = 1000;
-    /**
-     * Base address for formal data registers (FDR).
-     */
-    public static final int FDR_BASE = 2000;
-    /**
-     * Base address for location registers.
-     */
-    public static final int LR_BASE = 3000;
+    /** Base address for location registers. Transitional alias for {@code RegisterBank.LR.base}. */
+    public static final int LR_BASE = 256;
+    /** Base address for procedure-local data registers (PDR). Transitional alias for {@code RegisterBank.PDR.base}. */
+    public static final int PDR_BASE = 512;
+    /** Base address for formal data registers (FDR). Transitional alias for {@code RegisterBank.FDR.base}. */
+    public static final int FDR_BASE = 1024;
 
     /**
      * Constructs a new instruction.

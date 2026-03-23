@@ -1,7 +1,7 @@
 export const INSTRUCTION_CONSTANTS = {
-    PDR_BASE: 1000,
-    FDR_BASE: 2000,
-    LR_BASE: 3000
+    LR_BASE: 256,
+    PDR_BASE: 512,
+    FDR_BASE: 1024
 };
 
 /**
@@ -24,9 +24,10 @@ export class AnnotationUtils {
         const lookupKey = (qualifiedName || token || '').toUpperCase();
         if (artifact.registerAliasMap && artifact.registerAliasMap[lookupKey] !== undefined) {
             const regId = artifact.registerAliasMap[lookupKey];
-            if (regId >= INSTRUCTION_CONSTANTS.LR_BASE) return `%LR${regId - INSTRUCTION_CONSTANTS.LR_BASE}`;
+            // Dispatch order: descending by base (FDR=1024 > PDR=512 > LR=256 > DR=0)
             if (regId >= INSTRUCTION_CONSTANTS.FDR_BASE) return `%FDR${regId - INSTRUCTION_CONSTANTS.FDR_BASE}`;
             if (regId >= INSTRUCTION_CONSTANTS.PDR_BASE) return `%PDR${regId - INSTRUCTION_CONSTANTS.PDR_BASE}`;
+            if (regId >= INSTRUCTION_CONSTANTS.LR_BASE) return `%LR${regId - INSTRUCTION_CONSTANTS.LR_BASE}`;
             return `%DR${regId}`;
         }
         return null;
@@ -137,15 +138,15 @@ export class AnnotationUtils {
             }
         }
 
-        // ID-based heuristics, descending by BASE value
-        if (registerId >= INSTRUCTION_CONSTANTS.LR_BASE) {
-            return `%LR${registerId - INSTRUCTION_CONSTANTS.LR_BASE}`;
-        }
+        // ID-based heuristics, descending by base (FDR=1024 > PDR=512 > LR=256 > DR=0)
         if (registerId >= INSTRUCTION_CONSTANTS.FDR_BASE) {
             return `%FDR${registerId - INSTRUCTION_CONSTANTS.FDR_BASE}`;
         }
         if (registerId >= INSTRUCTION_CONSTANTS.PDR_BASE) {
             return `%PDR${registerId - INSTRUCTION_CONSTANTS.PDR_BASE}`;
+        }
+        if (registerId >= INSTRUCTION_CONSTANTS.LR_BASE) {
+            return `%LR${registerId - INSTRUCTION_CONSTANTS.LR_BASE}`;
         }
         return `%DR${registerId}`;
     }
@@ -442,17 +443,7 @@ export class AnnotationUtils {
             throw new Error(`getRegisterValueById: state must be an object, got: ${state}`);
         }
 
-        if (registerId >= INSTRUCTION_CONSTANTS.LR_BASE) {
-            const index = registerId - INSTRUCTION_CONSTANTS.LR_BASE;
-            if (!state.locationRegisters || !Array.isArray(state.locationRegisters)) {
-                throw new Error(`getRegisterValueById: state.locationRegisters is missing or invalid`);
-            }
-            if (index < 0 || index >= state.locationRegisters.length) {
-                throw new Error(`getRegisterValueById: LR register ${index} not found (registerId: ${registerId}, only ${state.locationRegisters.length} available)`);
-            }
-            return state.locationRegisters[index];
-        }
-
+        // Dispatch order: descending by base (FDR=1024 > PDR=512 > LR=256 > DR=0)
         if (registerId >= INSTRUCTION_CONSTANTS.FDR_BASE) {
             const index = registerId - INSTRUCTION_CONSTANTS.FDR_BASE;
             if (!state.formalDataRegisters || !Array.isArray(state.formalDataRegisters)) {
@@ -465,6 +456,28 @@ export class AnnotationUtils {
         }
 
         if (registerId >= INSTRUCTION_CONSTANTS.PDR_BASE) {
+            const index = registerId - INSTRUCTION_CONSTANTS.PDR_BASE;
+            if (!state.procDataRegisters || !Array.isArray(state.procDataRegisters)) {
+                throw new Error(`getRegisterValueById: state.procDataRegisters is missing or invalid`);
+            }
+            if (index < 0 || index >= state.procDataRegisters.length) {
+                throw new Error(`getRegisterValueById: PDR register ${index} not found (registerId: ${registerId}, only ${state.procDataRegisters.length} available)`);
+            }
+            return state.procDataRegisters[index];
+        }
+
+        if (registerId >= INSTRUCTION_CONSTANTS.LR_BASE) {
+            const index = registerId - INSTRUCTION_CONSTANTS.LR_BASE;
+            if (!state.locationRegisters || !Array.isArray(state.locationRegisters)) {
+                throw new Error(`getRegisterValueById: state.locationRegisters is missing or invalid`);
+            }
+            if (index < 0 || index >= state.locationRegisters.length) {
+                throw new Error(`getRegisterValueById: LR register ${index} not found (registerId: ${registerId}, only ${state.locationRegisters.length} available)`);
+            }
+            return state.locationRegisters[index];
+        }
+
+        if (registerId >= 0) {
             const index = registerId - INSTRUCTION_CONSTANTS.PDR_BASE;
             if (!state.procDataRegisters || !Array.isArray(state.procDataRegisters)) {
                 throw new Error(`getRegisterValueById: state.procDataRegisters is missing or invalid`);

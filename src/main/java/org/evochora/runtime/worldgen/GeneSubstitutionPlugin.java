@@ -304,15 +304,15 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
 
         int base;
         int maxOffset;
-        if (regValue >= Instruction.LR_BASE) {
-            base = Instruction.LR_BASE;
-            maxOffset = Config.NUM_LOCATION_REGISTERS - 1;
-        } else if (regValue >= Instruction.FDR_BASE) {
+        if (regValue >= Instruction.FDR_BASE) {
             base = Instruction.FDR_BASE;
             maxOffset = Config.NUM_FDR_REGISTERS - 1;
         } else if (regValue >= Instruction.PDR_BASE) {
             base = Instruction.PDR_BASE;
             maxOffset = Config.NUM_PDR_REGISTERS - 1;
+        } else if (regValue >= Instruction.LR_BASE) {
+            base = Instruction.LR_BASE;
+            maxOffset = Config.NUM_LOCATION_REGISTERS - 1;
         } else {
             base = 0;
             maxOffset = Config.NUM_DATA_REGISTERS - 1;

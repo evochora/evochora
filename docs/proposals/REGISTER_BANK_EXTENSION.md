@@ -26,16 +26,18 @@ This proposal extends the register architecture to full parity between data and 
 
 Consistent naming scheme: `[Scope][Type]R` where Scope ∈ {∅, P, F, S} and Type ∈ {D, L}.
 
-| Bank | Prefix | Base ID | Count | Type | Scope | Saved on CALL | New? |
+Base IDs use 256-spacing for compact lookup tables (total table size: 2048 entries, ~8KB).
+
+| Bank | Prefix | Base ID | Count | Type | Scope | Call Behavior | New? |
 |------|--------|---------|-------|------|-------|---------------|------|
-| Data | %DR | 0 | 8 | Scalar | Global | No | — |
-| Location | %LR | 3000 | 4 | Vector | Global | No | — |
-| Proc Data | %PDR | 1000 | 8 | Scalar | Per Call | Yes (stack) | Rename from %PR |
-| Proc Location | %PLR | 4000 | 4 | Vector | Per Call | Yes (stack) | **NEW** |
-| Formal Data | %FDR | 2000 | 8 | Scalar | Per Call | Yes (binding) | Rename from %FPR |
-| Formal Location | %FLR | 5000 | 4 | Vector | Per Call | Yes (binding) | **NEW** |
-| Static Data | %SDR | 6000 | 8 | Scalar | Per Procedure | Persistent | **NEW** |
-| Static Location | %SLR | 7000 | 4 | Vector | Per Procedure | Persistent | **NEW** |
+| Data | %DR | 0 | 8 | Scalar | Global | Global | — |
+| Location | %LR | 256 | 4 | Vector | Global | Global | — |
+| Proc Data | %PDR | 512 | 8 | Scalar | Per Call | Stack-Saved | Rename from %PR |
+| Proc Location | %PLR | 768 | 4 | Vector | Per Call | Stack-Saved | **NEW** |
+| Formal Data | %FDR | 1024 | 8 | Scalar | Per Call | Stack-Saved | Rename from %FPR |
+| Formal Location | %FLR | 1280 | 4 | Vector | Per Call | Stack-Saved | **NEW** |
+| Static Data | %SDR | 1536 | 8 | Scalar | Per Procedure | Persistent | **NEW** |
+| Static Location | %SLR | 1792 | 4 | Vector | Per Procedure | Persistent | **NEW** |
 
 **No backward compatibility** is maintained — neither for assembly files nor for serialized simulation data (Protobuf, H2 database). Old simulations cannot be loaded with new code. Backward compatibility must never lead to design compromises. Protobuf field names are renamed freely (Phase A). New Protobuf fields use new field numbers.
 
@@ -49,7 +51,7 @@ New method `writeLocationOperand(int id, int[] value)` on `Organism` — exclusi
 
 Compiler-side enforcement (ISA type system DATA_REGISTER vs LOCATION_REGISTER) is noted as an optional future improvement, not required for this proposal.
 
-**Static Registers (SDR/SLR):** Persistent per procedure definition. The organism holds active SDR/SLR arrays (like `pdrs`, `fdrs`) for direct access via `readOperand()`/`writeOperand()` — zero map lookups in the instruction hotpath. Additionally, a persistent backing store (`Map<String, Object[]>` for SDR, `Map<String, int[][]>` for SLR, keyed by qualified procedure name) preserves state across calls. On CALL: save caller's active SDR/SLR to map (if caller is a procedure), load callee's values from map into active arrays (or initialize to defaults if first call). On RET: write active SDR/SLR back to map, restore caller's values from map. Map lookups occur only at CALL/RET boundaries (once per procedure call), never per instruction.
+**Static Registers (SDR/SLR):** Persistent per procedure definition. The organism holds active SDR/SLR arrays for direct access via `readOperand()`/`writeOperand()` (SDR) and `writeLocationOperand()` (SLR) — zero map lookups in the instruction hotpath. Additionally, a persistent backing store (`Map<String, Object[]>` for SDR, `Map<String, int[][]>` for SLR, keyed by qualified procedure name) preserves state across calls. On CALL: save caller's active SDR/SLR to map (if caller is a procedure), load callee's values from map into active arrays (or initialize to defaults if first call). On RET: write active SDR/SLR back to map, restore caller's values from map. Map lookups occur only at CALL/RET boundaries (once per procedure call), never per instruction.
 
 The first CALL initializes to defaults (0 for SDR, zero-vector for SLR). All calls — including recursive — share the same SDR/SLR state per procedure. This makes procedures stateful "organs" of the organism. Each procedure's SDR/SLR state is private (not accessible from other procedures).
 
@@ -94,7 +96,7 @@ Global aliases (%DR, %LR targets) can appear anywhere. Proc-local aliases (%PDR,
 
 ## Performance Verification
 
-Before Phase A, run `./gradlew jmh` and record the baseline throughput (ticks/sec) for all parameter combinations. After each phase that modifies runtime code (Phase C: writeOperand/writeLocationOperand split, Phase D: PLR save/restore in ProcedureCallHandler, Phase E: SDR/SLR swap in ProcedureCallHandler, Phase F: FLR binding in ProcedureCallHandler), re-run the benchmark and compare against baseline. No performance regression is acceptable. If regression is detected, the phase must be reworked before proceeding.
+Before Phase A, run `./gradlew jmh` and record the baseline throughput (ticks/sec) for all parameter combinations. After each phase that modifies runtime code (Phase C: writeOperand/writeLocationOperand split, Phase D2: flat register array, Phase E: PLR save/restore in ProcedureCallHandler, Phase F: SDR/SLR swap in ProcedureCallHandler, Phase G: FLR binding in ProcedureCallHandler), re-run the benchmark and compare against baseline. No performance regression is acceptable. If regression is detected, the phase must be reworked before proceeding.
 
 Note: The JMH benchmark (`SimulationBenchmark.java`) uses `%DR0` etc. in its assembly programs, not `%PR`/`%FPR`, so Phase A's rename does not affect the benchmark source.
 
@@ -152,13 +154,13 @@ Consolidates `.PREG` into `.REG` and deletes all Preg-specific types. After this
 
 *RegDirectiveHandler.java:*
 - Accept all register banks as targets. The existing NUMBER fallback (lines 40-51, converting naked numbers to `%DR`) is deleted — register targets must always be explicit tokens (`%DR5`, `%PDR2`, etc.). No existing usages with naked numbers exist.
-- **Forbidden-bank check** (hard-coded in handler): If the target register's bank is FDR or FLR, emit error: `"Register %FDR0 cannot be aliased — FDR registers are managed by the CALL binding mechanism."` This is reg-feature knowledge (which banks are inherently non-aliasable), not ParserState infrastructure. The list of forbidden banks grows as formal banks are added: FDR (Phase B), FLR (Phase F).
+- **Forbidden-bank check** (hard-coded in handler): If the target register's bank is FDR or FLR, emit error: `"Register %FDR0 cannot be aliased — FDR registers are managed by the CALL binding mechanism."` This is reg-feature knowledge (which banks are inherently non-aliasable), not ParserState infrastructure. The list of forbidden banks grows as formal banks are added: FDR (Phase B), FLR (Phase G).
 - **Scope validation** via `ParserState` available-register-banks mechanism (see below). If the target register's bank is not currently available, emit error: `"Register %PDR0 is not available in the current scope."` Zero dependency on the proc feature — the check queries generic `ParserState` infrastructure.
 - **Bounds validation** at parse time: extract index from register token, validate against Config constant for the bank. Error on out-of-bounds.
 - Validation order: forbidden-bank → scope-availability → bounds. Each check produces a distinct, actionable error message.
 
 *RegAnalysisHandler.isValidRegister():*
-- Rewrite from `substring(1,3)` logic to `startsWith` if-chain. One branch per bank, each extracting the index and checking against Config bounds. In Phase B: `%DR` (NUM_DATA_REGISTERS), `%PDR` (NUM_PDR_REGISTERS), `%FDR` (NUM_FDR_REGISTERS), `%LR` (NUM_LOCATION_REGISTERS). Subsequent phases (D, E, F) add one `startsWith` + bounds-check per new bank. Note: prefix order is irrelevant for correctness — no bank prefix is a prefix of another.
+- Rewrite from `substring(1,3)` logic to `startsWith` if-chain. One branch per bank, each extracting the index and checking against Config bounds. In Phase B: `%DR` (NUM_DATA_REGISTERS), `%PDR` (NUM_PDR_REGISTERS), `%FDR` (NUM_FDR_REGISTERS), `%LR` (NUM_LOCATION_REGISTERS). Phase D replaces the if-chain with RegisterBank enum iteration. Note: prefix order is irrelevant for correctness — no bank prefix is a prefix of another.
 - Bounds validation at analysis time is intentionally redundant with parse-time validation in RegDirectiveHandler. This is defense-in-depth: the analysis handler validates ALL register references (including those in instructions like `ADDI %PDR99 DATA:1`), not just `.REG` targets. The `.REG`-specific validation in RegDirectiveHandler is an additional fail-fast check.
 
 **ParserState — available-register-banks mechanism:**
@@ -170,7 +172,7 @@ Consolidates `.PREG` into `.REG` and deletes all Preg-specific types. After this
 
 Initial state: `{"DR", "LR"}` with counter 1 (global banks, always available — never removed).
 
-`ProcDirectiveHandler`: on scope push calls `state.addAvailableRegisterBanks("PDR")`, on scope pop calls `state.removeAvailableRegisterBanks("PDR")`. FDR is intentionally excluded — formal data registers are populated by the CALL binding mechanism, not by user code. Direct access to FDR is forbidden (`CompilerErrorCode.PARAM_PERCENT`), and a `.REG` alias on FDR would circumvent this restriction. FDR must never appear in `availableRegisterBanks`. Subsequent phases (D, E, F) add `"PLR"`, `"SDR"`, `"SLR"` analogously — `"FLR"` is excluded for the same reason (formal location registers are populated by LREF/LVAL bindings, not directly).
+`ProcDirectiveHandler`: on scope push calls `state.addAvailableRegisterBanks("PDR")`, on scope pop calls `state.removeAvailableRegisterBanks("PDR")`. FDR is intentionally excluded — formal data registers are populated by the CALL binding mechanism, not by user code. Direct access to FDR is forbidden (`CompilerErrorCode.PARAM_PERCENT`), and a `.REG` alias on FDR would circumvent this restriction. FDR must never appear in `availableRegisterBanks`. Phase D3 makes this generic: ProcDirectiveHandler derives the bank list from `RegisterBank.allProcScoped()` filtered by `!isForbidden`. Subsequent phases (E, F, G) add banks as enum entries; the ProcDirectiveHandler picks them up automatically. `"FLR"` is excluded via `isForbidden = true` (formal location registers are populated by LREF/LVAL bindings, not directly).
 
 Reference-counting (not boolean) ensures correctness with nested procs — an inner pop does not remove the bank while the outer scope is still active. No coupling between reg and proc features: proc declares what it provides, reg queries what is available, ParserState mediates.
 
@@ -186,7 +188,7 @@ Reference-counting (not boolean) ensures correctness with nested procs — an in
 Establishes the runtime safety architecture for location register write restriction. Independent from all other phases — only prerequisite is Phase A (naming). Affects only runtime code, no compiler changes.
 
 **Runtime:**
-- `Organism.isLocationBank(int id)`: new helper method. In Phase C, checks only LR range: `id >= LR_BASE && id < LR_BASE + NUM_LOCATION_REGISTERS`. Each subsequent phase that adds a location bank (D: PLR, E: SLR, F: FLR) extends this method with its range. Single source of truth for "is this a location register?"
+- `Organism.isLocationBank(int id)`: new helper method. In Phase C, checks only LR range: `id >= LR_BASE && id < LR_BASE + NUM_LOCATION_REGISTERS`. Phase D replaces this with RegisterBank enum lookup. Single source of truth for "is this a location register?"
 - `Organism.writeOperand(int id, Object value)`: reject IDs where `isLocationBank(id)` returns true → `instructionFailed("Cannot write to location register via data instruction")`
 - `Organism.writeLocationOperand(int id, int[] value)`: new method, exclusively for location instructions. Validates that `isLocationBank(id)` returns true. Writes the vector value to the appropriate location register.
 - `Instruction.java`: new protected helper method `writeLocationOperand(int id, int[] value)` analogous to `writeOperand()`, delegates to `organism.writeLocationOperand()`
@@ -197,114 +199,238 @@ Establishes the runtime safety architecture for location register write restrict
 
 **Test (integration):** Assembly program executing `SETI %DR0 DATA:42` → success. Assembly program attempting to write a scalar to a location register (if the assembler permits the syntax) → runtime error. If the assembler rejects the syntax at compile time, verify the runtime enforcement directly via unit test.
 
-### Phase D: PLR (Proc-Local Location Registers)
+### Phase D: Register Bank Encapsulation
 
-Adds proc-local location registers, saved/restored on CALL/RET like PDR. Depends on Phase C (writeLocationOperand enforcement in place).
+Encapsulates the register bank concept so that adding a new bank on the Java side requires only two changes: a RegisterBank enum entry and a Config constant. All dispatch, validation, serialization, and save/restore logic works generically through the enum. The JS visualizer remains separate (technology boundary) and must be extended manually per bank.
+
+Depends on Phase C (writeOperand/writeLocationOperand architecture). Must be completed before Phase E (PLR) so all subsequent phases benefit from the encapsulation.
+
+#### D1: RegisterBank Enum + Base ID Migration
+
+Creates the central definition source for all bank metadata AND migrates all base IDs from 1000-spacing to 256-spacing. This is not purely additive — the base ID migration changes `Instruction.java` constants and propagates through the entire stack (compiler, serialization, visualizer, tests).
+
+New file `RegisterBank.java` in `org.evochora.runtime.isa` (alongside `Instruction.java`, whose base constants RegisterBank replaces). Enum with one entry per existing bank (DR, LR, PDR, FDR). Each entry contains:
+- `base` (int) — base register ID (256-spacing: DR=0, LR=256, PDR=512, FDR=1024)
+- `count` (int) — references Config constant (e.g., `Config.NUM_DATA_REGISTERS`)
+- `isLocation` (boolean)
+- `callBehavior` (inner enum `CallBehavior` with values `GLOBAL`, `STACK_SAVED`, `PERSISTENT`) — GLOBAL for DR/LR (no save/restore), STACK_SAVED for PDR/FDR/PLR/FLR (snapshot to ProcFrame), PERSISTENT for SDR/SLR (swap via backing store)
+- `isForbidden` (boolean) — true for FDR (and later FLR), cannot be aliased via `.REG`
+- `prefix` (String, e.g., `"%DR"`)
+- `prefixLength` (int)
+
+Static helpers:
+- `forId(int id)` — returns the bank for a register ID (or null). Implemented via D2's `ID_TO_SLOT` table + a small `SLOT_TO_BANK_ORDINAL` table (48 entries, one per register slot). In D1 (before D2), a temporary `int[] ID_TO_BANK_ORDINAL` table (size 2048) is used; D2 replaces it with the slot-based approach.
+- `isLocationBank(int id)` — lookup + `bank.isLocation`
+- `allSavedOnCall()` — filters `callBehavior == STACK_SAVED`
+- `allProcScoped()` — filters `callBehavior != GLOBAL`
+
+The 256-spacing keeps lookup tables compact: 8 banks × 256 = 2048 entries (~8KB). With max 8 registers per bank, 99.6% of slots are sentinel values — this sparse occupation is intentional and accepted for O(1) lookup performance (single array access vs O(n) comparisons in if-chains). The table fits comfortably in L1 cache.
+
+No JMH checkpoint needed after D1 — base IDs change but dispatch code is unchanged until D2.
+
+**Base ID migration:** All base IDs change from the old 1000-spacing to 256-spacing. This is a breaking change affecting Instruction.java constants, Protobuf serialization, JS constants, and all stored data. Since backward compatibility is not required, this is acceptable.
+
+| Bank | Old Base | New Base |
+|------|----------|----------|
+| DR | 0 | 0 |
+| LR | 3000 | 256 |
+| PDR | 1000 | 512 |
+| FDR | 2000 | 1024 |
+
+New banks added in later phases use the remaining slots: PLR=768, FLR=1280, SDR=1536, SLR=1792.
+
+**Test — existing:** All unit tests and all 5 CLI smoke tests must be green. Since the base ID migration changes all register IDs, the existing tests are the primary regression test. The CLI smoke test artifact baseline must be reset after D1 because compiled register IDs in the artifacts change. From the new baseline onward, smoke tests verify that artifacts remain stable.
+
+**Test — new:** Self-referential `forId()` tests that do not hardcode base IDs:
+- For each bank in `RegisterBank.values()`: `forId(bank.base)` returns exactly this bank
+- For each bank: `forId(bank.base + bank.count - 1)` returns exactly this bank (last valid ID)
+- For each bank: `forId(bank.base + bank.count)` does NOT return this bank (first ID after the bank)
+- For each bank: `forId(bank.base - 1)` does NOT return this bank (last ID before the bank)
+- For each bank: `isLocationBank(bank.base) == bank.isLocation`
+- Edge cases: `forId(-1)` → null, `forId(TABLE_SIZE)` → null
+
+These tests verify the lookup table initialization logic (off-by-one, gaps, boundaries), not concrete values. They remain green if the spacing changes.
+
+#### D2: Flat Register Array in Organism
+
+Replaces the error-prone if-chain dispatches in readOperand/writeOperand/writeLocationOperand with a single array lookup. The existing public API is preserved as a facade so all existing tests remain green without changes.
+
+Internal storage changes from separate lists (`drs`, `pdrs`, `fdrs`, `lrs`) to a single `Object[] registers` array. Size computed from RegisterBank (sum of all `count` values). A static `int[] ID_TO_SLOT` lookup table (size 2048) maps sparse register IDs to contiguous array slots. A parallel `boolean[] IS_LOCATION_BY_ID` table (also size 2048, indexed by register ID — NOT by slot) enables O(1) location-bank checks. This duplicates information available via `RegisterBank.forId(id).isLocation`, but is intentional: the hotpath (`writeOperand`, `writeLocationOperand`) needs a single array lookup, not a `forId()` call + field access. This is a deliberate performance-over-DRY tradeoff for the instruction execution hotpath.
+
+Additionally, a small `RegisterBank[] SLOT_TO_BANK` table (48 entries, one per register slot) enables `forId()` to work via `ID_TO_SLOT` → `SLOT_TO_BANK` instead of a separate 2048-entry table. The D1 temporary `ID_TO_BANK_ORDINAL` table is replaced by this approach.
+
+All three dispatch methods perform a bounds check on `id` before any table access (`id < 0 || id >= TABLE_SIZE`). Invalid IDs → `instructionFailed()`, no ArrayIndexOutOfBoundsException.
+
+- `readOperand(int id)`: bounds check → `ID_TO_SLOT[id]` → sentinel check → `registers[slot]`. Invalid ID: `instructionFailed()`.
+- `writeOperand(int id, Object value)`: bounds check → `IS_LOCATION_BY_ID[id]` check → rejection for location IDs. Otherwise: `ID_TO_SLOT[id]` → array write. Invalid ID: `instructionFailed()`.
+- `writeLocationOperand(int id, int[] value)`: bounds check → `IS_LOCATION_BY_ID[id]` check → rejection for non-location IDs. Otherwise: `ID_TO_SLOT[id]` → array write. Invalid ID: `instructionFailed()`.
+- `isLocationBank(int id)`: bounds check → `IS_LOCATION_BY_ID[id]`.
+
+Existing public methods (`getPdrs()`, `getLrs()`, `setPdr()`, `setLr()`, `getDr()`, `setDr()`, `getFdr()`, `setFdr()`, etc.) remain as facade — they read/write via slot offsets from the flat array. ProcFrame, ProcedureCallHandler, serialization, and tests need NO changes in this step.
+
+`VirtualMachine.collectRegisterValues()`: Fix pre-existing bug where the LOCATION_REGISTER branch compared full register IDs (256+ range) against `NUM_LOCATION_REGISTERS` (= 4). Change to `readOperand(registerId)` — analogous to the existing REGISTER branch, which already uses `readOperand()` correctly.
+
+Mutations plugins (`GeneSubstitutionPlugin.java`, `GeneInsertionPlugin.java`): migrate bank detection and bank-name-to-base-ID switches from hardcoded if-chains/switch-statements to RegisterBank iteration. These are runtime code and migrate in D2 alongside the Organism changes.
+
+**Test:** All existing tests must pass unchanged — the facade guarantees identical behavior. Additionally: JMH benchmark against baseline (Phase A baseline) to measure performance effect of the flat array.
+
+#### D3: Compiler Migration to RegisterBank Enum
+
+Eliminates manually maintained if-chains and switch statements in all compiler handlers. New banks are automatically recognized once added to the enum.
+
+- `Lexer.java`: `isValidRegisterPattern()` iterates over `RegisterBank.values()` with `text.matches(bank.prefix + "\\d+")` instead of hardcoded separate `text.matches()` calls.
+- `RegDirectiveHandler.java`: bank extraction and bounds check iterate over RegisterBank. `FORBIDDEN_BANKS` set derived from `RegisterBank.values()` filtered by `isForbidden`. Scope validation remains indirect via `ParserState.isRegisterBankAvailable(bank)` — the enum is NOT queried directly for scope. ProcDirectiveHandler uses the enum to determine which banks to register (see below), and RegDirectiveHandler queries ParserState. This preserves the decoupling between reg and proc features.
+- `RegAnalysisHandler.isValidRegister()`: iterates over RegisterBank, matches `startsWith(bank.prefix)`, checks bounds against `bank.count`.
+- `InstructionAnalysisHandler.java`: validation uses `RegisterBank.forId()` and `bank.isLocation` instead of hardcoded prefix checks.
+- `RegisterAliasEmissionContributor.java`: `resolveRegisterId()` iterates over RegisterBank, matches prefix, computes `bank.base + index`.
+- `ProcDirectiveHandler.java`: `addAvailableRegisterBanks` / `removeAvailableRegisterBanks` derives the bank list from `RegisterBank.allProcScoped()` filtered by `!isForbidden`. This is the only place where ProcDirectiveHandler interacts with the enum.
+- `Instruction.java`: `resolveRegToken()` iterates over RegisterBank instead of hardcoded if-chain. Legacy base constants (`PDR_BASE`, `FDR_BASE`, `LR_BASE`) remain as aliases referencing `RegisterBank.PDR.base` etc. for backward compatibility within the codebase.
+- `ProcedureMarshallingRule.java` and `CallNodeConverter.java`: retain hardcoded `%FDR` references. FDR marshalling (prologue POP into %FDR, epilogue PUSH from %FDR) is calling-convention semantics, not a generic bank property. These references are intentionally NOT generified — they encode the REF/VAL parameter passing mechanism. Phase G adds analogous FLR marshalling for LREF/LVAL.
+
+**Test:** All compiler tests green. All 5 CLI smoke tests green.
+
+#### D4: ProcFrame + ProcedureCallHandler Simplification
+
+ProcFrame currently has separate fields per bank (`savedPdrs`, `savedFdrs`). Each new bank would add another field plus changes to all 8+ constructor call-sites. A single `Object[] savedRegisters` makes ProcFrame bank-independent.
+
+- `ProcFrame` record: from `ProcFrame(String procName, int[] absoluteReturnIp, int[] absoluteCallIp, Object[] savedPdrs, Object[] savedFdrs, Map<Integer, Integer> fdrBindings)` to `ProcFrame(String procName, int[] absoluteReturnIp, int[] absoluteCallIp, Object[] savedRegisters, Map<Integer, Integer> fdrBindings)`.
+- `savedRegisters` is a **compact array** in RegisterBank enum order (NOT a copy of the full flat array). Built by iterating over `RegisterBank.allSavedOnCall()` in enum declaration order, concatenating each bank's register values. Example with PDR(8) + FDR(8): savedRegisters has 16 entries — slots 0–7 are PDR values, slots 8–15 are FDR values. The restore logic iterates in the same enum order and knows each bank's offset and count, so it can write the values back to the correct flat-array slots.
+- `ProcedureCallHandler.java`: on CALL, iterates over `RegisterBank.allSavedOnCall()`, copies register values from Organism's flat array into the compact `savedRegisters`. On RET: iterates in the same order, writes values back to the flat array. No bank-specific logic — the iteration order and bank counts determine the layout.
+- All ProcFrame constructor call-sites (ProcedureCallHandler, tests, SimulationRestorer): adapt to new signature.
+- Facade methods `restorePdrs()`, `restoreFdrs()` in Organism can be removed after this step — ProcedureCallHandler writes directly to the flat array via slot offsets.
+
+Note: `fdrBindings` remains as a separate field — it has different semantics (parameter binding, not save/restore). In Phase G, `flrBindings` is added as a second binding field, which requires updating ProcFrame's record signature and all constructor call-sites again. This is a smaller change than without Phase D (one new field instead of three), but it is not zero. Whether bindings also become generic is decided in Phase G.
+
+**Test:** All tests green after adapting to new ProcFrame signature.
+
+#### D5: Protobuf + Serialization + JS Visualizer
+
+Protobuf currently has separate fields per bank (`proc_data_registers`, `formal_data_registers`, `location_registers`, `saved_pdrs`, `saved_fdrs`). These would need extension with every new bank. A flat array in protobuf eliminates this. Backward compatibility is explicitly not required.
+
+**Proto schema** (`tickdata_contracts.proto`):
+- `OrganismState`: ALL separate register fields (`data_registers`, `proc_data_registers`, `formal_data_registers`, `location_registers`) replaced by a single `repeated RegisterValue registers`. Slot order matches the flat array. Location registers (which are `int[]` not `Integer`) use the existing `RegisterValue` message's `oneof { scalar, vector }` variant.
+- `OrganismRuntimeState`: same separate register fields replaced by `repeated RegisterValue registers` (same structure as OrganismState).
+- `ProcFrame`: `saved_pdrs`, `saved_fdrs` replaced by `repeated RegisterValue saved_registers`. `fdr_bindings` remains.
+
+**Java serialization:**
+- `SimulationEngine.java`: writes Organism's flat array sequentially into protobuf `registers` field.
+- `SimulationRestorer.java`: reads protobuf `registers` field sequentially into flat array. `convertProcFrame()` reads `saved_registers`.
+- `OrganismStateConverter.java`: `resolveRegisterValue()` uses RegisterBank iteration instead of ID-based if-chain. `convertProcFrame()` converts `saved_registers`.
+- `ProcFrameView.java`: separate `savedPdrs`/`savedFdrs` fields become `List<RegisterValueView> savedRegisters`.
+- `OrganismRuntimeView.java`: separate register lists become a single list (or retained with generic bank assignment for display).
+- `H2DatabaseReader.java`: indirectly via OrganismStateConverter.
+- `SimulationParameters.java`: JavaDoc comments updated.
+
+**JS Visualizer:**
+- `AnnotationUtils.js`: `getRegisterValue()` and `getRegisterValueById()` read from flat array format (`state.registers[slot]`). Bank offsets defined as JS constants (analogous to `INSTRUCTION_CONSTANTS`). `formatRegisterName()` and `resolveToCanonicalRegister()` remain unchanged (they work with IDs, not protobuf structure).
+- `OrganismStateView.js`: register display iterates over banks with offset constants instead of separate sections. ProcFrame display reads `savedRegisters`.
+
+**Test:** All pipeline tests, H2 tests, SimulationRestorer tests green after adaptation.
+
+#### D6: Facade Removal
+
+After D2–D5, facade methods in Organism remain from D2 as transitional API. These are now removed to clean up the API. Only methods still actively used (by ProcedureCallHandler or tests) remain.
+
+- `getPdrs()`, `getFdrs()`, `getLrs()`, `setPdr()`, `setFdr()`, `setLr()`, `getDr()`, `setDr()`, `getPdr()`, `getFdr()`, `getLr()` etc. — check which still have callers (compile errors on removal reveal this). Remove unused methods.
+- `RestoreBuilder`: simplify to a single `registers(Object[])` setter if separate setters are no longer needed.
+- `Instruction.java`: remove legacy base constant aliases (`PDR_BASE`, `FDR_BASE`, `LR_BASE`) if all callers have been migrated to `RegisterBank.X.base`.
+
+**Test:** Compile errors reveal all remaining callers. After cleanup, all tests green.
+
+### Phase E: PLR (Proc-Local Location Registers)
+
+Adds proc-local location registers, saved/restored on CALL/RET like PDR. Depends on Phase C (writeLocationOperand enforcement) and Phase D (RegisterBank encapsulation).
+
+After Phase D, adding PLR is significantly simpler: a RegisterBank enum entry + Config constant handles all generic dispatch, validation, serialization, and save/restore automatically.
 
 **Runtime:**
 - `Config.java`: `NUM_PLR_REGISTERS = 4`
-- `Instruction.java`: `PLR_BASE = 4000`, `resolveRegToken()` for `%PLR`
-- `Organism.java`: `plrs` list (List<Object>, initialized with zero-vectors of `startIp.length` dimensionality), `getPlr()`/`setPlr()`, `readOperand()` dispatch, `writeLocationOperand()` dispatch for PLR range. Extend `isLocationBank()` with PLR range — critical for `writeOperand()` rejection and `writeLocationOperand()` guard.
-- `ProcFrame` record: add `Object[] savedPlrs` component (8 constructor call-sites must be updated)
-- `ProcedureCallHandler.java`: save PLR on CALL, restore on RET (analogous to PDR save/restore)
+- `RegisterBank.java`: new entry `PLR(768, Config.NUM_PLR_REGISTERS, true, CallBehavior.STACK_SAVED, false, "%PLR", 4)`
+- Organism flat array automatically includes PLR slots (computed from RegisterBank). `readOperand()`, `writeLocationOperand()`, `isLocationBank()` route PLR via lookup tables. `ProcedureCallHandler` saves/restores PLR via generic `allSavedOnCall()` iteration.
 - `LocationInstruction.java`: no changes needed — dispatch through `Organism.readOperand()`/`writeLocationOperand()` routes PLR automatically (Phase C architecture)
-- `GeneSubstitutionPlugin.java`: PLR bank detection for mutations
-- `GeneInsertionPlugin.java`: add `"PLR"` and `"LR"` cases to bank-name-to-base-ID switch
+- `GeneSubstitutionPlugin.java`, `GeneInsertionPlugin.java`: PLR bank detection is automatic via RegisterBank iteration (established in D2). No manual changes needed.
 
 **Compiler:**
-- `Lexer.java`: `%PLR\\d+` pattern
-- `RegisterAliasEmissionContributor.java`: `%PLR` prefix → `Instruction.PLR_BASE + index`
-- `InstructionAnalysisHandler.java`: PLR validation for LOCATION_REGISTER argument type
-- `RegDirectiveHandler.java`: add `"PLR"` bounds check (`Config.NUM_PLR_REGISTERS`) to parse-time validation
-- `RegAnalysisHandler.java`: add `%PLR` startsWith branch + bounds check in `isValidRegister()`
-- `ProcDirectiveHandler.java`: add `"PLR"` to `addAvailableRegisterBanks()`/`removeAvailableRegisterBanks()` alongside `"PDR"`
+- After Phase D3, compiler handlers use RegisterBank iteration — PLR is automatically recognized. No manual changes to Lexer, RegDirectiveHandler, RegAnalysisHandler, InstructionAnalysisHandler, or RegisterAliasEmissionContributor needed.
+- `ProcDirectiveHandler.java`: PLR is automatically included in `addAvailableRegisterBanks()` via `allProcScoped().filter(!isForbidden)` from RegisterBank.
 
 **Data Pipeline:**
-- `tickdata_contracts.proto`: `repeated Vector proc_location_registers = N;` + ProcFrame extension
-- Serialization/deserialization updated
+- After Phase D5, serialization is flat-array-based — PLR slots are automatically included. No manual protobuf field additions needed.
 
-**Visualizer:**
-- `AnnotationUtils.js`: `PLR_BASE: 4000` constant. Add PLR branch to: (a) all ID-based dispatch methods: `formatRegisterName()`, `getRegisterValueById()`, `resolveToCanonicalRegister()` — dispatch order descending by BASE value (PLR > LR > FDR > PDR > DR); (b) the string-based method `getRegisterValue()` — add `startsWith('%PLR')` branch.
+**Visualizer (manual, technology boundary):**
+- `AnnotationUtils.js`: `PLR_BASE: 768` constant. Add PLR branch to: (a) all ID-based dispatch methods: `formatRegisterName()`, `getRegisterValueById()`, `resolveToCanonicalRegister()` — dispatch order descending by BASE value; (b) the string-based method `getRegisterValue()` — add `startsWith('%PLR')` branch.
 - `OrganismStateView.js`: PLR section in register display, PLR values in call stack frame display
 - All annotation handlers (ParameterTokenHandler, RegisterTokenHandler, etc.) and views (OrganismInstructionView, OrganismSourceView) route through AnnotationUtils — no direct changes needed there.
 
 **Test (integration):** Assembly program with two procedures. PROC_A stores current DP in %PLR0 via `DPLR %PLR0`, then calls PROC_B. PROC_B overwrites %PLR0 with a different position via `DPLR %PLR0`. PROC_B returns. Assert: %PLR0 in PROC_A's context is restored to the original DP position (not PROC_B's overwrite). Verify via register state inspection after compilation and simulated execution.
 
-### Phase E: SDR/SLR (Static Persistent Registers)
+### Phase F: SDR/SLR (Static Persistent Registers)
 
-Adds persistent state registers. Independent from Phase D (PLR). Depends on Phase A (naming, ProcFrame record) and Phase C (writeLocationOperand enforcement for SLR).
+Adds persistent state registers. Independent from Phase E (PLR). Depends on Phase A (naming), Phase C (writeLocationOperand enforcement for SLR), and Phase D (RegisterBank encapsulation).
+
+SDR/SLR have special semantics NOT covered by generic encapsulation: the persistent backing store (`Map<String, Object[]>` / `Map<String, int[][]>` keyed by procedure name) and the CALL/RET swap logic. This bank-specific logic must be implemented in ProcedureCallHandler.
 
 **Runtime:**
 - `Config.java`: `NUM_SDR_REGISTERS = 8`, `NUM_SLR_REGISTERS = 4`
-- `Instruction.java`: `SDR_BASE = 6000`, `SLR_BASE = 7000`, `resolveRegToken()`
-- `Organism.java`: active arrays `sdrs` (List<Object>) and `slrs` (List<Object>, initialized with zero-vectors) for direct `readOperand()`/`writeOperand()` (SDR) and `writeLocationOperand()` (SLR) access. Extend `isLocationBank()` with SLR range. Backing store: `Map<String, Object[]> sdrState`, `Map<String, int[][]> slrState` keyed by qualified procedure name.
-- `ProcedureCallHandler.java`: on CALL, save caller's active SDR/SLR to map (if caller is a procedure), load callee's SDR/SLR from map into active arrays (or initialize to defaults if first call). On RET, write active SDR/SLR back to map, restore caller's values from map.
-- `GeneSubstitutionPlugin.java`: SDR/SLR bank detection
-- `GeneInsertionPlugin.java`: add `"SDR"`, `"SLR"` cases to bank-name-to-base-ID switch
+- `RegisterBank.java`: new entries `SDR(1536, Config.NUM_SDR_REGISTERS, false, CallBehavior.PERSISTENT, false, "%SDR", 4)` and `SLR(1792, Config.NUM_SLR_REGISTERS, true, CallBehavior.PERSISTENT, false, "%SLR", 4)`
+- Organism: flat array automatically includes SDR/SLR slots. Backing store: `Map<String, Object[]> sdrState`, `Map<String, int[][]> slrState`.
+- `ProcedureCallHandler.java`: on CALL, save caller's active SDR/SLR to map (if caller is a procedure), load callee's SDR/SLR from map into flat array slots (or initialize to defaults if first call). On RET, write active SDR/SLR back to map, restore caller's values. This is **bank-specific logic** — `CallBehavior.PERSISTENT` triggers this path, but the backing store management is not generic.
+- `GeneSubstitutionPlugin.java`, `GeneInsertionPlugin.java`: SDR/SLR bank detection is automatic via RegisterBank iteration (established in D2). No manual changes needed.
 
 **Compiler:**
-- `Lexer.java`: `%SDR\\d+`, `%SLR\\d+` patterns
-- `RegisterAliasEmissionContributor.java`: `%SDR` → `SDR_BASE + index`, `%SLR` → `SLR_BASE + index`
-- `InstructionAnalysisHandler.java`: SDR validation for REGISTER type, SLR for LOCATION_REGISTER type
-- `RegDirectiveHandler.java`: add `"SDR"` and `"SLR"` bounds checks to parse-time validation
-- `RegAnalysisHandler.java`: add `%SDR` and `%SLR` startsWith branches + bounds checks in `isValidRegister()`
-- `ProcDirectiveHandler.java`: add `"SDR"`, `"SLR"` to `addAvailableRegisterBanks()`/`removeAvailableRegisterBanks()` alongside `"PDR"`, `"PLR"`
+- After Phase D3, compiler handlers use RegisterBank iteration — SDR/SLR are automatically recognized. No manual changes needed.
+- `ProcDirectiveHandler.java`: SDR/SLR are automatically included in `addAvailableRegisterBanks()` via `allProcScoped().filter(!isForbidden)` from RegisterBank.
 
 **Data Pipeline:**
-- `tickdata_contracts.proto`: persistent state serialization (active SDR/SLR arrays + backing store map of procedure names to register snapshots)
-- Serialization/deserialization
+- After Phase D5, flat-array serialization automatically includes SDR/SLR slots.
+- Backing store serialization: new protobuf fields for `Map<String, repeated RegisterValue>` per-procedure SDR/SLR snapshots. This is SDR/SLR-specific and NOT covered by generic encapsulation.
 
-**Visualizer:**
-- `AnnotationUtils.js`: `SDR_BASE: 6000`, `SLR_BASE: 7000` constants. Add SDR/SLR branches to: (a) all ID-based dispatch methods: `formatRegisterName()`, `getRegisterValueById()`, `resolveToCanonicalRegister()` — dispatch order descending by BASE value; (b) the string-based method `getRegisterValue()` — add `startsWith('%SDR')` and `startsWith('%SLR')` branches.
+**Visualizer (manual, technology boundary):**
+- `AnnotationUtils.js`: `SDR_BASE: 1536`, `SLR_BASE: 1792` constants. Add SDR/SLR branches to: (a) all ID-based dispatch methods: `formatRegisterName()`, `getRegisterValueById()`, `resolveToCanonicalRegister()` — dispatch order descending by BASE value; (b) the string-based method `getRegisterValue()` — add `startsWith('%SDR')` and `startsWith('%SLR')` branches.
 - `OrganismStateView.js`: SDR/SLR sections, displayed per-procedure in call stack view. SDR values shown as scalars, SLR as vectors.
 - All annotation handlers route through AnnotationUtils — no direct changes needed there.
 
 **Test (integration):** Assembly program with a procedure COUNTER that increments %SDR0 via `ADDI %SDR0 DATA:1`. Main program calls COUNTER three times. Assert after first call: %SDR0 == 1. Assert after second call: %SDR0 == 2. Assert after third call: %SDR0 == 3. Additionally test isolation: a second procedure COUNTER_B reads its own %SDR0. Assert: COUNTER_B's %SDR0 == 0 (independent from COUNTER's state).
 
-### Phase F: FLR + LREF/LVAL (Location Parameter Passing)
+### Phase G: FLR + LREF/LVAL (Location Parameter Passing)
 
-Adds location parameter passing. Depends on Phase D (PLR exists as LREF source).
+Adds location parameter passing. Depends on Phase E (PLR exists as LREF source) and Phase D (RegisterBank encapsulation).
 
 **Runtime:**
 - `Config.java`: `NUM_FLR_REGISTERS = 4`
-- `Instruction.java`: `FLR_BASE = 5000`, `resolveRegToken()`
-- `Organism.java`: `flrs` list (List<Object>, initialized with zero-vectors), `getFlr()`/`setFlr()`, `readOperand()`/`writeLocationOperand()` dispatch. Extend `isLocationBank()` with FLR range.
-- `ProcFrame` record: add `Object[] savedFlrs` component + `Map<Integer, Integer> flrBindings`
+- `RegisterBank.java`: new entry `FLR(1280, Config.NUM_FLR_REGISTERS, true, CallBehavior.STACK_SAVED, true, "%FLR", 4)` — note `isForbidden = true`
+- Organism: flat array automatically includes FLR slots. `isLocationBank()` recognizes FLR via lookup table.
+- `ProcFrame` record: add `Map<Integer, Integer> flrBindings` component (parameter binding, separate from saved registers). This extends the record signature and requires updating all ProcFrame constructor call-sites (ProcedureCallHandler, tests, SimulationRestorer — same sites as D4).
 - `ProcedureCallHandler.java`: FLR binding on CALL (copy location value from source register to FLR), restore on RET. For LREF: write FLR back to source register before restore.
-- `GeneSubstitutionPlugin.java`: FLR bank detection for mutations
-- `GeneInsertionPlugin.java`: add `"FLR"` case to bank-name-to-base-ID switch
+- `GeneSubstitutionPlugin.java`, `GeneInsertionPlugin.java`: FLR bank detection is automatic via RegisterBank iteration (established in D2). No manual changes needed.
 
 **Compiler:**
-- `Lexer.java`: `%FLR\\d+` pattern
-- `RegisterAliasEmissionContributor.java`: `%FLR` → `FLR_BASE + index`
-- `RegDirectiveHandler.java`: add `"FLR"` to the forbidden-bank list (alongside FDR). FLR registers are managed by LREF/LVAL bindings, not directly aliasable. `.REG %ALIAS %FLR0` must always produce an error.
-- `RegAnalysisHandler.java`: add `%FLR` startsWith branch + bounds check against `NUM_FLR_REGISTERS`
-- `InstructionAnalysisHandler.java`: FLR validation for LOCATION_REGISTER argument type
-- `ProcDirectiveHandler.java`: parse LREF/LVAL parameter declarations. Note: FLR is NOT added to `availableRegisterBanks` — FLR is a forbidden bank (same as FDR).
+- After Phase D3, compiler handlers use RegisterBank iteration — FLR is automatically recognized as a forbidden bank (no `.REG` alias allowed), valid for LOCATION_REGISTER arguments. No manual changes to RegDirectiveHandler, RegAnalysisHandler, InstructionAnalysisHandler, RegisterAliasEmissionContributor, or Lexer needed.
+- `ProcDirectiveHandler.java`: FLR is automatically excluded from `addAvailableRegisterBanks()` via `isForbidden` flag. Parse LREF/LVAL parameter declarations.
 - `ProcedureNode.java`: add `lrefParameters`/`lvalParameters` lists (ParamDecl with location flag)
 - `CallStatementHandler.java`: parse LREF/LVAL at call site
 - `CallNode.java`: add `lrefArguments`/`lvalArguments` fields
-- `CallAnalysisHandler.java`: validate LREF sources are location registers, LVAL sources are location registers (labels handled in Phase G)
+- `CallAnalysisHandler.java`: validate LREF sources are location registers, LVAL sources are location registers (labels handled in Phase H)
 - `CallNodeConverter.java`: emit IrCallInstruction with location operands
 - `IrCallInstruction.java`: add `lrefOperands`/`lvalOperands` fields
 - `CallerMarshallingRule.java`: location parameter marshalling (PUSL/POPL for location stack)
 - `CallSiteBindingRule.java`: FLR bindings
 
 **Data Pipeline:**
-- `tickdata_contracts.proto`: FLR fields + ProcFrame FLR bindings
-- Serialization/deserialization
+- Flat-array serialization automatically includes FLR slots.
+- ProcFrame: add `flr_bindings` protobuf field (analogous to `fdr_bindings`)
 
-**Visualizer:**
-- `AnnotationUtils.js`: `FLR_BASE: 5000` constant. Add FLR branch to: (a) all ID-based dispatch methods: `formatRegisterName()`, `getRegisterValueById()`, `resolveToCanonicalRegister()` — dispatch order descending by BASE value; (b) the string-based method `getRegisterValue()` — add `startsWith('%FLR')` branch.
+**Visualizer (manual, technology boundary):**
+- `AnnotationUtils.js`: `FLR_BASE: 1280` constant. Add FLR branch to: (a) all ID-based dispatch methods: `formatRegisterName()`, `getRegisterValueById()`, `resolveToCanonicalRegister()` — dispatch order descending by BASE value; (b) the string-based method `getRegisterValue()` — add `startsWith('%FLR')` branch.
 - `OrganismStateView.js`: FLR section in register display, location parameter display in call stack frames (analogous to FDR parameter display but with vector values)
 - `ParameterTokenHandler.js`: location parameter binding chain display (LREF/LVAL chain resolution through FLR, analogous to REF/VAL through FDR)
 - All annotation handlers route through AnnotationUtils — no direct changes needed there.
 
 **Test (integration):** Assembly program: main stores current DP in %LR0 via `DPLR %LR0`. Defines `.PROC NAV LREF lPos` that executes `SKLR lPos` (which resolves to `SKLR %FLR0`) to move DP to the passed location, then returns. Main calls `CALL NAV LREF %LR0`. Assert: after CALL, the DP inside NAV moved to the location that was stored in %LR0. Assert: after RET, the LREF write-back updated %LR0 if NAV modified %FLR0 (or left it unchanged if not).
 
-### Phase G: LVAL with Labels
+### Phase H: LVAL with Labels
 
-Extends LVAL to accept labels. Depends on Phase F.
+Extends LVAL to accept labels. Depends on Phase G.
 
 **Runtime:**
 - `ProcedureCallHandler.java`: when LVAL operand is a label hash (IrLabelRef), resolve to position via fuzzy matching (reuse SKJI resolution logic from LocationInstruction) and copy resulting position into FLR.
@@ -315,13 +441,12 @@ Extends LVAL to accept labels. Depends on Phase F.
 
 **Test (integration):** Assembly program with a label `TARGET:` at a known position (e.g., via `.ORG 10|10`). Defines `.PROC JUMP_TO LVAL lDest` that executes `SKLR lDest`. Main calls `CALL JUMP_TO LVAL TARGET`. Assert: inside JUMP_TO, the DP moved to TARGET's resolved position (10|10). Assert: the fuzzy matching happened at CALL time (not inside the procedure).
 
-### Phase H: Documentation
+### Phase I: Documentation
 
-Update all documentation to reflect the new architecture. Can be done incrementally alongside other phases, finalized after Phase G.
+Update all documentation to reflect the new architecture. Can be done incrementally alongside other phases, finalized after Phase H.
 
 **ASSEMBLY_SPEC.md:**
-- Section 3 "Registers": complete rewrite with all 8 banks, correct counts
-- Fix existing error: "2 temporary registers" → actual count from Config
+- Section 3 "Registers": complete rewrite with all 8 banks, correct counts, 256-spacing base IDs
 - Section 6 "Control Flow": CALL syntax with LREF/LVAL
 - Section 6 "Location Operations": all location banks work with location instructions
 - Section 7 ".REG": expanded for all banks, automatic scope detection
@@ -339,13 +464,14 @@ Update all documentation to reflect the new architecture. Can be done incrementa
 - Register descriptions (lines 124-128): updated
 - Section 4.4 (Eukaryogenesis): mention SDR/SLR as enabling persistent proc state — procedures become "organs" with internal memory, directly supporting the internal specialization hypothesis
 
-### Phase I: Mutation System
+### Phase J: Mutation System Verification
 
-Update mutation plugins for new register banks. Can be done after Phase F.
+Verifies that mutation plugins correctly handle all 8 register banks. After Phase D2, both plugins use RegisterBank iteration for bank detection — no code changes are expected. This phase is primarily a **test phase** that adds bank-boundary tests for the new banks (PLR, FLR, SDR, SLR) and confirms correct behavior.
 
 **Runtime:**
-- `GeneSubstitutionPlugin.java`: bank detection covers all 8 ID ranges, bank-aware +1/-1 mutation stays within bank boundaries
-- `GeneInsertionPlugin.java`: register selection includes new banks when generating synthetic instructions
+- `GeneSubstitutionPlugin.java`: verify bank detection covers all 8 ID ranges via RegisterBank iteration (established in D2). Bank-aware +1/-1 mutation stays within bank boundaries.
+- `GeneInsertionPlugin.java`: verify register selection includes all banks via RegisterBank iteration (established in D2).
+- If any bank-specific edge cases are found (e.g., mutation across location/data boundary), fix them here.
 
 **Test (unit):** For each new bank (PLR, FLR, SDR, SLR): create a register molecule with an ID at the bank boundary (e.g., PLR_BASE + NUM_PLR_REGISTERS - 1). Apply +1 mutation. Assert: result stays within bank (clamped to max index, does not overflow into next bank). Apply -1 mutation to bank base ID. Assert: result stays within bank (clamped to base, does not underflow into previous bank).
 
@@ -353,17 +479,19 @@ Update mutation plugins for new register banks. Can be done after Phase F.
 
 After all phases are complete:
 
-1. **8 register banks** with consistent `[Scope][Type]R` naming
-2. **Full parity** between data and location registers at every scope level
-3. **Persistent proc state** via SDR/SLR — procedures are stateful "organs"
-4. **Location parameter passing** via LREF/LVAL — positions can be passed to procedures
-5. **LVAL with labels** — fuzzy-matched positions as procedure arguments
-6. **Single .REG directive** — scope determined by target bank
-7. **Location write restriction** enforced via writeOperand/writeLocationOperand split across all location banks
-8. **All location instructions** work transparently with LR, PLR, FLR, SLR
-9. **Visualizer** displays all 8 banks with correct names
-10. **Documentation** fully updated (ASSEMBLY_SPEC, README, SCIENTIFIC_OVERVIEW)
-11. **Mutation system** bank-aware for all 8 banks
-12. **All assembly files** migrated to new names
-13. **ProcFrame** is a Java record with clean component structure
-14. **No performance regression** verified via JMH benchmarks after each runtime-modifying phase
+1. **8 register banks** with consistent `[Scope][Type]R` naming and 256-spacing base IDs
+2. **RegisterBank enum** as single source of truth for all bank metadata
+3. **Flat register array** in Organism with O(1) lookup dispatch
+4. **Full parity** between data and location registers at every scope level
+5. **Persistent proc state** via SDR/SLR — procedures are stateful "organs"
+6. **Location parameter passing** via LREF/LVAL — positions can be passed to procedures
+7. **LVAL with labels** — fuzzy-matched positions as procedure arguments
+8. **Single .REG directive** — scope determined by target bank
+9. **Location write restriction** enforced via writeOperand/writeLocationOperand split across all location banks
+10. **All location instructions** work transparently with LR, PLR, FLR, SLR
+11. **Visualizer** displays all 8 banks with correct names
+12. **Documentation** fully updated (ASSEMBLY_SPEC, README, SCIENTIFIC_OVERVIEW)
+13. **Mutation system** bank-aware for all 8 banks
+14. **All assembly files** migrated to new names
+15. **ProcFrame** bank-independent with single `savedRegisters` array
+16. **No performance regression** verified via JMH benchmarks after each runtime-modifying phase

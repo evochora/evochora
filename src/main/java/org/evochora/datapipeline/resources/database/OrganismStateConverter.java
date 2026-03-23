@@ -201,19 +201,8 @@ public final class OrganismStateConverter {
             List<RegisterValueView> fdrRegisters,
             List<int[]> locationRegisters) {
 
-        if (registerId >= Instruction.LR_BASE) {
-            // LR register
-            int index = registerId - Instruction.LR_BASE;
-            if (index >= 0 && index < locationRegisters.size()) {
-                int[] vector = locationRegisters.get(index);
-                return RegisterValueView.vector(vector);
-            }
-            throw new IllegalStateException(
-                String.format("LR register ID %d (index %d) is out of bounds. " +
-                    "Valid LR range: %d-%d, but only %d LR registers available.",
-                    registerId, index, Instruction.LR_BASE,
-                    Instruction.LR_BASE + locationRegisters.size() - 1, locationRegisters.size()));
-        } else if (registerId >= Instruction.FDR_BASE) {
+        // Dispatch order: descending by base ID (FDR=1024 > PDR=512 > LR=256 > DR=0)
+        if (registerId >= Instruction.FDR_BASE) {
             // FDR register
             int index = registerId - Instruction.FDR_BASE;
             if (index >= 0 && index < fdrRegisters.size()) {
@@ -235,6 +224,18 @@ public final class OrganismStateConverter {
                     "Valid PDR range: %d-%d, but only %d PDR registers available.",
                     registerId, index, Instruction.PDR_BASE,
                     Instruction.PDR_BASE + pdrRegisters.size() - 1, pdrRegisters.size()));
+        } else if (registerId >= Instruction.LR_BASE) {
+            // LR register
+            int index = registerId - Instruction.LR_BASE;
+            if (index >= 0 && index < locationRegisters.size()) {
+                int[] vector = locationRegisters.get(index);
+                return RegisterValueView.vector(vector);
+            }
+            throw new IllegalStateException(
+                String.format("LR register ID %d (index %d) is out of bounds. " +
+                    "Valid LR range: %d-%d, but only %d LR registers available.",
+                    registerId, index, Instruction.LR_BASE,
+                    Instruction.LR_BASE + locationRegisters.size() - 1, locationRegisters.size()));
         } else if (registerId >= 0 && registerId < dataRegisters.size()) {
             // DR register
             return dataRegisters.get(registerId);
