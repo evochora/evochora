@@ -425,7 +425,7 @@ public class SemanticAnalyzerTest {
         analyzer.analyze(ast);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().get(0).message()).contains("Data register '%DR99' is out of bounds");
+        assertThat(diagnostics.getDiagnostics().get(0).message()).contains("Register '%DR99' is out of bounds");
     }
 
     /**
@@ -468,7 +468,7 @@ public class SemanticAnalyzerTest {
 
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.getDiagnostics().get(0).message())
-                .contains("Access to formal parameter registers (%FDRx) is not allowed");
+                .contains("Access to FDR registers is not allowed in user code");
     }
 
     /**

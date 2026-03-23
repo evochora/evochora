@@ -6,6 +6,7 @@ import org.evochora.compiler.backend.emit.IEmissionContributor;
 import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrItem;
 import org.evochora.compiler.model.ir.IrValue;
+import org.evochora.runtime.isa.RegisterBank;
 
 /**
  * Extracts register alias metadata from {@code reg_alias} IR directives
@@ -41,20 +42,12 @@ public final class RegisterAliasEmissionContributor implements IEmissionContribu
     }
 
     private Integer resolveRegisterId(String registerName) {
-        if (registerName.startsWith("%FDR")) {
-            int index = Integer.parseInt(registerName.substring(4));
-            return org.evochora.runtime.isa.Instruction.FDR_BASE + index;
-        }
-        if (registerName.startsWith("%PDR")) {
-            int index = Integer.parseInt(registerName.substring(4));
-            return org.evochora.runtime.isa.Instruction.PDR_BASE + index;
-        }
-        if (registerName.startsWith("%LR")) {
-            int index = Integer.parseInt(registerName.substring(3));
-            return org.evochora.runtime.isa.Instruction.LR_BASE + index;
-        }
-        if (registerName.startsWith("%DR")) {
-            return Integer.parseInt(registerName.substring(3));
+        String upper = registerName.toUpperCase();
+        for (RegisterBank bank : RegisterBank.values()) {
+            if (bank.count > 0 && upper.startsWith(bank.prefix)) {
+                int index = Integer.parseInt(upper.substring(bank.prefixLength));
+                return bank.base + index;
+            }
         }
         return null;
     }

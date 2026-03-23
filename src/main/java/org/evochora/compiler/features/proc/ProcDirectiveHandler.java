@@ -5,6 +5,7 @@ import org.evochora.compiler.frontend.parser.ParsingContext;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.runtime.isa.RegisterBank;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -72,7 +73,11 @@ public class ProcDirectiveHandler implements IParserStatementHandler {
         }
 
         context.state().pushScope();
-        context.state().addAvailableRegisterBanks("PDR");
+        String[] procScopedBanks = RegisterBank.allProcScoped().stream()
+                .filter(b -> !b.isForbidden)
+                .map(b -> b.prefix.substring(1))
+                .toArray(String[]::new);
+        context.state().addAvailableRegisterBanks(procScopedBanks);
 
         List<AstNode> body = new ArrayList<>();
         while (!context.isAtEnd() && !(context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".ENDP"))) {
@@ -83,7 +88,7 @@ public class ProcDirectiveHandler implements IParserStatementHandler {
             }
         }
 
-        context.state().removeAvailableRegisterBanks("PDR");
+        context.state().removeAvailableRegisterBanks(procScopedBanks);
         context.state().popScope();
 
         if (context.isAtEnd() || !(context.check(TokenType.DIRECTIVE) && context.peek().text().equalsIgnoreCase(".ENDP"))) {

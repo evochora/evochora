@@ -6,6 +6,7 @@ import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
 import org.evochora.runtime.Config;
+import org.evochora.runtime.isa.RegisterBank;
 
 /**
  * Handles the semantic analysis of .REG directives.
@@ -23,13 +24,15 @@ public class RegAnalysisHandler implements IAnalysisHandler {
     private void processRegDirective(RegNode regNode, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         String registerText = regNode.register();
         if (!isValidRegister(registerText)) {
+            StringBuilder validRanges = new StringBuilder();
+            for (RegisterBank bank : RegisterBank.values()) {
+                if (bank.count > 0) {
+                    if (!validRanges.isEmpty()) validRanges.append(", ");
+                    validRanges.append(bank.prefix).append("0-").append(bank.prefix).append(bank.count - 1);
+                }
+            }
             diagnostics.reportError(
-                String.format("Invalid register '%s'. Valid registers: %%DR0-%%DR%d, %%PDR0-%%PDR%d, %%FDR0-%%FDR%d, %%LR0-%%LR%d.",
-                    registerText,
-                    Config.NUM_DATA_REGISTERS - 1,
-                    Config.NUM_PDR_REGISTERS - 1,
-                    Config.NUM_FDR_REGISTERS - 1,
-                    Config.NUM_LOCATION_REGISTERS - 1),
+                String.format("Invalid register '%s'. Valid registers: %s.", registerText, validRanges),
                 regNode.sourceInfo().fileName(),
                 regNode.sourceInfo().lineNumber()
             );
@@ -52,24 +55,13 @@ public class RegAnalysisHandler implements IAnalysisHandler {
         if (registerText == null || !registerText.startsWith("%")) {
             return false;
         }
-
         String upper = registerText.toUpperCase();
         try {
-            if (upper.startsWith("%PDR")) {
-                int index = Integer.parseInt(upper.substring(4));
-                return index >= 0 && index < Config.NUM_PDR_REGISTERS;
-            }
-            if (upper.startsWith("%FDR")) {
-                int index = Integer.parseInt(upper.substring(4));
-                return index >= 0 && index < Config.NUM_FDR_REGISTERS;
-            }
-            if (upper.startsWith("%DR")) {
-                int index = Integer.parseInt(upper.substring(3));
-                return index >= 0 && index < Config.NUM_DATA_REGISTERS;
-            }
-            if (upper.startsWith("%LR")) {
-                int index = Integer.parseInt(upper.substring(3));
-                return index >= 0 && index < Config.NUM_LOCATION_REGISTERS;
+            for (RegisterBank bank : RegisterBank.values()) {
+                if (bank.count > 0 && upper.startsWith(bank.prefix)) {
+                    int index = Integer.parseInt(upper.substring(bank.prefixLength));
+                    return index >= 0 && index < bank.count;
+                }
             }
             return false;
         } catch (NumberFormatException e) {

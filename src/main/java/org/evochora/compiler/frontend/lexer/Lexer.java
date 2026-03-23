@@ -3,6 +3,7 @@ package org.evochora.compiler.frontend.lexer;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
+import org.evochora.runtime.isa.RegisterBank;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -154,14 +155,11 @@ public class Lexer {
         if (!text.startsWith("%")) {
             return false;
         }
-        
-        // Check for valid register patterns
-        if (text.matches("%DR\\d+")) return true;   // %DR0, %DR1, etc.
-        if (text.matches("%PDR\\d+")) return true;  // %PDR0, %PDR1, etc.
-        if (text.matches("%FDR\\d+")) return true;  // %FDR0, %FDR1, etc.
-        if (text.matches("%LR\\d+")) return true;   // %LR0, %LR1, etc.
-        
-        // Not a valid register pattern
+        for (RegisterBank bank : RegisterBank.values()) {
+            if (bank.count > 0 && text.matches(bank.prefix + "\\d+")) {
+                return true;
+            }
+        }
         return false;
     }
 

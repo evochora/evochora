@@ -562,21 +562,11 @@ public abstract class Instruction {
         }
         String u = token.toUpperCase();
         try {
-            if (u.startsWith("%DR")) {
-                int regNum = Integer.parseInt(u.substring(3));
-                return Optional.of(regNum);
-            }
-            if (u.startsWith("%PDR")) {
-                int regNum = Integer.parseInt(u.substring(4));
-                return Optional.of(PDR_BASE + regNum);
-            }
-            if (u.startsWith("%FDR")) {
-                int regNum = Integer.parseInt(u.substring(4));
-                return Optional.of(FDR_BASE + regNum);
-            }
-            if (u.startsWith("%LR")) {
-                int regNum = Integer.parseInt(u.substring(3));
-                return Optional.of(LR_BASE + regNum);
+            for (RegisterBank bank : RegisterBank.values()) {
+                if (bank.count > 0 && u.startsWith(bank.prefix)) {
+                    int regNum = Integer.parseInt(u.substring(bank.prefixLength));
+                    return Optional.of(bank.base + regNum);
+                }
             }
         } catch (NumberFormatException ignore) {
             // Falls through to empty Optional if, e.g., "%DR" has no number.

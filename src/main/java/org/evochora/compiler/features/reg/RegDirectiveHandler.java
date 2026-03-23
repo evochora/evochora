@@ -5,9 +5,7 @@ import org.evochora.compiler.model.token.TokenType;
 import org.evochora.compiler.frontend.parser.IParserStatementHandler;
 import org.evochora.compiler.frontend.parser.ParsingContext;
 import org.evochora.compiler.model.ast.AstNode;
-import org.evochora.runtime.Config;
-
-import java.util.Set;
+import org.evochora.runtime.isa.RegisterBank;
 
 /**
  * Handler for the {@code .REG} directive.
@@ -15,8 +13,6 @@ import java.util.Set;
  * that the target register is allowed in the current scope.
  */
 public class RegDirectiveHandler implements IParserStatementHandler {
-
-    private static final Set<String> FORBIDDEN_BANKS = Set.of("FDR");
 
     /**
      * Parses a {@code .REG} directive.
@@ -61,26 +57,16 @@ public class RegDirectiveHandler implements IParserStatementHandler {
         String regText = register.text().toUpperCase();
         int line = register.line();
 
-        // Extract bank prefix and index
-        String bank;
-        int index;
+        // Extract bank and index via RegisterBank enum iteration
+        RegisterBank matchedBank = null;
+        int index = -1;
         try {
-            if (regText.startsWith("%PDR")) {
-                bank = "PDR";
-                index = Integer.parseInt(regText.substring(4));
-            } else if (regText.startsWith("%FDR")) {
-                bank = "FDR";
-                index = Integer.parseInt(regText.substring(4));
-            } else if (regText.startsWith("%DR")) {
-                bank = "DR";
-                index = Integer.parseInt(regText.substring(3));
-            } else if (regText.startsWith("%LR")) {
-                bank = "LR";
-                index = Integer.parseInt(regText.substring(3));
-            } else {
-                context.getDiagnostics().reportError(
-                        "Unknown register bank in '" + register.text() + "'.", register.fileName(), line);
-                return null;
+            for (RegisterBank bank : RegisterBank.values()) {
+                if (bank.count > 0 && regText.startsWith(bank.prefix)) {
+                    matchedBank = bank;
+                    index = Integer.parseInt(regText.substring(bank.prefixLength));
+                    break;
+                }
             }
         } catch (NumberFormatException e) {
             context.getDiagnostics().reportError(
@@ -88,17 +74,25 @@ public class RegDirectiveHandler implements IParserStatementHandler {
             return null;
         }
 
+        if (matchedBank == null) {
+            context.getDiagnostics().reportError(
+                    "Unknown register bank in '" + register.text() + "'.", register.fileName(), line);
+            return null;
+        }
+
+        String bankName = matchedBank.prefix.substring(1); // strip "%"
+
         // 1. Forbidden-bank check
-        if (FORBIDDEN_BANKS.contains(bank)) {
+        if (matchedBank.isForbidden) {
             context.getDiagnostics().reportError(
                     "Register " + register.text() + " cannot be aliased — "
-                            + bank + " registers are managed by the CALL binding mechanism.",
+                            + bankName + " registers are managed by the CALL binding mechanism.",
                     register.fileName(), line);
             return null;
         }
 
         // 2. Scope availability check
-        if (!context.state().isRegisterBankAvailable(bank)) {
+        if (!context.state().isRegisterBankAvailable(bankName)) {
             context.getDiagnostics().reportError(
                     "Register " + register.text() + " is not available in the current scope.",
                     register.fileName(), line);
@@ -106,16 +100,10 @@ public class RegDirectiveHandler implements IParserStatementHandler {
         }
 
         // 3. Bounds check
-        int maxRegisters = switch (bank) {
-            case "DR" -> Config.NUM_DATA_REGISTERS;
-            case "PDR" -> Config.NUM_PDR_REGISTERS;
-            case "LR" -> Config.NUM_LOCATION_REGISTERS;
-            default -> throw new IllegalStateException("Unhandled bank: " + bank);
-        };
-        if (index < 0 || index >= maxRegisters) {
+        if (index < 0 || index >= matchedBank.count) {
             context.getDiagnostics().reportError(
-                    "Register index " + index + " is out of bounds for " + bank
-                            + " bank. Valid range: 0-" + (maxRegisters - 1) + ".",
+                    "Register index " + index + " is out of bounds for " + bankName
+                            + " bank. Valid range: 0-" + (matchedBank.count - 1) + ".",
                     register.fileName(), line);
             return null;
         }

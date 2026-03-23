@@ -15,7 +15,6 @@ import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.runtime.Simulation;
-import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.test.utils.SimulationTestUtils;
 import org.junit.jupiter.api.BeforeAll;
