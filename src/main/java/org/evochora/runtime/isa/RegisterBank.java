@@ -36,15 +36,56 @@ public enum RegisterBank {
         PERSISTENT
     }
 
-    private static final int TABLE_SIZE = 2048;
-    private static final int[] ID_TO_BANK_ORDINAL;
+    /** Size of all ID-indexed lookup tables. */
+    public static final int TABLE_SIZE = 2048;
+
+    /** Total number of register slots across all banks with count > 0. */
+    public static final int TOTAL_REGISTER_COUNT;
+
+    /**
+     * Maps register ID → flat array slot index. Sentinel -1 for IDs not in any bank.
+     * Size: {@link #TABLE_SIZE}. Indexed by register ID.
+     */
+    public static final int[] ID_TO_SLOT;
+
+    /**
+     * Maps register ID → whether the bank is a location bank. Indexed by register ID (NOT slot).
+     * Deliberate performance duplication of {@code forId(id).isLocation} — the instruction
+     * execution hotpath needs a single array lookup, not a {@code forId()} call + field access.
+     */
+    public static final boolean[] IS_LOCATION_BY_ID;
+
+    /**
+     * Maps flat array slot → RegisterBank. Size: {@link #TOTAL_REGISTER_COUNT}.
+     * Used by {@link #forId(int)} to resolve bank from slot without a separate 2048-entry table.
+     */
+    public static final RegisterBank[] SLOT_TO_BANK;
 
     static {
-        ID_TO_BANK_ORDINAL = new int[TABLE_SIZE];
-        Arrays.fill(ID_TO_BANK_ORDINAL, -1);
+        // Compute slot offsets and total count
+        int offset = 0;
+        for (RegisterBank bank : values()) {
+            bank.slotOffset = offset;
+            offset += bank.count;
+        }
+        TOTAL_REGISTER_COUNT = offset;
+
+        // Build ID_TO_SLOT and IS_LOCATION_BY_ID tables
+        ID_TO_SLOT = new int[TABLE_SIZE];
+        IS_LOCATION_BY_ID = new boolean[TABLE_SIZE];
+        Arrays.fill(ID_TO_SLOT, -1);
         for (RegisterBank bank : values()) {
             for (int i = 0; i < bank.count; i++) {
-                ID_TO_BANK_ORDINAL[bank.base + i] = bank.ordinal();
+                ID_TO_SLOT[bank.base + i] = bank.slotOffset + i;
+                IS_LOCATION_BY_ID[bank.base + i] = bank.isLocation;
+            }
+        }
+
+        // Build SLOT_TO_BANK table
+        SLOT_TO_BANK = new RegisterBank[TOTAL_REGISTER_COUNT];
+        for (RegisterBank bank : values()) {
+            for (int i = 0; i < bank.count; i++) {
+                SLOT_TO_BANK[bank.slotOffset + i] = bank;
             }
         }
     }
@@ -56,6 +97,8 @@ public enum RegisterBank {
     public final boolean isForbidden;
     public final String prefix;
     public final int prefixLength;
+
+    private int slotOffset;
 
     RegisterBank(int base, int count, boolean isLocation, CallBehavior callBehavior,
                  boolean isForbidden, String prefix, int prefixLength) {
@@ -69,6 +112,14 @@ public enum RegisterBank {
     }
 
     /**
+     * Returns the starting index of this bank's registers in the flat register array.
+     * Computed during static initialization — not available in the enum constructor.
+     */
+    public int slotOffset() {
+        return slotOffset;
+    }
+
+    /**
      * Returns the bank for a register ID, or {@code null} if the ID is not in any bank.
      *
      * @param id the full register ID
@@ -78,19 +129,19 @@ public enum RegisterBank {
         if (id < 0 || id >= TABLE_SIZE) {
             return null;
         }
-        int ordinal = ID_TO_BANK_ORDINAL[id];
-        return ordinal == -1 ? null : values()[ordinal];
+        int slot = ID_TO_SLOT[id];
+        return slot == -1 ? null : SLOT_TO_BANK[slot];
     }
 
     /**
      * Checks whether a register ID belongs to a location register bank.
+     * Uses the {@link #IS_LOCATION_BY_ID} table for O(1) performance on the hotpath.
      *
      * @param id the full register ID
      * @return {@code true} if the ID is in a location bank
      */
     public static boolean isLocationBank(int id) {
-        RegisterBank bank = forId(id);
-        return bank != null && bank.isLocation;
+        return id >= 0 && id < TABLE_SIZE && IS_LOCATION_BY_ID[id];
     }
 
     /**

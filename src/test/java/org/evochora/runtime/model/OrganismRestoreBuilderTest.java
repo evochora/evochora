@@ -10,6 +10,7 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 
+import org.evochora.runtime.Config;
 import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
@@ -132,9 +133,9 @@ class OrganismRestoreBuilderTest {
         assertThat(org.getDp(1)).isEqualTo(new int[]{3, 4});
         assertThat(org.getDrs()).hasSize(8);
         assertThat(org.getDr(0)).isEqualTo(100);
-        assertThat(org.getPdrs()).hasSize(4);
+        assertThat(org.getPdrs()).hasSize(Config.NUM_PDR_REGISTERS);
         assertThat(org.getPdr(0)).isEqualTo(10);
-        assertThat(org.getFdrs()).hasSize(4);
+        assertThat(org.getFdrs()).hasSize(Config.NUM_FDR_REGISTERS);
         assertThat(org.getFdr(0)).isEqualTo(5);
         assertThat(org.getDataStack()).hasSize(2);
         assertThat(org.getLocationStack()).hasSize(1);

@@ -10,6 +10,7 @@ import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.OpcodeId;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
@@ -302,23 +303,11 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
         int delta = random.nextBoolean() ? 1 : -1;
         int newValue = regValue + delta;
 
-        int base;
-        int maxOffset;
-        if (regValue >= Instruction.FDR_BASE) {
-            base = Instruction.FDR_BASE;
-            maxOffset = Config.NUM_FDR_REGISTERS - 1;
-        } else if (regValue >= Instruction.PDR_BASE) {
-            base = Instruction.PDR_BASE;
-            maxOffset = Config.NUM_PDR_REGISTERS - 1;
-        } else if (regValue >= Instruction.LR_BASE) {
-            base = Instruction.LR_BASE;
-            maxOffset = Config.NUM_LOCATION_REGISTERS - 1;
-        } else {
-            base = 0;
-            maxOffset = Config.NUM_DATA_REGISTERS - 1;
+        RegisterBank bank = RegisterBank.forId(regValue);
+        if (bank == null) {
+            return regValue;
         }
-
-        return Math.max(base, Math.min(base + maxOffset, newValue));
+        return Math.max(bank.base, Math.min(bank.base + bank.count - 1, newValue));
     }
 
     /**

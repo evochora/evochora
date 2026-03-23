@@ -189,7 +189,7 @@ public class VMLocationInstructionTest {
         
         // Verify instruction failed
         assertThat(org.isInstructionFailed()).isTrue();
-        assertThat(org.getFailureReason()).contains("Cannot write to non-location register");
+        assertThat(org.getFailureReason()).contains("Invalid register ID");
 
         // Reset failure state
         org.resetTickState();
@@ -624,7 +624,7 @@ public class VMLocationInstructionTest {
 
         // Should fail
         assertThat(org.isInstructionFailed()).isTrue();
-        assertThat(org.getFailureReason()).contains("Cannot write to non-location register");
+        assertThat(org.getFailureReason()).contains("Invalid register ID");
     }
 
     /**

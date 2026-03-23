@@ -5,6 +5,7 @@ import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.Instruction.OperandSource;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
@@ -354,12 +355,13 @@ public class GeneInsertionPlugin implements IBirthHandler {
 
         List<int[]> banks = new ArrayList<>();
         for (String bank : bankNames) {
-            int base = switch (bank.toUpperCase()) {
-                case "DR" -> 0;
-                case "PDR" -> Instruction.PDR_BASE;
-                case "FDR" -> Instruction.FDR_BASE;
-                default -> throw new IllegalArgumentException("Unknown register bank: " + bank);
-            };
+            RegisterBank rb;
+            try {
+                rb = RegisterBank.valueOf(bank.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("Unknown register bank: " + bank);
+            }
+            int base = rb.base;
             banks.add(new int[]{base, rangeMin, rangeMax});
         }
         return new RegisterConfig(banks);

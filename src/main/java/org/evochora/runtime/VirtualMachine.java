@@ -295,18 +295,10 @@ public class VirtualMachine {
                 if (argIndex < rawArgs.length) {
                     int registerId = Instruction.extractSignedValue(rawArgs[argIndex]);
 
-                    // Read location register value (LR - always int[])
-                    // Safely check bounds to avoid failing the instruction during debug data collection
-                    // The instruction's own execute() method will handle validation and specific error messages
-                    if (registerId >= 0 && registerId < Config.NUM_LOCATION_REGISTERS) {
-                        int[] lrValue = organism.getLr(registerId);
-                        if (lrValue != null) {
-                            registerValues.put(registerId, lrValue);
-                        } else {
-                            // LR is null - store empty vector with correct dimensions
-                            int dims = this.environment.properties.getDimensions();
-                            registerValues.put(registerId, new int[dims]);
-                        }
+                    // Read location register value (identical to REGISTER branch)
+                    Object lrValue = organism.readOperand(registerId);
+                    if (lrValue != null) {
+                        registerValues.put(registerId, lrValue);
                     }
 
                     argIndex++;

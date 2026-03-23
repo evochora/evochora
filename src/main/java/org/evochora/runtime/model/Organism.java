@@ -11,6 +11,7 @@ import java.util.stream.Collectors;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -73,10 +74,7 @@ public class Organism {
     private int mr; // Molecule Marker Register
     private long genomeHash = 0L; // Genome hash computed at birth
     private long deathTick = -1L; // Tick when organism died (-1 if alive)
-    private final List<Object> drs;
-    private final List<Object> pdrs;
-    private final List<Object> fdrs;
-    private final List<Object> lrs;
+    private final Object[] registers;
     private final Deque<Object> dataStack;
     private final Deque<int[]> locationStack;
     private final Deque<ProcFrame> callStack;
@@ -151,21 +149,11 @@ public class Organism {
         this.simulation = simulation;
         this.dv = new int[startIp.length];
         this.dv[0] = 1; // Default direction: +X
-        this.drs = new ArrayList<>(Config.NUM_DATA_REGISTERS);
-        for (int i = 0; i < Config.NUM_DATA_REGISTERS; i++) {
-            this.drs.add(0);
-        }
-        this.pdrs = new ArrayList<>(Config.NUM_PDR_REGISTERS);
-        for (int i = 0; i < Config.NUM_PDR_REGISTERS; i++) {
-            this.pdrs.add(0);
-        }
-        this.fdrs = new ArrayList<>(Config.NUM_FDR_REGISTERS);
-        for (int i = 0; i < Config.NUM_FDR_REGISTERS; i++) {
-            this.fdrs.add(0);
-        }
-        this.lrs = new ArrayList<>(Config.NUM_LOCATION_REGISTERS);
-        for (int i = 0; i < Config.NUM_LOCATION_REGISTERS; i++) {
-            this.lrs.add(new int[startIp.length]);
+        this.registers = new Object[RegisterBank.TOTAL_REGISTER_COUNT];
+        for (RegisterBank bank : RegisterBank.values()) {
+            for (int i = 0; i < bank.count; i++) {
+                registers[bank.slotOffset() + i] = bank.isLocation ? new int[startIp.length] : 0;
+            }
         }
         this.locationStack = new ArrayDeque<>(Config.LOCATION_STACK_MAX_DEPTH);
         this.dataStack = new ArrayDeque<>(Config.STACK_MAX_DEPTH);
@@ -235,11 +223,18 @@ public class Organism {
         }
         this.activeDpIndex = b.activeDpIndex;
 
-        // Copy registers (shallow copy is fine, values are immutable Integer or int[])
-        this.drs = new ArrayList<>(b.drs);
-        this.pdrs = new ArrayList<>(b.pdrs);
-        this.fdrs = new ArrayList<>(b.fdrs);
-        this.lrs = new ArrayList<>(b.lrs);
+        // Build flat register array: initialize defaults, then overlay with RestoreBuilder values
+        this.registers = new Object[RegisterBank.TOTAL_REGISTER_COUNT];
+        int dims = b.ip != null ? b.ip.length : 2;
+        for (RegisterBank bank : RegisterBank.values()) {
+            for (int i = 0; i < bank.count; i++) {
+                registers[bank.slotOffset() + i] = bank.isLocation ? new int[dims] : 0;
+            }
+        }
+        copyListToSlots(b.drs, RegisterBank.DR);
+        copyListToSlots(b.lrs, RegisterBank.LR);
+        copyListToSlots(b.pdrs, RegisterBank.PDR);
+        copyListToSlots(b.fdrs, RegisterBank.FDR);
 
         // Copy stacks
         this.dataStack = new ArrayDeque<>(b.dataStack);
@@ -866,9 +861,9 @@ public class Organism {
      * @return {@code true} on success, {@code false} on failure.
      */
     public boolean setDr(int index, Object value) {
-        if (index >= 0 && index < this.drs.size()) {
+        if (index >= 0 && index < RegisterBank.DR.count) {
             if (value instanceof Integer || value instanceof int[]) {
-                this.drs.set(index, value);
+                registers[RegisterBank.DR.slotOffset() + index] = value;
                 return true;
             }
             this.instructionFailed("Attempted to set unsupported type " + (value != null ? value.getClass().getSimpleName() : "null") + " to DR " + index);
@@ -885,8 +880,8 @@ public class Organism {
      * @return The value of the register, or {@code null} if the index is invalid.
      */
     public Object getDr(int index) {
-        if (index >= 0 && index < this.drs.size()) {
-            return this.drs.get(index);
+        if (index >= 0 && index < RegisterBank.DR.count) {
+            return registers[RegisterBank.DR.slotOffset() + index];
         }
         this.instructionFailed("DR index out of bounds: " + index);
         return null;
@@ -1121,7 +1116,7 @@ public class Organism {
     public long getDeathTick() { return deathTick; }
 
     /** @return A copy of the list of Data Registers (DRs). */
-    public List<Object> getDrs() { return new ArrayList<>(drs); }
+    public List<Object> getDrs() { return new ArrayList<>(Arrays.asList(registers).subList(RegisterBank.DR.slotOffset(), RegisterBank.DR.slotOffset() + RegisterBank.DR.count)); }
     /** @return true if the organism is dead, false otherwise. */
     public boolean isDead() { return isDead; }
     /** @return true if detailed logging is enabled for this organism. */
@@ -1159,7 +1154,7 @@ public class Organism {
     }
 
     /** @return A copy of the list of Procedure-local Data Registers (PDRs). */
-    public List<Object> getPdrs() { return new ArrayList<>(this.pdrs); }
+    public List<Object> getPdrs() { return new ArrayList<>(Arrays.asList(registers).subList(RegisterBank.PDR.slotOffset(), RegisterBank.PDR.slotOffset() + RegisterBank.PDR.count)); }
 
     /**
      * Sets the value of a Procedure-local Data Register (PDR).
@@ -1169,9 +1164,9 @@ public class Organism {
      * @return {@code true} on success, {@code false} on failure.
      */
     public boolean setPdr(int index, Object value) {
-        if (index >= 0 && index < this.pdrs.size()) {
+        if (index >= 0 && index < RegisterBank.PDR.count) {
             if (value instanceof Integer || value instanceof int[]) {
-                this.pdrs.set(index, value);
+                registers[RegisterBank.PDR.slotOffset() + index] = value;
                 return true;
             }
             this.instructionFailed("Attempted to set unsupported type " + (value != null ? value.getClass().getSimpleName() : "null") + " to PDR" + index);
@@ -1188,8 +1183,8 @@ public class Organism {
      * @return The value, or {@code null} on failure.
      */
     public Object getPdr(int index) {
-        if (index >= 0 && index < this.pdrs.size()) {
-            return this.pdrs.get(index);
+        if (index >= 0 && index < RegisterBank.PDR.count) {
+            return registers[RegisterBank.PDR.slotOffset() + index];
         }
         this.instructionFailed("PDR index out of bounds: " + index);
         return null;
@@ -1201,17 +1196,15 @@ public class Organism {
      * @param snapshot The snapshot to restore from.
      */
     public void restorePdrs(Object[] snapshot) {
-        if (snapshot == null || snapshot.length != this.pdrs.size()) {
-            this.instructionFailed("Invalid PDR snapshot size: expected " + this.pdrs.size() + ", got " + (snapshot == null ? "null" : snapshot.length));
+        if (snapshot == null || snapshot.length != RegisterBank.PDR.count) {
+            this.instructionFailed("Invalid PDR snapshot size: expected " + RegisterBank.PDR.count + ", got " + (snapshot == null ? "null" : snapshot.length));
             return;
         }
-        for (int i = 0; i < snapshot.length; i++) {
-            this.pdrs.set(i, snapshot[i]);
-        }
+        System.arraycopy(snapshot, 0, registers, RegisterBank.PDR.slotOffset(), RegisterBank.PDR.count);
     }
 
     /** @return A copy of the list of Formal Data Registers (FDRs). */
-    public List<Object> getFdrs() { return new ArrayList<>(this.fdrs); }
+    public List<Object> getFdrs() { return new ArrayList<>(Arrays.asList(registers).subList(RegisterBank.FDR.slotOffset(), RegisterBank.FDR.slotOffset() + RegisterBank.FDR.count)); }
 
     /**
      * Sets the value of a Formal Data Register (FDR).
@@ -1221,9 +1214,9 @@ public class Organism {
      * @return {@code true} on success, {@code false} on failure.
      */
     public boolean setFdr(int index, Object value) {
-        if (index >= 0 && index < this.fdrs.size()) {
+        if (index >= 0 && index < RegisterBank.FDR.count) {
             if (value instanceof Integer || value instanceof int[]) {
-                this.fdrs.set(index, value);
+                registers[RegisterBank.FDR.slotOffset() + index] = value;
                 return true;
             }
             this.instructionFailed("Attempted to set unsupported type " + (value != null ? value.getClass().getSimpleName() : "null") + " to FDR" + index);
@@ -1240,8 +1233,8 @@ public class Organism {
      * @return The value, or {@code null} on failure.
      */
     public Object getFdr(int index) {
-        if (index >= 0 && index < this.fdrs.size()) {
-            return this.fdrs.get(index);
+        if (index >= 0 && index < RegisterBank.FDR.count) {
+            return registers[RegisterBank.FDR.slotOffset() + index];
         }
         this.instructionFailed("FDR index out of bounds: " + index);
         return null;
@@ -1253,13 +1246,11 @@ public class Organism {
      * @param snapshot The snapshot to restore from.
      */
     public void restoreFdrs(Object[] snapshot) {
-        if (snapshot == null || snapshot.length > this.fdrs.size()) {
+        if (snapshot == null || snapshot.length > RegisterBank.FDR.count) {
             this.instructionFailed("Invalid FDR snapshot for restore");
             return;
         }
-        for (int i = 0; i < snapshot.length; i++) {
-            this.fdrs.set(i, snapshot[i]);
-        }
+        System.arraycopy(snapshot, 0, registers, RegisterBank.FDR.slotOffset(), snapshot.length);
     }
 
     /**
@@ -1268,7 +1259,7 @@ public class Organism {
      * @return A new list containing the vector values of all LRs.
      */
     public List<Object> getLrs() {
-        return new ArrayList<>(this.lrs);
+        return new ArrayList<>(Arrays.asList(registers).subList(RegisterBank.LR.slotOffset(), RegisterBank.LR.slotOffset() + RegisterBank.LR.count));
     }
 
     /**
@@ -1279,8 +1270,8 @@ public class Organism {
      * @return {@code true} on success, {@code false} on failure.
      */
     public boolean setLr(int index, int[] value) {
-        if (index >= 0 && index < this.lrs.size()) {
-            this.lrs.set(index, value);
+        if (index >= 0 && index < RegisterBank.LR.count) {
+            registers[RegisterBank.LR.slotOffset() + index] = value;
             return true;
         }
         this.instructionFailed("LR index out of bounds: " + index);
@@ -1294,8 +1285,8 @@ public class Organism {
      * @return The vector value, or {@code null} on failure.
      */
     public int[] getLr(int index) {
-        if (index >= 0 && index < this.lrs.size()) {
-            return (int[]) this.lrs.get(index);
+        if (index >= 0 && index < RegisterBank.LR.count) {
+            return (int[]) registers[RegisterBank.LR.slotOffset() + index];
         }
         this.instructionFailed("LR index out of bounds: " + index);
         return null;
@@ -1325,41 +1316,38 @@ public class Organism {
     public Deque<ProcFrame> getFailureCallStack() { return this.failureCallStack; }
 
     /**
-     * Reads a value from a register (DR, PDR, FDR, or LR) using its full numeric ID.
+     * Reads a value from any register using its full numeric ID.
+     * Dispatches via flat array lookup — O(1) regardless of bank count.
      *
-     * @param id The full ID of the register (e.g., 5 for DR5, 1002 for PDR2, 3001 for LR1).
-     * @return The value read from the register.
+     * @param id the full register ID
+     * @return the register value, or {@code null} if the ID is invalid
      */
     public Object readOperand(int id) {
-        if (id >= Instruction.LR_BASE && id < Instruction.LR_BASE + Config.NUM_LOCATION_REGISTERS) {
-            return getLr(id - Instruction.LR_BASE);
+        if (id < 0 || id >= RegisterBank.TABLE_SIZE) {
+            this.instructionFailed("Invalid register ID: " + id);
+            return null;
         }
-        if (id >= Instruction.FDR_BASE && id < Instruction.FDR_BASE + Config.NUM_FDR_REGISTERS) {
-            return getFdr(id - Instruction.FDR_BASE);
+        int slot = RegisterBank.ID_TO_SLOT[id];
+        if (slot == -1) {
+            this.instructionFailed("Invalid register ID: " + id);
+            return null;
         }
-        if (id >= Instruction.PDR_BASE && id < Instruction.PDR_BASE + Config.NUM_PDR_REGISTERS) {
-            return getPdr(id - Instruction.PDR_BASE);
-        }
-        if (id >= 0 && id < Config.NUM_DATA_REGISTERS) {
-            return getDr(id);
-        }
-        this.instructionFailed("Invalid register ID: " + id);
-        return null;
+        return registers[slot];
     }
 
     /**
      * Checks whether a register ID belongs to a location register bank.
-     * Single source of truth — subsequent phases extend this with PLR, SLR, FLR ranges.
+     * Uses {@link RegisterBank#IS_LOCATION_BY_ID} for O(1) lookup.
      *
      * @param id the full register ID
      * @return {@code true} if the ID is in a location register bank
      */
     public static boolean isLocationBank(int id) {
-        return id >= Instruction.LR_BASE && id < Instruction.LR_BASE + Config.NUM_LOCATION_REGISTERS;
+        return RegisterBank.isLocationBank(id);
     }
 
     /**
-     * Writes a value to a data register (DR, PDR, or FDR) using its full numeric ID.
+     * Writes a value to a data register using its full numeric ID.
      * Location register writes are rejected — use {@link #writeLocationOperand(int, int[])} instead.
      *
      * @param id the full ID of the register
@@ -1367,21 +1355,21 @@ public class Organism {
      * @return {@code true} if the write was successful
      */
     public boolean writeOperand(int id, Object value) {
-        if (isLocationBank(id)) {
+        if (id < 0 || id >= RegisterBank.TABLE_SIZE) {
+            this.instructionFailed("Invalid register ID: " + id);
+            return false;
+        }
+        int slot = RegisterBank.ID_TO_SLOT[id];
+        if (slot == -1) {
+            this.instructionFailed("Invalid register ID: " + id);
+            return false;
+        }
+        if (RegisterBank.IS_LOCATION_BY_ID[id]) {
             this.instructionFailed("Cannot write to location register via data instruction");
             return false;
         }
-        if (id >= Instruction.FDR_BASE && id < Instruction.FDR_BASE + Config.NUM_FDR_REGISTERS) {
-            return setFdr(id - Instruction.FDR_BASE, value);
-        }
-        if (id >= Instruction.PDR_BASE && id < Instruction.PDR_BASE + Config.NUM_PDR_REGISTERS) {
-            return setPdr(id - Instruction.PDR_BASE, value);
-        }
-        if (id >= 0 && id < Config.NUM_DATA_REGISTERS) {
-            return setDr(id, value);
-        }
-        this.instructionFailed("Invalid register ID: " + id);
-        return false;
+        registers[slot] = value;
+        return true;
     }
 
     /**
@@ -1393,14 +1381,30 @@ public class Organism {
      * @return {@code true} if the write was successful
      */
     public boolean writeLocationOperand(int id, int[] value) {
-        if (!isLocationBank(id)) {
+        if (id < 0 || id >= RegisterBank.TABLE_SIZE) {
+            this.instructionFailed("Invalid register ID: " + id);
+            return false;
+        }
+        int slot = RegisterBank.ID_TO_SLOT[id];
+        if (slot == -1) {
+            this.instructionFailed("Invalid register ID: " + id);
+            return false;
+        }
+        if (!RegisterBank.IS_LOCATION_BY_ID[id]) {
             this.instructionFailed("Cannot write to non-location register via location instruction: " + id);
             return false;
         }
-        if (id >= Instruction.LR_BASE && id < Instruction.LR_BASE + Config.NUM_LOCATION_REGISTERS) {
-            return setLr(id - Instruction.LR_BASE, value);
+        registers[slot] = value;
+        return true;
+    }
+
+    /**
+     * Copies values from a list into the corresponding slots of the flat register array.
+     */
+    private void copyListToSlots(List<Object> source, RegisterBank bank) {
+        for (int i = 0; i < Math.min(source.size(), bank.count); i++) {
+            registers[bank.slotOffset() + i] = source.get(i);
         }
-        throw new IllegalStateException("isLocationBank() accepted ID " + id + " but no dispatch branch matched");
     }
 
 }
