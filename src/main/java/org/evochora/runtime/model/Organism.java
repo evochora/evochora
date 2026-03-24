@@ -93,14 +93,14 @@ public class Organism {
      * @param absoluteReturnIp The absolute return IP.
      * @param absoluteCallIp The absolute address of the CALL instruction that created this frame.
      * @param savedRegisters Compact array of all STACK_SAVED register values in RegisterBank enum order.
-     * @param fdrBindings The FDR parameter bindings.
+     * @param parameterBindings Generic parameter bindings (register ID → source register ID). FDR keys now, FLR keys added in Phase G.
      */
     public record ProcFrame(
             String procName,
             int[] absoluteReturnIp,
             int[] absoluteCallIp,
             Object[] savedRegisters,
-            java.util.Map<Integer, Integer> fdrBindings
+            java.util.Map<Integer, Integer> parameterBindings
     ) {}
     private boolean skipIpAdvance = false;
     private int[] ipBeforeFetch;

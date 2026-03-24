@@ -635,14 +635,14 @@ public class SimulationRestorer {
             offset += bank.count;
         }
 
-        Map<Integer, Integer> fdrBindings = new HashMap<>(pf.getFdrBindingsMap());
+        Map<Integer, Integer> parameterBindings = new HashMap<>(pf.getFdrBindingsMap());
 
         return new Organism.ProcFrame(
             pf.getProcName(),
             toIntArray(pf.getAbsoluteReturnIp()),
             toIntArray(pf.getAbsoluteCallIp()),
             savedRegisters,
-            fdrBindings
+            parameterBindings
         );
     }
 

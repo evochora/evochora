@@ -1044,7 +1044,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 .setProcName(frame.procName())
                 .setAbsoluteReturnIp(convertVectorReuse(frame.absoluteReturnIp(), vectorBuilder))
                 .setAbsoluteCallIp(convertVectorReuse(frame.absoluteCallIp(), vectorBuilder))
-                .putAllFdrBindings(frame.fdrBindings());
+                .putAllFdrBindings(frame.parameterBindings());
 
         // D4 transition: split compact savedRegisters into separate Proto fields (removed in D5)
         if (frame.savedRegisters() != null) {

@@ -313,9 +313,26 @@ Between D4 and D5, the Java model uses the compact `savedRegisters` array but th
 
 **Test:** All tests green after adapting to new ProcFrame signature.
 
-#### D5: Protobuf + Serialization + RestoreBuilder + JS Visualizer
+#### D5: Serialization + API + Visualizer Encapsulation
 
-Completes the flat-array encapsulation through the entire stack: Protobuf schema, Java serialization/deserialization, DTOs, RestoreBuilder, and JS Visualizer. After D5, adding a new register bank requires zero changes to serialization code (Java) and one entry in the JS bank metadata structure (Visualizer). Backward compatibility is explicitly not required.
+Completes the flat-array encapsulation through the entire stack. Split into three independently testable sub-steps.
+
+##### D5a: `fdrBindings` → `parameterBindings` Rename (Java runtime only)
+
+Pure mechanical rename of Java variables and the ProcFrame record field. Proto stays unchanged. **ProcFrameView (API DTO) stays unchanged** — its `fdrBindings` field name is serialized as a JSON key and read by the JS frontend. Renaming it here would break 20+ JS call sites. ProcFrameView is renamed in D5b together with the JS migration.
+
+- `ProcFrame` record: `fdrBindings` → `parameterBindings`
+- `ProcedureCallHandler.java`: all references
+- `SimulationEngine.java`: all references (still writes to proto `fdr_bindings` field)
+- `SimulationRestorer.java`: all references (still reads from proto `fdr_bindings` field)
+- `ProcFrameView.java`: **NOT renamed** — API DTO field stays `fdrBindings` until D5b
+- `OrganismStateConverter.java`: no change needed (local variable already named `bindings`)
+
+**Test:** All tests green — purely mechanical rename.
+
+##### D5b: Protobuf + Java Serialization + DTOs + JS Visualizer
+
+Atomic API migration. Proto schema, Java serialization/deserialization, DTOs, RestoreBuilder, and JS Visualizer are changed together because they form one API contract. After D5b, adding a new register bank requires zero changes to serialization code (Java) and one entry in the JS `REGISTER_BANKS` array (Visualizer). Backward compatibility is explicitly not required.
 
 **Proto schema** (`tickdata_contracts.proto`):
 
@@ -323,13 +340,13 @@ All Proto messages get clean sequential field numbers starting at 1 — no legac
 
 - `OrganismState`: ALL separate register fields (`data_registers`, `proc_data_registers`, `formal_data_registers`, `location_registers`) replaced by a single `repeated RegisterValue registers`. Slot order matches the flat array. Location registers use the `RegisterValue.vector` variant.
 - `OrganismRuntimeState`: same — separate register fields replaced by `repeated RegisterValue registers`.
-- `ProcFrame`: `saved_pdrs`, `saved_fdrs` replaced by `repeated RegisterValue saved_registers`. `fdr_bindings` renamed to `parameter_bindings` (generic map for all parameter bindings — FDR keys now, FLR keys added in Phase G).
+- `ProcFrame`: `saved_pdrs`, `saved_fdrs` replaced by `repeated RegisterValue saved_registers`. `fdr_bindings` renamed to `parameter_bindings`.
 
 **Java serialization:**
-- `SimulationEngine.java`: writes Organism's flat array sequentially into protobuf `registers` field. ProcFrame serialization writes `saved_registers` directly (D4 transition splitting removed).
-- `SimulationRestorer.java`: reads protobuf `registers` field as flat `Object[]`, passes directly to `RestoreBuilder.registers(Object[])`. `convertProcFrame()` reads `saved_registers` directly. D4 transition assembly removed. No longer calls `restorePdrs()` / `restoreFdrs()`.
+- `SimulationEngine.java`: writes Organism's flat array sequentially into protobuf `registers` field. ProcFrame writes `saved_registers` and `parameter_bindings` directly. D4 transition splitting removed.
+- `SimulationRestorer.java`: reads protobuf `registers` field as flat `Object[]`, passes directly to `RestoreBuilder.registers(Object[])`. `convertProcFrame()` reads `saved_registers` and `parameter_bindings` directly. D4 transition assembly removed.
 - `OrganismStateConverter.java`: `resolveRegisterValue()` uses RegisterBank iteration and slot-based lookup instead of ID-based if-chain. `convertProcFrame()` converts `saved_registers` to `List<RegisterValueView> savedRegisters`.
-- `ProcFrameView.java`: separate `savedPdrs`/`savedFdrs` fields replaced by `List<RegisterValueView> savedRegisters`.
+- `ProcFrameView.java`: separate `savedPdrs`/`savedFdrs` fields replaced by `List<RegisterValueView> savedRegisters`. `fdrBindings` renamed to `parameterBindings`.
 - `OrganismRuntimeView.java`: separate register lists replaced by `List<RegisterValueView> registers` (flat array, slot order matching RegisterBank). The API consumer (JS Visualizer) interprets slots via bank metadata.
 - `H2DatabaseReader.java`: indirectly via OrganismStateConverter.
 - `SimulationParameters.java`: JavaDoc comments updated.
@@ -337,37 +354,40 @@ All Proto messages get clean sequential field numbers starting at 1 — no legac
 **Organism RestoreBuilder:**
 - Separate register setters (`dataRegisters()`, `procDataRegisters()`, `formalDataRegisters()`, `locationRegisters()`) replaced by a single `registers(Object[])` setter. The deserialization path (SimulationRestorer) passes the flat array directly — no roundtrip through separate lists.
 
-**Organism facade cleanup:**
-- `restorePdrs()` / `restoreFdrs()` removed — SimulationRestorer no longer needs them.
-
 **JS Visualizer:**
 
-JS gets a bank metadata structure mirroring `RegisterBank.java`:
+`INSTRUCTION_CONSTANTS` is fully replaced by `REGISTER_BANKS` — no parallel constant sources. A derived lookup `BANK_BY_NAME` provides O(1) name-based access.
+
 ```javascript
 const REGISTER_BANKS = [
-    { name: "DR",  base: 0,    slotOffset: 0,  count: 8, isLocation: false },
-    { name: "LR",  base: 256,  slotOffset: 8,  count: 4, isLocation: true  },
-    { name: "PDR", base: 512,  slotOffset: 12, count: 8, isLocation: false },
-    { name: "FDR", base: 1024, slotOffset: 20, count: 8, isLocation: false },
+    { name: "DR",  prefix: "%DR",  base: 0,    slotOffset: 0,  count: 8, isLocation: false },
+    { name: "LR",  prefix: "%LR",  base: 256,  slotOffset: 8,  count: 4, isLocation: true  },
+    { name: "PDR", prefix: "%PDR", base: 512,  slotOffset: 12, count: 8, isLocation: false },
+    { name: "FDR", prefix: "%FDR", base: 1024, slotOffset: 20, count: 8, isLocation: false },
 ];
+const BANK_BY_NAME = Object.fromEntries(REGISTER_BANKS.map(b => [b.name, b]));
 ```
-Adding a new bank = one entry in this array. The structure is the JS analog of the Java enum — manually maintained (technology boundary), but architecturally identical.
+Adding a new bank = one entry in `REGISTER_BANKS`. Architecturally identical to Java's `RegisterBank` enum.
 
 - `AnnotationUtils.js`: ALL dispatch methods migrated to `REGISTER_BANKS` iteration — no hardcoded per-bank branches remain:
   - `getRegisterValueById(registerId, state)`: finds bank via `REGISTER_BANKS` iteration (descending by base), reads `state.registers[bank.slotOffset + index]`
-  - `getRegisterValue(canonicalName, state)`: finds bank via `REGISTER_BANKS` iteration (startsWith `%` + bank.name), reads `state.registers[bank.slotOffset + index]`
-  - `formatRegisterName(registerId)`: finds bank via `REGISTER_BANKS` iteration (descending by base), formats `%${bank.name}${registerId - bank.base}`
+  - `getRegisterValue(canonicalName, state)`: finds bank via `REGISTER_BANKS` iteration matching `canonicalName.startsWith(bank.prefix)` (e.g., `"%PDR0".startsWith("%PDR")`), extracts index from substring after prefix, reads `state.registers[bank.slotOffset + index]`
+  - `formatRegisterName(registerId, registerType)`: when `registerType` is provided, uses `BANK_BY_NAME[registerType]` for lookup. ID-based fallback iterates `REGISTER_BANKS` (descending by base). Formats `%${bank.name}${registerId - bank.base}`.
   - `resolveToCanonicalRegister(token, artifact)`: finds bank via `REGISTER_BANKS` iteration (descending by base), formats canonical name
-  - After D5, adding a new bank requires only a new `REGISTER_BANKS` entry — zero method changes.
-- `OrganismStateView.js`: register display iterates over `REGISTER_BANKS`, rendering one section per bank from `state.registers[slotOffset..slotOffset+count]`. ProcFrame display reads `savedRegisters`. No hardcoded per-bank sections.
+  - `resolveBindingChain` / `resolveBindingChainWithPath`: FDR_BASE references replaced by `BANK_BY_NAME.FDR.base`
+  - `INSTRUCTION_CONSTANTS` deleted — `REGISTER_BANKS` is the single source.
+  - After D5b, adding a new bank requires only a new `REGISTER_BANKS` entry — zero method changes.
+- `OrganismStateView.js`: register display iterates over `REGISTER_BANKS`, rendering one section per bank from `state.registers[slotOffset..slotOffset+count]`. ProcFrame display reads `savedRegisters` and `parameterBindings` (renamed from `fdrBindings`). Call stack visualization resolves parameter bindings using `parameterBindings` map keys (register IDs) to display which source register is bound to which parameter register. No hardcoded per-bank sections.
 
 **Test:** All pipeline tests, H2 tests, SimulationRestorer tests green after adaptation.
 
-#### D6: Facade Removal
+##### D5c: Organism Facade Removal (absorbs former D6)
 
-After D2–D5, facade methods in Organism remain from D2 as transitional API. These are now removed to clean up the API. Only methods still actively used (by ProcedureCallHandler or tests) remain.
+After D2–D5b, facade methods in Organism remain from D2 as transitional API. These are now removed to clean up the API.
 
-- `getPdrs()`, `getFdrs()`, `getLrs()`, `setPdr()`, `setFdr()`, `setLr()`, `getDr()`, `setDr()`, `getPdr()`, `getFdr()`, `getLr()` etc. — check which still have callers (compile errors on removal reveal this). Remove unused methods. Note: `RestoreBuilder` was already migrated to `registers(Object[])` in D5.
+- `restorePdrs()` / `restoreFdrs()` removed — SimulationRestorer no longer needs them (uses `restoreStackSavedRegisters()`).
+- `getPdrs()`, `getFdrs()`, `getLrs()`, `setPdr()`, `setFdr()`, `setLr()`, `getDr()`, `setDr()`, `getPdr()`, `getFdr()`, `getLr()` etc. — check which still have callers (compile errors on removal reveal this). Remove unused methods.
+- `RestoreBuilder`: separate register setters already removed in D5b. Verify no remnants.
 - `Instruction.java`: remove legacy base constant aliases (`PDR_BASE`, `FDR_BASE`, `LR_BASE`) if all callers have been migrated to `RegisterBank.X.base`.
 
 **Test:** Compile errors reveal all remaining callers. After cleanup, all tests green.
@@ -532,5 +552,5 @@ After all phases are complete:
 12. **Documentation** fully updated (ASSEMBLY_SPEC, README, SCIENTIFIC_OVERVIEW)
 13. **Mutation system** bank-aware for all 8 banks
 14. **All assembly files** migrated to new names
-15. **ProcFrame** bank-independent with single `savedRegisters` array
+15. **ProcFrame** bank-independent with single `savedRegisters` array and generic `parameterBindings` map
 16. **No performance regression** verified via JMH benchmarks after each runtime-modifying phase

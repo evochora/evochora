@@ -45,11 +45,11 @@ public class ProcedureCallHandler {
         int[] bindings = bindingResolver.resolveBindings();
         int[] ipBeforeFetch = organism.getIpBeforeFetch();
 
-        Map<Integer, Integer> fdrBindings = new HashMap<>();
+        Map<Integer, Integer> parameterBindings = new HashMap<>();
         if (bindings != null) {
             for (int i = 0; i < bindings.length; i++) {
                 if (i < organism.getFdrs().size()) {
-                    fdrBindings.put(Instruction.FDR_BASE + i, bindings[i]);
+                    parameterBindings.put(Instruction.FDR_BASE + i, bindings[i]);
                 }
             }
         }
@@ -69,7 +69,7 @@ public class ProcedureCallHandler {
             if (name != null) procName = name;
         }
 
-        Organism.ProcFrame frame = new Organism.ProcFrame(procName, returnIp, ipBeforeFetch, savedRegisters, fdrBindings);
+        Organism.ProcFrame frame = new Organism.ProcFrame(procName, returnIp, ipBeforeFetch, savedRegisters, parameterBindings);
         organism.getCallStack().push(frame);
 
         // Note: Parameter passing is handled by compiler-generated PUSH/POP sequences.
