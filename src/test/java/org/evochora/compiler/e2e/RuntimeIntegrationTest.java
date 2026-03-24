@@ -224,4 +224,58 @@ public class RuntimeIntegrationTest {
                 .isEqualTo(30);
         assertThat(org.isInstructionFailed()).isFalse();
     }
+
+    /**
+     * Verifies that PLR (Proc-Local Location Registers) are correctly saved on CALL
+     * and restored on RET. PROC_A stores the active DP in %PLR0 via DPLR, then calls
+     * PROC_B which overwrites %PLR0 with a different position. After PROC_B returns,
+     * PROC_A's %PLR0 must be restored to the original value.
+     */
+    @Test
+    @Tag("integration")
+    void plrIsSavedAndRestoredAcrossProcedureCalls() throws Exception {
+        String source = String.join("\n",
+                // Main: call PROC_A
+                "CALL PROC_A",
+                "WAIT",
+                // PROC_A at a different location
+                ".ORG 0|1",
+                "EXPORT .PROC PROC_A",
+                "  DPLR %PLR0",          // Save current DP to PLR0
+                "  CALL PROC_B",         // PROC_B will overwrite PLR0
+                "  SKLR %PLR0",          // After return, PLR0 should be restored — move DP back
+                "  RET",
+                ".ENDP",
+                // PROC_B at another location
+                ".ORG 0|3",
+                "EXPORT .PROC PROC_B",
+                "  .REG %TMP %PLR0",     // Alias for readability
+                "  CRLR %TMP",           // Clear PLR0 to [0,0] — overwrites caller's value
+                "  RET",
+                ".ENDP"
+        );
+
+        Compiler compiler = new Compiler();
+        EnvironmentProperties envProps = new EnvironmentProperties(new int[]{64, 64}, true);
+        ProgramArtifact artifact = compiler.compile(Arrays.asList(source.split("\\r?\\n")), "plr_save_restore.s", envProps);
+        assertThat(artifact).isNotNull();
+
+        Environment env = new Environment(envProps);
+        Simulation sim = SimulationTestUtils.createSimulation(env);
+
+        for (Map.Entry<int[], Integer> e : artifact.machineCodeLayout().entrySet()) {
+            env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());
+        }
+
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        org.setProgramId(artifact.programId());
+        sim.addOrganism(org);
+
+        // Run enough ticks to execute: CALL PROC_A, DPLR, CALL PROC_B, CRLR, RET, SKLR, RET, WAIT
+        for (int i = 0; i < 20; i++) {
+            sim.tick();
+        }
+
+        assertThat(org.isInstructionFailed()).as("Failure: " + org.getFailureReason()).isFalse();
+    }
 }

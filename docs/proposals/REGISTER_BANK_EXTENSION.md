@@ -392,7 +392,7 @@ After D2–D5b, facade methods in Organism remain from D2 as transitional API. T
 
 **Test:** Compile errors reveal all remaining callers. After cleanup, all tests green.
 
-### Phase E: PLR (Proc-Local Location Registers)
+### Phase E: PLR (Proc-Local Location Registers) — **DONE**
 
 Adds proc-local location registers, saved/restored on CALL/RET like PDR. Depends on Phase C (writeLocationOperand enforcement) and Phase D (RegisterBank encapsulation).
 

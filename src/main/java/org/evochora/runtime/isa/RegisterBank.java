@@ -20,7 +20,7 @@ public enum RegisterBank {
     DR    (   0, Config.NUM_DATA_REGISTERS,     false, CallBehavior.GLOBAL,      false, "%DR",  3),
     LR    ( 256, Config.NUM_LOCATION_REGISTERS, true,  CallBehavior.GLOBAL,      false, "%LR",  3),
     PDR   ( 512, Config.NUM_PDR_REGISTERS,      false, CallBehavior.STACK_SAVED, false, "%PDR", 4),
-    PLR   ( 768, 0,                             true,  CallBehavior.STACK_SAVED, false, "%PLR", 4),
+    PLR   ( 768, Config.NUM_PLR_REGISTERS,      true,  CallBehavior.STACK_SAVED, false, "%PLR", 4),
     FDR   (1024, Config.NUM_FDR_REGISTERS,      false, CallBehavior.STACK_SAVED, true,  "%FDR", 4),
     FLR   (1280, 0,                             true,  CallBehavior.STACK_SAVED, true,  "%FLR", 4),
     SDR   (1536, 0,                             false, CallBehavior.PERSISTENT,  false, "%SDR", 4),

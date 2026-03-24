@@ -47,6 +47,11 @@ public final class Config {
     public static final int NUM_PDR_REGISTERS = 8;
 
     /**
+     * The number of procedure-local location registers (PLR) available per call frame.
+     */
+    public static final int NUM_PLR_REGISTERS = 4;
+
+    /**
      * The number of formal data registers (FDR) used for passing parameters to procedures.
      */
     public static final int NUM_FDR_REGISTERS = 8;

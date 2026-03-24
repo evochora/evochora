@@ -431,6 +431,34 @@ public class OrganismTest {
     }
 
     /**
+     * Verifies that PLR values are correctly saved on CALL and restored on RET.
+     * Caller sets PLR0 to a known vector, snapshots, pushes frame, overwrites PLR0,
+     * then restores. The restored PLR0 must match the original value.
+     */
+    @Test
+    @Tag("unit")
+    void testNestedCallRestoresPlrs() {
+        int[] initialPos = new int[]{50, 50};
+        Organism org = Organism.create(sim, initialPos, 100, sim.getLogger());
+        sim.addOrganism(org);
+
+        int[] originalVec = new int[]{10, 20};
+        org.writeLocationOperand(RegisterBank.PLR.base, originalVec);
+        Object[] callerRegisters = org.snapshotStackSavedRegisters();
+
+        org.getCallStack().push(new Organism.ProcFrame(
+                "OUTER", new int[]{60, 50}, new int[]{55, 50},
+                callerRegisters, java.util.Collections.emptyMap()));
+        org.writeLocationOperand(RegisterBank.PLR.base, new int[]{0, 0});
+
+        // Simulate RET: restore from frame
+        Organism.ProcFrame frame = org.getCallStack().pop();
+        org.restoreStackSavedRegisters(frame.savedRegisters());
+
+        assertThat((int[]) org.readOperand(RegisterBank.PLR.base)).isEqualTo(originalVec);
+    }
+
+    /**
      * Verifies that the error-penalty-cost is applied when max-skip is exceeded.
      * Uses sim.tick() to exercise the full execution path through Simulation.java
      * where the post-skip penalty check lives.
