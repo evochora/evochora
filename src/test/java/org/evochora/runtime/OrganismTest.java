@@ -352,11 +352,10 @@ public class OrganismTest {
         sim.addOrganism(org);
 
         int[] returnAddr = new int[]{60, 50};
-        Object[] savedPdrs = org.getPdrs().toArray(new Object[0]);
-        Object[] savedFdrs = org.getFdrs().toArray(new Object[0]);
+        Object[] savedRegisters = org.snapshotStackSavedRegisters();
         org.getCallStack().push(new Organism.ProcFrame(
                 "PROC", returnAddr, new int[]{55, 50},
-                savedPdrs, savedFdrs, java.util.Collections.emptyMap()));
+                savedRegisters, java.util.Collections.emptyMap()));
 
         // Move IP into empty space
         org.setIp(new int[]{80, 50});
@@ -382,13 +381,12 @@ public class OrganismTest {
         // Set known PDR values and capture snapshot (caller's state)
         org.setPdr(0, 42);
         org.setPdr(1, 99);
-        Object[] callerPdrs = org.getPdrs().toArray(new Object[0]);
-        Object[] callerFdrs = org.getFdrs().toArray(new Object[0]);
+        Object[] callerRegisters = org.snapshotStackSavedRegisters();
 
-        // Simulate what a CALL does: push frame with caller's PDRs, then change PDRs
+        // Simulate what a CALL does: push frame with caller's registers, then change PDRs
         org.getCallStack().push(new Organism.ProcFrame(
                 "PROC", new int[]{60, 50}, new int[]{55, 50},
-                callerPdrs, callerFdrs, java.util.Collections.emptyMap()));
+                callerRegisters, java.util.Collections.emptyMap()));
         org.setPdr(0, 777);
         org.setPdr(1, 888);
 
@@ -399,6 +397,36 @@ public class OrganismTest {
         // PDRs should be restored to caller's saved values
         assertThat(org.getPdr(0)).isEqualTo(42);
         assertThat(org.getPdr(1)).isEqualTo(99);
+    }
+
+    /**
+     * Verifies that FDR values are correctly restored when a nested CALL/RET occurs.
+     * Caller sets FDR0, calls sub-procedure which modifies FDR0, sub-procedure returns.
+     * After return, caller's FDR0 must be restored.
+     */
+    @Test
+    @Tag("unit")
+    void testNestedCallRestoresFdrs() {
+        int[] initialPos = new int[]{50, 50};
+        Organism org = Organism.create(sim, initialPos, 100, sim.getLogger());
+        sim.addOrganism(org);
+
+        org.setFdr(0, 111);
+        org.setFdr(1, 222);
+        Object[] callerRegisters = org.snapshotStackSavedRegisters();
+
+        org.getCallStack().push(new Organism.ProcFrame(
+                "OUTER", new int[]{60, 50}, new int[]{55, 50},
+                callerRegisters, java.util.Collections.emptyMap()));
+        org.setFdr(0, 999);
+        org.setFdr(1, 888);
+
+        // Simulate RET: restore from frame
+        Organism.ProcFrame frame = org.getCallStack().pop();
+        org.restoreStackSavedRegisters(frame.savedRegisters());
+
+        assertThat(org.getFdr(0)).isEqualTo(111);
+        assertThat(org.getFdr(1)).isEqualTo(222);
     }
 
     /**
@@ -438,15 +466,14 @@ public class OrganismTest {
         // Push two frames (frame 2 on top, frame 1 below)
         int[] returnAddr1 = new int[]{60, 50};
         int[] returnAddr2 = new int[]{70, 50};
-        Object[] pdrs = org.getPdrs().toArray(new Object[0]);
-        Object[] fdrs = org.getFdrs().toArray(new Object[0]);
+        Object[] savedRegs = org.snapshotStackSavedRegisters();
 
         org.getCallStack().push(new Organism.ProcFrame(
                 "PROC1", returnAddr1, new int[]{55, 50},
-                pdrs, fdrs, java.util.Collections.emptyMap()));
+                savedRegs, java.util.Collections.emptyMap()));
         org.getCallStack().push(new Organism.ProcFrame(
                 "PROC2", returnAddr2, new int[]{65, 50},
-                pdrs, fdrs, java.util.Collections.emptyMap()));
+                savedRegs, java.util.Collections.emptyMap()));
 
         // First max-skip: pops PROC2, IP → returnAddr2
         org.setIp(new int[]{80, 50});

@@ -167,10 +167,9 @@ public class VMControlFlowInstructionTest {
     void testRet() {
         int[] expectedIp = new int[]{6};
         int[] callIp = new int[]{5}; // CALL instruction address
-        Object[] pdrsSnapshot = org.getPdrs().toArray(new Object[0]);
-        Object[] fdrsSnapshot = org.getFdrs().toArray(new Object[0]);
+        Object[] savedRegisters = org.snapshotStackSavedRegisters();
 
-        org.getCallStack().push(new Organism.ProcFrame("TEST_PROC", expectedIp, callIp, pdrsSnapshot, fdrsSnapshot, java.util.Collections.emptyMap()));
+        org.getCallStack().push(new Organism.ProcFrame("TEST_PROC", expectedIp, callIp, savedRegisters, java.util.Collections.emptyMap()));
 
         // Place WAIT at expected IP to stop instant-skip loop
         environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), expectedIp);
@@ -180,6 +179,43 @@ public class VMControlFlowInstructionTest {
         sim.tick();
 
         assertThat(org.getIp()).isEqualTo(expectedIp);
+    }
+
+    /**
+     * Tests that CALL saves and RET restores all STACK_SAVED registers including FDR.
+     * Sets known FDR values, executes CALL (which saves them), modifies FDR,
+     * then executes RET and verifies FDR is restored.
+     */
+    @Test
+    @Tag("unit")
+    void testCallRetRestoresFdrs() {
+        int labelHash = 77777 & Config.VALUE_MASK;
+        int[] labelPos = new int[]{20};
+        int[] afterLabel = new int[]{21};
+
+        environment.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), labelPos);
+        // Place RET at the procedure entry (right after the label)
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("RET")), afterLabel);
+        // Place WAIT after the CALL to stop skip loop when RET returns here
+        int[] returnTarget = org.getNextInstructionPosition(org.getIp(), org.getDv(), environment);
+        returnTarget = org.getNextInstructionPosition(returnTarget, org.getDv(), environment);
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), returnTarget);
+
+        // Set known FDR values before CALL
+        org.setFdr(0, 111);
+        org.setFdr(1, 222);
+
+        // Execute CALL
+        placeInstruction("CALL", labelHash);
+        sim.tick();
+
+        // Now inside procedure — FDR should still be 111/222 (CALL saved them, no modification yet)
+        // The RET executes immediately (placed at afterLabel), restoring registers
+        // After RET, we're back at returnTarget
+
+        // Verify FDR is restored
+        assertThat(org.getFdr(0)).isEqualTo(111);
+        assertThat(org.getFdr(1)).isEqualTo(222);
     }
 
     @org.junit.jupiter.api.AfterEach

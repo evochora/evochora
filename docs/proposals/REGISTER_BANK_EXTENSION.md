@@ -293,37 +293,73 @@ Eliminates manually maintained if-chains and switch statements in all compiler h
 
 ProcFrame currently has separate fields per bank (`savedPdrs`, `savedFdrs`). Each new bank would add another field plus changes to all 8+ constructor call-sites. A single `Object[] savedRegisters` makes ProcFrame bank-independent.
 
-- `ProcFrame` record: from `ProcFrame(String procName, int[] absoluteReturnIp, int[] absoluteCallIp, Object[] savedPdrs, Object[] savedFdrs, Map<Integer, Integer> fdrBindings)` to `ProcFrame(String procName, int[] absoluteReturnIp, int[] absoluteCallIp, Object[] savedRegisters, Map<Integer, Integer> fdrBindings)`.
+- `ProcFrame` record: from `ProcFrame(String procName, int[] absoluteReturnIp, int[] absoluteCallIp, Object[] savedPdrs, Object[] savedFdrs, Map<Integer, Integer> fdrBindings)` to `ProcFrame(String procName, int[] absoluteReturnIp, int[] absoluteCallIp, Object[] savedRegisters, Map<Integer, Integer> parameterBindings)`. The map is renamed from `fdrBindings` to `parameterBindings` — it holds all parameter bindings (FDR keys now, FLR keys added in Phase G) in a single generic map. Keys are full register IDs (e.g., FDR_BASE+0, FLR_BASE+0), so banks are distinguishable by ID range.
 - `savedRegisters` is a **compact array** in RegisterBank enum order (NOT a copy of the full flat array). Built by iterating over `RegisterBank.allSavedOnCall()` in enum declaration order, concatenating each bank's register values. Example with PDR(8) + FDR(8): savedRegisters has 16 entries — slots 0–7 are PDR values, slots 8–15 are FDR values. The restore logic iterates in the same enum order and knows each bank's offset and count, so it can write the values back to the correct flat-array slots.
-- `ProcedureCallHandler.java`: on CALL, iterates over `RegisterBank.allSavedOnCall()`, copies register values from Organism's flat array into the compact `savedRegisters`. On RET: iterates in the same order, writes values back to the flat array. No bank-specific logic — the iteration order and bank counts determine the layout.
+- `Organism.java`: new methods `snapshotStackSavedRegisters()` (returns `Object[]`) and `restoreStackSavedRegisters(Object[] snapshot)`. These encapsulate the iteration over `RegisterBank.allSavedOnCall()` in enum declaration order and the compact array layout. ProcedureCallHandler calls only these two methods and knows no bank details.
+- `ProcedureCallHandler.java`: on CALL, calls `organism.snapshotStackSavedRegisters()` to build the compact array. On RET, calls `organism.restoreStackSavedRegisters(frame.savedRegisters())`. No bank-specific logic.
 - All ProcFrame constructor call-sites (ProcedureCallHandler, tests, SimulationRestorer): adapt to new signature.
-- Facade methods `restorePdrs()`, `restoreFdrs()` in Organism can be removed after this step — ProcedureCallHandler writes directly to the flat array via slot offsets.
 
-Note: `fdrBindings` remains as a separate field — it has different semantics (parameter binding, not save/restore). In Phase G, `flrBindings` is added as a second binding field, which requires updating ProcFrame's record signature and all constructor call-sites again. This is a smaller change than without Phase D (one new field instead of three), but it is not zero. Whether bindings also become generic is decided in Phase G.
+Note: `parameterBindings` (renamed from `fdrBindings`) has different semantics from `savedRegisters` — it holds parameter bindings (register ID → source register ID), not saved/restored values. The map is generic: FDR bindings use FDR_BASE+i as keys, FLR bindings (Phase G) use FLR_BASE+i as keys. Phase G simply adds FLR entries to the same map — no ProcFrame signature change needed.
+
+**Transition facades (removed in D5):**
+
+Between D4 and D5, the Java model uses the compact `savedRegisters` array but the Protobuf schema and DTOs still have separate fields per bank. This requires temporary conversion logic:
+
+- `Organism.java`: `restorePdrs()` / `restoreFdrs()` remain — SimulationRestorer needs them until D5 when the Protobuf schema changes. Removed in D5.
+- `SimulationEngine.java` (transition): splits compact `ProcFrame.savedRegisters()` back into separate Proto fields `saved_pdrs` / `saved_fdrs` via `RegisterBank.allSavedOnCall()` iteration. Removed in D5.
+- `SimulationRestorer.java` (transition): assembles separate Proto fields into compact `savedRegisters` array via `RegisterBank.allSavedOnCall()` iteration in enum order. Removed in D5.
+- `OrganismStateConverter.java`: no change in D4 — `convertProcFrame()` reads from the Protobuf message (not Java ProcFrame), so the ProcFrame record change does not affect it. Normal schema migration in D5.
+- `ProcFrameView.java`: remains unchanged (separate `savedPdrs` / `savedFdrs` fields). Changed to `List<RegisterValueView> savedRegisters` in D5.
 
 **Test:** All tests green after adapting to new ProcFrame signature.
 
-#### D5: Protobuf + Serialization + JS Visualizer
+#### D5: Protobuf + Serialization + RestoreBuilder + JS Visualizer
 
-Protobuf currently has separate fields per bank (`proc_data_registers`, `formal_data_registers`, `location_registers`, `saved_pdrs`, `saved_fdrs`). These would need extension with every new bank. A flat array in protobuf eliminates this. Backward compatibility is explicitly not required.
+Completes the flat-array encapsulation through the entire stack: Protobuf schema, Java serialization/deserialization, DTOs, RestoreBuilder, and JS Visualizer. After D5, adding a new register bank requires zero changes to serialization code (Java) and one entry in the JS bank metadata structure (Visualizer). Backward compatibility is explicitly not required.
 
 **Proto schema** (`tickdata_contracts.proto`):
-- `OrganismState`: ALL separate register fields (`data_registers`, `proc_data_registers`, `formal_data_registers`, `location_registers`) replaced by a single `repeated RegisterValue registers`. Slot order matches the flat array. Location registers (which are `int[]` not `Integer`) use the existing `RegisterValue` message's `oneof { scalar, vector }` variant.
-- `OrganismRuntimeState`: same separate register fields replaced by `repeated RegisterValue registers` (same structure as OrganismState).
-- `ProcFrame`: `saved_pdrs`, `saved_fdrs` replaced by `repeated RegisterValue saved_registers`. `fdr_bindings` remains.
+
+All Proto messages get clean sequential field numbers starting at 1 — no legacy numbering artifacts.
+
+- `OrganismState`: ALL separate register fields (`data_registers`, `proc_data_registers`, `formal_data_registers`, `location_registers`) replaced by a single `repeated RegisterValue registers`. Slot order matches the flat array. Location registers use the `RegisterValue.vector` variant.
+- `OrganismRuntimeState`: same — separate register fields replaced by `repeated RegisterValue registers`.
+- `ProcFrame`: `saved_pdrs`, `saved_fdrs` replaced by `repeated RegisterValue saved_registers`. `fdr_bindings` renamed to `parameter_bindings` (generic map for all parameter bindings — FDR keys now, FLR keys added in Phase G).
 
 **Java serialization:**
-- `SimulationEngine.java`: writes Organism's flat array sequentially into protobuf `registers` field.
-- `SimulationRestorer.java`: reads protobuf `registers` field sequentially into flat array. `convertProcFrame()` reads `saved_registers`.
-- `OrganismStateConverter.java`: `resolveRegisterValue()` uses RegisterBank iteration instead of ID-based if-chain. `convertProcFrame()` converts `saved_registers`.
-- `ProcFrameView.java`: separate `savedPdrs`/`savedFdrs` fields become `List<RegisterValueView> savedRegisters`.
-- `OrganismRuntimeView.java`: separate register lists become a single list (or retained with generic bank assignment for display).
+- `SimulationEngine.java`: writes Organism's flat array sequentially into protobuf `registers` field. ProcFrame serialization writes `saved_registers` directly (D4 transition splitting removed).
+- `SimulationRestorer.java`: reads protobuf `registers` field as flat `Object[]`, passes directly to `RestoreBuilder.registers(Object[])`. `convertProcFrame()` reads `saved_registers` directly. D4 transition assembly removed. No longer calls `restorePdrs()` / `restoreFdrs()`.
+- `OrganismStateConverter.java`: `resolveRegisterValue()` uses RegisterBank iteration and slot-based lookup instead of ID-based if-chain. `convertProcFrame()` converts `saved_registers` to `List<RegisterValueView> savedRegisters`.
+- `ProcFrameView.java`: separate `savedPdrs`/`savedFdrs` fields replaced by `List<RegisterValueView> savedRegisters`.
+- `OrganismRuntimeView.java`: separate register lists replaced by `List<RegisterValueView> registers` (flat array, slot order matching RegisterBank). The API consumer (JS Visualizer) interprets slots via bank metadata.
 - `H2DatabaseReader.java`: indirectly via OrganismStateConverter.
 - `SimulationParameters.java`: JavaDoc comments updated.
 
+**Organism RestoreBuilder:**
+- Separate register setters (`dataRegisters()`, `procDataRegisters()`, `formalDataRegisters()`, `locationRegisters()`) replaced by a single `registers(Object[])` setter. The deserialization path (SimulationRestorer) passes the flat array directly — no roundtrip through separate lists.
+
+**Organism facade cleanup:**
+- `restorePdrs()` / `restoreFdrs()` removed — SimulationRestorer no longer needs them.
+
 **JS Visualizer:**
-- `AnnotationUtils.js`: `getRegisterValue()` and `getRegisterValueById()` read from flat array format (`state.registers[slot]`). Bank offsets defined as JS constants (analogous to `INSTRUCTION_CONSTANTS`). `formatRegisterName()` and `resolveToCanonicalRegister()` remain unchanged (they work with IDs, not protobuf structure).
-- `OrganismStateView.js`: register display iterates over banks with offset constants instead of separate sections. ProcFrame display reads `savedRegisters`.
+
+JS gets a bank metadata structure mirroring `RegisterBank.java`:
+```javascript
+const REGISTER_BANKS = [
+    { name: "DR",  base: 0,    slotOffset: 0,  count: 8, isLocation: false },
+    { name: "LR",  base: 256,  slotOffset: 8,  count: 4, isLocation: true  },
+    { name: "PDR", base: 512,  slotOffset: 12, count: 8, isLocation: false },
+    { name: "FDR", base: 1024, slotOffset: 20, count: 8, isLocation: false },
+];
+```
+Adding a new bank = one entry in this array. The structure is the JS analog of the Java enum — manually maintained (technology boundary), but architecturally identical.
+
+- `AnnotationUtils.js`: ALL dispatch methods migrated to `REGISTER_BANKS` iteration — no hardcoded per-bank branches remain:
+  - `getRegisterValueById(registerId, state)`: finds bank via `REGISTER_BANKS` iteration (descending by base), reads `state.registers[bank.slotOffset + index]`
+  - `getRegisterValue(canonicalName, state)`: finds bank via `REGISTER_BANKS` iteration (startsWith `%` + bank.name), reads `state.registers[bank.slotOffset + index]`
+  - `formatRegisterName(registerId)`: finds bank via `REGISTER_BANKS` iteration (descending by base), formats `%${bank.name}${registerId - bank.base}`
+  - `resolveToCanonicalRegister(token, artifact)`: finds bank via `REGISTER_BANKS` iteration (descending by base), formats canonical name
+  - After D5, adding a new bank requires only a new `REGISTER_BANKS` entry — zero method changes.
+- `OrganismStateView.js`: register display iterates over `REGISTER_BANKS`, rendering one section per bank from `state.registers[slotOffset..slotOffset+count]`. ProcFrame display reads `savedRegisters`. No hardcoded per-bank sections.
 
 **Test:** All pipeline tests, H2 tests, SimulationRestorer tests green after adaptation.
 
@@ -331,8 +367,7 @@ Protobuf currently has separate fields per bank (`proc_data_registers`, `formal_
 
 After D2–D5, facade methods in Organism remain from D2 as transitional API. These are now removed to clean up the API. Only methods still actively used (by ProcedureCallHandler or tests) remain.
 
-- `getPdrs()`, `getFdrs()`, `getLrs()`, `setPdr()`, `setFdr()`, `setLr()`, `getDr()`, `setDr()`, `getPdr()`, `getFdr()`, `getLr()` etc. — check which still have callers (compile errors on removal reveal this). Remove unused methods.
-- `RestoreBuilder`: simplify to a single `registers(Object[])` setter if separate setters are no longer needed.
+- `getPdrs()`, `getFdrs()`, `getLrs()`, `setPdr()`, `setFdr()`, `setLr()`, `getDr()`, `setDr()`, `getPdr()`, `getFdr()`, `getLr()` etc. — check which still have callers (compile errors on removal reveal this). Remove unused methods. Note: `RestoreBuilder` was already migrated to `registers(Object[])` in D5.
 - `Instruction.java`: remove legacy base constant aliases (`PDR_BASE`, `FDR_BASE`, `LR_BASE`) if all callers have been migrated to `RegisterBank.X.base`.
 
 **Test:** Compile errors reveal all remaining callers. After cleanup, all tests green.
@@ -358,9 +393,7 @@ After Phase D, adding PLR is significantly simpler: a RegisterBank enum entry + 
 - After Phase D5, serialization is flat-array-based — PLR slots are automatically included. No manual protobuf field additions needed.
 
 **Visualizer (manual, technology boundary):**
-- `AnnotationUtils.js`: `PLR_BASE: 768` constant. Add PLR branch to: (a) all ID-based dispatch methods: `formatRegisterName()`, `getRegisterValueById()`, `resolveToCanonicalRegister()` — dispatch order descending by BASE value; (b) the string-based method `getRegisterValue()` — add `startsWith('%PLR')` branch.
-- `OrganismStateView.js`: PLR section in register display, PLR values in call stack frame display
-- All annotation handlers (ParameterTokenHandler, RegisterTokenHandler, etc.) and views (OrganismInstructionView, OrganismSourceView) route through AnnotationUtils — no direct changes needed there.
+- Add PLR entry to `REGISTER_BANKS` array in `AnnotationUtils.js`: `{ name: "PLR", base: 768, slotOffset: <computed>, count: 4, isLocation: true }`. All dispatch methods and OrganismStateView iterate over REGISTER_BANKS — no method changes needed, PLR section appears automatically.
 
 **Test (integration):** Assembly program with two procedures. PROC_A stores current DP in %PLR0 via `DPLR %PLR0`, then calls PROC_B. PROC_B overwrites %PLR0 with a different position via `DPLR %PLR0`. PROC_B returns. Assert: %PLR0 in PROC_A's context is restored to the original DP position (not PROC_B's overwrite). Verify via register state inspection after compilation and simulated execution.
 
@@ -382,13 +415,21 @@ SDR/SLR have special semantics NOT covered by generic encapsulation: the persist
 - `ProcDirectiveHandler.java`: SDR/SLR are automatically included in `addAvailableRegisterBanks()` via `allProcScoped().filter(!isForbidden)` from RegisterBank.
 
 **Data Pipeline:**
-- After Phase D5, flat-array serialization automatically includes SDR/SLR slots.
-- Backing store serialization: new protobuf fields for `Map<String, repeated RegisterValue>` per-procedure SDR/SLR snapshots. This is SDR/SLR-specific and NOT covered by generic encapsulation.
+- After Phase D5, flat-array serialization automatically includes active SDR/SLR slots in `OrganismState.registers`.
+- Backing store serialization requires new Protobuf structures in `tickdata_contracts.proto`:
+  ```protobuf
+  message PersistentRegisterStore {
+      repeated ProcedureRegisterSnapshot procedure_snapshots = 1;
+  }
+  message ProcedureRegisterSnapshot {
+      string procedure_name = 1;
+      repeated RegisterValue registers = 2;  // SDR + SLR values for this procedure
+  }
+  ```
+  `OrganismState` gets a new field `PersistentRegisterStore persistent_register_store`. SimulationEngine serializes the `Map<String, Object[]>` sdrState and `Map<String, int[][]>` slrState into this structure. SimulationRestorer deserializes it back. This is SDR/SLR-specific and NOT covered by generic encapsulation.
 
 **Visualizer (manual, technology boundary):**
-- `AnnotationUtils.js`: `SDR_BASE: 1536`, `SLR_BASE: 1792` constants. Add SDR/SLR branches to: (a) all ID-based dispatch methods: `formatRegisterName()`, `getRegisterValueById()`, `resolveToCanonicalRegister()` — dispatch order descending by BASE value; (b) the string-based method `getRegisterValue()` — add `startsWith('%SDR')` and `startsWith('%SLR')` branches.
-- `OrganismStateView.js`: SDR/SLR sections, displayed per-procedure in call stack view. SDR values shown as scalars, SLR as vectors.
-- All annotation handlers route through AnnotationUtils — no direct changes needed there.
+- Add SDR and SLR entries to `REGISTER_BANKS` array in `AnnotationUtils.js`. All dispatch methods and OrganismStateView iterate over REGISTER_BANKS — no method changes needed, SDR/SLR sections appear automatically. SDR/SLR persistent state displayed per-procedure in call stack view may require additional OrganismStateView logic for the backing-store visualization (bank-specific, not generic).
 
 **Test (integration):** Assembly program with a procedure COUNTER that increments %SDR0 via `ADDI %SDR0 DATA:1`. Main program calls COUNTER three times. Assert after first call: %SDR0 == 1. Assert after second call: %SDR0 == 2. Assert after third call: %SDR0 == 3. Additionally test isolation: a second procedure COUNTER_B reads its own %SDR0. Assert: COUNTER_B's %SDR0 == 0 (independent from COUNTER's state).
 
@@ -400,8 +441,8 @@ Adds location parameter passing. Depends on Phase E (PLR exists as LREF source) 
 - `Config.java`: `NUM_FLR_REGISTERS = 4`
 - `RegisterBank.java`: new entry `FLR(1280, Config.NUM_FLR_REGISTERS, true, CallBehavior.STACK_SAVED, true, "%FLR", 4)` — note `isForbidden = true`
 - Organism: flat array automatically includes FLR slots. `isLocationBank()` recognizes FLR via lookup table.
-- `ProcFrame` record: add `Map<Integer, Integer> flrBindings` component (parameter binding, separate from saved registers). This extends the record signature and requires updating all ProcFrame constructor call-sites (ProcedureCallHandler, tests, SimulationRestorer — same sites as D4).
-- `ProcedureCallHandler.java`: FLR binding on CALL (copy location value from source register to FLR), restore on RET. For LREF: write FLR back to source register before restore.
+- `ProcFrame` record: no signature change needed — FLR bindings are added to the existing `parameterBindings` map using FLR_BASE+i as keys (established as generic in D4).
+- `ProcedureCallHandler.java`: FLR binding on CALL — adds FLR_BASE+i → source register ID entries to `parameterBindings` (alongside existing FDR entries). Copy location value from source register to FLR slot. On RET: for LREF parameters, write FLR value back to source register before restore.
 - `GeneSubstitutionPlugin.java`, `GeneInsertionPlugin.java`: FLR bank detection is automatic via RegisterBank iteration (established in D2). No manual changes needed.
 
 **Compiler:**
@@ -418,13 +459,11 @@ Adds location parameter passing. Depends on Phase E (PLR exists as LREF source) 
 
 **Data Pipeline:**
 - Flat-array serialization automatically includes FLR slots.
-- ProcFrame: add `flr_bindings` protobuf field (analogous to `fdr_bindings`)
+- ProcFrame: no protobuf change needed — FLR bindings are added to the existing `parameter_bindings` map (generic, established in D5)
 
 **Visualizer (manual, technology boundary):**
-- `AnnotationUtils.js`: `FLR_BASE: 1280` constant. Add FLR branch to: (a) all ID-based dispatch methods: `formatRegisterName()`, `getRegisterValueById()`, `resolveToCanonicalRegister()` — dispatch order descending by BASE value; (b) the string-based method `getRegisterValue()` — add `startsWith('%FLR')` branch.
-- `OrganismStateView.js`: FLR section in register display, location parameter display in call stack frames (analogous to FDR parameter display but with vector values)
-- `ParameterTokenHandler.js`: location parameter binding chain display (LREF/LVAL chain resolution through FLR, analogous to REF/VAL through FDR)
-- All annotation handlers route through AnnotationUtils — no direct changes needed there.
+- Add FLR entry to `REGISTER_BANKS` array in `AnnotationUtils.js`. All dispatch methods and OrganismStateView iterate over REGISTER_BANKS — no method changes needed for basic display, FLR section appears automatically.
+- `ParameterTokenHandler.js`: location parameter binding chain display (LREF/LVAL chain resolution through FLR, analogous to REF/VAL through FDR). This is new functionality, not generic bank registration.
 
 **Test (integration):** Assembly program: main stores current DP in %LR0 via `DPLR %LR0`. Defines `.PROC NAV LREF lPos` that executes `SKLR lPos` (which resolves to `SKLR %FLR0`) to move DP to the passed location, then returns. Main calls `CALL NAV LREF %LR0`. Assert: after CALL, the DP inside NAV moved to the location that was stored in %LR0. Assert: after RET, the LREF write-back updated %LR0 if NAV modified %FLR0 (or left it unchanged if not).
 
@@ -489,7 +528,7 @@ After all phases are complete:
 8. **Single .REG directive** — scope determined by target bank
 9. **Location write restriction** enforced via writeOperand/writeLocationOperand split across all location banks
 10. **All location instructions** work transparently with LR, PLR, FLR, SLR
-11. **Visualizer** displays all 8 banks with correct names
+11. **Visualizer** displays all 8 banks via `REGISTER_BANKS` metadata iteration — new bank = one array entry, no method changes
 12. **Documentation** fully updated (ASSEMBLY_SPEC, README, SCIENTIFIC_OVERVIEW)
 13. **Mutation system** bank-aware for all 8 banks
 14. **All assembly files** migrated to new names

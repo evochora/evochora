@@ -49,6 +49,7 @@ import org.evochora.datapipeline.resume.SimulationRestorer;
 import org.evochora.datapipeline.resume.SnapshotLoader;
 import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.runtime.Simulation;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.spi.IBirthHandler;
 import org.evochora.runtime.spi.IDeathHandler;
@@ -1045,15 +1046,19 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 .setAbsoluteCallIp(convertVectorReuse(frame.absoluteCallIp(), vectorBuilder))
                 .putAllFdrBindings(frame.fdrBindings());
 
-        if (frame.savedPdrs() != null) {
-            for (Object rv : frame.savedPdrs()) {
-                procFrameBuilder.addSavedPdrs(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
-            }
-        }
-
-        if (frame.savedFdrs() != null) {
-            for (Object rv : frame.savedFdrs()) {
-                procFrameBuilder.addSavedFdrs(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
+        // D4 transition: split compact savedRegisters into separate Proto fields (removed in D5)
+        if (frame.savedRegisters() != null) {
+            int offset = 0;
+            for (RegisterBank bank : RegisterBank.allSavedOnCall()) {
+                for (int i = 0; i < bank.count; i++) {
+                    Object rv = frame.savedRegisters()[offset + i];
+                    if (bank == RegisterBank.PDR) {
+                        procFrameBuilder.addSavedPdrs(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
+                    } else if (bank == RegisterBank.FDR) {
+                        procFrameBuilder.addSavedFdrs(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
+                    }
+                }
+                offset += bank.count;
             }
         }
 

@@ -34,6 +34,7 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TokenMapEntry;
 import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.runtime.Simulation;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.label.ILabelMatchingStrategy;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -610,26 +611,37 @@ public class SimulationRestorer {
      * Converts a ProcFrame proto to runtime ProcFrame.
      */
     private static Organism.ProcFrame convertProcFrame(ProcFrame pf) {
-        // Convert saved registers
-        Object[] savedPdrs = new Object[pf.getSavedPdrsCount()];
-        for (int i = 0; i < pf.getSavedPdrsCount(); i++) {
-            savedPdrs[i] = convertRegisterValue(pf.getSavedPdrs(i));
+        // D4 transition: assemble separate Proto fields into compact savedRegisters array (removed in D5)
+        List<RegisterBank> banks = RegisterBank.allSavedOnCall();
+        int totalSize = banks.stream().mapToInt(b -> b.count).sum();
+        Object[] savedRegisters = new Object[totalSize];
+        int offset = 0;
+        for (RegisterBank bank : banks) {
+            if (bank == RegisterBank.PDR) {
+                for (int i = 0; i < Math.min(bank.count, pf.getSavedPdrsCount()); i++) {
+                    savedRegisters[offset + i] = convertRegisterValue(pf.getSavedPdrs(i));
+                }
+            } else if (bank == RegisterBank.FDR) {
+                for (int i = 0; i < Math.min(bank.count, pf.getSavedFdrsCount()); i++) {
+                    savedRegisters[offset + i] = convertRegisterValue(pf.getSavedFdrs(i));
+                }
+            }
+            int dims = pf.getAbsoluteReturnIp().getComponentsCount();
+            for (int i = 0; i < bank.count; i++) {
+                if (savedRegisters[offset + i] == null) {
+                    savedRegisters[offset + i] = bank.isLocation ? new int[dims] : 0;
+                }
+            }
+            offset += bank.count;
         }
 
-        Object[] savedFdrs = new Object[pf.getSavedFdrsCount()];
-        for (int i = 0; i < pf.getSavedFdrsCount(); i++) {
-            savedFdrs[i] = convertRegisterValue(pf.getSavedFdrs(i));
-        }
-
-        // Convert FDR bindings map
         Map<Integer, Integer> fdrBindings = new HashMap<>(pf.getFdrBindingsMap());
 
         return new Organism.ProcFrame(
             pf.getProcName(),
             toIntArray(pf.getAbsoluteReturnIp()),
             toIntArray(pf.getAbsoluteCallIp()),
-            savedPdrs,
-            savedFdrs,
+            savedRegisters,
             fdrBindings
         );
     }

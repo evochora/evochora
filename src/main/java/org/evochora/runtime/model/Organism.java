@@ -92,16 +92,14 @@ public class Organism {
      * @param procName The name of the procedure.
      * @param absoluteReturnIp The absolute return IP.
      * @param absoluteCallIp The absolute address of the CALL instruction that created this frame.
-     * @param savedPdrs The saved PDRs (procedure-local data registers).
-     * @param savedFdrs The saved FDRs (formal data registers).
+     * @param savedRegisters Compact array of all STACK_SAVED register values in RegisterBank enum order.
      * @param fdrBindings The FDR parameter bindings.
      */
     public record ProcFrame(
             String procName,
             int[] absoluteReturnIp,
             int[] absoluteCallIp,
-            Object[] savedPdrs,
-            Object[] savedFdrs,
+            Object[] savedRegisters,
             java.util.Map<Integer, Integer> fdrBindings
     ) {}
     private boolean skipIpAdvance = false;
@@ -772,7 +770,7 @@ public class Organism {
     private void recoverFromStall() {
         if (!callStack.isEmpty()) {
             ProcFrame frame = callStack.pop();
-            restorePdrs(frame.savedPdrs());
+            restoreStackSavedRegisters(frame.savedRegisters());
             setIp(frame.absoluteReturnIp());
         } else {
             setIp(Arrays.copyOf(initialPosition, initialPosition.length));
@@ -1396,6 +1394,35 @@ public class Organism {
         }
         registers[slot] = value;
         return true;
+    }
+
+    /**
+     * Creates a compact snapshot of all STACK_SAVED register values for a ProcFrame.
+     * The layout follows RegisterBank enum declaration order.
+     */
+    public Object[] snapshotStackSavedRegisters() {
+        List<RegisterBank> banks = RegisterBank.allSavedOnCall();
+        int totalSize = banks.stream().mapToInt(b -> b.count).sum();
+        Object[] snapshot = new Object[totalSize];
+        int offset = 0;
+        for (RegisterBank bank : banks) {
+            System.arraycopy(registers, bank.slotOffset(), snapshot, offset, bank.count);
+            offset += bank.count;
+        }
+        return snapshot;
+    }
+
+    /**
+     * Restores all STACK_SAVED register values from a compact ProcFrame snapshot.
+     * The layout must match the one created by {@link #snapshotStackSavedRegisters()}.
+     */
+    public void restoreStackSavedRegisters(Object[] snapshot) {
+        List<RegisterBank> banks = RegisterBank.allSavedOnCall();
+        int offset = 0;
+        for (RegisterBank bank : banks) {
+            System.arraycopy(snapshot, offset, registers, bank.slotOffset(), bank.count);
+            offset += bank.count;
+        }
     }
 
     /**

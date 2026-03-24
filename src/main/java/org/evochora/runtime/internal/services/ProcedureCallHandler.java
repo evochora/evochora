@@ -61,8 +61,7 @@ public class ProcedureCallHandler {
             returnIp = organism.getNextInstructionPosition(returnIp, organism.getDvBeforeFetch(), environment);
         }
 
-        Object[] pdrsSnapshot = organism.getPdrs().toArray();
-        Object[] fdrsSnapshot = organism.getFdrs().toArray();
+        Object[] savedRegisters = organism.snapshotStackSavedRegisters();
 
         String procName = "";
         if (artifact != null && artifact.labelValueToName() != null) {
@@ -70,7 +69,7 @@ public class ProcedureCallHandler {
             if (name != null) procName = name;
         }
 
-        Organism.ProcFrame frame = new Organism.ProcFrame(procName, returnIp, ipBeforeFetch, pdrsSnapshot, fdrsSnapshot, fdrBindings);
+        Organism.ProcFrame frame = new Organism.ProcFrame(procName, returnIp, ipBeforeFetch, savedRegisters, fdrBindings);
         organism.getCallStack().push(frame);
 
         // Note: Parameter passing is handled by compiler-generated PUSH/POP sequences.
@@ -108,7 +107,7 @@ public class ProcedureCallHandler {
         }
         Organism.ProcFrame returnFrame = organism.getCallStack().pop();
 
-        organism.restorePdrs(returnFrame.savedPdrs());
+        organism.restoreStackSavedRegisters(returnFrame.savedRegisters());
         organism.setIp(returnFrame.absoluteReturnIp());
         organism.setSkipIpAdvance(true);
     }

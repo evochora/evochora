@@ -86,12 +86,15 @@ class OrganismRestoreBuilderTest {
         locationStack.push(new int[]{7, 8});
 
         Deque<Organism.ProcFrame> callStack = new ArrayDeque<>();
+        // Compact savedRegisters: PDR values (8 slots) + FDR values (8 slots) in enum order
+        Object[] savedRegisters = new Object[Config.NUM_PDR_REGISTERS + Config.NUM_FDR_REGISTERS];
+        savedRegisters[0] = 1; savedRegisters[1] = 2; // PDR0, PDR1
+        savedRegisters[Config.NUM_PDR_REGISTERS] = 3; savedRegisters[Config.NUM_PDR_REGISTERS + 1] = 4; // FDR0, FDR1
         callStack.push(new Organism.ProcFrame(
             "testProc",
             new int[]{50, 50},
             new int[]{40, 40},
-            new Object[]{1, 2},
-            new Object[]{3, 4},
+            savedRegisters,
             Map.of(0, 1)
         ));
 
