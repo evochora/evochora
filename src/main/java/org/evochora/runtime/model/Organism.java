@@ -221,18 +221,20 @@ public class Organism {
         }
         this.activeDpIndex = b.activeDpIndex;
 
-        // Build flat register array: initialize defaults, then overlay with RestoreBuilder values
+        // Build flat register array
         this.registers = new Object[RegisterBank.TOTAL_REGISTER_COUNT];
         int dims = b.ip != null ? b.ip.length : 2;
-        for (RegisterBank bank : RegisterBank.values()) {
-            for (int i = 0; i < bank.count; i++) {
-                registers[bank.slotOffset() + i] = bank.isLocation ? new int[dims] : 0;
+        if (b.flatRegisters != null) {
+            System.arraycopy(b.flatRegisters, 0, this.registers, 0,
+                    Math.min(b.flatRegisters.length, this.registers.length));
+        }
+        // Fill any unset slots with defaults
+        for (int i = 0; i < this.registers.length; i++) {
+            if (this.registers[i] == null) {
+                RegisterBank bank = RegisterBank.SLOT_TO_BANK[i];
+                this.registers[i] = bank != null && bank.isLocation ? new int[dims] : 0;
             }
         }
-        copyListToSlots(b.drs, RegisterBank.DR);
-        copyListToSlots(b.lrs, RegisterBank.LR);
-        copyListToSlots(b.pdrs, RegisterBank.PDR);
-        copyListToSlots(b.fdrs, RegisterBank.FDR);
 
         // Copy stacks
         this.dataStack = new ArrayDeque<>(b.dataStack);
@@ -301,10 +303,7 @@ public class Organism {
         private long deathTick = -1L;
         private List<int[]> dps = new ArrayList<>();
         private int activeDpIndex = 0;
-        private List<Object> drs = new ArrayList<>();
-        private List<Object> pdrs = new ArrayList<>();
-        private List<Object> fdrs = new ArrayList<>();
-        private List<Object> lrs = new ArrayList<>();
+        private Object[] flatRegisters = null;
         private Deque<Object> dataStack = new ArrayDeque<>();
         private Deque<int[]> locationStack = new ArrayDeque<>();
         private Deque<ProcFrame> callStack = new ArrayDeque<>();
@@ -391,27 +390,11 @@ public class Organism {
             return this;
         }
 
-        /** Sets all data register values. */
-        public RestoreBuilder dataRegisters(List<Object> drs) {
-            this.drs = drs;
-            return this;
-        }
-
-        /** Sets all procedure-local data register values. */
-        public RestoreBuilder procDataRegisters(List<Object> pdrs) {
-            this.pdrs = pdrs;
-            return this;
-        }
-
-        /** Sets all formal data register values. */
-        public RestoreBuilder formalDataRegisters(List<Object> fdrs) {
-            this.fdrs = fdrs;
-            return this;
-        }
-
-        /** Sets all location register values. */
-        public RestoreBuilder locationRegisters(List<Object> lrs) {
-            this.lrs = lrs;
+        /**
+         * Sets all register values from a flat array in RegisterBank slot order.
+         */
+        public RestoreBuilder registers(Object[] regs) {
+            this.flatRegisters = regs;
             return this;
         }
 
@@ -1113,6 +1096,9 @@ public class Organism {
     /** @return The tick when this organism died, or -1L if still alive. */
     public long getDeathTick() { return deathTick; }
 
+    /** @return The flat register array (direct reference, not a copy — for serialization only). */
+    public Object[] getRegisters() { return Arrays.copyOf(registers, registers.length); }
+
     /** @return A copy of the list of Data Registers (DRs). */
     public List<Object> getDrs() { return new ArrayList<>(Arrays.asList(registers).subList(RegisterBank.DR.slotOffset(), RegisterBank.DR.slotOffset() + RegisterBank.DR.count)); }
     /** @return true if the organism is dead, false otherwise. */
@@ -1188,18 +1174,6 @@ public class Organism {
         return null;
     }
 
-    /**
-     * Restores the state of all PDRs from a snapshot array.
-     *
-     * @param snapshot The snapshot to restore from.
-     */
-    public void restorePdrs(Object[] snapshot) {
-        if (snapshot == null || snapshot.length != RegisterBank.PDR.count) {
-            this.instructionFailed("Invalid PDR snapshot size: expected " + RegisterBank.PDR.count + ", got " + (snapshot == null ? "null" : snapshot.length));
-            return;
-        }
-        System.arraycopy(snapshot, 0, registers, RegisterBank.PDR.slotOffset(), RegisterBank.PDR.count);
-    }
 
     /** @return A copy of the list of Formal Data Registers (FDRs). */
     public List<Object> getFdrs() { return new ArrayList<>(Arrays.asList(registers).subList(RegisterBank.FDR.slotOffset(), RegisterBank.FDR.slotOffset() + RegisterBank.FDR.count)); }
@@ -1238,18 +1212,6 @@ public class Organism {
         return null;
     }
 
-    /**
-     * Restores the state of all FDRs from a snapshot array.
-     *
-     * @param snapshot The snapshot to restore from.
-     */
-    public void restoreFdrs(Object[] snapshot) {
-        if (snapshot == null || snapshot.length > RegisterBank.FDR.count) {
-            this.instructionFailed("Invalid FDR snapshot for restore");
-            return;
-        }
-        System.arraycopy(snapshot, 0, registers, RegisterBank.FDR.slotOffset(), snapshot.length);
-    }
 
     /**
      * Gets a copy of the list of Location Registers (LRs).
@@ -1422,15 +1384,6 @@ public class Organism {
         for (RegisterBank bank : banks) {
             System.arraycopy(snapshot, offset, registers, bank.slotOffset(), bank.count);
             offset += bank.count;
-        }
-    }
-
-    /**
-     * Copies values from a list into the corresponding slots of the flat register array.
-     */
-    private void copyListToSlots(List<Object> source, RegisterBank bank) {
-        for (int i = 0; i < Math.min(source.size(), bank.count); i++) {
-            registers[bank.slotOffset() + i] = source.get(i);
         }
     }
 

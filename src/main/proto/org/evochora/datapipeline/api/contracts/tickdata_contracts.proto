@@ -137,123 +137,109 @@ message OrganismState {
 
   // ===== Registers =====
 
-  // Data registers (DRs) - general purpose scalar/vector registers
-  // Source: Organism.getDataRegisters()
-  // Used for arithmetic and data manipulation
-  repeated RegisterValue data_registers = 11;
-
-  // Procedure data registers (PDRs) - used for procedure-local variables
-  // Source: Organism.getProcDataRegisters()
-  // Saved/restored during procedure calls
-  repeated RegisterValue proc_data_registers = 12;
-
-  // Formal data registers (FDRs) - used for procedure parameters
-  // Source: Organism.getFormalDataRegisters()
-  // Mapped to actual parameters during procedure calls
-  repeated RegisterValue formal_data_registers = 13;
-
-  // Location registers (LRs) - store coordinate vectors
-  // Source: Organism.getLocationRegisters()
-  // Used for spatial operations and addressing
-  repeated Vector location_registers = 14;
+  // Flat register array in RegisterBank enum order (DR, LR, PDR, FDR).
+  // Slot layout matches RegisterBank.slotOffset(): DR[0..7], LR[8..11], PDR[12..19], FDR[20..27].
+  // Location registers use the RegisterValue.vector variant.
+  // Source: Organism flat register array
+  repeated RegisterValue registers = 11;
 
   // ===== Stacks =====
 
   // Data stack for temporary scalar/vector values
   // Source: Organism.getDataStack()
-  repeated RegisterValue data_stack = 15;
+  repeated RegisterValue data_stack = 12;
 
   // Location stack for temporary coordinate vectors
   // Source: Organism.getLocationStack()
-  repeated Vector location_stack = 16;
+  repeated Vector location_stack = 13;
 
   // Call stack for procedure invocations
   // Source: Organism.getCallStack()
   // Each frame stores return address and saved register state
-  repeated ProcFrame call_stack = 17;
+  repeated ProcFrame call_stack = 14;
 
   // ===== Status =====
 
   // Whether the organism is dead
   // Source: Organism.isDead()
   // Dead organisms may be included in tick data if they died during the tick
-  bool is_dead = 18;
+  bool is_dead = 15;
 
   // Whether the last instruction execution failed
   // Source: Organism.isInstructionFailed()
-  bool instruction_failed = 19;
+  bool instruction_failed = 16;
 
   // Human-readable reason for instruction failure
   // Source: Organism.getFailureReason()
   // Only present if instruction_failed is true
-  optional string failure_reason = 20;
+  optional string failure_reason = 17;
 
   // Call stack at the time of failure (for debugging)
   // Source: Organism.getFailureCallStack()
   // Only present if instruction_failed is true
-  repeated ProcFrame failure_call_stack = 21;
+  repeated ProcFrame failure_call_stack = 18;
 
   // ===== Instruction Execution Data =====
 
   // Opcode ID of the last executed instruction
   // Source: InstructionExecutionData.opcodeId
   // Only present if an instruction was executed in this tick
-  optional int32 instruction_opcode_id = 22;
+  optional int32 instruction_opcode_id = 19;
 
   // Raw argument values from the environment for the last executed instruction
   // Source: InstructionExecutionData.rawArguments
   // Only present if an instruction was executed in this tick
-  repeated int32 instruction_raw_arguments = 23;
+  repeated int32 instruction_raw_arguments = 20;
 
   // Total energy cost for executing the last instruction
   // Source: InstructionExecutionData.energyCost
   // Only present if an instruction was executed in this tick
-  optional int32 instruction_energy_cost = 24;
+  optional int32 instruction_energy_cost = 21;
 
   // Total entropy delta for executing the last instruction
   // Source: InstructionExecutionData.entropyDelta
   // Only present if an instruction was executed in this tick
   // Positive values = entropy generation, negative values = entropy dissipation
-  optional int32 instruction_entropy_delta = 25;
+  optional int32 instruction_entropy_delta = 22;
 
   // Instruction pointer position at the beginning of the tick (before instruction execution)
   // Source: Organism.getIpBeforeFetch()
   // Used to reconstruct the position of the instruction in the program
-  Vector ip_before_fetch = 26;
+  Vector ip_before_fetch = 23;
 
   // Direction vector at the beginning of the tick (before instruction execution)
   // Source: Organism.getDvBeforeFetch()
   // Used to reconstruct the position of the instruction in the program
-  Vector dv_before_fetch = 27;
-  
+  Vector dv_before_fetch = 24;
+
   // Register values before instruction execution (for annotation display)
   // Maps register ID to RegisterValue (only for registers used as arguments)
   // Key: register ID (int32), Value: RegisterValue
   // Source: InstructionExecutionData.registerValuesBefore
   // Only present if an instruction was executed in this tick
-  map<int32, RegisterValue> instruction_register_values_before = 28;
+  map<int32, RegisterValue> instruction_register_values_before = 25;
 
   // ===== Special Registers =====
 
   // Entropy register (SR) - read-only register for randomness
   // Source: Organism.getSr()
-  int32 entropy_register = 29;
+  int32 entropy_register = 26;
 
   // Molecule marker register (MR) - determines marker value for written molecules
   // Source: Organism.getMr()
   // Value range: 0-15 (4 bits)
-  int32 molecule_marker_register = 30;
+  int32 molecule_marker_register = 27;
 
   // Genome hash computed at birth from CODE, LABEL, LABELREF, REGISTER, STRUCTURE, ENERGY molecules
   // Source: Organism.getGenomeHash()
   // Uniquely identifies the organism's genetic material independent of position
   // Value is 0 if the organism has no genome molecules (empty genome)
-  int64 genome_hash = 31;
+  int64 genome_hash = 28;
 
   // Tick number when this organism died (-1 or absent if still alive)
   // Source: Organism.getDeathTick()
   // Only present for dead organisms included in their final serialization
-  optional int64 death_tick = 32;
+  optional int64 death_tick = 29;
 
   // ===== Next Instruction Preview Data =====
   // Captured by peeking at the molecule at the organism's current IP after execution.
@@ -263,88 +249,48 @@ message OrganismState {
   // Opcode ID of the next instruction (at current IP after execution)
   // Source: VirtualMachine.peekNextInstruction()
   // Only present if the molecule at IP is a valid CODE instruction
-  optional int32 next_instruction_opcode_id = 33;
+  optional int32 next_instruction_opcode_id = 30;
 
   // Raw argument values from the environment for the next instruction
   // Source: VirtualMachine.peekNextInstruction()
-  repeated int32 next_instruction_raw_arguments = 34;
+  repeated int32 next_instruction_raw_arguments = 31;
 
   // Register values relevant to the next instruction (for annotation display)
   // Maps register ID to RegisterValue (only for registers used as arguments)
   // Source: VirtualMachine.peekNextInstruction()
-  map<int32, RegisterValue> next_instruction_register_values_before = 35;
+  map<int32, RegisterValue> next_instruction_register_values_before = 32;
 }
 
 // Aggregated runtime state for organism indexing.
 // Used by OrganismIndexer to store sidebar-only data in a single BLOB.
 message OrganismRuntimeState {
-  repeated RegisterValue data_registers = 1;
-  repeated RegisterValue proc_data_registers = 2;
-  repeated RegisterValue formal_data_registers = 3;
-  repeated Vector        location_registers = 4;
-  repeated RegisterValue data_stack = 5;
-  repeated Vector        location_stack = 6;
-  repeated ProcFrame     call_stack = 7;
-  bool                   instruction_failed = 8;
-  string                 failure_reason = 9;
-  repeated ProcFrame     failure_call_stack = 10;
-  
+  // Flat register array in RegisterBank enum order (DR, LR, PDR, FDR).
+  // Slot layout matches RegisterBank.slotOffset(): DR[0..7], LR[8..11], PDR[12..19], FDR[20..27].
+  // Location registers use the RegisterValue.vector variant.
+  repeated RegisterValue registers = 1;
+  repeated RegisterValue data_stack = 2;
+  repeated Vector        location_stack = 3;
+  repeated ProcFrame     call_stack = 4;
+  bool                   instruction_failed = 5;
+  string                 failure_reason = 6;
+  repeated ProcFrame     failure_call_stack = 7;
+
   // ===== Instruction Execution Data =====
-  
-  // Opcode ID of the last executed instruction
-  // Source: InstructionExecutionData.opcodeId
-  // Only present if an instruction was executed in this tick
-  optional int32 instruction_opcode_id = 11;
-  
-  // Raw argument values from the environment for the last executed instruction
-  // Source: InstructionExecutionData.rawArguments
-  // Only present if an instruction was executed in this tick
-  repeated int32 instruction_raw_arguments = 12;
-  
-  // Total energy cost for executing the last instruction
-  // Source: InstructionExecutionData.energyCost
-  // Only present if an instruction was executed in this tick
-  optional int32 instruction_energy_cost = 13;
-  
-  // Total entropy delta for executing the last instruction
-  // Source: InstructionExecutionData.entropyDelta
-  // Only present if an instruction was executed in this tick
-  // Positive values = entropy generation, negative values = entropy dissipation
-  optional int32 instruction_entropy_delta = 31;
-  
-  // Instruction pointer position at the beginning of the tick (before instruction execution)
-  // Source: Organism.getIpBeforeFetch()
-  // Used to reconstruct the position of the instruction in the program
-  optional Vector instruction_ip_before_fetch = 14;
-  
-  // Direction vector at the beginning of the tick (before instruction execution)
-  // Source: Organism.getDvBeforeFetch()
-  // Used to reconstruct the position of the instruction in the program
-  optional Vector instruction_dv_before_fetch = 15;
-  
-  // Register values before instruction execution (for annotation display)
-  // Maps register ID to RegisterValue (only for registers used as arguments)
-  // Key: register ID (int32), Value: RegisterValue
-  // Source: InstructionExecutionData.registerValuesBefore
-  // Only present if an instruction was executed in this tick
-  map<int32, RegisterValue> instruction_register_values_before = 16;
+
+  optional int32 instruction_opcode_id = 8;
+  repeated int32 instruction_raw_arguments = 9;
+  optional int32 instruction_energy_cost = 10;
+  optional int32 instruction_entropy_delta = 11;
+  optional Vector instruction_ip_before_fetch = 12;
+  optional Vector instruction_dv_before_fetch = 13;
+  map<int32, RegisterValue> instruction_register_values_before = 14;
 
   // ===== Special Registers =====
 
-  // Entropy register (SR) - read-only register for randomness
-  // Source: Organism.getSr()
-  int32 entropy_register = 17;
-
-  // Molecule marker register (MR) - determines marker value for written molecules
-  // Source: Organism.getMr()
-  // Value range: 0-15 (4 bits)
-  int32 molecule_marker_register = 18;
-
-  // Whether the organism is dead (for RowPerOrganismStrategy runtime blob)
-  bool is_dead = 19;
-
-  // Tick number when this organism died (-1 or absent if still alive)
-  optional int64 death_tick = 20;
+  int32 entropy_register = 15;
+  int32 molecule_marker_register = 16;
+  bool is_dead = 17;
+  optional int64 death_tick = 18;
 }
 
 // Wrapper for encoding all data pointers in one column for indexing.
@@ -357,35 +303,23 @@ message DataPointerList {
 // Captures the state needed to return from a procedure call.
 message ProcFrame {
   // Name of the procedure being called
-  // Source: ProcFrame.getProcName()
   string proc_name = 1;
 
   // Absolute return address (where to resume after procedure returns)
-  // Source: ProcFrame.getAbsoluteReturnIp()
-  // Stored as absolute coordinates, not relative to program
   Vector absolute_return_ip = 2;
 
-  // Saved procedure data registers (PDRs) from caller's context
-  // Source: ProcFrame.getSavedPdrs()
-  // Restored when procedure returns
-  repeated RegisterValue saved_pdrs = 3;
+  // Saved registers from caller's context (compact array in RegisterBank.allSavedOnCall() order).
+  // Layout: PDR[0..7], FDR[8..15] (for current 2-bank configuration).
+  // Location registers use the RegisterValue.vector variant.
+  repeated RegisterValue saved_registers = 3;
 
-  // Saved formal data registers (FDRs) from caller's context
-  // Source: ProcFrame.getSavedFdrs()
-  // Restored when procedure returns
-  repeated RegisterValue saved_fdrs = 4;
+  // Mapping from register ID to source register ID for parameter bindings.
+  // Keys are full register IDs (e.g., FDR_BASE+0). Supports both FDR and future FLR bindings.
+  map<int32, int32> parameter_bindings = 4;
 
-  // Mapping from formal data register index to actual parameter value
-  // Source: ProcFrame.getFdrBindings()
-  // Key: FDR index, Value: actual parameter value
-  map<int32, int32> fdr_bindings = 5;
-
-  // Absolute address of the CALL instruction that created this frame
-  // Source: ProcFrame.getAbsoluteCallIp()
-  // Stored as absolute coordinates, not relative to program
-  // Used for resolving parameter bindings from artifact at debug time
-  // This allows the frontend to look up callSiteBindings using the CALL instruction address
-  Vector absolute_call_ip = 6;
+  // Absolute address of the CALL instruction that created this frame.
+  // Used for resolving parameter bindings from artifact at debug time.
+  Vector absolute_call_ip = 5;
 }
 
 // Represents a register value that can be either scalar or vector.

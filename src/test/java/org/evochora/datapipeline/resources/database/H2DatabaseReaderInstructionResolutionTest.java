@@ -276,7 +276,7 @@ class H2DatabaseReaderInstructionResolutionTest {
                     .setDv(Vector.newBuilder().addComponents(0).addComponents(1).build())
                     .addDataPointers(Vector.newBuilder().addComponents(5).addComponents(5).build())
                     .setActiveDpIndex(0)
-                    .addDataRegisters(RegisterValue.newBuilder().setScalar(42).build())
+                    .addAllRegisters(buildFlatRegisters(new int[]{42}, null, null, null))
                     .setInstructionOpcodeId(lastOpcodeId)
                     .setInstructionEnergyCost(energyCost)
                     .setIpBeforeFetch(Vector.newBuilder().addComponents(1).addComponents(2).build())
@@ -303,6 +303,31 @@ class H2DatabaseReaderInstructionResolutionTest {
         }
     }
 
+    private static java.util.List<RegisterValue> buildFlatRegisters(
+            int[] drScalars, int[][] lrVectors, int[] pdrScalars, int[] fdrScalars) {
+        java.util.List<RegisterValue> result = new java.util.ArrayList<>();
+        for (int i = 0; i < org.evochora.runtime.Config.NUM_DATA_REGISTERS; i++) {
+            int val = (drScalars != null && i < drScalars.length) ? drScalars[i] : 0;
+            result.add(RegisterValue.newBuilder().setScalar(val).build());
+        }
+        for (int i = 0; i < org.evochora.runtime.Config.NUM_LOCATION_REGISTERS; i++) {
+            Vector.Builder vb = Vector.newBuilder();
+            if (lrVectors != null && i < lrVectors.length && lrVectors[i] != null) {
+                for (int c : lrVectors[i]) vb.addComponents(c);
+            }
+            result.add(RegisterValue.newBuilder().setVector(vb.build()).build());
+        }
+        for (int i = 0; i < org.evochora.runtime.Config.NUM_PDR_REGISTERS; i++) {
+            int val = (pdrScalars != null && i < pdrScalars.length) ? pdrScalars[i] : 0;
+            result.add(RegisterValue.newBuilder().setScalar(val).build());
+        }
+        for (int i = 0; i < org.evochora.runtime.Config.NUM_FDR_REGISTERS; i++) {
+            int val = (fdrScalars != null && i < fdrScalars.length) ? fdrScalars[i] : 0;
+            result.add(RegisterValue.newBuilder().setScalar(val).build());
+        }
+        return result;
+    }
+
     private void writeOrganismWithInstructionAndLocationRegisters(long tickNumber, int organismId, int opcodeId,
                                                                   java.util.List<Integer> rawArguments, int energyCost,
                                                                   int[][] locationRegisters) throws Exception {
@@ -323,7 +348,7 @@ class H2DatabaseReaderInstructionResolutionTest {
                     .setDv(Vector.newBuilder().addComponents(0).addComponents(1).build())
                     .addDataPointers(Vector.newBuilder().addComponents(5).addComponents(5).build())
                     .setActiveDpIndex(0)
-                    .addDataRegisters(RegisterValue.newBuilder().setScalar(42).build())
+                    .addAllRegisters(buildFlatRegisters(new int[]{42}, locationRegisters, null, null))
                     .setInstructionOpcodeId(opcodeId)
                     .setInstructionEnergyCost(energyCost)
                     .setIpBeforeFetch(ipBeforeFetch)
@@ -331,22 +356,6 @@ class H2DatabaseReaderInstructionResolutionTest {
 
             for (Integer arg : rawArguments) {
                 orgBuilder.addInstructionRawArguments(arg);
-            }
-
-            // Add location registers if provided
-            if (locationRegisters != null) {
-                for (int[] lr : locationRegisters) {
-                    if (lr != null) {
-                        Vector.Builder lrBuilder = Vector.newBuilder();
-                        for (int component : lr) {
-                            lrBuilder.addComponents(component);
-                        }
-                        orgBuilder.addLocationRegisters(lrBuilder.build());
-                    } else {
-                        // Add empty vector for null entries (to maintain index alignment)
-                        orgBuilder.addLocationRegisters(Vector.newBuilder().build());
-                    }
-                }
             }
             
             // Add register values before execution (required for annotation display)
@@ -368,9 +377,9 @@ class H2DatabaseReaderInstructionResolutionTest {
                             
                             // Get register value before execution from current registers
                             if (argType == org.evochora.runtime.isa.InstructionArgumentType.REGISTER) {
-                                // DR/PDR/FDR register - get from dataRegisters
-                                if (registerId == 0 && orgBuilder.getDataRegistersCount() > 0) {
-                                    orgBuilder.putInstructionRegisterValuesBefore(registerId, orgBuilder.getDataRegisters(0));
+                                // DR/PDR/FDR register - get from flat registers array (DR starts at slot 0)
+                                if (registerId == 0 && orgBuilder.getRegistersCount() > 0) {
+                                    orgBuilder.putInstructionRegisterValuesBefore(registerId, orgBuilder.getRegisters(0));
                                 }
                             } else {
                                 // LOCATION_REGISTER - get from locationRegisters

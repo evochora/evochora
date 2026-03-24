@@ -144,23 +144,32 @@ public enum RegisterBank {
         return id >= 0 && id < TABLE_SIZE && IS_LOCATION_BY_ID[id];
     }
 
-    /**
-     * Returns all banks with {@link CallBehavior#STACK_SAVED} that have registers allocated
-     * (count &gt; 0).
-     */
-    public static List<RegisterBank> allSavedOnCall() {
-        return Arrays.stream(values())
+    private static final List<RegisterBank> CACHED_SAVED_ON_CALL;
+    private static final List<RegisterBank> CACHED_PROC_SCOPED;
+
+    static {
+        // (appended to existing static init block content via field initializer)
+        CACHED_SAVED_ON_CALL = Arrays.stream(values())
                 .filter(b -> b.callBehavior == CallBehavior.STACK_SAVED && b.count > 0)
+                .toList();
+        CACHED_PROC_SCOPED = Arrays.stream(values())
+                .filter(b -> b.callBehavior != CallBehavior.GLOBAL && b.count > 0)
                 .toList();
     }
 
     /**
+     * Returns all banks with {@link CallBehavior#STACK_SAVED} that have registers allocated
+     * (count &gt; 0). Cached — safe to call on the hotpath.
+     */
+    public static List<RegisterBank> allSavedOnCall() {
+        return CACHED_SAVED_ON_CALL;
+    }
+
+    /**
      * Returns all banks that are procedure-scoped (not global) and have registers allocated
-     * (count &gt; 0).
+     * (count &gt; 0). Cached — safe to call on the hotpath.
      */
     public static List<RegisterBank> allProcScoped() {
-        return Arrays.stream(values())
-                .filter(b -> b.callBehavior != CallBehavior.GLOBAL && b.count > 0)
-                .toList();
+        return CACHED_PROC_SCOPED;
     }
 }

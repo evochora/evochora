@@ -94,8 +94,7 @@ class SimulationRestorerTest {
             .addDataPointers(createVector(10, 10))
             .addDataPointers(createVector(20, 20))
             .setActiveDpIndex(1)
-            .addDataRegisters(RegisterValue.newBuilder().setScalar(100).build())
-            .addProcDataRegisters(RegisterValue.newBuilder().setScalar(200).build())
+            .addAllRegisters(buildFlatRegisters(new int[]{100}, null, new int[]{200}, null))
             .setIsDead(false)
             .build();
 
@@ -361,5 +360,39 @@ class SimulationRestorerTest {
             builder.addComponents(c);
         }
         return builder.build();
+    }
+
+    /**
+     * Builds a flat RegisterValue list in RegisterBank slot order: DR[0..7], LR[8..11], PDR[12..19], FDR[20..27].
+     * Null arrays are treated as empty (defaults used). Scalar values become RegisterValue.scalar,
+     * vector values (for LR) become RegisterValue.vector.
+     */
+    private static java.util.List<RegisterValue> buildFlatRegisters(
+            int[] drScalars, int[][] lrVectors, int[] pdrScalars, int[] fdrScalars) {
+        java.util.List<RegisterValue> result = new java.util.ArrayList<>();
+        // DR: 8 slots
+        for (int i = 0; i < Config.NUM_DATA_REGISTERS; i++) {
+            int val = (drScalars != null && i < drScalars.length) ? drScalars[i] : 0;
+            result.add(RegisterValue.newBuilder().setScalar(val).build());
+        }
+        // LR: 4 slots
+        for (int i = 0; i < Config.NUM_LOCATION_REGISTERS; i++) {
+            Vector.Builder vb = Vector.newBuilder();
+            if (lrVectors != null && i < lrVectors.length && lrVectors[i] != null) {
+                for (int c : lrVectors[i]) vb.addComponents(c);
+            }
+            result.add(RegisterValue.newBuilder().setVector(vb.build()).build());
+        }
+        // PDR: 8 slots
+        for (int i = 0; i < Config.NUM_PDR_REGISTERS; i++) {
+            int val = (pdrScalars != null && i < pdrScalars.length) ? pdrScalars[i] : 0;
+            result.add(RegisterValue.newBuilder().setScalar(val).build());
+        }
+        // FDR: 8 slots
+        for (int i = 0; i < Config.NUM_FDR_REGISTERS; i++) {
+            int val = (fdrScalars != null && i < fdrScalars.length) ? fdrScalars[i] : 0;
+            result.add(RegisterValue.newBuilder().setScalar(val).build());
+        }
+        return result;
     }
 }

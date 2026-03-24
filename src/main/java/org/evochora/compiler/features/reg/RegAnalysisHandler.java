@@ -5,7 +5,6 @@ import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
-import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.RegisterBank;
 
 /**

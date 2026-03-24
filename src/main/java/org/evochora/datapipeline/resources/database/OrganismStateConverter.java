@@ -4,6 +4,7 @@ import org.evochora.datapipeline.api.contracts.OrganismRuntimeState;
 import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.api.resources.database.dto.*;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.MoleculeTypeRegistry;
 
@@ -164,154 +165,45 @@ public final class OrganismStateConverter {
         String procName = frame.getProcName();
         int[] absReturnIp = vectorToArray(frame.getAbsoluteReturnIp());
         int[] absCallIp = frame.hasAbsoluteCallIp() ? vectorToArray(frame.getAbsoluteCallIp()) : null;
-        
-        List<RegisterValueView> savedPdrs = new ArrayList<>(frame.getSavedPdrsCount());
-        for (org.evochora.datapipeline.api.contracts.RegisterValue rv : frame.getSavedPdrsList()) {
-            savedPdrs.add(convertRegisterValue(rv));
+
+        List<RegisterValueView> savedRegisters = new ArrayList<>(frame.getSavedRegistersCount());
+        for (org.evochora.datapipeline.api.contracts.RegisterValue rv : frame.getSavedRegistersList()) {
+            savedRegisters.add(convertRegisterValue(rv));
         }
 
-        List<RegisterValueView> savedFdrs = new ArrayList<>(frame.getSavedFdrsCount());
-        for (org.evochora.datapipeline.api.contracts.RegisterValue rv : frame.getSavedFdrsList()) {
-            savedFdrs.add(convertRegisterValue(rv));
-        }
+        Map<Integer, Integer> parameterBindings = new HashMap<>(frame.getParameterBindingsMap());
 
-        Map<Integer, Integer> bindings = new HashMap<>();
-        for (Map.Entry<Integer, Integer> entry : frame.getFdrBindingsMap().entrySet()) {
-            bindings.put(entry.getKey(), entry.getValue());
-        }
-
-        return new ProcFrameView(procName, absReturnIp, absCallIp, savedPdrs, savedFdrs, bindings);
+        return new ProcFrameView(procName, absReturnIp, absCallIp, savedRegisters, parameterBindings);
     }
     
     /**
-     * Resolves a register value by register ID.
+     * Resolves a register value by register ID from a flat register list.
      *
-     * @param registerId        Register ID (dispatched by Instruction.*_BASE ranges)
-     * @param dataRegisters     Data registers list
-     * @param pdrRegisters     Procedure data registers list
-     * @param fdrRegisters      Formal data registers list
-     * @param locationRegisters  Location registers list
+     * @param registerId Register ID (dispatched via RegisterBank lookup)
+     * @param registers  Flat register list in RegisterBank slot order
      * @return RegisterValueView
      * @throws IllegalStateException if register ID is invalid or out of bounds
      */
     public static RegisterValueView resolveRegisterValue(
             int registerId,
-            List<RegisterValueView> dataRegisters,
-            List<RegisterValueView> pdrRegisters,
-            List<RegisterValueView> fdrRegisters,
-            List<int[]> locationRegisters) {
+            List<RegisterValueView> registers) {
 
-        // Dispatch order: descending by base ID (FDR=1024 > PDR=512 > LR=256 > DR=0)
-        if (registerId >= Instruction.FDR_BASE) {
-            // FDR register
-            int index = registerId - Instruction.FDR_BASE;
-            if (index >= 0 && index < fdrRegisters.size()) {
-                return fdrRegisters.get(index);
-            }
+        RegisterBank bank = RegisterBank.forId(registerId);
+        if (bank == null) {
             throw new IllegalStateException(
-                String.format("FDR register ID %d (index %d) is out of bounds. " +
-                    "Valid FDR range: %d-%d, but only %d FDR registers available.",
-                    registerId, index, Instruction.FDR_BASE,
-                    Instruction.FDR_BASE + fdrRegisters.size() - 1, fdrRegisters.size()));
-        } else if (registerId >= Instruction.PDR_BASE) {
-            // PDR register
-            int index = registerId - Instruction.PDR_BASE;
-            if (index >= 0 && index < pdrRegisters.size()) {
-                return pdrRegisters.get(index);
-            }
-            throw new IllegalStateException(
-                String.format("PDR register ID %d (index %d) is out of bounds. " +
-                    "Valid PDR range: %d-%d, but only %d PDR registers available.",
-                    registerId, index, Instruction.PDR_BASE,
-                    Instruction.PDR_BASE + pdrRegisters.size() - 1, pdrRegisters.size()));
-        } else if (registerId >= Instruction.LR_BASE) {
-            // LR register
-            int index = registerId - Instruction.LR_BASE;
-            if (index >= 0 && index < locationRegisters.size()) {
-                int[] vector = locationRegisters.get(index);
-                return RegisterValueView.vector(vector);
-            }
-            throw new IllegalStateException(
-                String.format("LR register ID %d (index %d) is out of bounds. " +
-                    "Valid LR range: %d-%d, but only %d LR registers available.",
-                    registerId, index, Instruction.LR_BASE,
-                    Instruction.LR_BASE + locationRegisters.size() - 1, locationRegisters.size()));
-        } else if (registerId >= 0 && registerId < dataRegisters.size()) {
-            // DR register
-            return dataRegisters.get(registerId);
+                String.format("Invalid register ID %d. No RegisterBank found for this ID.", registerId));
         }
 
-        // Invalid register ID (negative or out of all valid ranges)
-        throw new IllegalStateException(
-            String.format("Invalid register ID %d. " +
-                "Valid ranges: DR=0-%d, PDR=%d-%d, FDR=%d-%d, LR=%d-%d. " +
-                "Available registers: DR=%d, PDR=%d, FDR=%d, LR=%d",
-                registerId,
-                dataRegisters.size() - 1,
-                Instruction.PDR_BASE, Instruction.PDR_BASE + pdrRegisters.size() - 1,
-                Instruction.FDR_BASE, Instruction.FDR_BASE + fdrRegisters.size() - 1,
-                Instruction.LR_BASE, Instruction.LR_BASE + locationRegisters.size() - 1,
-                dataRegisters.size(), pdrRegisters.size(),
-                fdrRegisters.size(), locationRegisters.size()));
-    }
-    
-    /**
-     * Resolves a register value for instruction arguments (DR/PDR/FDR only, not LR).
-     * <p>
-     * This method is used specifically for REGISTER arguments in instructions.
-     * REGISTER arguments in instructions are always DR/PDR/FDR, never LR.
-     * LR registers are accessed via LOCATION_REGISTER argument type (to be implemented).
-     *
-     * @param registerId        Register ID (dispatched by Instruction.*_BASE ranges)
-     * @param dataRegisters     Data registers list
-     * @param pdrRegisters     Procedure data registers list
-     * @param fdrRegisters      Formal data registers list
-     * @return RegisterValueView
-     * @throws IllegalStateException if register ID is invalid or out of bounds
-     */
-    public static RegisterValueView resolveRegisterValueForInstructionArgument(
-            int registerId,
-            List<RegisterValueView> dataRegisters,
-            List<RegisterValueView> pdrRegisters,
-            List<RegisterValueView> fdrRegisters) {
-
-        if (registerId >= Instruction.FDR_BASE) {
-            // FDR register
-            int index = registerId - Instruction.FDR_BASE;
-            if (index >= 0 && index < fdrRegisters.size()) {
-                return fdrRegisters.get(index);
-            }
+        int slot = RegisterBank.ID_TO_SLOT[registerId];
+        if (slot < 0 || slot >= registers.size()) {
+            int index = registerId - bank.base;
             throw new IllegalStateException(
-                String.format("FDR register ID %d (index %d) is out of bounds. " +
-                    "Valid FDR range: %d-%d, but only %d FDR registers available.",
-                    registerId, index, Instruction.FDR_BASE,
-                    Instruction.FDR_BASE + fdrRegisters.size() - 1, fdrRegisters.size()));
-        } else if (registerId >= Instruction.PDR_BASE) {
-            // PDR register
-            int index = registerId - Instruction.PDR_BASE;
-            if (index >= 0 && index < pdrRegisters.size()) {
-                return pdrRegisters.get(index);
-            }
-            throw new IllegalStateException(
-                String.format("PDR register ID %d (index %d) is out of bounds. " +
-                    "Valid PDR range: %d-%d, but only %d PDR registers available.",
-                    registerId, index, Instruction.PDR_BASE,
-                    Instruction.PDR_BASE + pdrRegisters.size() - 1, pdrRegisters.size()));
-        } else if (registerId >= 0 && registerId < dataRegisters.size()) {
-            // DR register
-            return dataRegisters.get(registerId);
+                String.format("%s register ID %d (index %d) is out of bounds. " +
+                    "Slot %d exceeds available registers (%d).",
+                    bank.name(), registerId, index, slot, registers.size()));
         }
 
-        // Invalid register ID (negative or out of all valid ranges)
-        throw new IllegalStateException(
-            String.format("Invalid register ID %d for instruction argument. " +
-                "Valid ranges: DR=0-%d, PDR=%d-%d, FDR=%d-%d. " +
-                "Available registers: DR=%d, PDR=%d, FDR=%d",
-                registerId,
-                dataRegisters.size() - 1,
-                Instruction.PDR_BASE, Instruction.PDR_BASE + pdrRegisters.size() - 1,
-                Instruction.FDR_BASE, Instruction.FDR_BASE + fdrRegisters.size() - 1,
-                dataRegisters.size(), pdrRegisters.size(), fdrRegisters.size()));
+        return registers.get(slot);
     }
     
     /**
@@ -320,15 +212,14 @@ public final class OrganismStateConverter {
      * @param opcodeId         Opcode ID of the instruction
      * @param rawArguments      Raw argument values from instruction_raw_arguments
      * @param energyCost        Energy cost of the instruction
+     * @param entropyDelta      Entropy delta of the instruction
      * @param ipBeforeFetch     IP before instruction fetch
      * @param dvBeforeFetch     DV before instruction fetch
      * @param failed            Whether the instruction failed
      * @param failureReason     Failure reason (if failed)
-     * @param dataRegisters     Data registers for resolving REGISTER arguments
-     * @param pdrRegisters     Procedure registers for resolving REGISTER arguments
-     * @param fdrRegisters      Formal data registers for resolving REGISTER arguments
-     * @param locationRegisters  Location registers for resolving REGISTER arguments
+     * @param registers         Flat register list in RegisterBank slot order
      * @param envDimensions     Environment dimensions for VECTOR/LABEL arguments
+     * @param registerValuesBefore Register values before execution (for annotation display)
      * @return InstructionView
      * @throws IllegalStateException if instruction has no signature registered
      */
@@ -341,10 +232,7 @@ public final class OrganismStateConverter {
             int[] dvBeforeFetch,
             boolean failed,
             String failureReason,
-            List<RegisterValueView> dataRegisters,
-            List<RegisterValueView> pdrRegisters,
-            List<RegisterValueView> fdrRegisters,
-            List<int[]> locationRegisters,
+            List<RegisterValueView> registers,
             int[] envDimensions,
             java.util.Map<Integer, RegisterValueView> registerValuesBefore) {
         
@@ -406,19 +294,9 @@ public final class OrganismStateConverter {
                     Molecule molecule = Molecule.fromInt(rawArg);
                     int registerId = molecule.toScalarValue();
                     
-                    // Determine register type based on register ID ranges
-                    // Note: REGISTER arguments in instructions are always DR/PDR/FDR, never LR.
-                    // LR registers are accessed via LOCATION_REGISTER argument type.
-                    // This matches the runtime's readOperand() method which treats all IDs < PDR_BASE as DR.
-                    String registerType;
-                    if (registerId >= Instruction.FDR_BASE) {
-                        registerType = "FDR";
-                    } else if (registerId >= Instruction.PDR_BASE) {
-                        registerType = "PDR";
-                    } else {
-                        // All register IDs < PDR_BASE are DR registers (matching readOperand logic)
-                        registerType = "DR";
-                    }
+                    // Determine register type via RegisterBank lookup
+                    RegisterBank regBank = RegisterBank.forId(registerId);
+                    String registerType = regBank != null ? regBank.name() : "DR";
                     
                     // Resolve register value: use value BEFORE execution (null if unavailable)
                     RegisterValueView registerValue = (registerValuesBefore != null)
@@ -442,29 +320,21 @@ public final class OrganismStateConverter {
                 Molecule molecule = Molecule.fromInt(rawArg);
                 int registerId = molecule.toScalarValue();
                 
-                // LOCATION_REGISTER arguments are always LR registers
-                String registerType = "LR";
-                
-                // Resolve register value from locationRegisters
-                if (locationRegisters == null) {
-                    throw new IllegalStateException(
-                        String.format("Location registers not available for instruction %d (%s). " +
-                            "Cannot resolve LOCATION_REGISTER argument with registerId %d.",
-                            opcodeId, opcodeName, registerId));
-                }
-                
-                int index = registerId - org.evochora.runtime.isa.Instruction.LR_BASE;
-                if (index < 0 || index >= locationRegisters.size()) {
+                // Determine register type via RegisterBank lookup
+                RegisterBank locBank = RegisterBank.forId(registerId);
+                String registerType = locBank != null ? locBank.name() : "LR";
+
+                // Resolve register value from flat register list via slot lookup
+                int slot = RegisterBank.ID_TO_SLOT[registerId];
+                if (slot < 0 || slot >= registers.size()) {
                     throw new IllegalStateException(
                         String.format("LR register ID %d is out of bounds for instruction %d (%s). " +
-                            "Valid LR range: 0-%d, but only %d LR registers available.",
-                            registerId, opcodeId, opcodeName, locationRegisters.size() - 1, locationRegisters.size()));
+                            "Slot %d exceeds available registers (%d).",
+                            registerId, opcodeId, opcodeName, slot, registers.size()));
                 }
-                
-                // Resolve register value from locationRegisters using the 0-based index
-                int[] vector = locationRegisters.get(index);
-                RegisterValueView registerValue = RegisterValueView.vector(vector);
 
+                RegisterValueView registerValue = registers.get(slot);
+                int index = registerId - (locBank != null ? locBank.base : RegisterBank.LR.base);
                 resolvedArgs.add(InstructionArgumentView.register(index, registerValue, registerType));
                 argIndex++;
             } else if (argType == org.evochora.runtime.isa.InstructionArgumentType.LITERAL) {
@@ -565,24 +435,9 @@ public final class OrganismStateConverter {
             throw new SQLException("Failed to decode OrganismRuntimeState", e);
         }
 
-        List<RegisterValueView> dataRegs = new ArrayList<>(state.getDataRegistersCount());
-        for (org.evochora.datapipeline.api.contracts.RegisterValue rv : state.getDataRegistersList()) {
-            dataRegs.add(convertRegisterValue(rv));
-        }
-
-        List<RegisterValueView> pdrRegs = new ArrayList<>(state.getProcDataRegistersCount());
-        for (org.evochora.datapipeline.api.contracts.RegisterValue rv : state.getProcDataRegistersList()) {
-            pdrRegs.add(convertRegisterValue(rv));
-        }
-
-        List<RegisterValueView> fdrRegs = new ArrayList<>(state.getFormalDataRegistersCount());
-        for (org.evochora.datapipeline.api.contracts.RegisterValue rv : state.getFormalDataRegistersList()) {
-            fdrRegs.add(convertRegisterValue(rv));
-        }
-
-        List<int[]> locationRegs = new ArrayList<>(state.getLocationRegistersCount());
-        for (Vector v : state.getLocationRegistersList()) {
-            locationRegs.add(vectorToArray(v));
+        List<RegisterValueView> registers = new ArrayList<>(state.getRegistersCount());
+        for (org.evochora.datapipeline.api.contracts.RegisterValue rv : state.getRegistersList()) {
+            registers.add(convertRegisterValue(rv));
         }
 
         List<RegisterValueView> dataStack = new ArrayList<>(state.getDataStackCount());
@@ -635,26 +490,20 @@ public final class OrganismStateConverter {
                     state.hasInstructionDvBeforeFetch() ? vectorToArray(state.getInstructionDvBeforeFetch()) : null,
                     state.getInstructionFailed(),
                     state.getFailureReason().isEmpty() ? null : state.getFailureReason(),
-                    dataRegs,
-                    pdrRegs,
-                    fdrRegs,
-                    locationRegs,
+                    registers,
                     envDimensions,
                     registerValuesBefore
             );
         }
         InstructionsView instructions = new InstructionsView(lastInstruction, null);
-        
+
         return new OrganismRuntimeView(
                 energy,
                 ip,
                 dv,
                 dataPointers,
                 activeDpIndex,
-                dataRegs,
-                pdrRegs,
-                fdrRegs,
-                locationRegs,
+                registers,
                 dataStack,
                 locationStack,
                 callStack,

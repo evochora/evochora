@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.evochora.runtime.Config;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
@@ -71,12 +72,30 @@ class OrganismRestoreBuilderTest {
     void testRestoreBuilder_AllFields() {
         // Prepare complex state
         List<int[]> dps = Arrays.asList(new int[]{1, 2}, new int[]{3, 4});
-        List<Object> drs = new ArrayList<>(Arrays.asList(100, 200, 300, 400, 500, 600, 700, 800));
-        List<Object> pdrs = new ArrayList<>(Arrays.asList(10, 20, 30, 40));
-        List<Object> fdrs = new ArrayList<>(Arrays.asList(5, 6, 7, 8));
-        List<Object> lrs = new ArrayList<>(Arrays.asList(
-            new int[]{0, 0}, new int[]{1, 1}, new int[]{2, 2}, new int[]{3, 3}
-        ));
+        // Build flat register array in RegisterBank enum order: DR(8) + LR(4) + PDR(8) + FDR(8)
+        Object[] regs = new Object[RegisterBank.TOTAL_REGISTER_COUNT];
+        // DR0-DR7
+        regs[RegisterBank.DR.slotOffset()] = 100; regs[RegisterBank.DR.slotOffset() + 1] = 200;
+        regs[RegisterBank.DR.slotOffset() + 2] = 300; regs[RegisterBank.DR.slotOffset() + 3] = 400;
+        regs[RegisterBank.DR.slotOffset() + 4] = 500; regs[RegisterBank.DR.slotOffset() + 5] = 600;
+        regs[RegisterBank.DR.slotOffset() + 6] = 700; regs[RegisterBank.DR.slotOffset() + 7] = 800;
+        // LR0-LR3
+        regs[RegisterBank.LR.slotOffset()] = new int[]{0, 0}; regs[RegisterBank.LR.slotOffset() + 1] = new int[]{1, 1};
+        regs[RegisterBank.LR.slotOffset() + 2] = new int[]{2, 2}; regs[RegisterBank.LR.slotOffset() + 3] = new int[]{3, 3};
+        // PDR0-PDR3
+        regs[RegisterBank.PDR.slotOffset()] = 10; regs[RegisterBank.PDR.slotOffset() + 1] = 20;
+        regs[RegisterBank.PDR.slotOffset() + 2] = 30; regs[RegisterBank.PDR.slotOffset() + 3] = 40;
+        // FDR0-FDR3
+        regs[RegisterBank.FDR.slotOffset()] = 5; regs[RegisterBank.FDR.slotOffset() + 1] = 6;
+        regs[RegisterBank.FDR.slotOffset() + 2] = 7; regs[RegisterBank.FDR.slotOffset() + 3] = 8;
+        // Fill remaining slots with defaults
+        for (RegisterBank bank : RegisterBank.values()) {
+            for (int i = 0; i < bank.count; i++) {
+                if (regs[bank.slotOffset() + i] == null) {
+                    regs[bank.slotOffset() + i] = bank.isLocation ? new int[]{0, 0} : 0;
+                }
+            }
+        }
 
         Deque<Object> dataStack = new ArrayDeque<>();
         dataStack.push(42);
@@ -109,10 +128,7 @@ class OrganismRestoreBuilderTest {
             .marker(7)
             .dataPointers(dps)
             .activeDpIndex(1)
-            .dataRegisters(drs)
-            .procDataRegisters(pdrs)
-            .formalDataRegisters(fdrs)
-            .locationRegisters(lrs)
+            .registers(regs)
             .dataStack(dataStack)
             .locationStack(locationStack)
             .callStack(callStack)
@@ -381,10 +397,7 @@ class OrganismRestoreBuilderTest {
             .marker(original.getMr())
             .dataPointers(original.getDps())
             .activeDpIndex(original.getActiveDpIndex())
-            .dataRegisters(original.getDrs())
-            .procDataRegisters(original.getPdrs())
-            .formalDataRegisters(original.getFdrs())
-            .locationRegisters(original.getLrs())
+            .registers(original.getRegisters().clone())
             .dataStack(original.getDataStack())
             .locationStack(original.getLocationStack())
             .callStack(original.getCallStack())

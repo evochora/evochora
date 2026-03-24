@@ -230,28 +230,11 @@ public class H2DatabaseReader implements IDatabaseReader {
         }
         int activeDpIndex = orgState.getActiveDpIndex();
         
-        // Convert registers
-        java.util.List<org.evochora.datapipeline.api.resources.database.dto.RegisterValueView> dataRegs = 
+        // Convert registers (flat array)
+        java.util.List<org.evochora.datapipeline.api.resources.database.dto.RegisterValueView> registers =
                 new java.util.ArrayList<>();
-        for (var rv : orgState.getDataRegistersList()) {
-            dataRegs.add(OrganismStateConverter.convertRegisterValue(rv));
-        }
-        
-        java.util.List<org.evochora.datapipeline.api.resources.database.dto.RegisterValueView> pdrRegs = 
-                new java.util.ArrayList<>();
-        for (var rv : orgState.getProcDataRegistersList()) {
-            pdrRegs.add(OrganismStateConverter.convertRegisterValue(rv));
-        }
-        
-        java.util.List<org.evochora.datapipeline.api.resources.database.dto.RegisterValueView> fdrRegs = 
-                new java.util.ArrayList<>();
-        for (var rv : orgState.getFormalDataRegistersList()) {
-            fdrRegs.add(OrganismStateConverter.convertRegisterValue(rv));
-        }
-        
-        java.util.List<int[]> locationRegs = new java.util.ArrayList<>();
-        for (var v : orgState.getLocationRegistersList()) {
-            locationRegs.add(OrganismStateConverter.vectorToArray(v));
+        for (var rv : orgState.getRegistersList()) {
+            registers.add(OrganismStateConverter.convertRegisterValue(rv));
         }
         
         // Convert stacks
@@ -297,7 +280,7 @@ public class H2DatabaseReader implements IDatabaseReader {
                     orgState.hasDvBeforeFetch() ? OrganismStateConverter.vectorToArray(orgState.getDvBeforeFetch()) : null,
                     orgState.getInstructionFailed(),
                     orgState.hasFailureReason() ? orgState.getFailureReason() : null,
-                    dataRegs, pdrRegs, fdrRegs, locationRegs, envDimensions, registerValuesBefore
+                    registers, envDimensions, registerValuesBefore
             );
         }
 
@@ -319,14 +302,14 @@ public class H2DatabaseReader implements IDatabaseReader {
                     dv,
                     false,
                     null,
-                    dataRegs, pdrRegs, fdrRegs, locationRegs, envDimensions, nextRegValues
+                    registers, envDimensions, nextRegValues
             );
         }
         InstructionsView instructions = new InstructionsView(lastInstruction, nextInstruction);
 
         return new OrganismRuntimeView(
                 energy, ip, dv, dataPointers, activeDpIndex,
-                dataRegs, pdrRegs, fdrRegs, locationRegs,
+                registers,
                 dataStack, locationStack, callStack,
                 orgState.getInstructionFailed(),
                 orgState.hasFailureReason() ? orgState.getFailureReason() : null,

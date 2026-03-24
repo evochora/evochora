@@ -1,8 +1,17 @@
-export const INSTRUCTION_CONSTANTS = {
-    LR_BASE: 256,
-    PDR_BASE: 512,
-    FDR_BASE: 1024
-};
+/**
+ * Single source of truth for all register bank metadata on the JS side.
+ * Architecturally identical to Java's RegisterBank enum.
+ * Adding a new bank requires only a new entry here.
+ */
+export const REGISTER_BANKS = [
+    { name: "DR",  prefix: "%DR",  base: 0,    slotOffset: 0,  count: 8, isLocation: false },
+    { name: "LR",  prefix: "%LR",  base: 256,  slotOffset: 8,  count: 4, isLocation: true  },
+    { name: "PDR", prefix: "%PDR", base: 512,  slotOffset: 12, count: 8, isLocation: false },
+    { name: "FDR", prefix: "%FDR", base: 1024, slotOffset: 20, count: 8, isLocation: false },
+];
+
+/** O(1) name-based lookup into REGISTER_BANKS. */
+export const BANK_BY_NAME = Object.fromEntries(REGISTER_BANKS.map(b => [b.name, b]));
 
 /**
  * A utility class providing static helper functions specifically for the annotation subsystem.
@@ -24,11 +33,7 @@ export class AnnotationUtils {
         const lookupKey = (qualifiedName || token || '').toUpperCase();
         if (artifact.registerAliasMap && artifact.registerAliasMap[lookupKey] !== undefined) {
             const regId = artifact.registerAliasMap[lookupKey];
-            // Dispatch order: descending by base (FDR=1024 > PDR=512 > LR=256 > DR=0)
-            if (regId >= INSTRUCTION_CONSTANTS.FDR_BASE) return `%FDR${regId - INSTRUCTION_CONSTANTS.FDR_BASE}`;
-            if (regId >= INSTRUCTION_CONSTANTS.PDR_BASE) return `%PDR${regId - INSTRUCTION_CONSTANTS.PDR_BASE}`;
-            if (regId >= INSTRUCTION_CONSTANTS.LR_BASE) return `%LR${regId - INSTRUCTION_CONSTANTS.LR_BASE}`;
-            return `%DR${regId}`;
+            return AnnotationUtils.formatRegisterName(regId);
         }
         return null;
     }
@@ -36,7 +41,7 @@ export class AnnotationUtils {
     /**
      * Retrieves the value of a register from the organism's state.
      * @param {string} canonicalName - The canonical name of the register (e.g., "%DR0").
-     * @param {object} state - The organism's state object containing register arrays.
+     * @param {object} state - The organism's state object containing a flat registers array.
      * @returns {*} The value of the register.
      * @throws {Error} If canonicalName or state is invalid, or if the register is not found.
      */
@@ -47,71 +52,39 @@ export class AnnotationUtils {
         if (!state || typeof state !== 'object') {
             throw new Error(`getRegisterValue: state must be an object, got: ${state}`);
         }
+        if (!state.registers || !Array.isArray(state.registers)) {
+            throw new Error(`getRegisterValue: state.registers is missing or invalid`);
+        }
 
         const upper = canonicalName.toUpperCase();
 
-        if (upper.startsWith('%DR')) {
-            const id = parseInt(upper.substring(3), 10);
-            if (isNaN(id) || id < 0) {
-                throw new Error(`getRegisterValue: invalid DR register ID in "${canonicalName}"`);
+        for (const bank of REGISTER_BANKS) {
+            if (upper.startsWith(bank.prefix)) {
+                const id = parseInt(upper.substring(bank.prefix.length), 10);
+                if (isNaN(id) || id < 0) {
+                    throw new Error(`getRegisterValue: invalid ${bank.name} register index in "${canonicalName}"`);
+                }
+                if (id >= bank.count) {
+                    throw new Error(`getRegisterValue: ${bank.name} register ${id} not found (only ${bank.count} available)`);
+                }
+                const slot = bank.slotOffset + id;
+                if (slot >= state.registers.length) {
+                    throw new Error(`getRegisterValue: slot ${slot} exceeds registers array length (${state.registers.length})`);
+                }
+                return state.registers[slot];
             }
-            if (!state.dataRegisters || !Array.isArray(state.dataRegisters)) {
-                throw new Error(`getRegisterValue: state.dataRegisters is missing or invalid`);
-            }
-            if (id >= state.dataRegisters.length) {
-                throw new Error(`getRegisterValue: DR register ${id} not found (only ${state.dataRegisters.length} available)`);
-            }
-            return state.dataRegisters[id];
         }
-        if (upper.startsWith('%PDR')) {
-            const id = parseInt(upper.substring(4), 10);
-            if (isNaN(id) || id < 0) {
-                throw new Error(`getRegisterValue: invalid PDR register ID in "${canonicalName}"`);
-            }
-            if (!state.procDataRegisters || !Array.isArray(state.procDataRegisters)) {
-                throw new Error(`getRegisterValue: state.procDataRegisters is missing or invalid`);
-            }
-            if (id >= state.procDataRegisters.length) {
-                throw new Error(`getRegisterValue: PDR register ${id} not found (only ${state.procDataRegisters.length} available)`);
-            }
-            return state.procDataRegisters[id];
-        }
-        if (upper.startsWith('%FDR')) {
-            const id = parseInt(upper.substring(4), 10);
-            if (isNaN(id) || id < 0) {
-                throw new Error(`getRegisterValue: invalid FDR register ID in "${canonicalName}"`);
-            }
-            if (!state.formalDataRegisters || !Array.isArray(state.formalDataRegisters)) {
-                throw new Error(`getRegisterValue: state.formalDataRegisters is missing or invalid`);
-            }
-            if (id >= state.formalDataRegisters.length) {
-                throw new Error(`getRegisterValue: FDR register ${id} not found (only ${state.formalDataRegisters.length} available)`);
-            }
-            return state.formalDataRegisters[id];
-        }
-        if (upper.startsWith('%LR')) {
-            const id = parseInt(upper.substring(3), 10);
-            if (isNaN(id) || id < 0) {
-                throw new Error(`getRegisterValue: invalid LR register ID in "${canonicalName}"`);
-            }
-            if (!state.locationRegisters || !Array.isArray(state.locationRegisters)) {
-                throw new Error(`getRegisterValue: state.locationRegisters is missing or invalid`);
-            }
-            if (id >= state.locationRegisters.length) {
-                throw new Error(`getRegisterValue: LR register ${id} not found (only ${state.locationRegisters.length} available)`);
-            }
-            return state.locationRegisters[id];
-        }
-        throw new Error(`getRegisterValue: invalid register format "${canonicalName}" (must start with %DR, %PDR, %FDR, or %LR)`);
+        const validPrefixes = REGISTER_BANKS.map(b => b.prefix).join(', ');
+        throw new Error(`getRegisterValue: invalid register format "${canonicalName}" (must start with ${validPrefixes})`);
     }
 
     /**
      * Formats a register ID to its canonical display name.
      * When an explicit registerType is provided, it takes precedence.
-     * Without registerType, the method uses ID-based heuristics via the BASE constants.
+     * Without registerType, the method uses ID-based heuristics via REGISTER_BANKS.
      *
      * @param {number} registerId - The numeric register ID.
-     * @param {string} [registerType] - Optional explicit register type ('FDR', 'PDR', 'DR', 'LR'). If provided, takes precedence over ID-based heuristics.
+     * @param {string} [registerType] - Optional explicit register type ('FDR', 'PDR', 'DR', 'LR').
      * @returns {string} The canonical register name (e.g., "%FDR0", "%PDR5", "%DR3", "%LR2").
      * @throws {Error} If registerId is null, undefined, or not a number.
      */
@@ -123,37 +96,27 @@ export class AnnotationUtils {
             throw new Error(`formatRegisterName: registerId must be a valid number, got: ${registerId}`);
         }
 
-        // If explicit type is provided, use it directly
+        // If explicit type is provided, use BANK_BY_NAME lookup
         if (registerType) {
-            switch (registerType.toUpperCase()) {
-                case 'LR':
-                    return `%LR${registerId - INSTRUCTION_CONSTANTS.LR_BASE}`;
-                case 'FDR':
-                    return `%FDR${registerId - INSTRUCTION_CONSTANTS.FDR_BASE}`;
-                case 'PDR':
-                    return `%PDR${registerId - INSTRUCTION_CONSTANTS.PDR_BASE}`;
-                case 'DR':
-                default:
-                    return `%DR${registerId}`;
+            const bank = BANK_BY_NAME[registerType.toUpperCase()];
+            if (bank) {
+                return `${bank.prefix}${registerId - bank.base}`;
             }
+            return `%DR${registerId}`;
         }
 
-        // ID-based heuristics, descending by base (FDR=1024 > PDR=512 > LR=256 > DR=0)
-        if (registerId >= INSTRUCTION_CONSTANTS.FDR_BASE) {
-            return `%FDR${registerId - INSTRUCTION_CONSTANTS.FDR_BASE}`;
-        }
-        if (registerId >= INSTRUCTION_CONSTANTS.PDR_BASE) {
-            return `%PDR${registerId - INSTRUCTION_CONSTANTS.PDR_BASE}`;
-        }
-        if (registerId >= INSTRUCTION_CONSTANTS.LR_BASE) {
-            return `%LR${registerId - INSTRUCTION_CONSTANTS.LR_BASE}`;
+        // ID-based heuristics: descending by base
+        for (let i = REGISTER_BANKS.length - 1; i >= 0; i--) {
+            const bank = REGISTER_BANKS[i];
+            if (registerId >= bank.base) {
+                return `${bank.prefix}${registerId - bank.base}`;
+            }
         }
         return `%DR${registerId}`;
     }
 
     /**
      * Resolves a label hash value to its name using the program artifact.
-     * Used for displaying human-readable label names in the instruction view.
      *
      * @param {number} hashValue - The 20-bit hash value of the label.
      * @param {object} artifact - The program artifact containing `labelValueToName` map.
@@ -166,15 +129,11 @@ export class AnnotationUtils {
         if (!artifact || !artifact.labelValueToName) {
             return null;
         }
-        // labelValueToName is a map from int32 hash to string name
         return artifact.labelValueToName[hashValue] || null;
     }
 
     /**
      * Resolves a label name to its hash value using the program artifact.
-     * Used for displaying the hash value in the source view annotations.
-     * When a qualifiedName is provided, it takes precedence for the lookup
-     * since backend keys are now module-qualified (e.g., "ENERGY.HARVEST").
      *
      * @param {string} name - The label or procedure name as it appears in source.
      * @param {object} artifact - The program artifact containing `labelNameToValue` map.
@@ -192,10 +151,6 @@ export class AnnotationUtils {
 
     /**
      * Resolves the binding chain through the call stack to find the actual register for a procedure parameter.
-     * Starts with an FDR index (parameter index) and walks through FDR bindings in the call stack to find the final DR/PDR register.
-     * <p>
-     * This method resolves bindings from the ProgramArtifact's callSiteBindings,
-     * as fdrBindings in the call stack frames are not populated at runtime (copy-in/copy-out is used instead).
      *
      * @param {number} paramIndex - The parameter index (0-based) in the procedure's parameter list.
      * @param {Array} callStack - The call stack frames (array of ProcFrame objects).
@@ -224,58 +179,23 @@ export class AnnotationUtils {
             throw new Error(`resolveBindingChain: organismState must be an object, got: ${organismState}`);
         }
 
-        // Start with FDR index (parameter maps to FDR at FDR_BASE + paramIndex)
-        let currentRegId = INSTRUCTION_CONSTANTS.FDR_BASE + paramIndex;
+        let currentRegId = BANK_BY_NAME.FDR.base + paramIndex;
 
-        // Get initialPosition for coordinate conversion
         let initialPosition = null;
         if (organismState.initialPosition && organismState.initialPosition.components && Array.isArray(organismState.initialPosition.components)) {
             initialPosition = organismState.initialPosition.components;
         }
 
-        // Iterate through call stack frames to resolve the binding chain
         for (const frame of callStack) {
-            if (!frame) {
-                continue;
+            if (!frame) continue;
+
+            let frameBindings = _resolveFrameBindings(frame, initialPosition, artifact);
+
+            // If no bindings from artifact, check runtime parameterBindings (fallback)
+            if (!frameBindings && frame.parameterBindings && typeof frame.parameterBindings === 'object') {
+                frameBindings = frame.parameterBindings;
             }
 
-            // Get bindings from artifact for this frame's CALL instruction
-            let frameBindings = null;
-            if (frame.absoluteCallIp && Array.isArray(frame.absoluteCallIp) && initialPosition && artifact.relativeCoordToLinearAddress && artifact.callSiteBindings) {
-                // Calculate relative coordinates from absolute coordinates
-                const relativeCoord = [];
-                for (let i = 0; i < frame.absoluteCallIp.length && i < initialPosition.length; i++) {
-                    relativeCoord.push(frame.absoluteCallIp[i] - initialPosition[i]);
-                }
-
-                // Convert relative coord to string key (e.g., "10|20")
-                const coordKey = relativeCoord.join('|');
-
-                // Look up linear address for this coordinate
-                const linearAddress = artifact.relativeCoordToLinearAddress[coordKey];
-                if (linearAddress !== null && linearAddress !== undefined) {
-                    // Look up bindings from callSiteBindings
-                    if (Array.isArray(artifact.callSiteBindings)) {
-                        const binding = artifact.callSiteBindings.find(csb => csb.linearAddress === linearAddress);
-                        if (binding && binding.registerIds && Array.isArray(binding.registerIds)) {
-                            // Build fdrBindings map: FDR index -> register ID
-                            frameBindings = {};
-                            for (let i = 0; i < binding.registerIds.length; i++) {
-                                const registerId = binding.registerIds[i];
-                                const fdrId = INSTRUCTION_CONSTANTS.FDR_BASE + i;
-                                frameBindings[fdrId] = registerId;
-                            }
-                        }
-                    }
-                }
-            }
-
-            // If no bindings from artifact, check runtime fdrBindings (fallback, usually empty)
-            if (!frameBindings && frame.fdrBindings && typeof frame.fdrBindings === 'object') {
-                frameBindings = frame.fdrBindings;
-            }
-
-            // Check if current FDR is bound to another register in this frame
             if (frameBindings) {
                 const mappedId = frameBindings[currentRegId];
                 if (mappedId !== null && mappedId !== undefined) {
@@ -284,42 +204,28 @@ export class AnnotationUtils {
                         throw new Error(`resolveBindingChain: invalid mapped register ID in bindings: ${mappedId}`);
                     }
                     currentRegId = parsedId;
-
-                    // If we've reached a DR or PDR register (below FDR_BASE), we're done
-                    if (currentRegId < INSTRUCTION_CONSTANTS.FDR_BASE) {
+                    if (currentRegId < BANK_BY_NAME.FDR.base) {
                         return currentRegId;
                     }
-                    // Otherwise, continue with the new FDR ID
                 } else {
-                    // End of chain - no more bindings for this register
                     break;
                 }
             } else {
-                // No bindings available for this frame - cannot continue resolving
                 break;
             }
         }
 
-        // Return the final register ID (could be FDR if chain didn't resolve completely)
         return currentRegId;
     }
 
     /**
      * Resolves the binding chain through the call stack and returns the complete path.
-     * Similar to resolveBindingChain, but returns an array of register IDs representing
-     * the complete chain from the source DR/PDR register to the parameter's FDR.
-     * <p>
-     * The path is returned in display order: from source to target.
-     * For example, if parameter 0 is bound to FDR0, which is bound to FDR1 in the first frame,
-     * which is bound to DR0 in the second frame, this returns [0, 2001, 2000] (DR0 -> FDR1 -> FDR0).
-     * The last element is the current FDR that holds the parameter value.
      *
-     * @param {number} paramIndex - The parameter index (0-based) in the procedure's parameter list.
-     * @param {Array} callStack - The call stack frames (array of ProcFrame objects).
+     * @param {number} paramIndex - The parameter index (0-based).
+     * @param {Array} callStack - The call stack frames.
      * @param {object} artifact - The ProgramArtifact containing callSiteBindings.
      * @param {object} organismState - The organism state containing initialPosition.
-     * @returns {Array<number>} An array of register IDs representing the binding chain path in display order (source to target).
-     * @throws {Error} If paramIndex, callStack, artifact, or organismState is invalid, or if callStack is empty.
+     * @returns {Array<number>} Register IDs in display order (source to target).
      */
     static resolveBindingChainWithPath(paramIndex, callStack, artifact, organismState) {
         if (paramIndex === null || paramIndex === undefined || typeof paramIndex !== 'number' || isNaN(paramIndex)) {
@@ -341,59 +247,23 @@ export class AnnotationUtils {
             throw new Error(`resolveBindingChainWithPath: organismState must be an object, got: ${organismState}`);
         }
 
-        // Start with FDR index (parameter maps to FDR at FDR_BASE + paramIndex)
-        let currentRegId = INSTRUCTION_CONSTANTS.FDR_BASE + paramIndex;
-        const path = [currentRegId]; // Start with the parameter's FDR
+        let currentRegId = BANK_BY_NAME.FDR.base + paramIndex;
+        const path = [currentRegId];
 
-        // Get initialPosition for coordinate conversion
         let initialPosition = null;
         if (organismState.initialPosition && organismState.initialPosition.components && Array.isArray(organismState.initialPosition.components)) {
             initialPosition = organismState.initialPosition.components;
         }
 
-        // Iterate through call stack frames to resolve the binding chain
         for (const frame of callStack) {
-            if (!frame) {
-                continue;
+            if (!frame) continue;
+
+            let frameBindings = _resolveFrameBindings(frame, initialPosition, artifact);
+
+            if (!frameBindings && frame.parameterBindings && typeof frame.parameterBindings === 'object') {
+                frameBindings = frame.parameterBindings;
             }
 
-            // Get bindings from artifact for this frame's CALL instruction
-            let frameBindings = null;
-            if (frame.absoluteCallIp && Array.isArray(frame.absoluteCallIp) && initialPosition && artifact.relativeCoordToLinearAddress && artifact.callSiteBindings) {
-                // Calculate relative coordinates from absolute coordinates
-                const relativeCoord = [];
-                for (let i = 0; i < frame.absoluteCallIp.length && i < initialPosition.length; i++) {
-                    relativeCoord.push(frame.absoluteCallIp[i] - initialPosition[i]);
-                }
-
-                // Convert relative coord to string key (e.g., "10|20")
-                const coordKey = relativeCoord.join('|');
-
-                // Look up linear address for this coordinate
-                const linearAddress = artifact.relativeCoordToLinearAddress[coordKey];
-                if (linearAddress !== null && linearAddress !== undefined) {
-                    // Look up bindings from callSiteBindings
-                    if (Array.isArray(artifact.callSiteBindings)) {
-                        const binding = artifact.callSiteBindings.find(csb => csb.linearAddress === linearAddress);
-                        if (binding && binding.registerIds && Array.isArray(binding.registerIds)) {
-                            // Build fdrBindings map: FDR index -> register ID
-                            frameBindings = {};
-                            for (let i = 0; i < binding.registerIds.length; i++) {
-                                const registerId = binding.registerIds[i];
-                                const fdrId = INSTRUCTION_CONSTANTS.FDR_BASE + i;
-                                frameBindings[fdrId] = registerId;
-                            }
-                        }
-                    }
-                }
-            }
-
-            // If no bindings from artifact, check runtime fdrBindings (fallback, usually empty)
-            if (!frameBindings && frame.fdrBindings && typeof frame.fdrBindings === 'object') {
-                frameBindings = frame.fdrBindings;
-            }
-
-            // Check if current FDR is bound to another register in this frame
             if (frameBindings) {
                 const mappedId = frameBindings[currentRegId];
                 if (mappedId !== null && mappedId !== undefined) {
@@ -402,36 +272,26 @@ export class AnnotationUtils {
                         throw new Error(`resolveBindingChainWithPath: invalid mapped register ID in bindings: ${mappedId}`);
                     }
                     currentRegId = parsedId;
-                    path.push(currentRegId); // Add to path
-
-                    // If we've reached a DR or PDR register (below FDR_BASE), we're done
-                    if (currentRegId < INSTRUCTION_CONSTANTS.FDR_BASE) {
-                        // Reverse the path for display: show from source (DR/PDR) to current (FDR)
+                    path.push(currentRegId);
+                    if (currentRegId < BANK_BY_NAME.FDR.base) {
                         return path.reverse();
                     }
-                    // Otherwise, continue with the new FDR ID
                 } else {
-                    // End of chain - no more bindings for this register
                     break;
                 }
             } else {
-                // No bindings available for this frame - cannot continue resolving
                 break;
             }
         }
 
-        // Reverse the path for display: show from source (DR/PDR) to current (FDR)
-        // The path was built as [FDR0, FDR1, DR0] (parameter to source)
-        // Return it as [DR0, FDR1, FDR0] (source to parameter) for display
         return path.reverse();
     }
 
     /**
-     * Gets the register value by numeric register ID (instead of canonical name).
-     * This is useful when working with register IDs directly from binding chains.
+     * Gets the register value by numeric register ID from the flat registers array.
      *
      * @param {number} registerId - The numeric register ID.
-     * @param {object} state - The organism's state object containing register arrays.
+     * @param {object} state - The organism's state object containing a flat registers array.
      * @returns {*} The value of the register.
      * @throws {Error} If registerId or state is invalid, or if the register is not found.
      */
@@ -442,62 +302,64 @@ export class AnnotationUtils {
         if (!state || typeof state !== 'object') {
             throw new Error(`getRegisterValueById: state must be an object, got: ${state}`);
         }
-
-        // Dispatch order: descending by base (FDR=1024 > PDR=512 > LR=256 > DR=0)
-        if (registerId >= INSTRUCTION_CONSTANTS.FDR_BASE) {
-            const index = registerId - INSTRUCTION_CONSTANTS.FDR_BASE;
-            if (!state.formalDataRegisters || !Array.isArray(state.formalDataRegisters)) {
-                throw new Error(`getRegisterValueById: state.formalDataRegisters is missing or invalid`);
-            }
-            if (index < 0 || index >= state.formalDataRegisters.length) {
-                throw new Error(`getRegisterValueById: FDR register ${index} not found (registerId: ${registerId}, only ${state.formalDataRegisters.length} available)`);
-            }
-            return state.formalDataRegisters[index];
+        if (!state.registers || !Array.isArray(state.registers)) {
+            throw new Error(`getRegisterValueById: state.registers is missing or invalid`);
         }
 
-        if (registerId >= INSTRUCTION_CONSTANTS.PDR_BASE) {
-            const index = registerId - INSTRUCTION_CONSTANTS.PDR_BASE;
-            if (!state.procDataRegisters || !Array.isArray(state.procDataRegisters)) {
-                throw new Error(`getRegisterValueById: state.procDataRegisters is missing or invalid`);
+        // Find bank by descending base
+        for (let i = REGISTER_BANKS.length - 1; i >= 0; i--) {
+            const bank = REGISTER_BANKS[i];
+            if (registerId >= bank.base) {
+                const index = registerId - bank.base;
+                if (index < 0 || index >= bank.count) {
+                    throw new Error(`getRegisterValueById: ${bank.name} register ${index} not found (registerId: ${registerId}, only ${bank.count} available)`);
+                }
+                const slot = bank.slotOffset + index;
+                if (slot >= state.registers.length) {
+                    throw new Error(`getRegisterValueById: slot ${slot} exceeds registers array length (${state.registers.length})`);
+                }
+                return state.registers[slot];
             }
-            if (index < 0 || index >= state.procDataRegisters.length) {
-                throw new Error(`getRegisterValueById: PDR register ${index} not found (registerId: ${registerId}, only ${state.procDataRegisters.length} available)`);
-            }
-            return state.procDataRegisters[index];
-        }
-
-        if (registerId >= INSTRUCTION_CONSTANTS.LR_BASE) {
-            const index = registerId - INSTRUCTION_CONSTANTS.LR_BASE;
-            if (!state.locationRegisters || !Array.isArray(state.locationRegisters)) {
-                throw new Error(`getRegisterValueById: state.locationRegisters is missing or invalid`);
-            }
-            if (index < 0 || index >= state.locationRegisters.length) {
-                throw new Error(`getRegisterValueById: LR register ${index} not found (registerId: ${registerId}, only ${state.locationRegisters.length} available)`);
-            }
-            return state.locationRegisters[index];
-        }
-
-        if (registerId >= 0) {
-            const index = registerId - INSTRUCTION_CONSTANTS.PDR_BASE;
-            if (!state.procDataRegisters || !Array.isArray(state.procDataRegisters)) {
-                throw new Error(`getRegisterValueById: state.procDataRegisters is missing or invalid`);
-            }
-            if (index < 0 || index >= state.procDataRegisters.length) {
-                throw new Error(`getRegisterValueById: PDR register ${index} not found (registerId: ${registerId}, only ${state.procDataRegisters.length} available)`);
-            }
-            return state.procDataRegisters[index];
-        }
-        
-        if (registerId >= 0) {
-            if (!state.dataRegisters || !Array.isArray(state.dataRegisters)) {
-                throw new Error(`getRegisterValueById: state.dataRegisters is missing or invalid`);
-            }
-            if (registerId >= state.dataRegisters.length) {
-                throw new Error(`getRegisterValueById: DR register ${registerId} not found (only ${state.dataRegisters.length} available)`);
-            }
-            return state.dataRegisters[registerId];
         }
 
         throw new Error(`getRegisterValueById: invalid register ID ${registerId} (must be non-negative)`);
     }
+}
+
+/**
+ * Resolves frame bindings from artifact for a given call stack frame.
+ * @private
+ */
+function _resolveFrameBindings(frame, initialPosition, artifact) {
+    if (!frame.absoluteCallIp || !Array.isArray(frame.absoluteCallIp) || !initialPosition ||
+        !artifact.relativeCoordToLinearAddress || !artifact.callSiteBindings) {
+        return null;
+    }
+
+    const relativeCoord = [];
+    for (let i = 0; i < frame.absoluteCallIp.length && i < initialPosition.length; i++) {
+        relativeCoord.push(frame.absoluteCallIp[i] - initialPosition[i]);
+    }
+
+    const coordKey = relativeCoord.join('|');
+    const linearAddress = artifact.relativeCoordToLinearAddress[coordKey];
+    if (linearAddress === null || linearAddress === undefined) {
+        return null;
+    }
+
+    if (!Array.isArray(artifact.callSiteBindings)) {
+        return null;
+    }
+
+    const binding = artifact.callSiteBindings.find(csb => csb.linearAddress === linearAddress);
+    if (!binding || !binding.registerIds || !Array.isArray(binding.registerIds)) {
+        return null;
+    }
+
+    const bindings = {};
+    for (let i = 0; i < binding.registerIds.length; i++) {
+        const fdrId = BANK_BY_NAME.FDR.base + i;
+        bindings[fdrId] = binding.registerIds[i];
+    }
+    return bindings;
 }

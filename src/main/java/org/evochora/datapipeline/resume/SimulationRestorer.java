@@ -34,7 +34,6 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TokenMapEntry;
 import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.runtime.Simulation;
-import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.label.ILabelMatchingStrategy;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -530,22 +529,13 @@ public class SimulationRestorer {
             builder.activeDpIndex(state.getActiveDpIndex());
         }
 
-        // Registers
-        if (state.getDataRegistersCount() > 0) {
-            builder.dataRegisters(convertRegisterValues(state.getDataRegistersList()));
-        }
-        if (state.getProcDataRegistersCount() > 0) {
-            builder.procDataRegisters(convertRegisterValues(state.getProcDataRegistersList()));
-        }
-        if (state.getFormalDataRegistersCount() > 0) {
-            builder.formalDataRegisters(convertRegisterValues(state.getFormalDataRegistersList()));
-        }
-        if (state.getLocationRegistersCount() > 0) {
-            List<Object> lrs = new ArrayList<>();
-            for (Vector v : state.getLocationRegistersList()) {
-                lrs.add(toIntArray(v));
+        // Registers (flat array)
+        if (state.getRegistersCount() > 0) {
+            Object[] regs = new Object[state.getRegistersCount()];
+            for (int i = 0; i < state.getRegistersCount(); i++) {
+                regs[i] = convertRegisterValue(state.getRegisters(i));
             }
-            builder.locationRegisters(lrs);
+            builder.registers(regs);
         }
 
         // Stacks
@@ -585,17 +575,6 @@ public class SimulationRestorer {
     }
 
     /**
-     * Converts a list of RegisterValue protos to a list of Objects (Integer or int[]).
-     */
-    private static List<Object> convertRegisterValues(List<RegisterValue> values) {
-        List<Object> result = new ArrayList<>();
-        for (RegisterValue rv : values) {
-            result.add(convertRegisterValue(rv));
-        }
-        return result;
-    }
-
-    /**
      * Converts a single RegisterValue proto to Object (Integer or int[]).
      */
     private static Object convertRegisterValue(RegisterValue rv) {
@@ -611,31 +590,12 @@ public class SimulationRestorer {
      * Converts a ProcFrame proto to runtime ProcFrame.
      */
     private static Organism.ProcFrame convertProcFrame(ProcFrame pf) {
-        // D4 transition: assemble separate Proto fields into compact savedRegisters array (removed in D5)
-        List<RegisterBank> banks = RegisterBank.allSavedOnCall();
-        int totalSize = banks.stream().mapToInt(b -> b.count).sum();
-        Object[] savedRegisters = new Object[totalSize];
-        int offset = 0;
-        for (RegisterBank bank : banks) {
-            if (bank == RegisterBank.PDR) {
-                for (int i = 0; i < Math.min(bank.count, pf.getSavedPdrsCount()); i++) {
-                    savedRegisters[offset + i] = convertRegisterValue(pf.getSavedPdrs(i));
-                }
-            } else if (bank == RegisterBank.FDR) {
-                for (int i = 0; i < Math.min(bank.count, pf.getSavedFdrsCount()); i++) {
-                    savedRegisters[offset + i] = convertRegisterValue(pf.getSavedFdrs(i));
-                }
-            }
-            int dims = pf.getAbsoluteReturnIp().getComponentsCount();
-            for (int i = 0; i < bank.count; i++) {
-                if (savedRegisters[offset + i] == null) {
-                    savedRegisters[offset + i] = bank.isLocation ? new int[dims] : 0;
-                }
-            }
-            offset += bank.count;
+        Object[] savedRegisters = new Object[pf.getSavedRegistersCount()];
+        for (int i = 0; i < savedRegisters.length; i++) {
+            savedRegisters[i] = convertRegisterValue(pf.getSavedRegisters(i));
         }
 
-        Map<Integer, Integer> parameterBindings = new HashMap<>(pf.getFdrBindingsMap());
+        Map<Integer, Integer> parameterBindings = new HashMap<>(pf.getParameterBindingsMap());
 
         return new Organism.ProcFrame(
             pf.getProcName(),

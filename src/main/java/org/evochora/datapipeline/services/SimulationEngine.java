@@ -761,17 +761,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         }
         organismStateBuilder.setActiveDpIndex(o.getActiveDpIndex());
 
-        for (Object rv : o.getDrs()) {
-            organismStateBuilder.addDataRegisters(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
-        }
-        for (Object rv : o.getPdrs()) {
-            organismStateBuilder.addProcDataRegisters(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
-        }
-        for (Object rv : o.getFdrs()) {
-            organismStateBuilder.addFormalDataRegisters(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
-        }
-        for (Object loc : o.getLrs()) {
-            organismStateBuilder.addLocationRegisters(convertVectorReuse((int[]) loc, vectorBuilder));
+        for (int slot = 0; slot < RegisterBank.TOTAL_REGISTER_COUNT; slot++) {
+            organismStateBuilder.addRegisters(convertRegisterValueReuse(o.getRegisters()[slot], registerValueBuilder, vectorBuilder));
         }
         for (Object rv : o.getDataStack()) {
             organismStateBuilder.addDataStack(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
@@ -1044,21 +1035,11 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 .setProcName(frame.procName())
                 .setAbsoluteReturnIp(convertVectorReuse(frame.absoluteReturnIp(), vectorBuilder))
                 .setAbsoluteCallIp(convertVectorReuse(frame.absoluteCallIp(), vectorBuilder))
-                .putAllFdrBindings(frame.parameterBindings());
+                .putAllParameterBindings(frame.parameterBindings());
 
-        // D4 transition: split compact savedRegisters into separate Proto fields (removed in D5)
         if (frame.savedRegisters() != null) {
-            int offset = 0;
-            for (RegisterBank bank : RegisterBank.allSavedOnCall()) {
-                for (int i = 0; i < bank.count; i++) {
-                    Object rv = frame.savedRegisters()[offset + i];
-                    if (bank == RegisterBank.PDR) {
-                        procFrameBuilder.addSavedPdrs(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
-                    } else if (bank == RegisterBank.FDR) {
-                        procFrameBuilder.addSavedFdrs(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
-                    }
-                }
-                offset += bank.count;
+            for (Object rv : frame.savedRegisters()) {
+                procFrameBuilder.addSavedRegisters(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
             }
         }
 

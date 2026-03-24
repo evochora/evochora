@@ -201,10 +201,7 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
      */
     private byte[] buildRuntimeStateBlob(OrganismState org, ICompressionCodec codec) {
         OrganismRuntimeState.Builder runtimeStateBuilder = OrganismRuntimeState.newBuilder()
-                .addAllDataRegisters(org.getDataRegistersList())
-                .addAllProcDataRegisters(org.getProcDataRegistersList())
-                .addAllFormalDataRegisters(org.getFormalDataRegistersList())
-                .addAllLocationRegisters(org.getLocationRegistersList())
+                .addAllRegisters(org.getRegistersList())
                 .addAllDataStack(org.getDataStackList())
                 .addAllLocationStack(org.getLocationStackList())
                 .addAllCallStack(org.getCallStackList())
@@ -416,10 +413,7 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
                 .addAllDataPointers(dataPointers)
                 .setActiveDpIndex(activeDpIndex)
                 // From runtime_state_blob
-                .addAllDataRegisters(runtimeState.getDataRegistersList())
-                .addAllProcDataRegisters(runtimeState.getProcDataRegistersList())
-                .addAllFormalDataRegisters(runtimeState.getFormalDataRegistersList())
-                .addAllLocationRegisters(runtimeState.getLocationRegistersList())
+                .addAllRegisters(runtimeState.getRegistersList())
                 .addAllDataStack(runtimeState.getDataStackList())
                 .addAllLocationStack(runtimeState.getLocationStackList())
                 .addAllCallStack(runtimeState.getCallStackList())

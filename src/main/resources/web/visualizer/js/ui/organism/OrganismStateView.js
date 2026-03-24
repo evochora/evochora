@@ -1,5 +1,5 @@
 import { ValueFormatter } from '../../utils/ValueFormatter.js';
-import { AnnotationUtils, INSTRUCTION_CONSTANTS } from '../../annotator/AnnotationUtils.js';
+import { AnnotationUtils, REGISTER_BANKS, BANK_BY_NAME } from '../../annotator/AnnotationUtils.js';
 
 /**
  * Renders the dynamic runtime state of an organism in the organism panel.
@@ -21,7 +21,7 @@ export class OrganismStateView {
 
     /**
      * Sets the static program context (the ProgramArtifact).
-     * This allows the view to resolve fdrBindings from the artifact for debugging purposes.
+     * This allows the view to resolve parameterBindings from the artifact for debugging purposes.
      *
      * @param {object} artifact - The ProgramArtifact containing call site bindings and coordinate mappings.
      */
@@ -60,9 +60,9 @@ export class OrganismStateView {
                     console.error(`ValueFormatter failed for register at index ${i}:`, error.message, 'Value:', reg);
                     return errorHtml;
                 }
-                
+
                 let finalValue = removeBrackets ? currentValue.replace(/^\[|\]$/g, '') : currentValue;
-                
+
                 let isChanged = false;
                 if (isForwardStep && previousRegisters && previousRegisters[i]) {
                     let previousValue;
@@ -79,10 +79,19 @@ export class OrganismStateView {
                         }
                     }
                 }
-                
+
                 const paddedValue = String(finalValue).padEnd(10);
                 return isChanged ? `<span class="changed-field">${paddedValue}</span>` : paddedValue;
             }).join('');
+        };
+
+        /**
+         * @private
+         * Helper to extract a bank's registers from the flat registers array.
+         */
+        const getBankRegisters = (registers, bank) => {
+            if (!registers || !Array.isArray(registers)) return [];
+            return registers.slice(bank.slotOffset, bank.slotOffset + bank.count);
         };
 
         /**
@@ -147,7 +156,6 @@ export class OrganismStateView {
                     }
 
                     // Add parameters using REF/VAL syntax
-                    // Get parameter info from artifact (contains type information)
                     let paramInfo = null;
                     if (this.artifact && this.artifact.procNameToParamNames) {
                         const procNameUpper = (entry.procName || '').toUpperCase();
@@ -156,48 +164,44 @@ export class OrganismStateView {
                             paramInfo = paramEntry.params;
                         }
                     }
-                    
-                    // Fallback: Get fdrBindings (for legacy WITH syntax or when artifact unavailable)
-                    let fdrBindings = entry.fdrBindings;
-                    if ((!fdrBindings || Object.keys(fdrBindings).length === 0) && this.artifact && staticInfo && entry.absoluteCallIp) {
-                        // Try to resolve bindings from artifact at debug time using the CALL instruction address
-                        fdrBindings = resolveBindingsFromArtifact(entry.absoluteCallIp, staticInfo);
+
+                    // Resolve parameter bindings
+                    let parameterBindings = entry.parameterBindings;
+                    if ((!parameterBindings || Object.keys(parameterBindings).length === 0) && this.artifact && staticInfo && entry.absoluteCallIp) {
+                        parameterBindings = resolveBindingsFromArtifact(entry.absoluteCallIp, staticInfo);
                     }
-                    
-                    // Format parameters using new REF/VAL syntax if parameter info available
+
+                    // FDR bank info for parameter display
+                    const fdrBank = BANK_BY_NAME.FDR;
+
+                    // Format parameters using REF/VAL syntax if parameter info available
                     if (paramInfo && paramInfo.length > 0) {
                         const refParams = [];
                         const valParams = [];
                         const withParams = [];
-                        
-                        // Separate REF, VAL, and WITH parameters
-                        // Handle both numeric enum values (0, 1, 2) and string enum names
+
                         for (let i = 0; i < paramInfo.length; i++) {
                             const param = paramInfo[i];
                             if (!param || !param.name) continue;
-                            
+
                             const paramType = param.type;
                             let isRef = false;
                             let isVal = false;
                             let isWith = false;
-                            
+
                             if (typeof paramType === 'number') {
-                                // Numeric enum: 0=REF, 1=VAL, 2=WITH
                                 isRef = paramType === 0;
                                 isVal = paramType === 1;
                                 isWith = paramType === 2;
                             } else if (typeof paramType === 'string') {
-                                // String enum: "PARAM_TYPE_REF", "PARAM_TYPE_VAL", etc.
                                 const typeUpper = paramType.toUpperCase();
                                 isRef = typeUpper === 'REF' || typeUpper === 'PARAM_TYPE_REF';
                                 isVal = typeUpper === 'VAL' || typeUpper === 'PARAM_TYPE_VAL';
                                 isWith = typeUpper === 'WITH' || typeUpper === 'PARAM_TYPE_WITH';
-                            }
-                            // If type is missing, treat as REF (should not happen if Java code sets it explicitly)
-                            else if (paramType === undefined || paramType === null) {
+                            } else if (paramType === undefined || paramType === null) {
                                 isRef = true;
                             }
-                            
+
                             if (isRef) {
                                 refParams.push({ index: i, name: param.name });
                             } else if (isVal) {
@@ -206,20 +210,17 @@ export class OrganismStateView {
                                 withParams.push({ index: i, name: param.name });
                             }
                         }
-                        
-                        // Format REF parameters (from current FDRs - consistent with VAL)
-                        // REF parameters are call-by-reference, but we show the FDR register and its current value
-                        // Note: Values are only available after PUSI/POP instructions have been executed
-                        if (refParams.length > 0 && currentState && currentState.formalDataRegisters && Array.isArray(currentState.formalDataRegisters)) {
+
+                        // Format REF parameters
+                        if (refParams.length > 0 && currentState && currentState.registers && Array.isArray(currentState.registers)) {
                             result += ' REF ';
                             const refStrings = [];
                             for (const refParam of refParams) {
-                                // REF parameters are stored in FDRs after the call
-                                // The index in paramInfo corresponds to the FDR index
-                                if (refParam.index < currentState.formalDataRegisters.length) {
+                                const fdrSlot = fdrBank.slotOffset + refParam.index;
+                                if (fdrSlot < currentState.registers.length) {
                                     try {
-                                        const fdrDisplay = AnnotationUtils.formatRegisterName(INSTRUCTION_CONSTANTS.FDR_BASE + refParam.index);
-                                        const refValue = ValueFormatter.format(currentState.formalDataRegisters[refParam.index]);
+                                        const fdrDisplay = AnnotationUtils.formatRegisterName(fdrBank.base + refParam.index);
+                                        const refValue = ValueFormatter.format(currentState.registers[fdrSlot]);
                                         refStrings.push(`${refParam.name}<span class="injected-value">[${fdrDisplay}=${refValue}]</span>`);
                                     } catch (error) {
                                         console.error('ValueFormatter failed for REF parameter:', error.message);
@@ -231,20 +232,17 @@ export class OrganismStateView {
                             }
                             result += refStrings.join(' ');
                         }
-                        
-                        // Format VAL parameters (from current FDRs - includes literals)
-                        // VAL parameters are call-by-value, but we show the FDR register and its current value (consistent with REF/WITH)
-                        // Note: Values are only available after PUSI/POP instructions have been executed
-                        if (valParams.length > 0 && currentState && currentState.formalDataRegisters && Array.isArray(currentState.formalDataRegisters)) {
+
+                        // Format VAL parameters
+                        if (valParams.length > 0 && currentState && currentState.registers && Array.isArray(currentState.registers)) {
                             result += ' VAL ';
                             const valStrings = [];
                             for (const valParam of valParams) {
-                                // VAL parameters are stored in FDRs after the call
-                                // The index in paramInfo corresponds to the FDR index
-                                if (valParam.index < currentState.formalDataRegisters.length) {
+                                const fdrSlot = fdrBank.slotOffset + valParam.index;
+                                if (fdrSlot < currentState.registers.length) {
                                     try {
-                                        const fdrDisplay = AnnotationUtils.formatRegisterName(INSTRUCTION_CONSTANTS.FDR_BASE + valParam.index);
-                                        const valValue = ValueFormatter.format(currentState.formalDataRegisters[valParam.index]);
+                                        const fdrDisplay = AnnotationUtils.formatRegisterName(fdrBank.base + valParam.index);
+                                        const valValue = ValueFormatter.format(currentState.registers[fdrSlot]);
                                         valStrings.push(`${valParam.name}<span class="injected-value">[${fdrDisplay}=${valValue}]</span>`);
                                     } catch (error) {
                                         console.error('ValueFormatter failed for VAL parameter:', error.message);
@@ -257,19 +255,16 @@ export class OrganismStateView {
                             result += valStrings.join(' ');
                     }
 
-                        // Format WITH parameters (legacy syntax - same as REF, from current FDRs)
-                        // WITH parameters are call-by-reference (legacy), but we show the FDR register and its current value
-                        // Note: Values are only available after PUSI/POP instructions have been executed
-                        if (withParams.length > 0 && currentState && currentState.formalDataRegisters && Array.isArray(currentState.formalDataRegisters)) {
+                        // Format WITH parameters (legacy)
+                        if (withParams.length > 0 && currentState && currentState.registers && Array.isArray(currentState.registers)) {
                             result += ' WITH ';
                             const withStrings = [];
                             for (const withParam of withParams) {
-                                // WITH parameters are stored in FDRs after the call
-                                // The index in paramInfo corresponds to the FDR index
-                                if (withParam.index < currentState.formalDataRegisters.length) {
+                                const fdrSlot = fdrBank.slotOffset + withParam.index;
+                                if (fdrSlot < currentState.registers.length) {
                                     try {
-                                        const fdrDisplay = AnnotationUtils.formatRegisterName(INSTRUCTION_CONSTANTS.FDR_BASE + withParam.index);
-                                        const withValue = ValueFormatter.format(currentState.formalDataRegisters[withParam.index]);
+                                        const fdrDisplay = AnnotationUtils.formatRegisterName(fdrBank.base + withParam.index);
+                                        const withValue = ValueFormatter.format(currentState.registers[fdrSlot]);
                                         withStrings.push(`${withParam.name}<span class="injected-value">[${fdrDisplay}=${withValue}]</span>`);
                                     } catch (error) {
                                         console.error('ValueFormatter failed for WITH parameter:', error.message);
@@ -281,17 +276,16 @@ export class OrganismStateView {
                             }
                             result += withStrings.join(' ');
                         }
-                    } else if (fdrBindings && Object.keys(fdrBindings).length > 0) {
-                        // Fallback: Legacy WITH syntax (when parameter info not available)
+                    } else if (parameterBindings && Object.keys(parameterBindings).length > 0) {
+                        // Fallback: Legacy WITH syntax
                         result += ' WITH ';
                         const paramStrings = [];
-                        for (const [fdrIdStr, boundRegisterId] of Object.entries(fdrBindings)) {
+                        for (const [fdrIdStr, boundRegisterId] of Object.entries(parameterBindings)) {
                             const fdrId = parseInt(fdrIdStr);
                             const boundId = typeof boundRegisterId === 'number' ? boundRegisterId : parseInt(boundRegisterId);
-                            
+
                             const registerDisplay = AnnotationUtils.formatRegisterName(boundId);
-                            
-                            // Get value from current organism state (WITH parameters point to registers)
+
                             let registerValue = 'N/A';
                             if (currentState) {
                                 try {
@@ -301,7 +295,7 @@ export class OrganismStateView {
                                     registerValue = 'ERR';
                                 }
                             }
-                            
+
                             const fdrDisplay = AnnotationUtils.formatRegisterName(fdrId);
                             paramStrings.push(`${fdrDisplay}<span class="injected-value">[${registerDisplay}=${registerValue}]</span>`);
                         }
@@ -331,7 +325,6 @@ export class OrganismStateView {
                     return '';
                 }).filter(entry => entry !== '');
 
-                // Dynamic abbreviation like other stacks
                 const maxColumns = 8;
                 let displayEntries = formattedEntries;
                 if (formattedEntries.length > maxColumns) {
@@ -340,19 +333,12 @@ export class OrganismStateView {
                     displayEntries.push(`(+${remainingCount})`);
                 }
 
-                // Distribute across columns
                 return displayEntries.map(entry => String(entry).padEnd(10)).join('');
             }
         };
 
         /**
-         * Resolves fdrBindings from artifact for a given absolute call IP.
-         * This is used at debug time to reconstruct parameter bindings that weren't
-         * available at runtime due to self-modifying code.
-         *
-         * @param {number[]} absoluteCallIp - The absolute coordinates of the CALL instruction.
-         * @param {object} staticInfo - The static organism info containing initialPosition.
-         * @returns {object|null} A map of FDR IDs to bound register IDs, or null if not resolvable.
+         * Resolves parameterBindings from artifact for a given absolute call IP.
          * @private
          */
         const resolveBindingsFromArtifact = (absoluteCallIp, staticInfo) => {
@@ -365,8 +351,6 @@ export class OrganismStateView {
                 return null;
             }
 
-            // Calculate relative coordinates from absolute coordinates with toroidal wrapping.
-            // Must normalize to [0, size) to match the layout engine's non-negative coordinates.
             const envProps = this.artifact?.envProps;
             const worldShape = envProps?.worldShape;
             const toroidal = envProps?.toroidal;
@@ -379,37 +363,32 @@ export class OrganismStateView {
                 relativeCoord.push(rel);
             }
 
-            // Convert relative coord to string key (e.g., "10|20")
             const coordKey = relativeCoord.join('|');
 
-            // Look up linear address for this coordinate
             if (!this.artifact.relativeCoordToLinearAddress || !this.artifact.relativeCoordToLinearAddress[coordKey]) {
                 return null;
             }
 
             const linearAddress = this.artifact.relativeCoordToLinearAddress[coordKey];
 
-            // Look up bindings from callSiteBindings
             if (!this.artifact.callSiteBindings || !Array.isArray(this.artifact.callSiteBindings)) {
                 return null;
             }
 
-            // Find the callSiteBinding with matching linearAddress
             const binding = this.artifact.callSiteBindings.find(csb => csb.linearAddress === linearAddress);
             if (!binding || !binding.registerIds || !Array.isArray(binding.registerIds)) {
                 return null;
             }
 
-            // Build fdrBindings map: FDR index -> register ID
-            // registerIds array: [drId0, drId1, ...] maps to FDR0, FDR1, ...
-            const fdrBindings = {};
+            const fdrBank = BANK_BY_NAME.FDR;
+            const parameterBindings = {};
             for (let i = 0; i < binding.registerIds.length; i++) {
                 const registerId = binding.registerIds[i];
-                const fdrId = INSTRUCTION_CONSTANTS.FDR_BASE + i;
-                fdrBindings[fdrId] = registerId;
+                const fdrId = fdrBank.base + i;
+                parameterBindings[fdrId] = registerId;
             }
 
-            return fdrBindings;
+            return parameterBindings;
         };
 
         // Check for stack changes (only on forward step)
@@ -419,10 +398,17 @@ export class OrganismStateView {
             (JSON.stringify(state.locationStack) !== JSON.stringify(previousState.locationStack));
         const callStackChanged = isForwardStep && previousState &&
             (JSON.stringify(state.callStack) !== JSON.stringify(previousState.callStack));
-        
-        // Format state view (IP, DV, ER, DPs are shown in BasicInfoView changeable-box, not here)
-        // Birth, MR, Parent are shown in the separate info section above
-        const stateLines = `DR:  ${formatRegisters(state.dataRegisters, true, previousState?.dataRegisters)}\nPDR: ${formatRegisters(state.procDataRegisters, true, previousState?.procDataRegisters)}\nFDR: ${formatRegisters(state.formalDataRegisters, true, previousState?.formalDataRegisters)}\nLR:  ${formatRegisters(state.locationRegisters, true, previousState?.locationRegisters)}\n${dataStackChanged ? '<div class="changed-line">DS:  ' : 'DS:  '}${formatStack(state.dataStack, state.dataRegisters?.length || 8, true)}${dataStackChanged ? '</div>' : ''}\n${locationStackChanged ? '<div class="changed-line">LS:  ' : 'LS:  '}${formatStack(state.locationStack, state.dataRegisters?.length || 8, true)}${locationStackChanged ? '</div>' : ''}\n${callStackChanged ? '<div class="changed-line">CS:  ' : 'CS:  '}${formatCallStack(state.callStack, state)}${callStackChanged ? '</div>' : ''}`;
+
+        // Build register display lines from flat registers array via REGISTER_BANKS iteration
+        const registerLines = REGISTER_BANKS.map(bank => {
+            const label = `${bank.name}:`.padEnd(5);
+            const currentRegs = getBankRegisters(state.registers, bank);
+            const prevRegs = previousState ? getBankRegisters(previousState.registers, bank) : null;
+            return `${label}${formatRegisters(currentRegs, true, prevRegs)}`;
+        }).join('\n');
+
+        const drCount = BANK_BY_NAME.DR.count;
+        const stateLines = `${registerLines}\n${dataStackChanged ? '<div class="changed-line">DS:  ' : 'DS:  '}${formatStack(state.dataStack, drCount, true)}${dataStackChanged ? '</div>' : ''}\n${locationStackChanged ? '<div class="changed-line">LS:  ' : 'LS:  '}${formatStack(state.locationStack, drCount, true)}${locationStackChanged ? '</div>' : ''}\n${callStackChanged ? '<div class="changed-line">CS:  ' : 'CS:  '}${formatCallStack(state.callStack, state)}${callStackChanged ? '</div>' : ''}`;
 
         el.innerHTML = `<div class="code-view" style="font-size:0.9em;">${stateLines}</div>`;
 
@@ -430,4 +416,3 @@ export class OrganismStateView {
         this.previousState = { ...state };
     }
 }
-
