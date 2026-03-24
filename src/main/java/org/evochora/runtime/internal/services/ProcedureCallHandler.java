@@ -2,7 +2,7 @@ package org.evochora.runtime.internal.services;
 
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
-import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Environment;
 
@@ -48,8 +48,8 @@ public class ProcedureCallHandler {
         Map<Integer, Integer> parameterBindings = new HashMap<>();
         if (bindings != null) {
             for (int i = 0; i < bindings.length; i++) {
-                if (i < organism.getFdrs().size()) {
-                    parameterBindings.put(Instruction.FDR_BASE + i, bindings[i]);
+                if (i < RegisterBank.FDR.count) {
+                    parameterBindings.put(RegisterBank.FDR.base + i, bindings[i]);
                 }
             }
         }

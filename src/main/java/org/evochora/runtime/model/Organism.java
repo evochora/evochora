@@ -1096,7 +1096,7 @@ public class Organism {
     /** @return The tick when this organism died, or -1L if still alive. */
     public long getDeathTick() { return deathTick; }
 
-    /** @return The flat register array (direct reference, not a copy — for serialization only). */
+    /** @return A copy of the flat register array in RegisterBank slot order. */
     public Object[] getRegisters() { return Arrays.copyOf(registers, registers.length); }
 
     /** @return A copy of the list of Data Registers (DRs). */

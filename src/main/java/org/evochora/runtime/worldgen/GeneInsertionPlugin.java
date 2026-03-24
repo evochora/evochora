@@ -377,7 +377,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
         List<Integer> range = config.getIntList("range");
         int rangeMin = range.get(0);
         int rangeMax = range.get(1);
-        List<int[]> banks = List.of(new int[]{Instruction.LR_BASE, rangeMin, rangeMax});
+        List<int[]> banks = List.of(new int[]{RegisterBank.LR.base, rangeMin, rangeMax});
         return new RegisterConfig(banks);
     }
 
