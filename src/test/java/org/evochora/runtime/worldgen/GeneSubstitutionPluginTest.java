@@ -5,6 +5,7 @@ import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.OpcodeId;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
@@ -306,13 +307,13 @@ class GeneSubstitutionPluginTest {
     void registerStaysInPdrBank() {
         for (int seed = 0; seed < 50; seed++) {
             setUp();
-            placeRegister(5, 5, Instruction.PDR_BASE + 3); // PDR3
+            placeRegister(5, 5, RegisterBank.PDR.base + 3); // PDR3
             GeneSubstitutionPlugin plugin = registerOnlyPlugin(new SeededRandomProvider(seed));
             plugin.substitute(child, environment);
 
             int newValue = environment.getMolecule(5, 5).value();
             assertThat(newValue).as("seed=%d", seed)
-                    .isBetween(Instruction.PDR_BASE, Instruction.PDR_BASE + Config.NUM_PDR_REGISTERS - 1);
+                    .isBetween(RegisterBank.PDR.base, RegisterBank.PDR.base + Config.NUM_PDR_REGISTERS - 1);
         }
     }
 
@@ -320,13 +321,13 @@ class GeneSubstitutionPluginTest {
     void registerStaysInFdrBank() {
         for (int seed = 0; seed < 50; seed++) {
             setUp();
-            placeRegister(5, 5, Instruction.FDR_BASE + 3); // FDR3
+            placeRegister(5, 5, RegisterBank.FDR.base + 3); // FDR3
             GeneSubstitutionPlugin plugin = registerOnlyPlugin(new SeededRandomProvider(seed));
             plugin.substitute(child, environment);
 
             int newValue = environment.getMolecule(5, 5).value();
             assertThat(newValue).as("seed=%d", seed)
-                    .isBetween(Instruction.FDR_BASE, Instruction.FDR_BASE + Config.NUM_FDR_REGISTERS - 1);
+                    .isBetween(RegisterBank.FDR.base, RegisterBank.FDR.base + Config.NUM_FDR_REGISTERS - 1);
         }
     }
 
@@ -334,13 +335,13 @@ class GeneSubstitutionPluginTest {
     void registerStaysInLrBank() {
         for (int seed = 0; seed < 50; seed++) {
             setUp();
-            placeRegister(5, 5, Instruction.LR_BASE + 1); // LR1
+            placeRegister(5, 5, RegisterBank.LR.base + 1); // LR1
             GeneSubstitutionPlugin plugin = registerOnlyPlugin(new SeededRandomProvider(seed));
             plugin.substitute(child, environment);
 
             int newValue = environment.getMolecule(5, 5).value();
             assertThat(newValue).as("seed=%d", seed)
-                    .isBetween(Instruction.LR_BASE, Instruction.LR_BASE + Config.NUM_LOCATION_REGISTERS - 1);
+                    .isBetween(RegisterBank.LR.base, RegisterBank.LR.base + Config.NUM_LOCATION_REGISTERS - 1);
         }
     }
 

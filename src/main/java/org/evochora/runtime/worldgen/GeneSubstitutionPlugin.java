@@ -293,8 +293,7 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
     /**
      * Mutates a REGISTER molecule's value by ±1, clamped within the register bank.
      * <p>
-     * Bank detection: {@code >=LR_BASE} → LR, {@code >=FDR_BASE} → FDR,
-     * {@code >=PDR_BASE} → PDR, else DR.
+     * Bank detection uses {@link RegisterBank} base addresses in descending order.
      *
      * @param regValue The current register ID.
      * @return The mutated register ID, clamped to bank boundaries.

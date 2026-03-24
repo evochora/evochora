@@ -60,12 +60,12 @@ public class SimulationTest {
         Organism orgLow = Organism.create(sim, new int[]{0, 0}, 2000, sim.getLogger());
         orgLow.setDv(new int[]{1, 0});
         orgLow.setDp(0, new int[]{0, 0});        int payloadLow = new Molecule(Config.TYPE_DATA, 11).toInt();
-        orgLow.setDr(0, payloadLow);
+        orgLow.writeOperand(0, payloadLow);
 
         Organism orgHigh = Organism.create(sim, new int[]{10, 0}, 2000, sim.getLogger());
         orgHigh.setDv(new int[]{1, 0});
         orgHigh.setDp(0, new int[]{0, 0});        int payloadHigh = new Molecule(Config.TYPE_DATA, 22).toInt();
-        orgHigh.setDr(0, payloadHigh);
+        orgHigh.writeOperand(0, payloadHigh);
 
         sim.addOrganism(orgLow);
         sim.addOrganism(orgHigh);
@@ -96,12 +96,12 @@ public class SimulationTest {
         Organism o1 = Organism.create(sim, new int[]{0, 0}, 2000, sim.getLogger());
         o1.setDv(new int[]{1, 0});
         o1.setDp(0, new int[]{0, 0});        int v1 = new Molecule(Config.TYPE_DATA, 5).toInt();
-        o1.setDr(0, v1);
+        o1.writeOperand(0, v1);
 
         Organism o2 = Organism.create(sim, new int[]{10, 0}, 2000, sim.getLogger());
         o2.setDv(new int[]{1, 0});
         o2.setDp(0, new int[]{1, 0});        int v2 = new Molecule(Config.TYPE_DATA, 7).toInt();
-        o2.setDr(0, v2);
+        o2.writeOperand(0, v2);
 
         sim.addOrganism(o1);
         sim.addOrganism(o2);

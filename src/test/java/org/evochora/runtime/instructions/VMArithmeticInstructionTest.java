@@ -67,10 +67,10 @@ public class VMArithmeticInstructionTest {
     @Test
     @Tag("unit")
     void testAddi() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 10).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 10).toInt());
         placeInstruction("ADDI", 0, 5);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 15).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 15).toInt());
     }
 
     /**
@@ -80,11 +80,11 @@ public class VMArithmeticInstructionTest {
     @Test
     @Tag("unit")
     void testAddr() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 3).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 4).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 3).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 4).toInt());
         placeInstruction("ADDR", 0, 1);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
     }
 
     /**
@@ -109,10 +109,10 @@ public class VMArithmeticInstructionTest {
     @Test
     @Tag("unit")
     void testSubi() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 10).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 10).toInt());
         placeInstruction("SUBI", 0, 3);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
     }
 
     /**
@@ -122,11 +122,11 @@ public class VMArithmeticInstructionTest {
     @Test
     @Tag("unit")
     void testSubr() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 10).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 6).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 10).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 6).toInt());
         placeInstruction("SUBR", 0, 1);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 4).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 4).toInt());
     }
 
     /**
@@ -151,10 +151,10 @@ public class VMArithmeticInstructionTest {
     @Test
     @Tag("unit")
     void testMuli() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 7).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 7).toInt());
         placeInstruction("MULI", 0, 6);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 42).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 42).toInt());
     }
 
     /**
@@ -164,11 +164,11 @@ public class VMArithmeticInstructionTest {
     @Test
     @Tag("unit")
     void testMulr() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 7).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 6).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 7).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 6).toInt());
         placeInstruction("MULR", 0, 1);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 42).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 42).toInt());
     }
 
     /**
@@ -193,10 +193,10 @@ public class VMArithmeticInstructionTest {
     @Test
     @Tag("unit")
     void testDivi() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 42).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 42).toInt());
         placeInstruction("DIVI", 0, 6);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
     }
 
     /**
@@ -206,11 +206,11 @@ public class VMArithmeticInstructionTest {
     @Test
     @Tag("unit")
     void testDivr() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 42).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 6).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 42).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 6).toInt());
         placeInstruction("DIVR", 0, 1);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
     }
 
     /**
@@ -235,10 +235,10 @@ public class VMArithmeticInstructionTest {
     @Test
     @Tag("unit")
     void testModi() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 43).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 43).toInt());
         placeInstruction("MODI", 0, 6);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
     }
 
     /**
@@ -248,11 +248,11 @@ public class VMArithmeticInstructionTest {
     @Test
     @Tag("unit")
     void testModr() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 43).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 6).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 43).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 6).toInt());
         placeInstruction("MODR", 0, 1);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
     }
 
     /**
@@ -279,11 +279,11 @@ public class VMArithmeticInstructionTest {
     void testAddrVector() {
         int[] v1 = new int[]{1, 2};
         int[] v2 = new int[]{3, 4};
-        org.setDr(0, v1);
-        org.setDr(1, v2);
+        org.writeOperand(0, v1);
+        org.writeOperand(1, v2);
         placeInstruction("ADDR", 0, 1);
         sim.tick();
-        Object r0 = org.getDr(0);
+        Object r0 = org.readOperand(0);
         assertThat(r0).isInstanceOf(int[].class);
         assertThat((int[]) r0).containsExactly(4, 6);
     }
@@ -299,18 +299,18 @@ public class VMArithmeticInstructionTest {
         int[] v1 = new int[]{2, 3};
         int[] v2 = new int[]{4, -1};
         // DOTR
-        org.setDr(0, 0); // dest
-        org.setDr(1, v1);
-        org.setDr(2, v2);
+        org.writeOperand(0, 0); // dest
+        org.writeOperand(1, v1);
+        org.writeOperand(2, v2);
         placeInstruction("DOTR", 0, 1, 2);
         sim.tick();
-        int dot = Molecule.fromInt((Integer) org.getDr(0)).toScalarValue();
+        int dot = Molecule.fromInt((Integer) org.readOperand(0)).toScalarValue();
         assertThat(dot).isEqualTo(2*4 + 3*(-1));
         // CRSR
-        org.setDr(0, 0);
+        org.writeOperand(0, 0);
         placeInstruction("CRSR", 0, 1, 2);
         sim.tick();
-        int crs = Molecule.fromInt((Integer) org.getDr(0)).toScalarValue();
+        int crs = Molecule.fromInt((Integer) org.readOperand(0)).toScalarValue();
         assertThat(crs).isEqualTo(2*(-1) - 3*4);
         // DOTS / CRSS via stack
         org.getDataStack().push(v1);
@@ -336,11 +336,11 @@ public class VMArithmeticInstructionTest {
     void testSubrVector() {
         int[] v1 = new int[]{5, 7};
         int[] v2 = new int[]{2, 3};
-        org.setDr(0, v1);
-        org.setDr(1, v2);
+        org.writeOperand(0, v1);
+        org.writeOperand(1, v2);
         placeInstruction("SUBR", 0, 1);
         sim.tick();
-        Object r0 = org.getDr(0);
+        Object r0 = org.readOperand(0);
         assertThat(r0).isInstanceOf(int[].class);
         assertThat((int[]) r0).containsExactly(3, 4);
     }
@@ -352,10 +352,10 @@ public class VMArithmeticInstructionTest {
     @Test
     @Tag("unit")
     void testNegr() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 42).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 42).toInt());
         placeInstruction("NEGR", 0);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, -42).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, -42).toInt());
     }
 
     /**
@@ -377,10 +377,10 @@ public class VMArithmeticInstructionTest {
     @Test
     @Tag("unit")
     void testAbsr() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, -42).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, -42).toInt());
         placeInstruction("ABSR", 0);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 42).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 42).toInt());
     }
 
     /**
@@ -402,10 +402,10 @@ public class VMArithmeticInstructionTest {
     @Test
     @Tag("unit")
     void testIncr() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 41).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 41).toInt());
         placeInstruction("INCR", 0);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 42).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 42).toInt());
     }
 
     /**
@@ -427,10 +427,10 @@ public class VMArithmeticInstructionTest {
     @Test
     @Tag("unit")
     void testDecr() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 43).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 43).toInt());
         placeInstruction("DECR", 0);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 42).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 42).toInt());
     }
 
     /**
@@ -452,11 +452,11 @@ public class VMArithmeticInstructionTest {
     @Test
     @Tag("unit")
     void testMinr() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 10).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 5).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 10).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 5).toInt());
         placeInstruction("MINR", 0, 1);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 5).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 5).toInt());
     }
 
     /**
@@ -465,10 +465,10 @@ public class VMArithmeticInstructionTest {
     @Test
     @Tag("unit")
     void testMini() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 10).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 10).toInt());
         placeInstruction("MINI", 0, 5);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 5).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 5).toInt());
     }
 
     /**
@@ -491,11 +491,11 @@ public class VMArithmeticInstructionTest {
     @Test
     @Tag("unit")
     void testMaxr() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 5).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 10).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 5).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 10).toInt());
         placeInstruction("MAXR", 0, 1);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 10).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 10).toInt());
     }
 
     /**
@@ -504,10 +504,10 @@ public class VMArithmeticInstructionTest {
     @Test
     @Tag("unit")
     void testMaxi() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 5).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 5).toInt());
         placeInstruction("MAXI", 0, 10);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 10).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 10).toInt());
     }
 
     /**
@@ -530,10 +530,10 @@ public class VMArithmeticInstructionTest {
     @Test
     @Tag("unit")
     void testSgnrPositive() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 42).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 42).toInt());
         placeInstruction("SGNR", 0);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
     }
 
     /**
@@ -542,10 +542,10 @@ public class VMArithmeticInstructionTest {
     @Test
     @Tag("unit")
     void testSgnrNegative() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, -42).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, -42).toInt());
         placeInstruction("SGNR", 0);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, -1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, -1).toInt());
     }
 
     /**
@@ -554,10 +554,10 @@ public class VMArithmeticInstructionTest {
     @Test
     @Tag("unit")
     void testSgnrZero() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0).toInt());
         placeInstruction("SGNR", 0);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
     }
 
     /**

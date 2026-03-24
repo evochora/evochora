@@ -60,7 +60,7 @@ public class Simulation {
     private int nextOrganismId = 1;
     private final LongOpenHashSet allGenomesEverSeen = new LongOpenHashSet();
     private IRandomProvider randomProvider;
-    private int loggingEnabledCount = 0;
+
     private int instructionsSinceYield = 0;
 
     private Map<String, ProgramArtifact> programArtifacts = new HashMap<>();
@@ -406,11 +406,6 @@ public class Simulation {
             }
         }
 
-        if (hasLoggingEnabledOrganisms()) {
-            for (Instruction instruction : plannedInstructions) {
-                logInstruction(instruction);
-            }
-        }
     }
 
     /**
@@ -519,11 +514,6 @@ public class Simulation {
             if (diedInWave2[i]) handleDeath(wave2.get(i).getOrganism());
         }
 
-        if (hasLoggingEnabledOrganisms()) {
-            for (Instruction instr : allInstructions) {
-                if (instr != null) logInstruction(instr);
-            }
-        }
     }
 
     /**
@@ -569,30 +559,6 @@ public class Simulation {
             }
         }
         environment.clearOwnershipFor(organism.getId());
-    }
-
-    /**
-     * Logs debug information for a single instruction execution.
-     *
-     * @param instruction The instruction to log
-     */
-    private void logInstruction(Instruction instruction) {
-        Organism organism = instruction.getOrganism();
-        if (organism.isLoggingEnabled()) {
-            LOG.debug("Tick={} Org={} Instr={} Status={} IP={} DP={} DV={} ER={} DR={} PDR={} DS={} CS={}",
-                    currentTick,
-                    organism.getId(),
-                    instruction.getName(),
-                    instruction.getConflictStatus(),
-                    java.util.Arrays.toString(organism.getIp()),
-                    java.util.Arrays.toString(organism.getDp(0)),
-                    java.util.Arrays.toString(organism.getDv()),
-                    organism.getEr(),
-                    organism.getDrs(),
-                    organism.getPdrs(),
-                    organism.getDataStack(),
-                    organism.getCallStack());
-        }
     }
 
     /**
@@ -784,23 +750,4 @@ public class Simulation {
         this.newOrganismsThisTick.add(organism);
     }
 
-    /**
-     * Notifies the simulation that an organism's logging state has changed.
-     * Maintains a count of organisms with logging enabled so that the
-     * per-tick logging loop can be skipped entirely when no organism is being logged.
-     *
-     * @param enabled true if logging was enabled, false if disabled
-     */
-    public void onOrganismLoggingChanged(boolean enabled) {
-        loggingEnabledCount += enabled ? 1 : -1;
-    }
-
-    /**
-     * Returns whether any organism currently has logging enabled.
-     *
-     * @return true if at least one organism has logging enabled
-     */
-    boolean hasLoggingEnabledOrganisms() {
-        return loggingEnabledCount > 0;
-    }
 }

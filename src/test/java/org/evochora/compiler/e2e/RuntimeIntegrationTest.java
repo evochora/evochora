@@ -79,9 +79,8 @@ public class RuntimeIntegrationTest {
 		for (int i = 0; i < 10; i++) sim.tick();
 
 		// Basic runtime sanity checks
-		assertThat(org.getDrs().size()).isGreaterThan(1);
-		assertThat(org.getDrs().get(0)).isNotNull();
-		assertThat(org.getDrs().get(1)).isNotNull();
+		assertThat(org.readOperand(0)).isNotNull();
+		assertThat(org.readOperand(1)).isNotNull();
 	}
 
     /**
@@ -133,7 +132,7 @@ public class RuntimeIntegrationTest {
             sim.tick();
         }
 
-        Molecule result = Molecule.fromInt((Integer) org.getDr(0));
+        Molecule result = Molecule.fromInt((Integer) org.readOperand(0));
         assertThat(result.toScalarValue())
                 .as("Der Wert sollte nach dem Prozeduraufruf auf 42 inkrementiert sein, auch ohne Artefakt.")
                 .isEqualTo(42);
@@ -219,7 +218,7 @@ public class RuntimeIntegrationTest {
         //String trace = tracker.getTraceAsString();
         //System.out.println(trace);
 
-        Molecule result = Molecule.fromInt((Integer) org.getDr(0));
+        Molecule result = Molecule.fromInt((Integer) org.readOperand(0));
         assertThat(result.toScalarValue())
                 .as("Das Ergebnis der Addition muss 30 sein, basierend auf dem Maschinencode, nicht dem falschen Artefakt.\n" /*+ trace*/)
                 .isEqualTo(30);

@@ -78,16 +78,6 @@ public class ProcedureCallHandler {
         //   - POP instructions in the procedure prologue to load parameters into FDRs
         //   - PUSH instructions before RET to push REF parameters back onto the stack
         //   - POP instructions after CALL to copy REF parameters back to original registers
-        // No manual copy-in from registers to FDRs is needed here.
-        /*
-        if (bindings != null) {
-            for (int i = 0; i < bindings.length; i++) {
-                Object value = organism.readOperand(bindings[i]);
-                organism.setFdr(i, value);
-            }
-        }
-        */
-
         // Skip past the LABEL molecule to the actual procedure code
         int[] codeIp = organism.getNextInstructionPosition(targetIp, organism.getDv(), environment);
         organism.setIp(codeIp);

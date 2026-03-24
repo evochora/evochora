@@ -71,7 +71,7 @@ public class OwnershipTests {
             int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment);            environment.setMolecule(Molecule.fromInt(payload), target);
             environment.setOwnerId(org.getId(), target[0], target[1]);
 
-            org.setDr(1, vec);
+            org.writeOperand(1, vec);
             placeInstruction(org, "SEEK", 1);
 
             sim.tick();
@@ -130,7 +130,7 @@ public class OwnershipTests {
             int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment);            environment.setMolecule(Molecule.fromInt(payload), target);
             environment.setOwnerId(org.getId() + 1, target[0], target[1]);
 
-            org.setDr(1, vec);
+            org.writeOperand(1, vec);
             placeInstruction(org, "SEEK", 1);
 
             sim.tick();

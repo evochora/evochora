@@ -5,6 +5,7 @@ import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.Instruction.OperandSource;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
@@ -439,7 +440,7 @@ class GeneInsertionPluginTest {
         assertThat(dplrId).isNotNull();
         List<OperandSource> sources = Instruction.getOperandSourcesById(dplrId);
 
-        RegisterConfig lrConfig = new RegisterConfig(List.of(new int[]{Instruction.LR_BASE, 0, 3}));
+        RegisterConfig lrConfig = new RegisterConfig(List.of(new int[]{RegisterBank.LR.base, 0, 3}));
         ArgumentConfig argConfig = new ArgumentConfig(null, lrConfig, null, null, null);
         InstructionEntry entry = new InstructionEntry(
                 List.of(dplrId),
@@ -460,7 +461,7 @@ class GeneInsertionPluginTest {
                 if (mol.type() == Config.TYPE_REGISTER) {
                     assertThat(mol.value())
                             .as("LR register value should be in [LR_BASE, LR_BASE+3] (seed=%d)", seed)
-                            .isBetween(Instruction.LR_BASE, Instruction.LR_BASE + 3);
+                            .isBetween(RegisterBank.LR.base, RegisterBank.LR.base + 3);
                 }
             }
         }

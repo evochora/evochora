@@ -4,6 +4,7 @@ import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrValue;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.RegisterBank;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -46,7 +47,7 @@ class RegisterAliasEmissionContributorTest {
     void resolvesPdrAlias() {
         EmissionContext ctx = runContributor(regAliasDirective("MOD.TMP", "%PDR2"));
 
-        assertThat(ctx.registerAliasMap()).containsEntry("MOD.TMP", Instruction.PDR_BASE + 2);
+        assertThat(ctx.registerAliasMap()).containsEntry("MOD.TMP", RegisterBank.PDR.base + 2);
     }
 
     @Test
@@ -55,7 +56,7 @@ class RegisterAliasEmissionContributorTest {
     void resolvesFdrAlias() {
         EmissionContext ctx = runContributor(regAliasDirective("MOD.FLOAT_TMP", "%FDR3"));
 
-        assertThat(ctx.registerAliasMap()).containsEntry("MOD.FLOAT_TMP", Instruction.FDR_BASE + 3);
+        assertThat(ctx.registerAliasMap()).containsEntry("MOD.FLOAT_TMP", RegisterBank.FDR.base + 3);
     }
 
     @Test
@@ -64,7 +65,7 @@ class RegisterAliasEmissionContributorTest {
     void resolvesLrAlias() {
         EmissionContext ctx = runContributor(regAliasDirective("MOD.LINK", "%LR1"));
 
-        assertThat(ctx.registerAliasMap()).containsEntry("MOD.LINK", Instruction.LR_BASE + 1);
+        assertThat(ctx.registerAliasMap()).containsEntry("MOD.LINK", RegisterBank.LR.base + 1);
     }
 
     @Test
@@ -99,8 +100,8 @@ class RegisterAliasEmissionContributorTest {
 
         assertThat(ctx.registerAliasMap()).hasSize(3);
         assertThat(ctx.registerAliasMap()).containsEntry("A.X", 0);
-        assertThat(ctx.registerAliasMap()).containsEntry("A.Y", Instruction.PDR_BASE + 1);
-        assertThat(ctx.registerAliasMap()).containsEntry("B.Z", Instruction.LR_BASE);
+        assertThat(ctx.registerAliasMap()).containsEntry("A.Y", RegisterBank.PDR.base + 1);
+        assertThat(ctx.registerAliasMap()).containsEntry("B.Z", RegisterBank.LR.base);
     }
 
     private static IrDirective regAliasDirective(String name, String register) {

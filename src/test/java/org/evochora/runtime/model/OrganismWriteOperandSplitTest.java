@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.test.utils.SimulationTestUtils;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,7 +40,7 @@ class OrganismWriteOperandSplitTest {
 
     @Test
     void testWriteOperandToLrIsRejected() {
-        boolean result = org.writeOperand(Instruction.LR_BASE, new int[]{1, 2});
+        boolean result = org.writeOperand(RegisterBank.LR.base, new int[]{1, 2});
 
         assertThat(result).isFalse();
     }
@@ -47,10 +48,10 @@ class OrganismWriteOperandSplitTest {
     @Test
     void testWriteLocationOperandToLrSucceeds() {
         int[] vec = {5, 10};
-        boolean result = org.writeLocationOperand(Instruction.LR_BASE, vec);
+        boolean result = org.writeLocationOperand(RegisterBank.LR.base, vec);
 
         assertThat(result).isTrue();
-        assertThat(org.readOperand(Instruction.LR_BASE)).isEqualTo(vec);
+        assertThat(org.readOperand(RegisterBank.LR.base)).isEqualTo(vec);
     }
 
     @Test
@@ -62,9 +63,9 @@ class OrganismWriteOperandSplitTest {
 
     @Test
     void testIsLocationBankForLr() {
-        assertThat(Organism.isLocationBank(Instruction.LR_BASE)).isTrue();
-        assertThat(Organism.isLocationBank(Instruction.LR_BASE + Config.NUM_LOCATION_REGISTERS - 1)).isTrue();
-        assertThat(Organism.isLocationBank(Instruction.LR_BASE + Config.NUM_LOCATION_REGISTERS)).isFalse();
+        assertThat(Organism.isLocationBank(RegisterBank.LR.base)).isTrue();
+        assertThat(Organism.isLocationBank(RegisterBank.LR.base + Config.NUM_LOCATION_REGISTERS - 1)).isTrue();
+        assertThat(Organism.isLocationBank(RegisterBank.LR.base + Config.NUM_LOCATION_REGISTERS)).isFalse();
     }
 
     @Test
@@ -74,6 +75,6 @@ class OrganismWriteOperandSplitTest {
 
     @Test
     void testIsLocationBankForPdr() {
-        assertThat(Organism.isLocationBank(Instruction.PDR_BASE)).isFalse();
+        assertThat(Organism.isLocationBank(RegisterBank.PDR.base)).isFalse();
     }
 }

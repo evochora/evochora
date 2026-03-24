@@ -4,6 +4,7 @@ import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.test.utils.SimulationTestUtils;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
@@ -109,7 +110,7 @@ public class VMLocationInstructionTest {
     void testLocationRegisterInitialization() {
         // LRs should be initialized to zero vectors
         for (int i = 0; i < Config.NUM_LOCATION_REGISTERS; i++) {
-            assertThat(org.getLr(i)).containsExactly(0, 0);
+            assertThat((int[]) org.readOperand(RegisterBank.LR.base + i)).containsExactly(0, 0);
         }
     }
 
@@ -121,21 +122,19 @@ public class VMLocationInstructionTest {
     @Tag("unit")
     void testSetAndGetSpecificLr() {
         int[] newLocation = {1, 2};
-        org.setLr(0, newLocation);
-        assertThat(org.getLr(0)).isEqualTo(newLocation);
+        org.writeLocationOperand(RegisterBank.LR.base, newLocation);
+        assertThat((int[]) org.readOperand(RegisterBank.LR.base)).isEqualTo(newLocation);
     }
 
     /**
-     * Confirms the type safety of the `setLr` method, which should only accept vector types.
+     * Confirms the type safety of the `writeLocationOperand` method, which should only accept vector types.
      * This test is conceptual as a direct call with a non-vector type would be a compile-time error.
      */
     @Test
     @Tag("unit")
     void testSettingNonVectorToLrFails() {
-        // The setLr method now only accepts int[], so this test is implicitly handled by the compiler.
-        // We can test the generic `writeOperand` logic once LRs are integrated there.
-        // For now, this confirms the type safety of the new method.
-        // org.setLr(0, 123); // This would not compile
+        // The writeLocationOperand method only accepts int[], so this is implicitly handled by the compiler.
+        // org.writeLocationOperand(RegisterBank.LR.base,  123); // This would not compile
     }
 
     // --- LRLR Instruction Tests ---
@@ -149,26 +148,26 @@ public class VMLocationInstructionTest {
     void testLrlrInstruction() {
         // Set up source LR with a test vector
         int[] sourceVector = {5, 7};
-        org.setLr(1, sourceVector);
+        org.writeLocationOperand(RegisterBank.LR.base + 1, sourceVector);
         
         // Verify source LR is set correctly
-        assertThat(org.getLr(1)).isEqualTo(sourceVector);
+        assertThat((int[]) org.readOperand(RegisterBank.LR.base + 1)).isEqualTo(sourceVector);
         
         // Execute LRLR instruction: copy LR1 to LR2
-        int lr1 = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + 1).toInt();
-        int lr2 = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + 2).toInt();
+        int lr1 = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base + 1).toInt();
+        int lr2 = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base + 2).toInt();
         placeInstruction(org, "LRLR", lr2, lr1);
         sim.tick();
 
         // Verify that LR2 now contains the copied vector
-        assertThat(org.getLr(2)).isEqualTo(sourceVector);
+        assertThat((int[]) org.readOperand(RegisterBank.LR.base + 2)).isEqualTo(sourceVector);
         
         // Verify that LR1 is unchanged
-        assertThat(org.getLr(1)).isEqualTo(sourceVector);
+        assertThat((int[]) org.readOperand(RegisterBank.LR.base + 1)).isEqualTo(sourceVector);
         
         // Verify that the vectors are independent (not the same reference)
-        assertThat(org.getLr(2)).isNotSameAs(sourceVector);
-        assertThat(org.getLr(1)).isNotSameAs(org.getLr(2));
+        assertThat((int[]) org.readOperand(RegisterBank.LR.base + 2)).isNotSameAs(sourceVector);
+        assertThat((int[]) org.readOperand(RegisterBank.LR.base + 1)).isNotSameAs((int[]) org.readOperand(RegisterBank.LR.base + 2));
     }
 
     /**
@@ -179,11 +178,11 @@ public class VMLocationInstructionTest {
     @Tag("unit")
     void testLrlrInstructionInvalidIndices() {
         // Set up a valid source LR
-        org.setLr(0, new int[]{1, 2});
+        org.writeLocationOperand(RegisterBank.LR.base, new int[]{1, 2});
         
         // Test with invalid destination LR index (out of bounds)
-        int invalidDest = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + Config.NUM_LOCATION_REGISTERS).toInt();
-        int validSrc = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE).toInt();
+        int invalidDest = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base + Config.NUM_LOCATION_REGISTERS).toInt();
+        int validSrc = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base).toInt();
         placeInstruction(org, "LRLR", invalidDest, validSrc);
         sim.tick();
         
@@ -195,8 +194,8 @@ public class VMLocationInstructionTest {
         org.resetTickState();
 
         // Test with invalid source LR index
-        int validDest = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + 1).toInt();
-        int invalidSrc = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + Config.NUM_LOCATION_REGISTERS).toInt();
+        int validDest = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base + 1).toInt();
+        int invalidSrc = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base + Config.NUM_LOCATION_REGISTERS).toInt();
         placeInstruction(org, "LRLR", validDest, invalidSrc);
         sim.tick();
 
@@ -240,7 +239,7 @@ public class VMLocationInstructionTest {
         placeInstruction(org, "DPLS");
         sim.tick();
         // PUSL: copy LR0 to LS after DPLR
-        int lr0 = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE).toInt();
+        int lr0 = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base).toInt();
         placeInstruction(org, "DPLR", lr0);
         sim.tick();
         placeInstruction(org, "PUSL", lr0);
@@ -248,14 +247,14 @@ public class VMLocationInstructionTest {
         // LRDR: copy LR0 into DR0
         placeInstruction(org, "LRDR", 0, lr0);
         sim.tick();
-        assertThat(org.getDr(0)).isNotNull();
+        assertThat(org.readOperand(0)).isNotNull();
         // LSDS: pop to DS
         placeInstruction(org, "LSDS");
         sim.tick();
         // SKLR: move active DP to LR0
         placeInstruction(org, "SKLR", lr0);
         sim.tick();
-        assertThat(org.getActiveDp()).isEqualTo(org.getLr(0));
+        assertThat(org.getActiveDp()).isEqualTo((int[]) org.readOperand(RegisterBank.LR.base));
     }
 
     /**
@@ -306,8 +305,8 @@ public class VMLocationInstructionTest {
         for (int i = 0; i < Config.LOCATION_STACK_MAX_DEPTH; i++) {
             ls.push(new int[]{i, i});
         }
-        org.setLr(0, new int[]{99, 99});
-        int lrIndex = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE).toInt();
+        org.writeLocationOperand(RegisterBank.LR.base, new int[]{99, 99});
+        int lrIndex = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base).toInt();
 
         placeInstruction(org, "PUSL", lrIndex);
         sim.tick();
@@ -479,12 +478,12 @@ public class VMLocationInstructionTest {
     void testDplrInstruction() {
         int[] dpPosition = {11, 12};
         org.setActiveDp(dpPosition);
-        int lrIndex = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + 1).toInt();
+        int lrIndex = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base + 1).toInt();
 
         placeInstruction(org, "DPLR", lrIndex);
         sim.tick();
 
-        assertThat(org.getLr(1)).isEqualTo(dpPosition);
+        assertThat((int[]) org.readOperand(RegisterBank.LR.base + 1)).isEqualTo(dpPosition);
     }
 
     /**
@@ -494,8 +493,8 @@ public class VMLocationInstructionTest {
     @Tag("unit")
     void testSklrInstruction() {
         int[] lrPosition = {13, 14};
-        org.setLr(2, lrPosition);
-        int lrIndex = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + 2).toInt();
+        org.writeLocationOperand(RegisterBank.LR.base + 2, lrPosition);
+        int lrIndex = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base + 2).toInt();
 
         placeInstruction(org, "SKLR", lrIndex);
         sim.tick();
@@ -510,9 +509,9 @@ public class VMLocationInstructionTest {
     @Tag("unit")
     void testPuslInstruction() {
         int[] lrPosition = {15, 16};
-        org.setLr(3, lrPosition);
+        org.writeLocationOperand(RegisterBank.LR.base + 3, lrPosition);
         Deque<int[]> ls = org.getLocationStack();
-        int lrIndex = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + 3).toInt();
+        int lrIndex = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base + 3).toInt();
         
         placeInstruction(org, "PUSL", lrIndex);
         sim.tick();
@@ -530,13 +529,13 @@ public class VMLocationInstructionTest {
         Deque<int[]> ls = org.getLocationStack();
         int[] location = {17, 18};
         ls.push(location);
-        int lrIndex = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE).toInt();
+        int lrIndex = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base).toInt();
 
         placeInstruction(org, "POPL", lrIndex);
         sim.tick();
         
         assertThat(ls.isEmpty()).isTrue();
-        assertThat(org.getLr(0)).isEqualTo(location);
+        assertThat((int[]) org.readOperand(RegisterBank.LR.base)).isEqualTo(location);
     }
 
     /**
@@ -546,8 +545,8 @@ public class VMLocationInstructionTest {
     @Tag("unit")
     void testLrdsInstruction() {
         int[] lrPosition = {19, 20};
-        org.setLr(1, lrPosition);
-        int lrIndex = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + 1).toInt();
+        org.writeLocationOperand(RegisterBank.LR.base + 1, lrPosition);
+        int lrIndex = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base + 1).toInt();
 
         placeInstruction(org, "LRDS", lrIndex);
         sim.tick();
@@ -564,13 +563,13 @@ public class VMLocationInstructionTest {
     @Tag("unit")
     void testLrdrInstruction() {
         int[] lrPosition = {21, 22};
-        org.setLr(2, lrPosition);
-        int lrIndex = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + 2).toInt();
+        org.writeLocationOperand(RegisterBank.LR.base + 2, lrPosition);
+        int lrIndex = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base + 2).toInt();
 
         placeInstruction(org, "LRDR", 3, lrIndex); // Copy LR2 to DR3
         sim.tick();
         
-        assertThat(org.getDr(3)).isEqualTo(lrPosition);
+        assertThat(org.readOperand(3)).isEqualTo(lrPosition);
     }
 
     /**
@@ -587,7 +586,7 @@ public class VMLocationInstructionTest {
         sim.tick();
         
         assertThat(ls.size()).isEqualTo(1); // Still there (no pop)
-        assertThat(org.getDr(4)).isEqualTo(location);
+        assertThat(org.readOperand(4)).isEqualTo(location);
     }
 
     /**
@@ -598,16 +597,16 @@ public class VMLocationInstructionTest {
     void testCrlrInstruction() {
         // Set LR1 to some non-zero value
         int[] originalValue = {5, 7};
-        org.setLr(1, originalValue);
-        assertThat(org.getLr(1)).isEqualTo(originalValue);
+        org.writeLocationOperand(RegisterBank.LR.base + 1, originalValue);
+        assertThat((int[]) org.readOperand(RegisterBank.LR.base + 1)).isEqualTo(originalValue);
         
         // Execute CRLR instruction
-        int lr1 = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + 1).toInt();
+        int lr1 = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base + 1).toInt();
         placeInstruction(org, "CRLR", lr1);
         sim.tick();
 
         // Verify LR1 is now [0,0]
-        assertThat(org.getLr(1)).isEqualTo(new int[]{0, 0});
+        assertThat((int[]) org.readOperand(RegisterBank.LR.base + 1)).isEqualTo(new int[]{0, 0});
         assertThat(org.isInstructionFailed()).isFalse();
     }
 
@@ -618,7 +617,7 @@ public class VMLocationInstructionTest {
     @Tag("unit")
     void testCrlrInstructionInvalidIndex() {
         // Try to use invalid LR index
-        int invalidLrIndex = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + 5).toInt(); // LR5 doesn't exist
+        int invalidLrIndex = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base + 5).toInt(); // LR5 doesn't exist
         placeInstruction(org, "CRLR", invalidLrIndex);
         sim.tick();
 
@@ -634,25 +633,25 @@ public class VMLocationInstructionTest {
     @Tag("unit")
     void testCrlrInstructionMultipleRegisters() {
         // Set multiple LR registers to non-zero values
-        org.setLr(0, new int[]{1, 2});
-        org.setLr(1, new int[]{3, 4});
-        org.setLr(2, new int[]{5, 6});
+        org.writeLocationOperand(RegisterBank.LR.base, new int[]{1, 2});
+        org.writeLocationOperand(RegisterBank.LR.base + 1, new int[]{3, 4});
+        org.writeLocationOperand(RegisterBank.LR.base + 2, new int[]{5, 6});
         
         // Clear LR1 and LR2
-        int lr1 = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + 1).toInt();
-        int lr2 = new Molecule(Config.TYPE_REGISTER, Instruction.LR_BASE + 2).toInt();
+        int lr1 = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base + 1).toInt();
+        int lr2 = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base + 2).toInt();
 
         placeInstruction(org, "CRLR", lr1);
         sim.tick();
-        assertThat(org.getLr(1)).isEqualTo(new int[]{0, 0});
-        assertThat(org.getLr(0)).isEqualTo(new int[]{1, 2}); // Should remain unchanged
-        assertThat(org.getLr(2)).isEqualTo(new int[]{5, 6}); // Should remain unchanged
+        assertThat((int[]) org.readOperand(RegisterBank.LR.base + 1)).isEqualTo(new int[]{0, 0});
+        assertThat((int[]) org.readOperand(RegisterBank.LR.base)).isEqualTo(new int[]{1, 2}); // Should remain unchanged
+        assertThat((int[]) org.readOperand(RegisterBank.LR.base + 2)).isEqualTo(new int[]{5, 6}); // Should remain unchanged
         
         placeInstruction(org, "CRLR", lr2);
         sim.tick();
-        assertThat(org.getLr(2)).isEqualTo(new int[]{0, 0});
-        assertThat(org.getLr(0)).isEqualTo(new int[]{1, 2}); // Should remain unchanged
-        assertThat(org.getLr(1)).isEqualTo(new int[]{0, 0}); // Should remain cleared
+        assertThat((int[]) org.readOperand(RegisterBank.LR.base + 2)).isEqualTo(new int[]{0, 0});
+        assertThat((int[]) org.readOperand(RegisterBank.LR.base)).isEqualTo(new int[]{1, 2}); // Should remain unchanged
+        assertThat((int[]) org.readOperand(RegisterBank.LR.base + 1)).isEqualTo(new int[]{0, 0}); // Should remain cleared
     }
 
     // --- SKJ* (Seek Jump) Tests ---
@@ -708,7 +707,7 @@ public class VMLocationInstructionTest {
         env.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), labelPos);
 
         // Test SKJR: hash from register
-        org.setDr(0, new Molecule(Config.TYPE_DATA, labelHash).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, labelHash).toInt());
         placeInstruction(org, "SKJR", 0);
         sim.tick();
         assertThat(org.getActiveDp()).isEqualTo(labelPos);

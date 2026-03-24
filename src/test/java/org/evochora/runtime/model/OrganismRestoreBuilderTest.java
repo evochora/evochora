@@ -149,12 +149,9 @@ class OrganismRestoreBuilderTest {
         assertThat(org.getActiveDpIndex()).isEqualTo(1);
         assertThat(org.getDp(0)).isEqualTo(new int[]{1, 2});
         assertThat(org.getDp(1)).isEqualTo(new int[]{3, 4});
-        assertThat(org.getDrs()).hasSize(8);
-        assertThat(org.getDr(0)).isEqualTo(100);
-        assertThat(org.getPdrs()).hasSize(Config.NUM_PDR_REGISTERS);
-        assertThat(org.getPdr(0)).isEqualTo(10);
-        assertThat(org.getFdrs()).hasSize(Config.NUM_FDR_REGISTERS);
-        assertThat(org.getFdr(0)).isEqualTo(5);
+        assertThat(org.readOperand(0)).isEqualTo(100);
+        assertThat(org.readOperand(RegisterBank.PDR.base)).isEqualTo(10);
+        assertThat(org.readOperand(RegisterBank.FDR.base)).isEqualTo(5);
         assertThat(org.getDataStack()).hasSize(2);
         assertThat(org.getLocationStack()).hasSize(1);
         assertThat(org.getCallStack()).hasSize(1);
@@ -381,9 +378,9 @@ class OrganismRestoreBuilderTest {
         original.setDv(new int[]{0, 1});
         original.addSr(50);
         original.setMr(3);
-        original.setDr(0, 42);
-        original.setPdr(0, 100);
-        original.setFdr(0, new int[]{1, 2});
+        original.writeOperand(0, 42);
+        original.writeOperand(RegisterBank.PDR.base, 100);
+        original.writeOperand(RegisterBank.FDR.base, new int[]{1, 2});
 
         // Restore using builder
         Organism restored = Organism.restore(original.getId(), original.getBirthTick())
@@ -415,8 +412,8 @@ class OrganismRestoreBuilderTest {
         assertThat(restored.getEr()).isEqualTo(original.getEr());
         assertThat(restored.getSr()).isEqualTo(original.getSr());
         assertThat(restored.getMr()).isEqualTo(original.getMr());
-        assertThat(restored.getDr(0)).isEqualTo(original.getDr(0));
-        assertThat(restored.getPdr(0)).isEqualTo(original.getPdr(0));
-        assertThat(restored.getFdr(0)).isEqualTo(original.getFdr(0));
+        assertThat(restored.readOperand(0)).isEqualTo(original.readOperand(0));
+        assertThat(restored.readOperand(RegisterBank.PDR.base)).isEqualTo(original.readOperand(RegisterBank.PDR.base));
+        assertThat(restored.readOperand(RegisterBank.FDR.base)).isEqualTo(original.readOperand(RegisterBank.FDR.base));
     }
 }

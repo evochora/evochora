@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.Deque;
 
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
@@ -175,17 +176,17 @@ public class OrganismTest {
 
         // DR
         int dataVal = new Molecule(Config.TYPE_DATA, 42).toInt();
-        org.setDr(0, dataVal);
-        assertThat(org.getDr(0)).isEqualTo(dataVal);
+        org.writeOperand(0, dataVal);
+        assertThat(org.readOperand(0)).isEqualTo(dataVal);
 
         // PDR
-        org.setPdr(0, dataVal);
-        assertThat(org.getPdr(0)).isEqualTo(dataVal);
+        org.writeOperand(RegisterBank.PDR.base, dataVal);
+        assertThat(org.readOperand(RegisterBank.PDR.base)).isEqualTo(dataVal);
 
         // FDR
         int[] vec = new int[]{3, 4};
-        org.setFdr(0, vec);
-        assertThat(org.getFdr(0)).isEqualTo(vec);
+        org.writeOperand(RegisterBank.FDR.base, vec);
+        assertThat(org.readOperand(RegisterBank.FDR.base)).isEqualTo(vec);
     }
 
     // ==================== Cell Accessibility Tests ====================
@@ -379,24 +380,24 @@ public class OrganismTest {
         sim.addOrganism(org);
 
         // Set known PDR values and capture snapshot (caller's state)
-        org.setPdr(0, 42);
-        org.setPdr(1, 99);
+        org.writeOperand(RegisterBank.PDR.base, 42);
+        org.writeOperand(RegisterBank.PDR.base + 1, 99);
         Object[] callerRegisters = org.snapshotStackSavedRegisters();
 
         // Simulate what a CALL does: push frame with caller's registers, then change PDRs
         org.getCallStack().push(new Organism.ProcFrame(
                 "PROC", new int[]{60, 50}, new int[]{55, 50},
                 callerRegisters, java.util.Collections.emptyMap()));
-        org.setPdr(0, 777);
-        org.setPdr(1, 888);
+        org.writeOperand(RegisterBank.PDR.base, 777);
+        org.writeOperand(RegisterBank.PDR.base + 1, 888);
 
         // Move IP into empty space and trigger recovery
         org.setIp(new int[]{80, 50});
         org.skipNopCells(environment);
 
         // PDRs should be restored to caller's saved values
-        assertThat(org.getPdr(0)).isEqualTo(42);
-        assertThat(org.getPdr(1)).isEqualTo(99);
+        assertThat(org.readOperand(RegisterBank.PDR.base)).isEqualTo(42);
+        assertThat(org.readOperand(RegisterBank.PDR.base + 1)).isEqualTo(99);
     }
 
     /**
@@ -411,22 +412,22 @@ public class OrganismTest {
         Organism org = Organism.create(sim, initialPos, 100, sim.getLogger());
         sim.addOrganism(org);
 
-        org.setFdr(0, 111);
-        org.setFdr(1, 222);
+        org.writeOperand(RegisterBank.FDR.base, 111);
+        org.writeOperand(RegisterBank.FDR.base + 1, 222);
         Object[] callerRegisters = org.snapshotStackSavedRegisters();
 
         org.getCallStack().push(new Organism.ProcFrame(
                 "OUTER", new int[]{60, 50}, new int[]{55, 50},
                 callerRegisters, java.util.Collections.emptyMap()));
-        org.setFdr(0, 999);
-        org.setFdr(1, 888);
+        org.writeOperand(RegisterBank.FDR.base, 999);
+        org.writeOperand(RegisterBank.FDR.base + 1, 888);
 
         // Simulate RET: restore from frame
         Organism.ProcFrame frame = org.getCallStack().pop();
         org.restoreStackSavedRegisters(frame.savedRegisters());
 
-        assertThat(org.getFdr(0)).isEqualTo(111);
-        assertThat(org.getFdr(1)).isEqualTo(222);
+        assertThat(org.readOperand(RegisterBank.FDR.base)).isEqualTo(111);
+        assertThat(org.readOperand(RegisterBank.FDR.base + 1)).isEqualTo(222);
     }
 
     /**

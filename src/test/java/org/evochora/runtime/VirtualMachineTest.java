@@ -106,7 +106,7 @@ class VirtualMachineTest {
     void peekNextInstruction_capturesRegisterValues() {
         Organism org = Organism.create(sim, new int[]{10, 10}, 1000, sim.getLogger());
         sim.addOrganism(org);
-        org.setDr(0, 777);
+        org.writeOperand(0, 777);
 
         // Place SETI %DR0, DATA:42 — DR0 is a REGISTER argument
         int setiOpcode = Instruction.getInstructionIdByName("SETI");

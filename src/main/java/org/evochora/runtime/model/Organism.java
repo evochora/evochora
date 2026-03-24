@@ -79,7 +79,7 @@ public class Organism {
     private final Deque<int[]> locationStack;
     private final Deque<ProcFrame> callStack;
     private boolean isDead = false;
-    private boolean loggingEnabled = false;
+
     private boolean instructionFailed = false;
     private boolean previousInstructionFailed = false;
     private String failureReason = null;
@@ -251,7 +251,6 @@ public class Organism {
         // Derived fields from simulation
         this.simulation = simulation;
         this.logger = null; // Restored organisms don't have individual loggers
-        this.loggingEnabled = false;
 
         // Load limits and constants from simulation config
         com.typesafe.config.Config orgConfig = simulation.getOrganismConfig();
@@ -606,10 +605,6 @@ public class Organism {
     public void kill(String reason) {
         this.isDead = true;
         this.deathTick = simulation.getCurrentTick();
-        if (this.loggingEnabled) {
-            this.loggingEnabled = false;
-            this.simulation.onOrganismLoggingChanged(false);
-        }
         if (!this.instructionFailed) {
             instructionFailed(reason);
         }
@@ -833,40 +828,6 @@ public class Organism {
     }
 
     // --- Public API for Instructions ---
-
-    /**
-     * Sets the value of a Data Register (DR).
-     *
-     * @param index The index of the register (0-7).
-     * @param value The value to set (must be {@code Integer} or {@code int[]}).
-     * @return {@code true} on success, {@code false} on failure.
-     */
-    public boolean setDr(int index, Object value) {
-        if (index >= 0 && index < RegisterBank.DR.count) {
-            if (value instanceof Integer || value instanceof int[]) {
-                registers[RegisterBank.DR.slotOffset() + index] = value;
-                return true;
-            }
-            this.instructionFailed("Attempted to set unsupported type " + (value != null ? value.getClass().getSimpleName() : "null") + " to DR " + index);
-            return false;
-        }
-        this.instructionFailed("DR index out of bounds: " + index);
-        return false;
-    }
-
-    /**
-     * Gets the value of a Data Register (DR).
-     *
-     * @param index The index of the register (0-7).
-     * @return The value of the register, or {@code null} if the index is invalid.
-     */
-    public Object getDr(int index) {
-        if (index >= 0 && index < RegisterBank.DR.count) {
-            return registers[RegisterBank.DR.slotOffset() + index];
-        }
-        this.instructionFailed("DR index out of bounds: " + index);
-        return null;
-    }
 
     /**
      * Sets the Instruction Pointer (IP) to a new coordinate.
@@ -1099,21 +1060,8 @@ public class Organism {
     /** @return A copy of the flat register array in RegisterBank slot order. */
     public Object[] getRegisters() { return Arrays.copyOf(registers, registers.length); }
 
-    /** @return A copy of the list of Data Registers (DRs). */
-    public List<Object> getDrs() { return new ArrayList<>(Arrays.asList(registers).subList(RegisterBank.DR.slotOffset(), RegisterBank.DR.slotOffset() + RegisterBank.DR.count)); }
     /** @return true if the organism is dead, false otherwise. */
     public boolean isDead() { return isDead; }
-    /** @return true if detailed logging is enabled for this organism. */
-    public boolean isLoggingEnabled() { return loggingEnabled; }
-    /** Enables or disables detailed logging for this organism.
-     * @param loggingEnabled true to enable logging, false to disable.
-     */
-    public void setLoggingEnabled(boolean loggingEnabled) {
-        if (this.loggingEnabled != loggingEnabled) {
-            this.loggingEnabled = loggingEnabled;
-            this.simulation.onOrganismLoggingChanged(loggingEnabled);
-        }
-    }
     /** @return true if the current instruction has failed. */
     public boolean isInstructionFailed() { return instructionFailed; }
     /** @return true if the previous tick's instruction failed. Used by IFER/INER conditionals. */
@@ -1135,121 +1083,6 @@ public class Organism {
     /** @return A reference to the Call Stack (CS). */
     public Deque<ProcFrame> getCallStack() { 
         return this.callStack;
-    }
-
-    /** @return A copy of the list of Procedure-local Data Registers (PDRs). */
-    public List<Object> getPdrs() { return new ArrayList<>(Arrays.asList(registers).subList(RegisterBank.PDR.slotOffset(), RegisterBank.PDR.slotOffset() + RegisterBank.PDR.count)); }
-
-    /**
-     * Sets the value of a Procedure-local Data Register (PDR).
-     *
-     * @param index The index of the register.
-     * @param value The value to set.
-     * @return {@code true} on success, {@code false} on failure.
-     */
-    public boolean setPdr(int index, Object value) {
-        if (index >= 0 && index < RegisterBank.PDR.count) {
-            if (value instanceof Integer || value instanceof int[]) {
-                registers[RegisterBank.PDR.slotOffset() + index] = value;
-                return true;
-            }
-            this.instructionFailed("Attempted to set unsupported type " + (value != null ? value.getClass().getSimpleName() : "null") + " to PDR" + index);
-            return false;
-        }
-        this.instructionFailed("PDR index out of bounds: " + index);
-        return false;
-    }
-
-    /**
-     * Gets the value of a Procedure-local Data Register (PDR).
-     *
-     * @param index The index of the register.
-     * @return The value, or {@code null} on failure.
-     */
-    public Object getPdr(int index) {
-        if (index >= 0 && index < RegisterBank.PDR.count) {
-            return registers[RegisterBank.PDR.slotOffset() + index];
-        }
-        this.instructionFailed("PDR index out of bounds: " + index);
-        return null;
-    }
-
-
-    /** @return A copy of the list of Formal Data Registers (FDRs). */
-    public List<Object> getFdrs() { return new ArrayList<>(Arrays.asList(registers).subList(RegisterBank.FDR.slotOffset(), RegisterBank.FDR.slotOffset() + RegisterBank.FDR.count)); }
-
-    /**
-     * Sets the value of a Formal Data Register (FDR).
-     *
-     * @param index The index of the register.
-     * @param value The value to set.
-     * @return {@code true} on success, {@code false} on failure.
-     */
-    public boolean setFdr(int index, Object value) {
-        if (index >= 0 && index < RegisterBank.FDR.count) {
-            if (value instanceof Integer || value instanceof int[]) {
-                registers[RegisterBank.FDR.slotOffset() + index] = value;
-                return true;
-            }
-            this.instructionFailed("Attempted to set unsupported type " + (value != null ? value.getClass().getSimpleName() : "null") + " to FDR" + index);
-            return false;
-        }
-        this.instructionFailed("FDR index out of bounds: " + index);
-        return false;
-    }
-
-    /**
-     * Gets the value of a Formal Data Register (FDR).
-     *
-     * @param index The index of the register.
-     * @return The value, or {@code null} on failure.
-     */
-    public Object getFdr(int index) {
-        if (index >= 0 && index < RegisterBank.FDR.count) {
-            return registers[RegisterBank.FDR.slotOffset() + index];
-        }
-        this.instructionFailed("FDR index out of bounds: " + index);
-        return null;
-    }
-
-
-    /**
-     * Gets a copy of the list of Location Registers (LRs).
-     *
-     * @return A new list containing the vector values of all LRs.
-     */
-    public List<Object> getLrs() {
-        return new ArrayList<>(Arrays.asList(registers).subList(RegisterBank.LR.slotOffset(), RegisterBank.LR.slotOffset() + RegisterBank.LR.count));
-    }
-
-    /**
-     * Sets the value of a Location Register (LR).
-     *
-     * @param index The index of the register.
-     * @param value The vector value to set.
-     * @return {@code true} on success, {@code false} on failure.
-     */
-    public boolean setLr(int index, int[] value) {
-        if (index >= 0 && index < RegisterBank.LR.count) {
-            registers[RegisterBank.LR.slotOffset() + index] = value;
-            return true;
-        }
-        this.instructionFailed("LR index out of bounds: " + index);
-        return false;
-    }
-
-    /**
-     * Gets the value of a Location Register (LR).
-     *
-     * @param index The index of the register.
-     * @return The vector value, or {@code null} on failure.
-     */
-    public int[] getLr(int index) {
-        if (index >= 0 && index < RegisterBank.LR.count) {
-            return (int[]) registers[RegisterBank.LR.slotOffset() + index];
-        }
-        this.instructionFailed("LR index out of bounds: " + index);
-        return null;
     }
 
     /**

@@ -4,6 +4,7 @@ import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.test.utils.SimulationTestUtils;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
@@ -121,7 +122,7 @@ public class VMControlFlowInstructionTest {
         environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), expectedIp);
 
         // Store label hash in register DR0
-        org.setDr(0, labelHash);
+        org.writeOperand(0, labelHash);
         placeInstruction("JMPR", 0);
 
         sim.tick();
@@ -202,8 +203,8 @@ public class VMControlFlowInstructionTest {
         environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), returnTarget);
 
         // Set known FDR values before CALL
-        org.setFdr(0, 111);
-        org.setFdr(1, 222);
+        org.writeOperand(RegisterBank.FDR.base + 0, 111);
+        org.writeOperand(RegisterBank.FDR.base + 1, 222);
 
         // Execute CALL
         placeInstruction("CALL", labelHash);
@@ -214,8 +215,8 @@ public class VMControlFlowInstructionTest {
         // After RET, we're back at returnTarget
 
         // Verify FDR is restored
-        assertThat(org.getFdr(0)).isEqualTo(111);
-        assertThat(org.getFdr(1)).isEqualTo(222);
+        assertThat((int) org.readOperand(RegisterBank.FDR.base + 0)).isEqualTo(111);
+        assertThat((int) org.readOperand(RegisterBank.FDR.base + 1)).isEqualTo(222);
     }
 
     @org.junit.jupiter.api.AfterEach

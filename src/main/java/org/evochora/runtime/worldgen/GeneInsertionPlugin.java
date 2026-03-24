@@ -371,7 +371,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * Parses location register configuration (LR bank).
      *
      * @param config The LOCATION_REGISTER sub-config.
-     * @return The parsed register config with LR_BASE.
+     * @return The parsed register config with {@link RegisterBank#LR} base.
      */
     private RegisterConfig parseLocationRegisterConfig(com.typesafe.config.Config config) {
         List<Integer> range = config.getIntList("range");

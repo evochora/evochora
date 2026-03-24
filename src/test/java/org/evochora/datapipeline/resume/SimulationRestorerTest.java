@@ -17,6 +17,7 @@ import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -124,8 +125,8 @@ class SimulationRestorerTest {
         assertThat(org.getSr()).isEqualTo(50);
         assertThat(org.getMr()).isEqualTo(3);
         assertThat(org.getActiveDpIndex()).isEqualTo(1);
-        assertThat(org.getDr(0)).isEqualTo(100);
-        assertThat(org.getPdr(0)).isEqualTo(200);
+        assertThat(org.readOperand(0)).isEqualTo(100);
+        assertThat(org.readOperand(RegisterBank.PDR.base)).isEqualTo(200);
     }
 
     @Test

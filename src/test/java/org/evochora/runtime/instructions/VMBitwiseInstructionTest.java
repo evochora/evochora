@@ -4,6 +4,7 @@ import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.test.utils.SimulationTestUtils;
 import org.evochora.runtime.isa.Instruction;
+
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Environment;
@@ -80,10 +81,10 @@ public class VMBitwiseInstructionTest {
     @Test
     @Tag("unit")
     void testAndi() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
         placeInstruction("ANDI", 0, 0b1100);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1000).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1000).toInt());
     }
 
     /**
@@ -93,11 +94,11 @@ public class VMBitwiseInstructionTest {
     @Test
     @Tag("unit")
     void testAndr() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 0b1100).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 0b1100).toInt());
         placeInstruction("ANDR", 0, 1);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1000).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1000).toInt());
     }
 
     /**
@@ -121,10 +122,10 @@ public class VMBitwiseInstructionTest {
     @Test
     @Tag("unit")
     void testOri() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
         placeInstruction("ORI", 0, 0b0101);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1111).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1111).toInt());
     }
 
     /**
@@ -134,11 +135,11 @@ public class VMBitwiseInstructionTest {
     @Test
     @Tag("unit")
     void testOrr() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 0b0101).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 0b0101).toInt());
         placeInstruction("ORR", 0, 1);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1111).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1111).toInt());
     }
 
     /**
@@ -162,10 +163,10 @@ public class VMBitwiseInstructionTest {
     @Test
     @Tag("unit")
     void testXori() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
         placeInstruction("XORI", 0, 0b0110);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1100).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1100).toInt());
     }
 
     /**
@@ -175,11 +176,11 @@ public class VMBitwiseInstructionTest {
     @Test
     @Tag("unit")
     void testXorr() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 0b0110).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 0b0110).toInt());
         placeInstruction("XORR", 0, 1);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1100).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1100).toInt());
     }
 
     /**
@@ -189,10 +190,10 @@ public class VMBitwiseInstructionTest {
     @Test
     @Tag("unit")
     void testNot() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
         placeInstruction("NOT", 0);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, ~0b1010).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, ~0b1010).toInt());
     }
 
     /**
@@ -216,18 +217,18 @@ public class VMBitwiseInstructionTest {
     @Tag("unit")
     void testShiftRegisterVariants() {
         // SHLR / SHRR
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 3).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 1).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 3).toInt());
         placeInstruction("SHLR", 0, 1);
         sim.tick();
-        int valL = Molecule.fromInt((Integer) org.getDr(0)).toScalarValue();
+        int valL = Molecule.fromInt((Integer) org.readOperand(0)).toScalarValue();
         assertThat(valL).isEqualTo(1 << 3);
 
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 8).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 2).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 8).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 2).toInt());
         placeInstruction("SHRR", 0, 1);
         sim.tick();
-        int valR = Molecule.fromInt((Integer) org.getDr(0)).toScalarValue();
+        int valR = Molecule.fromInt((Integer) org.readOperand(0)).toScalarValue();
         assertThat(valR).isEqualTo(8 >> 2);
     }
 
@@ -239,18 +240,18 @@ public class VMBitwiseInstructionTest {
     @Tag("unit")
     void testRotateRegisterAndImmediateAndStack() {
         // ROTR: rotate left by positive amount in register; negative rotates right
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b0001_0011).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 2).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0b0001_0011).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 2).toInt());
         placeInstruction("ROTR", 0, 1);
         sim.tick();
-        int rotr = Molecule.fromInt((Integer) org.getDr(0)).toScalarValue() & ((1 << Config.VALUE_BITS) - 1);
+        int rotr = Molecule.fromInt((Integer) org.readOperand(0)).toScalarValue() & ((1 << Config.VALUE_BITS) - 1);
         assertThat(rotr).isEqualTo(((0b0001_0011 << 2) | (0b0001_0011 >>> (Config.VALUE_BITS - 2))) & ((1 << Config.VALUE_BITS) - 1));
 
         // ROTI: negative amount rotates right
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1000_0001).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0b1000_0001).toInt());
         placeInstruction("ROTI", 0, -1);
         sim.tick();
-        int roti = Molecule.fromInt((Integer) org.getDr(0)).toScalarValue() & ((1 << Config.VALUE_BITS) - 1);
+        int roti = Molecule.fromInt((Integer) org.readOperand(0)).toScalarValue() & ((1 << Config.VALUE_BITS) - 1);
         assertThat(roti).isEqualTo(((0b1000_0001 >>> 1) | (0b1000_0001 << (Config.VALUE_BITS - 1))) & ((1 << Config.VALUE_BITS) - 1));
 
         // ROTS: amount on top, then value; rotates by 0 and by full bit width
@@ -277,11 +278,11 @@ public class VMBitwiseInstructionTest {
     @Tag("unit")
     void testPopulationCountRegisterAndStack() {
         // PCNR
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 0b1111_0001).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 0b1111_0001).toInt());
         placeInstruction("PCNR", 0, 1);
         sim.tick();
-        int cnt = Molecule.fromInt((Integer) org.getDr(0)).toScalarValue();
+        int cnt = Molecule.fromInt((Integer) org.readOperand(0)).toScalarValue();
         assertThat(cnt).isEqualTo(5);
 
         // PCNS
@@ -301,20 +302,20 @@ public class VMBitwiseInstructionTest {
     @Tag("unit")
     void testBitScanNthSuccessAndEdges() {
         // BSNR with N=1 (first set bit from right)
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 0b1010_1000).toInt());
-        org.setDr(2, new Molecule(Config.TYPE_DATA, 1).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 0b1010_1000).toInt());
+        org.writeOperand(2, new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("BSNR", 0, 1, 2);
         sim.tick();
-        int mask1 = Molecule.fromInt((Integer) org.getDr(0)).toScalarValue();
+        int mask1 = Molecule.fromInt((Integer) org.readOperand(0)).toScalarValue();
         assertThat(mask1).isEqualTo(0b0000_1000);
 
         // BSNI with N=-1 (first set bit from left)
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 0b0010_1000).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 0b0010_1000).toInt());
         placeInstruction("BSNI", 0, 1, -1);
         sim.tick();
-        int maskL = Molecule.fromInt((Integer) org.getDr(0)).toScalarValue();
+        int maskL = Molecule.fromInt((Integer) org.readOperand(0)).toScalarValue();
         assertThat(maskL).isEqualTo(0b0010_0000);
 
         // BSNS with N popped first, then Src; test N=1 and N=-1
@@ -342,19 +343,19 @@ public class VMBitwiseInstructionTest {
     @Tag("unit")
     void testBitScanNthFailure() {
         // N=0 -> failure, dest set to 0
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 123).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 123).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
         placeInstruction("BSNI", 0, 1, 0);
         sim.tick();
-        assertThat(Molecule.fromInt((Integer) org.getDr(0)).toScalarValue()).isEqualTo(0);
+        assertThat(Molecule.fromInt((Integer) org.readOperand(0)).toScalarValue()).isEqualTo(0);
 
         // N out of bounds -> failure
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 999).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 0b0011).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 999).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 0b0011).toInt());
         placeInstruction("BSNR", 0, 1, 2); // but set N register below
-        org.setDr(2, new Molecule(Config.TYPE_DATA, 3).toInt());
+        org.writeOperand(2, new Molecule(Config.TYPE_DATA, 3).toInt());
         sim.tick();
-        assertThat(Molecule.fromInt((Integer) org.getDr(0)).toScalarValue()).isEqualTo(0);
+        assertThat(Molecule.fromInt((Integer) org.readOperand(0)).toScalarValue()).isEqualTo(0);
 
         // Stack variant failure: push 0
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 0b0011).toInt());
@@ -372,12 +373,12 @@ public class VMBitwiseInstructionTest {
     @Test
     @Tag("unit")
     void testNorr() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 0b1100).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 0b1100).toInt());
         placeInstruction("NORR", 0, 1);
         sim.tick();
         // NOR(1010, 1100) = ~(1110) = ...0001
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, ~0b1110).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, ~0b1110).toInt());
     }
 
     /**
@@ -386,11 +387,11 @@ public class VMBitwiseInstructionTest {
     @Test
     @Tag("unit")
     void testNori() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
         placeInstruction("NORI", 0, 0b0101);
         sim.tick();
         // NOR(1010, 0101) = ~(1111) = ...0000
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, ~0b1111).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, ~0b1111).toInt());
     }
 
     /**
@@ -415,12 +416,12 @@ public class VMBitwiseInstructionTest {
     @Test
     @Tag("unit")
     void testEqur() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 0b1100).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 0b1100).toInt());
         placeInstruction("EQUR", 0, 1);
         sim.tick();
         // EQU(1010, 1100) = ~(0110) = ...1001
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, ~0b0110).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, ~0b0110).toInt());
     }
 
     /**
@@ -429,11 +430,11 @@ public class VMBitwiseInstructionTest {
     @Test
     @Tag("unit")
     void testEqui() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1111).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0b1111).toInt());
         placeInstruction("EQUI", 0, 0b1111);
         sim.tick();
         // EQU(1111, 1111) = ~(0000) = all 1s
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, ~0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, ~0).toInt());
     }
 
     /**
@@ -458,12 +459,12 @@ public class VMBitwiseInstructionTest {
     @Test
     @Tag("unit")
     void testAdnr() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1111).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 0b0101).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0b1111).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 0b0101).toInt());
         placeInstruction("ADNR", 0, 1);
         sim.tick();
         // ADN(1111, 0101) = 1111 & ~0101 = 1111 & 1010 = 1010
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1010).toInt());
     }
 
     /**
@@ -472,11 +473,11 @@ public class VMBitwiseInstructionTest {
     @Test
     @Tag("unit")
     void testAdni() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1111).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0b1111).toInt());
         placeInstruction("ADNI", 0, 0b0011);
         sim.tick();
         // ADN(1111, 0011) = 1111 & ~0011 = 1111 & 1100 = 1100
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1100).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1100).toInt());
     }
 
     /**
@@ -501,12 +502,12 @@ public class VMBitwiseInstructionTest {
     @Test
     @Tag("unit")
     void testOrnr() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b0000).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 0b1111).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0b0000).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 0b1111).toInt());
         placeInstruction("ORNR", 0, 1);
         sim.tick();
         // ORN(0000, 1111) = 0000 | ~1111 = 0000 | ...0000 = ...0000
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, ~0b1111).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, ~0b1111).toInt());
     }
 
     /**
@@ -515,11 +516,11 @@ public class VMBitwiseInstructionTest {
     @Test
     @Tag("unit")
     void testOrni() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0b1010).toInt());
         placeInstruction("ORNI", 0, 0b1100);
         sim.tick();
         // ORN(1010, 1100) = 1010 | ~1100 = 1010 | ...0011 = ...1011
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1010 | ~0b1100).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0b1010 | ~0b1100).toInt());
     }
 
     /**

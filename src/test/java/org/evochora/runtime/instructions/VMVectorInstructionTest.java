@@ -57,10 +57,10 @@ public class VMVectorInstructionTest {
     @Test
     @Tag("unit")
     void testVgti() {
-        org.setDr(1, new int[]{10, 20});
+        org.writeOperand(1, new int[]{10, 20});
         placeInstruction("VGTI", 0, 1, new Molecule(Config.TYPE_DATA, 1).toInt()); // VGTI %DR0 %DR1 DATA:1
         sim.tick();
-        assertThat(Molecule.fromInt((Integer)org.getDr(0)).toScalarValue()).isEqualTo(20);
+        assertThat(Molecule.fromInt((Integer)org.readOperand(0)).toScalarValue()).isEqualTo(20);
     }
 
     /**
@@ -70,10 +70,10 @@ public class VMVectorInstructionTest {
     @Test
     @Tag("unit")
     void testVsti() {
-        org.setDr(0, new int[]{10, 20});
+        org.writeOperand(0, new int[]{10, 20});
         placeInstruction("VSTI", 0, new Molecule(Config.TYPE_DATA, 0).toInt(), new Molecule(Config.TYPE_DATA, 99).toInt()); // VSTI %DR0 DATA:0 DATA:99
         sim.tick();
-        assertThat((int[])org.getDr(0)).containsExactly(99, 20);
+        assertThat((int[])org.readOperand(0)).containsExactly(99, 20);
     }
 
     /**
@@ -87,7 +87,7 @@ public class VMVectorInstructionTest {
         org.getDataStack().push(new Molecule(Config.TYPE_DATA, 40).toInt()); // X-Komponente
         placeInstruction("VBLD", 0); // VBLD %DR0
         sim.tick();
-        assertThat((int[])org.getDr(0)).containsExactly(40, 50);
+        assertThat((int[])org.readOperand(0)).containsExactly(40, 50);
     }
 
     /**
@@ -100,7 +100,7 @@ public class VMVectorInstructionTest {
         int mask = new Molecule(Config.TYPE_DATA, 1 << 0).toInt(); // +X
         placeInstruction("B2VI", 0, mask); // %DR0, DATA:mask
         sim.tick();
-        assertThat((int[]) org.getDr(0)).containsExactly(1, 0);
+        assertThat((int[]) org.readOperand(0)).containsExactly(1, 0);
     }
 
     /**
@@ -113,7 +113,7 @@ public class VMVectorInstructionTest {
         // Immediate vector literal: write DATA mask into %DR0
         placeInstruction("V2BI", 0, 1, 0); // %DR0, Vector: 1|0
         sim.tick();
-        int result = Molecule.fromInt((Integer) org.getDr(0)).toScalarValue();
+        int result = Molecule.fromInt((Integer) org.readOperand(0)).toScalarValue();
         assertThat(result).isEqualTo(1 << 0);
     }
 
@@ -124,10 +124,10 @@ public class VMVectorInstructionTest {
     @Test
     @Tag("unit")
     void testV2brNegativeY() {
-        org.setDr(1, new int[]{0, -1});
+        org.writeOperand(1, new int[]{0, -1});
         placeInstruction("V2BR", 0, 1); // %DR0, %DR1
         sim.tick();
-        int result = Molecule.fromInt((Integer) org.getDr(0)).toScalarValue();
+        int result = Molecule.fromInt((Integer) org.readOperand(0)).toScalarValue();
         assertThat(result).isEqualTo(1 << 3);
     }
 
@@ -152,10 +152,10 @@ public class VMVectorInstructionTest {
     @Test
     @Tag("unit")
     void testRtri2d() {
-        org.setDr(0, new int[]{1, 0});
+        org.writeOperand(0, new int[]{1, 0});
         placeInstruction("RTRI", 0, new Molecule(Config.TYPE_DATA, 0).toInt(), new Molecule(Config.TYPE_DATA, 1).toInt());
         sim.tick();
-        assertThat((int[]) org.getDr(0)).containsExactly(0, -1);
+        assertThat((int[]) org.readOperand(0)).containsExactly(0, -1);
     }
 
     /**
@@ -165,12 +165,12 @@ public class VMVectorInstructionTest {
     @Test
     @Tag("unit")
     void testRtrr2d() {
-        org.setDr(0, new int[]{1, 0});
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 0).toInt());
-        org.setDr(2, new Molecule(Config.TYPE_DATA, 1).toInt());
+        org.writeOperand(0, new int[]{1, 0});
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.writeOperand(2, new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("RTRR", 0, 1, 2);
         sim.tick();
-        assertThat((int[]) org.getDr(0)).containsExactly(0, -1);
+        assertThat((int[]) org.readOperand(0)).containsExactly(0, -1);
     }
 
     /**
@@ -213,9 +213,9 @@ public class VMVectorInstructionTest {
         cur = org3d.getNextInstructionPosition(cur, org3d.getDv(), env3d);
         env3d.setMolecule(new Molecule(Config.TYPE_DATA, 1), cur); // Axis2 = 1 (Y)
 
-        org3d.setDr(0, new int[]{1, 0, 5});
+        org3d.writeOperand(0, new int[]{1, 0, 5});
         sim3d.tick();
-        assertThat((int[]) org3d.getDr(0)).containsExactly(0, -1, 5);
+        assertThat((int[]) org3d.readOperand(0)).containsExactly(0, -1, 5);
     }
 
     /**
@@ -225,11 +225,11 @@ public class VMVectorInstructionTest {
     @Test
     @Tag("unit")
     void testRtriFailsOnSameAxes() {
-        org.setDr(0, new int[]{1, 0});
+        org.writeOperand(0, new int[]{1, 0});
         placeInstruction("RTRI", 0, new Molecule(Config.TYPE_DATA, 0).toInt(), new Molecule(Config.TYPE_DATA, 0).toInt());
         sim.tick();
         // Vector remains unchanged, but instruction failed
-        assertThat((int[]) org.getDr(0)).containsExactly(1, 0);
+        assertThat((int[]) org.readOperand(0)).containsExactly(1, 0);
         assertThat(org.isInstructionFailed()).isTrue();
         // Reset org to avoid AfterEach failure assertion
         org = Organism.create(sim, startPos, 2000, sim.getLogger());
@@ -246,7 +246,7 @@ public class VMVectorInstructionTest {
         int mask = new Molecule(Config.TYPE_DATA, 1 << 3).toInt(); // 2*d+1 for d=1 => bit 3 = -Y
         placeInstruction("B2VI", 0, mask);
         sim.tick();
-        assertThat((int[]) org.getDr(0)).containsExactly(0, -1);
+        assertThat((int[]) org.readOperand(0)).containsExactly(0, -1);
     }
 
     /**

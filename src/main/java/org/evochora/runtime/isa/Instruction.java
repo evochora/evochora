@@ -133,13 +133,6 @@ public abstract class Instruction {
         return REGISTERED_INSTRUCTIONS_BY_ID.get(opcodeId);
     }
 
-    /** Base address for location registers. Transitional alias for {@code RegisterBank.LR.base}. */
-    public static final int LR_BASE = 256;
-    /** Base address for procedure-local data registers (PDR). Transitional alias for {@code RegisterBank.PDR.base}. */
-    public static final int PDR_BASE = 512;
-    /** Base address for formal data registers (FDR). Transitional alias for {@code RegisterBank.FDR.base}. */
-    public static final int FDR_BASE = 1024;
-
     /**
      * Constructs a new instruction.
      * @param organism The organism executing the instruction.
