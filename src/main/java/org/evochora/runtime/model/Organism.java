@@ -1238,8 +1238,7 @@ public class Organism {
      */
     public Object[] snapshotStackSavedRegisters() {
         List<RegisterBank> banks = RegisterBank.allSavedOnCall();
-        int totalSize = banks.stream().mapToInt(b -> b.count).sum();
-        Object[] snapshot = new Object[totalSize];
+        Object[] snapshot = new Object[RegisterBank.STACK_SAVED_SNAPSHOT_SIZE];
         int offset = 0;
         for (RegisterBank bank : banks) {
             System.arraycopy(registers, bank.slotOffset(), snapshot, offset, bank.count);
@@ -1267,8 +1266,7 @@ public class Organism {
      */
     public Object[] snapshotPersistentRegisters() {
         List<RegisterBank> banks = RegisterBank.allPersistent();
-        int totalSize = banks.stream().mapToInt(b -> b.count).sum();
-        Object[] snapshot = new Object[totalSize];
+        Object[] snapshot = new Object[RegisterBank.PERSISTENT_SNAPSHOT_SIZE];
         int offset = 0;
         for (RegisterBank bank : banks) {
             System.arraycopy(registers, bank.slotOffset(), snapshot, offset, bank.count);

@@ -151,6 +151,12 @@ public enum RegisterBank {
     private static final List<RegisterBank> CACHED_PROC_SCOPED;
     private static final List<RegisterBank> CACHED_PERSISTENT;
 
+    /** Total number of register slots across all STACK_SAVED banks. */
+    public static final int STACK_SAVED_SNAPSHOT_SIZE;
+
+    /** Total number of register slots across all PERSISTENT banks. */
+    public static final int PERSISTENT_SNAPSHOT_SIZE;
+
     static {
         CACHED_SAVED_ON_CALL = Arrays.stream(values())
                 .filter(b -> b.callBehavior == CallBehavior.STACK_SAVED && b.count > 0)
@@ -161,6 +167,8 @@ public enum RegisterBank {
         CACHED_PERSISTENT = Arrays.stream(values())
                 .filter(b -> b.callBehavior == CallBehavior.PERSISTENT && b.count > 0)
                 .toList();
+        STACK_SAVED_SNAPSHOT_SIZE = CACHED_SAVED_ON_CALL.stream().mapToInt(b -> b.count).sum();
+        PERSISTENT_SNAPSHOT_SIZE = CACHED_PERSISTENT.stream().mapToInt(b -> b.count).sum();
     }
 
     /**
