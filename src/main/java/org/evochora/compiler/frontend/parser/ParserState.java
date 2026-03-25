@@ -20,7 +20,7 @@ public class ParserState {
     private final Map<String, Integer> availableRegisterBanks = new HashMap<>();
     {
         for (RegisterBank bank : RegisterBank.values()) {
-            if (bank.count > 0 && bank.callBehavior == RegisterBank.CallBehavior.GLOBAL) {
+            if (bank.count > 0 && bank.isAlwaysAvailable) {
                 availableRegisterBanks.put(bank.prefix.substring(1), 1);
             }
         }

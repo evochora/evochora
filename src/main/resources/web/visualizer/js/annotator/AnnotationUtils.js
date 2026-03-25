@@ -9,6 +9,8 @@ export const REGISTER_BANKS = [
     { name: "PDR", prefix: "%PDR", base: 512,  slotOffset: 12, count: 8, isLocation: false },
     { name: "PLR", prefix: "%PLR", base: 768,  slotOffset: 20, count: 4, isLocation: true  },
     { name: "FDR", prefix: "%FDR", base: 1024, slotOffset: 24, count: 8, isLocation: false },
+    { name: "SDR", prefix: "%SDR", base: 1536, slotOffset: 32, count: 8, isLocation: false },
+    { name: "SLR", prefix: "%SLR", base: 1792, slotOffset: 40, count: 4, isLocation: true  },
 ];
 
 /** O(1) name-based lookup into REGISTER_BANKS. */

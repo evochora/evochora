@@ -278,4 +278,72 @@ public class RuntimeIntegrationTest {
 
         assertThat(org.isInstructionFailed()).as("Failure: " + org.getFailureReason()).isFalse();
     }
+
+    /**
+     * Verifies that SDR (Static Data Registers) persist across procedure calls
+     * and are isolated between different procedures. COUNTER increments %SDR0
+     * on each call, copies it to %DR0, then returns. Calling it three times
+     * should yield DR0 == 3. A second procedure COUNTER_B copies its own %SDR0
+     * to %DR1 — it should be 0 (independent backing store).
+     */
+    @Test
+    @Tag("integration")
+    void sdrPersistsAcrossCallsAndIsIsolatedBetweenProcedures() throws Exception {
+        String source = String.join("\n",
+                // Main: call COUNTER three times, then COUNTER_B once
+                "CALL COUNTER",
+                "CALL COUNTER",
+                "CALL COUNTER",
+                "CALL COUNTER_B",
+                "WAIT",
+                // COUNTER: increment SDR0, copy to DR0
+                ".ORG 0|1",
+                "EXPORT .PROC COUNTER",
+                "  ADDI %SDR0 DATA:1",
+                "  SETR %DR0 %SDR0",
+                "  RET",
+                ".ENDP",
+                // COUNTER_B: copy SDR0 to DR1 (should be 0 — separate backing store)
+                ".ORG 0|3",
+                "EXPORT .PROC COUNTER_B",
+                "  SETR %DR1 %SDR0",
+                "  RET",
+                ".ENDP"
+        );
+
+        Compiler compiler = new Compiler();
+        EnvironmentProperties envProps = new EnvironmentProperties(new int[]{64, 64}, true);
+        ProgramArtifact artifact = compiler.compile(Arrays.asList(source.split("\\r?\\n")), "sdr_persistent.s", envProps);
+        assertThat(artifact).isNotNull();
+
+        Environment env = new Environment(envProps);
+        Simulation sim = SimulationTestUtils.createSimulation(env);
+
+        for (Map.Entry<int[], Integer> e : artifact.machineCodeLayout().entrySet()) {
+            env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());
+        }
+
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        org.setProgramId(artifact.programId());
+        sim.addOrganism(org);
+
+        // 16 ticks: 3× CALL COUNTER (4 ticks each) + 1× CALL COUNTER_B (3 ticks) + WAIT (1 tick)
+        for (int i = 0; i < 16; i++) {
+            sim.tick();
+        }
+
+        assertThat(org.isInstructionFailed()).as("Failure: " + org.getFailureReason()).isFalse();
+
+        // COUNTER was called 3x, each time incrementing SDR0 and copying to DR0
+        Molecule dr0 = Molecule.fromInt((Integer) org.readOperand(0));
+        assertThat(dr0.toScalarValue())
+                .as("DR0 should be 3 after three COUNTER calls")
+                .isEqualTo(3);
+
+        // COUNTER_B has its own SDR0 (never incremented), copied to DR1
+        Molecule dr1 = Molecule.fromInt((Integer) org.readOperand(1));
+        assertThat(dr1.toScalarValue())
+                .as("DR1 should be 0 — COUNTER_B has an independent SDR backing store")
+                .isEqualTo(0);
+    }
 }

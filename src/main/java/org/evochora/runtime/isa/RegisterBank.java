@@ -17,14 +17,14 @@ import java.util.List;
  */
 public enum RegisterBank {
 
-    DR    (   0, Config.NUM_DATA_REGISTERS,     false, CallBehavior.GLOBAL,      false, "%DR",  3),
-    LR    ( 256, Config.NUM_LOCATION_REGISTERS, true,  CallBehavior.GLOBAL,      false, "%LR",  3),
-    PDR   ( 512, Config.NUM_PDR_REGISTERS,      false, CallBehavior.STACK_SAVED, false, "%PDR", 4),
-    PLR   ( 768, Config.NUM_PLR_REGISTERS,      true,  CallBehavior.STACK_SAVED, false, "%PLR", 4),
-    FDR   (1024, Config.NUM_FDR_REGISTERS,      false, CallBehavior.STACK_SAVED, true,  "%FDR", 4),
-    FLR   (1280, 0,                             true,  CallBehavior.STACK_SAVED, true,  "%FLR", 4),
-    SDR   (1536, 0,                             false, CallBehavior.PERSISTENT,  false, "%SDR", 4),
-    SLR   (1792, 0,                             true,  CallBehavior.PERSISTENT,  false, "%SLR", 4);
+    DR    (   0, Config.NUM_DATA_REGISTERS,     false, CallBehavior.GLOBAL,      false, true,  "%DR",  3),
+    LR    ( 256, Config.NUM_LOCATION_REGISTERS, true,  CallBehavior.GLOBAL,      false, true,  "%LR",  3),
+    PDR   ( 512, Config.NUM_PDR_REGISTERS,      false, CallBehavior.STACK_SAVED, false, false, "%PDR", 4),
+    PLR   ( 768, Config.NUM_PLR_REGISTERS,      true,  CallBehavior.STACK_SAVED, false, false, "%PLR", 4),
+    FDR   (1024, Config.NUM_FDR_REGISTERS,      false, CallBehavior.STACK_SAVED, true,  false, "%FDR", 4),
+    FLR   (1280, 0,                             true,  CallBehavior.STACK_SAVED, true,  false, "%FLR", 4),
+    SDR   (1536, Config.NUM_SDR_REGISTERS,      false, CallBehavior.PERSISTENT,  false, true,  "%SDR", 4),
+    SLR   (1792, Config.NUM_SLR_REGISTERS,      true,  CallBehavior.PERSISTENT,  false, true,  "%SLR", 4);
 
     /** Behavior of this bank's registers when a CALL or RET instruction executes. */
     public enum CallBehavior {
@@ -95,18 +95,21 @@ public enum RegisterBank {
     public final boolean isLocation;
     public final CallBehavior callBehavior;
     public final boolean isForbidden;
+    /** Whether this bank is available everywhere (true) or only inside procedures (false). */
+    public final boolean isAlwaysAvailable;
     public final String prefix;
     public final int prefixLength;
 
     private int slotOffset;
 
     RegisterBank(int base, int count, boolean isLocation, CallBehavior callBehavior,
-                 boolean isForbidden, String prefix, int prefixLength) {
+                 boolean isForbidden, boolean isAlwaysAvailable, String prefix, int prefixLength) {
         this.base = base;
         this.count = count;
         this.isLocation = isLocation;
         this.callBehavior = callBehavior;
         this.isForbidden = isForbidden;
+        this.isAlwaysAvailable = isAlwaysAvailable;
         this.prefix = prefix;
         this.prefixLength = prefixLength;
     }
@@ -146,14 +149,17 @@ public enum RegisterBank {
 
     private static final List<RegisterBank> CACHED_SAVED_ON_CALL;
     private static final List<RegisterBank> CACHED_PROC_SCOPED;
+    private static final List<RegisterBank> CACHED_PERSISTENT;
 
     static {
-        // (appended to existing static init block content via field initializer)
         CACHED_SAVED_ON_CALL = Arrays.stream(values())
                 .filter(b -> b.callBehavior == CallBehavior.STACK_SAVED && b.count > 0)
                 .toList();
         CACHED_PROC_SCOPED = Arrays.stream(values())
-                .filter(b -> b.callBehavior != CallBehavior.GLOBAL && b.count > 0)
+                .filter(b -> !b.isAlwaysAvailable && b.count > 0)
+                .toList();
+        CACHED_PERSISTENT = Arrays.stream(values())
+                .filter(b -> b.callBehavior == CallBehavior.PERSISTENT && b.count > 0)
                 .toList();
     }
 
@@ -166,10 +172,18 @@ public enum RegisterBank {
     }
 
     /**
-     * Returns all banks that are procedure-scoped (not global) and have registers allocated
-     * (count &gt; 0). Cached — safe to call on the hotpath.
+     * Returns all banks that are only available inside procedures (not always-available)
+     * and have registers allocated (count &gt; 0). Cached — safe to call on the hotpath.
      */
     public static List<RegisterBank> allProcScoped() {
         return CACHED_PROC_SCOPED;
+    }
+
+    /**
+     * Returns all banks with {@link CallBehavior#PERSISTENT} that have registers allocated
+     * (count &gt; 0). Cached — safe to call on the hotpath.
+     */
+    public static List<RegisterBank> allPersistent() {
+        return CACHED_PERSISTENT;
     }
 }

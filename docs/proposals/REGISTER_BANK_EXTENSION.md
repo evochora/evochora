@@ -451,6 +451,7 @@ SDR/SLR have special semantics NOT covered by generic encapsulation: a persisten
   - New methods: `snapshotPersistentRegisters()` / `restorePersistentRegisters(Object[])` / `resetPersistentRegisters()` — analogous to the STACK_SAVED methods. `resetPersistentRegisters()` actively sets all PERSISTENT slots to type-dependent defaults (0 for scalar banks, zero-vector for location banks).
   - New methods: `setPersistentRegisterState(Map<Integer, Object[]>)` / `getPersistentRegisterState()` — for serialization/restore.
   - New methods: `setCurrentProcLabelHash(int)` / `getCurrentProcLabelHash()` — for serialization/restore.
+  - `recoverFromStall()`: update to also restore PERSISTENT registers when popping a ProcFrame — set `currentProcLabelHash` back to the caller's labelHash (from the new top ProcFrame, or `MAIN_LEVEL_LABEL_HASH` if stack becomes empty), then load caller's PERSISTENT state from backing store. Without this, an organism recovering from a max-skip stall inside a procedure would see the wrong procedure's SDR/SLR values.
 - `ProcFrame` record: add `int labelHash` field (Machine-Code-based, Artifact-independent). ProcFrame signature: `ProcFrame(String procName, int labelHash, int[] absoluteReturnIp, int[] absoluteCallIp, Object[] savedRegisters, Map<Integer, Integer> parameterBindings)`. All constructor call-sites (~10) must be updated.
 - `ProcedureCallHandler.java`: CALL/RET logic — Main is treated as an implicit procedure with `MAIN_LEVEL_LABEL_HASH`. No special cases:
   1. On CALL: save active PERSISTENT values under `organism.getCurrentProcLabelHash()`: `organism.getPersistentRegisterState().put(organism.getCurrentProcLabelHash(), organism.snapshotPersistentRegisters())`.
@@ -478,6 +479,9 @@ SDR/SLR have special semantics NOT covered by generic encapsulation: a persisten
   ```
   `OrganismState` gets two new fields: `PersistentRegisterStore persistent_register_store = 33` and `int32 current_proc_label_hash = 34` (tracks which procedure's persistent state is currently active — needed for correct restore when organism is snapshotted mid-procedure). `ProcFrame` gets a new field `int32 label_hash = 2` (after proc_name=1), with all following fields renumbered: absolute_return_ip=3, saved_registers=4, parameter_bindings=5, absolute_call_ip=6.
   SimulationEngine serializes `organism.getPersistentRegisterState()` and `organism.getCurrentProcLabelHash()`. SimulationRestorer deserializes both via `organism.setPersistentRegisterState()` and `organism.setCurrentProcLabelHash()`.
+
+**DTOs:**
+- `OrganismRuntimeView.java`: update JavaDoc slot layout comment to include SDR and SLR slots.
 
 **Visualizer (manual, technology boundary):**
 - Add SDR and SLR entries to `REGISTER_BANKS` array in `AnnotationUtils.js`. All dispatch methods and OrganismStateView iterate over REGISTER_BANKS — no method changes needed, SDR/SLR sections appear automatically. SDR/SLR persistent state displayed per-procedure in call stack view may require additional OrganismStateView logic for the backing-store visualization (bank-specific, not generic).

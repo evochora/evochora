@@ -57,6 +57,22 @@ public final class Config {
     public static final int NUM_FDR_REGISTERS = 8;
 
     /**
+     * The number of static data registers (SDR) with per-procedure persistent backing store.
+     */
+    public static final int NUM_SDR_REGISTERS = 8;
+
+    /**
+     * The number of static location registers (SLR) with per-procedure persistent backing store.
+     */
+    public static final int NUM_SLR_REGISTERS = 4;
+
+    /**
+     * The maximum number of distinct procedures for which an organism can maintain
+     * persistent register state. Exceeding this limit triggers an instruction failure.
+     */
+    public static final int PERSISTENT_STATE_MAX_PROCEDURES = 1024;
+
+    /**
      * The maximum depth of the data stack.
      */
     public static final int DS_MAX_DEPTH = 1024;

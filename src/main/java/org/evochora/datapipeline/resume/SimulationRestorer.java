@@ -27,6 +27,7 @@ import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.PlacedMoleculeMapping;
 import org.evochora.datapipeline.api.contracts.PluginState;
 import org.evochora.datapipeline.api.contracts.ProcFrame;
+import org.evochora.datapipeline.api.contracts.ProcedureRegisterSnapshot;
 import org.evochora.datapipeline.api.contracts.RegisterValue;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.SourceMapEntry;
@@ -571,6 +572,20 @@ public class SimulationRestorer {
             builder.failed(true, reason);
         }
 
+        // Persistent register state
+        builder.currentProcLabelHash(state.getCurrentProcLabelHash());
+        if (state.hasPersistentRegisterStore()) {
+            Map<Integer, Object[]> persistentState = new HashMap<>();
+            for (ProcedureRegisterSnapshot snapshot : state.getPersistentRegisterStore().getProcedureSnapshotsList()) {
+                Object[] regs = new Object[snapshot.getRegistersCount()];
+                for (int i = 0; i < snapshot.getRegistersCount(); i++) {
+                    regs[i] = convertRegisterValue(snapshot.getRegisters(i));
+                }
+                persistentState.put(snapshot.getLabelHash(), regs);
+            }
+            builder.persistentRegisterState(persistentState);
+        }
+
         return builder.build(simulation);
     }
 
@@ -599,6 +614,7 @@ public class SimulationRestorer {
 
         return new Organism.ProcFrame(
             pf.getProcName(),
+            pf.getLabelHash(),
             toIntArray(pf.getAbsoluteReturnIp()),
             toIntArray(pf.getAbsoluteCallIp()),
             savedRegisters,

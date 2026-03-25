@@ -111,6 +111,7 @@ class OrganismRestoreBuilderTest {
         savedRegisters[Config.NUM_PDR_REGISTERS] = 3; savedRegisters[Config.NUM_PDR_REGISTERS + 1] = 4; // FDR0, FDR1
         callStack.push(new Organism.ProcFrame(
             "testProc",
+            0,
             new int[]{50, 50},
             new int[]{40, 40},
             savedRegisters,

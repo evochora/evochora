@@ -26,6 +26,8 @@ import org.evochora.datapipeline.api.contracts.InstructionMapping;
 import org.evochora.datapipeline.api.contracts.LineTokenLookup;
 import org.evochora.datapipeline.api.contracts.LinearAddressToCoord;
 import org.evochora.datapipeline.api.contracts.OrganismState;
+import org.evochora.datapipeline.api.contracts.PersistentRegisterStore;
+import org.evochora.datapipeline.api.contracts.ProcedureRegisterSnapshot;
 import org.evochora.datapipeline.api.contracts.PlacedMoleculeMapping;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.SourceInfo;
@@ -833,6 +835,19 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             organismStateBuilder.setDeathTick(o.getDeathTick());
         }
 
+        // Persistent register state
+        organismStateBuilder.setCurrentProcLabelHash(o.getCurrentProcLabelHash());
+        PersistentRegisterStore.Builder storeBuilder = PersistentRegisterStore.newBuilder();
+        for (Map.Entry<Integer, Object[]> entry : o.getPersistentRegisterState().entrySet()) {
+            ProcedureRegisterSnapshot.Builder snapshotBuilder = ProcedureRegisterSnapshot.newBuilder()
+                    .setLabelHash(entry.getKey());
+            for (Object rv : entry.getValue()) {
+                snapshotBuilder.addRegisters(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
+            }
+            storeBuilder.addProcedureSnapshots(snapshotBuilder.build());
+        }
+        organismStateBuilder.setPersistentRegisterStore(storeBuilder.build());
+
         return organismStateBuilder.build();
     }
     
@@ -1033,6 +1048,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         procFrameBuilder.clear();
         procFrameBuilder
                 .setProcName(frame.procName())
+                .setLabelHash(frame.labelHash())
                 .setAbsoluteReturnIp(convertVectorReuse(frame.absoluteReturnIp(), vectorBuilder))
                 .setAbsoluteCallIp(convertVectorReuse(frame.absoluteCallIp(), vectorBuilder))
                 .putAllParameterBindings(frame.parameterBindings());

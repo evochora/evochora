@@ -170,7 +170,7 @@ public class VMControlFlowInstructionTest {
         int[] callIp = new int[]{5}; // CALL instruction address
         Object[] savedRegisters = org.snapshotStackSavedRegisters();
 
-        org.getCallStack().push(new Organism.ProcFrame("TEST_PROC", expectedIp, callIp, savedRegisters, java.util.Collections.emptyMap()));
+        org.getCallStack().push(new Organism.ProcFrame("TEST_PROC", 0, expectedIp, callIp, savedRegisters, java.util.Collections.emptyMap()));
 
         // Place WAIT at expected IP to stop instant-skip loop
         environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), expectedIp);

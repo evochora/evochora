@@ -4,7 +4,9 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.stream.Collectors;
 
@@ -78,6 +80,12 @@ public class Organism {
     private final Deque<Object> dataStack;
     private final Deque<int[]> locationStack;
     private final Deque<ProcFrame> callStack;
+    /** Sentinel labelHash for Main-level persistent state. Outside the 20-bit labelHash range. */
+    public static final int MAIN_LEVEL_LABEL_HASH = -1;
+    /** Which procedure's persistent register state is currently active in the flat array. */
+    private int currentProcLabelHash = MAIN_LEVEL_LABEL_HASH;
+    /** Per-procedure backing store for PERSISTENT registers, keyed by labelHash. */
+    private final Map<Integer, Object[]> persistentRegisterState = new HashMap<>();
     private boolean isDead = false;
 
     private boolean instructionFailed = false;
@@ -90,6 +98,7 @@ public class Organism {
      * It stores the necessary state to return to the caller correctly.
      *
      * @param procName The name of the procedure.
+     * @param labelHash The label hash identifying this procedure (used for persistent register state).
      * @param absoluteReturnIp The absolute return IP.
      * @param absoluteCallIp The absolute address of the CALL instruction that created this frame.
      * @param savedRegisters Compact array of all STACK_SAVED register values in RegisterBank enum order.
@@ -97,6 +106,7 @@ public class Organism {
      */
     public record ProcFrame(
             String procName,
+            int labelHash,
             int[] absoluteReturnIp,
             int[] absoluteCallIp,
             Object[] savedRegisters,
@@ -153,6 +163,7 @@ public class Organism {
                 registers[bank.slotOffset() + i] = bank.isLocation ? new int[startIp.length] : 0;
             }
         }
+        this.persistentRegisterState.put(MAIN_LEVEL_LABEL_HASH, snapshotPersistentRegisters());
         this.locationStack = new ArrayDeque<>(Config.LOCATION_STACK_MAX_DEPTH);
         this.dataStack = new ArrayDeque<>(Config.STACK_MAX_DEPTH);
         this.callStack = new ArrayDeque<>(Config.CALL_STACK_MAX_DEPTH);
@@ -248,6 +259,14 @@ public class Organism {
         this.failureCallStack = b.failureCallStack != null
             ? new ArrayDeque<>(b.failureCallStack) : null;
 
+        // Persistent register state
+        this.currentProcLabelHash = b.currentProcLabelHash;
+        if (b.persistentRegisterState != null) {
+            this.persistentRegisterState.putAll(b.persistentRegisterState);
+        } else {
+            this.persistentRegisterState.put(MAIN_LEVEL_LABEL_HASH, snapshotPersistentRegisters());
+        }
+
         // Derived fields from simulation
         this.simulation = simulation;
         this.logger = null; // Restored organisms don't have individual loggers
@@ -311,6 +330,8 @@ public class Organism {
         private boolean instructionFailed = false;
         private String failureReason = null;
         private Deque<ProcFrame> failureCallStack = null;
+        private Map<Integer, Object[]> persistentRegisterState = null;
+        private int currentProcLabelHash = MAIN_LEVEL_LABEL_HASH;
 
         private RestoreBuilder(int id, long birthTick) {
             this.id = id;
@@ -442,6 +463,18 @@ public class Organism {
         /** Sets the call stack at the time of failure. */
         public RestoreBuilder failureCallStack(Deque<ProcFrame> stack) {
             this.failureCallStack = stack;
+            return this;
+        }
+
+        /** Sets the per-procedure persistent register backing store. */
+        public RestoreBuilder persistentRegisterState(Map<Integer, Object[]> state) {
+            this.persistentRegisterState = state;
+            return this;
+        }
+
+        /** Sets the labelHash of the currently active procedure for persistent state. */
+        public RestoreBuilder currentProcLabelHash(int labelHash) {
+            this.currentProcLabelHash = labelHash;
             return this;
         }
 
@@ -749,6 +782,14 @@ public class Organism {
         if (!callStack.isEmpty()) {
             ProcFrame frame = callStack.pop();
             restoreStackSavedRegisters(frame.savedRegisters());
+            // Save current procedure's persistent state and restore caller's
+            persistentRegisterState.put(currentProcLabelHash, snapshotPersistentRegisters());
+            int callerLabelHash = callStack.isEmpty() ? MAIN_LEVEL_LABEL_HASH : callStack.peek().labelHash();
+            currentProcLabelHash = callerLabelHash;
+            Object[] callerState = persistentRegisterState.get(callerLabelHash);
+            if (callerState != null) {
+                restorePersistentRegisters(callerState);
+            }
             setIp(frame.absoluteReturnIp());
         } else {
             setIp(Arrays.copyOf(initialPosition, initialPosition.length));
@@ -1219,5 +1260,61 @@ public class Organism {
             offset += bank.count;
         }
     }
+
+    /**
+     * Creates a compact snapshot of all PERSISTENT register values.
+     * The layout follows RegisterBank enum declaration order.
+     */
+    public Object[] snapshotPersistentRegisters() {
+        List<RegisterBank> banks = RegisterBank.allPersistent();
+        int totalSize = banks.stream().mapToInt(b -> b.count).sum();
+        Object[] snapshot = new Object[totalSize];
+        int offset = 0;
+        for (RegisterBank bank : banks) {
+            System.arraycopy(registers, bank.slotOffset(), snapshot, offset, bank.count);
+            offset += bank.count;
+        }
+        return snapshot;
+    }
+
+    /**
+     * Restores all PERSISTENT register values from a compact snapshot.
+     * The layout must match the one created by {@link #snapshotPersistentRegisters()}.
+     */
+    public void restorePersistentRegisters(Object[] snapshot) {
+        List<RegisterBank> banks = RegisterBank.allPersistent();
+        int offset = 0;
+        for (RegisterBank bank : banks) {
+            System.arraycopy(snapshot, offset, registers, bank.slotOffset(), bank.count);
+            offset += bank.count;
+        }
+    }
+
+    /**
+     * Resets all PERSISTENT register slots to type-dependent defaults
+     * (0 for data banks, zero-vector for location banks).
+     */
+    public void resetPersistentRegisters() {
+        for (RegisterBank bank : RegisterBank.allPersistent()) {
+            for (int i = 0; i < bank.count; i++) {
+                registers[bank.slotOffset() + i] = bank.isLocation ? new int[ip.length] : 0;
+            }
+        }
+    }
+
+    /** Returns the per-procedure persistent register backing store. */
+    public Map<Integer, Object[]> getPersistentRegisterState() { return persistentRegisterState; }
+
+    /** Replaces the persistent register backing store (used during restore). */
+    public void setPersistentRegisterState(Map<Integer, Object[]> state) {
+        this.persistentRegisterState.clear();
+        this.persistentRegisterState.putAll(state);
+    }
+
+    /** Returns the labelHash of the currently active procedure for persistent state. */
+    public int getCurrentProcLabelHash() { return currentProcLabelHash; }
+
+    /** Sets the labelHash of the currently active procedure for persistent state. */
+    public void setCurrentProcLabelHash(int labelHash) { this.currentProcLabelHash = labelHash; }
 
 }

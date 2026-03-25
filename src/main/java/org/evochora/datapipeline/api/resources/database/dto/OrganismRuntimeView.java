@@ -23,7 +23,7 @@ public final class OrganismRuntimeView {
 
     /**
      * Flat register array in RegisterBank enum order.
-     * Slot layout matches RegisterBank.slotOffset(): DR[0..7], LR[8..11], PDR[12..19], PLR[20..23], FDR[24..31].
+     * Slot layout matches RegisterBank.slotOffset(): DR[0..7], LR[8..11], PDR[12..19], PLR[20..23], FDR[24..31], SDR[32..39], SLR[40..43].
      * Each element is a {@link RegisterValueView}.
      */
     public final List<RegisterValueView> registers;

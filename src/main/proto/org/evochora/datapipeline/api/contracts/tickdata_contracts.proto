@@ -137,8 +137,8 @@ message OrganismState {
 
   // ===== Registers =====
 
-  // Flat register array in RegisterBank enum order (DR, LR, PDR, FDR).
-  // Slot layout matches RegisterBank.slotOffset(): DR[0..7], LR[8..11], PDR[12..19], FDR[20..27].
+  // Flat register array in RegisterBank enum order.
+  // Slot layout matches RegisterBank.slotOffset().
   // Location registers use the RegisterValue.vector variant.
   // Source: Organism flat register array
   repeated RegisterValue registers = 11;
@@ -259,13 +259,23 @@ message OrganismState {
   // Maps register ID to RegisterValue (only for registers used as arguments)
   // Source: VirtualMachine.peekNextInstruction()
   map<int32, RegisterValue> next_instruction_register_values_before = 32;
+
+  // ===== Persistent Register State =====
+
+  // Per-procedure backing store for PERSISTENT registers (SDR, SLR).
+  // Source: Organism.getPersistentRegisterState()
+  PersistentRegisterStore persistent_register_store = 33;
+
+  // LabelHash of the currently active procedure's persistent state.
+  // Source: Organism.getCurrentProcLabelHash()
+  int32 current_proc_label_hash = 34;
 }
 
 // Aggregated runtime state for organism indexing.
 // Used by OrganismIndexer to store sidebar-only data in a single BLOB.
 message OrganismRuntimeState {
-  // Flat register array in RegisterBank enum order (DR, LR, PDR, FDR).
-  // Slot layout matches RegisterBank.slotOffset(): DR[0..7], LR[8..11], PDR[12..19], FDR[20..27].
+  // Flat register array in RegisterBank enum order.
+  // Slot layout matches RegisterBank.slotOffset().
   // Location registers use the RegisterValue.vector variant.
   repeated RegisterValue registers = 1;
   repeated RegisterValue data_stack = 2;
@@ -305,21 +315,38 @@ message ProcFrame {
   // Name of the procedure being called
   string proc_name = 1;
 
+  // LabelHash identifying the procedure (used for persistent register state lookup)
+  int32 label_hash = 2;
+
   // Absolute return address (where to resume after procedure returns)
-  Vector absolute_return_ip = 2;
+  Vector absolute_return_ip = 3;
 
   // Saved registers from caller's context (compact array in RegisterBank.allSavedOnCall() order).
-  // Layout: PDR[0..7], FDR[8..15] (for current 2-bank configuration).
   // Location registers use the RegisterValue.vector variant.
-  repeated RegisterValue saved_registers = 3;
+  repeated RegisterValue saved_registers = 4;
 
   // Mapping from register ID to source register ID for parameter bindings.
   // Keys are full register IDs (e.g., FDR_BASE+0). Supports both FDR and future FLR bindings.
-  map<int32, int32> parameter_bindings = 4;
+  map<int32, int32> parameter_bindings = 5;
 
   // Absolute address of the CALL instruction that created this frame.
   // Used for resolving parameter bindings from artifact at debug time.
-  Vector absolute_call_ip = 5;
+  Vector absolute_call_ip = 6;
+}
+
+// Per-procedure backing store for PERSISTENT registers (SDR, SLR).
+// Each entry maps a procedure's labelHash to a compact snapshot of its persistent register values.
+message PersistentRegisterStore {
+  repeated ProcedureRegisterSnapshot procedure_snapshots = 1;
+}
+
+// Snapshot of persistent register values for a single procedure.
+message ProcedureRegisterSnapshot {
+  // LabelHash identifying the procedure (or MAIN_LEVEL_LABEL_HASH = -1 for Main)
+  int32 label_hash = 1;
+
+  // Compact array of all PERSISTENT register values in RegisterBank.allPersistent() order.
+  repeated RegisterValue registers = 2;
 }
 
 // Represents a register value that can be either scalar or vector.

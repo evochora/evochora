@@ -355,7 +355,7 @@ public class OrganismTest {
         int[] returnAddr = new int[]{60, 50};
         Object[] savedRegisters = org.snapshotStackSavedRegisters();
         org.getCallStack().push(new Organism.ProcFrame(
-                "PROC", returnAddr, new int[]{55, 50},
+                "PROC", 0, returnAddr, new int[]{55, 50},
                 savedRegisters, java.util.Collections.emptyMap()));
 
         // Move IP into empty space
@@ -386,7 +386,7 @@ public class OrganismTest {
 
         // Simulate what a CALL does: push frame with caller's registers, then change PDRs
         org.getCallStack().push(new Organism.ProcFrame(
-                "PROC", new int[]{60, 50}, new int[]{55, 50},
+                "PROC", 0, new int[]{60, 50}, new int[]{55, 50},
                 callerRegisters, java.util.Collections.emptyMap()));
         org.writeOperand(RegisterBank.PDR.base, 777);
         org.writeOperand(RegisterBank.PDR.base + 1, 888);
@@ -417,7 +417,7 @@ public class OrganismTest {
         Object[] callerRegisters = org.snapshotStackSavedRegisters();
 
         org.getCallStack().push(new Organism.ProcFrame(
-                "OUTER", new int[]{60, 50}, new int[]{55, 50},
+                "OUTER", 0, new int[]{60, 50}, new int[]{55, 50},
                 callerRegisters, java.util.Collections.emptyMap()));
         org.writeOperand(RegisterBank.FDR.base, 999);
         org.writeOperand(RegisterBank.FDR.base + 1, 888);
@@ -447,7 +447,7 @@ public class OrganismTest {
         Object[] callerRegisters = org.snapshotStackSavedRegisters();
 
         org.getCallStack().push(new Organism.ProcFrame(
-                "OUTER", new int[]{60, 50}, new int[]{55, 50},
+                "OUTER", 0, new int[]{60, 50}, new int[]{55, 50},
                 callerRegisters, java.util.Collections.emptyMap()));
         org.writeLocationOperand(RegisterBank.PLR.base, new int[]{0, 0});
 
@@ -498,10 +498,10 @@ public class OrganismTest {
         Object[] savedRegs = org.snapshotStackSavedRegisters();
 
         org.getCallStack().push(new Organism.ProcFrame(
-                "PROC1", returnAddr1, new int[]{55, 50},
+                "PROC1", 1, returnAddr1, new int[]{55, 50},
                 savedRegs, java.util.Collections.emptyMap()));
         org.getCallStack().push(new Organism.ProcFrame(
-                "PROC2", returnAddr2, new int[]{65, 50},
+                "PROC2", 2, returnAddr2, new int[]{65, 50},
                 savedRegs, java.util.Collections.emptyMap()));
 
         // First max-skip: pops PROC2, IP → returnAddr2
