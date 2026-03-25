@@ -1,5 +1,7 @@
 package org.evochora.compiler.frontend.parser;
 
+import org.evochora.runtime.isa.RegisterBank;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -15,7 +17,14 @@ public class ParserState {
 
     private final Map<Class<?>, Object> state = new HashMap<>();
     private final List<IScopedParserState> scopedStates = new ArrayList<>();
-    private final Map<String, Integer> availableRegisterBanks = new HashMap<>(Map.of("DR", 1, "LR", 1));
+    private final Map<String, Integer> availableRegisterBanks = new HashMap<>();
+    {
+        for (RegisterBank bank : RegisterBank.values()) {
+            if (bank.count > 0 && bank.callBehavior == RegisterBank.CallBehavior.GLOBAL) {
+                availableRegisterBanks.put(bank.prefix.substring(1), 1);
+            }
+        }
+    }
 
     /**
      * Retrieves the state object associated with the given key type.

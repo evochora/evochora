@@ -421,18 +421,48 @@ After Phase D, adding PLR is significantly simpler: a RegisterBank enum entry + 
 
 Adds persistent state registers. Independent from Phase E (PLR). Depends on Phase A (naming), Phase C (writeLocationOperand enforcement for SLR), and Phase D (RegisterBank encapsulation).
 
-SDR/SLR have special semantics NOT covered by generic encapsulation: the persistent backing store (`Map<String, Object[]>` / `Map<String, int[][]>` keyed by procedure name) and the CALL/RET swap logic. This bank-specific logic must be implemented in ProcedureCallHandler.
+SDR/SLR have special semantics NOT covered by generic encapsulation: a persistent backing store (`Map<Integer, Object[]>` keyed by labelHash) and implicit CALL/RET context-switch logic. This bank-specific logic must be implemented in ProcedureCallHandler.
 
 **Runtime:**
 - `Config.java`: `NUM_SDR_REGISTERS = 8`, `NUM_SLR_REGISTERS = 4`
-- `RegisterBank.java`: new entries `SDR(1536, Config.NUM_SDR_REGISTERS, false, CallBehavior.PERSISTENT, false, "%SDR", 4)` and `SLR(1792, Config.NUM_SLR_REGISTERS, true, CallBehavior.PERSISTENT, false, "%SLR", 4)`
-- Organism: flat array automatically includes SDR/SLR slots. Backing store: `Map<String, Object[]> sdrState`, `Map<String, int[][]> slrState`.
-- `ProcedureCallHandler.java`: on CALL, save caller's active SDR/SLR to map (if caller is a procedure), load callee's SDR/SLR from map into flat array slots (or initialize to defaults if first call). On RET, write active SDR/SLR back to map, restore caller's values. This is **bank-specific logic** — `CallBehavior.PERSISTENT` triggers this path, but the backing store management is not generic.
+- `RegisterBank.java`:
+  - New entries: `SDR(1536, Config.NUM_SDR_REGISTERS, false, CallBehavior.PERSISTENT, false, true, "%SDR", 4)` and `SLR(1792, Config.NUM_SLR_REGISTERS, true, CallBehavior.PERSISTENT, false, true, "%SLR", 4)`.
+  - New field: `boolean isAlwaysAvailable` — orthogonal to `callBehavior`. Defines where a register can be used (everywhere vs. only in .PROC), NOT what happens at CALL/RET. All existing banks get this field added to the constructor. Complete values:
+
+    | Bank | isAlwaysAvailable | Reason |
+    |------|-------------------|--------|
+    | DR   | true  | Global data registers |
+    | LR   | true  | Global location registers |
+    | PDR  | false | Proc-local, only in .PROC |
+    | PLR  | false | Proc-local, only in .PROC |
+    | FDR  | false | Formal params, only in .PROC (also isForbidden) |
+    | FLR  | false | Formal params, only in .PROC (also isForbidden) |
+    | SDR  | true  | Persistent, but usable everywhere |
+    | SLR  | true  | Persistent, but usable everywhere |
+  - New cached method: `allPersistent()` — filters `callBehavior == PERSISTENT && count > 0`.
+  - `allProcScoped()` updated: filters `!isAlwaysAvailable && count > 0` (replaces `callBehavior != GLOBAL`).
+- `ParserState.java`: initial `availableRegisterBanks` filter condition changes from `callBehavior == GLOBAL` to `isAlwaysAvailable` (line 23). Before Phase F no PERSISTENT banks had count > 0, so the behavior change is zero — DR and LR are both GLOBAL and isAlwaysAvailable=true. After Phase F, SDR/SLR (PERSISTENT, isAlwaysAvailable=true) are automatically included.
+- `ProcDirectiveHandler.java`: `addAvailableRegisterBanks` / `removeAvailableRegisterBanks` for banks with `!isAlwaysAvailable && !isForbidden && count > 0` (unchanged filter logic, but now uses `isAlwaysAvailable` instead of `callBehavior != GLOBAL`).
+- `Organism.java`:
+  - Flat array automatically includes SDR/SLR slots (computed from RegisterBank).
+  - New constant: `public static final int MAIN_LEVEL_LABEL_HASH = -1` — sentinel for Main-level persistent state. -1 is negative and outside the 20-bit labelHash range (0–1,048,575).
+  - New field: `int currentProcLabelHash` — tracks which procedure's persistent state is currently active. Initially `MAIN_LEVEL_LABEL_HASH`.
+  - New field: `Map<Integer, Object[]> persistentRegisterState` — backing store keyed by labelHash. Initialized with a default entry for key `MAIN_LEVEL_LABEL_HASH`.
+  - New methods: `snapshotPersistentRegisters()` / `restorePersistentRegisters(Object[])` / `resetPersistentRegisters()` — analogous to the STACK_SAVED methods. `resetPersistentRegisters()` actively sets all PERSISTENT slots to type-dependent defaults (0 for scalar banks, zero-vector for location banks).
+  - New methods: `setPersistentRegisterState(Map<Integer, Object[]>)` / `getPersistentRegisterState()` — for serialization/restore.
+  - New methods: `setCurrentProcLabelHash(int)` / `getCurrentProcLabelHash()` — for serialization/restore.
+- `ProcFrame` record: add `int labelHash` field (Machine-Code-based, Artifact-independent). ProcFrame signature: `ProcFrame(String procName, int labelHash, int[] absoluteReturnIp, int[] absoluteCallIp, Object[] savedRegisters, Map<Integer, Integer> parameterBindings)`. All constructor call-sites (~10) must be updated.
+- `ProcedureCallHandler.java`: CALL/RET logic — Main is treated as an implicit procedure with `MAIN_LEVEL_LABEL_HASH`. No special cases:
+  1. On CALL: save active PERSISTENT values under `organism.getCurrentProcLabelHash()`: `organism.getPersistentRegisterState().put(organism.getCurrentProcLabelHash(), organism.snapshotPersistentRegisters())`.
+  2. Set `organism.setCurrentProcLabelHash(labelHash)` (callee's labelHash).
+  3. Load callee's PERSISTENT values: `Object[] calleeState = organism.getPersistentRegisterState().get(labelHash)`. If present → `organism.restorePersistentRegisters(calleeState)`. If absent (first call) → `organism.resetPersistentRegisters()`.
+  4. On RET: save active PERSISTENT values under `organism.getCurrentProcLabelHash()`. Pop ProcFrame. If `callStack.isEmpty()` → `organism.setCurrentProcLabelHash(Organism.MAIN_LEVEL_LABEL_HASH)`, else → `organism.setCurrentProcLabelHash(callStack.peek().labelHash())`. Load caller's PERSISTENT values from backing store.
+  No compiler marshalling — SDR/SLR is an implicit context switch, fully encapsulated in ProcedureCallHandler. Transparent to Machine Code. No asymmetry between Main and procedures — both use the same backing store mechanism. The only structural difference is that Main's labelHash is restored from the sentinel constant (`MAIN_LEVEL_LABEL_HASH`) instead of a ProcFrame, because after the last Pop there is no ProcFrame to read from.
 - `GeneSubstitutionPlugin.java`, `GeneInsertionPlugin.java`: SDR/SLR bank detection is automatic via RegisterBank iteration (established in D2). No manual changes needed.
 
 **Compiler:**
 - After Phase D3, compiler handlers use RegisterBank iteration — SDR/SLR are automatically recognized. No manual changes needed.
-- `ProcDirectiveHandler.java`: SDR/SLR are automatically included in `addAvailableRegisterBanks()` via `allProcScoped().filter(!isForbidden)` from RegisterBank.
+- `ProcDirectiveHandler.java`: SDR/SLR are NOT added by ProcDirectiveHandler — they are always available via ParserState initialization (`isAlwaysAvailable = true`). ProcDirectiveHandler only adds banks with `!isAlwaysAvailable && !isForbidden && count > 0` (PDR, PLR).
 
 **Data Pipeline:**
 - After Phase D5, flat-array serialization automatically includes active SDR/SLR slots in `OrganismState.registers`.
@@ -442,16 +472,17 @@ SDR/SLR have special semantics NOT covered by generic encapsulation: the persist
       repeated ProcedureRegisterSnapshot procedure_snapshots = 1;
   }
   message ProcedureRegisterSnapshot {
-      string procedure_name = 1;
-      repeated RegisterValue registers = 2;  // SDR + SLR values for this procedure
+      int32 label_hash = 1;
+      repeated RegisterValue registers = 2;  // Compact sub-array of all PERSISTENT bank values
   }
   ```
-  `OrganismState` gets a new field `PersistentRegisterStore persistent_register_store`. SimulationEngine serializes the `Map<String, Object[]>` sdrState and `Map<String, int[][]>` slrState into this structure. SimulationRestorer deserializes it back. This is SDR/SLR-specific and NOT covered by generic encapsulation.
+  `OrganismState` gets two new fields: `PersistentRegisterStore persistent_register_store = 33` and `int32 current_proc_label_hash = 34` (tracks which procedure's persistent state is currently active — needed for correct restore when organism is snapshotted mid-procedure). `ProcFrame` gets a new field `int32 label_hash = 2` (after proc_name=1), with all following fields renumbered: absolute_return_ip=3, saved_registers=4, parameter_bindings=5, absolute_call_ip=6.
+  SimulationEngine serializes `organism.getPersistentRegisterState()` and `organism.getCurrentProcLabelHash()`. SimulationRestorer deserializes both via `organism.setPersistentRegisterState()` and `organism.setCurrentProcLabelHash()`.
 
 **Visualizer (manual, technology boundary):**
 - Add SDR and SLR entries to `REGISTER_BANKS` array in `AnnotationUtils.js`. All dispatch methods and OrganismStateView iterate over REGISTER_BANKS — no method changes needed, SDR/SLR sections appear automatically. SDR/SLR persistent state displayed per-procedure in call stack view may require additional OrganismStateView logic for the backing-store visualization (bank-specific, not generic).
 
-**Test (integration):** Assembly program with a procedure COUNTER that increments %SDR0 via `ADDI %SDR0 DATA:1`. Main program calls COUNTER three times. Assert after first call: %SDR0 == 1. Assert after second call: %SDR0 == 2. Assert after third call: %SDR0 == 3. Additionally test isolation: a second procedure COUNTER_B reads its own %SDR0. Assert: COUNTER_B's %SDR0 == 0 (independent from COUNTER's state).
+**Test (integration):** Assembly program with a procedure COUNTER that increments %SDR0 via `ADDI %SDR0 DATA:1` and copies the result to %DR0 before RET. Main program calls COUNTER three times. Assert after first call: DR0 == 1. Assert after second call: DR0 == 2. Assert after third call: DR0 == 3. Additionally test isolation: a second procedure COUNTER_B copies its own %SDR0 to %DR1. Assert after COUNTER_B call: DR1 == 0 (separate backing store, independent from COUNTER's state).
 
 ### Phase G: FLR + LREF/LVAL (Location Parameter Passing)
 
@@ -459,7 +490,7 @@ Adds location parameter passing. Depends on Phase E (PLR exists as LREF source) 
 
 **Runtime:**
 - `Config.java`: `NUM_FLR_REGISTERS = 4`
-- `RegisterBank.java`: new entry `FLR(1280, Config.NUM_FLR_REGISTERS, true, CallBehavior.STACK_SAVED, true, "%FLR", 4)` — note `isForbidden = true`
+- `RegisterBank.java`: new entry `FLR(1280, Config.NUM_FLR_REGISTERS, true, CallBehavior.STACK_SAVED, true, false, "%FLR", 4)` — note `isForbidden = true`, `isAlwaysAvailable = false` (formal parameter, only in .PROC)
 - Organism: flat array automatically includes FLR slots. `isLocationBank()` recognizes FLR via lookup table.
 - `ProcFrame` record: no signature change needed — FLR bindings are added to the existing `parameterBindings` map using FLR_BASE+i as keys (established as generic in D4).
 - `ProcedureCallHandler.java`: FLR binding on CALL — adds FLR_BASE+i → source register ID entries to `parameterBindings` (alongside existing FDR entries). Copy location value from source register to FLR slot. On RET: for LREF parameters, write FLR value back to source register before restore.
