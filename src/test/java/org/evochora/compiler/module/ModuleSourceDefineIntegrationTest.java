@@ -366,7 +366,7 @@ class ModuleSourceDefineIntegrationTest {
         // Phase 6: AST Post-Processing (skip Phase 5 TokenMap — not needed for these tests)
         ModuleContextTracker tracker = new ModuleContextTracker(symbolTable);
         symbolTable.setCurrentModule(rootAliasChain);
-        AstPostProcessor postProcessor = new AstPostProcessor(symbolTable, tracker, TestRegistries.postProcessRegistry());
+        AstPostProcessor postProcessor = new AstPostProcessor(symbolTable, tracker, new org.evochora.compiler.model.ScopeTracker(symbolTable), TestRegistries.postProcessRegistry());
         for (int i = 0; i < ast.size(); i++) {
             ast.set(i, postProcessor.process(ast.get(i)));
         }

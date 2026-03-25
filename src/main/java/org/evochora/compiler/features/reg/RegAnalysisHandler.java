@@ -38,7 +38,7 @@ public class RegAnalysisHandler implements IAnalysisHandler {
             return;
         }
 
-        symbolTable.define(new Symbol(regNode.alias(), regNode.sourceInfo(), Symbol.Type.ALIAS));
+        symbolTable.define(new Symbol(regNode.alias(), regNode.sourceInfo(), Symbol.Type.ALIAS, regNode));
     }
 
     /**

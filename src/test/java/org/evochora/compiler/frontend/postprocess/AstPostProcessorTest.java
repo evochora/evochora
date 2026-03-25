@@ -44,12 +44,15 @@ class AstPostProcessorTest {
         symbolTable.registerModule("TEST", "test.s");
         symbolTable.setCurrentModule("TEST");
 
-        processor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable), TestRegistries.postProcessRegistry());
+        processor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable), new org.evochora.compiler.model.ScopeTracker(symbolTable), TestRegistries.postProcessRegistry());
 
-        // Register aliases by processing RegNode instances (self-extraction)
-        processor.process(new RegNode("COUNTER", "%DR0", createSourceInfo()));
-        processor.process(new RegNode("TMP", "%PDR0", createSourceInfo()));
-        processor.process(new RegNode("POS", "%DR1", createSourceInfo()));
+        // Register aliases as ALIAS symbols with RegNode on the Symbol's node field
+        RegNode counterReg = new RegNode("COUNTER", "%DR0", createSourceInfo());
+        RegNode tmpReg = new RegNode("TMP", "%PDR0", createSourceInfo());
+        RegNode posReg = new RegNode("POS", "%DR1", createSourceInfo());
+        symbolTable.define(new Symbol("COUNTER", createSourceInfo(), Symbol.Type.ALIAS, counterReg));
+        symbolTable.define(new Symbol("TMP", createSourceInfo(), Symbol.Type.ALIAS, tmpReg));
+        symbolTable.define(new Symbol("POS", createSourceInfo(), Symbol.Type.ALIAS, posReg));
     }
 
     @Test
@@ -69,10 +72,7 @@ class AstPostProcessorTest {
         // Create an identifier that should be resolved as a register alias
         IdentifierNode idNode = new IdentifierNode("COUNTER", createSourceInfo());
 
-        // Add the symbol to the symbol table
-        symbolTable.define(new Symbol("COUNTER", createSourceInfo(), Symbol.Type.ALIAS));
-
-        // Process the AST
+        // Symbol already defined in setUp with RegNode — just process
         AstNode result = processor.process(idNode);
 
         // Should be replaced with a RegisterNode
@@ -83,7 +83,6 @@ class AstPostProcessorTest {
         assertThat(registerNode.getName()).isEqualTo("%DR0");
         assertThat(registerNode.getOriginalAlias()).isEqualTo("COUNTER");
         assertThat(registerNode.isAlias()).isTrue();
-        assertThat(registerNode.getName()).isEqualTo("%DR0");
     }
 
     @Test
@@ -93,12 +92,7 @@ class AstPostProcessorTest {
         IdentifierNode tmpNode = new IdentifierNode("TMP", createSourceInfo());
         IdentifierNode posNode = new IdentifierNode("POS", createSourceInfo());
 
-        // Add all symbols to the symbol table
-        symbolTable.define(new Symbol("COUNTER", createSourceInfo(), Symbol.Type.ALIAS));
-        symbolTable.define(new Symbol("TMP", createSourceInfo(), Symbol.Type.ALIAS));
-        symbolTable.define(new Symbol("POS", createSourceInfo(), Symbol.Type.ALIAS));
-
-        // Create a simple AST with these identifiers
+        // Symbols already defined in setUp with RegNode — just create the AST
         InstructionNode instruction = new InstructionNode(
             "SETI", List.of(counterNode, tmpNode, posNode), createSourceInfo()
         );
@@ -154,17 +148,14 @@ class AstPostProcessorTest {
     }
 
     @Test
-    void testProcess_AliasNotInRegisterAliases_NotReplaced() {
-        // Create an identifier that is an alias but not in our register aliases map
+    void testProcess_AliasWithoutRegNode_NotReplacedInMainProcessor() {
+        // ALIAS symbol with no RegNode (node=null) — should NOT be replaced
         IdentifierNode idNode = new IdentifierNode("SOME_ALIAS", createSourceInfo());
-
-        // Add it as an ALIAS symbol
         symbolTable.define(new Symbol("SOME_ALIAS", createSourceInfo(), Symbol.Type.ALIAS));
 
-        // Process the AST
         AstNode result = processor.process(idNode);
 
-        // Should NOT be replaced (not a register alias)
+        // Should NOT be replaced (ALIAS but node is not IRegisterAlias)
         assertThat(result).isSameAs(idNode);
     }
 
@@ -175,8 +166,7 @@ class AstPostProcessorTest {
         IdentifierNode labelNode = new IdentifierNode("SOME_LABEL", createSourceInfo());
         NumberLiteralNode numberNode = new NumberLiteralNode(42, createSourceInfo());
 
-        // Add symbols to symbol table
-        symbolTable.define(new Symbol("COUNTER", createSourceInfo(), Symbol.Type.ALIAS));
+        // COUNTER already defined as ALIAS in setUp; add SOME_LABEL as LABEL
         symbolTable.define(new Symbol("SOME_LABEL", createSourceInfo(), Symbol.Type.LABEL));
 
         // Create instruction with mixed arguments
@@ -230,28 +220,27 @@ class AstPostProcessorTest {
     }
 
     @Test
-    void testProcess_NoRegNodeProcessed_NoReplacements() {
-        // Create processor without processing any RegNode
-        AstPostProcessor emptyProcessor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable), TestRegistries.postProcessRegistry());
+    void testProcess_AliasWithoutRegNode_NotReplaced() {
+        // Create a fresh symbol table with an ALIAS symbol that has no RegNode (node=null)
+        DiagnosticsEngine freshDiags = new DiagnosticsEngine();
+        SymbolTable freshSt = new SymbolTable(freshDiags);
+        freshSt.registerModule("TEST", "test.s");
+        freshSt.setCurrentModule("TEST");
+        freshSt.define(new Symbol("ORPHAN", createSourceInfo(), Symbol.Type.ALIAS));
 
-        // Create an identifier that would be an alias
-        IdentifierNode idNode = new IdentifierNode("COUNTER", createSourceInfo());
-        symbolTable.define(new Symbol("COUNTER", createSourceInfo(), Symbol.Type.ALIAS));
+        AstPostProcessor freshProcessor = new AstPostProcessor(freshSt, new ModuleContextTracker(freshSt), new org.evochora.compiler.model.ScopeTracker(freshSt), TestRegistries.postProcessRegistry());
 
-        // Process the AST
-        AstNode result = emptyProcessor.process(idNode);
+        IdentifierNode idNode = new IdentifierNode("ORPHAN", createSourceInfo());
+        AstNode result = freshProcessor.process(idNode);
 
-        // Should NOT be replaced (no RegNode processed → no aliases known)
+        // Should NOT be replaced (ALIAS symbol has no IRegisterAlias node)
         assertThat(result).isSameAs(idNode);
     }
 
     @Test
     void testProcess_SourceInfoPreserved() {
-        // Create an identifier with specific source info
+        // Create an identifier with specific source info — COUNTER already in setUp
         IdentifierNode idNode = new IdentifierNode("COUNTER", createSourceInfo());
-
-        // Add to symbol table
-        symbolTable.define(new Symbol("COUNTER", createSourceInfo(), Symbol.Type.ALIAS));
 
         // Process the AST
         AstNode result = processor.process(idNode);
@@ -269,11 +258,8 @@ class AstPostProcessorTest {
 
     @Test
     void testProcess_TokenInfoCorrect() {
-        // Create an identifier
+        // Create an identifier — COUNTER already in setUp
         IdentifierNode idNode = new IdentifierNode("COUNTER", createSourceInfo());
-
-        // Add to symbol table
-        symbolTable.define(new Symbol("COUNTER", createSourceInfo(), Symbol.Type.ALIAS));
 
         // Process the AST
         AstNode result = processor.process(idNode);
@@ -333,7 +319,7 @@ class AstPostProcessorTest {
 
         // Use ModuleContextTracker with alias chains via PushCtxNode
         ModuleContextTracker tracker = new ModuleContextTracker(st);
-        AstPostProcessor moduleProcessor = new AstPostProcessor(st, tracker, TestRegistries.postProcessRegistry());
+        AstPostProcessor moduleProcessor = new AstPostProcessor(st, tracker, new org.evochora.compiler.model.ScopeTracker(st), TestRegistries.postProcessRegistry());
 
         List<AstNode> nodes = List.of(
                 new PushCtxNode("/mod_a.evo", modAChain), defineA, instrA, new PopCtxNode(),

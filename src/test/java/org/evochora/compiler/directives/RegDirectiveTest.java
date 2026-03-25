@@ -66,7 +66,7 @@ public class RegDirectiveTest {
         semanticAnalyzer.analyze(ast);
 
         // AST Post-Processing - Resolves register aliases
-        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable), TestRegistries.postProcessRegistry());
+        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable), new org.evochora.compiler.model.ScopeTracker(symbolTable), TestRegistries.postProcessRegistry());
         List<AstNode> processedAst = ast.stream()
             .map(node -> astPostProcessor.process(node))
             .toList();
@@ -213,7 +213,7 @@ public class RegDirectiveTest {
         semanticAnalyzer.analyze(ast);
 
         // AST Post-Processing - Resolves register aliases
-        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable), TestRegistries.postProcessRegistry());
+        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable), new org.evochora.compiler.model.ScopeTracker(symbolTable), TestRegistries.postProcessRegistry());
         List<AstNode> processedAst = ast.stream()
             .map(node -> astPostProcessor.process(node))
             .toList();

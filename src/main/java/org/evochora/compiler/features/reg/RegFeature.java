@@ -18,7 +18,6 @@ public class RegFeature implements ICompilerFeature {
     public void register(IFeatureRegistrationContext ctx) {
         ctx.parserStatement(".REG", new RegDirectiveHandler());
         ctx.analysisHandler(RegNode.class, new RegAnalysisHandler());
-        ctx.postProcessHandler(RegNode.class, new RegPostProcessHandler());
         ctx.irConverter(RegNode.class, new RegNodeConverter());
         ctx.emissionContributor(new RegisterAliasEmissionContributor());
     }

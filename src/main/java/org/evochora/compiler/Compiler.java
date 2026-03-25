@@ -23,6 +23,7 @@ import org.evochora.compiler.frontend.semantics.AnalysisHandlerRegistry;
 import org.evochora.compiler.frontend.semantics.IDependencySetupHandler;
 import org.evochora.compiler.frontend.semantics.ModuleSetupRegistry;
 import org.evochora.compiler.model.ModuleContextTracker;
+import org.evochora.compiler.model.ScopeTracker;
 import org.evochora.compiler.frontend.semantics.SemanticAnalyzer;
 import org.evochora.compiler.diagnostics.CompilerLogger;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -271,8 +272,9 @@ public class Compiler implements ICompiler {
         PostProcessHandlerRegistry postProcessRegistry = new PostProcessHandlerRegistry();
         postProcessRegistry.registerAll(featureRegistry.postProcessHandlers());
         ModuleContextTracker postProcessTracker = new ModuleContextTracker(symbolTable);
+        ScopeTracker scopeTracker = new ScopeTracker(symbolTable);
         symbolTable.setCurrentModule(rootAliasChain);
-        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, postProcessTracker, postProcessRegistry);
+        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, postProcessTracker, scopeTracker, postProcessRegistry);
 
         // Process all AST nodes, not just the first one
         for (int i = 0; i < ast.size(); i++) {

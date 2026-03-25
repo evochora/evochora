@@ -92,7 +92,7 @@ public class DefineDirectiveTest {
         semanticAnalyzer.analyze(ast);
 
         // AST Post-Processing - Resolves constants
-        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable), TestRegistries.postProcessRegistry());
+        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable), new org.evochora.compiler.model.ScopeTracker(symbolTable), TestRegistries.postProcessRegistry());
         List<AstNode> processedAst = ast.stream()
             .map(node -> astPostProcessor.process(node))
             .toList();

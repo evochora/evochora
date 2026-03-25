@@ -2,6 +2,7 @@ package org.evochora.compiler.features.reg;
 
 import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.IRegisterAlias;
 import org.evochora.compiler.model.ast.ISourceLocatable;
 
 import java.util.List;
@@ -17,7 +18,7 @@ public record RegNode(
         String alias,
         String register,
         SourceInfo sourceInfo
-) implements AstNode, ISourceLocatable {
+) implements AstNode, ISourceLocatable, IRegisterAlias {
 
     @Override
     public List<AstNode> getChildren() {
