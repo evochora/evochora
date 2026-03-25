@@ -417,7 +417,7 @@ After Phase D, adding PLR is significantly simpler: a RegisterBank enum entry + 
 
 **Test (integration):** Assembly program with two procedures. PROC_A stores current DP in %PLR0 via `DPLR %PLR0`, then calls PROC_B. PROC_B overwrites %PLR0 with a different position via `DPLR %PLR0`. PROC_B returns. Assert: %PLR0 in PROC_A's context is restored to the original DP position (not PROC_B's overwrite). Verify via register state inspection after compilation and simulated execution.
 
-### Phase F: SDR/SLR (Static Persistent Registers)
+### Phase F: SDR/SLR (Static Persistent Registers) — **DONE**
 
 Adds persistent state registers. Independent from Phase E (PLR). Depends on Phase A (naming), Phase C (writeLocationOperand enforcement for SLR), and Phase D (RegisterBank encapsulation).
 

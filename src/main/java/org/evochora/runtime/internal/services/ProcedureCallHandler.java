@@ -61,7 +61,9 @@ public class ProcedureCallHandler {
             returnIp = organism.getNextInstructionPosition(returnIp, organism.getDvBeforeFetch(), environment);
         }
 
-        Object[] savedRegisters = organism.snapshotStackSavedRegisters();
+        Object[] savedRegisters = organism.isStackSavedDirty()
+                ? organism.snapshotStackSavedRegisters()
+                : null;
 
         String procName = "";
         if (artifact != null && artifact.labelValueToName() != null) {
@@ -69,27 +71,31 @@ public class ProcedureCallHandler {
             if (name != null) procName = name;
         }
 
-        // Save caller's persistent register state
-        Map<Integer, Object[]> persistentState = organism.getPersistentRegisterState();
-        persistentState.put(organism.getCurrentProcLabelHash(), organism.snapshotPersistentRegisters());
+        if (organism.isPersistentDirty()) {
+            // Save caller's persistent register state
+            Map<Integer, Object[]> persistentState = organism.getPersistentRegisterState();
+            persistentState.put(organism.getCurrentProcLabelHash(), organism.snapshotPersistentRegisters());
 
-        // Check limit before potentially adding a new entry
-        if (!persistentState.containsKey(labelHash) && persistentState.size() >= Config.PERSISTENT_STATE_MAX_PROCEDURES) {
-            organism.instructionFailed("Persistent register store limit exceeded");
-            return;
+            // Check limit before potentially adding a new entry
+            if (!persistentState.containsKey(labelHash) && persistentState.size() >= Config.PERSISTENT_STATE_MAX_PROCEDURES) {
+                organism.instructionFailed("Persistent register store limit exceeded");
+                return;
+            }
+
+            // Switch to callee's persistent register state
+            Object[] calleeState = persistentState.get(labelHash);
+            if (calleeState != null) {
+                organism.restorePersistentRegisters(calleeState);
+            } else {
+                organism.resetPersistentRegisters();
+            }
         }
 
         Organism.ProcFrame frame = new Organism.ProcFrame(procName, labelHash, returnIp, ipBeforeFetch, savedRegisters, parameterBindings);
         organism.getCallStack().push(frame);
 
-        // Switch to callee's persistent register state
+        // Always track which procedure is active (needed for correct save on RET after first dirty write)
         organism.setCurrentProcLabelHash(labelHash);
-        Object[] calleeState = persistentState.get(labelHash);
-        if (calleeState != null) {
-            organism.restorePersistentRegisters(calleeState);
-        } else {
-            organism.resetPersistentRegisters();
-        }
 
         // Note: Parameter passing is handled by compiler-generated PUSH/POP sequences.
         // The compiler generates:
@@ -114,21 +120,29 @@ public class ProcedureCallHandler {
             organism.instructionFailed("Call stack underflow (RET without CALL)");
             return;
         }
-        // Save current procedure's persistent register state before leaving
-        organism.getPersistentRegisterState().put(organism.getCurrentProcLabelHash(), organism.snapshotPersistentRegisters());
+        if (organism.isPersistentDirty()) {
+            // Save current procedure's persistent register state before leaving
+            organism.getPersistentRegisterState().put(organism.getCurrentProcLabelHash(), organism.snapshotPersistentRegisters());
+        }
 
         Organism.ProcFrame returnFrame = organism.getCallStack().pop();
 
-        organism.restoreStackSavedRegisters(returnFrame.savedRegisters());
+        if (returnFrame.savedRegisters() != null) {
+            organism.restoreStackSavedRegisters(returnFrame.savedRegisters());
+        }
 
-        // Restore caller's persistent register state
+        // Always track which procedure is active
         int callerLabelHash = organism.getCallStack().isEmpty()
                 ? Organism.MAIN_LEVEL_LABEL_HASH
                 : organism.getCallStack().peek().labelHash();
         organism.setCurrentProcLabelHash(callerLabelHash);
-        Object[] callerState = organism.getPersistentRegisterState().get(callerLabelHash);
-        if (callerState != null) {
-            organism.restorePersistentRegisters(callerState);
+
+        if (organism.isPersistentDirty()) {
+            // Restore caller's persistent register state
+            Object[] callerState = organism.getPersistentRegisterState().get(callerLabelHash);
+            if (callerState != null) {
+                organism.restorePersistentRegisters(callerState);
+            }
         }
 
         organism.setIp(returnFrame.absoluteReturnIp());

@@ -835,8 +835,10 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             organismStateBuilder.setDeathTick(o.getDeathTick());
         }
 
-        // Persistent register state
+        // Persistent register state + dirty flags
         organismStateBuilder.setCurrentProcLabelHash(o.getCurrentProcLabelHash());
+        organismStateBuilder.setStackSavedDirty(o.isStackSavedDirty());
+        organismStateBuilder.setPersistentDirty(o.isPersistentDirty());
         PersistentRegisterStore.Builder storeBuilder = PersistentRegisterStore.newBuilder();
         for (Map.Entry<Integer, Object[]> entry : o.getPersistentRegisterState().entrySet()) {
             ProcedureRegisterSnapshot.Builder snapshotBuilder = ProcedureRegisterSnapshot.newBuilder()

@@ -269,6 +269,12 @@ message OrganismState {
   // LabelHash of the currently active procedure's persistent state.
   // Source: Organism.getCurrentProcLabelHash()
   int32 current_proc_label_hash = 34;
+
+  // Whether any STACK_SAVED register has been written during this organism's lifetime.
+  bool stack_saved_dirty = 35;
+
+  // Whether any PERSISTENT register has been written during this organism's lifetime.
+  bool persistent_dirty = 36;
 }
 
 // Aggregated runtime state for organism indexing.

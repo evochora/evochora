@@ -572,8 +572,10 @@ public class SimulationRestorer {
             builder.failed(true, reason);
         }
 
-        // Persistent register state
+        // Persistent register state + dirty flags
         builder.currentProcLabelHash(state.getCurrentProcLabelHash());
+        builder.stackSavedDirty(state.getStackSavedDirty());
+        builder.persistentDirty(state.getPersistentDirty());
         if (state.hasPersistentRegisterStore()) {
             Map<Integer, Object[]> persistentState = new HashMap<>();
             for (ProcedureRegisterSnapshot snapshot : state.getPersistentRegisterStore().getProcedureSnapshotsList()) {

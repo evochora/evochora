@@ -87,6 +87,10 @@ public class Organism {
     /** Per-procedure backing store for PERSISTENT registers, keyed by labelHash. */
     private final Map<Integer, Object[]> persistentRegisterState = new HashMap<>();
     private boolean isDead = false;
+    /** Set to true on first write to any STACK_SAVED register. Skips snapshot/restore when false. */
+    private boolean stackSavedDirty = false;
+    /** Set to true on first write to any PERSISTENT register. Skips persistent state ops when false. */
+    private boolean persistentDirty = false;
 
     private boolean instructionFailed = false;
     private boolean previousInstructionFailed = false;
@@ -267,6 +271,9 @@ public class Organism {
             this.persistentRegisterState.put(MAIN_LEVEL_LABEL_HASH, snapshotPersistentRegisters());
         }
 
+        this.stackSavedDirty = b.stackSavedDirty;
+        this.persistentDirty = b.persistentDirty;
+
         // Derived fields from simulation
         this.simulation = simulation;
         this.logger = null; // Restored organisms don't have individual loggers
@@ -332,6 +339,8 @@ public class Organism {
         private Deque<ProcFrame> failureCallStack = null;
         private Map<Integer, Object[]> persistentRegisterState = null;
         private int currentProcLabelHash = MAIN_LEVEL_LABEL_HASH;
+        private boolean stackSavedDirty = false;
+        private boolean persistentDirty = false;
 
         private RestoreBuilder(int id, long birthTick) {
             this.id = id;
@@ -475,6 +484,18 @@ public class Organism {
         /** Sets the labelHash of the currently active procedure for persistent state. */
         public RestoreBuilder currentProcLabelHash(int labelHash) {
             this.currentProcLabelHash = labelHash;
+            return this;
+        }
+
+        /** Sets whether any STACK_SAVED register has been written. */
+        public RestoreBuilder stackSavedDirty(boolean dirty) {
+            this.stackSavedDirty = dirty;
+            return this;
+        }
+
+        /** Sets whether any PERSISTENT register has been written. */
+        public RestoreBuilder persistentDirty(boolean dirty) {
+            this.persistentDirty = dirty;
             return this;
         }
 
@@ -781,14 +802,18 @@ public class Organism {
     private void recoverFromStall() {
         if (!callStack.isEmpty()) {
             ProcFrame frame = callStack.pop();
-            restoreStackSavedRegisters(frame.savedRegisters());
-            // Save current procedure's persistent state and restore caller's
-            persistentRegisterState.put(currentProcLabelHash, snapshotPersistentRegisters());
-            int callerLabelHash = callStack.isEmpty() ? MAIN_LEVEL_LABEL_HASH : callStack.peek().labelHash();
-            currentProcLabelHash = callerLabelHash;
-            Object[] callerState = persistentRegisterState.get(callerLabelHash);
-            if (callerState != null) {
-                restorePersistentRegisters(callerState);
+            if (frame.savedRegisters() != null) {
+                restoreStackSavedRegisters(frame.savedRegisters());
+            }
+            if (persistentDirty) {
+                // Save current procedure's persistent state and restore caller's
+                persistentRegisterState.put(currentProcLabelHash, snapshotPersistentRegisters());
+                int callerLabelHash = callStack.isEmpty() ? MAIN_LEVEL_LABEL_HASH : callStack.peek().labelHash();
+                currentProcLabelHash = callerLabelHash;
+                Object[] callerState = persistentRegisterState.get(callerLabelHash);
+                if (callerState != null) {
+                    restorePersistentRegisters(callerState);
+                }
             }
             setIp(frame.absoluteReturnIp());
         } else {
@@ -1202,6 +1227,8 @@ public class Organism {
             this.instructionFailed("Cannot write to location register via data instruction");
             return false;
         }
+        if (!stackSavedDirty && RegisterBank.IS_STACK_SAVED_BY_ID[id]) stackSavedDirty = true;
+        if (!persistentDirty && RegisterBank.IS_PERSISTENT_BY_ID[id]) persistentDirty = true;
         registers[slot] = value;
         return true;
     }
@@ -1228,6 +1255,8 @@ public class Organism {
             this.instructionFailed("Cannot write to non-location register via location instruction: " + id);
             return false;
         }
+        if (!stackSavedDirty && RegisterBank.IS_STACK_SAVED_BY_ID[id]) stackSavedDirty = true;
+        if (!persistentDirty && RegisterBank.IS_PERSISTENT_BY_ID[id]) persistentDirty = true;
         registers[slot] = value;
         return true;
     }
@@ -1314,5 +1343,11 @@ public class Organism {
 
     /** Sets the labelHash of the currently active procedure for persistent state. */
     public void setCurrentProcLabelHash(int labelHash) { this.currentProcLabelHash = labelHash; }
+
+    /** Returns whether any STACK_SAVED register has been written during this organism's lifetime. */
+    public boolean isStackSavedDirty() { return stackSavedDirty; }
+
+    /** Returns whether any PERSISTENT register has been written during this organism's lifetime. */
+    public boolean isPersistentDirty() { return persistentDirty; }
 
 }

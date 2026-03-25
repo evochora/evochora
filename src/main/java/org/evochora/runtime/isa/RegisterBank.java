@@ -56,6 +56,20 @@ public enum RegisterBank {
     public static final boolean[] IS_LOCATION_BY_ID;
 
     /**
+     * Maps register ID → whether the bank has STACK_SAVED call behavior. Indexed by register ID.
+     * Used by Organism dirty-flag tracking to avoid snapshot/restore when no STACK_SAVED register
+     * has been written.
+     */
+    public static final boolean[] IS_STACK_SAVED_BY_ID;
+
+    /**
+     * Maps register ID → whether the bank has PERSISTENT call behavior. Indexed by register ID.
+     * Used by Organism dirty-flag tracking to avoid persistent state operations when no PERSISTENT
+     * register has been written.
+     */
+    public static final boolean[] IS_PERSISTENT_BY_ID;
+
+    /**
      * Maps flat array slot → RegisterBank. Size: {@link #TOTAL_REGISTER_COUNT}.
      * Used by {@link #forId(int)} to resolve bank from slot without a separate 2048-entry table.
      */
@@ -70,14 +84,19 @@ public enum RegisterBank {
         }
         TOTAL_REGISTER_COUNT = offset;
 
-        // Build ID_TO_SLOT and IS_LOCATION_BY_ID tables
+        // Build ID-indexed lookup tables
         ID_TO_SLOT = new int[TABLE_SIZE];
         IS_LOCATION_BY_ID = new boolean[TABLE_SIZE];
+        IS_STACK_SAVED_BY_ID = new boolean[TABLE_SIZE];
+        IS_PERSISTENT_BY_ID = new boolean[TABLE_SIZE];
         Arrays.fill(ID_TO_SLOT, -1);
         for (RegisterBank bank : values()) {
             for (int i = 0; i < bank.count; i++) {
-                ID_TO_SLOT[bank.base + i] = bank.slotOffset + i;
-                IS_LOCATION_BY_ID[bank.base + i] = bank.isLocation;
+                int id = bank.base + i;
+                ID_TO_SLOT[id] = bank.slotOffset + i;
+                IS_LOCATION_BY_ID[id] = bank.isLocation;
+                IS_STACK_SAVED_BY_ID[id] = bank.callBehavior == CallBehavior.STACK_SAVED;
+                IS_PERSISTENT_BY_ID[id] = bank.callBehavior == CallBehavior.PERSISTENT;
             }
         }
 
