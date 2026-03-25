@@ -40,6 +40,16 @@ public class ProcedureSymbolCollector implements ISymbolCollector {
                 symbolTable.define(new Symbol(p.name(), p.sourceInfo(), Symbol.Type.VARIABLE));
             }
         }
+        if (proc.lrefParameters() != null) {
+            for (ProcedureNode.ParamDecl p : proc.lrefParameters()) {
+                symbolTable.define(new Symbol(p.name(), p.sourceInfo(), Symbol.Type.LOCATION_VARIABLE));
+            }
+        }
+        if (proc.lvalParameters() != null) {
+            for (ProcedureNode.ParamDecl p : proc.lvalParameters()) {
+                symbolTable.define(new Symbol(p.name(), p.sourceInfo(), Symbol.Type.LOCATION_VARIABLE));
+            }
+        }
     }
 
     @Override

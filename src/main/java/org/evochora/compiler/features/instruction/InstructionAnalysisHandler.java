@@ -101,10 +101,20 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                 );
                             }
                         } else if (symbol.type() == Symbol.Type.VARIABLE) {
-                            // Accept formal parameters as register placeholders
+                            // Accept data parameters (REF/VAL → FDR) in REGISTER positions
                             if (expectedType != InstructionArgumentType.REGISTER) {
                                 diagnostics.reportError(
-                                        String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got PARAMETER.",
+                                        String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got data parameter.",
+                                                i + 1, instructionName, expectedType),
+                                        instructionNode.sourceInfo().fileName(),
+                                        instructionNode.sourceInfo().lineNumber()
+                                );
+                            }
+                        } else if (symbol.type() == Symbol.Type.LOCATION_VARIABLE) {
+                            // Accept location parameters (LREF/LVAL → FLR) in LOCATION_REGISTER positions
+                            if (expectedType != InstructionArgumentType.LOCATION_REGISTER) {
+                                diagnostics.reportError(
+                                        String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got location parameter.",
                                                 i + 1, instructionName, expectedType),
                                         instructionNode.sourceInfo().fileName(),
                                         instructionNode.sourceInfo().lineNumber()

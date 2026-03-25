@@ -30,6 +30,12 @@ public class CallSiteBindingRule implements ILinkingRule {
         for (IrOperand op : call.valOperands()) {
             if (op instanceof IrReg reg) regNames.add(reg.name());
         }
+        for (IrOperand op : call.lrefOperands()) {
+            if (op instanceof IrReg reg) regNames.add(reg.name());
+        }
+        for (IrOperand op : call.lvalOperands()) {
+            if (op instanceof IrReg reg) regNames.add(reg.name());
+        }
         if (!regNames.isEmpty()) {
             int[] ids = new int[regNames.size()];
             for (int j = 0; j < regNames.size(); j++) {

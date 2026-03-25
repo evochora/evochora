@@ -67,6 +67,11 @@ public final class Config {
     public static final int NUM_SLR_REGISTERS = 4;
 
     /**
+     * The number of formal location registers (FLR) used for passing location parameters to procedures.
+     */
+    public static final int NUM_FLR_REGISTERS = 4;
+
+    /**
      * The maximum number of distinct procedures for which an organism can maintain
      * persistent register state. Exceeding this limit triggers an instruction failure.
      */

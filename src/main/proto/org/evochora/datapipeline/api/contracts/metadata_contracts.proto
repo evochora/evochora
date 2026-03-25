@@ -326,11 +326,13 @@ message LinearAddressToCoord {
   Vector coord = 2;
 }
 
-// Enumeration for parameter types (REF, VAL, or legacy WITH).
+// Enumeration for parameter types.
 enum ParamType {
-  PARAM_TYPE_REF = 0;   // Call-by-reference parameter
-  PARAM_TYPE_VAL = 1;   // Call-by-value parameter
-  PARAM_TYPE_WITH = 2;  // Legacy WITH syntax parameter
+  PARAM_TYPE_REF = 0;    // Scalar call-by-reference parameter (FDR)
+  PARAM_TYPE_VAL = 1;    // Scalar call-by-value parameter (FDR)
+  PARAM_TYPE_WITH = 2;   // Legacy WITH syntax parameter
+  PARAM_TYPE_LREF = 3;   // Location call-by-reference parameter (FLR)
+  PARAM_TYPE_LVAL = 4;   // Location call-by-value parameter (FLR)
 }
 
 // Represents a single procedure parameter with its name and type.

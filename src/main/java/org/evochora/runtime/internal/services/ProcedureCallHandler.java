@@ -47,10 +47,13 @@ public class ProcedureCallHandler {
 
         Map<Integer, Integer> parameterBindings = new HashMap<>();
         if (bindings != null) {
-            for (int i = 0; i < bindings.length; i++) {
-                if (i < RegisterBank.FDR.count) {
-                    parameterBindings.put(RegisterBank.FDR.base + i, bindings[i]);
-                }
+            int dataParamCount = Math.min(bindings.length, RegisterBank.FDR.count);
+            for (int i = 0; i < dataParamCount; i++) {
+                parameterBindings.put(RegisterBank.FDR.base + i, bindings[i]);
+            }
+            int locationParamStart = dataParamCount;
+            for (int i = locationParamStart; i < bindings.length && (i - locationParamStart) < RegisterBank.FLR.count; i++) {
+                parameterBindings.put(RegisterBank.FLR.base + (i - locationParamStart), bindings[i]);
             }
         }
 

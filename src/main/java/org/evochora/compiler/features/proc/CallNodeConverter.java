@@ -44,8 +44,14 @@ public final class CallNodeConverter implements IAstNodeToIrConverter<CallNode> 
         List<IrOperand> valOperands = node.valArguments().stream()
                 .map(ctx::convertOperand)
                 .toList();
+        List<IrOperand> lrefOperands = node.lrefArguments().stream()
+                .map(ctx::convertOperand)
+                .toList();
+        List<IrOperand> lvalOperands = node.lvalArguments().stream()
+                .map(ctx::convertOperand)
+                .toList();
 
-        ctx.emit(new IrCallInstruction("CALL", operands, refOperands, valOperands, ctx.sourceOf(node)));
+        ctx.emit(new IrCallInstruction("CALL", operands, refOperands, valOperands, lrefOperands, lvalOperands, ctx.sourceOf(node)));
     }
 
     private void convertLegacySyntax(CallNode node, IrGenContext ctx) {
@@ -81,9 +87,9 @@ public final class CallNodeConverter implements IAstNodeToIrConverter<CallNode> 
                     actuals.add(new IrValue.Str(r.getName()));
                 } else if (a instanceof IdentifierNode id) {
                     String nameU = id.text().toUpperCase();
-                    Optional<Integer> idxOpt = ctx.resolveProcedureParam(nameU);
-                    if (idxOpt.isPresent()) {
-                        actuals.add(new IrValue.Str("%FDR" + idxOpt.get()));
+                    Optional<String> paramRegOpt = ctx.resolveProcedureParam(nameU);
+                    if (paramRegOpt.isPresent()) {
+                        actuals.add(new IrValue.Str(paramRegOpt.get()));
                     }
                 }
             }
@@ -91,6 +97,6 @@ public final class CallNodeConverter implements IAstNodeToIrConverter<CallNode> 
             ctx.emit(new IrDirective("core", "call_with", args, ctx.sourceOf(node)));
         }
 
-        ctx.emit(new IrCallInstruction("CALL", operands, List.of(), List.of(), ctx.sourceOf(node)));
+        ctx.emit(new IrCallInstruction("CALL", operands, List.of(), List.of(), List.of(), List.of(), ctx.sourceOf(node)));
     }
 }

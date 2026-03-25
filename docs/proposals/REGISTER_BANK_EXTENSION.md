@@ -488,7 +488,7 @@ SDR/SLR have special semantics NOT covered by generic encapsulation: a persisten
 
 **Test (integration):** Assembly program with a procedure COUNTER that increments %SDR0 via `ADDI %SDR0 DATA:1` and copies the result to %DR0 before RET. Main program calls COUNTER three times. Assert after first call: DR0 == 1. Assert after second call: DR0 == 2. Assert after third call: DR0 == 3. Additionally test isolation: a second procedure COUNTER_B copies its own %SDR0 to %DR1. Assert after COUNTER_B call: DR1 == 0 (separate backing store, independent from COUNTER's state).
 
-### Phase G: FLR + LREF/LVAL (Location Parameter Passing)
+### Phase G: FLR + LREF/LVAL (Location Parameter Passing) — **DONE**
 
 Adds location parameter passing. Depends on Phase E (PLR exists as LREF source) and Phase D (RegisterBank encapsulation).
 
@@ -497,20 +497,40 @@ Adds location parameter passing. Depends on Phase E (PLR exists as LREF source) 
 - `RegisterBank.java`: new entry `FLR(1280, Config.NUM_FLR_REGISTERS, true, CallBehavior.STACK_SAVED, true, false, "%FLR", 4)` — note `isForbidden = true`, `isAlwaysAvailable = false` (formal parameter, only in .PROC)
 - Organism: flat array automatically includes FLR slots. `isLocationBank()` recognizes FLR via lookup table.
 - `ProcFrame` record: no signature change needed — FLR bindings are added to the existing `parameterBindings` map using FLR_BASE+i as keys (established as generic in D4).
-- `ProcedureCallHandler.java`: FLR binding on CALL — adds FLR_BASE+i → source register ID entries to `parameterBindings` (alongside existing FDR entries). Copy location value from source register to FLR slot. On RET: for LREF parameters, write FLR value back to source register before restore.
+- `ProcedureCallHandler.java`: FLR binding on CALL — adds FLR_BASE+i → source register ID entries to `parameterBindings` (alongside existing FDR entries). Note: the actual location value copy (source → FLR) and LREF write-back (FLR → source) are handled by compiler-generated PUSL/POPL sequences in CallerMarshallingRule and ProcedureMarshallingRule, NOT by ProcedureCallHandler. ProcedureCallHandler only records the binding metadata for debug visualization.
 - `GeneSubstitutionPlugin.java`, `GeneInsertionPlugin.java`: FLR bank detection is automatic via RegisterBank iteration (established in D2). No manual changes needed.
 
-**Compiler:**
-- After Phase D3, compiler handlers use RegisterBank iteration — FLR is automatically recognized as a forbidden bank (no `.REG` alias allowed), valid for LOCATION_REGISTER arguments. No manual changes to RegDirectiveHandler, RegAnalysisHandler, InstructionAnalysisHandler, RegisterAliasEmissionContributor, or Lexer needed.
-- `ProcDirectiveHandler.java`: FLR is automatically excluded from `addAvailableRegisterBanks()` via `isForbidden` flag. Parse LREF/LVAL parameter declarations.
-- `ProcedureNode.java`: add `lrefParameters`/`lvalParameters` lists (ParamDecl with location flag)
-- `CallStatementHandler.java`: parse LREF/LVAL at call site
-- `CallNode.java`: add `lrefArguments`/`lvalArguments` fields
-- `CallAnalysisHandler.java`: validate LREF sources are location registers, LVAL sources are location registers (labels handled in Phase H)
-- `CallNodeConverter.java`: emit IrCallInstruction with location operands
-- `IrCallInstruction.java`: add `lrefOperands`/`lvalOperands` fields
-- `CallerMarshallingRule.java`: location parameter marshalling (PUSL/POPL for location stack)
-- `CallSiteBindingRule.java`: FLR bindings
+**Compiler — data model changes:**
+- `Symbol.java` (model/symbols/): new enum value `Symbol.Type.LOCATION_VARIABLE` — distinguishes location parameters (LREF/LVAL → FLR) from data parameters (REF/VAL → FDR = VARIABLE). Provides compile-time type safety: data parameters in location instructions → error, location parameters in data instructions → error. Without this, a simple "accept VARIABLE in LOCATION_REGISTER positions" fix would silently allow data parameters in location instructions, causing runtime crashes instead of compile errors.
+
+**Compiler — feature changes (all in features/proc/):**
+- After Phase D3, compiler handlers use RegisterBank iteration — FLR is automatically recognized as a forbidden bank (no `.REG` alias allowed), valid for LOCATION_REGISTER arguments. No manual changes to RegDirectiveHandler, RegAnalysisHandler, RegisterAliasEmissionContributor, or Lexer needed.
+- `InstructionAnalysisHandler.java`: new case branch for `LOCATION_VARIABLE` in LOCATION_REGISTER argument positions — accepts location parameter identifiers alongside RegisterNode.
+- `ProcedureSymbolCollector.java`: registers LREF/LVAL parameters as `Symbol.Type.LOCATION_VARIABLE` (not VARIABLE). Registers WITH/REF/VAL parameters as VARIABLE (unchanged).
+- `ProcedureTokenMapContributor.java`: registers LREF/LVAL parameters in TokenMap as VARIABLE tokens (for visualizer annotation).
+- `ProcedureEmissionContributor.java`: registers LREF/LVAL parameters with `ParamType.LREF`/`ParamType.LVAL` in `procNameToParamNames` map.
+- `ParamType.java`: new enum values LREF, LVAL with corresponding Protobuf mapping.
+- `CallAnalysisHandler.java`: legacy syntax validation also accepts `LOCATION_VARIABLE` alongside VARIABLE.
+- Proto `metadata_contracts.proto`: ParamType enum extended with `PARAM_TYPE_LREF = 3` and `PARAM_TYPE_LVAL = 4`.
+- `TokenKindMapper.java` (frontend/tokenmap/): exhaustive switch extended — `LOCATION_VARIABLE` maps to `TokenKind.VARIABLE` (same display as data parameters in the token map).
+- `ProcDirectiveHandler.java`: FLR is automatically excluded from `addAvailableRegisterBanks()` via `isForbidden` flag. Parse LREF/LVAL keyword sections. All inner while-loop stop markers must check ALL keywords (REF, VAL, LREF, LVAL) to correctly terminate each section. LREF/LVAL are separate from legacy WITH syntax (WITH remains scalar-only).
+- `ProcedureNode.java`: add `lrefParameters`/`lvalParameters` lists (ParamDecl). 6 constructor call-sites (2 production, 4 tests).
+- `CallStatementHandler.java`: parse LREF/LVAL at call site. The initial keyword detection (currently checks only REF/VAL) must also check LREF/LVAL — otherwise the parser falls into the legacy WITH-path when the first keyword is LREF.
+- `CallNode.java`: add `lrefArguments`/`lvalArguments` fields (`List<AstNode>`). `getChildren()` and `reconstructWithChildren()` must include them. 3 constructor call-sites.
+- `CallAnalysisHandler.java`: validate LREF sources are location registers (`RegisterBank.forId(id).isLocation`), LVAL sources are location registers (labels handled in Phase H). Count validation: LREF argument count must match `lrefParameters` count, LVAL argument count must match `lvalParameters` count.
+- `CallNodeConverter.java` / `ProcedureNodeConverter.java`: emit IrCallInstruction with `lrefOperands`/`lvalOperands`. ProcedureNodeConverter calls `pushProcedureLocationParams()` for LREF+LVAL parameter names.
+- `IrCallInstruction.java`: add `lrefOperands`/`lvalOperands` fields (`List<IrOperand>`, consistent with `refOperands`/`valOperands`). Update `equals()` and `hashCode()`.
+- `ProcedureMarshallingRule.java`: prologue: POPL %FLR<i> for each LREF+LVAL parameter (load from location stack). Epilogue (before RET): PUSL %FLR<i> for each LREF parameter (push back for caller write-back). Analogous to POP/PUSH for FDR.
+- `CallerMarshallingRule.java`: before CALL: PUSL for each LREF/LVAL argument (push location value onto location stack). After CALL: POPL for each LREF argument (retrieve modified value back into source register). Reads `lrefOperands()`/`lvalOperands()` from IrCallInstruction. Legacy WITH-path: IrCallInstruction constructor called with empty `List.of()` for lrefOperands/lvalOperands (legacy CALL has no location parameters).
+- `CallSiteBindingRule.java`: FLR bindings — add FLR_BASE+i → source register ID entries to `callSiteBindings`, analog to FDR binding logic.
+
+**Compiler — framework change (frontend/irgen/):**
+- `IrGenContext.java`:
+  - New method `pushProcedureLocationParams(List<String> locationParamNames)` — registers location parameter names with FLR indices in a separate map from data params. Corresponding `popProcedureLocationParams()` must also be added (called by ProcedureNodeConverter after body conversion, analogous to `popProcedureParams()`).
+  - `resolveProcedureParam(String name)` — return type changes from `Optional<Integer>` (index only) to returning the complete register string (`"%FDR0"` or `"%FLR0"`). This avoids the caller needing to know whether the parameter is data or location. The method checks location params first, then data params.
+  - `convertOperand(String identifier)` — calls `resolveProcedureParam()` and wraps the returned string directly in `new IrReg(...)`. No prefix-guessing needed since `resolveProcedureParam` returns the full string.
+  - Without this change, LREF/LVAL parameter identifiers inside procedures would incorrectly resolve to %FDR registers.
+- `ProcedureNodeConverter.java`: emits `lrefArity` and `lvalArity` into BOTH `proc_enter` AND `proc_exit` IR directive args (alongside existing `arity`). Both marshalling rules need the location arity — ProcedureMarshallingRule for prologue/epilogue, CallerMarshallingRule for pre/post-CALL sequences. `ProcedureMarshallingRule` reads these to know how many FLR POPL/PUSL instructions to generate. Also calls `ctx.pushProcedureLocationParams()` before body conversion and `ctx.popProcedureLocationParams()` after.
 
 **Data Pipeline:**
 - Flat-array serialization automatically includes FLR slots.
@@ -520,7 +540,7 @@ Adds location parameter passing. Depends on Phase E (PLR exists as LREF source) 
 - Add FLR entry to `REGISTER_BANKS` array in `AnnotationUtils.js`. All dispatch methods and OrganismStateView iterate over REGISTER_BANKS — no method changes needed for basic display, FLR section appears automatically.
 - `ParameterTokenHandler.js`: location parameter binding chain display (LREF/LVAL chain resolution through FLR, analogous to REF/VAL through FDR). This is new functionality, not generic bank registration.
 
-**Test (integration):** Assembly program: main stores current DP in %LR0 via `DPLR %LR0`. Defines `.PROC NAV LREF lPos` that executes `SKLR lPos` (which resolves to `SKLR %FLR0`) to move DP to the passed location, then returns. Main calls `CALL NAV LREF %LR0`. Assert: after CALL, the DP inside NAV moved to the location that was stored in %LR0. Assert: after RET, the LREF write-back updated %LR0 if NAV modified %FLR0 (or left it unchanged if not).
+**Test (integration):** Assembly program: main stores current DP in %LR0 via `DPLR %LR0`. Defines `.PROC NAV LREF lPos` that executes `SKLR lPos` (move DP to passed location), then `CRLR lPos` (clear FLR0 to [0,0] — explicit modification), then RETs. Main calls `CALL NAV LREF %LR0`. Assert 1: inside NAV, DP moved to LR0's original position (LREF pass works). Assert 2: after RET, %LR0 == [0,0] (LREF write-back verified — NAV cleared FLR0 and the new value was written back to LR0).
 
 ### Phase H: LVAL with Labels
 

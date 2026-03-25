@@ -9,8 +9,9 @@ export const REGISTER_BANKS = [
     { name: "PDR", prefix: "%PDR", base: 512,  slotOffset: 12, count: 8, isLocation: false },
     { name: "PLR", prefix: "%PLR", base: 768,  slotOffset: 20, count: 4, isLocation: true  },
     { name: "FDR", prefix: "%FDR", base: 1024, slotOffset: 24, count: 8, isLocation: false },
-    { name: "SDR", prefix: "%SDR", base: 1536, slotOffset: 32, count: 8, isLocation: false },
-    { name: "SLR", prefix: "%SLR", base: 1792, slotOffset: 40, count: 4, isLocation: true  },
+    { name: "FLR", prefix: "%FLR", base: 1280, slotOffset: 32, count: 4, isLocation: true  },
+    { name: "SDR", prefix: "%SDR", base: 1536, slotOffset: 36, count: 8, isLocation: false },
+    { name: "SLR", prefix: "%SLR", base: 1792, slotOffset: 44, count: 4, isLocation: true  },
 ];
 
 /** O(1) name-based lookup into REGISTER_BANKS. */
@@ -162,7 +163,7 @@ export class AnnotationUtils {
      * @returns {number} The final register ID (DR/PDR/FDR).
      * @throws {Error} If paramIndex, callStack, artifact, or organismState is invalid, or if callStack is empty.
      */
-    static resolveBindingChain(paramIndex, callStack, artifact, organismState) {
+    static resolveBindingChain(paramIndex, callStack, artifact, organismState, isLocation = false) {
         if (paramIndex === null || paramIndex === undefined || typeof paramIndex !== 'number' || isNaN(paramIndex)) {
             throw new Error(`resolveBindingChain: paramIndex must be a valid number, got: ${paramIndex}`);
         }
@@ -182,7 +183,8 @@ export class AnnotationUtils {
             throw new Error(`resolveBindingChain: organismState must be an object, got: ${organismState}`);
         }
 
-        let currentRegId = BANK_BY_NAME.FDR.base + paramIndex;
+        const paramBank = isLocation ? BANK_BY_NAME.FLR : BANK_BY_NAME.FDR;
+        let currentRegId = paramBank.base + paramIndex;
 
         let initialPosition = null;
         if (organismState.initialPosition && organismState.initialPosition.components && Array.isArray(organismState.initialPosition.components)) {
@@ -207,7 +209,7 @@ export class AnnotationUtils {
                         throw new Error(`resolveBindingChain: invalid mapped register ID in bindings: ${mappedId}`);
                     }
                     currentRegId = parsedId;
-                    if (currentRegId < BANK_BY_NAME.FDR.base) {
+                    if (currentRegId < paramBank.base) {
                         return currentRegId;
                     }
                 } else {
@@ -230,7 +232,7 @@ export class AnnotationUtils {
      * @param {object} organismState - The organism state containing initialPosition.
      * @returns {Array<number>} Register IDs in display order (source to target).
      */
-    static resolveBindingChainWithPath(paramIndex, callStack, artifact, organismState) {
+    static resolveBindingChainWithPath(paramIndex, callStack, artifact, organismState, isLocation = false) {
         if (paramIndex === null || paramIndex === undefined || typeof paramIndex !== 'number' || isNaN(paramIndex)) {
             throw new Error(`resolveBindingChainWithPath: paramIndex must be a valid number, got: ${paramIndex}`);
         }
@@ -250,7 +252,8 @@ export class AnnotationUtils {
             throw new Error(`resolveBindingChainWithPath: organismState must be an object, got: ${organismState}`);
         }
 
-        let currentRegId = BANK_BY_NAME.FDR.base + paramIndex;
+        const paramBank = isLocation ? BANK_BY_NAME.FLR : BANK_BY_NAME.FDR;
+        let currentRegId = paramBank.base + paramIndex;
         const path = [currentRegId];
 
         let initialPosition = null;
@@ -276,7 +279,7 @@ export class AnnotationUtils {
                     }
                     currentRegId = parsedId;
                     path.push(currentRegId);
-                    if (currentRegId < BANK_BY_NAME.FDR.base) {
+                    if (currentRegId < paramBank.base) {
                         return path.reverse();
                     }
                 } else {

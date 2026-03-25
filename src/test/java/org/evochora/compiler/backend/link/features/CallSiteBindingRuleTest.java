@@ -53,6 +53,8 @@ class CallSiteBindingRuleTest {
                 List.of(new IrImm(0)),
                 List.of(new IrReg("%DR0"), new IrReg("%DR1")),
                 List.of(),
+                List.of(),
+                List.of(),
                 dummySource
         );
 
@@ -70,6 +72,8 @@ class CallSiteBindingRuleTest {
                 List.of(new IrImm(0)),
                 List.of(),
                 List.of(new IrReg("%PDR1")),
+                List.of(),
+                List.of(),
                 dummySource
         );
 
@@ -85,6 +89,8 @@ class CallSiteBindingRuleTest {
                 List.of(new IrImm(0)),
                 List.of(new IrReg("%DR2")),
                 List.of(new IrReg("%PDR0")),
+                List.of(),
+                List.of(),
                 dummySource
         );
 
@@ -98,6 +104,8 @@ class CallSiteBindingRuleTest {
         IrInstruction call = new IrCallInstruction(
                 "CALL",
                 List.of(new IrImm(0)),
+                List.of(),
+                List.of(),
                 List.of(),
                 List.of(),
                 dummySource
@@ -132,6 +140,8 @@ class CallSiteBindingRuleTest {
                 List.of(new IrImm(0)),
                 List.of(new IrReg("%DR0")),
                 List.of(),
+                List.of(),
+                List.of(),
                 dummySource
         );
 
@@ -147,6 +157,8 @@ class CallSiteBindingRuleTest {
                 "CALL",
                 List.of(new IrImm(0)),
                 List.of(new IrReg("%UNKNOWN")),
+                List.of(),
+                List.of(),
                 List.of(),
                 dummySource
         );

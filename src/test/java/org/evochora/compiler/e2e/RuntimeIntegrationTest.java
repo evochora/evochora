@@ -8,6 +8,7 @@ import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.test.utils.SimulationTestUtils;
 import org.junit.jupiter.api.BeforeAll;
@@ -345,5 +346,117 @@ public class RuntimeIntegrationTest {
         assertThat(dr1.toScalarValue())
                 .as("DR1 should be 0 — COUNTER_B has an independent SDR backing store")
                 .isEqualTo(0);
+    }
+
+    /**
+     * Verifies LREF location parameter passing: a procedure receives a location register
+     * by reference, modifies it (clears to [0,0]), and the modified value is written back
+     * to the caller's source register after RET.
+     */
+    @Test
+    @Tag("integration")
+    void lrefLocationParameterPassingAndWriteBack() throws Exception {
+        String source = String.join("\n",
+                // Main: save DP to LR0, call CLEAR_POS LREF %LR0, check LR0 is [0,0]
+                "DPLR %LR0",                    // LR0 = current DP (non-zero position)
+                "CALL CLEAR_POS LREF %LR0",     // Pass LR0 by location reference
+                "WAIT",
+                // CLEAR_POS clears the passed location to [0,0]
+                ".ORG 0|1",
+                "EXPORT .PROC CLEAR_POS LREF lPos",
+                "  CRLR lPos",                  // Clear FLR0 to [0,0]
+                "  RET",
+                ".ENDP"
+        );
+
+        Compiler compiler = new Compiler();
+        EnvironmentProperties envProps = new EnvironmentProperties(new int[]{64, 64}, true);
+        ProgramArtifact artifact = compiler.compile(Arrays.asList(source.split("\\r?\\n")), "lref_test.s", envProps);
+        assertThat(artifact).isNotNull();
+
+        Environment env = new Environment(envProps);
+        Simulation sim = SimulationTestUtils.createSimulation(env);
+
+        for (Map.Entry<int[], Integer> e : artifact.machineCodeLayout().entrySet()) {
+            env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());
+        }
+
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        org.setProgramId(artifact.programId());
+        sim.addOrganism(org);
+
+        // Run enough ticks: DPLR(1) + PUSL(2) + CALL(3) + POPL(4) + CRLR(5) + PUSL(6) + RET(7) + POPL(8) + WAIT(9)
+        for (int i = 0; i < 15; i++) {
+            sim.tick();
+        }
+
+        assertThat(org.isInstructionFailed()).as("Failure: " + org.getFailureReason()).isFalse();
+
+        // Verify LREF write-back: LR0 should now be [0,0] because CLEAR_POS cleared FLR0
+        int[] lr0Value = (int[]) org.readOperand(RegisterBank.LR.base);
+        assertThat(lr0Value).as("LR0 should be [0,0] after LREF write-back from CLEAR_POS").isEqualTo(new int[]{0, 0});
+    }
+
+    /**
+     * Verifies that mixed REF + LREF parameter bindings are correctly recorded in ProcFrame.
+     * The parameterBindings map must contain FDR keys for data params and FLR keys for location params.
+     */
+    @Test
+    @Tag("integration")
+    void mixedRefAndLrefParameterBindings() throws Exception {
+        String source = String.join("\n",
+                "SETI %DR1 DATA:42",
+                "DPLR %LR0",
+                "CALL MIXED REF %DR1 LREF %LR0",
+                "WAIT",
+                ".ORG 0|1",
+                "EXPORT .PROC MIXED REF dParam LREF lParam",
+                "  WAIT",   // Pause so we can inspect the ProcFrame
+                "  RET",
+                ".ENDP"
+        );
+
+        Compiler compiler = new Compiler();
+        EnvironmentProperties envProps = new EnvironmentProperties(new int[]{64, 64}, true);
+        ProgramArtifact artifact = compiler.compile(Arrays.asList(source.split("\\r?\\n")), "mixed_bindings.s", envProps);
+        assertThat(artifact).isNotNull();
+
+        Environment env = new Environment(envProps);
+        Simulation sim = SimulationTestUtils.createSimulation(env);
+
+        for (Map.Entry<int[], Integer> e : artifact.machineCodeLayout().entrySet()) {
+            env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());
+        }
+
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        org.setProgramId(artifact.programId());
+        sim.addOrganism(org);
+
+        // Register call-site bindings for the runtime
+        CallBindingRegistry.getInstance().clearAll();
+        for (var binding : artifact.callSiteBindings().entrySet()) {
+            int[] coord = artifact.linearAddressToCoord().get(binding.getKey());
+            if (coord != null) {
+                CallBindingRegistry.getInstance().registerBindingForAbsoluteCoord(coord, binding.getValue());
+            }
+        }
+
+        // Run ticks until we're inside MIXED proc (callStack not empty) or hit failure
+        for (int i = 0; i < 30; i++) {
+            sim.tick();
+            if (!org.getCallStack().isEmpty()) break;
+        }
+
+        assertThat(org.isInstructionFailed()).as("Failure: " + org.getFailureReason()).isFalse();
+        assertThat(org.getCallStack()).as("Should be inside MIXED proc (callStack not empty)").isNotEmpty();
+
+        Organism.ProcFrame frame = org.getCallStack().peek();
+        Map<Integer, Integer> bindings = frame.parameterBindings();
+
+        // FDR0 should be bound to DR1 (data parameter)
+        assertThat(bindings).containsEntry(RegisterBank.FDR.base + 0, 1); // DR1 ID = 1
+
+        // FLR0 should be bound to LR0 (location parameter)
+        assertThat(bindings).containsEntry(RegisterBank.FLR.base + 0, RegisterBank.LR.base + 0);
     }
 }

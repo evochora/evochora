@@ -86,10 +86,24 @@ export class ParameterTokenHandler {
             throw new Error(`Cannot annotate parameter "${tokenText}": not found in procedure "${procName}" parameter list.`);
         }
 
+        // Determine if this is a location parameter (LREF/LVAL) or data parameter (REF/VAL/WITH)
+        const paramType = params[paramIndex].type ? params[paramIndex].type.toUpperCase() : '';
+        const isLocationParam = paramType === 'LREF' || paramType === 'LVAL';
+
+        // Calculate bank-specific index: location params are indexed separately from data params
+        let bankSpecificIndex;
+        if (isLocationParam) {
+            const dataParamCount = params.filter(p => {
+                const t = (p.type || '').toUpperCase();
+                return t !== 'LREF' && t !== 'LVAL';
+            }).length;
+            bankSpecificIndex = paramIndex - dataParamCount;
+        } else {
+            bankSpecificIndex = paramIndex;
+        }
+
         // Resolve the binding chain through the call stack using artifact bindings
-        // resolveBindingChainWithPath returns the complete path of register IDs in display order
-        // Path format: [DR0, FDR1, FDR0] - from source DR to parameter FDR
-        const bindingPath = AnnotationUtils.resolveBindingChainWithPath(paramIndex, organismState.callStack, artifact, organismState);
+        const bindingPath = AnnotationUtils.resolveBindingChainWithPath(bankSpecificIndex, organismState.callStack, artifact, organismState, isLocationParam);
 
         if (bindingPath.length === 0) {
             throw new Error(`Cannot annotate parameter "${tokenText}": binding path is empty.`);

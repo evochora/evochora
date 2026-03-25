@@ -40,6 +40,7 @@ public final class IrGenContext {
 	private final IrConverterRegistry registry;
 	private final List<IrItem> out = new ArrayList<>();
 	private final Deque<Map<String, Integer>> procParamScopes = new ArrayDeque<>();
+	private final Deque<Map<String, Integer>> procLocationParamScopes = new ArrayDeque<>();
 	private final Map<String, org.evochora.compiler.model.ir.IrOperand> constantByNameUpper = new HashMap<>();
 	private final Deque<String> aliasChainStack = new ArrayDeque<>();
 
@@ -99,8 +100,8 @@ public final class IrGenContext {
 	// --- Procedure parameter scope management ---
 
 	/**
-	 * Pushes a new parameter scope for a procedure.
-	 * @param params The list of parameter names.
+	 * Pushes a new data parameter scope for a procedure (REF/VAL parameters → FDR).
+	 * @param params The list of data parameter names.
 	 */
 	public void pushProcedureParams(List<String> params) {
 		Map<String, Integer> map = new HashMap<>();
@@ -114,20 +115,47 @@ public final class IrGenContext {
 	}
 
 	/**
-	 * Pops the current procedure parameter scope.
+	 * Pops the current data parameter scope.
 	 */
 	public void popProcedureParams() {
 		if (!procParamScopes.isEmpty()) procParamScopes.pop();
 	}
 
 	/**
-	 * Resolves a procedure parameter by name, searching scopes from newest to oldest.
-	 * @param identifierUpper The upper-case identifier to resolve.
-	 * @return The parameter index if found, otherwise empty.
+	 * Pushes a new location parameter scope for a procedure (LREF/LVAL parameters → FLR).
+	 * @param params The list of location parameter names.
 	 */
-	public Optional<Integer> resolveProcedureParam(String identifierUpper) {
+	public void pushProcedureLocationParams(List<String> params) {
+		Map<String, Integer> map = new HashMap<>();
+		if (params != null) {
+			for (int i = 0; i < params.size(); i++) {
+				String name = params.get(i).toUpperCase();
+				map.put(name, i);
+			}
+		}
+		procLocationParamScopes.push(map);
+	}
+
+	/**
+	 * Pops the current location parameter scope.
+	 */
+	public void popProcedureLocationParams() {
+		if (!procLocationParamScopes.isEmpty()) procLocationParamScopes.pop();
+	}
+
+	/**
+	 * Resolves a procedure parameter by name, returning the full register string.
+	 * Checks location parameters first (FLR), then data parameters (FDR).
+	 *
+	 * @param identifierUpper The upper-case identifier to resolve.
+	 * @return The full register string (e.g., "%FDR0" or "%FLR1"), or empty if not a parameter.
+	 */
+	public Optional<String> resolveProcedureParam(String identifierUpper) {
+		for (Map<String, Integer> scope : procLocationParamScopes) {
+			if (scope.containsKey(identifierUpper)) return Optional.of("%FLR" + scope.get(identifierUpper));
+		}
 		for (Map<String, Integer> scope : procParamScopes) {
-			if (scope.containsKey(identifierUpper)) return Optional.of(scope.get(identifierUpper));
+			if (scope.containsKey(identifierUpper)) return Optional.of("%FDR" + scope.get(identifierUpper));
 		}
 		return Optional.empty();
 	}
@@ -194,9 +222,9 @@ public final class IrGenContext {
 			return new IrVec(comps);
 		} else if (node instanceof IdentifierNode id) {
 			String nameU = id.text().toUpperCase();
-			Optional<Integer> idxOpt = resolveProcedureParam(nameU);
-			if (idxOpt.isPresent()) {
-				return new IrReg("%FDR" + idxOpt.get());
+			Optional<String> paramRegOpt = resolveProcedureParam(nameU);
+			if (paramRegOpt.isPresent()) {
+				return new IrReg(paramRegOpt.get());
 			}
 			Optional<IrOperand> constOpt = resolveConstant(nameU);
 			if (constOpt.isPresent()) {

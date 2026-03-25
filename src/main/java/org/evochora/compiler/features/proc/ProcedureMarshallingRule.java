@@ -35,10 +35,12 @@ public class ProcedureMarshallingRule implements IEmissionRule {
 
                 List<String> refParamNames = getParamNames(dir, "refParams");
                 List<String> valParamNames = getParamNames(dir, "valParams");
+                List<String> lrefParamNames = getParamNames(dir, "lrefParams");
+                List<String> lvalParamNames = getParamNames(dir, "lvalParams");
 
-                if (!refParamNames.isEmpty() || !valParamNames.isEmpty()) {
-                    // New REF/VAL syntax
-                    handleNewSyntax(out, dir, body, refParamNames, valParamNames);
+                if (!refParamNames.isEmpty() || !valParamNames.isEmpty() || !lrefParamNames.isEmpty() || !lvalParamNames.isEmpty()) {
+                    // New REF/VAL/LREF/LVAL syntax
+                    handleNewSyntax(out, dir, body, refParamNames, valParamNames, lrefParamNames, lvalParamNames);
                 } else {
                     // Old ".PROC WITH" syntax
                     handleLegacySyntax(out, dir, body);
@@ -56,17 +58,24 @@ public class ProcedureMarshallingRule implements IEmissionRule {
         return out;
     }
 
-    private void handleNewSyntax(List<IrItem> out, IrDirective enterDirective, List<IrItem> body, List<String> refParams, List<String> valParams) {
-        List<String> allParams = Stream.concat(refParams.stream(), valParams.stream()).collect(Collectors.toList());
+    private void handleNewSyntax(List<IrItem> out, IrDirective enterDirective, List<IrItem> body,
+                                 List<String> refParams, List<String> valParams,
+                                 List<String> lrefParams, List<String> lvalParams) {
+        List<String> allDataParams = Stream.concat(refParams.stream(), valParams.stream()).collect(Collectors.toList());
+        List<String> allLocationParams = Stream.concat(lrefParams.stream(), lvalParams.stream()).collect(Collectors.toList());
 
-        // Prologue: POP all parameters into FDRs
-        // Parameters are pushed in reverse order (VALs first, then REFs), so we pop them in the same order
-        for (int p = 0; p < allParams.size(); p++) {
+        // Prologue: POP all data parameters into FDRs
+        for (int p = 0; p < allDataParams.size(); p++) {
             out.add(IrInstruction.synthetic("POP", List.of(new IrReg("%FDR" + p)), enterDirective.source()));
         }
 
-        // Process body for RET instructions
-        processBodyForRets(out, body, refParams, -1);
+        // Prologue: POPL all location parameters into FLRs
+        for (int p = 0; p < allLocationParams.size(); p++) {
+            out.add(IrInstruction.synthetic("POPL", List.of(new IrReg("%FLR" + p)), enterDirective.source()));
+        }
+
+        // Process body for RET instructions (handles epilogue generation)
+        processBodyForRets(out, body, refParams, -1, lrefParams);
     }
 
     private void handleLegacySyntax(List<IrItem> out, IrDirective enterDirective, List<IrItem> body) {
@@ -79,10 +88,10 @@ public class ProcedureMarshallingRule implements IEmissionRule {
         }
 
         // Process body for RET instructions
-        processBodyForRets(out, body, null, arity);
+        processBodyForRets(out, body, null, arity, null);
     }
 
-    private void processBodyForRets(List<IrItem> out, List<IrItem> body, List<String> refParams, int arity) {
+    private void processBodyForRets(List<IrItem> out, List<IrItem> body, List<String> refParams, int arity, List<String> lrefParams) {
         int i = 0;
         while (i < body.size()) {
             IrItem currentItem = body.get(i);
@@ -90,7 +99,7 @@ public class ProcedureMarshallingRule implements IEmissionRule {
             // Check for conditional RET
             if (i + 1 < body.size() && currentItem instanceof IrInstruction conditional && ConditionalUtils.isConditional(conditional.opcode())) {
                 if (body.get(i + 1) instanceof IrInstruction ret && "RET".equals(ret.opcode())) {
-                    handleConditionalRet(out, conditional, ret, refParams, arity);
+                    handleConditionalRet(out, conditional, ret, refParams, arity, lrefParams);
                     i += 2;
                     continue;
                 }
@@ -98,7 +107,7 @@ public class ProcedureMarshallingRule implements IEmissionRule {
 
             // Handle standard RET
             if (currentItem instanceof IrInstruction ret && "RET".equals(ret.opcode())) {
-                emitStandardEpilogue(out, ret, refParams, arity);
+                emitStandardEpilogue(out, ret, refParams, arity, lrefParams);
                 i++;
                 continue;
             }
@@ -108,21 +117,29 @@ public class ProcedureMarshallingRule implements IEmissionRule {
         }
     }
 
-    private void handleConditionalRet(List<IrItem> out, IrInstruction conditional, IrInstruction ret, List<String> refParams, int arity) {
+    private void handleConditionalRet(List<IrItem> out, IrInstruction conditional, IrInstruction ret,
+                                      List<String> refParams, int arity, List<String> lrefParams) {
         String label = "_safe_ret_" + safeRetCounter.getAndIncrement();
         String negatedOpcode = ConditionalUtils.getNegatedOpcode(conditional.opcode());
 
         out.add(IrInstruction.synthetic(negatedOpcode, conditional.operands(), conditional.source()));
         out.add(IrInstruction.synthetic("JMPI", List.of(new IrLabelRef(label)), conditional.source()));
 
-        emitStandardEpilogue(out, ret, refParams, arity);
+        emitStandardEpilogue(out, ret, refParams, arity, lrefParams);
 
         out.add(new IrLabelDef(label, ret.source()));
     }
 
-    private void emitStandardEpilogue(List<IrItem> out, IrInstruction ret, List<String> refParams, int arity) {
-        if (refParams != null) { // New REF/VAL syntax
-            // Only push REF parameters back to stack (VAL parameters are call-by-value)
+    private void emitStandardEpilogue(List<IrItem> out, IrInstruction ret, List<String> refParams, int arity, List<String> lrefParams) {
+        // Epilogue: PUSL LREF FLR parameters back to location stack (for caller write-back)
+        if (lrefParams != null) {
+            for (int p = 0; p < lrefParams.size(); p++) {
+                out.add(IrInstruction.synthetic("PUSL", List.of(new IrReg("%FLR" + p)), ret.source()));
+            }
+        }
+
+        // Epilogue: PUSH REF FDR parameters back to data stack (for caller write-back)
+        if (refParams != null) {
             for (int p = 0; p < refParams.size(); p++) {
                 out.add(IrInstruction.synthetic("PUSH", List.of(new IrReg("%FDR" + p)), ret.source()));
             }

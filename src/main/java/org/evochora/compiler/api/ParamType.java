@@ -19,6 +19,17 @@ public enum ParamType {
     VAL,
     
     /**
+     * Location call-by-reference parameter. Bound to a location register (FLR).
+     * Modifications to the FLR within the procedure are written back to the source register on RET.
+     */
+    LREF,
+
+    /**
+     * Location call-by-value parameter. The location value is copied into FLR.
+     */
+    LVAL,
+
+    /**
      * Legacy WITH syntax parameter. Used for backward compatibility with old
      * procedure declaration syntax (deprecated).
      */
@@ -38,6 +49,8 @@ public enum ParamType {
         return switch (protoType) {
             case PARAM_TYPE_REF -> REF;
             case PARAM_TYPE_VAL -> VAL;
+            case PARAM_TYPE_LREF -> LREF;
+            case PARAM_TYPE_LVAL -> LVAL;
             case PARAM_TYPE_WITH -> WITH;
             case UNRECOGNIZED -> throw new IllegalArgumentException("Unrecognized ParamType: " + protoType);
         };
@@ -52,6 +65,8 @@ public enum ParamType {
         return switch (this) {
             case REF -> org.evochora.datapipeline.api.contracts.ParamType.PARAM_TYPE_REF;
             case VAL -> org.evochora.datapipeline.api.contracts.ParamType.PARAM_TYPE_VAL;
+            case LREF -> org.evochora.datapipeline.api.contracts.ParamType.PARAM_TYPE_LREF;
+            case LVAL -> org.evochora.datapipeline.api.contracts.ParamType.PARAM_TYPE_LVAL;
             case WITH -> org.evochora.datapipeline.api.contracts.ParamType.PARAM_TYPE_WITH;
         };
     }

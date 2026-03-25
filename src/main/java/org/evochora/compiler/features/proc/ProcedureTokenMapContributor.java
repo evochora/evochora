@@ -29,6 +29,8 @@ public class ProcedureTokenMapContributor implements ITokenMapContributor {
 		addParameters(procNode.parameters(), procScope, context);
 		addParameters(procNode.refParameters(), procScope, context);
 		addParameters(procNode.valParameters(), procScope, context);
+		addParameters(procNode.lrefParameters(), procScope, context);
+		addParameters(procNode.lvalParameters(), procScope, context);
 	}
 
 	private void addParameters(List<ProcedureNode.ParamDecl> params, String scope, ITokenMapContext context) {
