@@ -46,7 +46,7 @@ import java.util.Map;
  * All other fields remain unchanged:
  * <ul>
  *   <li><strong>sourceMap</strong>: Map<Integer, SourceInfo> (unchanged)</li>
- *   <li><strong>callSiteBindings</strong>: Map<Integer, int[]> (unchanged)</li>
+ *   <li><strong>callSiteBindings</strong>: Map<Integer, Map<Integer, Integer>> (unchanged)</li>
  *   <li><strong>relativeCoordToLinearAddress</strong>: Map<String, Integer> (unchanged)</li>
  *   <li><strong>linearAddressToCoord</strong>: Map<Integer, int[]> (unchanged)</li>
  *   <li><strong>registerAliasMap</strong>: Map<String, Integer> (unchanged)</li>
@@ -74,7 +74,7 @@ public record LinearizedProgramArtifact(
         Map<Integer, Integer> machineCodeLayout,
         Map<Integer, PlacedMolecule> initialWorldObjects,
         Map<Integer, SerializableSourceInfo> sourceMap,
-        Map<Integer, int[]> callSiteBindings,
+        Map<Integer, Map<Integer, Integer>> callSiteBindings,
         Map<String, Integer> relativeCoordToLinearAddress,
         Map<Integer, int[]> linearAddressToCoord,
         Map<String, Integer> registerAliasMap,

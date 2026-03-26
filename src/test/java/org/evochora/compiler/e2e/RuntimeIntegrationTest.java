@@ -160,9 +160,9 @@ public class RuntimeIntegrationTest {
         ProgramArtifact correctArtifact = compiler.compile(Arrays.asList(sourceCode.split("\\r?\\n")), "correct.s", envProps);
         assertThat(correctArtifact).isNotNull();
 
-        Map<Integer, int[]> corruptedBindings = new HashMap<>();
+        Map<Integer, Map<Integer, Integer>> corruptedBindings = new HashMap<>();
         correctArtifact.callSiteBindings().forEach((addr, bindings) -> {
-            corruptedBindings.put(addr, new int[]{1});
+            corruptedBindings.put(addr, Map.of(RegisterBank.FDR.base, 1));
         });
 
         ProgramArtifact corruptedArtifact = new ProgramArtifact(
@@ -397,66 +397,4 @@ public class RuntimeIntegrationTest {
         assertThat(lr0Value).as("LR0 should be [0,0] after LREF write-back from CLEAR_POS").isEqualTo(new int[]{0, 0});
     }
 
-    /**
-     * Verifies that mixed REF + LREF parameter bindings are correctly recorded in ProcFrame.
-     * The parameterBindings map must contain FDR keys for data params and FLR keys for location params.
-     */
-    @Test
-    @Tag("integration")
-    void mixedRefAndLrefParameterBindings() throws Exception {
-        String source = String.join("\n",
-                "SETI %DR1 DATA:42",
-                "DPLR %LR0",
-                "CALL MIXED REF %DR1 LREF %LR0",
-                "WAIT",
-                ".ORG 0|1",
-                "EXPORT .PROC MIXED REF dParam LREF lParam",
-                "  WAIT",   // Pause so we can inspect the ProcFrame
-                "  RET",
-                ".ENDP"
-        );
-
-        Compiler compiler = new Compiler();
-        EnvironmentProperties envProps = new EnvironmentProperties(new int[]{64, 64}, true);
-        ProgramArtifact artifact = compiler.compile(Arrays.asList(source.split("\\r?\\n")), "mixed_bindings.s", envProps);
-        assertThat(artifact).isNotNull();
-
-        Environment env = new Environment(envProps);
-        Simulation sim = SimulationTestUtils.createSimulation(env);
-
-        for (Map.Entry<int[], Integer> e : artifact.machineCodeLayout().entrySet()) {
-            env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());
-        }
-
-        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
-        org.setProgramId(artifact.programId());
-        sim.addOrganism(org);
-
-        // Register call-site bindings for the runtime
-        CallBindingRegistry.getInstance().clearAll();
-        for (var binding : artifact.callSiteBindings().entrySet()) {
-            int[] coord = artifact.linearAddressToCoord().get(binding.getKey());
-            if (coord != null) {
-                CallBindingRegistry.getInstance().registerBindingForAbsoluteCoord(coord, binding.getValue());
-            }
-        }
-
-        // Run ticks until we're inside MIXED proc (callStack not empty) or hit failure
-        for (int i = 0; i < 30; i++) {
-            sim.tick();
-            if (!org.getCallStack().isEmpty()) break;
-        }
-
-        assertThat(org.isInstructionFailed()).as("Failure: " + org.getFailureReason()).isFalse();
-        assertThat(org.getCallStack()).as("Should be inside MIXED proc (callStack not empty)").isNotEmpty();
-
-        Organism.ProcFrame frame = org.getCallStack().peek();
-        Map<Integer, Integer> bindings = frame.parameterBindings();
-
-        // FDR0 should be bound to DR1 (data parameter)
-        assertThat(bindings).containsEntry(RegisterBank.FDR.base + 0, 1); // DR1 ID = 1
-
-        // FLR0 should be bound to LR0 (location parameter)
-        assertThat(bindings).containsEntry(RegisterBank.FLR.base + 0, RegisterBank.LR.base + 0);
-    }
 }

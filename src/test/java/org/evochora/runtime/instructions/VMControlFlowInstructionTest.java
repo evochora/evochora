@@ -4,6 +4,7 @@ import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.test.utils.SimulationTestUtils;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.internal.services.CallBindingRegistry;
 import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
@@ -217,6 +218,50 @@ public class VMControlFlowInstructionTest {
         // Verify FDR is restored
         assertThat((int) org.readOperand(RegisterBank.FDR.base + 0)).isEqualTo(111);
         assertThat((int) org.readOperand(RegisterBank.FDR.base + 1)).isEqualTo(222);
+    }
+
+    /**
+     * Verifies that mixed REF + LREF parameter bindings are correctly mapped to
+     * FDR and FLR keys in ProcFrame.parameterBindings.
+     * Bug: ProcedureCallHandler splits the flat bindings array by assuming first N
+     * entries are FDR, rest FLR — wrong for mixed params where N < FDR.count.
+     */
+    @Test
+    @Tag("unit")
+    void testMixedRefAndLrefParameterBindings() {
+        int labelHash = 55555 & Config.VALUE_MASK;
+        int[] labelPos = new int[]{20};
+        int[] afterLabel = new int[]{21};
+
+        environment.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), labelPos);
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), afterLabel);
+
+        // Register mixed bindings: FDR0→DR1, FLR0→LR0
+        int dr1Id = 1; // DR1
+        int lr0Id = RegisterBank.LR.base; // LR0
+        CallBindingRegistry.getInstance().clearAll();
+        CallBindingRegistry.getInstance().registerBindingForAbsoluteCoord(
+                org.getIp(), java.util.Map.of(
+                        RegisterBank.FDR.base + 0, dr1Id,
+                        RegisterBank.FLR.base + 0, lr0Id));
+
+        placeInstruction("CALL", labelHash);
+        sim.tick();
+
+        assertThat(org.getCallStack()).isNotEmpty();
+        Organism.ProcFrame frame = org.getCallStack().peek();
+        java.util.Map<Integer, Integer> bindings = frame.parameterBindings();
+
+        // FDR0 should be bound to DR1 (data parameter)
+        assertThat(bindings.get(RegisterBank.FDR.base + 0))
+                .as("FDR0 should be bound to DR1")
+                .isEqualTo(dr1Id);
+
+        // FLR0 should be bound to LR0 (location parameter) — this is the bug:
+        // current code assigns LR0 to FDR1 instead of FLR0
+        assertThat(bindings.get(RegisterBank.FLR.base + 0))
+                .as("FLR0 should be bound to LR0, not assigned to FDR1")
+                .isEqualTo(lr0Id);
     }
 
     @org.junit.jupiter.api.AfterEach

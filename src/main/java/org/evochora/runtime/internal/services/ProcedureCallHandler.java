@@ -2,7 +2,6 @@ package org.evochora.runtime.internal.services;
 
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
-import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Environment;
 
@@ -42,20 +41,10 @@ public class ProcedureCallHandler {
         }
 
         CallBindingResolver bindingResolver = new CallBindingResolver(context);
-        int[] bindings = bindingResolver.resolveBindings();
+        Map<Integer, Integer> bindings = bindingResolver.resolveBindings();
         int[] ipBeforeFetch = organism.getIpBeforeFetch();
 
-        Map<Integer, Integer> parameterBindings = new HashMap<>();
-        if (bindings != null) {
-            int dataParamCount = Math.min(bindings.length, RegisterBank.FDR.count);
-            for (int i = 0; i < dataParamCount; i++) {
-                parameterBindings.put(RegisterBank.FDR.base + i, bindings[i]);
-            }
-            int locationParamStart = dataParamCount;
-            for (int i = locationParamStart; i < bindings.length && (i - locationParamStart) < RegisterBank.FLR.count; i++) {
-                parameterBindings.put(RegisterBank.FLR.base + (i - locationParamStart), bindings[i]);
-            }
-        }
+        Map<Integer, Integer> parameterBindings = bindings != null ? new HashMap<>(bindings) : new HashMap<>();
 
         // CALL now only consumes 1 operand (label hash) instead of N (coordinate delta)
         int instructionLength = 1 + 1; // opcode + label hash

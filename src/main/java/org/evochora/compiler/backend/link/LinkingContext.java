@@ -18,7 +18,7 @@ public final class LinkingContext {
     private final SymbolTable symbolTable;
     private final IInstructionSet isa;
     private int linearAddressCursor = 0;
-    private final Map<Integer, int[]> callSiteBindings = new HashMap<>();
+    private final Map<Integer, Map<Integer, Integer>> callSiteBindings = new HashMap<>();
     private final Deque<String> aliasChainStack = new ArrayDeque<>();
     private boolean frozen = false;
 
@@ -67,7 +67,7 @@ public final class LinkingContext {
     /**
      * @return The map of call site bindings.
      */
-    public Map<Integer, int[]> callSiteBindings() {
+    public Map<Integer, Map<Integer, Integer>> callSiteBindings() {
         return frozen ? java.util.Collections.unmodifiableMap(callSiteBindings) : callSiteBindings;
     }
 

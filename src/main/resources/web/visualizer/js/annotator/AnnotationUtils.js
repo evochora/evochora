@@ -358,14 +358,14 @@ function _resolveFrameBindings(frame, initialPosition, artifact) {
     }
 
     const binding = artifact.callSiteBindings.find(csb => csb.linearAddress === linearAddress);
-    if (!binding || !binding.registerIds || !Array.isArray(binding.registerIds)) {
+    if (!binding || !binding.bindings || typeof binding.bindings !== 'object') {
         return null;
     }
 
+    // binding.bindings is already a map from formal register ID to source register ID
     const bindings = {};
-    for (let i = 0; i < binding.registerIds.length; i++) {
-        const fdrId = BANK_BY_NAME.FDR.base + i;
-        bindings[fdrId] = binding.registerIds[i];
+    for (const [formalId, sourceId] of Object.entries(binding.bindings)) {
+        bindings[parseInt(formalId)] = sourceId;
     }
     return bindings;
 }

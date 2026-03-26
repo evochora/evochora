@@ -7,14 +7,15 @@ import org.evochora.compiler.isa.IInstructionSet;
 import org.evochora.compiler.model.ir.IrInstruction;
 import org.evochora.compiler.model.ir.IrOperand;
 import org.evochora.compiler.model.ir.IrReg;
+import org.evochora.runtime.isa.RegisterBank;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * Collects parameter register bindings for CALL instructions. For each CALL,
- * the register names from ref and val operands are resolved to numeric IDs
- * and stored in the linking context for downstream runtime use.
+ * builds a map from formal register IDs (FDR_BASE+i for data params, FLR_BASE+i
+ * for location params) to source register IDs, stored in the linking context.
  */
 public class CallSiteBindingRule implements ILinkingRule {
 
@@ -23,29 +24,45 @@ public class CallSiteBindingRule implements ILinkingRule {
         if (!(instruction instanceof IrCallInstruction call)) return instruction;
 
         IInstructionSet isa = context.isa();
-        List<String> regNames = new ArrayList<>();
+        Map<Integer, Integer> bindings = new HashMap<>();
+
+        int dataIndex = 0;
         for (IrOperand op : call.refOperands()) {
-            if (op instanceof IrReg reg) regNames.add(reg.name());
+            if (op instanceof IrReg reg) {
+                bindings.put(RegisterBank.FDR.base + dataIndex, resolveReg(isa, reg.name()));
+            }
+            dataIndex++;
         }
         for (IrOperand op : call.valOperands()) {
-            if (op instanceof IrReg reg) regNames.add(reg.name());
+            if (op instanceof IrReg reg) {
+                bindings.put(RegisterBank.FDR.base + dataIndex, resolveReg(isa, reg.name()));
+            }
+            dataIndex++;
         }
+
+        int locationIndex = 0;
         for (IrOperand op : call.lrefOperands()) {
-            if (op instanceof IrReg reg) regNames.add(reg.name());
+            if (op instanceof IrReg reg) {
+                bindings.put(RegisterBank.FLR.base + locationIndex, resolveReg(isa, reg.name()));
+            }
+            locationIndex++;
         }
         for (IrOperand op : call.lvalOperands()) {
-            if (op instanceof IrReg reg) regNames.add(reg.name());
-        }
-        if (!regNames.isEmpty()) {
-            int[] ids = new int[regNames.size()];
-            for (int j = 0; j < regNames.size(); j++) {
-                String regName = regNames.get(j);
-                ids[j] = isa.resolveRegisterToken(regName).orElseThrow(() ->
-                        new IllegalStateException("Cannot resolve register '" + regName
-                                + "' — should have been validated in semantic analysis"));
+            if (op instanceof IrReg reg) {
+                bindings.put(RegisterBank.FLR.base + locationIndex, resolveReg(isa, reg.name()));
             }
-            context.callSiteBindings().put(context.currentAddress(), ids);
+            locationIndex++;
+        }
+
+        if (!bindings.isEmpty()) {
+            context.callSiteBindings().put(context.currentAddress(), bindings);
         }
         return instruction;
+    }
+
+    private int resolveReg(IInstructionSet isa, String regName) {
+        return isa.resolveRegisterToken(regName).orElseThrow(() ->
+                new IllegalStateException("Cannot resolve register '" + regName
+                        + "' — should have been validated in semantic analysis"));
     }
 }

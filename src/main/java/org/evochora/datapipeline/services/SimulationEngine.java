@@ -924,12 +924,10 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                         .setLinearAddress(address)
                         .setSourceInfo(convertSourceInfo(sourceInfo))));
 
-        artifact.callSiteBindings().forEach((address, registerIds) ->
+        artifact.callSiteBindings().forEach((address, bindingsMap) ->
                 builder.addCallSiteBindings(CallSiteBinding.newBuilder()
                         .setLinearAddress(address)
-                        .addAllRegisterIds(java.util.Arrays.stream(registerIds)
-                                .boxed()
-                                .collect(java.util.stream.Collectors.toList()))));
+                        .putAllBindings(bindingsMap)));
 
         builder.putAllRelativeCoordToLinearAddress(artifact.relativeCoordToLinearAddress());
 

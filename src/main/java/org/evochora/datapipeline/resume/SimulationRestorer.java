@@ -383,12 +383,12 @@ public class SimulationRestorer {
             sourceMap.put(entry.getLinearAddress(), convertProtoSourceInfo(entry.getSourceInfo()));
         }
 
-        // Convert call site bindings
-        Map<Integer, int[]> callSiteBindings = new HashMap<>();
+        // Convert call site bindings (formal register ID → source register ID)
+        Map<Integer, Map<Integer, Integer>> callSiteBindings = new HashMap<>();
         for (CallSiteBinding binding : proto.getCallSiteBindingsList()) {
             callSiteBindings.put(
                 binding.getLinearAddress(),
-                binding.getRegisterIdsList().stream().mapToInt(Integer::intValue).toArray()
+                new HashMap<>(binding.getBindingsMap())
             );
         }
 

@@ -376,16 +376,14 @@ export class OrganismStateView {
             }
 
             const binding = this.artifact.callSiteBindings.find(csb => csb.linearAddress === linearAddress);
-            if (!binding || !binding.registerIds || !Array.isArray(binding.registerIds)) {
+            if (!binding || !binding.bindings || typeof binding.bindings !== 'object') {
                 return null;
             }
 
-            const fdrBank = BANK_BY_NAME.FDR;
+            // binding.bindings is already a map from formal register ID to source register ID
             const parameterBindings = {};
-            for (let i = 0; i < binding.registerIds.length; i++) {
-                const registerId = binding.registerIds[i];
-                const fdrId = fdrBank.base + i;
-                parameterBindings[fdrId] = registerId;
+            for (const [formalId, sourceId] of Object.entries(binding.bindings)) {
+                parameterBindings[parseInt(formalId)] = sourceId;
             }
 
             return parameterBindings;

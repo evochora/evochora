@@ -2,6 +2,8 @@ package org.evochora.runtime.internal.services;
 
 import org.evochora.runtime.model.Organism;
 
+import java.util.Map;
+
 /**
  * Decouples the strategies for resolving parameter bindings for procedure calls.
  * For example, it resolves `.WITH` clauses.
@@ -26,15 +28,15 @@ public class CallBindingResolver {
      * global registry. A fallback to parsing the source code at runtime is not
      * allowed as it undermines evolutionary stability.
      *
-     * @return An array of bound register IDs, or null if not found.
+     * @return Map from formal register ID to source register ID, or null if not found.
      */
-    public int[] resolveBindings() {
+    public Map<Integer, Integer> resolveBindings() {
         Organism organism = context.getOrganism();
         int[] ipBeforeFetch = organism.getIpBeforeFetch();
 
         // The only correct method: Global Registry (absolute coordinate)
         CallBindingRegistry registry = CallBindingRegistry.getInstance();
-        int[] bindings = registry.getBindingForAbsoluteCoord(ipBeforeFetch);
+        Map<Integer, Integer> bindings = registry.getBindingForAbsoluteCoord(ipBeforeFetch);
         if (bindings != null) {
             return bindings;
         }

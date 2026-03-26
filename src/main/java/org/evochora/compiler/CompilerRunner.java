@@ -57,9 +57,9 @@ public final class CompilerRunner {
             environment.setMolecule(new Molecule(pm.type(), pm.value()), org.getId(), abs);
         }
 
-        // NEW: Register the call site bindings
+        // Register the call site bindings (formal register ID → source register ID)
         CallBindingRegistry registry = CallBindingRegistry.getInstance();
-        for (Map.Entry<Integer, int[]> binding : artifact.callSiteBindings().entrySet()) {
+        for (Map.Entry<Integer, Map<Integer, Integer>> binding : artifact.callSiteBindings().entrySet()) {
             int linearAddress = binding.getKey();
             int[] relativeCoord = artifact.linearAddressToCoord().get(linearAddress);
             if (relativeCoord != null) {
