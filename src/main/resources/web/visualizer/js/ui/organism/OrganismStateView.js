@@ -3,7 +3,7 @@ import { AnnotationUtils, REGISTER_BANKS, BANK_BY_NAME } from '../../annotator/A
 
 /**
  * Renders the dynamic runtime state of an organism in the organism panel.
- * This includes registers (DR, PDR, FDR, LR) and stacks (Data, Location, Call).
+ * This includes all register banks (DR, LR, PDR, PLR, FDR, FLR, SDR, SLR) and stacks (Data, Location, Call).
  * It highlights changes between ticks to make debugging easier.
  *
  * @class OrganismStateView
@@ -171,117 +171,86 @@ export class OrganismStateView {
                         parameterBindings = resolveBindingsFromArtifact(entry.absoluteCallIp, staticInfo);
                     }
 
-                    // FDR bank info for parameter display
+                    // Bank info for parameter display
                     const fdrBank = BANK_BY_NAME.FDR;
+                    const flrBank = BANK_BY_NAME.FLR;
 
-                    // Format parameters using REF/VAL syntax if parameter info available
+                    // Format parameters using REF/VAL/LREF/LVAL syntax if parameter info available
                     if (paramInfo && paramInfo.length > 0) {
+                        // Classify parameters with bank-specific indices:
+                        // Data params (REF, VAL, WITH) share sequential FDR indices.
+                        // Location params (LREF, LVAL) share sequential FLR indices.
                         const refParams = [];
                         const valParams = [];
+                        const lrefParams = [];
+                        const lvalParams = [];
                         const withParams = [];
+                        let dataIndex = 0;
+                        let locationIndex = 0;
 
                         for (let i = 0; i < paramInfo.length; i++) {
                             const param = paramInfo[i];
                             if (!param || !param.name) continue;
 
                             const paramType = param.type;
-                            let isRef = false;
-                            let isVal = false;
-                            let isWith = false;
+                            let classified = false;
 
                             if (typeof paramType === 'number') {
-                                isRef = paramType === 0;
-                                isVal = paramType === 1;
-                                isWith = paramType === 2;
+                                if (paramType === 0)      { refParams.push({ bankIndex: dataIndex++, name: param.name }); classified = true; }
+                                else if (paramType === 1)  { valParams.push({ bankIndex: dataIndex++, name: param.name }); classified = true; }
+                                else if (paramType === 2)  { withParams.push({ bankIndex: dataIndex++, name: param.name }); classified = true; }
+                                else if (paramType === 3)  { lrefParams.push({ bankIndex: locationIndex++, name: param.name }); classified = true; }
+                                else if (paramType === 4)  { lvalParams.push({ bankIndex: locationIndex++, name: param.name }); classified = true; }
                             } else if (typeof paramType === 'string') {
                                 const typeUpper = paramType.toUpperCase();
-                                isRef = typeUpper === 'REF' || typeUpper === 'PARAM_TYPE_REF';
-                                isVal = typeUpper === 'VAL' || typeUpper === 'PARAM_TYPE_VAL';
-                                isWith = typeUpper === 'WITH' || typeUpper === 'PARAM_TYPE_WITH';
-                            } else if (paramType === undefined || paramType === null) {
-                                isRef = true;
+                                if (typeUpper === 'REF' || typeUpper === 'PARAM_TYPE_REF')        { refParams.push({ bankIndex: dataIndex++, name: param.name }); classified = true; }
+                                else if (typeUpper === 'VAL' || typeUpper === 'PARAM_TYPE_VAL')    { valParams.push({ bankIndex: dataIndex++, name: param.name }); classified = true; }
+                                else if (typeUpper === 'WITH' || typeUpper === 'PARAM_TYPE_WITH')  { withParams.push({ bankIndex: dataIndex++, name: param.name }); classified = true; }
+                                else if (typeUpper === 'LREF' || typeUpper === 'PARAM_TYPE_LREF')  { lrefParams.push({ bankIndex: locationIndex++, name: param.name }); classified = true; }
+                                else if (typeUpper === 'LVAL' || typeUpper === 'PARAM_TYPE_LVAL')  { lvalParams.push({ bankIndex: locationIndex++, name: param.name }); classified = true; }
                             }
 
-                            if (isRef) {
-                                refParams.push({ index: i, name: param.name });
-                            } else if (isVal) {
-                                valParams.push({ index: i, name: param.name });
-                            } else if (isWith) {
-                                withParams.push({ index: i, name: param.name });
+                            if (!classified && (paramType === undefined || paramType === null)) {
+                                refParams.push({ bankIndex: dataIndex++, name: param.name });
                             }
                         }
 
-                        // Format REF parameters
-                        if (refParams.length > 0 && currentState && currentState.registers && Array.isArray(currentState.registers)) {
-                            result += ' REF ';
-                            const refStrings = [];
-                            for (const refParam of refParams) {
-                                const fdrSlot = fdrBank.slotOffset + refParam.index;
-                                if (fdrSlot < currentState.registers.length) {
-                                    try {
-                                        const fdrDisplay = AnnotationUtils.formatRegisterName(fdrBank.base + refParam.index);
-                                        const refValue = ValueFormatter.format(currentState.registers[fdrSlot]);
-                                        refStrings.push(`${refParam.name}<span class="injected-value">[${fdrDisplay}=${refValue}]</span>`);
-                                    } catch (error) {
-                                        console.error('ValueFormatter failed for REF parameter:', error.message);
-                                        refStrings.push(refParam.name);
-                                    }
-                                } else {
-                                    refStrings.push(refParam.name);
-                                }
-                            }
-                            result += refStrings.join(' ');
-                        }
+                        const hasRegisters = currentState && currentState.registers && Array.isArray(currentState.registers);
 
-                        // Format VAL parameters
-                        if (valParams.length > 0 && currentState && currentState.registers && Array.isArray(currentState.registers)) {
-                            result += ' VAL ';
-                            const valStrings = [];
-                            for (const valParam of valParams) {
-                                const fdrSlot = fdrBank.slotOffset + valParam.index;
-                                if (fdrSlot < currentState.registers.length) {
+                        // Helper to format a parameter group with its bank
+                        const formatParamGroup = (label, params, bank) => {
+                            if (params.length === 0 || !hasRegisters) return;
+                            result += ` ${label} `;
+                            const strings = [];
+                            for (const p of params) {
+                                const slot = bank.slotOffset + p.bankIndex;
+                                if (slot < currentState.registers.length) {
                                     try {
-                                        const fdrDisplay = AnnotationUtils.formatRegisterName(fdrBank.base + valParam.index);
-                                        const valValue = ValueFormatter.format(currentState.registers[fdrSlot]);
-                                        valStrings.push(`${valParam.name}<span class="injected-value">[${fdrDisplay}=${valValue}]</span>`);
+                                        const regDisplay = AnnotationUtils.formatRegisterName(bank.base + p.bankIndex);
+                                        const regValue = ValueFormatter.format(currentState.registers[slot]);
+                                        strings.push(`${p.name}<span class="injected-value">[${regDisplay}=${regValue}]</span>`);
                                     } catch (error) {
-                                        console.error('ValueFormatter failed for VAL parameter:', error.message);
-                                        valStrings.push(valParam.name);
+                                        console.error(`ValueFormatter failed for ${label} parameter:`, error.message);
+                                        strings.push(p.name);
                                     }
                                 } else {
-                                    valStrings.push(valParam.name);
+                                    strings.push(p.name);
                                 }
                             }
-                            result += valStrings.join(' ');
-                    }
+                            result += strings.join(' ');
+                        };
 
-                        // Format WITH parameters (legacy)
-                        if (withParams.length > 0 && currentState && currentState.registers && Array.isArray(currentState.registers)) {
-                            result += ' WITH ';
-                            const withStrings = [];
-                            for (const withParam of withParams) {
-                                const fdrSlot = fdrBank.slotOffset + withParam.index;
-                                if (fdrSlot < currentState.registers.length) {
-                                    try {
-                                        const fdrDisplay = AnnotationUtils.formatRegisterName(fdrBank.base + withParam.index);
-                                        const withValue = ValueFormatter.format(currentState.registers[fdrSlot]);
-                                        withStrings.push(`${withParam.name}<span class="injected-value">[${fdrDisplay}=${withValue}]</span>`);
-                                    } catch (error) {
-                                        console.error('ValueFormatter failed for WITH parameter:', error.message);
-                                        withStrings.push(withParam.name);
-                                    }
-                                } else {
-                                    withStrings.push(withParam.name);
-                                }
-                            }
-                            result += withStrings.join(' ');
-                        }
+                        formatParamGroup('REF', refParams, fdrBank);
+                        formatParamGroup('VAL', valParams, fdrBank);
+                        formatParamGroup('LREF', lrefParams, flrBank);
+                        formatParamGroup('LVAL', lvalParams, flrBank);
+                        formatParamGroup('WITH', withParams, fdrBank);
                     } else if (parameterBindings && Object.keys(parameterBindings).length > 0) {
-                        // Fallback: Legacy WITH syntax
+                        // Fallback: display bindings directly (formal register → source register)
                         result += ' WITH ';
                         const paramStrings = [];
-                        for (const [fdrIdStr, boundRegisterId] of Object.entries(parameterBindings)) {
-                            const fdrId = parseInt(fdrIdStr);
+                        for (const [formalIdStr, boundRegisterId] of Object.entries(parameterBindings)) {
+                            const formalId = parseInt(formalIdStr);
                             const boundId = typeof boundRegisterId === 'number' ? boundRegisterId : parseInt(boundRegisterId);
 
                             const registerDisplay = AnnotationUtils.formatRegisterName(boundId);
@@ -296,8 +265,8 @@ export class OrganismStateView {
                                 }
                             }
 
-                            const fdrDisplay = AnnotationUtils.formatRegisterName(fdrId);
-                            paramStrings.push(`${fdrDisplay}<span class="injected-value">[${registerDisplay}=${registerValue}]</span>`);
+                            const formalDisplay = AnnotationUtils.formatRegisterName(formalId);
+                            paramStrings.push(`${formalDisplay}<span class="injected-value">[${registerDisplay}=${registerValue}]</span>`);
                         }
                         result += paramStrings.join(' ');
                     }
