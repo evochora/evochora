@@ -27,8 +27,6 @@ public enum CompilerErrorCode {
     // region Semantic Analysis Errors
     /** An unknown routine (procedure or external function) was called. */
     UNKNOWN_ROUTINE,
-    /** A WITH clause was used on a non-procedure call. */
-    WITH_CLAUSE_REQUIRES_PROC,
     /** A .REQUIRE directive was used for a symbol that was not imported. */
     MISSING_IMPORT_FOR_REQUIRE,
     /** An unknown instruction mnemonic was used. */

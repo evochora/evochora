@@ -14,11 +14,11 @@ import java.util.Set;
 /**
  * Handler for the {@code .PROC} directive.
  * Parses procedure declarations with optional parameter keywords:
- * WITH (legacy scalar), REF/VAL (scalar by reference/value), LREF/LVAL (location by reference/value).
+ * REF/VAL (scalar by reference/value), LREF/LVAL (location by reference/value).
  */
 public class ProcDirectiveHandler implements IParserStatementHandler {
 
-    private static final Set<String> PARAM_KEYWORDS = Set.of("WITH", "REF", "VAL", "LREF", "LVAL");
+    private static final Set<String> PARAM_KEYWORDS = Set.of("REF", "VAL", "LREF", "LVAL");
 
     @Override
     public boolean supportsExport() { return true; }
@@ -29,7 +29,6 @@ public class ProcDirectiveHandler implements IParserStatementHandler {
 
         Token procName = context.consume(TokenType.IDENTIFIER, "Expected procedure name after .PROC.");
         boolean exported = context.isExported();
-        List<ProcedureNode.ParamDecl> parameters = new ArrayList<>();
         List<ProcedureNode.ParamDecl> refParameters = new ArrayList<>();
         List<ProcedureNode.ParamDecl> valParameters = new ArrayList<>();
         List<ProcedureNode.ParamDecl> lrefParameters = new ArrayList<>();
@@ -38,14 +37,7 @@ public class ProcDirectiveHandler implements IParserStatementHandler {
         while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
             if (context.check(TokenType.IDENTIFIER)) {
                 String keyword = context.peek().text();
-                if ("WITH".equalsIgnoreCase(keyword)) {
-                    context.advance();
-                    while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
-                        Token p = context.consume(TokenType.IDENTIFIER, "Expected a formal parameter name after WITH.");
-                        parameters.add(new ProcedureNode.ParamDecl(p.text(), p.toSourceInfo()));
-                    }
-                    break;
-                } else if ("REF".equalsIgnoreCase(keyword)) {
+                if ("REF".equalsIgnoreCase(keyword)) {
                     context.advance();
                     while (!context.isAtEnd() && context.check(TokenType.IDENTIFIER) && !isParamKeyword(context.peek().text())) {
                         Token p = context.consume(TokenType.IDENTIFIER, "Expected a formal parameter name after REF.");
@@ -107,7 +99,7 @@ public class ProcDirectiveHandler implements IParserStatementHandler {
             context.advance(); // consume .ENDP
         }
 
-        return new ProcedureNode(procName.text(), exported, parameters, refParameters, valParameters, lrefParameters, lvalParameters, body, procName.toSourceInfo());
+        return new ProcedureNode(procName.text(), exported, refParameters, valParameters, lrefParameters, lvalParameters, body, procName.toSourceInfo());
     }
 
     private static boolean isParamKeyword(String text) {

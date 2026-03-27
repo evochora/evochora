@@ -26,12 +26,10 @@ public class CallAnalysisHandler implements IAnalysisHandler {
     public void analyze(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         if (!(node instanceof CallNode callNode)) return;
 
-        // New syntax: REF/VAL/LREF/LVAL arguments
+        // Only validate procedure reference and parameter types when parameters are present
         if (!callNode.refArguments().isEmpty() || !callNode.valArguments().isEmpty()
                 || !callNode.lrefArguments().isEmpty() || !callNode.lvalArguments().isEmpty()) {
             analyzeNewSyntax(callNode, symbolTable, diagnostics);
-        } else {
-            analyzeLegacySyntax(callNode, symbolTable, diagnostics);
         }
     }
 
@@ -132,40 +130,6 @@ public class CallAnalysisHandler implements IAnalysisHandler {
                 diagnostics.reportError("LVAL arguments must be location registers.",
                         callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
             }
-        }
-    }
-
-    private void analyzeLegacySyntax(CallNode callNode, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
-        // Validation of legacy actuals: allow registers or formal parameter names
-        int withIdx = -1;
-        for (int i = 0; i < callNode.legacyArguments().size(); i++) {
-            AstNode a = callNode.legacyArguments().get(i);
-            if (a instanceof IdentifierNode id) {
-                String t = id.text().toUpperCase();
-                if ("WITH".equals(t) || ".WITH".equals(t)) {
-                    withIdx = i;
-                    break;
-                }
-            }
-        }
-        // Do not allow additional tokens between target and WITH
-        int unexpectedEnd = withIdx >= 0 ? withIdx : callNode.legacyArguments().size();
-        if (unexpectedEnd > 0) {
-            // Legacy arguments after proc name — check for stray tokens before WITH
-            // (In CallNode, legacyArguments doesn't include the proc name)
-        }
-        int actualsStart = withIdx >= 0 ? withIdx + 1 : 0;
-        for (int j = actualsStart; j < callNode.legacyArguments().size(); j++) {
-            AstNode arg = callNode.legacyArguments().get(j);
-            if (arg instanceof RegisterNode) continue;
-            if (arg instanceof IdentifierNode id) {
-                var res = symbolTable.resolve(id.text(), id.sourceInfo().fileName());
-                if (res.isPresent() && (res.get().symbol().type() == Symbol.Type.VARIABLE || res.get().symbol().type() == Symbol.Type.LOCATION_VARIABLE || res.get().symbol().type() == Symbol.Type.ALIAS))
-                    continue;
-            }
-            diagnostics.reportError("CALL actuals must be registers or parameter names.",
-                    callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
-            return;
         }
     }
 }

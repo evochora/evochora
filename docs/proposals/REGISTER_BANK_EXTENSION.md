@@ -199,7 +199,7 @@ Establishes the runtime safety architecture for location register write restrict
 
 **Test (integration):** Assembly program executing `SETI %DR0 DATA:42` → success. Assembly program attempting to write a scalar to a location register (if the assembler permits the syntax) → runtime error. If the assembler rejects the syntax at compile time, verify the runtime enforcement directly via unit test.
 
-### Phase D: Register Bank Encapsulation
+### Phase D: Register Bank Encapsulation — **DONE**
 
 Encapsulates the register bank concept so that adding a new bank on the Java side requires only two changes: a RegisterBank enum entry and a Config constant. All dispatch, validation, serialization, and save/restore logic works generically through the enum. The JS visualizer remains separate (technology boundary) and must be extended manually per bank.
 
@@ -542,7 +542,7 @@ Adds location parameter passing. Depends on Phase E (PLR exists as LREF source) 
 
 **Test (integration):** Assembly program: main stores current DP in %LR0 via `DPLR %LR0`. Defines `.PROC NAV LREF lPos` that executes `SKLR lPos` (move DP to passed location), then `CRLR lPos` (clear FLR0 to [0,0] — explicit modification), then RETs. Main calls `CALL NAV LREF %LR0`. Assert 1: inside NAV, DP moved to LR0's original position (LREF pass works). Assert 2: after RET, %LR0 == [0,0] (LREF write-back verified — NAV cleared FLR0 and the new value was written back to LR0).
 
-### Phase H: LVAL with Labels
+### Phase H: LVAL with Labels — **DONE**
 
 Extends LVAL to accept labels as arguments. Depends on Phase G. Labels cannot be resolved at compile time because labels and label references can mutate at runtime (self-modifying code). Therefore, label-to-position resolution must happen at runtime via fuzzy matching — the same mechanism used by SKJI, CALL, and JMPI.
 
@@ -604,6 +604,53 @@ PSLI MY_LABEL                      ; Direct: push label position onto location s
 2. Direct LRLI test: `LRLI %LR0 TARGET`, then assert that LR0 contains the coordinates of TARGET.
 3. Direct PSLI test: `PSLI TARGET`, `POPL %LR0`, then assert that LR0 contains the coordinates of TARGET.
 
+### Phase H2: Legacy WITH Syntax Removal — **DONE**
+
+Removes all WITH-specific code paths from the compiler pipeline. The WITH syntax is a fully separate code path through parsing, AST, analysis, IR generation, marshalling, and emission — doubling complexity and causing bugs when new parameter types (LREF/LVAL) are added but the legacy branch is missed. All production assembly files already use REF/VAL. Only 2 test assembly files still use WITH. No backward compatibility for old serialized checkpoints.
+
+After H2, there is exactly one parameter passing path: REF/VAL/LREF/LVAL.
+
+**Compiler (features/proc/) — 12 files:**
+- `ProcDirectiveHandler.java`: Delete WITH-keyword branch, remove `parameters` list, adjust ProcedureNode constructor call.
+- `ProcedureNode.java`: Delete `parameters` field (WITH params). Record signature 9→8 parameters. Adjust `reconstructWithChildren()`. All constructor call sites must be updated.
+- `CallStatementHandler.java`: Delete legacy branch (captures args without REF/VAL keywords into `legacyArguments`). Zero-arg CALL (`CALL PROC_NAME`) must still work — create CallNode with empty lists when no keyword follows and line ends.
+- `CallNode.java`: Delete `legacyArguments` field. Record signature 7→6 parameters. Adjust `getChildren()` and `reconstructWithChildren()`. All constructor call sites must be updated.
+- `CallAnalysisHandler.java`: Delete `analyzeLegacySyntax()` method and its dispatch branch.
+- `CallNodeConverter.java`: Delete `convertLegacySyntax()` method (WITH keyword search, `core:call_with` directive emission). For zero-arg CALL, emit IrCallInstruction with empty operand lists.
+- `CallerMarshallingRule.java`: Delete `handleLegacyCallWith()` method and `core:call_with` directive handling block.
+- `ProcedureMarshallingRule.java`: Delete `handleLegacySyntax()` method and arity-based dispatch.
+- `ProcedureEmissionContributor.java`: Delete arity-based WITH parameter generation.
+- `ProcedureNodeConverter.java`: Delete WITH parameter handling in `allDataParams` collection and `arity` field emission.
+- `ProcedureSymbolCollector.java`: Delete `parameters` iteration block.
+- `ProcedureTokenMapContributor.java`: Delete `addParameters(procNode.parameters(), ...)` call.
+
+**Shared/API — 2 files:**
+- `ParamType.java`: Delete `WITH` enum value and its `fromProtobuf`/`toProtobuf` cases.
+- `metadata_contracts.proto`: Delete `PARAM_TYPE_WITH = 2` enum value. No backward compatibility.
+
+**JS Visualizer — 1 file:**
+- `OrganismStateView.js`: Delete `withParams` array and `formatParamGroup('WITH', ...)` call.
+
+**Datapipeline — 1 file:**
+- `SimulationRestorer.java`: `PARAM_TYPE_WITH` case in deserialization — throw on encounter (old checkpoints not supported).
+
+**Assembly — 2 files:**
+- `assembly/test/lib/lib1.evo`: `CALL LIB2.PROC2 WITH ...` → `CALL LIB2.PROC2 REF ...`
+- `assembly/test/lib/lib2.evo`: `.PROC PROC2 WITH ...` → `.PROC PROC2 REF ...`
+
+**Tests — delete 4 files, modify 4 files:**
+- DELETE `WithParameterTokenMapTest.java` (only tests WITH syntax, REF coverage exists in `RefParameterTokenMapTest`)
+- DELETE `RefWithParameterBugTest.java` (disabled, tests WITH-vs-REF bug)
+- DELETE `SimpleVectorParameterTest.java` (disabled, demonstrates WITH syntax)
+- DELETE `VectorParameterTypeLossTest.java` (disabled, tests WITH-vs-REF bug)
+- MODIFY `CallStatementHandlerTest.java`: Delete `legacySyntax_withArgs()`, keep zero-arg test.
+- MODIFY `EmissionCallerMarshallingTest.java`: Delete `LegacyMarshalling` nested class.
+- MODIFY `EmissionProcedureMarshallingTest.java`: Delete legacy-arity test (`backwardCompatibilityTest`, line 85) — tests `handleLegacySyntax()` which is removed.
+- MODIFY `ProcedureEmissionContributorTest.java`: Delete `extractsLegacyArityParams()` test.
+- MODIFY `RegisterAliasScopeTest.java`: Adjust 4 ProcedureNode constructor calls (one argument fewer).
+
+**Test:** All tests green after migration. CLI smoke tests green (all 5 programs). Purely subtractive — no new functionality.
+
 ### Phase I: Documentation
 
 Update all documentation to reflect the new architecture. Can be done incrementally alongside other phases, finalized after Phase H.
@@ -614,7 +661,7 @@ Update all documentation to reflect the new architecture. Can be done incrementa
 - Section 6 "Location Operations": all location banks work with location instructions. New instructions PSLI and LRLI (label-to-location resolution via fuzzy matching)
 - Section 7 ".REG": expanded for all banks, automatic scope detection
 - Section 7 ".PREG": removed
-- Section 7 ".PROC": LREF/LVAL parameter types
+- Section 7 ".PROC": LREF/LVAL parameter types. Remove all WITH syntax references (H2)
 - New section: SDR/SLR persistent state concept
 - All code examples: %PR → %PDR, %FPR → %FDR
 
@@ -650,12 +697,13 @@ After all phases are complete:
 6. **Location parameter passing** via LREF/LVAL — positions can be passed to procedures
 7. **LVAL with labels** — fuzzy-matched positions as procedure arguments
 8. **PSLI/LRLI instructions** — label-to-location resolution via fuzzy matching with ownership check, extending the Location family (Operations 13/14)
-9. **Single .REG directive** — scope determined by target bank
-10. **Location write restriction** enforced via writeOperand/writeLocationOperand split across all location banks
-11. **All location instructions** work transparently with LR, PLR, FLR, SLR
-12. **Visualizer** displays all 8 banks via `REGISTER_BANKS` metadata iteration — new bank = one array entry, no method changes
-13. **Documentation** fully updated (ASSEMBLY_SPEC, README, SCIENTIFIC_OVERVIEW)
-14. **Mutation system** bank-aware for all 8 banks
-15. **All assembly files** migrated to new names
-16. **ProcFrame** bank-independent with single `savedRegisters` array and generic `parameterBindings` map
-17. **No performance regression** verified via JMH benchmarks after each runtime-modifying phase
+9. **Single parameter passing path** (REF/VAL/LREF/LVAL) — legacy WITH syntax removed, no duplicate code paths
+10. **Single .REG directive** — scope determined by target bank
+11. **Location write restriction** enforced via writeOperand/writeLocationOperand split across all location banks
+12. **All location instructions** work transparently with LR, PLR, FLR, SLR
+13. **Visualizer** displays all 8 banks via `REGISTER_BANKS` metadata iteration — new bank = one array entry, no method changes
+14. **Documentation** fully updated (ASSEMBLY_SPEC, README, SCIENTIFIC_OVERVIEW)
+15. **Mutation system** bank-aware for all 8 banks
+16. **All assembly files** migrated to new names
+17. **ProcFrame** bank-independent with single `savedRegisters` array and generic `parameterBindings` map
+18. **No performance regression** verified via JMH benchmarks after each runtime-modifying phase

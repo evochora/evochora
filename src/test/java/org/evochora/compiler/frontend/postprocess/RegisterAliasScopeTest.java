@@ -56,9 +56,9 @@ class RegisterAliasScopeTest {
         InstructionNode instrA = new InstructionNode("SETI", List.of(useInA), SRC);
         InstructionNode instrB = new InstructionNode("SETI", List.of(useInB), SRC);
 
-        ProcedureNode procA = new ProcedureNode("PROC_A", false, List.of(), List.of(), List.of(), List.of(), List.of(),
+        ProcedureNode procA = new ProcedureNode("PROC_A", false, List.of(), List.of(), List.of(), List.of(),
                 List.of(regA, instrA), SRC);
-        ProcedureNode procB = new ProcedureNode("PROC_B", false, List.of(), List.of(), List.of(), List.of(), List.of(),
+        ProcedureNode procB = new ProcedureNode("PROC_B", false, List.of(), List.of(), List.of(), List.of(),
                 List.of(regB, instrB), SRC);
 
         // Set up scopes like ProcedureSymbolCollector does
@@ -107,7 +107,7 @@ class RegisterAliasScopeTest {
         IdentifierNode useInside = new IdentifierNode("X", SRC);
         InstructionNode instrInside = new InstructionNode("SETI", List.of(useInside), SRC);
 
-        ProcedureNode proc = new ProcedureNode("MY_PROC", false, List.of(), List.of(), List.of(), List.of(), List.of(),
+        ProcedureNode proc = new ProcedureNode("MY_PROC", false, List.of(), List.of(), List.of(), List.of(),
                 List.of(procReg, instrInside), SRC);
 
         symbolTable.define(new Symbol("MY_PROC", SRC, Symbol.Type.PROCEDURE, proc));
@@ -141,7 +141,7 @@ class RegisterAliasScopeTest {
         IdentifierNode useInProc = new IdentifierNode("GLOBAL", SRC);
         InstructionNode instrInProc = new InstructionNode("SETI", List.of(useInProc), SRC);
 
-        ProcedureNode proc = new ProcedureNode("MY_PROC", false, List.of(), List.of(), List.of(), List.of(), List.of(),
+        ProcedureNode proc = new ProcedureNode("MY_PROC", false, List.of(), List.of(), List.of(), List.of(),
                 List.of(instrInProc), SRC);
 
         symbolTable.define(new Symbol("MY_PROC", SRC, Symbol.Type.PROCEDURE, proc));

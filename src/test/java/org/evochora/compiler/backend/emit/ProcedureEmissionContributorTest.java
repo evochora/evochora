@@ -53,24 +53,6 @@ class ProcedureEmissionContributorTest {
 
     @Test
     @Tag("unit")
-    @DisplayName("Should extract legacy WITH parameters from arity")
-    void extractsLegacyArityParams() {
-        Map<String, IrValue> args = new HashMap<>();
-        args.put("name", new IrValue.Str("OLD_PROC"));
-        args.put("arity", new IrValue.Int64(3));
-
-        EmissionContext ctx = runContributor(
-                new IrDirective("core", "proc_enter", args, null));
-
-        List<ParamInfo> params = ctx.procNameToParamNames().get("OLD_PROC");
-        assertThat(params).hasSize(3);
-        assertThat(params.get(0)).isEqualTo(new ParamInfo("param0", ParamType.WITH));
-        assertThat(params.get(1)).isEqualTo(new ParamInfo("param1", ParamType.WITH));
-        assertThat(params.get(2)).isEqualTo(new ParamInfo("param2", ParamType.WITH));
-    }
-
-    @Test
-    @Tag("unit")
     @DisplayName("Should handle procedure with no parameters")
     void handlesNoParams() {
         Map<String, IrValue> args = new HashMap<>();

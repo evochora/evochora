@@ -5,8 +5,8 @@ import org.evochora.runtime.model.Organism;
 import java.util.Map;
 
 /**
- * Decouples the strategies for resolving parameter bindings for procedure calls.
- * For example, it resolves `.WITH` clauses.
+ * Resolves parameter bindings for procedure calls by retrieving
+ * pre-compiled bindings from the global registry.
  */
 public class CallBindingResolver {
 

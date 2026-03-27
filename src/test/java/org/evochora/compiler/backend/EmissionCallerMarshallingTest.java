@@ -15,15 +15,12 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Tests the emission rules for caller marshalling, covering both the new REF/VAL
- * parameter passing and the legacy `core:call_with` directive. These tests ensure
+ * Tests the emission rules for caller marshalling. These tests ensure
  * that the compiler correctly generates PUSH, POP, PUSI, and DROP instructions
  * around a CALL instruction to manage the stack for procedure calls.
  * This is a unit test and does not require any external resources.
@@ -221,14 +218,12 @@ public class EmissionCallerMarshallingTest {
     @Tag("unit")
     @DisplayName("SourceInfo is preserved for marshalling")
     void sourceInfoIsPreservedForMarshalling() {
-        // Test the CallerMarshallingRule in isolation with a simple core:call_with directive
-        IrDirective callWith = new IrDirective("core", "call_with", 
-            Map.of("actuals", new IrValue.ListVal(List.of(new IrValue.Str("%DR1")))), 
-            src("test.s", 5));
-        IrInstruction call = new IrCallInstruction("CALL", List.of(new IrVec(new int[]{1, 0})), List.of(), List.of(), List.of(), List.of(), src("test.s", 5));
+        // Test the CallerMarshallingRule with a REF parameter CALL
+        IrInstruction call = new IrCallInstruction("CALL", List.of(new IrVec(new int[]{1, 0})),
+                List.of(new IrReg("%DR1")), List.of(), List.of(), List.of(), src("test.s", 5));
         IrInstruction nop = new IrInstruction("NOP", Collections.emptyList(), src("test.s", 6));
-        
-        List<IrItem> items = List.of(callWith, call, nop);
+
+        List<IrItem> items = List.of(call, nop);
 
         // Apply only the CallerMarshallingRule
         CallerMarshallingRule rule = new CallerMarshallingRule();
@@ -267,34 +262,4 @@ public class EmissionCallerMarshallingTest {
         }
     }
 
-    @Nested
-    @DisplayName("Legacy `core:call_with` Marshalling")
-    class LegacyMarshalling {
-        @Test
-        @Tag("unit")
-        @DisplayName("Should insert PUSH/POP for `core:call_with` directive")
-        void insertsCallerPushPopAroundCall() {
-            // core:call_with { actuals: ["%DR1", "%DR2"] } followed by CALL
-            Map<String, IrValue> args = new HashMap<>();
-            args.put("actuals", new IrValue.ListVal(List.of(new IrValue.Str("%DR1"), new IrValue.Str("%DR2"))));
-            IrDirective callWith = new IrDirective("core", "call_with", args, src("main.s", 1));
-
-            IrInstruction call = new IrCallInstruction("CALL", List.of(new IrVec(new int[]{1, 0})), List.of(), List.of(), List.of(), List.of(), src("main.s", 2));
-            List<IrItem> items = List.of(callWith, call);
-
-            List<IrItem> out = runEmission(items);
-
-            // Expect: PUSH %DR1, PUSH %DR2, CALL, POP %DR2, POP %DR1
-            assertThat(out).hasSize(5);
-            assertThat(((IrInstruction) out.get(0)).opcode()).isEqualTo("PUSH");
-            assertThat(((IrReg) ((IrInstruction) out.get(0)).operands().get(0)).name()).isEqualTo("%DR1");
-            assertThat(((IrInstruction) out.get(1)).opcode()).isEqualTo("PUSH");
-            assertThat(((IrReg) ((IrInstruction) out.get(1)).operands().get(0)).name()).isEqualTo("%DR2");
-            assertThat(((IrInstruction) out.get(2)).opcode()).isEqualTo("CALL");
-            assertThat(((IrInstruction) out.get(3)).opcode()).isEqualTo("POP");
-            assertThat(((IrReg) ((IrInstruction) out.get(3)).operands().get(0)).name()).isEqualTo("%DR2");
-            assertThat(((IrInstruction) out.get(4)).opcode()).isEqualTo("POP");
-            assertThat(((IrReg) ((IrInstruction) out.get(4)).operands().get(0)).name()).isEqualTo("%DR1");
-        }
-    }
 }

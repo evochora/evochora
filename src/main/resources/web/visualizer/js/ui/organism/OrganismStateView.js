@@ -178,13 +178,12 @@ export class OrganismStateView {
                     // Format parameters using REF/VAL/LREF/LVAL syntax if parameter info available
                     if (paramInfo && paramInfo.length > 0) {
                         // Classify parameters with bank-specific indices:
-                        // Data params (REF, VAL, WITH) share sequential FDR indices.
+                        // Data params (REF, VAL) share sequential FDR indices.
                         // Location params (LREF, LVAL) share sequential FLR indices.
                         const refParams = [];
                         const valParams = [];
                         const lrefParams = [];
                         const lvalParams = [];
-                        const withParams = [];
                         let dataIndex = 0;
                         let locationIndex = 0;
 
@@ -198,14 +197,12 @@ export class OrganismStateView {
                             if (typeof paramType === 'number') {
                                 if (paramType === 0)      { refParams.push({ bankIndex: dataIndex++, name: param.name }); classified = true; }
                                 else if (paramType === 1)  { valParams.push({ bankIndex: dataIndex++, name: param.name }); classified = true; }
-                                else if (paramType === 2)  { withParams.push({ bankIndex: dataIndex++, name: param.name }); classified = true; }
                                 else if (paramType === 3)  { lrefParams.push({ bankIndex: locationIndex++, name: param.name }); classified = true; }
                                 else if (paramType === 4)  { lvalParams.push({ bankIndex: locationIndex++, name: param.name }); classified = true; }
                             } else if (typeof paramType === 'string') {
                                 const typeUpper = paramType.toUpperCase();
                                 if (typeUpper === 'REF' || typeUpper === 'PARAM_TYPE_REF')        { refParams.push({ bankIndex: dataIndex++, name: param.name }); classified = true; }
                                 else if (typeUpper === 'VAL' || typeUpper === 'PARAM_TYPE_VAL')    { valParams.push({ bankIndex: dataIndex++, name: param.name }); classified = true; }
-                                else if (typeUpper === 'WITH' || typeUpper === 'PARAM_TYPE_WITH')  { withParams.push({ bankIndex: dataIndex++, name: param.name }); classified = true; }
                                 else if (typeUpper === 'LREF' || typeUpper === 'PARAM_TYPE_LREF')  { lrefParams.push({ bankIndex: locationIndex++, name: param.name }); classified = true; }
                                 else if (typeUpper === 'LVAL' || typeUpper === 'PARAM_TYPE_LVAL')  { lvalParams.push({ bankIndex: locationIndex++, name: param.name }); classified = true; }
                             }
@@ -244,10 +241,9 @@ export class OrganismStateView {
                         formatParamGroup('VAL', valParams, fdrBank);
                         formatParamGroup('LREF', lrefParams, flrBank);
                         formatParamGroup('LVAL', lvalParams, flrBank);
-                        formatParamGroup('WITH', withParams, fdrBank);
                     } else if (parameterBindings && Object.keys(parameterBindings).length > 0) {
-                        // Fallback: display bindings directly (formal register → source register)
-                        result += ' WITH ';
+                        // Fallback: no param type info available — display raw bindings without keyword
+                        result += ' ';
                         const paramStrings = [];
                         for (const [formalIdStr, boundRegisterId] of Object.entries(parameterBindings)) {
                             const formalId = parseInt(formalIdStr);
@@ -260,7 +256,7 @@ export class OrganismStateView {
                                 try {
                                     registerValue = ValueFormatter.format(AnnotationUtils.getRegisterValueById(boundId, currentState));
                                 } catch (error) {
-                                    console.error('ValueFormatter failed for WITH parameter bound register (fallback):', error.message);
+                                    console.error('ValueFormatter failed for bound register (fallback):', error.message);
                                     registerValue = 'ERR';
                                 }
                             }

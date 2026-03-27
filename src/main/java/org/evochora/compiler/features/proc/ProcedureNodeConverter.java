@@ -24,11 +24,8 @@ public final class ProcedureNodeConverter implements IAstNodeToIrConverter<Proce
 		String qualifiedName = ctx.qualifyName(node.name());
 		ctx.emit(new org.evochora.compiler.model.ir.IrLabelDef(qualifiedName, ctx.sourceOf(node)));
 
-		// Data parameters (WITH + REF + VAL → FDR indices)
+		// Data parameters (REF + VAL → FDR indices)
 		List<String> allDataParams = new ArrayList<>();
-		if (node.parameters() != null) {
-			node.parameters().stream().map(ProcedureNode.ParamDecl::name).forEach(allDataParams::add);
-		}
 		if (node.refParameters() != null) {
 			node.refParameters().stream().map(ProcedureNode.ParamDecl::name).forEach(allDataParams::add);
 		}
@@ -65,7 +62,6 @@ public final class ProcedureNodeConverter implements IAstNodeToIrConverter<Proce
 	private Map<String, IrValue> buildProcArgs(ProcedureNode node, String qualifiedName, int lrefArity, int lvalArity) {
 		Map<String, IrValue> args = new HashMap<>();
 		args.put("name", new IrValue.Str(qualifiedName));
-		args.put("arity", new IrValue.Int64(node.parameters() != null ? node.parameters().size() : 0));
 		args.put("exported", new IrValue.Bool(node.exported()));
 		if (node.refParameters() != null) {
 			args.put("refParams", new IrValue.ListVal(node.refParameters().stream().map(p -> new IrValue.Str(p.name())).collect(Collectors.toList())));

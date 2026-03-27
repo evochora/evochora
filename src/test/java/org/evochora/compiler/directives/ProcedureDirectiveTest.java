@@ -168,7 +168,7 @@ public class ProcedureDirectiveTest {
         assertThat(procNode.name()).isEqualTo("myProc");
         assertThat(procNode.refParameters()).hasSize(2).extracting(ProcedureNode.ParamDecl::name).containsExactly("rA", "rB");
         assertThat(procNode.valParameters()).isEmpty();
-        assertThat(procNode.parameters()).isEmpty();
+
     }
 
     @Test
@@ -189,7 +189,7 @@ public class ProcedureDirectiveTest {
         assertThat(procNode.name()).isEqualTo("myProc");
         assertThat(procNode.valParameters()).hasSize(2).extracting(ProcedureNode.ParamDecl::name).containsExactly("v1", "v2");
         assertThat(procNode.refParameters()).isEmpty();
-        assertThat(procNode.parameters()).isEmpty();
+
     }
 
     @Test
@@ -210,7 +210,7 @@ public class ProcedureDirectiveTest {
         assertThat(procNode.name()).isEqualTo("myProc");
         assertThat(procNode.refParameters()).hasSize(1).extracting(ProcedureNode.ParamDecl::name).containsExactly("rA");
         assertThat(procNode.valParameters()).hasSize(1).extracting(ProcedureNode.ParamDecl::name).containsExactly("v1");
-        assertThat(procNode.parameters()).isEmpty();
+
     }
 
     @Test
@@ -231,7 +231,7 @@ public class ProcedureDirectiveTest {
         assertThat(procNode.name()).isEqualTo("myProc");
         assertThat(procNode.valParameters()).hasSize(1).extracting(ProcedureNode.ParamDecl::name).containsExactly("v1");
         assertThat(procNode.refParameters()).hasSize(1).extracting(ProcedureNode.ParamDecl::name).containsExactly("rA");
-        assertThat(procNode.parameters()).isEmpty();
+
     }
 
     @Test
@@ -252,7 +252,7 @@ public class ProcedureDirectiveTest {
         assertThat(procNode.name()).isEqualTo("myProc");
         assertThat(procNode.refParameters()).isEmpty();
         assertThat(procNode.valParameters()).isEmpty();
-        assertThat(procNode.parameters()).isEmpty();
+
     }
 
     private static ParserStatementRegistry registry() {

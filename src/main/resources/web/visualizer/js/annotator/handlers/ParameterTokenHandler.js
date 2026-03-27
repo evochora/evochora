@@ -86,7 +86,7 @@ export class ParameterTokenHandler {
             throw new Error(`Cannot annotate parameter "${tokenText}": not found in procedure "${procName}" parameter list.`);
         }
 
-        // Determine if this is a location parameter (LREF/LVAL) or data parameter (REF/VAL/WITH)
+        // Determine if this is a location parameter (LREF/LVAL) or data parameter (REF/VAL)
         const paramType = params[paramIndex].type ? params[paramIndex].type.toUpperCase() : '';
         const isLocationParam = paramType === 'LREF' || paramType === 'LVAL';
 

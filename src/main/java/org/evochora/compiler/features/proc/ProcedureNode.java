@@ -11,7 +11,6 @@ import java.util.List;
  *
  * @param name The procedure name.
  * @param exported Whether the procedure is exported (visibility for other modules).
- * @param parameters Parameters from old-style <code>WITH</code> syntax.
  * @param refParameters Scalar reference parameters from <code>REF</code> keyword.
  * @param valParameters Scalar value parameters from <code>VAL</code> keyword.
  * @param lrefParameters Location reference parameters from <code>LREF</code> keyword.
@@ -22,7 +21,6 @@ import java.util.List;
 public record ProcedureNode(
         String name,
         boolean exported,
-        List<ParamDecl> parameters,
         List<ParamDecl> refParameters,
         List<ParamDecl> valParameters,
         List<ParamDecl> lrefParameters,
@@ -43,6 +41,6 @@ public record ProcedureNode(
 
     @Override
     public AstNode reconstructWithChildren(List<AstNode> newChildren) {
-        return new ProcedureNode(name, exported, parameters, refParameters, valParameters, lrefParameters, lvalParameters, newChildren, sourceInfo);
+        return new ProcedureNode(name, exported, refParameters, valParameters, lrefParameters, lvalParameters, newChildren, sourceInfo);
     }
 }

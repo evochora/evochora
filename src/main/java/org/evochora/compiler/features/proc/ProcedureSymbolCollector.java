@@ -25,11 +25,6 @@ public class ProcedureSymbolCollector implements ISymbolCollector {
         SymbolTable.Scope newScope = symbolTable.enterScope(scopeName);
         symbolTable.registerNodeScope(node, newScope);
 
-        if (proc.parameters() != null) {
-            for (ProcedureNode.ParamDecl p : proc.parameters()) {
-                symbolTable.define(new Symbol(p.name(), p.sourceInfo(), Symbol.Type.VARIABLE));
-            }
-        }
         if (proc.refParameters() != null) {
             for (ProcedureNode.ParamDecl p : proc.refParameters()) {
                 symbolTable.define(new Symbol(p.name(), p.sourceInfo(), Symbol.Type.VARIABLE));

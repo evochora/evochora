@@ -12,7 +12,7 @@ import java.util.Set;
 
 /**
  * Parses the CALL instruction syntax, producing a {@link CallNode}.
- * Supports new syntax (REF/VAL/LREF/LVAL parameters) and legacy syntax (WITH parameters).
+ * Supports REF/VAL/LREF/LVAL parameter keywords.
  */
 public class CallStatementHandler implements IParserStatementHandler {
 
@@ -63,14 +63,10 @@ public class CallStatementHandler implements IParserStatementHandler {
                     break;
                 }
             }
-            return new CallNode(procName, refArguments, valArguments, lrefArguments, lvalArguments, List.of(), opcode.toSourceInfo());
+            return new CallNode(procName, refArguments, valArguments, lrefArguments, lvalArguments, opcode.toSourceInfo());
         } else {
-            // Legacy syntax: CALL proc [WITH] arg1, arg2, ...
-            List<AstNode> legacyArguments = new ArrayList<>();
-            while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
-                legacyArguments.add(context.expression());
-            }
-            return new CallNode(procName, List.of(), List.of(), List.of(), List.of(), legacyArguments, opcode.toSourceInfo());
+            // No parameter keywords — plain CALL with no arguments
+            return new CallNode(procName, List.of(), List.of(), List.of(), List.of(), opcode.toSourceInfo());
         }
     }
 

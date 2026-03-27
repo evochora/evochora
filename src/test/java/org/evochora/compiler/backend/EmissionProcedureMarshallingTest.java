@@ -82,39 +82,6 @@ public class EmissionProcedureMarshallingTest {
 
     @Test
     @Tag("unit")
-    @DisplayName("Should handle legacy `arity` procedure correctly")
-    void backwardCompatibilityTest() {
-        Map<String, IrValue> enterArgs = new HashMap<>();
-        enterArgs.put("name", new IrValue.Str("old"));
-        enterArgs.put("arity", new IrValue.Int64(1));
-        IrDirective procEnter = new IrDirective("core", "proc_enter", enterArgs, src("test.s", 2));
-
-        List<IrItem> body = List.of(
-            new IrInstruction("NOP", List.of(), src("test.s", 3)),
-            new IrInstruction("RET", List.of(), src("test.s", 4))
-        );
-
-        IrDirective procExit = new IrDirective("core", "proc_exit", new HashMap<>(), src("test.s", 5));
-
-        List<IrItem> items = new java.util.ArrayList<>();
-        items.add(procEnter);
-        items.addAll(body);
-        items.add(procExit);
-
-        ProcedureMarshallingRule rule = new ProcedureMarshallingRule();
-        List<IrItem> rewritten = rule.apply(items);
-
-        List<IrInstruction> instructions = rewritten.stream().filter(i -> i instanceof IrInstruction).map(i -> (IrInstruction) i).collect(Collectors.toList());
-
-        assertThat(instructions).hasSize(4);
-        assertThat(instructions.get(0).opcode()).isEqualTo("POP");
-        assertThat(instructions.get(1).opcode()).isEqualTo("NOP");
-        assertThat(instructions.get(2).opcode()).isEqualTo("PUSH");
-        assertThat(instructions.get(3).opcode()).isEqualTo("RET");
-    }
-
-    @Test
-    @Tag("unit")
     @DisplayName("Should transform conditional RET in REF/VAL procedure")
     void shouldTransformConditionalRet() {
         // .PROC myProc REF %rA VAL %rB

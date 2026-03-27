@@ -329,16 +329,15 @@ message LinearAddressToCoord {
 enum ParamType {
   PARAM_TYPE_REF = 0;    // Scalar call-by-reference parameter (FDR)
   PARAM_TYPE_VAL = 1;    // Scalar call-by-value parameter (FDR)
-  PARAM_TYPE_WITH = 2;   // Legacy WITH syntax parameter
-  PARAM_TYPE_LREF = 3;   // Location call-by-reference parameter (FLR)
-  PARAM_TYPE_LVAL = 4;   // Location call-by-value parameter (FLR)
+  PARAM_TYPE_LREF = 2;   // Location call-by-reference parameter (FLR)
+  PARAM_TYPE_LVAL = 3;   // Location call-by-value parameter (FLR)
 }
 
 // Represents a single procedure parameter with its name and type.
 message ParamInfo {
   // Parameter name (e.g., "PROC1REG1")
   string name = 1;
-  // Parameter type (REF, VAL, or WITH)
+  // Parameter type (REF, VAL, LREF, or LVAL)
   ParamType type = 2;
 }
 

@@ -2,8 +2,8 @@ package org.evochora.compiler.api;
 
 /**
  * Enumeration for procedure parameter types.
- * Distinguishes between reference parameters (REF), value parameters (VAL),
- * and legacy WITH syntax parameters.
+ * Distinguishes between reference (REF/LREF) and value (VAL/LVAL) parameters
+ * for both scalar and location registers.
  */
 public enum ParamType {
     /**
@@ -11,13 +11,13 @@ public enum ParamType {
      * and modifications to the parameter within the procedure affect the original register.
      */
     REF,
-    
+
     /**
      * Call-by-value parameter. The parameter value is copied, and the parameter
      * can be bound to either a register or a literal value.
      */
     VAL,
-    
+
     /**
      * Location call-by-reference parameter. Bound to a location register (FLR).
      * Modifications to the FLR within the procedure are written back to the source register on RET.
@@ -27,14 +27,8 @@ public enum ParamType {
     /**
      * Location call-by-value parameter. The location value is copied into FLR.
      */
-    LVAL,
+    LVAL;
 
-    /**
-     * Legacy WITH syntax parameter. Used for backward compatibility with old
-     * procedure declaration syntax (deprecated).
-     */
-    WITH;
-    
     /**
      * Converts a Protobuf ParamType to the Java ParamType enum.
      *
@@ -51,11 +45,11 @@ public enum ParamType {
             case PARAM_TYPE_VAL -> VAL;
             case PARAM_TYPE_LREF -> LREF;
             case PARAM_TYPE_LVAL -> LVAL;
-            case PARAM_TYPE_WITH -> WITH;
             case UNRECOGNIZED -> throw new IllegalArgumentException("Unrecognized ParamType: " + protoType);
+            default -> throw new IllegalArgumentException("Unknown ParamType: " + protoType);
         };
     }
-    
+
     /**
      * Converts this Java ParamType to the corresponding Protobuf ParamType.
      *
@@ -67,8 +61,6 @@ public enum ParamType {
             case VAL -> org.evochora.datapipeline.api.contracts.ParamType.PARAM_TYPE_VAL;
             case LREF -> org.evochora.datapipeline.api.contracts.ParamType.PARAM_TYPE_LREF;
             case LVAL -> org.evochora.datapipeline.api.contracts.ParamType.PARAM_TYPE_LVAL;
-            case WITH -> org.evochora.datapipeline.api.contracts.ParamType.PARAM_TYPE_WITH;
         };
     }
 }
-
