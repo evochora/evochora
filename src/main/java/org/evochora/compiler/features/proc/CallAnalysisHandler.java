@@ -116,7 +116,7 @@ public class CallAnalysisHandler implements IAnalysisHandler {
             }
         }
 
-        // Validate LVAL argument types — must be location registers (Phase H adds label support)
+        // Validate LVAL argument types — location registers or labels
         for (AstNode lvalArg : callNode.lvalArguments()) {
             if (lvalArg instanceof RegisterNode regNode) {
                 Optional<Integer> regId = Instruction.resolveRegToken(regNode.getName());
@@ -127,7 +127,7 @@ public class CallAnalysisHandler implements IAnalysisHandler {
                 diagnostics.reportError("LVAL arguments must be location registers, got '" + regNode.getName() + "'.",
                         callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
             } else if (lvalArg instanceof IdentifierNode) {
-                continue; // Alias — resolved later
+                continue; // Alias or label — resolved later in IrGenContext.convertOperand()
             } else {
                 diagnostics.reportError("LVAL arguments must be location registers.",
                         callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());

@@ -53,23 +53,6 @@ public class ControlFlowInstruction extends Instruction {
     }
 
     @Override
-    public java.util.List<Operand> resolveOperands(Environment environment) {
-        String opName = getName();
-        if ("CALL".equals(opName) || "JMPI".equals(opName)) {
-            // Fuzzy jump: fetch a single label hash value (20-bit, masked with VALUE_MASK)
-            java.util.List<Operand> resolved = new java.util.ArrayList<>();
-            int[] currentIp = organism.getIpBeforeFetch();
-
-            Organism.FetchResult res = organism.fetchSignedArgument(currentIp, environment);
-            int labelHash = res.value() & Config.VALUE_MASK;
-
-            resolved.add(new Operand(labelHash, -1));
-            return resolved;
-        }
-        return super.resolveOperands(environment);
-    }
-
-    @Override
     public void execute(ExecutionContext context, ProgramArtifact artifact) {
         ProcedureCallHandler callHandler = new ProcedureCallHandler(context);
         Organism organism = context.getOrganism();

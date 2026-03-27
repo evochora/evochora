@@ -397,4 +397,139 @@ public class RuntimeIntegrationTest {
         assertThat(lr0Value).as("LR0 should be [0,0] after LREF write-back from CLEAR_POS").isEqualTo(new int[]{0, 0});
     }
 
+    /**
+     * Tests LVAL with a label argument via procedure call.
+     * PSLI resolves the label via fuzzy matching at CALL time,
+     * the procedure receives the resolved position in FLR0 via POPL.
+     * The procedure copies the FLR value into LR0 for verification after RET.
+     */
+    @Test
+    @Tag("integration")
+    void lvalWithLabelPassesResolvedPositionToProcedure() throws Exception {
+        String source = String.join("\n",
+                ".ORG 0|10",
+                "TARGET:",
+                "NOP",
+                ".ORG 0|0",
+                "CALL SAVE_POS LVAL TARGET",
+                "WAIT",
+                ".ORG 0|3",
+                "EXPORT .PROC SAVE_POS LVAL lDest",
+                "  LRLR %LR0 lDest",        // Copy FLR0 (resolved label position) into LR0
+                "  RET",
+                ".ENDP"
+        );
+
+        Compiler compiler = new Compiler();
+        EnvironmentProperties envProps = new EnvironmentProperties(new int[]{64, 64}, true);
+        ProgramArtifact artifact = compiler.compile(Arrays.asList(source.split("\\r?\\n")), "lval_label_test.s", envProps);
+        assertThat(artifact).isNotNull();
+
+        Environment env = new Environment(envProps);
+        Simulation sim = SimulationTestUtils.createSimulation(env);
+
+        for (Map.Entry<int[], Integer> e : artifact.machineCodeLayout().entrySet()) {
+            env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());
+        }
+
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        org.setProgramId(artifact.programId());
+        sim.addOrganism(org);
+
+        for (int i = 0; i < 20; i++) {
+            sim.tick();
+        }
+
+        assertThat(org.isInstructionFailed()).as("Failure: " + org.getFailureReason()).isFalse();
+
+        // LR0 should contain TARGET's resolved position [0,10]
+        int[] lr0Value = (int[]) org.readOperand(RegisterBank.LR.base);
+        assertThat(lr0Value).as("LR0 should contain TARGET's position [0,10] passed via LVAL").isEqualTo(new int[]{0, 10});
+    }
+
+    /**
+     * Tests the PSLI instruction directly: resolves a label via fuzzy matching
+     * and pushes the resolved position onto the location stack.
+     */
+    @Test
+    @Tag("integration")
+    void psliPushesResolvedLabelPositionOntoLocationStack() throws Exception {
+        String source = String.join("\n",
+                ".ORG 0|10",
+                "TARGET:",
+                "NOP",
+                ".ORG 0|0",
+                "PSLI TARGET",
+                "POPL %LR0",
+                "WAIT"
+        );
+
+        Compiler compiler = new Compiler();
+        EnvironmentProperties envProps = new EnvironmentProperties(new int[]{64, 64}, true);
+        ProgramArtifact artifact = compiler.compile(Arrays.asList(source.split("\\r?\\n")), "psli_test.s", envProps);
+        assertThat(artifact).isNotNull();
+
+        Environment env = new Environment(envProps);
+        Simulation sim = SimulationTestUtils.createSimulation(env);
+
+        for (Map.Entry<int[], Integer> e : artifact.machineCodeLayout().entrySet()) {
+            env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());
+        }
+
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        org.setProgramId(artifact.programId());
+        sim.addOrganism(org);
+
+        for (int i = 0; i < 10; i++) {
+            sim.tick();
+        }
+
+        assertThat(org.isInstructionFailed()).as("Failure: " + org.getFailureReason()).isFalse();
+
+        int[] lr0Value = (int[]) org.readOperand(RegisterBank.LR.base);
+        assertThat(lr0Value).as("LR0 should contain TARGET's position [0,10]").isEqualTo(new int[]{0, 10});
+    }
+
+    /**
+     * Tests the LRLI instruction directly: resolves a label via fuzzy matching
+     * and writes the resolved position into a location register.
+     */
+    @Test
+    @Tag("integration")
+    void lrliWritesResolvedLabelPositionToLocationRegister() throws Exception {
+        String source = String.join("\n",
+                ".ORG 0|10",
+                "TARGET:",
+                "NOP",
+                ".ORG 0|0",
+                "LRLI %LR0 TARGET",
+                "WAIT"
+        );
+
+        Compiler compiler = new Compiler();
+        EnvironmentProperties envProps = new EnvironmentProperties(new int[]{64, 64}, true);
+        ProgramArtifact artifact = compiler.compile(Arrays.asList(source.split("\\r?\\n")), "lrli_test.s", envProps);
+        assertThat(artifact).isNotNull();
+
+        Environment env = new Environment(envProps);
+        Simulation sim = SimulationTestUtils.createSimulation(env);
+
+        for (Map.Entry<int[], Integer> e : artifact.machineCodeLayout().entrySet()) {
+            env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());
+        }
+
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        org.setProgramId(artifact.programId());
+        sim.addOrganism(org);
+
+        for (int i = 0; i < 10; i++) {
+            sim.tick();
+        }
+
+        assertThat(org.isInstructionFailed()).as("Failure: " + org.getFailureReason()).isFalse();
+
+        int[] lr0Value = (int[]) org.readOperand(RegisterBank.LR.base);
+        assertThat(lr0Value).as("LR0 should contain TARGET's position [0,10]").isEqualTo(new int[]{0, 10});
+    }
+
 }

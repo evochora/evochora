@@ -719,4 +719,174 @@ public class VMLocationInstructionTest {
         sim.tick();
         assertThat(org.getActiveDp()).isEqualTo(labelPos);
     }
+
+    // --- PSLI (Push Location from Label) Tests ---
+
+    /**
+     * Tests that PSLI resolves a label via fuzzy matching and pushes
+     * the resolved position onto the location stack.
+     */
+    @Test
+    @Tag("unit")
+    void testPsliPushesResolvedLabelPosition() {
+        Environment env = sim.getEnvironment();
+        int labelHash = 33333 & Config.VALUE_MASK;
+        int[] labelPos = new int[]{6, 8};
+
+        env.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), labelPos);
+
+        placeInstruction(org, "PSLI", labelHash);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isFalse();
+        Deque<int[]> ls = org.getLocationStack();
+        assertThat(ls.size()).isEqualTo(1);
+        assertThat(ls.pop()).isEqualTo(labelPos);
+    }
+
+    /**
+     * Tests that PSLI fails when no matching label exists.
+     */
+    @Test
+    @Tag("unit")
+    void testPsliFailsWhenNoLabel() {
+        int nonExistentHash = 88888 & Config.VALUE_MASK;
+
+        placeInstruction(org, "PSLI", nonExistentHash);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("No matching label found");
+        assertThat(org.getLocationStack()).isEmpty();
+    }
+
+    /**
+     * Tests that PSLI fails with overflow when the location stack is at max depth.
+     */
+    @Test
+    @Tag("unit")
+    void testPsliOverflow() {
+        Environment env = sim.getEnvironment();
+        int labelHash = 44444 & Config.VALUE_MASK;
+        env.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), new int[]{3, 3});
+
+        Deque<int[]> ls = org.getLocationStack();
+        for (int i = 0; i < Config.LOCATION_STACK_MAX_DEPTH; i++) {
+            ls.push(new int[]{i, i});
+        }
+
+        placeInstruction(org, "PSLI", labelHash);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("Location Stack Overflow");
+        assertThat(ls.size()).isEqualTo(Config.LOCATION_STACK_MAX_DEPTH);
+    }
+
+    // --- LRLI (Location Register from Label Immediate) Tests ---
+
+    /**
+     * Tests that LRLI resolves a label via fuzzy matching and writes
+     * the resolved position into the destination location register.
+     */
+    @Test
+    @Tag("unit")
+    void testLrliWritesResolvedLabelToLocationRegister() {
+        Environment env = sim.getEnvironment();
+        int labelHash = 55555 & Config.VALUE_MASK;
+        int[] labelPos = new int[]{4, 9};
+
+        env.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), labelPos);
+
+        int lr1 = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base + 1).toInt();
+        placeInstruction(org, "LRLI", lr1, labelHash);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isFalse();
+        assertThat((int[]) org.readOperand(RegisterBank.LR.base + 1)).isEqualTo(labelPos);
+    }
+
+    /**
+     * Tests that LRLI fails when no matching label exists.
+     */
+    @Test
+    @Tag("unit")
+    void testLrliFailsWhenNoLabel() {
+        int nonExistentHash = 77777 & Config.VALUE_MASK;
+        int lr0 = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base).toInt();
+
+        placeInstruction(org, "LRLI", lr0, nonExistentHash);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("No matching label found");
+    }
+
+    /**
+     * Tests that PSLI fails when the label's target cell is owned by another organism.
+     */
+    @Test
+    @Tag("unit")
+    void testPsliFailsWhenTargetOwnedByOther() {
+        Environment env = sim.getEnvironment();
+        int labelHash = 11111 & Config.VALUE_MASK;
+        int[] labelPos = new int[]{8, 8};
+
+        env.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), labelPos);
+
+        // Create a second organism that owns the target cell
+        Organism other = Organism.create(sim, new int[]{8, 7}, 100, sim.getLogger());
+        sim.addOrganism(other);
+        env.setOwnerId(other.getId(), labelPos);
+
+        placeInstruction(org, "PSLI", labelHash);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("owned by another organism");
+        assertThat(org.getLocationStack()).isEmpty();
+    }
+
+    /**
+     * Tests that LRLI fails when the label's target cell is owned by another organism.
+     */
+    @Test
+    @Tag("unit")
+    void testLrliFailsWhenTargetOwnedByOther() {
+        Environment env = sim.getEnvironment();
+        int labelHash = 22222 & Config.VALUE_MASK;
+        int[] labelPos = new int[]{9, 9};
+
+        env.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), labelPos);
+
+        // Create a second organism that owns the target cell
+        Organism other = Organism.create(sim, new int[]{9, 8}, 100, sim.getLogger());
+        sim.addOrganism(other);
+        env.setOwnerId(other.getId(), labelPos);
+
+        int lr0 = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base).toInt();
+        placeInstruction(org, "LRLI", lr0, labelHash);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("owned by another organism");
+    }
+
+    /**
+     * Tests that LRLI fails when writing to an invalid location register.
+     */
+    @Test
+    @Tag("unit")
+    void testLrliFailsWithInvalidRegister() {
+        Environment env = sim.getEnvironment();
+        int labelHash = 66666 & Config.VALUE_MASK;
+        env.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), new int[]{2, 2});
+
+        int invalidLr = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base + Config.NUM_LOCATION_REGISTERS).toInt();
+        placeInstruction(org, "LRLI", invalidLr, labelHash);
+        sim.tick();
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).contains("Invalid register ID");
+    }
 }

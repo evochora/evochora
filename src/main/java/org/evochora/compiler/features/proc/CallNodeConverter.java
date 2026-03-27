@@ -25,8 +25,9 @@ public final class CallNodeConverter implements IAstNodeToIrConverter<CallNode> 
 
     @Override
     public void convert(CallNode node, IrGenContext ctx) {
-        // New syntax: REF/VAL arguments → IrCallInstruction
-        if (!node.refArguments().isEmpty() || !node.valArguments().isEmpty()) {
+        // New syntax: REF/VAL/LREF/LVAL arguments → IrCallInstruction
+        if (!node.refArguments().isEmpty() || !node.valArguments().isEmpty()
+                || !node.lrefArguments().isEmpty() || !node.lvalArguments().isEmpty()) {
             convertNewSyntax(node, ctx);
         } else {
             convertLegacySyntax(node, ctx);

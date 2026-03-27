@@ -469,11 +469,13 @@ These instructions manage the Location Stack (`LS`) and Location Registers (`%LR
 * `DPLR %LR<Index>`: Copies the active `DP` into `%LR<Index>`.
 * `SKLR %LR<Index>`: Sets the active `DP` to the vector stored in `%LR<Index>`.
 * `PUSL %LR<Index>`: Pushes the vector from `%LR<Index>` onto the `LS`.
+* `PSLI <Label>`: Resolves a label position via fuzzy matching and pushes it onto the `LS`. Target must be unowned or owned by self. 
 * `POPL %LR<Index>`: Pops a vector from `LS` into `%LR<Index>`.
 * `LRDR %DEST_REG %LR<Index>`: Copies the vector from `%LR<Index>` into `<%DEST_REG>`.
 * `LRDS %LR<Index>`: Pushes the vector from `%LR<Index>` onto the `DS`.
 * `LSDR %DEST_REG`: Copies the top vector from `LS` into `<%DEST_REG>` without popping.
 * `LRLR %LR<Dest> %LR<Src>`: Copies the vector from `%LR<Src>` into `%LR<Dest>`.
+* `LRLI %LR<Index> <Label>`: Resolves a label position via fuzzy matching and stores it in `%LR<Index>`. Target must be unowned or owned by self.
 * `CRLR %LR<Index>`: Sets `%LR<Index>` to the vector `[0, 0]`.
 * `SKJI <Label>`, `SKJR %REG`, `SKJS`: Sets the active `DP` to a label position using fuzzy matching (like `JMPI`). Target must be unowned or owned by self.
 

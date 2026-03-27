@@ -9,7 +9,6 @@ import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 
-import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 
@@ -65,6 +64,10 @@ public class LocationInstruction extends Instruction {
         reg(12, Variant.L, "SKJI", LABEL);
         reg(12, Variant.R, "SKJR", REGISTER);
         reg(12, Variant.S, "SKJS", STACK);
+        // Operation 13: PSL (Push Location from Label — resolve label via fuzzy matching, push position onto LS)
+        reg(13, Variant.L, "PSLI", LABEL);
+        // Operation 14: LRI (Location Register from Label Immediate — resolve label, write position to location register)
+        reg(14, Variant.LL, "LRLI", LOCATION_REGISTER, LABEL);
     }
 
     private static void reg(int op, int variant, String name, OperandSource... sources) {
@@ -78,20 +81,6 @@ public class LocationInstruction extends Instruction {
      */
     public LocationInstruction(Organism organism, int fullOpcodeId) {
         super(organism, fullOpcodeId);
-    }
-
-    @Override
-    public List<Operand> resolveOperands(Environment environment) {
-        String opName = getName();
-        if ("SKJI".equals(opName)) {
-            // Fuzzy jump: fetch a single label hash value (20-bit, masked with VALUE_MASK)
-            List<Operand> resolved = new ArrayList<>();
-            int[] currentIp = organism.getIpBeforeFetch();
-            int labelHash = resolveLabelHash(currentIp, environment);
-            resolved.add(new Operand(labelHash, -1));
-            return resolved;
-        }
-        return super.resolveOperands(environment);
     }
 
     @Override
@@ -250,16 +239,44 @@ public class LocationInstruction extends Instruction {
                     return;
                 }
 
-                // Ownership check (like SEEK): target must be unowned or owned by self
-                int ownerIdAtTarget = env.getOwnerId(targetCoords);
-                boolean isUnowned = ownerIdAtTarget == 0;
-                boolean isOwnedBySelf = org.isCellAccessible(ownerIdAtTarget);
-                if (!isUnowned && !isOwnedBySelf) {
-                    org.instructionFailed("SKJ: Target cell is owned by another organism.");
-                    return;
-                }
+                if (!validateOwnership(targetCoords, org, env, "SKJ")) return;
 
                 org.setActiveDp(targetCoords);
+                break;
+            }
+            case "PSLI": {
+                Object hashObj = ops.get(0).value();
+                if (!(hashObj instanceof Integer labelHash)) {
+                    org.instructionFailed("PSLI: label hash must be integer");
+                    return;
+                }
+                int[] targetCoords = resolveLabelTarget(labelHash, org.getActiveDp(), org, env);
+                if (targetCoords == null) {
+                    org.instructionFailed("PSLI: No matching label found for hash " + labelHash);
+                    return;
+                }
+                if (!validateOwnership(targetCoords, org, env, "PSLI")) return;
+                if (ls.size() >= Config.LOCATION_STACK_MAX_DEPTH) {
+                    org.instructionFailed("Location Stack Overflow");
+                    return;
+                }
+                ls.push(targetCoords);
+                break;
+            }
+            case "LRLI": {
+                int destRegId = ops.get(0).rawSourceId();
+                Object hashObj = ops.get(1).value();
+                if (!(hashObj instanceof Integer labelHash)) {
+                    org.instructionFailed("LRLI: label hash must be integer");
+                    return;
+                }
+                int[] targetCoords = resolveLabelTarget(labelHash, org.getActiveDp(), org, env);
+                if (targetCoords == null) {
+                    org.instructionFailed("LRLI: No matching label found for hash " + labelHash);
+                    return;
+                }
+                if (!validateOwnership(targetCoords, org, env, "LRLI")) return;
+                if (!writeLocationOperand(destRegId, targetCoords)) return;
                 break;
             }
             default:

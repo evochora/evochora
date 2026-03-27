@@ -275,20 +275,8 @@ public abstract class Instruction {
                     resolved.add(new Operand(vec, -1));
                 }
                 case LABEL -> {
-                    int[] delta = new int[dims];
-                    delta[0] = extractSignedValue(rawMol);
-                    for (int d = 1; d < dims; d++) {
-                        dimPos += sign;
-                        if (isToroidal) {
-                            if (dimPos < 0) dimPos = dimSize - 1;
-                            else if (dimPos >= dimSize) dimPos = 0;
-                        }
-                        rawMol = (dimPos >= 0 && dimPos < dimSize)
-                                ? environment.getMoleculeInt(baseFlatIp + dimPos * dimStride)
-                                : 0;
-                        delta[d] = extractSignedValue(rawMol);
-                    }
-                    resolved.add(new Operand(delta, -1));
+                    int labelHash = rawMol & Config.VALUE_MASK;
+                    resolved.add(new Operand(labelHash, -1));
                 }
                 default -> {}
             }
@@ -371,6 +359,26 @@ public abstract class Instruction {
             return null;
         }
         return environment.getCoordinateFromIndex(targetFlatIndex);
+    }
+
+    /**
+     * Validates that the target coordinates are accessible to the organism.
+     * The target must be either unowned or owned by the organism itself.
+     *
+     * @param targetCoords The coordinates to check.
+     * @param organism     The organism performing the access.
+     * @param environment  The environment containing ownership data.
+     * @param instructionName The instruction name for the error message.
+     * @return {@code true} if the target is accessible, {@code false} if the instruction failed.
+     */
+    protected boolean validateOwnership(int[] targetCoords, Organism organism,
+                                        Environment environment, String instructionName) {
+        int ownerIdAtTarget = environment.getOwnerId(targetCoords);
+        if (ownerIdAtTarget != 0 && !organism.isCellAccessible(ownerIdAtTarget)) {
+            organism.instructionFailed(instructionName + ": Target cell is owned by another organism.");
+            return false;
+        }
+        return true;
     }
 
     /**

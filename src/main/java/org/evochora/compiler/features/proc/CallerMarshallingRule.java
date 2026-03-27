@@ -37,9 +37,10 @@ public final class CallerMarshallingRule implements IEmissionRule {
                 }
             }
 
-            // Handle a standard, non-conditional CALL (including REF/VAL).
+            // Handle a standard, non-conditional CALL (including REF/VAL/LREF/LVAL).
             if (currentItem instanceof IrCallInstruction call) {
-                if (!call.refOperands().isEmpty() || !call.valOperands().isEmpty()) {
+                if (!call.refOperands().isEmpty() || !call.valOperands().isEmpty()
+                        || !call.lrefOperands().isEmpty() || !call.lvalOperands().isEmpty()) {
                     emitStandardMarshalling(out, call);
                 } else {
                     out.add(call); // Plain CALL with no params.
@@ -102,7 +103,12 @@ public final class CallerMarshallingRule implements IEmissionRule {
 
         // Pre-call: Push location arguments (LVAL then LREF, in reverse order) onto location stack
         for (int j = call.lvalOperands().size() - 1; j >= 0; j--) {
-            out.add(IrInstruction.synthetic("PUSL", List.of(call.lvalOperands().get(j)), call.source()));
+            IrOperand operand = call.lvalOperands().get(j);
+            if (operand instanceof IrLabelRef) {
+                out.add(IrInstruction.synthetic("PSLI", List.of(operand), call.source()));
+            } else {
+                out.add(IrInstruction.synthetic("PUSL", List.of(operand), call.source()));
+            }
         }
         for (int j = call.lrefOperands().size() - 1; j >= 0; j--) {
             out.add(IrInstruction.synthetic("PUSL", List.of(call.lrefOperands().get(j)), call.source()));

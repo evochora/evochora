@@ -544,16 +544,65 @@ Adds location parameter passing. Depends on Phase E (PLR exists as LREF source) 
 
 ### Phase H: LVAL with Labels
 
-Extends LVAL to accept labels. Depends on Phase G.
+Extends LVAL to accept labels as arguments. Depends on Phase G. Labels cannot be resolved at compile time because labels and label references can mutate at runtime (self-modifying code). Therefore, label-to-position resolution must happen at runtime via fuzzy matching — the same mechanism used by SKJI, CALL, and JMPI.
 
-**Runtime:**
-- `ProcedureCallHandler.java`: when LVAL operand is a label hash (IrLabelRef), resolve to position via fuzzy matching (reuse SKJI resolution logic from LocationInstruction) and copy resulting position into FLR.
+When a label is passed as LVAL, the runtime resolves it via fuzzy matching at CALL time and copies the resulting position into the location parameter passing pipeline (location stack → FLR). Inside the procedure, the FLR holds a normal position that can be used with any location instruction (e.g., `SKLR %FLR0` to jump the DP there). The fuzzy matching happens once at the call site, not inside the procedure.
 
-**Compiler:**
-- `CallAnalysisHandler.java`: accept IdentifierNode (label) in LVAL position
-- `CallNodeConverter.java`: emit label reference as LVAL operand
+This requires two new instructions because the existing PUSL only accepts LOCATION_REGISTER operands, not LABEL operands.
 
-**Test (integration):** Assembly program with a label `TARGET:` at a known position (e.g., via `.ORG 10|10`). Defines `.PROC JUMP_TO LVAL lDest` that executes `SKLR lDest`. Main calls `CALL JUMP_TO LVAL TARGET`. Assert: inside JUMP_TO, the DP moved to TARGET's resolved position (10|10). Assert: the fuzzy matching happened at CALL time (not inside the procedure).
+**Prerequisite: DRY fix for `Instruction.resolveOperands()` — OperandSource.LABEL handling**
+
+The base class `Instruction.resolveOperands()` currently treats `OperandSource.LABEL` as a multi-dimensional delta vector (reads dims × values from the code stream). This is wrong — it conflicts with the length calculation (`buildArrayRegistries()` counts LABEL as 1 slot, not dims slots) and is never actually executed because every instruction with a LABEL operand overrides `resolveOperands()` to read the label hash as a single integer instead:
+
+- `ControlFlowInstruction.resolveOperands()`: overrides for CALL, JMPI — reads label hash via `resolveLabelHash()`
+- `LocationInstruction.resolveOperands()`: overrides for SKJI — reads label hash via `resolveLabelHash()`
+
+The `case LABEL` branch in `Instruction.resolveOperands()` is dead code that would be incorrect if ever reached. Fix: replace the delta-vector logic with the correct single-integer hash resolution (`resolveLabelHash()`). Then delete the `resolveOperands()` overrides in both `ControlFlowInstruction` and `LocationInstruction` — they become unnecessary because the base class now handles LABEL correctly.
+
+After this fix, PSLI and LRLI require no `resolveOperands()` override — they get correct operand resolution from the base class automatically.
+
+**New Instructions (Location Family, Family 8):**
+
+1. **Operation 13: PSL (Push Location from Label)**
+   - Mnemonic: `PSLI` — Variant.L (20) with OperandSource.LABEL
+   - Opcode ID: 8 × 4096 + 13 × 64 + 20 = **33620**
+   - Semantics: Read label hash from environment, resolve to coordinates via fuzzy matching (`resolveLabelTarget()`), ownership check (target must be unowned or self-owned), push resolved position onto location stack.
+   - Used by CallerMarshallingRule for LVAL label arguments (replaces PUSL which only handles registers). ProcedureMarshallingRule is unchanged — POPL in the prologue pops from the location stack into FLR regardless of whether PUSL or PSLI pushed the value.
+
+2. **Operation 14: LRI (Location Register from Label Immediate)**
+   - Mnemonic: `LRLI` — Variant.LL (39) with OperandSource.LOCATION_REGISTER + OperandSource.LABEL
+   - Opcode ID: 8 × 4096 + 14 × 64 + 39 = **33703**
+   - Semantics: First operand is destination location register, second operand is label hash from environment. Fuzzy matching + ownership check (same as PSLI). Write resolved position directly into the destination location register via `writeLocationOperand()`.
+   - Not needed for LVAL marshalling (PSLI covers that), but provides direct assembly usage: `LRLI %LR0 MY_LABEL` stores a label's position in LR0 without the location stack detour. Consistent with the principle that all meaningful source combinations for location instructions should be available.
+
+Both instructions share the fuzzy matching + ownership check logic with SKJI (Operation 12). This logic is already extracted in `Instruction.resolveLabelTarget()`.
+
+Variant compatibility with mutation plugins: Variant.L is used for both LABEL and LOCATION_REGISTER operands. This is correct — mutation plugins work with the OperandSource list of the concrete instruction (GeneInsertionPlugin lines 503-507), not with the Variant code. When operation mutation within the Location Family changes the OperandSource (e.g., from LOCATION_REGISTER to LABEL), the plugins generate arguments matching the target instruction's OperandSource specification.
+
+**Both PSLI and LRLI must be documented in `docs/ASSEMBLY_SPEC.md`** (Section 7: Location Instructions).
+
+**Runtime changes:**
+- `Instruction.java`: Fix `resolveOperands()` `case LABEL` — replace dead multi-dimensional delta logic with `resolveLabelHash()` (single integer, 1 slot). This is the DRY prerequisite described above.
+- `ControlFlowInstruction.java`: Delete `resolveOperands()` override — CALL/JMPI now use the corrected base class logic.
+- `LocationInstruction.java`: Delete `resolveOperands()` override for SKJI — same reason. New `reg()` calls for PSLI (Operation 13) and LRLI (Operation 14). Execute logic: fuzzy matching via `resolveLabelTarget()`, ownership check (same pattern as SKJI lines 254-260), then push onto location stack (PSLI) or write to location register via `writeLocationOperand()` (LRLI).
+
+**Compiler changes:**
+- `CallAnalysisHandler.java`: Accept IdentifierNode (label) in LVAL position. Validation: label must exist in the SymbolTable.
+- `CallNodeConverter.java`: Emit label as IrLabelRef in lvalOperands (instead of IrReg for register-LVAL).
+- `CallerMarshallingRule.java`: In the LVAL marshalling loop, distinguish operand type: if IrLabelRef → emit PSLI; if IrReg → emit PUSL (existing behavior). LVAL arguments are pushed in reverse order before LREF arguments onto the location stack (existing pattern).
+- `InstructionAnalysisHandler.java`: PSLI and LRLI must be validated as location instructions (accept LABEL argument type).
+
+**Assembly syntax:**
+```
+CALL NAVIGATE LVAL MY_LABEL       ; Label as location parameter (via PSLI marshalling)
+LRLI %LR0 MY_LABEL                ; Direct: store label position in LR0
+PSLI MY_LABEL                      ; Direct: push label position onto location stack
+```
+
+**Tests (integration):**
+1. LVAL with label via procedure call: Assembly program with label `TARGET:` at a known position (via `.ORG 10|10`). Defines `.PROC JUMP_TO LVAL lDest` that executes `SKLR lDest`. Main calls `CALL JUMP_TO LVAL TARGET`. Assert: inside JUMP_TO, the DP moved to TARGET's resolved position. Assert: the fuzzy matching happened at CALL time (PSLI in marshalling), not inside the procedure.
+2. Direct LRLI test: `LRLI %LR0 TARGET`, then assert that LR0 contains the coordinates of TARGET.
+3. Direct PSLI test: `PSLI TARGET`, `POPL %LR0`, then assert that LR0 contains the coordinates of TARGET.
 
 ### Phase I: Documentation
 
@@ -562,7 +611,7 @@ Update all documentation to reflect the new architecture. Can be done incrementa
 **ASSEMBLY_SPEC.md:**
 - Section 3 "Registers": complete rewrite with all 8 banks, correct counts, 256-spacing base IDs
 - Section 6 "Control Flow": CALL syntax with LREF/LVAL
-- Section 6 "Location Operations": all location banks work with location instructions
+- Section 6 "Location Operations": all location banks work with location instructions. New instructions PSLI and LRLI (label-to-location resolution via fuzzy matching)
 - Section 7 ".REG": expanded for all banks, automatic scope detection
 - Section 7 ".PREG": removed
 - Section 7 ".PROC": LREF/LVAL parameter types
@@ -600,12 +649,13 @@ After all phases are complete:
 5. **Persistent proc state** via SDR/SLR — procedures are stateful "organs"
 6. **Location parameter passing** via LREF/LVAL — positions can be passed to procedures
 7. **LVAL with labels** — fuzzy-matched positions as procedure arguments
-8. **Single .REG directive** — scope determined by target bank
-9. **Location write restriction** enforced via writeOperand/writeLocationOperand split across all location banks
-10. **All location instructions** work transparently with LR, PLR, FLR, SLR
-11. **Visualizer** displays all 8 banks via `REGISTER_BANKS` metadata iteration — new bank = one array entry, no method changes
-12. **Documentation** fully updated (ASSEMBLY_SPEC, README, SCIENTIFIC_OVERVIEW)
-13. **Mutation system** bank-aware for all 8 banks
-14. **All assembly files** migrated to new names
-15. **ProcFrame** bank-independent with single `savedRegisters` array and generic `parameterBindings` map
-16. **No performance regression** verified via JMH benchmarks after each runtime-modifying phase
+8. **PSLI/LRLI instructions** — label-to-location resolution via fuzzy matching with ownership check, extending the Location family (Operations 13/14)
+9. **Single .REG directive** — scope determined by target bank
+10. **Location write restriction** enforced via writeOperand/writeLocationOperand split across all location banks
+11. **All location instructions** work transparently with LR, PLR, FLR, SLR
+12. **Visualizer** displays all 8 banks via `REGISTER_BANKS` metadata iteration — new bank = one array entry, no method changes
+13. **Documentation** fully updated (ASSEMBLY_SPEC, README, SCIENTIFIC_OVERVIEW)
+14. **Mutation system** bank-aware for all 8 banks
+15. **All assembly files** migrated to new names
+16. **ProcFrame** bank-independent with single `savedRegisters` array and generic `parameterBindings` map
+17. **No performance regression** verified via JMH benchmarks after each runtime-modifying phase
