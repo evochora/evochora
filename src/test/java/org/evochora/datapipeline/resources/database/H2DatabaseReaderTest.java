@@ -12,6 +12,7 @@ import org.evochora.datapipeline.CellStateTestHelper;
 import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.RegisterValue;
+import org.evochora.test.utils.ProtoTestUtils;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.Vector;
@@ -258,7 +259,7 @@ class H2DatabaseReaderTest {
                     .setDv(Vector.newBuilder().addComponents(0).addComponents(1).build())
                     .addDataPointers(Vector.newBuilder().addComponents(5).addComponents(5).build())
                     .setActiveDpIndex(0)
-                    .addAllRegisters(buildFlatRegisters(new int[]{42}, null, null, null))
+                    .addAllRegisters(ProtoTestUtils.buildFlatRegisters(new int[]{42}, null, null, null))
                     .setInstructionOpcodeId(setiOpcode)
                     .addInstructionRawArguments(regArg)
                     .addInstructionRawArguments(immArg)
@@ -296,31 +297,6 @@ class H2DatabaseReaderTest {
             assertThat(details.state.instructions.last.arguments.get(1).type).isEqualTo("IMMEDIATE");
             assertThat(details.state.instructions.last.energyCost).isEqualTo(5);
         }
-    }
-
-    private static java.util.List<RegisterValue> buildFlatRegisters(
-            int[] drScalars, int[][] lrVectors, int[] pdrScalars, int[] fdrScalars) {
-        java.util.List<RegisterValue> result = new java.util.ArrayList<>();
-        for (int i = 0; i < org.evochora.runtime.Config.NUM_DATA_REGISTERS; i++) {
-            int val = (drScalars != null && i < drScalars.length) ? drScalars[i] : 0;
-            result.add(RegisterValue.newBuilder().setScalar(val).build());
-        }
-        for (int i = 0; i < org.evochora.runtime.Config.NUM_LOCATION_REGISTERS; i++) {
-            Vector.Builder vb = Vector.newBuilder();
-            if (lrVectors != null && i < lrVectors.length && lrVectors[i] != null) {
-                for (int c : lrVectors[i]) vb.addComponents(c);
-            }
-            result.add(RegisterValue.newBuilder().setVector(vb.build()).build());
-        }
-        for (int i = 0; i < org.evochora.runtime.Config.NUM_PDR_REGISTERS; i++) {
-            int val = (pdrScalars != null && i < pdrScalars.length) ? pdrScalars[i] : 0;
-            result.add(RegisterValue.newBuilder().setScalar(val).build());
-        }
-        for (int i = 0; i < org.evochora.runtime.Config.NUM_FDR_REGISTERS; i++) {
-            int val = (fdrScalars != null && i < fdrScalars.length) ? fdrScalars[i] : 0;
-            result.add(RegisterValue.newBuilder().setScalar(val).build());
-        }
-        return result;
     }
 
     // --- readGenomeLineageTree tests ---

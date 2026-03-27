@@ -57,12 +57,12 @@ public class SimulationTest {
     @Test
     @Tag("unit")
     void testConflictResolutionSameTargetLowerIdWins() {
-        Organism orgLow = Organism.create(sim, new int[]{0, 0}, 2000, sim.getLogger());
+        Organism orgLow = Organism.create(sim, new int[]{0, 0}, 2000);
         orgLow.setDv(new int[]{1, 0});
         orgLow.setDp(0, new int[]{0, 0});        int payloadLow = new Molecule(Config.TYPE_DATA, 11).toInt();
         orgLow.writeOperand(0, payloadLow);
 
-        Organism orgHigh = Organism.create(sim, new int[]{10, 0}, 2000, sim.getLogger());
+        Organism orgHigh = Organism.create(sim, new int[]{10, 0}, 2000);
         orgHigh.setDv(new int[]{1, 0});
         orgHigh.setDp(0, new int[]{0, 0});        int payloadHigh = new Molecule(Config.TYPE_DATA, 22).toInt();
         orgHigh.writeOperand(0, payloadHigh);
@@ -93,12 +93,12 @@ public class SimulationTest {
     @Test
     @Tag("unit")
     void testNoConflictDifferentTargetsBothExecute() {
-        Organism o1 = Organism.create(sim, new int[]{0, 0}, 2000, sim.getLogger());
+        Organism o1 = Organism.create(sim, new int[]{0, 0}, 2000);
         o1.setDv(new int[]{1, 0});
         o1.setDp(0, new int[]{0, 0});        int v1 = new Molecule(Config.TYPE_DATA, 5).toInt();
         o1.writeOperand(0, v1);
 
-        Organism o2 = Organism.create(sim, new int[]{10, 0}, 2000, sim.getLogger());
+        Organism o2 = Organism.create(sim, new int[]{10, 0}, 2000);
         o2.setDv(new int[]{1, 0});
         o2.setDp(0, new int[]{1, 0});        int v2 = new Molecule(Config.TYPE_DATA, 7).toInt();
         o2.writeOperand(0, v2);
@@ -129,7 +129,7 @@ public class SimulationTest {
     @Test
     @Tag("unit")
     void testSingleOrganismNoTargetStillExecutes() {
-        Organism org = Organism.create(sim, new int[]{0, 0}, 2000, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 2000);
         org.setDv(new int[]{1, 0});
         org.setDp(0, new int[]{0, 0});        sim.addOrganism(org);
 

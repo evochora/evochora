@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.OrganismState;
-import org.evochora.datapipeline.api.contracts.RegisterValue;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.Vector;
@@ -18,6 +17,7 @@ import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.isa.RegisterBank;
+import org.evochora.test.utils.ProtoTestUtils;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -95,7 +95,7 @@ class SimulationRestorerTest {
             .addDataPointers(createVector(10, 10))
             .addDataPointers(createVector(20, 20))
             .setActiveDpIndex(1)
-            .addAllRegisters(buildFlatRegisters(new int[]{100}, null, new int[]{200}, null))
+            .addAllRegisters(ProtoTestUtils.buildFlatRegisters(new int[]{100}, null, new int[]{200}, null))
             .setIsDead(false)
             .build();
 
@@ -233,53 +233,6 @@ class SimulationRestorerTest {
         assertThat(simulation.getAllGenomesEverSeen()).containsExactlyInAnyOrder(111L, 222L, 333L);
     }
 
-    @Test
-    void restore_OldSimulation_FallsBackToLivingOrganisms() {
-        SimulationMetadata metadata = createMinimalMetadata();
-
-        // Old simulation without genome hash fields (defaults to empty list)
-        OrganismState org1 = OrganismState.newBuilder()
-            .setOrganismId(1)
-            .setBirthTick(0)
-            .setEnergy(500)
-            .setGenomeHash(111L)
-            .setIp(createVector(10, 10))
-            .setDv(createVector(1, 0))
-            .setInitialPosition(createVector(5, 5))
-            .setIsDead(false)
-            .build();
-
-        OrganismState org2 = OrganismState.newBuilder()
-            .setOrganismId(2)
-            .setBirthTick(0)
-            .setEnergy(300)
-            .setGenomeHash(222L)
-            .setIp(createVector(20, 20))
-            .setDv(createVector(0, 1))
-            .setInitialPosition(createVector(15, 15))
-            .setIsDead(false)
-            .build();
-
-        TickData snapshot = TickData.newBuilder()
-            .setSimulationRunId(TEST_RUN_ID)
-            .setTickNumber(1000)
-            .setCaptureTimeMs(System.currentTimeMillis())
-            .setTotalOrganismsCreated(50)
-            // No genome hash fields set (old simulation format)
-            .setCellColumns(CellDataColumns.newBuilder().build())
-            .addOrganisms(org1)
-            .addOrganisms(org2)
-            .build();
-
-        ResumeCheckpoint checkpoint = new ResumeCheckpoint(metadata, snapshot);
-        SimulationRestorer.RestoredState state = SimulationRestorer.restore(checkpoint, randomProvider, 1);
-        Simulation simulation = state.simulation();
-
-        // Fallback: reconstructed from living organisms
-        assertThat(simulation.getTotalUniqueGenomesCount()).isEqualTo(2);
-        assertThat(simulation.getAllGenomesEverSeen()).containsExactlyInAnyOrder(111L, 222L);
-    }
-
     // ==================== Helper Methods ====================
 
     private SimulationMetadata createMinimalMetadata() {
@@ -363,45 +316,4 @@ class SimulationRestorerTest {
         return builder.build();
     }
 
-    /**
-     * Builds a flat RegisterValue list in RegisterBank slot order (all 8 banks).
-     * Null arrays are treated as empty (defaults used). Scalar values become RegisterValue.scalar,
-     * vector values (for location banks) become RegisterValue.vector.
-     */
-    private static java.util.List<RegisterValue> buildFlatRegisters(
-            int[] drScalars, int[][] lrVectors, int[] pdrScalars, int[] fdrScalars) {
-        java.util.List<RegisterValue> result = new java.util.ArrayList<>();
-        for (int i = 0; i < Config.NUM_DATA_REGISTERS; i++) {
-            int val = (drScalars != null && i < drScalars.length) ? drScalars[i] : 0;
-            result.add(RegisterValue.newBuilder().setScalar(val).build());
-        }
-        for (int i = 0; i < Config.NUM_LOCATION_REGISTERS; i++) {
-            Vector.Builder vb = Vector.newBuilder();
-            if (lrVectors != null && i < lrVectors.length && lrVectors[i] != null) {
-                for (int c : lrVectors[i]) vb.addComponents(c);
-            }
-            result.add(RegisterValue.newBuilder().setVector(vb.build()).build());
-        }
-        for (int i = 0; i < Config.NUM_PDR_REGISTERS; i++) {
-            int val = (pdrScalars != null && i < pdrScalars.length) ? pdrScalars[i] : 0;
-            result.add(RegisterValue.newBuilder().setScalar(val).build());
-        }
-        for (int i = 0; i < Config.NUM_PLR_REGISTERS; i++) {
-            result.add(RegisterValue.newBuilder().setVector(Vector.newBuilder().build()).build());
-        }
-        for (int i = 0; i < Config.NUM_FDR_REGISTERS; i++) {
-            int val = (fdrScalars != null && i < fdrScalars.length) ? fdrScalars[i] : 0;
-            result.add(RegisterValue.newBuilder().setScalar(val).build());
-        }
-        for (int i = 0; i < Config.NUM_FLR_REGISTERS; i++) {
-            result.add(RegisterValue.newBuilder().setVector(Vector.newBuilder().build()).build());
-        }
-        for (int i = 0; i < Config.NUM_SDR_REGISTERS; i++) {
-            result.add(RegisterValue.newBuilder().setScalar(0).build());
-        }
-        for (int i = 0; i < Config.NUM_SLR_REGISTERS; i++) {
-            result.add(RegisterValue.newBuilder().setVector(Vector.newBuilder().build()).build());
-        }
-        return result;
-    }
 }

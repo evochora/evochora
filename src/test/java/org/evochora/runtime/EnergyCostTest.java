@@ -51,7 +51,7 @@ public class EnergyCostTest {
     @Test
     @Tag("unit")
     void testPokeConsumesEnergyOnSuccess() {
-        Organism org = Organism.create(sim, new int[]{10, 10}, 1000, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{10, 10}, 1000);
         sim.addOrganism(org);
         org.setDp(0, org.getIp());
 
@@ -84,7 +84,7 @@ public class EnergyCostTest {
     @Test
     @Tag("unit")
     void testPokeConsumesEnergyEvenOnOccupiedTarget() {
-        Organism org = Organism.create(sim, new int[]{20, 20}, 1000, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{20, 20}, 1000);
         sim.addOrganism(org);
         org.setDp(0, org.getIp());
 
@@ -117,7 +117,7 @@ public class EnergyCostTest {
     @Test
     @Tag("unit")
     void testPeekDataConsumesEnergy() {
-        Organism org = Organism.create(sim, new int[]{30, 30}, 1000, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{30, 30}, 1000);
         sim.addOrganism(org);
         org.setDp(0, org.getIp());
 
@@ -146,7 +146,7 @@ public class EnergyCostTest {
     @Test
     @Tag("unit")
     void testPeekStructureOwnedBySelf_NoEnergyCost() {
-        Organism org = Organism.create(sim, new int[]{40, 40}, 1000, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{40, 40}, 1000);
         sim.addOrganism(org);
         org.setDp(0, org.getIp());
 
@@ -176,7 +176,7 @@ public class EnergyCostTest {
     @Test
     @Tag("unit")
     void testPeekStructureForeignConsumesEnergy() {
-        Organism org = Organism.create(sim, new int[]{50, 50}, 1000, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{50, 50}, 1000);
         sim.addOrganism(org);
         org.setDp(0, org.getIp());
 
@@ -207,7 +207,7 @@ public class EnergyCostTest {
     @Test
     @Tag("unit")
     void testPeekEnergyHarvestsAndClampsToMax() {
-        Organism org = Organism.create(sim, new int[]{60, 60}, 100, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{60, 60}, 100);
         sim.addOrganism(org);
         org.setDp(0, org.getIp());
 

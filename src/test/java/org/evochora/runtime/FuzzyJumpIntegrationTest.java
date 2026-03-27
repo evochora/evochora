@@ -37,7 +37,7 @@ class FuzzyJumpIntegrationTest {
         EnvironmentProperties props = new EnvironmentProperties(new int[]{100}, true);
         environment = new Environment(props);
         sim = SimulationTestUtils.createSimulation(environment);
-        org = Organism.create(sim, new int[]{0}, 1000, sim.getLogger());
+        org = Organism.create(sim, new int[]{0}, 1000);
         sim.addOrganism(org);
     }
 
@@ -209,7 +209,7 @@ class FuzzyJumpIntegrationTest {
         EnvironmentProperties props3D = new EnvironmentProperties(new int[]{20, 20, 20}, true);
         Environment env3D = new Environment(props3D);
         Simulation sim3D = SimulationTestUtils.createSimulation(env3D);
-        Organism org3D = Organism.create(sim3D, new int[]{0, 0, 0}, 1000, sim3D.getLogger());
+        Organism org3D = Organism.create(sim3D, new int[]{0, 0, 0}, 1000);
         sim3D.addOrganism(org3D);
 
         int labelHash = 99999 & Config.VALUE_MASK;

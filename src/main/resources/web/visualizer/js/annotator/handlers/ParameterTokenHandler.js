@@ -3,10 +3,9 @@ import { ValueFormatter } from '../../utils/ValueFormatter.js';
 
 /**
  * Handles the annotation of tokens that are procedure parameter names.
- * Shows the complete binding chain from source register to current FDR and its value.
- * Format: [%DR0→%FDR1→%FDR0=Value] where the chain shows data flow from source (DR/PDR)
- * to intermediate bindings to the current parameter register (FDR), and Value is always
- * read from the current FDR (which may differ from the source if modified in the procedure).
+ * Shows the complete binding chain from source register to the formal register and its value.
+ * Data parameters (REF/VAL) resolve to FDR: [%DR0→%FDR1→%FDR0=Value]
+ * Location parameters (LREF/LVAL) resolve to FLR: [%LR0→%FLR1→%FLR0=Value]
  * Works anywhere in procedure bodies, not just on .PROC directive lines.
  * Resolves parameter bindings by walking the call stack to find the complete chain.
  */
@@ -32,8 +31,8 @@ export class ParameterTokenHandler {
 
     /**
      * Analyzes the parameter token to create an annotation with its binding chain and current value.
-     * Resolves the complete binding chain through the call stack (from source DR/PDR to current FDR),
-     * then reads the value from the current FDR (not from the source, as FDR values may be modified).
+     * Resolves the complete binding chain through the call stack (from source register to formal register),
+     * then reads the value from the formal register (FDR for data params, FLR for location params).
      * The binding chain is displayed reversed: from source to target (e.g., %DR0→%FDR1→%FDR0).
      *
      * @param {string} tokenText The text of the token (the parameter name).
@@ -106,25 +105,19 @@ export class ParameterTokenHandler {
             throw new Error(`Cannot annotate parameter "${tokenText}": binding path is empty.`);
         }
 
-        // Get the value from the LAST register in the chain (the currently valid FDR)
-        // bindingPath ends with the parameter's FDR (e.g., [DR0, FDR1, FDR0])
-        // This FDR holds the current value, which may differ from the source DR/PDR if modified
+        // Get the value from the LAST register in the chain (the formal register: FDR or FLR)
+        // bindingPath ends with the parameter's formal register (e.g., [DR0, FDR1, FDR0] or [LR0, FLR0])
         const currentRegId = bindingPath[bindingPath.length - 1];
 
-        // Get the register value from the current FDR
-        // getRegisterValueById now throws Error directly if register not found or invalid input
         const value = AnnotationUtils.getRegisterValueById(currentRegId, organismState);
 
-        // Format the binding path: %DR0→%FDR1→%FDR0
-        // The path is already in display order (source to target)
+        // Format the binding path: %DR0→%FDR1→%FDR0 or %LR0→%FLR0
         const pathNames = bindingPath.map(regId => AnnotationUtils.formatRegisterName(regId));
         const pathDisplay = pathNames.join('→');
 
-        // Format the value
         const formattedValue = ValueFormatter.format(value);
 
-        // Always show the complete chain (even if it has only one element)
-        // Format: [%DR0→%FDR1→%FDR0=Value] where Value is from FDR0 (current, last element)
+        // Format: [%DR0→%FDR1→%FDR0=Value] where Value is from the formal register (last element)
         return {
             annotationText: `[${pathDisplay}=${formattedValue}]`,
             kind: 'param'

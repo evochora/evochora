@@ -17,11 +17,13 @@ class ParserStateRegisterBankTest {
     }
 
     @Test
-    void testUnregisteredBankIsNotAvailable() {
+    void testProcScopedBanksNotAvailableByDefault() {
         ParserState state = new ParserState();
 
         assertThat(state.isRegisterBankAvailable("PDR")).isFalse();
+        assertThat(state.isRegisterBankAvailable("PLR")).isFalse();
         assertThat(state.isRegisterBankAvailable("FDR")).isFalse();
+        assertThat(state.isRegisterBankAvailable("FLR")).isFalse();
     }
 
     @Test

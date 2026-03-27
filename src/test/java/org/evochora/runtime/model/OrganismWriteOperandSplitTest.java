@@ -26,7 +26,7 @@ class OrganismWriteOperandSplitTest {
     void setUp() {
         Environment environment = new Environment(new int[]{100, 100}, true);
         Simulation sim = SimulationTestUtils.createSimulation(environment);
-        org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
+        org = Organism.create(sim, new int[]{0, 0}, 100);
         sim.addOrganism(org);
     }
 

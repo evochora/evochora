@@ -330,7 +330,8 @@ export class OrganismStateView {
 
             const coordKey = relativeCoord.join('|');
 
-            if (!this.artifact.relativeCoordToLinearAddress || !this.artifact.relativeCoordToLinearAddress[coordKey]) {
+            if (!this.artifact.relativeCoordToLinearAddress ||
+                !(coordKey in this.artifact.relativeCoordToLinearAddress)) {
                 return null;
             }
 

@@ -36,6 +36,7 @@ public class CallSiteBindingRule implements ILinkingRule {
             dataIndex++;
         }
         for (IrOperand op : call.valOperands()) {
+            // VAL can be IrImm/IrTypedImm (literals) — no source register binding for those
             if (op instanceof IrReg reg) {
                 bindings.put(RegisterBank.FDR.base + dataIndex, resolveReg(isa, reg.name()));
             }
@@ -52,6 +53,7 @@ public class CallSiteBindingRule implements ILinkingRule {
             locationIndex++;
         }
         for (IrOperand op : call.lvalOperands()) {
+            // LVAL can be IrLabelRef (label resolved via PSLI) — no source register binding for those
             if (op instanceof IrReg reg) {
                 bindings.put(RegisterBank.FLR.base + locationIndex, resolveReg(isa, reg.name()));
             }

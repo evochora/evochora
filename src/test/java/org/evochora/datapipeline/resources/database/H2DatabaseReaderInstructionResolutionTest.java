@@ -15,6 +15,7 @@ import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
+import org.evochora.test.utils.ProtoTestUtils;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
 import org.junit.jupiter.api.AfterEach;
@@ -276,7 +277,7 @@ class H2DatabaseReaderInstructionResolutionTest {
                     .setDv(Vector.newBuilder().addComponents(0).addComponents(1).build())
                     .addDataPointers(Vector.newBuilder().addComponents(5).addComponents(5).build())
                     .setActiveDpIndex(0)
-                    .addAllRegisters(buildFlatRegisters(new int[]{42}, null, null, null))
+                    .addAllRegisters(ProtoTestUtils.buildFlatRegisters(new int[]{42}, null, null, null))
                     .setInstructionOpcodeId(lastOpcodeId)
                     .setInstructionEnergyCost(energyCost)
                     .setIpBeforeFetch(Vector.newBuilder().addComponents(1).addComponents(2).build())
@@ -303,43 +304,6 @@ class H2DatabaseReaderInstructionResolutionTest {
         }
     }
 
-    private static java.util.List<RegisterValue> buildFlatRegisters(
-            int[] drScalars, int[][] lrVectors, int[] pdrScalars, int[] fdrScalars) {
-        java.util.List<RegisterValue> result = new java.util.ArrayList<>();
-        for (int i = 0; i < org.evochora.runtime.Config.NUM_DATA_REGISTERS; i++) {
-            int val = (drScalars != null && i < drScalars.length) ? drScalars[i] : 0;
-            result.add(RegisterValue.newBuilder().setScalar(val).build());
-        }
-        for (int i = 0; i < org.evochora.runtime.Config.NUM_LOCATION_REGISTERS; i++) {
-            Vector.Builder vb = Vector.newBuilder();
-            if (lrVectors != null && i < lrVectors.length && lrVectors[i] != null) {
-                for (int c : lrVectors[i]) vb.addComponents(c);
-            }
-            result.add(RegisterValue.newBuilder().setVector(vb.build()).build());
-        }
-        for (int i = 0; i < org.evochora.runtime.Config.NUM_PDR_REGISTERS; i++) {
-            int val = (pdrScalars != null && i < pdrScalars.length) ? pdrScalars[i] : 0;
-            result.add(RegisterValue.newBuilder().setScalar(val).build());
-        }
-        for (int i = 0; i < org.evochora.runtime.Config.NUM_PLR_REGISTERS; i++) {
-            result.add(RegisterValue.newBuilder().setVector(Vector.newBuilder().build()).build());
-        }
-        for (int i = 0; i < org.evochora.runtime.Config.NUM_FDR_REGISTERS; i++) {
-            int val = (fdrScalars != null && i < fdrScalars.length) ? fdrScalars[i] : 0;
-            result.add(RegisterValue.newBuilder().setScalar(val).build());
-        }
-        for (int i = 0; i < org.evochora.runtime.Config.NUM_FLR_REGISTERS; i++) {
-            result.add(RegisterValue.newBuilder().setVector(Vector.newBuilder().build()).build());
-        }
-        for (int i = 0; i < org.evochora.runtime.Config.NUM_SDR_REGISTERS; i++) {
-            result.add(RegisterValue.newBuilder().setScalar(0).build());
-        }
-        for (int i = 0; i < org.evochora.runtime.Config.NUM_SLR_REGISTERS; i++) {
-            result.add(RegisterValue.newBuilder().setVector(Vector.newBuilder().build()).build());
-        }
-        return result;
-    }
-
     private void writeOrganismWithInstructionAndLocationRegisters(long tickNumber, int organismId, int opcodeId,
                                                                   java.util.List<Integer> rawArguments, int energyCost,
                                                                   int[][] locationRegisters) throws Exception {
@@ -360,7 +324,7 @@ class H2DatabaseReaderInstructionResolutionTest {
                     .setDv(Vector.newBuilder().addComponents(0).addComponents(1).build())
                     .addDataPointers(Vector.newBuilder().addComponents(5).addComponents(5).build())
                     .setActiveDpIndex(0)
-                    .addAllRegisters(buildFlatRegisters(new int[]{42}, locationRegisters, null, null))
+                    .addAllRegisters(ProtoTestUtils.buildFlatRegisters(new int[]{42}, locationRegisters, null, null))
                     .setInstructionOpcodeId(opcodeId)
                     .setInstructionEnergyCost(energyCost)
                     .setIpBeforeFetch(ipBeforeFetch)

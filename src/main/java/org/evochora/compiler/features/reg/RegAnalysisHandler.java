@@ -42,13 +42,11 @@ public class RegAnalysisHandler implements IAnalysisHandler {
     }
 
     /**
-     * Validates that a register string represents a valid register with an in-bounds index.
-     * This is defense-in-depth validation at analysis time — the primary validation happens
-     * at parse time in {@code RegDirectiveHandler}. This method also validates register references
-     * in instructions (e.g., {@code ADDI %PDR99 DATA:1}).
+     * Validates that a register string represents a valid, non-forbidden register with an in-bounds index.
+     * Forbidden banks (FDR, FLR) are rejected — they cannot be aliased directly.
      *
-     * @param registerText the register text to validate (e.g., "%DR0", "%PDR2", "%FDR1", "%LR3")
-     * @return {@code true} if the register is syntactically valid and within bounds
+     * @param registerText the register text to validate (e.g., "%DR0", "%PDR2", "%LR3")
+     * @return {@code true} if the register is syntactically valid, non-forbidden, and within bounds
      */
     private boolean isValidRegister(String registerText) {
         if (registerText == null || !registerText.startsWith("%")) {
@@ -57,7 +55,7 @@ public class RegAnalysisHandler implements IAnalysisHandler {
         String upper = registerText.toUpperCase();
         try {
             for (RegisterBank bank : RegisterBank.values()) {
-                if (bank.count > 0 && upper.startsWith(bank.prefix)) {
+                if (bank.count > 0 && !bank.isForbidden && upper.startsWith(bank.prefix)) {
                     int index = Integer.parseInt(upper.substring(bank.prefixLength));
                     return index >= 0 && index < bank.count;
                 }

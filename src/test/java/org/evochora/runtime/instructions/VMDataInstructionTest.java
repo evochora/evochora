@@ -36,7 +36,7 @@ public class VMDataInstructionTest {
     void setUp() {
         environment = new Environment(new int[]{100, 100}, true);
         sim = SimulationTestUtils.createSimulation(environment);
-        org = Organism.create(sim, startPos, 1000, sim.getLogger());
+        org = Organism.create(sim, startPos, 1000);
         sim.addOrganism(org);
     }
 
@@ -188,7 +188,7 @@ public class VMDataInstructionTest {
         // Erstelle eine neue Simulation mit dem kompilierten Code
         Environment testEnv = new Environment(new int[]{100, 100}, true);
         Simulation testSim = SimulationTestUtils.createSimulation(testEnv);
-        Organism testOrg = Organism.create(testSim, new int[]{0, 0}, 1000, testSim.getLogger());
+        Organism testOrg = Organism.create(testSim, new int[]{0, 0}, 1000);
         testSim.addOrganism(testOrg);
         
         // Platziere den kompilierten Code im Environment

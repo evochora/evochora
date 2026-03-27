@@ -372,7 +372,7 @@ class OrganismRestoreBuilderTest {
     @Tag("unit")
     void testRestoreBuilder_RoundTrip() {
         // Create original organism
-        Organism original = Organism.create(simulation, new int[]{10, 10}, 500, simulation.getLogger());
+        Organism original = Organism.create(simulation, new int[]{10, 10}, 500);
         original.setParentId(5);
         original.setBirthTick(1000L);
         original.setProgramId("test-prog");

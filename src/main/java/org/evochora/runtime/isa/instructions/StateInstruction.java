@@ -273,7 +273,7 @@ public class StateInstruction extends Instruction {
         if (energy > 0 && organism.getEr() >= energy) {
             int[] childIp = organism.getTargetCoordinate(organism.getActiveDp(), delta, simulation.getEnvironment());
             organism.takeEr(energy); // Deduct the energy given to the child
-            Organism child = Organism.create(simulation, childIp, energy, organism.getLogger());
+            Organism child = Organism.create(simulation, childIp, energy);
             child.setDv(childDv);
             child.setParentId(organism.getId());
             child.setBirthTick(simulation.getCurrentTick());
@@ -438,7 +438,7 @@ public class StateInstruction extends Instruction {
             if (energy > 0 && organism.getEr() >= energy) {
                 int[] childIp = organism.getTargetCoordinate(organism.getActiveDp(), delta, environment);
                 organism.takeEr(energy); // Deduct the energy given to the child
-                Organism child = Organism.create(simulation, childIp, energy, organism.getLogger());
+                Organism child = Organism.create(simulation, childIp, energy);
                 child.setDv(childDv);
                 child.setParentId(organism.getId());
                 child.setBirthTick(simulation.getCurrentTick());
@@ -470,7 +470,7 @@ public class StateInstruction extends Instruction {
             if (energy > 0 && organism.getEr() >= energy) {
                 int[] childIp = organism.getTargetCoordinate(organism.getActiveDp(), delta, environment);
                 organism.takeEr(energy); // Deduct the energy given to the child
-                Organism child = Organism.create(simulation, childIp, energy, organism.getLogger());
+                Organism child = Organism.create(simulation, childIp, energy);
                 child.setDv(childDv);
                 child.setParentId(organism.getId());
                 child.setBirthTick(simulation.getCurrentTick());

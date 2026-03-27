@@ -85,7 +85,7 @@ class InstructionInterceptorTest {
         simulation = new Simulation(environment, policyManager, organismConfig, 1);
 
         // Create organism at position [5, 5] with 1000 energy
-        organism = Organism.create(simulation, new int[]{5, 5}, 1000, null);
+        organism = Organism.create(simulation, new int[]{5, 5}, 1000);
         simulation.addOrganism(organism);
 
         // Place NOP instruction at organism's IP

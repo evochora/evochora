@@ -37,7 +37,7 @@ public final class CompilerRunner {
         Environment environment = simulation.getEnvironment();
         
         // First, create the organism so we have the ownerId
-        Organism org = Organism.create(simulation, startPos, 1000, simulation.getLogger());
+        Organism org = Organism.create(simulation, startPos, 1000);
         org.setProgramId(artifact.programId());
         simulation.addOrganism(org);
         

@@ -136,12 +136,12 @@ class RegAnalysisHandlerTest {
     }
 
     @Test
-    void testValidFdrRegister() {
+    void testForbiddenFdrRegisterRejected() {
         RegNode regNode = new RegNode("PARAM", "%FDR0", TEST_SOURCE);
 
         handler.analyze(regNode, symbolTable, diagnostics);
 
-        assertFalse(diagnostics.hasErrors());
-        assertTrue(symbolTable.resolve("PARAM", "test.s").isPresent());
+        assertTrue(diagnostics.hasErrors());
+        assertFalse(symbolTable.resolve("PARAM", "test.s").isPresent());
     }
 }

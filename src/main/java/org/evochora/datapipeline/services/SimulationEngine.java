@@ -482,7 +482,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             ProgramInfo info = programInfo.get(programPath);
             int[] startPosition = positions.stream().mapToInt(i -> i).toArray();
 
-            Organism organism = Organism.create(simulation, startPosition, orgConfig.getInt("initialEnergy"), log);
+            Organism organism = Organism.create(simulation, startPosition, orgConfig.getInt("initialEnergy"));
             organism.setProgramId(info.programId());
             simulation.addOrganism(organism);
             placeOrganismCodeAndObjects(simulation, organism, info.artifact(), startPosition);

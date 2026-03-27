@@ -72,7 +72,11 @@ public final class LinkingContext {
     public int currentAddress() { return linearAddressCursor; }
 
     /**
-     * @return The map of call site bindings.
+     * Returns call site bindings. Outer key: linear address of the CALL instruction.
+     * Inner map: formal register ID (FDR_BASE+i or FLR_BASE+i) to source register ID.
+     * Mutable before {@link #freeze()}, deeply unmodifiable after.
+     *
+     * @return the call site bindings map
      */
     public Map<Integer, Map<Integer, Integer>> callSiteBindings() {
         return callSiteBindings;

@@ -194,22 +194,10 @@ public class SimulationRestorer {
         List<OrganismState> organismStates = snapshot.getOrganismsList();
         List<PluginState> pluginStates = snapshot.getPluginStatesList();
 
-        // 7. Restore genome hash set from snapshot (with backwards-compatible fallback)
+        // 7. Restore genome hash set from snapshot
         LongOpenHashSet allGenomesEverSeen = new LongOpenHashSet();
-        List<Long> savedHashes = snapshot.getAllGenomeHashesEverSeenList();
-        if (!savedHashes.isEmpty()) {
-            for (long hash : savedHashes) {
-                allGenomesEverSeen.add(hash);
-            }
-        } else {
-            // Backwards compatibility: old simulations have no saved genome set.
-            // Reconstruct from living organisms' genome hashes (loses extinct genomes).
-            for (OrganismState org : organismStates) {
-                long hash = org.getGenomeHash();
-                if (hash != 0L) {
-                    allGenomesEverSeen.add(hash);
-                }
-            }
+        for (long hash : snapshot.getAllGenomeHashesEverSeenList()) {
+            allGenomesEverSeen.add(hash);
         }
 
         log.debug("Resume state: currentTick={}, totalOrganismsCreated={}, totalUniqueGenomes={}, organisms={}",

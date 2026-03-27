@@ -155,8 +155,9 @@ public class Lexer {
         if (!text.startsWith("%")) {
             return false;
         }
+        String upper = text.toUpperCase();
         for (RegisterBank bank : RegisterBank.values()) {
-            if (bank.count > 0 && text.matches(bank.prefix + "\\d+")) {
+            if (bank.count > 0 && upper.matches(bank.prefix + "\\d+")) {
                 return true;
             }
         }

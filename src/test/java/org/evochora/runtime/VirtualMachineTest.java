@@ -36,7 +36,7 @@ class VirtualMachineTest {
 
     @Test
     void peekNextInstruction_validCode_returnsData() {
-        Organism org = Organism.create(sim, new int[]{10, 10}, 1000, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{10, 10}, 1000);
         sim.addOrganism(org);
 
         // Place SETI %DR0, DATA:42 at organism IP
@@ -58,7 +58,7 @@ class VirtualMachineTest {
 
     @Test
     void peekNextInstruction_deadOrganism_returnsNull() {
-        Organism org = Organism.create(sim, new int[]{10, 10}, 1000, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{10, 10}, 1000);
         sim.addOrganism(org);
 
         int setiOpcode = Instruction.getInstructionIdByName("SETI");
@@ -71,7 +71,7 @@ class VirtualMachineTest {
 
     @Test
     void peekNextInstruction_emptyMolecule_returnsNull() {
-        Organism org = Organism.create(sim, new int[]{10, 10}, 1000, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{10, 10}, 1000);
         sim.addOrganism(org);
 
         // IP points to empty cell (default)
@@ -80,7 +80,7 @@ class VirtualMachineTest {
 
     @Test
     void peekNextInstruction_nonCodeMolecule_returnsNull() {
-        Organism org = Organism.create(sim, new int[]{10, 10}, 1000, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{10, 10}, 1000);
         sim.addOrganism(org);
 
         // Place a DATA molecule (not CODE) at IP
@@ -93,7 +93,7 @@ class VirtualMachineTest {
 
     @Test
     void peekNextInstruction_unknownOpcode_returnsNull() {
-        Organism org = Organism.create(sim, new int[]{10, 10}, 1000, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{10, 10}, 1000);
         sim.addOrganism(org);
 
         // Place CODE molecule with an opcode that has no planner (very high value)
@@ -104,7 +104,7 @@ class VirtualMachineTest {
 
     @Test
     void peekNextInstruction_capturesRegisterValues() {
-        Organism org = Organism.create(sim, new int[]{10, 10}, 1000, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{10, 10}, 1000);
         sim.addOrganism(org);
         org.writeOperand(0, 777);
 

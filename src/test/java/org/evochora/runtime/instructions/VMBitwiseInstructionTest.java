@@ -36,7 +36,7 @@ public class VMBitwiseInstructionTest {
     void setUp() {
         environment = new Environment(new int[]{100, 100}, true);
         sim = SimulationTestUtils.createSimulation(environment);
-        org = Organism.create(sim, startPos, 10000, sim.getLogger());
+        org = Organism.create(sim, startPos, 10000);
         sim.addOrganism(org);
     }
 

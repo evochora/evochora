@@ -125,6 +125,41 @@ public class RegDirectiveTest {
     }
 
     /**
+     * Verifies that PLR registers are rejected outside a .PROC block (proc-scoped).
+     */
+    @Test
+    @Tag("unit")
+    void testRegDirectivePlrOutsideProcIsRejected() {
+        String source = ".REG %POS %PLR0";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics);
+        List<Token> tokens = lexer.scanTokens();
+        Parser parser = new Parser(tokens, diagnostics, registry());
+
+        parser.parse();
+
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.summary()).contains("not available in the current scope");
+    }
+
+    /**
+     * Verifies that FLR registers cannot be aliased — they are managed by the CALL binding mechanism.
+     */
+    @Test
+    @Tag("unit")
+    void testRegDirectiveFlrIsForbidden() {
+        String source = ".REG %LOC_PARAM %FLR0";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics);
+        List<Token> tokens = lexer.scanTokens();
+        Parser parser = new Parser(tokens, diagnostics, registry());
+
+        parser.parse();
+
+        assertThat(diagnostics.hasErrors()).isTrue();
+    }
+
+    /**
      * Verifies that FDR registers cannot be aliased — they are managed by the CALL binding mechanism.
      */
     @Test

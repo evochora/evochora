@@ -120,7 +120,6 @@ public class Organism {
     private int[] ipBeforeFetch;
     private int[] dvBeforeFetch;
     private InstructionExecutionData lastInstructionExecution = null;
-    private final Logger logger;
     private final Simulation simulation;
     private final int[] initialPosition;
     private final Random random;
@@ -135,10 +134,9 @@ public class Organism {
      * @param id The unique identifier for this organism.
      * @param startIp The initial coordinate of the Instruction Pointer (IP).
      * @param initialEnergy The starting energy (ER) of the organism.
-     * @param logger The logger instance for logging events.
      * @param simulation The simulation instance this organism belongs to.
      */
-    Organism(int id, int[] startIp, int initialEnergy, Logger logger, Simulation simulation) {
+    Organism(int id, int[] startIp, int initialEnergy, Simulation simulation) {
         this.id = id;
         this.ip = startIp;
         this.dps = new ArrayList<>(Config.NUM_DATA_POINTERS);
@@ -157,7 +155,6 @@ public class Organism {
         this.er = initialEnergy;
         this.sr = 0;
         this.mr = 0;
-        this.logger = logger;
         this.simulation = simulation;
         this.dv = new int[startIp.length];
         this.dv[0] = 1; // Default direction: +X
@@ -190,12 +187,11 @@ public class Organism {
      * @param simulation The simulation instance.
      * @param startIp The initial coordinate of the Instruction Pointer.
      * @param initialEnergy The starting energy.
-     * @param logger The logger instance.
      * @return A newly created Organism.
      */
-    public static Organism create(Simulation simulation, int[] startIp, int initialEnergy, Logger logger) {
+    public static Organism create(Simulation simulation, int[] startIp, int initialEnergy) {
         int newId = simulation.getNextOrganismId();
-        return new Organism(newId, startIp, initialEnergy, logger, simulation);
+        return new Organism(newId, startIp, initialEnergy, simulation);
     }
 
     /**
@@ -276,8 +272,6 @@ public class Organism {
 
         // Derived fields from simulation
         this.simulation = simulation;
-        this.logger = null; // Restored organisms don't have individual loggers
-
         // Load limits and constants from simulation config
         com.typesafe.config.Config orgConfig = simulation.getOrganismConfig();
         this.maxEnergy = orgConfig.getInt("max-energy");
@@ -1134,8 +1128,6 @@ public class Organism {
     public boolean wasPreviousInstructionFailed() { return previousInstructionFailed; }
     /** @return The reason for the last instruction failure. */
     public String getFailureReason() { return failureReason; }
-    /** @return The logger instance. */
-    public Logger getLogger() { return logger; }
     /** @return A copy of the current Direction Vector (DV). */
     public int[] getDv() { return Arrays.copyOf(dv, dv.length); }
     /** @return The simulation instance. */

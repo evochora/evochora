@@ -29,7 +29,6 @@ import org.openjdk.jmh.annotations.Setup;
 import org.openjdk.jmh.annotations.State;
 import org.openjdk.jmh.annotations.TearDown;
 import org.openjdk.jmh.annotations.Warmup;
-import org.slf4j.LoggerFactory;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
@@ -260,8 +259,7 @@ public class SimulationBenchmark {
             int offsetY = row * ySpacing;
 
             int[] startIp = new int[]{offsetX, offsetY};
-            Organism organism = Organism.create(simulation, startIp, MAX_ENERGY,
-                    LoggerFactory.getLogger(SimulationBenchmark.class));
+            Organism organism = Organism.create(simulation, startIp, MAX_ENERGY);
 
             int labelMask = random.nextInt(0x7FFFF) + 1;
 

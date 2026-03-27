@@ -296,7 +296,7 @@ public final class OrganismStateConverter {
                     
                     // Determine register type via RegisterBank lookup
                     RegisterBank regBank = RegisterBank.forId(registerId);
-                    String registerType = regBank != null ? regBank.name() : "DR";
+                    String registerType = regBank != null ? regBank.name() : "UNKNOWN";
                     
                     // Resolve register value: use value BEFORE execution (null if unavailable)
                     RegisterValueView registerValue = (registerValuesBefore != null)

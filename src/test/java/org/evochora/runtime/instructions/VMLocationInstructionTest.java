@@ -32,7 +32,7 @@ public class VMLocationInstructionTest {
         Instruction.init();
         Environment environment = new Environment(new int[]{10, 10}, true);
         sim = SimulationTestUtils.createSimulation(environment);
-        org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        org = Organism.create(sim, new int[]{0, 0}, 1000);
         sim.addOrganism(org);
     }
 
@@ -124,17 +124,6 @@ public class VMLocationInstructionTest {
         int[] newLocation = {1, 2};
         org.writeLocationOperand(RegisterBank.LR.base, newLocation);
         assertThat((int[]) org.readOperand(RegisterBank.LR.base)).isEqualTo(newLocation);
-    }
-
-    /**
-     * Confirms the type safety of the `writeLocationOperand` method, which should only accept vector types.
-     * This test is conceptual as a direct call with a non-vector type would be a compile-time error.
-     */
-    @Test
-    @Tag("unit")
-    void testSettingNonVectorToLrFails() {
-        // The writeLocationOperand method only accepts int[], so this is implicitly handled by the compiler.
-        // org.writeLocationOperand(RegisterBank.LR.base,  123); // This would not compile
     }
 
     // --- LRLR Instruction Tests ---
@@ -835,7 +824,7 @@ public class VMLocationInstructionTest {
         env.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), labelPos);
 
         // Create a second organism that owns the target cell
-        Organism other = Organism.create(sim, new int[]{8, 7}, 100, sim.getLogger());
+        Organism other = Organism.create(sim, new int[]{8, 7}, 100);
         sim.addOrganism(other);
         env.setOwnerId(other.getId(), labelPos);
 
@@ -860,7 +849,7 @@ public class VMLocationInstructionTest {
         env.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), labelPos);
 
         // Create a second organism that owns the target cell
-        Organism other = Organism.create(sim, new int[]{9, 8}, 100, sim.getLogger());
+        Organism other = Organism.create(sim, new int[]{9, 8}, 100);
         sim.addOrganism(other);
         env.setOwnerId(other.getId(), labelPos);
 

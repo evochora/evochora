@@ -38,7 +38,7 @@ public class VMControlFlowInstructionTest {
     void setUp() {
         environment = new Environment(new int[]{100}, true);
         sim = SimulationTestUtils.createSimulation(environment);
-        org = Organism.create(sim, startPos, 1000, sim.getLogger());
+        org = Organism.create(sim, startPos, 1000);
         sim.addOrganism(org);
     }
 
@@ -198,7 +198,7 @@ public class VMControlFlowInstructionTest {
         environment.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), labelPos);
         // Place RET at the procedure entry (right after the label)
         environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("RET")), afterLabel);
-        // Place WAIT after the CALL to stop skip loop when RET returns here
+        // Place WAIT after the CALL to stop execution when RET returns here
         int[] returnTarget = org.getNextInstructionPosition(org.getIp(), org.getDv(), environment);
         returnTarget = org.getNextInstructionPosition(returnTarget, org.getDv(), environment);
         environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), returnTarget);
@@ -207,15 +207,20 @@ public class VMControlFlowInstructionTest {
         org.writeOperand(RegisterBank.FDR.base + 0, 111);
         org.writeOperand(RegisterBank.FDR.base + 1, 222);
 
-        // Execute CALL
+        // Tick 1: CALL → jumps to afterLabel (RET instruction)
         placeInstruction("CALL", labelHash);
         sim.tick();
+        assertThat(org.getCallStack()).hasSize(1);
 
-        // Now inside procedure — FDR should still be 111/222 (CALL saved them, no modification yet)
-        // The RET executes immediately (placed at afterLabel), restoring registers
-        // After RET, we're back at returnTarget
+        // Mutate FDRs inside the callee to verify RET restores them
+        org.writeOperand(RegisterBank.FDR.base + 0, 999);
+        org.writeOperand(RegisterBank.FDR.base + 1, 888);
 
-        // Verify FDR is restored
+        // Tick 2: RET → restores saved registers and returns
+        sim.tick();
+        assertThat(org.getCallStack()).isEmpty();
+
+        // Verify FDRs are restored to pre-CALL values (not the callee's 999/888)
         assertThat((int) org.readOperand(RegisterBank.FDR.base + 0)).isEqualTo(111);
         assertThat((int) org.readOperand(RegisterBank.FDR.base + 1)).isEqualTo(222);
     }
@@ -431,7 +436,8 @@ public class VMControlFlowInstructionTest {
     }
 
     @org.junit.jupiter.api.AfterEach
-    void assertNoInstructionFailure() {
+    void cleanup() {
+        CallBindingRegistry.getInstance().clearAll();
         assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
     }
 }

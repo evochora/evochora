@@ -49,7 +49,9 @@ Split `Symbol.Type.ALIAS` into data and location variants.
 - `ALIAS, LOCATION_ALIAS → TokenKind.ALIAS` (Visualizer does not distinguish)
 
 **CallAnalysisHandler.java** (`features/proc/`):
-- Legacy validation: accept LOCATION_ALIAS alongside ALIAS where both are currently accepted
+- LREF/LVAL argument validation: if the argument resolves to an ALIAS symbol, reject it (data alias in location parameter position). Only accept LOCATION_ALIAS. Error: "LREF argument must be a location register, but '%MY_REG' is a data register alias."
+- REF/VAL argument validation: if the argument resolves to a LOCATION_ALIAS symbol, reject it (location alias in data parameter position). Only accept ALIAS. Error: "REF argument must be a data register, but '%POS' is a location register alias."
+- Legacy WITH validation: accept both ALIAS and LOCATION_ALIAS (WITH is untyped, runtime handles it)
 
 **Tests:**
 - Test: `.REG %POS %LR0` then `SETI %POS 42` → compile error (location alias in data instruction)
@@ -188,10 +190,14 @@ After both steps:
 ### Tests
 
 **Step 1 tests (alias type safety):**
-- `.REG %POS %LR0` + `SETI %POS 42` → compile error
-- `.REG %COUNTER %DR0` + `CRLR %COUNTER` → compile error
-- `.REG %POS %LR0` + `SKLR %POS` → OK
-- `.REG %COUNTER %DR0` + `SETI %COUNTER 42` → OK
+- `.REG %POS %LR0` + `SETI %POS 42` → compile error (location alias in data instruction)
+- `.REG %COUNTER %DR0` + `CRLR %COUNTER` → compile error (data alias in location instruction)
+- `.REG %POS %LR0` + `SKLR %POS` → OK (location alias in location instruction)
+- `.REG %COUNTER %DR0` + `SETI %COUNTER 42` → OK (data alias in data instruction)
+- `.REG %MY_REG %DR0` + `CALL proc LREF %MY_REG` → compile error (data alias as LREF argument)
+- `.REG %MY_LOC %LR0` + `CALL proc REF %MY_LOC` → compile error (location alias as REF argument)
+- `.REG %MY_LOC %LR0` + `CALL proc LREF %MY_LOC` → OK (location alias as LREF argument)
+- `.REG %MY_REG %DR0` + `CALL proc REF %MY_REG` → OK (data alias as REF argument)
 - Existing alias tests remain green
 
 **Step 2 tests (parameter resolution):**

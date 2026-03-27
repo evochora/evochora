@@ -72,7 +72,7 @@ public class RuntimeIntegrationTest {
 			env.setMolecule(Molecule.fromInt(e.getValue()), abs);
 		}
 
-		Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+		Organism org = Organism.create(sim, new int[]{0, 0}, 1000);
 		org.setProgramId(artifact.programId());
 		sim.addOrganism(org);
 
@@ -123,7 +123,7 @@ public class RuntimeIntegrationTest {
             env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());
         }
 
-        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000);
         org.setProgramId(artifact.programId());
         sim.addOrganism(org);
 
@@ -192,7 +192,7 @@ public class RuntimeIntegrationTest {
 
         sim.setProgramArtifacts(Map.of(corruptedArtifact.programId(), corruptedArtifact));
 
-        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000);
         org.setProgramId(correctArtifact.programId());
         sim.addOrganism(org);
 
@@ -268,7 +268,7 @@ public class RuntimeIntegrationTest {
             env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());
         }
 
-        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000);
         org.setProgramId(artifact.programId());
         sim.addOrganism(org);
 
@@ -324,7 +324,7 @@ public class RuntimeIntegrationTest {
             env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());
         }
 
-        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000);
         org.setProgramId(artifact.programId());
         sim.addOrganism(org);
 
@@ -381,7 +381,7 @@ public class RuntimeIntegrationTest {
             env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());
         }
 
-        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000);
         org.setProgramId(artifact.programId());
         sim.addOrganism(org);
 
@@ -432,7 +432,7 @@ public class RuntimeIntegrationTest {
             env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());
         }
 
-        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000);
         org.setProgramId(artifact.programId());
         sim.addOrganism(org);
 
@@ -476,7 +476,7 @@ public class RuntimeIntegrationTest {
             env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());
         }
 
-        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000);
         org.setProgramId(artifact.programId());
         sim.addOrganism(org);
 
@@ -518,7 +518,7 @@ public class RuntimeIntegrationTest {
             env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());
         }
 
-        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000);
         org.setProgramId(artifact.programId());
         sim.addOrganism(org);
 

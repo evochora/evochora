@@ -35,7 +35,7 @@ public class VMStateInstructionAdvancedTest {
     void setUp() {
         environment = new Environment(new int[]{50, 50}, true);
         sim = SimulationTestUtils.createSimulation(environment);
-        org = Organism.create(sim, new int[]{10, 10}, 1000, sim.getLogger());
+        org = Organism.create(sim, new int[]{10, 10}, 1000);
         sim.addOrganism(org);
     }
 

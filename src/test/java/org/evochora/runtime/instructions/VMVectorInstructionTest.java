@@ -35,7 +35,7 @@ public class VMVectorInstructionTest {
     void setUp() {
         environment = new Environment(new int[]{100, 100}, true);
         sim = SimulationTestUtils.createSimulation(environment);
-        org = Organism.create(sim, startPos, 2000, sim.getLogger());
+        org = Organism.create(sim, startPos, 2000);
         sim.addOrganism(org);
     }
 
@@ -199,7 +199,7 @@ public class VMVectorInstructionTest {
     void testRtri3dOtherAxesUnaffected() {
         Environment env3d = new Environment(new int[]{50, 50, 50}, true);
         Simulation sim3d = SimulationTestUtils.createSimulation(env3d);
-        Organism org3d = Organism.create(sim3d, new int[]{5, 5, 5}, 2000, sim3d.getLogger());
+        Organism org3d = Organism.create(sim3d, new int[]{5, 5, 5}, 2000);
         sim3d.addOrganism(org3d);
 
         // Helper to place instruction in 3D env
@@ -232,7 +232,7 @@ public class VMVectorInstructionTest {
         assertThat((int[]) org.readOperand(0)).containsExactly(1, 0);
         assertThat(org.isInstructionFailed()).isTrue();
         // Reset org to avoid AfterEach failure assertion
-        org = Organism.create(sim, startPos, 2000, sim.getLogger());
+        org = Organism.create(sim, startPos, 2000);
         sim.addOrganism(org);
     }
 

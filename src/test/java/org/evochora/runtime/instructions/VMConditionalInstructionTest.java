@@ -37,8 +37,8 @@ public class VMConditionalInstructionTest {
         environment = new Environment(new int[]{100, 100}, true);
         sim = SimulationTestUtils.createSimulation(environment);
         // Create a dummy organism to ensure the main test organism does not have ID 0
-        Organism.create(sim, new int[]{-1, -1}, 1, sim.getLogger());
-        org = Organism.create(sim, startPos, 1000, sim.getLogger());
+        Organism.create(sim, new int[]{-1, -1}, 1);
+        org = Organism.create(sim, startPos, 1000);
         sim.addOrganism(org);
         org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0).toInt());
     }

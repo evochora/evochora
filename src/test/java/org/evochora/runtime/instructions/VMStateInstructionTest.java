@@ -36,7 +36,7 @@ public class VMStateInstructionTest {
     void setUp() {
         environment = new Environment(new int[]{100, 100}, true);
         sim = SimulationTestUtils.createSimulation(environment);
-        org = Organism.create(sim, startPos, 1000, sim.getLogger());
+        org = Organism.create(sim, startPos, 1000);
         sim.addOrganism(org);
     }
 
@@ -726,7 +726,7 @@ public class VMStateInstructionTest {
     @Tag("unit")
     void testCmri_OnlyOrphansOwnMolecules() {
         // Create another organism
-        Organism other = Organism.create(sim, new int[]{50, 50}, 500, sim.getLogger());
+        Organism other = Organism.create(sim, new int[]{50, 50}, 500);
         sim.addOrganism(other);
 
         int[] ownPos = new int[]{10, 10};

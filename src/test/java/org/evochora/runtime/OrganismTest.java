@@ -46,7 +46,7 @@ public class OrganismTest {
     @Test
     @Tag("unit")
     void testPlanTickStrictTypingOnNonCodeCell() {
-        Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 100);
         sim.addOrganism(org);
         // Place a DATA symbol at IP - should be treated as NOP (auto-skipped)
         environment.setMolecule(new Molecule(Config.TYPE_DATA, 1), org.getIp());
@@ -66,7 +66,7 @@ public class OrganismTest {
     @Test
     @Tag("unit")
     void testPlanTickUnknownOpcodeProducesNop() {
-        Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 100);
         sim.addOrganism(org);
         // Place a CODE opcode that doesn't exist (e.g., 999)
         environment.setMolecule(new Molecule(Config.TYPE_CODE, 999), org.getIp());
@@ -89,7 +89,7 @@ public class OrganismTest {
     void testEnergyDecreasesAndDeath() {
         // Start with small energy; execute WAIT until dead
         // Use WAIT (not NOP) because NOP is instant-skip
-        Organism org = Organism.create(sim, new int[]{0, 0}, 2, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 2);
         sim.addOrganism(org);
         int waitId = Instruction.getInstructionIdByName("WAIT");
         environment.setMolecule(new Molecule(Config.TYPE_CODE, waitId), new int[]{0, 0});
@@ -112,7 +112,7 @@ public class OrganismTest {
     @Test
     @Tag("unit")
     void testIpAdvancesAlongDv() {
-        Organism org = Organism.create(sim, new int[]{0, 0}, 10, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 10);
         sim.addOrganism(org);
         // Move along +X
         org.setDv(new int[]{1, 0});
@@ -138,7 +138,7 @@ public class OrganismTest {
     @Test
     @Tag("unit")
     void testGetTargetCoordinateFromDp() {
-        Organism org = Organism.create(sim, new int[]{10, 10}, 100, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{10, 10}, 100);
         sim.addOrganism(org);
         // Set DP to somewhere else to ensure DP is used
         org.setDp(0, new int[]{5, 5});        int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);        assertThat(target).isEqualTo(new int[]{5, 6});
@@ -151,7 +151,7 @@ public class OrganismTest {
     @Test
     @Tag("unit")
     void testDataStackPushPopOrder() {
-        Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 100);
         Deque<Object> ds = org.getDataStack();
         int a = new Molecule(Config.TYPE_DATA, 1).toInt();
         int b = new Molecule(Config.TYPE_DATA, 2).toInt();
@@ -172,7 +172,7 @@ public class OrganismTest {
     @Test
     @Tag("unit")
     void testRegisterAccessDrPdrFdr() {
-        Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 100);
 
         // DR
         int dataVal = new Molecule(Config.TYPE_DATA, 42).toInt();
@@ -198,7 +198,7 @@ public class OrganismTest {
     @Test
     @Tag("unit")
     void testIsCellAccessible_OwnedBySelf_ReturnsTrue() {
-        Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 100);
         sim.addOrganism(org);
         
         assertThat(org.isCellAccessible(org.getId())).isTrue();
@@ -211,10 +211,10 @@ public class OrganismTest {
     @Test
     @Tag("unit")
     void testIsCellAccessible_OwnedByParent_ReturnsFalse() {
-        Organism parent = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
+        Organism parent = Organism.create(sim, new int[]{0, 0}, 100);
         sim.addOrganism(parent);
         
-        Organism child = Organism.create(sim, new int[]{1, 0}, 100, sim.getLogger());
+        Organism child = Organism.create(sim, new int[]{1, 0}, 100);
         child.setParentId(parent.getId());
         sim.addOrganism(child);
         
@@ -228,8 +228,8 @@ public class OrganismTest {
     @Test
     @Tag("unit")
     void testIsCellAccessible_OwnedByOther_ReturnsFalse() {
-        Organism org1 = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
-        Organism org2 = Organism.create(sim, new int[]{1, 0}, 100, sim.getLogger());
+        Organism org1 = Organism.create(sim, new int[]{0, 0}, 100);
+        Organism org2 = Organism.create(sim, new int[]{1, 0}, 100);
         sim.addOrganism(org1);
         sim.addOrganism(org2);
         
@@ -242,7 +242,7 @@ public class OrganismTest {
     @Test
     @Tag("unit")
     void testIsCellAccessible_Unowned_ReturnsFalse() {
-        Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 100);
         sim.addOrganism(org);
         
         assertThat(org.isCellAccessible(0)).isFalse();
@@ -256,7 +256,7 @@ public class OrganismTest {
     @Test
     @Tag("unit")
     void testMrRegister_MaskedTo4Bits() {
-        Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 100);
         
         org.setMr(15); // Max 4-bit value
         assertThat(org.getMr()).isEqualTo(15);
@@ -274,7 +274,7 @@ public class OrganismTest {
     @Test
     @Tag("unit")
     void testMrRegister_DefaultsToZero() {
-        Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 100);
         assertThat(org.getMr()).isEqualTo(0);
     }
 
@@ -287,7 +287,7 @@ public class OrganismTest {
     @Test
     @Tag("unit")
     void testDeathClearsOwnershipAndMarker() {
-        Organism org = Organism.create(sim, new int[]{10, 10}, 100, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{10, 10}, 100);
         sim.addOrganism(org);
         
         // Place some molecules owned by this organism with marker=5
@@ -328,7 +328,7 @@ public class OrganismTest {
     @Tag("unit")
     void testMaxSkipRecoveryToInitialPosition() {
         int[] initialPos = new int[]{50, 50};
-        Organism org = Organism.create(sim, initialPos, 100, sim.getLogger());
+        Organism org = Organism.create(sim, initialPos, 100);
         sim.addOrganism(org);
 
         // Move IP away from initial position into empty space
@@ -349,7 +349,7 @@ public class OrganismTest {
     @Tag("unit")
     void testMaxSkipRecoveryUnwindsCallStack() {
         int[] initialPos = new int[]{50, 50};
-        Organism org = Organism.create(sim, initialPos, 100, sim.getLogger());
+        Organism org = Organism.create(sim, initialPos, 100);
         sim.addOrganism(org);
 
         int[] returnAddr = new int[]{60, 50};
@@ -376,7 +376,7 @@ public class OrganismTest {
     @Tag("unit")
     void testMaxSkipRecoveryRestoresPdrs() {
         int[] initialPos = new int[]{50, 50};
-        Organism org = Organism.create(sim, initialPos, 100, sim.getLogger());
+        Organism org = Organism.create(sim, initialPos, 100);
         sim.addOrganism(org);
 
         // Set known PDR values and capture snapshot (caller's state)
@@ -409,7 +409,7 @@ public class OrganismTest {
     @Tag("unit")
     void testNestedCallRestoresFdrs() {
         int[] initialPos = new int[]{50, 50};
-        Organism org = Organism.create(sim, initialPos, 100, sim.getLogger());
+        Organism org = Organism.create(sim, initialPos, 100);
         sim.addOrganism(org);
 
         org.writeOperand(RegisterBank.FDR.base, 111);
@@ -439,7 +439,7 @@ public class OrganismTest {
     @Tag("unit")
     void testNestedCallRestoresPlrs() {
         int[] initialPos = new int[]{50, 50};
-        Organism org = Organism.create(sim, initialPos, 100, sim.getLogger());
+        Organism org = Organism.create(sim, initialPos, 100);
         sim.addOrganism(org);
 
         int[] originalVec = new int[]{10, 20};
@@ -467,7 +467,7 @@ public class OrganismTest {
     @Tag("unit")
     void testMaxSkipAppliesErrorPenalty() {
         int startEnergy = 100;
-        Organism org = Organism.create(sim, new int[]{50, 50}, startEnergy, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{50, 50}, startEnergy);
         sim.addOrganism(org);
         // Environment is empty (all CODE:0 = NOP), so after NOP execution
         // the IP advances and skipNopCells will hit max-skip.
@@ -489,7 +489,7 @@ public class OrganismTest {
     @Tag("unit")
     void testMaxSkipProgressiveRecovery() {
         int[] initialPos = new int[]{50, 50};
-        Organism org = Organism.create(sim, initialPos, 100, sim.getLogger());
+        Organism org = Organism.create(sim, initialPos, 100);
         sim.addOrganism(org);
 
         // Push two frames (frame 2 on top, frame 1 below)
