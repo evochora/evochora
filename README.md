@@ -247,7 +247,8 @@ Unlike classical von Neumann architectures, jump instructions in Evochora do not
          |   +-------------v-------------------------------v---------+   |
          |   |                  Virtual Machine                      |   |
          |   |                                                       |   |
-         |   |  Registers: [DRs] [PRs] [FPRs] [LRs] (Locations)      |   |
+         |   |  Registers: [DRs] [LRs] [PDRs] [PLRs]                 |   |
+         |   |             [FDRs] [FLRs] [SDRs] [SLRs]               |   |
          |   |                                                       |   |
          |   |  Stacks:    [Data Stack] [Call Stack] [Loc. Stack]    |   |
          |   |                                                       |   |

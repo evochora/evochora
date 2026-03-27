@@ -661,7 +661,7 @@ Update all documentation to reflect the new architecture. Can be done incrementa
 - Section 6 "Location Operations": all location banks work with location instructions. New instructions PSLI and LRLI (label-to-location resolution via fuzzy matching)
 - Section 7 ".REG": expanded for all banks, automatic scope detection
 - Section 7 ".PREG": removed
-- Section 7 ".PROC": LREF/LVAL parameter types. Remove all WITH syntax references (H2)
+- Section 7 ".PROC": LREF/LVAL parameter types, LVAL with labels. Remove all WITH syntax references from the entire document (H2 removed the WITH code paths — documentation must match)
 - New section: SDR/SLR persistent state concept
 - All code examples: %PR → %PDR, %FPR → %FDR
 
