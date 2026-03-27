@@ -54,7 +54,6 @@ public class ControlFlowInstruction extends Instruction {
 
     @Override
     public void execute(ExecutionContext context, ProgramArtifact artifact) {
-        ProcedureCallHandler callHandler = new ProcedureCallHandler(context);
         Organism organism = context.getOrganism();
         Environment environment = context.getWorld();
 
@@ -73,10 +72,10 @@ public class ControlFlowInstruction extends Instruction {
                         organism.instructionFailed("CALL: No matching label found for hash " + callLabelHash);
                         return;
                     }
-                    callHandler.executeCall(callTargetIp, callLabelHash, artifact);
+                    ProcedureCallHandler.executeCall(context, callTargetIp, callLabelHash, artifact);
                     break;
                 case "RET":
-                    callHandler.executeReturn();
+                    ProcedureCallHandler.executeReturn(context);
                     break;
                 case "JMPI":
                     if (operands.size() < 1) { organism.instructionFailed("JMPI requires target label hash."); return; }

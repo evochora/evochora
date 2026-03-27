@@ -51,7 +51,6 @@ import org.evochora.datapipeline.resume.SimulationRestorer;
 import org.evochora.datapipeline.resume.SnapshotLoader;
 import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.runtime.Simulation;
-import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.spi.IBirthHandler;
 import org.evochora.runtime.spi.IDeathHandler;
@@ -763,8 +762,9 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         }
         organismStateBuilder.setActiveDpIndex(o.getActiveDpIndex());
 
-        for (int slot = 0; slot < RegisterBank.TOTAL_REGISTER_COUNT; slot++) {
-            organismStateBuilder.addRegisters(convertRegisterValueReuse(o.getRegisters()[slot], registerValueBuilder, vectorBuilder));
+        Object[] registers = o.getRegisters();
+        for (int slot = 0; slot < registers.length; slot++) {
+            organismStateBuilder.addRegisters(convertRegisterValueReuse(registers[slot], registerValueBuilder, vectorBuilder));
         }
         for (Object rv : o.getDataStack()) {
             organismStateBuilder.addDataStack(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));

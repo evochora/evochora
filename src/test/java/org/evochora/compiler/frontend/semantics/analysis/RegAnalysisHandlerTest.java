@@ -93,6 +93,7 @@ class RegAnalysisHandlerTest {
 
         assertFalse(diagnostics.hasErrors());
         assertTrue(symbolTable.resolve("TMP", "test.s").isPresent());
+        assertEquals(Symbol.Type.ALIAS, symbolTable.resolve("TMP", "test.s").get().symbol().type());
     }
 
     @Test

@@ -5,33 +5,25 @@ import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Environment;
 
-import java.util.HashMap;
 import java.util.Map;
 
 /**
  * Handles the logic for procedure call (CALL) and return (RET) instructions.
- * This class manages the call stack, parameter bindings, and processor state restoration.
+ * All methods are static to avoid per-instruction object allocation on the hotpath.
  */
-public class ProcedureCallHandler {
+public final class ProcedureCallHandler {
 
-    private final ExecutionContext context;
-
-    /**
-     * Constructs a new ProcedureCallHandler.
-     * @param context The execution context for the current instruction.
-     */
-    public ProcedureCallHandler(ExecutionContext context) {
-        this.context = context;
-    }
+    private ProcedureCallHandler() {}
 
     /**
      * Executes a procedure call. This involves resolving parameter bindings,
      * saving the current processor state, and jumping to the target procedure's address.
+     * @param context The execution context for the current instruction.
      * @param targetIp The absolute coordinates of the target procedure (resolved via LabelIndex).
      * @param labelHash The hash value of the target label (used to look up the procedure name).
      * @param artifact The program artifact containing metadata about the procedure.
      */
-    public void executeCall(int[] targetIp, int labelHash, ProgramArtifact artifact) {
+    public static void executeCall(ExecutionContext context, int[] targetIp, int labelHash, ProgramArtifact artifact) {
         Organism organism = context.getOrganism();
         Environment environment = context.getWorld();
 
@@ -40,11 +32,10 @@ public class ProcedureCallHandler {
             return;
         }
 
-        CallBindingResolver bindingResolver = new CallBindingResolver(context);
-        Map<Integer, Integer> bindings = bindingResolver.resolveBindings();
+        Map<Integer, Integer> bindings = CallBindingResolver.resolveBindings(context);
         int[] ipBeforeFetch = organism.getIpBeforeFetch();
 
-        Map<Integer, Integer> parameterBindings = bindings != null ? new HashMap<>(bindings) : new HashMap<>();
+        Map<Integer, Integer> parameterBindings = bindings != null ? bindings : Map.of();
 
         // CALL now only consumes 1 operand (label hash) instead of N (coordinate delta)
         int instructionLength = 1 + 1; // opcode + label hash
@@ -90,11 +81,6 @@ public class ProcedureCallHandler {
         organism.setCurrentProcLabelHash(labelHash);
 
         // Note: Parameter passing is handled by compiler-generated PUSH/POP sequences.
-        // The compiler generates:
-        //   - PUSH instructions before CALL to push arguments onto the stack
-        //   - POP instructions in the procedure prologue to load parameters into FDRs
-        //   - PUSH instructions before RET to push REF parameters back onto the stack
-        //   - POP instructions after CALL to copy REF parameters back to original registers
         // Skip past the LABEL molecule to the actual procedure code
         int[] codeIp = organism.getNextInstructionPosition(targetIp, organism.getDv(), environment);
         organism.setIp(codeIp);
@@ -104,8 +90,9 @@ public class ProcedureCallHandler {
     /**
      * Executes a procedure return. This involves restoring the processor state
      * from the call stack and jumping back to the return address.
+     * @param context The execution context for the current instruction.
      */
-    public void executeReturn() {
+    public static void executeReturn(ExecutionContext context) {
         Organism organism = context.getOrganism();
 
         if (organism.getCallStack().isEmpty()) {

@@ -7,19 +7,11 @@ import java.util.Map;
 /**
  * Resolves parameter bindings for procedure calls by retrieving
  * pre-compiled bindings from the global registry.
+ * All methods are static to avoid per-instruction object allocation on the hotpath.
  */
-public class CallBindingResolver {
+public final class CallBindingResolver {
 
-    private final ExecutionContext context;
-
-    /**
-     * Creates a new resolver that operates on the given execution context.
-     *
-     * @param context The context containing the organism and the world.
-     */
-    public CallBindingResolver(ExecutionContext context) {
-        this.context = context;
-    }
+    private CallBindingResolver() {}
 
     /**
      * Resolves the parameter bindings for the current CALL instruction.
@@ -28,9 +20,10 @@ public class CallBindingResolver {
      * global registry. A fallback to parsing the source code at runtime is not
      * allowed as it undermines evolutionary stability.
      *
+     * @param context The execution context containing the organism and the world.
      * @return Map from formal register ID to source register ID, or null if not found.
      */
-    public Map<Integer, Integer> resolveBindings() {
+    public static Map<Integer, Integer> resolveBindings(ExecutionContext context) {
         Organism organism = context.getOrganism();
         int[] ipBeforeFetch = organism.getIpBeforeFetch();
 
@@ -40,10 +33,6 @@ public class CallBindingResolver {
         if (bindings != null) {
             return bindings;
         }
-
-        // The old fallback path that parsed the artifact at runtime has been
-        // removed because it violates the condition that runtime logic
-        // must be independent of the artifact.
 
         return null;
     }

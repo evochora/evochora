@@ -1275,6 +1275,11 @@ public class Organism {
      * The layout must match the one created by {@link #snapshotStackSavedRegisters()}.
      */
     public void restoreStackSavedRegisters(Object[] snapshot) {
+        if (snapshot == null || snapshot.length != RegisterBank.STACK_SAVED_SNAPSHOT_SIZE) {
+            throw new IllegalArgumentException(
+                    "STACK_SAVED snapshot must contain " + RegisterBank.STACK_SAVED_SNAPSHOT_SIZE
+                            + " values, got " + (snapshot == null ? "null" : snapshot.length));
+        }
         List<RegisterBank> banks = RegisterBank.allSavedOnCall();
         int offset = 0;
         for (RegisterBank bank : banks) {
@@ -1303,6 +1308,11 @@ public class Organism {
      * The layout must match the one created by {@link #snapshotPersistentRegisters()}.
      */
     public void restorePersistentRegisters(Object[] snapshot) {
+        if (snapshot == null || snapshot.length != RegisterBank.PERSISTENT_SNAPSHOT_SIZE) {
+            throw new IllegalArgumentException(
+                    "PERSISTENT snapshot must contain " + RegisterBank.PERSISTENT_SNAPSHOT_SIZE
+                            + " values, got " + (snapshot == null ? "null" : snapshot.length));
+        }
         List<RegisterBank> banks = RegisterBank.allPersistent();
         int offset = 0;
         for (RegisterBank bank : banks) {

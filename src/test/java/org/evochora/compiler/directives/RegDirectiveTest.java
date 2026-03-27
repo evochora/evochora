@@ -200,6 +200,56 @@ public class RegDirectiveTest {
     }
 
     /**
+     * Verifies that a PDR alias inside a .PROC block resolves correctly through
+     * the full pipeline (Parser → Semantic Analysis → AstPostProcessor).
+     */
+    @Test
+    @Tag("unit")
+    void testRegDirectivePdrAliasResolvesInsideProc() {
+        String source = String.join("\n",
+                ".PROC MY_PROC",
+                "  .REG %TMP %PDR0",
+                "  SETI %TMP DATA:42",
+                "  RET",
+                ".ENDP"
+        );
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics);
+        List<Token> tokens = lexer.scanTokens();
+        Parser parser = new Parser(tokens, diagnostics, registry());
+
+        List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
+
+        String rootAliasChain = "";
+        SymbolTable symbolTable = new SymbolTable(diagnostics);
+        symbolTable.registerModule(rootAliasChain, "<memory>");
+        symbolTable.setCurrentModule(rootAliasChain);
+        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
+        semanticAnalyzer.analyze(ast);
+
+        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable), new org.evochora.compiler.model.ScopeTracker(symbolTable), TestRegistries.postProcessRegistry());
+        List<AstNode> processedAst = ast.stream()
+            .map(node -> astPostProcessor.process(node))
+            .toList();
+
+        assertThat(diagnostics.hasErrors()).as(diagnostics.summary()).isFalse();
+
+        // The ProcedureNode's body should contain the SETI instruction with %TMP resolved to %PDR0
+        assertThat(processedAst.get(0)).isInstanceOf(org.evochora.compiler.features.proc.ProcedureNode.class);
+        org.evochora.compiler.features.proc.ProcedureNode proc = (org.evochora.compiler.features.proc.ProcedureNode) processedAst.get(0);
+        // Body: RegNode, InstructionNode(SETI), InstructionNode(RET)
+        assertThat(proc.body()).hasSizeGreaterThanOrEqualTo(2);
+        AstNode setiNode = proc.body().stream()
+                .filter(n -> n instanceof InstructionNode && "SETI".equals(((InstructionNode) n).opcode()))
+                .findFirst().orElse(null);
+        assertThat(setiNode).isNotNull();
+        InstructionNode seti = (InstructionNode) setiNode;
+        assertThat(seti.arguments().get(0)).isInstanceOf(RegisterNode.class);
+        RegisterNode reg = (RegisterNode) seti.arguments().get(0);
+        assertThat(reg.getName()).as("Alias %TMP should resolve to %PDR0").isEqualTo("%PDR0");
+    }
+
+    /**
      * Verifies that out-of-bounds PDR indices are rejected even inside a .PROC block.
      */
     @Test
