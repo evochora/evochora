@@ -30,7 +30,7 @@ class RegisterBankTest {
     }
 
     @Test
-    void testForIdReturnsNullAfterLastValidId() {
+    void testForIdDoesNotReturnBankAfterLastValidId() {
         for (RegisterBank bank : RegisterBank.values()) {
             if (bank.count == 0) continue;
             int firstInvalidId = bank.base + bank.count;
@@ -41,7 +41,7 @@ class RegisterBankTest {
     }
 
     @Test
-    void testForIdReturnsNullBeforeBase() {
+    void testForIdDoesNotReturnBankBeforeBase() {
         for (RegisterBank bank : RegisterBank.values()) {
             if (bank.base == 0) continue;
             int idBeforeBase = bank.base - 1;

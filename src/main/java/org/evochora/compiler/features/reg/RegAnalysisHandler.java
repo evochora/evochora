@@ -25,7 +25,7 @@ public class RegAnalysisHandler implements IAnalysisHandler {
         if (!isValidRegister(registerText)) {
             StringBuilder validRanges = new StringBuilder();
             for (RegisterBank bank : RegisterBank.values()) {
-                if (bank.count > 0) {
+                if (bank.count > 0 && !bank.isForbidden) {
                     if (!validRanges.isEmpty()) validRanges.append(", ");
                     validRanges.append(bank.prefix).append("0-").append(bank.prefix).append(bank.count - 1);
                 }

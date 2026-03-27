@@ -80,6 +80,16 @@ class CallStatementHandlerTest {
     }
 
     @Test
+    void lrefAndLvalArgs() {
+        CallNode node = parseCall("CALL myProc LREF %LR0 LVAL %LR1");
+
+        assertThat(node.refArguments()).isEmpty();
+        assertThat(node.valArguments()).isEmpty();
+        assertThat(node.lrefArguments()).hasSize(1);
+        assertThat(node.lvalArguments()).hasSize(1);
+    }
+
+    @Test
     void sourceInfoPreserved() {
         CallNode node = parseCall("CALL myProc");
 

@@ -70,6 +70,42 @@ class RegisterAliasEmissionContributorTest {
 
     @Test
     @Tag("unit")
+    @DisplayName("Should resolve %PLR register alias")
+    void resolvesPlrAlias() {
+        EmissionContext ctx = runContributor(regAliasDirective("MOD.POS", "%PLR1"));
+
+        assertThat(ctx.registerAliasMap()).containsEntry("MOD.POS", RegisterBank.PLR.base + 1);
+    }
+
+    @Test
+    @Tag("unit")
+    @DisplayName("Should resolve %FLR register alias")
+    void resolvesFlrAlias() {
+        EmissionContext ctx = runContributor(regAliasDirective("MOD.LOC_PARAM", "%FLR0"));
+
+        assertThat(ctx.registerAliasMap()).containsEntry("MOD.LOC_PARAM", RegisterBank.FLR.base);
+    }
+
+    @Test
+    @Tag("unit")
+    @DisplayName("Should resolve %SDR register alias")
+    void resolvesSdrAlias() {
+        EmissionContext ctx = runContributor(regAliasDirective("MOD.STATE", "%SDR5"));
+
+        assertThat(ctx.registerAliasMap()).containsEntry("MOD.STATE", RegisterBank.SDR.base + 5);
+    }
+
+    @Test
+    @Tag("unit")
+    @DisplayName("Should resolve %SLR register alias")
+    void resolvesSlrAlias() {
+        EmissionContext ctx = runContributor(regAliasDirective("MOD.SAVED_POS", "%SLR2"));
+
+        assertThat(ctx.registerAliasMap()).containsEntry("MOD.SAVED_POS", RegisterBank.SLR.base + 2);
+    }
+
+    @Test
+    @Tag("unit")
     @DisplayName("Should ignore non-reg_alias directives")
     void ignoresOtherDirectives() {
         EmissionContext ctx = new EmissionContext();

@@ -563,12 +563,12 @@ export class OrganismSourceView {
         if (procNameUpper && this.artifact.procNameToParamNames[procNameUpper]) return null;
 
         const callIp = topFrame.absoluteCallIp;
-        const posStr = (callIp && Array.isArray(callIp)) ? `[${callIp.join('|')}]` : '';
+        const posStr = (callIp && Array.isArray(callIp)) ? ` called at [${callIp.join('|')}]` : '';
 
         if (procName) {
-            return `Unknown procedure: ${procName} called at ${posStr}`;
+            return `Unknown procedure: ${procName}${posStr}`;
         }
-        return `Unknown procedure called at ${posStr}`;
+        return `Unknown procedure${posStr}`;
     }
 
     /**

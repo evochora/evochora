@@ -104,19 +104,23 @@ export class AnnotationUtils {
         if (registerType) {
             const bank = BANK_BY_NAME[registerType.toUpperCase()];
             if (bank) {
-                return `${bank.prefix}${registerId - bank.base}`;
+                const index = registerId - bank.base;
+                if (index >= 0 && index < bank.count) {
+                    return `${bank.prefix}${index}`;
+                }
             }
-            return `%DR${registerId}`;
+            return `?${registerId}`;
         }
 
-        // ID-based heuristics: descending by base
+        // ID-based heuristics: descending by base, with bounds check
         for (let i = REGISTER_BANKS.length - 1; i >= 0; i--) {
             const bank = REGISTER_BANKS[i];
-            if (registerId >= bank.base) {
-                return `${bank.prefix}${registerId - bank.base}`;
+            const index = registerId - bank.base;
+            if (index >= 0 && index < bank.count) {
+                return `${bank.prefix}${index}`;
             }
         }
-        return `%DR${registerId}`;
+        return `?${registerId}`;
     }
 
     /**

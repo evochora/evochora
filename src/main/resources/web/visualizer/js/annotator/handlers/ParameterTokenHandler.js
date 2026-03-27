@@ -90,17 +90,14 @@ export class ParameterTokenHandler {
         const paramType = params[paramIndex].type ? params[paramIndex].type.toUpperCase() : '';
         const isLocationParam = paramType === 'LREF' || paramType === 'LVAL';
 
-        // Calculate bank-specific index: location params are indexed separately from data params
-        let bankSpecificIndex;
-        if (isLocationParam) {
-            const dataParamCount = params.filter(p => {
+        // Calculate bank-specific index: count preceding params of the same bank type
+        const bankSpecificIndex = params
+            .slice(0, paramIndex)
+            .filter(p => {
                 const t = (p.type || '').toUpperCase();
-                return t !== 'LREF' && t !== 'LVAL';
+                const isLocation = t === 'LREF' || t === 'LVAL';
+                return isLocation === isLocationParam;
             }).length;
-            bankSpecificIndex = paramIndex - dataParamCount;
-        } else {
-            bankSpecificIndex = paramIndex;
-        }
 
         // Resolve the binding chain through the call stack using artifact bindings
         const bindingPath = AnnotationUtils.resolveBindingChainWithPath(bankSpecificIndex, organismState.callStack, artifact, organismState, isLocationParam);

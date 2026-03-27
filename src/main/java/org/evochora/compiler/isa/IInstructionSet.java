@@ -34,9 +34,9 @@ public interface IInstructionSet {
 	 * The kind of an instruction argument.
 	 */
 	enum ArgKind {
-		/** A register operand (DR, PDR, FDR). */
+		/** A data register operand (DR, PDR, FDR, SDR). */
 		REGISTER,
-		/** A location register operand (LR). */
+		/** A location register operand (LR, PLR, FLR, SLR). */
 		LOCATION_REGISTER,
 		/** A literal value operand. */
 		LITERAL,

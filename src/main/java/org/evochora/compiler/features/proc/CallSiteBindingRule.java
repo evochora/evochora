@@ -28,9 +28,11 @@ public class CallSiteBindingRule implements ILinkingRule {
 
         int dataIndex = 0;
         for (IrOperand op : call.refOperands()) {
-            if (op instanceof IrReg reg) {
-                bindings.put(RegisterBank.FDR.base + dataIndex, resolveReg(isa, reg.name()));
+            if (!(op instanceof IrReg reg)) {
+                throw new IllegalStateException("Expected IrReg for REF operand at index " + dataIndex
+                        + ", got: " + op.getClass().getSimpleName());
             }
+            bindings.put(RegisterBank.FDR.base + dataIndex, resolveReg(isa, reg.name()));
             dataIndex++;
         }
         for (IrOperand op : call.valOperands()) {
@@ -42,9 +44,11 @@ public class CallSiteBindingRule implements ILinkingRule {
 
         int locationIndex = 0;
         for (IrOperand op : call.lrefOperands()) {
-            if (op instanceof IrReg reg) {
-                bindings.put(RegisterBank.FLR.base + locationIndex, resolveReg(isa, reg.name()));
+            if (!(op instanceof IrReg reg)) {
+                throw new IllegalStateException("Expected IrReg for LREF operand at index " + locationIndex
+                        + ", got: " + op.getClass().getSimpleName());
             }
+            bindings.put(RegisterBank.FLR.base + locationIndex, resolveReg(isa, reg.name()));
             locationIndex++;
         }
         for (IrOperand op : call.lvalOperands()) {

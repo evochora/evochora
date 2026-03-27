@@ -310,9 +310,21 @@ class OrganismIndexerIntegrationTest {
             int val = (pdrScalars != null && i < pdrScalars.length) ? pdrScalars[i] : 0;
             result.add(RegisterValue.newBuilder().setScalar(val).build());
         }
+        for (int i = 0; i < org.evochora.runtime.Config.NUM_PLR_REGISTERS; i++) {
+            result.add(RegisterValue.newBuilder().setVector(Vector.newBuilder().build()).build());
+        }
         for (int i = 0; i < org.evochora.runtime.Config.NUM_FDR_REGISTERS; i++) {
             int val = (fdrScalars != null && i < fdrScalars.length) ? fdrScalars[i] : 0;
             result.add(RegisterValue.newBuilder().setScalar(val).build());
+        }
+        for (int i = 0; i < org.evochora.runtime.Config.NUM_FLR_REGISTERS; i++) {
+            result.add(RegisterValue.newBuilder().setVector(Vector.newBuilder().build()).build());
+        }
+        for (int i = 0; i < org.evochora.runtime.Config.NUM_SDR_REGISTERS; i++) {
+            result.add(RegisterValue.newBuilder().setScalar(0).build());
+        }
+        for (int i = 0; i < org.evochora.runtime.Config.NUM_SLR_REGISTERS; i++) {
+            result.add(RegisterValue.newBuilder().setVector(Vector.newBuilder().build()).build());
         }
         return result;
     }

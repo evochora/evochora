@@ -45,8 +45,16 @@ public final class RegisterAliasEmissionContributor implements IEmissionContribu
         String upper = registerName.toUpperCase();
         for (RegisterBank bank : RegisterBank.values()) {
             if (bank.count > 0 && upper.startsWith(bank.prefix)) {
-                int index = Integer.parseInt(upper.substring(bank.prefixLength));
-                return bank.base + index;
+                String suffix = upper.substring(bank.prefixLength);
+                if (suffix.isEmpty()) {
+                    return null;
+                }
+                try {
+                    int index = Integer.parseInt(suffix);
+                    return index >= 0 && index < bank.count ? bank.base + index : null;
+                } catch (NumberFormatException ignored) {
+                    return null;
+                }
             }
         }
         return null;

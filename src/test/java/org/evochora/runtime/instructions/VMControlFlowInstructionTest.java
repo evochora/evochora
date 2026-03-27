@@ -222,9 +222,8 @@ public class VMControlFlowInstructionTest {
 
     /**
      * Verifies that mixed REF + LREF parameter bindings are correctly mapped to
-     * FDR and FLR keys in ProcFrame.parameterBindings.
-     * Bug: ProcedureCallHandler splits the flat bindings array by assuming first N
-     * entries are FDR, rest FLR — wrong for mixed params where N < FDR.count.
+     * FDR and FLR keys in ProcFrame.parameterBindings. The callSiteBindings map
+     * uses formal register IDs as keys (FDR_BASE+i for data, FLR_BASE+i for location).
      */
     @Test
     @Tag("unit")
@@ -257,11 +256,178 @@ public class VMControlFlowInstructionTest {
                 .as("FDR0 should be bound to DR1")
                 .isEqualTo(dr1Id);
 
-        // FLR0 should be bound to LR0 (location parameter) — this is the bug:
-        // current code assigns LR0 to FDR1 instead of FLR0
+        // FLR0 should be bound to LR0 (location parameter)
         assertThat(bindings.get(RegisterBank.FLR.base + 0))
-                .as("FLR0 should be bound to LR0, not assigned to FDR1")
+                .as("FLR0 should be bound to LR0")
                 .isEqualTo(lr0Id);
+    }
+
+    // --- Persistent register (SDR/SLR) tests ---
+
+    /**
+     * Helper: sets up a CALL/RET pair. CALL at current IP jumps to labelPos.
+     * A WAIT is placed at afterLabel (procedure body) and at returnTarget (after CALL).
+     * Returns the positions for further manipulation.
+     */
+    private record CallRetSetup(int labelHash, int[] labelPos, int[] afterLabel, int[] returnTarget) {}
+
+    private CallRetSetup setupCallRet(int hash) {
+        int labelHash = hash & Config.VALUE_MASK;
+        int[] labelPos = new int[]{20};
+        int[] afterLabel = new int[]{21};
+
+        environment.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), labelPos);
+        // WAIT in procedure body — gives us a tick to inspect/modify state before RET
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), afterLabel);
+
+        // WAIT after the CALL (return target)
+        int[] returnTarget = org.getNextInstructionPosition(org.getIp(), org.getDv(), environment);
+        returnTarget = org.getNextInstructionPosition(returnTarget, org.getDv(), environment);
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), returnTarget);
+
+        return new CallRetSetup(labelHash, labelPos, afterLabel, returnTarget);
+    }
+
+    /**
+     * Tests that persistent register state (SDR) survives across CALL/RET cycles.
+     * CALL PROC_A, write SDR0=42, RET, CALL PROC_A again — SDR0 should still be 42.
+     */
+    @Test
+    @Tag("unit")
+    void testPersistentStateSurvivesCallRetCycle() {
+        CallRetSetup setup = setupCallRet(88888);
+        placeInstruction("CALL", setup.labelHash);
+
+        // Tick 1: CALL → jumps to procedure, lands on WAIT at afterLabel
+        sim.tick();
+        assertThat(org.getCallStack()).hasSize(1);
+
+        // Inside procedure: write SDR0 = 42
+        org.writeOperand(RegisterBank.SDR.base, 42);
+
+        // Place RET at afterLabel for next tick
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("RET")), setup.afterLabel);
+
+        // Tick 2: RET → returns to returnTarget (WAIT)
+        sim.tick();
+        assertThat(org.getCallStack()).isEmpty();
+
+        // Now call the same procedure again
+        // Reset IP to start and place another CALL
+        org.setIp(startPos);
+        placeInstruction("CALL", setup.labelHash);
+        // Restore WAIT at afterLabel for the procedure body
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), setup.afterLabel);
+
+        // Tick 3: CALL → jumps to procedure again
+        sim.tick();
+        assertThat(org.getCallStack()).hasSize(1);
+
+        // SDR0 should still be 42 from the first call
+        assertThat((int) org.readOperand(RegisterBank.SDR.base))
+                .as("SDR0 should persist across CALL/RET cycles")
+                .isEqualTo(42);
+    }
+
+    /**
+     * Tests that persistent register state is isolated between different procedures.
+     * CALL PROC_A writes SDR0=42, then CALL PROC_B should see SDR0=0.
+     */
+    @Test
+    @Tag("unit")
+    void testPersistentStateIsolationBetweenProcedures() {
+        int hashA = 88881 & Config.VALUE_MASK;
+        int hashB = 88882 & Config.VALUE_MASK;
+        int[] labelPosA = new int[]{20};
+        int[] labelPosB = new int[]{30};
+        int[] afterLabelA = new int[]{21};
+        int[] afterLabelB = new int[]{31};
+
+        environment.setMolecule(new Molecule(Config.TYPE_LABEL, hashA), labelPosA);
+        environment.setMolecule(new Molecule(Config.TYPE_LABEL, hashB), labelPosB);
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), afterLabelA);
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), afterLabelB);
+
+        int[] returnTarget = org.getNextInstructionPosition(org.getIp(), org.getDv(), environment);
+        returnTarget = org.getNextInstructionPosition(returnTarget, org.getDv(), environment);
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), returnTarget);
+
+        // CALL PROC_A
+        placeInstruction("CALL", hashA);
+        sim.tick();
+
+        // Inside PROC_A: write SDR0 = 42
+        org.writeOperand(RegisterBank.SDR.base, 42);
+
+        // RET from PROC_A
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("RET")), afterLabelA);
+        sim.tick();
+        assertThat(org.getCallStack()).isEmpty();
+
+        // CALL PROC_B
+        org.setIp(startPos);
+        placeInstruction("CALL", hashB);
+        sim.tick();
+        assertThat(org.getCallStack()).hasSize(1);
+
+        // Inside PROC_B: SDR0 should be 0 (PROC_B has its own persistent state)
+        assertThat((int) org.readOperand(RegisterBank.SDR.base))
+                .as("PROC_B should have its own persistent state, not PROC_A's")
+                .isEqualTo(0);
+    }
+
+    /**
+     * Tests that the dirty flag prevents unnecessary persistent state snapshots.
+     * When SDR/SLR are never written, isPersistentDirty() stays false.
+     */
+    @Test
+    @Tag("unit")
+    void testDirtyFlagNotSetWhenPersistentRegistersUnwritten() {
+        CallRetSetup setup = setupCallRet(88883);
+        placeInstruction("CALL", setup.labelHash);
+
+        // Before any writes, dirty flag should be false
+        assertThat(org.isPersistentDirty()).as("Dirty flag should be false before any SDR/SLR write").isFalse();
+
+        // CALL — no SDR/SLR written
+        sim.tick();
+
+        // Still false — CALL itself doesn't set persistentDirty
+        assertThat(org.isPersistentDirty()).as("Dirty flag should stay false when SDR/SLR never written").isFalse();
+    }
+
+    /**
+     * Tests that main-level persistent state is restored after returning from a procedure.
+     * Main writes SDR0=99, CALL PROC_A writes SDR0=42, RET → SDR0 should be 99 again.
+     */
+    @Test
+    @Tag("unit")
+    void testMainLevelPersistentStateRestoredAfterRet() {
+        // Write SDR0 = 99 at main level
+        org.writeOperand(RegisterBank.SDR.base, 99);
+
+        CallRetSetup setup = setupCallRet(88884);
+        placeInstruction("CALL", setup.labelHash);
+
+        // Tick 1: CALL
+        sim.tick();
+
+        // Inside procedure: SDR0 should be 0 (fresh proc state), write 42
+        assertThat((int) org.readOperand(RegisterBank.SDR.base))
+                .as("SDR0 inside new procedure should be 0")
+                .isEqualTo(0);
+        org.writeOperand(RegisterBank.SDR.base, 42);
+
+        // Place RET
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("RET")), setup.afterLabel);
+
+        // Tick 2: RET
+        sim.tick();
+
+        // Back at main level: SDR0 should be 99 (main-level state restored)
+        assertThat((int) org.readOperand(RegisterBank.SDR.base))
+                .as("Main-level SDR0 should be restored to 99 after RET")
+                .isEqualTo(99);
     }
 
     @org.junit.jupiter.api.AfterEach

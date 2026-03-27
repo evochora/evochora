@@ -566,6 +566,9 @@ public abstract class Instruction {
             for (RegisterBank bank : RegisterBank.values()) {
                 if (bank.count > 0 && u.startsWith(bank.prefix)) {
                     int regNum = Integer.parseInt(u.substring(bank.prefixLength));
+                    if (regNum < 0 || regNum >= bank.count) {
+                        return Optional.empty();
+                    }
                     return Optional.of(bank.base + regNum);
                 }
             }

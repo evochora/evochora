@@ -197,8 +197,8 @@ export class OrganismStateView {
                             if (typeof paramType === 'number') {
                                 if (paramType === 0)      { refParams.push({ bankIndex: dataIndex++, name: param.name }); classified = true; }
                                 else if (paramType === 1)  { valParams.push({ bankIndex: dataIndex++, name: param.name }); classified = true; }
-                                else if (paramType === 3)  { lrefParams.push({ bankIndex: locationIndex++, name: param.name }); classified = true; }
-                                else if (paramType === 4)  { lvalParams.push({ bankIndex: locationIndex++, name: param.name }); classified = true; }
+                                else if (paramType === 2)  { lrefParams.push({ bankIndex: locationIndex++, name: param.name }); classified = true; }
+                                else if (paramType === 3)  { lvalParams.push({ bankIndex: locationIndex++, name: param.name }); classified = true; }
                             } else if (typeof paramType === 'string') {
                                 const typeUpper = paramType.toUpperCase();
                                 if (typeUpper === 'REF' || typeUpper === 'PARAM_TYPE_REF')        { refParams.push({ bankIndex: dataIndex++, name: param.name }); classified = true; }

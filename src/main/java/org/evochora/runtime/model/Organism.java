@@ -106,7 +106,7 @@ public class Organism {
      * @param absoluteReturnIp The absolute return IP.
      * @param absoluteCallIp The absolute address of the CALL instruction that created this frame.
      * @param savedRegisters Compact array of all STACK_SAVED register values in RegisterBank enum order.
-     * @param parameterBindings Generic parameter bindings (register ID → source register ID). FDR keys now, FLR keys added in Phase G.
+     * @param parameterBindings Maps formal register IDs (FDR/FLR) to source register IDs for parameter binding visualization.
      */
     public record ProcFrame(
             String procName,

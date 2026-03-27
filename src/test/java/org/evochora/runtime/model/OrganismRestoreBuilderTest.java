@@ -381,7 +381,7 @@ class OrganismRestoreBuilderTest {
         original.setMr(3);
         original.writeOperand(0, 42);
         original.writeOperand(RegisterBank.PDR.base, 100);
-        original.writeOperand(RegisterBank.FDR.base, new int[]{1, 2});
+        original.writeLocationOperand(RegisterBank.FLR.base, new int[]{1, 2});
 
         // Restore using builder
         Organism restored = Organism.restore(original.getId(), original.getBirthTick())
@@ -415,6 +415,6 @@ class OrganismRestoreBuilderTest {
         assertThat(restored.getMr()).isEqualTo(original.getMr());
         assertThat(restored.readOperand(0)).isEqualTo(original.readOperand(0));
         assertThat(restored.readOperand(RegisterBank.PDR.base)).isEqualTo(original.readOperand(RegisterBank.PDR.base));
-        assertThat(restored.readOperand(RegisterBank.FDR.base)).isEqualTo(original.readOperand(RegisterBank.FDR.base));
+        assertThat(restored.readOperand(RegisterBank.FLR.base)).isEqualTo(original.readOperand(RegisterBank.FLR.base));
     }
 }

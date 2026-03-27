@@ -617,7 +617,7 @@ public class VMLocationInstructionTest {
     @Tag("unit")
     void testCrlrInstructionInvalidIndex() {
         // Try to use invalid LR index
-        int invalidLrIndex = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base + 5).toInt(); // LR5 doesn't exist
+        int invalidLrIndex = new Molecule(Config.TYPE_REGISTER, RegisterBank.LR.base + Config.NUM_LOCATION_REGISTERS).toInt();
         placeInstruction(org, "CRLR", invalidLrIndex);
         sim.tick();
 

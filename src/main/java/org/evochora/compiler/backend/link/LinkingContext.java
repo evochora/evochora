@@ -18,7 +18,7 @@ public final class LinkingContext {
     private final SymbolTable symbolTable;
     private final IInstructionSet isa;
     private int linearAddressCursor = 0;
-    private final Map<Integer, Map<Integer, Integer>> callSiteBindings = new HashMap<>();
+    private Map<Integer, Map<Integer, Integer>> callSiteBindings = new HashMap<>();
     private final Deque<String> aliasChainStack = new ArrayDeque<>();
     private boolean frozen = false;
 
@@ -48,7 +48,14 @@ public final class LinkingContext {
      * After freeze: pushAliasChain/popAliasChain/nextAddress throw,
      * callSiteBindings returns unmodifiable view.
      */
-    public void freeze() { this.frozen = true; }
+    public void freeze() {
+        this.frozen = true;
+        Map<Integer, Map<Integer, Integer>> deep = new HashMap<>();
+        for (var entry : callSiteBindings.entrySet()) {
+            deep.put(entry.getKey(), java.util.Collections.unmodifiableMap(entry.getValue()));
+        }
+        this.callSiteBindings = java.util.Collections.unmodifiableMap(deep);
+    }
 
     private void guardFrozen() {
         if (frozen) throw new IllegalStateException("LinkingContext is frozen — no modifications allowed after Phase 10");
@@ -68,7 +75,7 @@ public final class LinkingContext {
      * @return The map of call site bindings.
      */
     public Map<Integer, Map<Integer, Integer>> callSiteBindings() {
-        return frozen ? java.util.Collections.unmodifiableMap(callSiteBindings) : callSiteBindings;
+        return callSiteBindings;
     }
 
     // --- Alias chain stack for module context tracking ---

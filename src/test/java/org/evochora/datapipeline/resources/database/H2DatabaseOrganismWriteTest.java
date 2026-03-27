@@ -131,7 +131,7 @@ class H2DatabaseOrganismWriteTest {
                     
                     OrganismState state = orgList.getOrganisms(0);
                     assertThat(state.getOrganismId()).isEqualTo(1);
-                    assertThat(state.getRegistersCount()).isEqualTo(28);
+                    assertThat(state.getRegistersCount()).isEqualTo(org.evochora.runtime.isa.RegisterBank.TOTAL_REGISTER_COUNT);
                     assertThat(state.getCallStackCount()).isEqualTo(1);
                     assertThat(state.getInstructionFailed()).isTrue();
                     assertThat(state.hasFailureReason()).isTrue();
@@ -194,9 +194,21 @@ class H2DatabaseOrganismWriteTest {
             int val = (pdrScalars != null && i < pdrScalars.length) ? pdrScalars[i] : 0;
             result.add(RegisterValue.newBuilder().setScalar(val).build());
         }
+        for (int i = 0; i < Config.NUM_PLR_REGISTERS; i++) {
+            result.add(RegisterValue.newBuilder().setVector(Vector.newBuilder().build()).build());
+        }
         for (int i = 0; i < Config.NUM_FDR_REGISTERS; i++) {
             int val = (fdrScalars != null && i < fdrScalars.length) ? fdrScalars[i] : 0;
             result.add(RegisterValue.newBuilder().setScalar(val).build());
+        }
+        for (int i = 0; i < Config.NUM_FLR_REGISTERS; i++) {
+            result.add(RegisterValue.newBuilder().setVector(Vector.newBuilder().build()).build());
+        }
+        for (int i = 0; i < Config.NUM_SDR_REGISTERS; i++) {
+            result.add(RegisterValue.newBuilder().setScalar(0).build());
+        }
+        for (int i = 0; i < Config.NUM_SLR_REGISTERS; i++) {
+            result.add(RegisterValue.newBuilder().setVector(Vector.newBuilder().build()).build());
         }
         return result;
     }

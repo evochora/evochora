@@ -4,6 +4,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import java.util.HashMap;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -19,7 +20,7 @@ class LinkingContextFreezeTest {
         context = new LinkingContext(null, null);
         context.pushAliasChain("ROOT");
         context.nextAddress();
-        context.callSiteBindings().put(0, Map.of(1024, 1, 1025, 2));
+        context.callSiteBindings().put(0, new HashMap<>(Map.of(1024, 1, 1025, 2)));
         context.freeze();
     }
 
@@ -44,8 +45,14 @@ class LinkingContextFreezeTest {
     }
 
     @Test
-    void callSiteBindings_returnsUnmodifiableAfterFreeze() {
+    void callSiteBindings_outerMapUnmodifiableAfterFreeze() {
         assertThatThrownBy(() -> context.callSiteBindings().put(99, Map.of()))
+                .isInstanceOf(UnsupportedOperationException.class);
+    }
+
+    @Test
+    void callSiteBindings_innerMapUnmodifiableAfterFreeze() {
+        assertThatThrownBy(() -> context.callSiteBindings().get(0).put(1026, 3))
                 .isInstanceOf(UnsupportedOperationException.class);
     }
 

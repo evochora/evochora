@@ -198,7 +198,7 @@ public class LocationInstruction extends Instruction {
             }
             case "CRLR": {
                 if (ops.size() != 1) { org.instructionFailed("CRLR expects <LR>"); return; }
-                if (!writeLocationOperand(ops.get(0).rawSourceId(), new int[]{0, 0})) { return; }
+                if (!writeLocationOperand(ops.get(0).rawSourceId(), new int[env.properties.getDimensions()])) { return; }
                 break;
             }
             case "SKJI":
@@ -245,6 +245,7 @@ public class LocationInstruction extends Instruction {
                 break;
             }
             case "PSLI": {
+                if (ops.isEmpty()) { org.instructionFailed("PSLI requires label hash operand."); return; }
                 Object hashObj = ops.get(0).value();
                 if (!(hashObj instanceof Integer labelHash)) {
                     org.instructionFailed("PSLI: label hash must be integer");
@@ -264,6 +265,7 @@ public class LocationInstruction extends Instruction {
                 break;
             }
             case "LRLI": {
+                if (ops.size() < 2) { org.instructionFailed("LRLI requires location register and label hash operands."); return; }
                 int destRegId = ops.get(0).rawSourceId();
                 Object hashObj = ops.get(1).value();
                 if (!(hashObj instanceof Integer labelHash)) {

@@ -312,7 +312,7 @@ message CallSiteBinding {
   // Formal register ID → source register ID.
   // Keys are formal register IDs (e.g., FDR0=1024, FLR0=1280).
   // Values are source register IDs (e.g., DR0=0, LR0=256).
-  map<int32, int32> bindings = 3;
+  map<int32, int32> bindings = 2;
 }
 
 // Maps a linear address back to coordinates.

@@ -1,7 +1,7 @@
 package org.evochora.runtime.internal.services;
 
 import java.util.Arrays;
-import java.util.Collections;
+
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -41,7 +41,7 @@ public final class CallBindingRegistry {
      * @param bindings      Map from formal register ID to source register ID.
      */
     public void registerBindingForLinearAddress(int linearAddress, Map<Integer, Integer> bindings) {
-        bindingsByLinearAddress.put(linearAddress, Collections.unmodifiableMap(bindings));
+        bindingsByLinearAddress.put(linearAddress, Map.copyOf(bindings));
     }
 
     /**
@@ -52,7 +52,7 @@ public final class CallBindingRegistry {
      */
     public void registerBindingForAbsoluteCoord(int[] absoluteCoord, Map<Integer, Integer> bindings) {
         List<Integer> key = Arrays.stream(absoluteCoord).boxed().toList();
-        bindingsByAbsoluteCoord.put(key, Collections.unmodifiableMap(bindings));
+        bindingsByAbsoluteCoord.put(key, Map.copyOf(bindings));
     }
 
     /**

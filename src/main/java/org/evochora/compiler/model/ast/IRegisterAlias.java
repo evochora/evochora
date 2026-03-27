@@ -9,6 +9,8 @@ public interface IRegisterAlias {
 
     /**
      * Returns the target register name (e.g., "%DR0", "%PDR2").
+     *
+     * @return the target register name, never null
      */
     String register();
 }

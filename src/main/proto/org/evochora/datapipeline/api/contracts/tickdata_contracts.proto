@@ -331,8 +331,8 @@ message ProcFrame {
   // Location registers use the RegisterValue.vector variant.
   repeated RegisterValue saved_registers = 4;
 
-  // Mapping from register ID to source register ID for parameter bindings.
-  // Keys are full register IDs (e.g., FDR_BASE+0). Supports both FDR and future FLR bindings.
+  // Mapping from formal register ID to source register ID for parameter bindings.
+  // Keys are full register IDs (FDR_BASE+i for data params, FLR_BASE+i for location params).
   map<int32, int32> parameter_bindings = 5;
 
   // Absolute address of the CALL instruction that created this frame.
@@ -356,8 +356,8 @@ message ProcedureRegisterSnapshot {
 }
 
 // Represents a register value that can be either scalar or vector.
-// This polymorphic type is used for data registers, procedure data registers,
-// formal data registers, and stack values.
+// Used for all register banks (DR, LR, PDR, PLR, FDR, FLR, SDR, SLR),
+// saved registers in ProcFrame, persistent register snapshots, and stack values.
 message RegisterValue {
   oneof value {
     // Scalar integer value

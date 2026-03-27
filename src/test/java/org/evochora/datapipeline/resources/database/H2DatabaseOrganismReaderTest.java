@@ -164,8 +164,8 @@ class H2DatabaseOrganismReaderTest {
             assertThat(state.dataPointers[0]).containsExactly(5);
             assertThat(state.activeDpIndex).isEqualTo(0);
 
-            // Runtime view: cold path (blob) — flat register array: DR[0..7], LR[8..11], PDR[12..19], FDR[20..27]
-            assertThat(state.registers).hasSize(28);
+            // Runtime view: cold path (blob) — flat register array: DR, LR, PDR, PLR, FDR, FLR, SDR, SLR
+            assertThat(state.registers).hasSize(org.evochora.runtime.isa.RegisterBank.TOTAL_REGISTER_COUNT);
             RegisterValueView drv = state.registers.get(0); // DR0
             assertThat(drv.kind).isEqualTo(RegisterValueView.Kind.MOLECULE);
             // buildOrganismState uses scalar=7, which corresponds to a molecule with value 7
@@ -235,9 +235,21 @@ class H2DatabaseOrganismReaderTest {
             int val = (pdrScalars != null && i < pdrScalars.length) ? pdrScalars[i] : 0;
             result.add(RegisterValue.newBuilder().setScalar(val).build());
         }
+        for (int i = 0; i < org.evochora.runtime.Config.NUM_PLR_REGISTERS; i++) {
+            result.add(RegisterValue.newBuilder().setVector(Vector.newBuilder().build()).build());
+        }
         for (int i = 0; i < org.evochora.runtime.Config.NUM_FDR_REGISTERS; i++) {
             int val = (fdrScalars != null && i < fdrScalars.length) ? fdrScalars[i] : 0;
             result.add(RegisterValue.newBuilder().setScalar(val).build());
+        }
+        for (int i = 0; i < org.evochora.runtime.Config.NUM_FLR_REGISTERS; i++) {
+            result.add(RegisterValue.newBuilder().setVector(Vector.newBuilder().build()).build());
+        }
+        for (int i = 0; i < org.evochora.runtime.Config.NUM_SDR_REGISTERS; i++) {
+            result.add(RegisterValue.newBuilder().setScalar(0).build());
+        }
+        for (int i = 0; i < org.evochora.runtime.Config.NUM_SLR_REGISTERS; i++) {
+            result.add(RegisterValue.newBuilder().setVector(Vector.newBuilder().build()).build());
         }
         return result;
     }

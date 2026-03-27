@@ -146,7 +146,7 @@ public class Lexer {
     
     /**
      * Checks if a token represents a valid register pattern.
-     * Valid patterns are: %DRx, %PDRx, %FDRx, %LRx where x is a number.
+     * Valid patterns are register tokens matching a {@link RegisterBank} prefix with a numeric suffix (e.g., %DR0, %PLR1, %SLR2).
      * 
      * @param text the token text to check
      * @return true if the text represents a valid register pattern
