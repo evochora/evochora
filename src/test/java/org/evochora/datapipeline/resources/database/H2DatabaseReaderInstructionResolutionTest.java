@@ -17,6 +17,7 @@ import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.test.utils.ProtoTestUtils;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Molecule;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -353,14 +354,19 @@ class H2DatabaseReaderInstructionResolutionTest {
                             
                             // Get register value before execution from current registers
                             if (argType == org.evochora.runtime.isa.InstructionArgumentType.REGISTER) {
-                                // DR/PDR/FDR register - get from flat registers array (DR starts at slot 0)
-                                if (registerId == 0 && orgBuilder.getRegistersCount() > 0) {
-                                    orgBuilder.putInstructionRegisterValuesBefore(registerId, orgBuilder.getRegisters(0));
+                                RegisterBank regBank = RegisterBank.forId(registerId);
+                                if (regBank != null) {
+                                    int slot = RegisterBank.ID_TO_SLOT[registerId];
+                                    if (slot >= 0 && slot < orgBuilder.getRegistersCount()) {
+                                        orgBuilder.putInstructionRegisterValuesBefore(registerId, orgBuilder.getRegisters(slot));
+                                    }
                                 }
                             } else {
-                                // LOCATION_REGISTER - get from locationRegisters
-                                if (locationRegisters != null && registerId >= 0 && registerId < locationRegisters.length) {
-                                    int[] lr = locationRegisters[registerId];
+                                // LOCATION_REGISTER - get from locationRegisters via bank-relative index
+                                RegisterBank locBank = RegisterBank.forId(registerId);
+                                int locIndex = locBank != null ? registerId - locBank.base : -1;
+                                if (locationRegisters != null && locIndex >= 0 && locIndex < locationRegisters.length) {
+                                    int[] lr = locationRegisters[locIndex];
                                     if (lr != null) {
                                         Vector.Builder lrBuilder = Vector.newBuilder();
                                         for (int component : lr) {

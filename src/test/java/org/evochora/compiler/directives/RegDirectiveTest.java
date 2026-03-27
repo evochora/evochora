@@ -103,7 +103,7 @@ public class RegDirectiveTest {
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("out of bounds for DR bank");
+        assertThat(diagnostics.summary()).contains("Expected a register");
     }
 
     /**
@@ -157,6 +157,7 @@ public class RegDirectiveTest {
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.summary()).contains("cannot be aliased");
     }
 
     /**
@@ -217,7 +218,7 @@ public class RegDirectiveTest {
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("out of bounds for PDR bank");
+        assertThat(diagnostics.summary()).contains("Expected a register");
     }
 
     /**
@@ -309,7 +310,7 @@ public class RegDirectiveTest {
         parser.parse();
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("out of bounds for LR bank");
+        assertThat(diagnostics.summary()).contains("Expected a register");
     }
 
     /**

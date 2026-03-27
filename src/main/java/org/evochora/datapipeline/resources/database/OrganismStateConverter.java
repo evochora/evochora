@@ -322,19 +322,14 @@ public final class OrganismStateConverter {
                 
                 // Determine register type via RegisterBank lookup
                 RegisterBank locBank = RegisterBank.forId(registerId);
-                String registerType = locBank != null ? locBank.name() : "LR";
+                String registerType = locBank != null ? locBank.name() : "UNKNOWN";
 
-                // Resolve register value from flat register list via slot lookup
-                int slot = RegisterBank.ID_TO_SLOT[registerId];
-                if (slot < 0 || slot >= registers.size()) {
-                    throw new IllegalStateException(
-                        String.format("LR register ID %d is out of bounds for instruction %d (%s). " +
-                            "Slot %d exceeds available registers (%d).",
-                            registerId, opcodeId, opcodeName, slot, registers.size()));
-                }
+                // Resolve register value: use value BEFORE execution (same as REGISTER path)
+                RegisterValueView registerValue = (registerValuesBefore != null)
+                    ? registerValuesBefore.get(registerId)
+                    : null;
 
-                RegisterValueView registerValue = registers.get(slot);
-                int index = registerId - (locBank != null ? locBank.base : RegisterBank.LR.base);
+                int index = locBank != null ? registerId - locBank.base : registerId;
                 resolvedArgs.add(InstructionArgumentView.register(index, registerValue, registerType));
                 argIndex++;
             } else if (argType == org.evochora.runtime.isa.InstructionArgumentType.LITERAL) {

@@ -435,6 +435,82 @@ public class VMControlFlowInstructionTest {
                 .isEqualTo(99);
     }
 
+    /**
+     * Tests that recoverFromStall correctly resets currentProcLabelHash after
+     * unwinding the call stack. Without the fix, currentProcLabelHash stays on
+     * the callee's hash, causing subsequent SDR writes to be attributed to the
+     * wrong procedure.
+     */
+    @Test
+    @Tag("unit")
+    void testRecoverFromStallResetsPersistentContext() {
+        // Use a non-toroidal environment so IP advance runs off the edge → stall
+        Environment nonToroidal = new Environment(new int[]{100}, false);
+        Simulation stalSim = SimulationTestUtils.createSimulation(nonToroidal);
+        Organism stalOrg = Organism.create(stalSim, new int[]{5}, 1000);
+        stalSim.addOrganism(stalOrg);
+
+        // Do NOT write SDR before the CALL — persistentDirty stays false.
+        // This is the key: recoverFromStall skips currentProcLabelHash reset when !persistentDirty.
+
+        // Label at position 95, nothing after it → IP advance runs off edge → stall
+        int labelHash = 66666 & Config.VALUE_MASK;
+        nonToroidal.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), new int[]{95});
+
+        // Place WAIT at the return target (pos 7, after CALL at 5 + operand at 6)
+        nonToroidal.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), new int[]{7});
+
+        // Place CALL
+        int callOpcode = Instruction.getInstructionIdByName("CALL");
+        nonToroidal.setMolecule(new Molecule(Config.TYPE_CODE, callOpcode), stalOrg.getIp());
+        int[] afterCall = stalOrg.getNextInstructionPosition(stalOrg.getIp(), stalOrg.getDv(), nonToroidal);
+        nonToroidal.setMolecule(new Molecule(Config.TYPE_DATA, labelHash), afterCall);
+
+        // Tick: CALL → jump to label → IP advance past label → empty zone → stall → recovery
+        stalSim.tick();
+
+        assertThat(stalOrg.getCallStack()).as("Call stack should be empty after stall recovery").isEmpty();
+        assertThat(stalOrg.isInstructionFailed()).isTrue();
+
+        // Now write SDR0 = 77 — this should be attributed to main level
+        stalOrg.writeOperand(RegisterBank.SDR.base, 77);
+
+        // To expose the bug, we need a CALL/RET cycle that triggers persistent state save/restore.
+        // If currentProcLabelHash is wrong (still callee), the CALL saves SDR0=77 under the
+        // callee's hash instead of main. After RET, main's persistent state (SDR0=99) is restored.
+        stalOrg.resetTickState();
+        stalOrg.setIp(new int[]{5});
+
+        // Set up a second procedure for the CALL/RET cycle
+        int labelHash2 = 77777 & Config.VALUE_MASK;
+        nonToroidal.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash2), new int[]{50});
+        // RET right after the label
+        nonToroidal.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("RET")), new int[]{51});
+
+        // Place CALL to second proc
+        nonToroidal.setMolecule(new Molecule(Config.TYPE_CODE, callOpcode), stalOrg.getIp());
+        int[] afterCall2 = stalOrg.getNextInstructionPosition(stalOrg.getIp(), stalOrg.getDv(), nonToroidal);
+        nonToroidal.setMolecule(new Molecule(Config.TYPE_DATA, labelHash2), afterCall2);
+        // WAIT at return target
+        int[] retTarget2 = stalOrg.getNextInstructionPosition(afterCall2, stalOrg.getDv(), nonToroidal);
+        nonToroidal.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), retTarget2);
+
+        // Tick 1: CALL → enters proc2
+        stalSim.tick();
+        assertThat(stalOrg.getCallStack()).hasSize(1);
+
+        // Tick 2: RET → back to main
+        stalSim.tick();
+        assertThat(stalOrg.getCallStack()).isEmpty();
+
+        // SDR0 should be 77 (main-level write after stall recovery).
+        // Bug: currentProcLabelHash was wrong after stall (still on stalled proc), so CALL
+        // saved SDR0=77 under the stalled proc's hash. RET restored main's state (SDR0=0 default).
+        assertThat((int) stalOrg.readOperand(RegisterBank.SDR.base))
+                .as("SDR0 should be 77 — stall recovery must reset currentProcLabelHash so persistent state is attributed to main")
+                .isEqualTo(77);
+    }
+
     @org.junit.jupiter.api.AfterEach
     void cleanup() {
         CallBindingRegistry.getInstance().clearAll();

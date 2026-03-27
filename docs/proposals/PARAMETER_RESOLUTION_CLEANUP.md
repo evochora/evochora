@@ -20,7 +20,7 @@ After cleanup:
 
 Register aliases (`Symbol.Type.ALIAS`) are accepted in both REGISTER and LOCATION_REGISTER argument positions by InstructionAnalysisHandler. This means `.REG %POS %LR0` followed by `SETI %POS 42` compiles without error — but crashes at runtime because SETI writes to a location register via writeOperand, which rejects location bank IDs.
 
-Parameters already have this type safety (VARIABLE → REGISTER only, LOCATION_VARIABLE → LOCATION_REGISTER only). Aliases should have the same.
+Parameters already have this type safety (VARIABLE → REGISTER only, LOCATION_VARIABLE → LOCATION_REGISTER only, added in Phase G of the Register Bank Extension). Aliases should have the same.
 
 ### 3. Misleading Symbol Type Names
 
@@ -51,7 +51,6 @@ Split `Symbol.Type.ALIAS` into data and location variants.
 **CallAnalysisHandler.java** (`features/proc/`):
 - LREF/LVAL argument validation: if the argument resolves to an ALIAS symbol, reject it (data alias in location parameter position). Only accept LOCATION_ALIAS. Error: "LREF argument must be a location register, but '%MY_REG' is a data register alias."
 - REF/VAL argument validation: if the argument resolves to a LOCATION_ALIAS symbol, reject it (location alias in data parameter position). Only accept ALIAS. Error: "REF argument must be a data register, but '%POS' is a location register alias."
-- Legacy WITH validation: accept both ALIAS and LOCATION_ALIAS (WITH is untyped, runtime handles it)
 
 **Tests:**
 - Test: `.REG %POS %LR0` then `SETI %POS 42` → compile error (location alias in data instruction)
@@ -98,9 +97,9 @@ public record ParameterBinding(String targetRegister) implements AstNode, IParam
 - New: `REGISTER` — for physical register tokens (`%DR0`, `%LR1`) that are not aliases and not parameters. Previously these were misclassified as `VARIABLE`.
 
 **ProcedureSymbolCollector.java** (`features/proc/`):
-- WITH/REF/VAL parameters: `Symbol.Type.PARAMETER` with `new ParameterBinding("%FDR" + dataIndex)`
+- REF/VAL parameters: `Symbol.Type.PARAMETER` with `new ParameterBinding("%FDR" + dataIndex)`
 - LREF/LVAL parameters: `Symbol.Type.LOCATION_PARAMETER` with `new ParameterBinding("%FLR" + locationIndex)`
-- dataIndex increments across WITH + REF + VAL (all map to FDR)
+- dataIndex increments across REF + VAL (all map to FDR)
 - locationIndex increments across LREF + LVAL (all map to FLR)
 
 **AstPostProcessor.java** (`frontend/postprocess/`):
@@ -138,7 +137,7 @@ In `convertOperand()`: remove the `resolveProcedureParam` call. Parameter identi
 What remains: emit proc_enter/proc_exit directives (with lrefArity/lvalArity for marshalling) and convert body via `ctx.convert()`.
 
 **CallNodeConverter.java** (`features/proc/`):
-- Remove `resolveProcedureParam` call in legacy WITH-path. Legacy actuals that are parameter identifiers are already resolved to RegisterNodes by Phase 6.
+- Remove `resolveProcedureParam` call. Parameter identifiers are already resolved to RegisterNodes by Phase 6.
 
 **InstructionAnalysisHandler.java** (`features/instruction/`):
 - Rename VARIABLE → PARAMETER, LOCATION_VARIABLE → LOCATION_PARAMETER
@@ -146,7 +145,7 @@ What remains: emit proc_enter/proc_exit directives (with lrefArity/lvalArity for
 - LOCATION_PARAMETER → accepted only in LOCATION_REGISTER position (unchanged logic, new name)
 
 **CallAnalysisHandler.java** (`features/proc/`):
-- Rename VARIABLE → PARAMETER, LOCATION_VARIABLE → LOCATION_PARAMETER in legacy validation
+- No Symbol.Type references remaining (legacy WITH validation was removed). No changes needed for the rename.
 
 **TokenKindMapper.java** (`frontend/tokenmap/`):
 - `PARAMETER, LOCATION_PARAMETER → TokenKind.PARAMETER`
@@ -180,7 +179,7 @@ After both steps:
 |---|---|---|---|---|
 | ALIAS | Data register alias (.REG %X %DR0) | REGISTER only | ALIAS | Phase 6 (IRegisterAlias) |
 | LOCATION_ALIAS | Location register alias (.REG %X %LR0) | LOCATION_REGISTER only | ALIAS | Phase 6 (IRegisterAlias) |
-| PARAMETER | Data proc parameter (REF/VAL/WITH) | REGISTER only | PARAMETER | Phase 6 (IParameterBinding) |
+| PARAMETER | Data proc parameter (REF/VAL) | REGISTER only | PARAMETER | Phase 6 (IParameterBinding) |
 | LOCATION_PARAMETER | Location proc parameter (LREF/LVAL) | LOCATION_REGISTER only | PARAMETER | Phase 6 (IParameterBinding) |
 | CONSTANT | Named constant (.DEFINE) | LITERAL | CONSTANT | Phase 6 (flat map) |
 | LABEL | Label definition | LABEL, VECTOR | LABEL | Phase 10 (Linking) |

@@ -2,7 +2,6 @@ package org.evochora.runtime.model;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.RegisterBank;
@@ -64,8 +63,8 @@ class OrganismWriteOperandSplitTest {
     @Test
     void testIsLocationBankForLr() {
         assertThat(Organism.isLocationBank(RegisterBank.LR.base)).isTrue();
-        assertThat(Organism.isLocationBank(RegisterBank.LR.base + Config.NUM_LOCATION_REGISTERS - 1)).isTrue();
-        assertThat(Organism.isLocationBank(RegisterBank.LR.base + Config.NUM_LOCATION_REGISTERS)).isFalse();
+        assertThat(Organism.isLocationBank(RegisterBank.LR.base + RegisterBank.LR.count - 1)).isTrue();
+        assertThat(Organism.isLocationBank(RegisterBank.LR.base + RegisterBank.LR.count)).isFalse();
     }
 
     @Test

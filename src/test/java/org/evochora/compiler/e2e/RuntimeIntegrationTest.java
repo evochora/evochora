@@ -35,6 +35,11 @@ public class RuntimeIntegrationTest {
 		Instruction.init();
 	}
 
+	@org.junit.jupiter.api.AfterEach
+	void cleanup() {
+		CallBindingRegistry.getInstance().clearAll();
+	}
+
 	/**
 	 * Compiles a procedure with parameters, loads it into a simulation, and runs it.
 	 * This test verifies that the compiled code can be executed by an organism in the runtime environment.
@@ -46,14 +51,15 @@ public class RuntimeIntegrationTest {
     @Tag("integration")
 	void procedureWithParametersAddsValuesAtRuntime() throws Exception {
 		String source = String.join("\n",
-				"EXPORT .PROC ADD2 REF A B",
-				"  ADDR A B",
-				"  RET",
-				".ENDP",
 				"SETI %DR0 DATA:1",
 				"SETI %DR1 DATA:2",
 				"CALL ADD2 REF %DR0 %DR1",
-				"NOP"
+				"WAIT",
+				".ORG 0|5",
+				"EXPORT .PROC ADD2 REF A B",
+				"  ADDR A B",
+				"  RET",
+				".ENDP"
 		);
 
 		Compiler compiler = new Compiler();
@@ -76,12 +82,20 @@ public class RuntimeIntegrationTest {
 		org.setProgramId(artifact.programId());
 		sim.addOrganism(org);
 
-		// Run a few ticks to execute SETI, SETI, CALL, and within proc ADDR and RET
-		for (int i = 0; i < 10; i++) sim.tick();
+		// Track execution to debug instruction sequence
+		// Full cycle: SETI(1)+SETI(2)+PUSH(3)+PUSH(4)+CALL(5)+POP(6)+POP(7)+ADDR(8)+PUSH(9)+PUSH(10)+RET(11)+POP(12)+POP(13)+WAIT(14)
+		for (int i = 0; i < 14; i++) sim.tick();
 
-		// Basic runtime sanity checks
-		assertThat(org.readOperand(0)).isNotNull();
-		assertThat(org.readOperand(1)).isNotNull();
+		assertThat(org.isInstructionFailed()).as("Failure: " + org.getFailureReason()).isFalse();
+
+		// ADDR adds scalar values: DATA:1 + DATA:2 = DATA:3.
+		// REF writes back FDR0 to DR0. DR0 should contain Molecule(TYPE_DATA, 3).
+		int dr0Raw = (int) org.readOperand(0);
+		int dr1Raw = (int) org.readOperand(1);
+		assertThat(Molecule.fromInt(dr0Raw).toScalarValue())
+				.as("DR0 should be 3 after ADD2(1,2) with REF write-back (raw=%d)", dr0Raw).isEqualTo(3);
+		assertThat(Molecule.fromInt(dr1Raw).toScalarValue())
+				.as("DR1 should remain 2 (raw=%d)", dr1Raw).isEqualTo(2);
 	}
 
     /**
@@ -272,12 +286,22 @@ public class RuntimeIntegrationTest {
         org.setProgramId(artifact.programId());
         sim.addOrganism(org);
 
+        // Set DP to a distinctive non-zero position so DPLR %PLR0 captures [3,3]
+        org.setDp(0, new int[]{3, 3});
+
         // Run enough ticks to execute: CALL PROC_A, DPLR, CALL PROC_B, CRLR, RET, SKLR, RET, WAIT
         for (int i = 0; i < 20; i++) {
             sim.tick();
         }
 
         assertThat(org.isInstructionFailed()).as("Failure: " + org.getFailureReason()).isFalse();
+
+        // PROC_A executes SKLR %PLR0 after PROC_B returns. If PLR0 was correctly
+        // restored to [3,3] (saved before CALL PROC_B), then the active DP moved to [3,3].
+        // The DP is not affected by the outer RET, so we can check it after all returns.
+        assertThat(org.getActiveDp())
+                .as("Active DP should be [3,3] — SKLR used the restored PLR0, not PROC_B's [0,0]")
+                .isEqualTo(new int[]{3, 3});
     }
 
     /**
@@ -385,16 +409,22 @@ public class RuntimeIntegrationTest {
         org.setProgramId(artifact.programId());
         sim.addOrganism(org);
 
-        // Run enough ticks: DPLR(1) + PUSL(2) + CALL(3) + POPL(4) + CRLR(5) + PUSL(6) + RET(7) + POPL(8) + WAIT(9)
-        for (int i = 0; i < 15; i++) {
+        // Set DP to non-zero so DPLR %LR0 captures a distinctive value
+        org.setDp(0, new int[]{5, 7});
+
+        // Run exactly: DPLR(1) + PUSL(2) + CALL(3) + POPL(4) + CRLR(5) + PUSL(6) + RET(7) + POPL(8) + WAIT(9)
+        // Do not run more ticks — the program loops and DPLR would overwrite LR0 again
+        for (int i = 0; i < 9; i++) {
             sim.tick();
         }
 
         assertThat(org.isInstructionFailed()).as("Failure: " + org.getFailureReason()).isFalse();
 
-        // Verify LREF write-back: LR0 should now be [0,0] because CLEAR_POS cleared FLR0
+        // LR0 was [5,7] before CALL (from DPLR). CLEAR_POS sets FLR0 to [0,0].
+        // LREF write-back copies FLR0 back to LR0. So LR0 should be [0,0], not [5,7].
         int[] lr0Value = (int[]) org.readOperand(RegisterBank.LR.base);
-        assertThat(lr0Value).as("LR0 should be [0,0] after LREF write-back from CLEAR_POS").isEqualTo(new int[]{0, 0});
+        assertThat(lr0Value).as("LR0 should be [0,0] after LREF write-back from CLEAR_POS (was [5,7] before CALL)")
+                .isEqualTo(new int[]{0, 0});
     }
 
     /**

@@ -157,8 +157,15 @@ public class Lexer {
         }
         String upper = text.toUpperCase();
         for (RegisterBank bank : RegisterBank.values()) {
-            if (bank.count > 0 && upper.matches(bank.prefix + "\\d+")) {
-                return true;
+            if (bank.count > 0 && upper.startsWith(bank.prefix)) {
+                String suffix = upper.substring(bank.prefix.length());
+                if (suffix.isEmpty()) return false;
+                try {
+                    int index = Integer.parseInt(suffix);
+                    return index >= 0 && index < bank.count;
+                } catch (NumberFormatException e) {
+                    return false;
+                }
             }
         }
         return false;

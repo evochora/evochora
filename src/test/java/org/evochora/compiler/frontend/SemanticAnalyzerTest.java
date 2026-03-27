@@ -425,7 +425,7 @@ public class SemanticAnalyzerTest {
         analyzer.analyze(ast);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().get(0).message()).contains("Register '%DR99' is out of bounds");
+        assertThat(diagnostics.getDiagnostics().get(0).message()).contains("%DR99");
     }
 
     /**

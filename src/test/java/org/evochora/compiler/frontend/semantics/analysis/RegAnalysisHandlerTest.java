@@ -144,4 +144,14 @@ class RegAnalysisHandlerTest {
         assertTrue(diagnostics.hasErrors());
         assertFalse(symbolTable.resolve("PARAM", "test.s").isPresent());
     }
+
+    @Test
+    void testForbiddenFlrRegisterRejected() {
+        RegNode regNode = new RegNode("LOC_PARAM", "%FLR0", TEST_SOURCE);
+
+        handler.analyze(regNode, symbolTable, diagnostics);
+
+        assertTrue(diagnostics.hasErrors());
+        assertFalse(symbolTable.resolve("LOC_PARAM", "test.s").isPresent());
+    }
 }

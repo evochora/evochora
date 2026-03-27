@@ -799,16 +799,18 @@ public class Organism {
             if (frame.savedRegisters() != null) {
                 restoreStackSavedRegisters(frame.savedRegisters());
             }
+            // Always track which procedure is active (same as ProcedureCallHandler.executeReturn)
+            int callerLabelHash = callStack.isEmpty() ? MAIN_LEVEL_LABEL_HASH : callStack.peek().labelHash();
             if (persistentDirty) {
-                // Save current procedure's persistent state and restore caller's
                 persistentRegisterState.put(currentProcLabelHash, snapshotPersistentRegisters());
-                int callerLabelHash = callStack.isEmpty() ? MAIN_LEVEL_LABEL_HASH : callStack.peek().labelHash();
-                currentProcLabelHash = callerLabelHash;
                 Object[] callerState = persistentRegisterState.get(callerLabelHash);
                 if (callerState != null) {
                     restorePersistentRegisters(callerState);
+                } else {
+                    resetPersistentRegisters();
                 }
             }
+            currentProcLabelHash = callerLabelHash;
             setIp(frame.absoluteReturnIp());
         } else {
             setIp(Arrays.copyOf(initialPosition, initialPosition.length));

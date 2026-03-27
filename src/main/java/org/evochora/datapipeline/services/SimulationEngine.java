@@ -1032,14 +1032,15 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     private static org.evochora.datapipeline.api.contracts.RegisterValue convertRegisterValueReuse(
             Object rv, org.evochora.datapipeline.api.contracts.RegisterValue.Builder registerBuilder, Vector.Builder vectorBuilder) {
         registerBuilder.clear();
-        if (rv instanceof Integer) {
+        if (rv == null) {
+            registerBuilder.setScalar(0);
+        } else if (rv instanceof Integer) {
             registerBuilder.setScalar((Integer) rv);
         } else if (rv instanceof int[]) {
             registerBuilder.setVector(convertVectorReuse((int[]) rv, vectorBuilder));
         } else {
             throw new IllegalStateException(
-                "RegisterValue must be Integer or int[], but got: " +
-                (rv == null ? "null" : rv.getClass().getName()));
+                "RegisterValue must be Integer or int[], but got: " + rv.getClass().getName());
         }
         return registerBuilder.build();
     }
@@ -1158,19 +1159,20 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         ));
         
         // 3. Organisms in memory - realistic worst-case estimate
-        // Per organism breakdown:
-        //   - Base object + fields + int[] arrays: ~1 KB
+        // Per organism breakdown (8-bank architecture, 48 register slots):
+        //   - Base object + fields + registers (48 slots): ~2.1 KB
         //   - dataStack (128 max × 16 bytes boxed): ~2 KB
         //   - locationStack (64 max × 28 bytes int[]): ~2 KB
-        //   - callStack (realistic ~20 ProcFrames × 600 bytes): ~12 KB
-        // Total: ~17 KB per organism (conservative for typical deep recursion)
-        // Note: Worst-case with full 128-frame call stack would be ~82 KB
-        long bytesPerOrganism = 17 * 1024; // ~17KB per organism
+        //   - callStack (realistic ~20 ProcFrames × 0.8 KB): ~16 KB
+        //   - persistentRegisterState (realistic ~5 entries × 0.3 KB): ~1.5 KB
+        // Total: ~24 KB per organism (conservative for typical deep recursion + persistent state)
+        // Note: Worst-case with full 128-frame call stack + 1024 persistent entries would be ~450 KB
+        long bytesPerOrganism = 24 * 1024; // ~24KB per organism
         long organismsBytes = (long) params.maxOrganisms() * bytesPerOrganism;
         estimates.add(new MemoryEstimate(
             serviceName + " (Organisms)",
             organismsBytes,
-            String.format("%d max organisms × ~17 KB (registers, stacks incl. ~20 call frames)", params.maxOrganisms()),
+            String.format("%d max organisms × ~24 KB (48 registers, stacks, ~20 call frames, ~5 persistent entries)", params.maxOrganisms()),
             MemoryEstimate.Category.SERVICE_BATCH
         ));
         
