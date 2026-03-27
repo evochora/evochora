@@ -342,28 +342,16 @@ public class GeneInsertionPlugin implements IBirthHandler {
     }
 
     /**
-     * Parses register configuration (DR, PDR, FDR banks).
+     * Parses register configuration (DR bank, hardcoded).
      *
      * @param config The REGISTER sub-config.
-     * @return The parsed register config.
+     * @return The parsed register config with {@link RegisterBank#DR} base.
      */
     private RegisterConfig parseRegisterConfig(com.typesafe.config.Config config) {
-        List<String> bankNames = config.getStringList("banks");
         List<Integer> range = config.getIntList("range");
         int rangeMin = range.get(0);
         int rangeMax = range.get(1);
-
-        List<int[]> banks = new ArrayList<>();
-        for (String bank : bankNames) {
-            RegisterBank rb;
-            try {
-                rb = RegisterBank.valueOf(bank.toUpperCase());
-            } catch (IllegalArgumentException e) {
-                throw new IllegalArgumentException("Unknown register bank: " + bank);
-            }
-            int base = rb.base;
-            banks.add(new int[]{base, rangeMin, rangeMax});
-        }
+        List<int[]> banks = List.of(new int[]{RegisterBank.DR.base, rangeMin, rangeMax});
         return new RegisterConfig(banks);
     }
 

@@ -346,6 +346,89 @@ class GeneSubstitutionPluginTest {
     }
 
     @Test
+    void registerStaysInPlrBank() {
+        for (int seed = 0; seed < 50; seed++) {
+            setUp();
+            placeRegister(5, 5, RegisterBank.PLR.base + 1); // PLR1
+            GeneSubstitutionPlugin plugin = registerOnlyPlugin(new SeededRandomProvider(seed));
+            plugin.substitute(child, environment);
+
+            int newValue = environment.getMolecule(5, 5).value();
+            assertThat(newValue).as("seed=%d", seed)
+                    .isBetween(RegisterBank.PLR.base, RegisterBank.PLR.base + Config.NUM_PLR_REGISTERS - 1);
+        }
+    }
+
+    @Test
+    void registerStaysInFlrBank() {
+        for (int seed = 0; seed < 50; seed++) {
+            setUp();
+            placeRegister(5, 5, RegisterBank.FLR.base + 1); // FLR1
+            GeneSubstitutionPlugin plugin = registerOnlyPlugin(new SeededRandomProvider(seed));
+            plugin.substitute(child, environment);
+
+            int newValue = environment.getMolecule(5, 5).value();
+            assertThat(newValue).as("seed=%d", seed)
+                    .isBetween(RegisterBank.FLR.base, RegisterBank.FLR.base + Config.NUM_FLR_REGISTERS - 1);
+        }
+    }
+
+    @Test
+    void registerStaysInSdrBank() {
+        for (int seed = 0; seed < 50; seed++) {
+            setUp();
+            placeRegister(5, 5, RegisterBank.SDR.base + 3); // SDR3
+            GeneSubstitutionPlugin plugin = registerOnlyPlugin(new SeededRandomProvider(seed));
+            plugin.substitute(child, environment);
+
+            int newValue = environment.getMolecule(5, 5).value();
+            assertThat(newValue).as("seed=%d", seed)
+                    .isBetween(RegisterBank.SDR.base, RegisterBank.SDR.base + Config.NUM_SDR_REGISTERS - 1);
+        }
+    }
+
+    @Test
+    void registerStaysInSlrBank() {
+        for (int seed = 0; seed < 50; seed++) {
+            setUp();
+            placeRegister(5, 5, RegisterBank.SLR.base + 1); // SLR1
+            GeneSubstitutionPlugin plugin = registerOnlyPlugin(new SeededRandomProvider(seed));
+            plugin.substitute(child, environment);
+
+            int newValue = environment.getMolecule(5, 5).value();
+            assertThat(newValue).as("seed=%d", seed)
+                    .isBetween(RegisterBank.SLR.base, RegisterBank.SLR.base + Config.NUM_SLR_REGISTERS - 1);
+        }
+    }
+
+    @Test
+    void registerClampsAtBankBoundaries() {
+        // Test boundary clamping for each new bank (PLR, FLR, SDR, SLR)
+        for (RegisterBank bank : new RegisterBank[]{RegisterBank.PLR, RegisterBank.FLR, RegisterBank.SDR, RegisterBank.SLR}) {
+            if (bank.count == 0) continue;
+            for (int seed = 0; seed < 50; seed++) {
+                setUp();
+                // Place at lower boundary
+                placeRegister(5, 5, bank.base);
+                GeneSubstitutionPlugin plugin = registerOnlyPlugin(new SeededRandomProvider(seed));
+                plugin.substitute(child, environment);
+                int newLow = environment.getMolecule(5, 5).value();
+                assertThat(newLow).as("%s lower boundary, seed=%d", bank.name(), seed)
+                        .isBetween(bank.base, bank.base + 1);
+
+                setUp();
+                // Place at upper boundary
+                placeRegister(5, 5, bank.base + bank.count - 1);
+                plugin = registerOnlyPlugin(new SeededRandomProvider(seed + 1000));
+                plugin.substitute(child, environment);
+                int newHigh = environment.getMolecule(5, 5).value();
+                assertThat(newHigh).as("%s upper boundary, seed=%d", bank.name(), seed)
+                        .isBetween(bank.base + bank.count - 2, bank.base + bank.count - 1);
+            }
+        }
+    }
+
+    @Test
     void registerClampsAtBoundary() {
         boolean sawClampLow = false;
         boolean sawClampHigh = false;
