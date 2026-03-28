@@ -23,10 +23,10 @@ export class ParameterTokenHandler {
             return false;
         }
         
-        const isVariableType = tokenInfo.tokenType === 'PARAMETER';
+        const isParameterType = tokenInfo.tokenType === 'PARAMETER';
         const isInProcedureScope = tokenInfo.scope && tokenInfo.scope.toUpperCase() !== 'GLOBAL';
         
-        return isVariableType && isInProcedureScope;
+        return isParameterType && isInProcedureScope;
     }
 
     /**

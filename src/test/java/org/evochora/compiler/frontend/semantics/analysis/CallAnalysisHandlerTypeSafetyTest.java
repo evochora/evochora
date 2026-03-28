@@ -131,6 +131,30 @@ class CallAnalysisHandlerTypeSafetyTest {
     }
 
     @Test
+    void labelAsRef_reportsError() {
+        symbolTable.define(new Symbol("MY_LABEL", SRC, Symbol.Type.LABEL));
+
+        CallNode call = callWithRef("MY_LABEL");
+        handler.analyze(call, symbolTable, diagnostics);
+
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.getDiagnostics().stream()
+                .anyMatch(d -> d.message().contains("must resolve to a data register"))).isTrue();
+    }
+
+    @Test
+    void constantAsLref_reportsError() {
+        symbolTable.define(new Symbol("MY_CONST", SRC, Symbol.Type.CONSTANT));
+
+        CallNode call = callWithLref("MY_CONST");
+        handler.analyze(call, symbolTable, diagnostics);
+
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.getDiagnostics().stream()
+                .anyMatch(d -> d.message().contains("must resolve to a location register"))).isTrue();
+    }
+
+    @Test
     void moduleAliasAsRef_reportsError() {
         symbolTable.define(new Symbol("MATH", SRC, Symbol.Type.MODULE_ALIAS));
 

@@ -36,7 +36,7 @@ Four implementation steps, each self-contained, compilable, and testable.
 
 ### Dependencies
 
-```
+```text
 Step 1 (Parameter Rename) ─┬─→ Step 3 (Call Validation) ─→ Step 4 (Parameter Resolution)
 Step 2 (Alias Type Split) ─┘
 ```
