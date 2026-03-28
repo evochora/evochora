@@ -183,7 +183,7 @@ public class CallAnalysisHandler implements IAnalysisHandler {
                     idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
         } else {
             diag.reportError(position + " argument '" + idNode.text()
-                    + "' must resolve to a data register, label, or constant.",
+                    + "' must resolve to a data register, label, constant, or procedure.",
                     idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
         }
     }
@@ -232,7 +232,7 @@ public class CallAnalysisHandler implements IAnalysisHandler {
                     idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
         } else {
             diag.reportError(position + " argument '" + idNode.text()
-                    + "' must resolve to a location register, label, or constant.",
+                    + "' must resolve to a location register, label, constant, or procedure.",
                     idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
         }
     }
