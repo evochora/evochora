@@ -70,7 +70,7 @@ public class CallAnalysisHandler implements IAnalysisHandler {
         for (AstNode refArg : callNode.refArguments()) {
             if (refArg instanceof RegisterNode) continue;
             if (refArg instanceof IdentifierNode idNode) {
-                validateDataIdentifier(idNode, "REF", symbolTable, diagnostics, callNode);
+                validateDataIdentifier(idNode, "REF", symbolTable, diagnostics);
                 continue;
             }
             diagnostics.reportError("REF arguments must be registers.",
@@ -83,7 +83,7 @@ public class CallAnalysisHandler implements IAnalysisHandler {
             if (valArg instanceof NumberLiteralNode) continue;
             if (valArg instanceof TypedLiteralNode) continue;
             if (valArg instanceof IdentifierNode idNode) {
-                validateDataIdentifierOrLabel(idNode, "VAL", symbolTable, diagnostics, callNode);
+                validateDataIdentifierOrLabel(idNode, "VAL", symbolTable, diagnostics);
                 continue;
             }
             diagnostics.reportError("VAL arguments must be registers, literals, or labels.",
@@ -113,7 +113,7 @@ public class CallAnalysisHandler implements IAnalysisHandler {
                 diagnostics.reportError("LREF arguments must be location registers (LR, PLR, SLR), got '" + regNode.getName() + "'.",
                         callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
             } else if (lrefArg instanceof IdentifierNode idNode) {
-                validateLocationIdentifier(idNode, "LREF", symbolTable, diagnostics, callNode);
+                validateLocationIdentifier(idNode, "LREF", symbolTable, diagnostics);
             } else {
                 diagnostics.reportError("LREF arguments must be location registers.",
                         callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
@@ -131,7 +131,7 @@ public class CallAnalysisHandler implements IAnalysisHandler {
                 diagnostics.reportError("LVAL arguments must be location registers, got '" + regNode.getName() + "'.",
                         callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
             } else if (lvalArg instanceof IdentifierNode idNode) {
-                validateLocationIdentifierOrLabel(idNode, "LVAL", symbolTable, diagnostics, callNode);
+                validateLocationIdentifierOrLabel(idNode, "LVAL", symbolTable, diagnostics);
             } else {
                 diagnostics.reportError("LVAL arguments must be location registers.",
                         callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
@@ -140,7 +140,7 @@ public class CallAnalysisHandler implements IAnalysisHandler {
     }
 
     private void validateDataIdentifier(IdentifierNode idNode, String position,
-                                        SymbolTable st, DiagnosticsEngine diag, CallNode call) {
+                                        SymbolTable st, DiagnosticsEngine diag) {
         Optional<ResolvedSymbol> opt = st.resolve(idNode.text(), idNode.sourceInfo().fileName());
         if (opt.isEmpty()) {
             diag.reportError(position + " argument '" + idNode.text() + "' is not defined.",
@@ -166,7 +166,7 @@ public class CallAnalysisHandler implements IAnalysisHandler {
     }
 
     private void validateDataIdentifierOrLabel(IdentifierNode idNode, String position,
-                                               SymbolTable st, DiagnosticsEngine diag, CallNode call) {
+                                               SymbolTable st, DiagnosticsEngine diag) {
         Optional<ResolvedSymbol> opt = st.resolve(idNode.text(), idNode.sourceInfo().fileName());
         if (opt.isEmpty()) return;
         Symbol.Type type = opt.get().symbol().type();
@@ -189,7 +189,7 @@ public class CallAnalysisHandler implements IAnalysisHandler {
     }
 
     private void validateLocationIdentifier(IdentifierNode idNode, String position,
-                                            SymbolTable st, DiagnosticsEngine diag, CallNode call) {
+                                            SymbolTable st, DiagnosticsEngine diag) {
         Optional<ResolvedSymbol> opt = st.resolve(idNode.text(), idNode.sourceInfo().fileName());
         if (opt.isEmpty()) {
             diag.reportError(position + " argument '" + idNode.text() + "' is not defined.",
@@ -215,7 +215,7 @@ public class CallAnalysisHandler implements IAnalysisHandler {
     }
 
     private void validateLocationIdentifierOrLabel(IdentifierNode idNode, String position,
-                                                   SymbolTable st, DiagnosticsEngine diag, CallNode call) {
+                                                   SymbolTable st, DiagnosticsEngine diag) {
         Optional<ResolvedSymbol> opt = st.resolve(idNode.text(), idNode.sourceInfo().fileName());
         if (opt.isEmpty()) return;
         Symbol.Type type = opt.get().symbol().type();
