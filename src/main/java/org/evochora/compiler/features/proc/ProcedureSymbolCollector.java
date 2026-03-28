@@ -4,6 +4,7 @@ import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.semantics.analysis.ISymbolCollector;
 import org.evochora.compiler.model.ast.AstNode;
 
+import org.evochora.compiler.model.ast.ParameterBinding;
 import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
 
@@ -25,24 +26,30 @@ public class ProcedureSymbolCollector implements ISymbolCollector {
         SymbolTable.Scope newScope = symbolTable.enterScope(scopeName);
         symbolTable.registerNodeScope(node, newScope);
 
+        int dataIndex = 0;
         if (proc.refParameters() != null) {
             for (ProcedureNode.ParamDecl p : proc.refParameters()) {
-                symbolTable.define(new Symbol(p.name(), p.sourceInfo(), Symbol.Type.PARAMETER_DATA));
+                symbolTable.define(new Symbol(p.name(), p.sourceInfo(), Symbol.Type.PARAMETER_DATA,
+                        new ParameterBinding("%FDR" + dataIndex++)));
             }
         }
         if (proc.valParameters() != null) {
             for (ProcedureNode.ParamDecl p : proc.valParameters()) {
-                symbolTable.define(new Symbol(p.name(), p.sourceInfo(), Symbol.Type.PARAMETER_DATA));
+                symbolTable.define(new Symbol(p.name(), p.sourceInfo(), Symbol.Type.PARAMETER_DATA,
+                        new ParameterBinding("%FDR" + dataIndex++)));
             }
         }
+        int locationIndex = 0;
         if (proc.lrefParameters() != null) {
             for (ProcedureNode.ParamDecl p : proc.lrefParameters()) {
-                symbolTable.define(new Symbol(p.name(), p.sourceInfo(), Symbol.Type.PARAMETER_LOCATION));
+                symbolTable.define(new Symbol(p.name(), p.sourceInfo(), Symbol.Type.PARAMETER_LOCATION,
+                        new ParameterBinding("%FLR" + locationIndex++)));
             }
         }
         if (proc.lvalParameters() != null) {
             for (ProcedureNode.ParamDecl p : proc.lvalParameters()) {
-                symbolTable.define(new Symbol(p.name(), p.sourceInfo(), Symbol.Type.PARAMETER_LOCATION));
+                symbolTable.define(new Symbol(p.name(), p.sourceInfo(), Symbol.Type.PARAMETER_LOCATION,
+                        new ParameterBinding("%FLR" + locationIndex++)));
             }
         }
     }

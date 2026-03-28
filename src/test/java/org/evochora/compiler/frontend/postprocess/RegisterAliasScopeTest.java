@@ -10,6 +10,7 @@ import org.evochora.compiler.model.ScopeTracker;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.InstructionNode;
+import org.evochora.compiler.model.ast.ParameterBinding;
 import org.evochora.compiler.model.ast.RegisterNode;
 import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
@@ -157,6 +158,33 @@ class RegisterAliasScopeTest {
         InstructionNode resultInstr = (InstructionNode) resultProc.body().get(0);
         assertThat(resultInstr.arguments().get(0)).isInstanceOf(RegisterNode.class);
         assertThat(((RegisterNode) resultInstr.arguments().get(0)).getName()).isEqualTo("%DR7");
+    }
+
+    @Test
+    void parameterResolvedInsideProc() {
+        // Proc with REF param "X" — inside proc, X should resolve to %FDR0
+        IdentifierNode useInProc = new IdentifierNode("X", SRC);
+        InstructionNode instrInProc = new InstructionNode("SETI", List.of(useInProc), SRC);
+
+        ProcedureNode proc = new ProcedureNode("MY_PROC", false,
+                List.of(new ProcedureNode.ParamDecl("X", SRC)),
+                List.of(), List.of(), List.of(),
+                List.of(instrInProc), SRC);
+
+        symbolTable.define(new Symbol("MY_PROC", SRC, Symbol.Type.PROCEDURE, proc));
+        SymbolTable.Scope procScope = symbolTable.enterScope("MY_PROC");
+        symbolTable.registerNodeScope(proc, procScope);
+        symbolTable.define(new Symbol("X", SRC, Symbol.Type.PARAMETER_DATA,
+                new ParameterBinding("%FDR0")));
+        symbolTable.leaveScope();
+
+        AstPostProcessor processor = createProcessor();
+        AstNode procResult = processor.process(proc);
+
+        ProcedureNode resultProc = (ProcedureNode) procResult;
+        InstructionNode resultInstr = (InstructionNode) resultProc.body().get(0);
+        assertThat(resultInstr.arguments().get(0)).isInstanceOf(RegisterNode.class);
+        assertThat(((RegisterNode) resultInstr.arguments().get(0)).getName()).isEqualTo("%FDR0");
     }
 
     private AstPostProcessor createProcessor() {

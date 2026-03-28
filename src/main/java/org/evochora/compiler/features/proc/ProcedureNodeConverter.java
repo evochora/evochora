@@ -6,16 +6,14 @@ import org.evochora.compiler.frontend.irgen.IrGenContext;
 import org.evochora.compiler.model.ir.IrDirective;
 import org.evochora.compiler.model.ir.IrValue;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
  * Converts {@link ProcedureNode} into generic enter/exit directives (namespace "core").
- * Registers both data parameters (REF/VAL → FDR) and location parameters (LREF/LVAL → FLR)
- * in separate IrGenContext scopes so that convertOperand resolves them to the correct register bank.
+ * Parameter identifiers are already resolved to RegisterNodes in Phase 6 by the
+ * AstPostProcessor via SymbolTable scope-aware lookup.
  */
 public final class ProcedureNodeConverter implements IAstNodeToIrConverter<ProcedureNode> {
 
@@ -23,26 +21,6 @@ public final class ProcedureNodeConverter implements IAstNodeToIrConverter<Proce
 	public void convert(ProcedureNode node, IrGenContext ctx) {
 		String qualifiedName = ctx.qualifyName(node.name());
 		ctx.emit(new org.evochora.compiler.model.ir.IrLabelDef(qualifiedName, ctx.sourceOf(node)));
-
-		// Data parameters (REF + VAL → FDR indices)
-		List<String> allDataParams = new ArrayList<>();
-		if (node.refParameters() != null) {
-			node.refParameters().stream().map(ProcedureNode.ParamDecl::name).forEach(allDataParams::add);
-		}
-		if (node.valParameters() != null) {
-			node.valParameters().stream().map(ProcedureNode.ParamDecl::name).forEach(allDataParams::add);
-		}
-		ctx.pushProcedureParams(allDataParams);
-
-		// Location parameters (LREF + LVAL → FLR indices)
-		List<String> allLocationParams = new ArrayList<>();
-		if (node.lrefParameters() != null) {
-			node.lrefParameters().stream().map(ProcedureNode.ParamDecl::name).forEach(allLocationParams::add);
-		}
-		if (node.lvalParameters() != null) {
-			node.lvalParameters().stream().map(ProcedureNode.ParamDecl::name).forEach(allLocationParams::add);
-		}
-		ctx.pushProcedureLocationParams(allLocationParams);
 
 		int lrefArity = node.lrefParameters() != null ? node.lrefParameters().size() : 0;
 		int lvalArity = node.lvalParameters() != null ? node.lvalParameters().size() : 0;
@@ -54,9 +32,6 @@ public final class ProcedureNodeConverter implements IAstNodeToIrConverter<Proce
 
 		Map<String, IrValue> exitArgs = buildProcArgs(node, qualifiedName, lrefArity, lvalArity);
 		ctx.emit(new IrDirective("core", "proc_exit", exitArgs, ctx.sourceOf(node)));
-
-		ctx.popProcedureLocationParams();
-		ctx.popProcedureParams();
 	}
 
 	private Map<String, IrValue> buildProcArgs(ProcedureNode node, String qualifiedName, int lrefArity, int lvalArity) {

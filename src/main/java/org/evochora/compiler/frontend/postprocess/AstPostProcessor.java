@@ -2,6 +2,7 @@ package org.evochora.compiler.frontend.postprocess;
 
 import org.evochora.compiler.frontend.TreeWalker;
 import org.evochora.compiler.model.ast.AstNode;
+import org.evochora.compiler.model.ast.IParameterBinding;
 import org.evochora.compiler.model.ast.IRegisterAlias;
 import org.evochora.compiler.model.ast.IdentifierNode;
 import org.evochora.compiler.model.ast.RegisterNode;
@@ -105,6 +106,11 @@ public class AstPostProcessor implements IPostProcessContext {
             if ((symbol.type() == Symbol.Type.REGISTER_ALIAS_DATA || symbol.type() == Symbol.Type.REGISTER_ALIAS_LOCATION)
                     && symbol.node() instanceof IRegisterAlias alias) {
                 createRegisterReplacement(idNode, identifierName.toUpperCase(), alias.register());
+                return;
+            }
+            if ((symbol.type() == Symbol.Type.PARAMETER_DATA || symbol.type() == Symbol.Type.PARAMETER_LOCATION)
+                    && symbol.node() instanceof IParameterBinding pb) {
+                createRegisterReplacement(idNode, identifierName.toUpperCase(), pb.targetRegister());
                 return;
             }
             if (symbol.type() == Symbol.Type.CONSTANT) {
