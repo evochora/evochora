@@ -144,24 +144,24 @@ public class CallAnalysisHandler implements IAnalysisHandler {
         Optional<ResolvedSymbol> opt = st.resolve(idNode.text(), idNode.sourceInfo().fileName());
         if (opt.isEmpty()) {
             diag.reportError(position + " argument '" + idNode.text() + "' is not defined.",
-                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
             return;
         }
         Symbol.Type type = opt.get().symbol().type();
         if (type == Symbol.Type.REGISTER_ALIAS_DATA || type == Symbol.Type.PARAMETER_DATA) return;
         if (type == Symbol.Type.REGISTER_ALIAS_LOCATION) {
             diag.reportError(position + " argument '" + idNode.text() + "' is a location register alias, expected a data register.",
-                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
         } else if (type == Symbol.Type.PARAMETER_LOCATION) {
             diag.reportError(position + " argument '" + idNode.text() + "' is a location parameter, expected a data register.",
-                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
         } else if (type == Symbol.Type.MODULE_ALIAS) {
             diag.reportError("Module alias '" + idNode.text() + "' cannot be used as a CALL argument.",
-                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
         } else {
             diag.reportError(position + " argument '" + idNode.text()
                     + "' must resolve to a data register alias or data parameter.",
-                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
         }
     }
 
@@ -174,17 +174,17 @@ public class CallAnalysisHandler implements IAnalysisHandler {
         if (type == Symbol.Type.LABEL || type == Symbol.Type.PROCEDURE || type == Symbol.Type.CONSTANT) return;
         if (type == Symbol.Type.REGISTER_ALIAS_LOCATION) {
             diag.reportError(position + " argument '" + idNode.text() + "' is a location register alias, expected a data register.",
-                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
         } else if (type == Symbol.Type.PARAMETER_LOCATION) {
             diag.reportError(position + " argument '" + idNode.text() + "' is a location parameter, expected a data register.",
-                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
         } else if (type == Symbol.Type.MODULE_ALIAS) {
             diag.reportError("Module alias '" + idNode.text() + "' cannot be used as a CALL argument.",
-                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
         } else {
             diag.reportError(position + " argument '" + idNode.text()
                     + "' must resolve to a data register, label, or constant.",
-                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
         }
     }
 
@@ -193,24 +193,24 @@ public class CallAnalysisHandler implements IAnalysisHandler {
         Optional<ResolvedSymbol> opt = st.resolve(idNode.text(), idNode.sourceInfo().fileName());
         if (opt.isEmpty()) {
             diag.reportError(position + " argument '" + idNode.text() + "' is not defined.",
-                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
             return;
         }
         Symbol.Type type = opt.get().symbol().type();
         if (type == Symbol.Type.REGISTER_ALIAS_LOCATION || type == Symbol.Type.PARAMETER_LOCATION) return;
         if (type == Symbol.Type.REGISTER_ALIAS_DATA) {
             diag.reportError(position + " argument '" + idNode.text() + "' is a data register alias, expected a location register.",
-                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
         } else if (type == Symbol.Type.PARAMETER_DATA) {
             diag.reportError(position + " argument '" + idNode.text() + "' is a data parameter, expected a location register.",
-                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
         } else if (type == Symbol.Type.MODULE_ALIAS) {
             diag.reportError("Module alias '" + idNode.text() + "' cannot be used as a CALL argument.",
-                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
         } else {
             diag.reportError(position + " argument '" + idNode.text()
                     + "' must resolve to a location register alias or location parameter.",
-                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
         }
     }
 
@@ -223,17 +223,17 @@ public class CallAnalysisHandler implements IAnalysisHandler {
         if (type == Symbol.Type.LABEL || type == Symbol.Type.PROCEDURE || type == Symbol.Type.CONSTANT) return;
         if (type == Symbol.Type.REGISTER_ALIAS_DATA) {
             diag.reportError(position + " argument '" + idNode.text() + "' is a data register alias, expected a location register.",
-                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
         } else if (type == Symbol.Type.PARAMETER_DATA) {
             diag.reportError(position + " argument '" + idNode.text() + "' is a data parameter, expected a location register.",
-                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
         } else if (type == Symbol.Type.MODULE_ALIAS) {
             diag.reportError("Module alias '" + idNode.text() + "' cannot be used as a CALL argument.",
-                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
         } else {
             diag.reportError(position + " argument '" + idNode.text()
                     + "' must resolve to a location register, label, or constant.",
-                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+                    idNode.sourceInfo().fileName(), idNode.sourceInfo().lineNumber());
         }
     }
 }

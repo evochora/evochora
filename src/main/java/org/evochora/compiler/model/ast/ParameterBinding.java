@@ -12,10 +12,16 @@ import java.util.Objects;
  */
 public record ParameterBinding(String targetRegister) implements AstNode, IParameterBinding {
 
+    /**
+     * @throws NullPointerException if {@code targetRegister} is null
+     */
     public ParameterBinding {
         Objects.requireNonNull(targetRegister, "targetRegister must not be null");
     }
 
+    /**
+     * Returns an empty list — this synthetic node has no children.
+     */
     @Override
     public List<AstNode> getChildren() {
         return List.of();
