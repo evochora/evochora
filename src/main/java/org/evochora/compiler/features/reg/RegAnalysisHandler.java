@@ -22,12 +22,13 @@ public class RegAnalysisHandler implements IAnalysisHandler {
 
     private void processRegDirective(RegNode regNode, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         String registerText = regNode.register();
-        if (!isValidRegister(registerText)) {
+        RegisterBank bank = resolveRegisterBank(registerText);
+        if (bank == null) {
             StringBuilder validRanges = new StringBuilder();
-            for (RegisterBank bank : RegisterBank.values()) {
-                if (bank.count > 0 && !bank.isForbidden) {
+            for (RegisterBank b : RegisterBank.values()) {
+                if (b.count > 0 && !b.isForbidden) {
                     if (!validRanges.isEmpty()) validRanges.append(", ");
-                    validRanges.append(bank.prefix).append("0-").append(bank.prefix).append(bank.count - 1);
+                    validRanges.append(b.prefix).append("0-").append(b.prefix).append(b.count - 1);
                 }
             }
             diagnostics.reportError(
@@ -38,31 +39,35 @@ public class RegAnalysisHandler implements IAnalysisHandler {
             return;
         }
 
-        symbolTable.define(new Symbol(regNode.alias(), regNode.sourceInfo(), Symbol.Type.ALIAS, regNode));
+        Symbol.Type aliasType = bank.isLocation ? Symbol.Type.REGISTER_ALIAS_LOCATION : Symbol.Type.REGISTER_ALIAS_DATA;
+        symbolTable.define(new Symbol(regNode.alias(), regNode.sourceInfo(), aliasType, regNode));
     }
 
     /**
-     * Validates that a register string represents a valid, non-forbidden register with an in-bounds index.
-     * Forbidden banks (FDR, FLR) are rejected — they cannot be aliased directly.
+     * Resolves a register string to its {@link RegisterBank}, validating syntax, bounds, and
+     * forbidden status. Returns {@code null} if the register is invalid.
      *
-     * @param registerText the register text to validate (e.g., "%DR0", "%PDR2", "%LR3")
-     * @return {@code true} if the register is syntactically valid, non-forbidden, and within bounds
+     * @param registerText the register text to resolve (e.g., "%DR0", "%PDR2", "%LR3")
+     * @return the matching bank, or {@code null} if invalid
      */
-    private boolean isValidRegister(String registerText) {
+    private RegisterBank resolveRegisterBank(String registerText) {
         if (registerText == null || !registerText.startsWith("%")) {
-            return false;
+            return null;
         }
         String upper = registerText.toUpperCase();
         try {
             for (RegisterBank bank : RegisterBank.values()) {
                 if (bank.count > 0 && !bank.isForbidden && upper.startsWith(bank.prefix)) {
                     int index = Integer.parseInt(upper.substring(bank.prefixLength));
-                    return index >= 0 && index < bank.count;
+                    if (index >= 0 && index < bank.count) {
+                        return bank;
+                    }
+                    return null;
                 }
             }
-            return false;
+            return null;
         } catch (NumberFormatException e) {
-            return false;
+            return null;
         }
     }
 }

@@ -219,7 +219,7 @@ public class TokenMapGenerator implements ITokenMapContext {
                 SourceInfo regSourceInfo = registerNode.sourceInfo();
                 tokenMap.put(regSourceInfo, new TokenInfo(
                     registerNode.getName(),
-                    TokenKind.VARIABLE,
+                    TokenKind.REGISTER,
                     this.currentScopeName
                 ));
             }

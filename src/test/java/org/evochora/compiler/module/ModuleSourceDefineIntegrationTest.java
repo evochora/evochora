@@ -1,6 +1,7 @@
 package org.evochora.compiler.module;
 
 import org.evochora.compiler.FeatureRegistry;
+import org.evochora.compiler.model.ScopeTracker;
 import org.evochora.compiler.StandardFeatures;
 import org.evochora.compiler.api.SourceRoot;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
@@ -366,7 +367,7 @@ class ModuleSourceDefineIntegrationTest {
         // Phase 6: AST Post-Processing (skip Phase 5 TokenMap — not needed for these tests)
         ModuleContextTracker tracker = new ModuleContextTracker(symbolTable);
         symbolTable.setCurrentModule(rootAliasChain);
-        AstPostProcessor postProcessor = new AstPostProcessor(symbolTable, tracker, new org.evochora.compiler.model.ScopeTracker(symbolTable), TestRegistries.postProcessRegistry());
+        AstPostProcessor postProcessor = new AstPostProcessor(symbolTable, tracker, new ScopeTracker(symbolTable), TestRegistries.postProcessRegistry());
         for (int i = 0; i < ast.size(); i++) {
             ast.set(i, postProcessor.process(ast.get(i)));
         }

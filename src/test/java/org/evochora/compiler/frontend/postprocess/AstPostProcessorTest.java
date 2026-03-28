@@ -1,5 +1,6 @@
 package org.evochora.compiler.frontend.postprocess;
 
+import org.evochora.compiler.model.ScopeTracker;
 import org.evochora.compiler.features.ctx.PushCtxNode;
 import org.evochora.compiler.features.ctx.PopCtxNode;
 import org.evochora.compiler.features.reg.RegNode;
@@ -44,15 +45,15 @@ class AstPostProcessorTest {
         symbolTable.registerModule("TEST", "test.s");
         symbolTable.setCurrentModule("TEST");
 
-        processor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable), new org.evochora.compiler.model.ScopeTracker(symbolTable), TestRegistries.postProcessRegistry());
+        processor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable), new ScopeTracker(symbolTable), TestRegistries.postProcessRegistry());
 
-        // Register aliases as ALIAS symbols with RegNode on the Symbol's node field
+        // Register aliases as REGISTER_ALIAS_DATA symbols with RegNode on the Symbol's node field
         RegNode counterReg = new RegNode("COUNTER", "%DR0", createSourceInfo());
         RegNode tmpReg = new RegNode("TMP", "%PDR0", createSourceInfo());
         RegNode posReg = new RegNode("POS", "%DR1", createSourceInfo());
-        symbolTable.define(new Symbol("COUNTER", createSourceInfo(), Symbol.Type.ALIAS, counterReg));
-        symbolTable.define(new Symbol("TMP", createSourceInfo(), Symbol.Type.ALIAS, tmpReg));
-        symbolTable.define(new Symbol("POS", createSourceInfo(), Symbol.Type.ALIAS, posReg));
+        symbolTable.define(new Symbol("COUNTER", createSourceInfo(), Symbol.Type.REGISTER_ALIAS_DATA, counterReg));
+        symbolTable.define(new Symbol("TMP", createSourceInfo(), Symbol.Type.REGISTER_ALIAS_DATA, tmpReg));
+        symbolTable.define(new Symbol("POS", createSourceInfo(), Symbol.Type.REGISTER_ALIAS_DATA, posReg));
     }
 
     @Test
@@ -148,14 +149,14 @@ class AstPostProcessorTest {
     }
 
     @Test
-    void testProcess_AliasWithoutRegNode_NotReplacedInMainProcessor() {
-        // ALIAS symbol with no RegNode (node=null) — should NOT be replaced
+    void testProcess_ModuleAlias_NotReplaced() {
+        // MODULE_ALIAS symbol — should NOT be replaced (not a register alias)
         IdentifierNode idNode = new IdentifierNode("SOME_ALIAS", createSourceInfo());
-        symbolTable.define(new Symbol("SOME_ALIAS", createSourceInfo(), Symbol.Type.ALIAS));
+        symbolTable.define(new Symbol("SOME_ALIAS", createSourceInfo(), Symbol.Type.MODULE_ALIAS));
 
         AstNode result = processor.process(idNode);
 
-        // Should NOT be replaced (ALIAS but node is not IRegisterAlias)
+        // Should NOT be replaced (module alias, not register alias)
         assertThat(result).isSameAs(idNode);
     }
 
@@ -226,9 +227,9 @@ class AstPostProcessorTest {
         SymbolTable freshSt = new SymbolTable(freshDiags);
         freshSt.registerModule("TEST", "test.s");
         freshSt.setCurrentModule("TEST");
-        freshSt.define(new Symbol("ORPHAN", createSourceInfo(), Symbol.Type.ALIAS));
+        freshSt.define(new Symbol("ORPHAN", createSourceInfo(), Symbol.Type.MODULE_ALIAS));
 
-        AstPostProcessor freshProcessor = new AstPostProcessor(freshSt, new ModuleContextTracker(freshSt), new org.evochora.compiler.model.ScopeTracker(freshSt), TestRegistries.postProcessRegistry());
+        AstPostProcessor freshProcessor = new AstPostProcessor(freshSt, new ModuleContextTracker(freshSt), new ScopeTracker(freshSt), TestRegistries.postProcessRegistry());
 
         IdentifierNode idNode = new IdentifierNode("ORPHAN", createSourceInfo());
         AstNode result = freshProcessor.process(idNode);
@@ -319,7 +320,7 @@ class AstPostProcessorTest {
 
         // Use ModuleContextTracker with alias chains via PushCtxNode
         ModuleContextTracker tracker = new ModuleContextTracker(st);
-        AstPostProcessor moduleProcessor = new AstPostProcessor(st, tracker, new org.evochora.compiler.model.ScopeTracker(st), TestRegistries.postProcessRegistry());
+        AstPostProcessor moduleProcessor = new AstPostProcessor(st, tracker, new ScopeTracker(st), TestRegistries.postProcessRegistry());
 
         List<AstNode> nodes = List.of(
                 new PushCtxNode("/mod_a.evo", modAChain), defineA, instrA, new PopCtxNode(),

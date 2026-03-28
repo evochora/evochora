@@ -24,12 +24,16 @@ public record Symbol(String name, SourceInfo sourceInfo, Type type, AstNode node
         CONSTANT,
         /** A procedure defined with .PROC. */
         PROCEDURE,
-        /** A data variable, such as a REF/VAL procedure parameter (resolves to FDR). */
-        VARIABLE,
-        /** A location variable, such as an LREF/LVAL procedure parameter (resolves to FLR). */
-        LOCATION_VARIABLE,
-        /** A register alias defined with .REG. */
-        ALIAS
+        /** A data procedure parameter (REF/VAL, resolves to FDR). */
+        PARAMETER_DATA,
+        /** A location procedure parameter (LREF/LVAL, resolves to FLR). */
+        PARAMETER_LOCATION,
+        /** A module alias defined with .IMPORT AS or .REQUIRE AS. */
+        MODULE_ALIAS,
+        /** A data register alias (.REG %X %DR0, target is a data bank). */
+        REGISTER_ALIAS_DATA,
+        /** A location register alias (.REG %X %LR0, target is a location bank). */
+        REGISTER_ALIAS_LOCATION
     }
 
     /**

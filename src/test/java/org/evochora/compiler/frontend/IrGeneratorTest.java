@@ -98,6 +98,16 @@ public class IrGeneratorTest {
             fail("Semantic analysis errors: " + diagnostics.summary());
         }
 
+        // Phase 6: AST Post-Processing (resolve register aliases and parameters)
+        org.evochora.compiler.model.ModuleContextTracker postTracker = new org.evochora.compiler.model.ModuleContextTracker(symbolTable);
+        org.evochora.compiler.model.ScopeTracker scopeTracker = new org.evochora.compiler.model.ScopeTracker(symbolTable);
+        symbolTable.setCurrentModule(rootAliasChain);
+        org.evochora.compiler.frontend.postprocess.AstPostProcessor postProcessor =
+                new org.evochora.compiler.frontend.postprocess.AstPostProcessor(symbolTable, postTracker, scopeTracker, TestRegistries.postProcessRegistry());
+        for (int i = 0; i < ast.size(); i++) {
+            ast.set(i, postProcessor.process(ast.get(i)));
+        }
+
         IrConverterRegistry registry = allConverters();
         IrGenerator irGen = new IrGenerator(diagnostics, registry);
         IrProgram ir = irGen.generate(ast, "TestProg", rootAliasChain);

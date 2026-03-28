@@ -90,17 +90,32 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                         instructionNode.sourceInfo().lineNumber()
                                 );
                             }
-                        } else if (symbol.type() == Symbol.Type.ALIAS) {
-                            // Register aliases are valid for REGISTER and LOCATION_REGISTER arguments (will be resolved later)
-                            if (expectedType != InstructionArgumentType.REGISTER && expectedType != InstructionArgumentType.LOCATION_REGISTER) {
+                        } else if (symbol.type() == Symbol.Type.REGISTER_ALIAS_DATA) {
+                            if (expectedType != InstructionArgumentType.REGISTER) {
                                 diagnostics.reportError(
-                                        String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got ALIAS.",
+                                        String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got data register alias.",
                                                 i + 1, instructionName, expectedType),
                                         instructionNode.sourceInfo().fileName(),
                                         instructionNode.sourceInfo().lineNumber()
                                 );
                             }
-                        } else if (symbol.type() == Symbol.Type.VARIABLE) {
+                        } else if (symbol.type() == Symbol.Type.REGISTER_ALIAS_LOCATION) {
+                            if (expectedType != InstructionArgumentType.LOCATION_REGISTER) {
+                                diagnostics.reportError(
+                                        String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got location register alias.",
+                                                i + 1, instructionName, expectedType),
+                                        instructionNode.sourceInfo().fileName(),
+                                        instructionNode.sourceInfo().lineNumber()
+                                );
+                            }
+                        } else if (symbol.type() == Symbol.Type.MODULE_ALIAS) {
+                            diagnostics.reportError(
+                                    String.format("Module alias '%s' cannot be used as an instruction argument.",
+                                            idNode.text()),
+                                    instructionNode.sourceInfo().fileName(),
+                                    instructionNode.sourceInfo().lineNumber()
+                            );
+                        } else if (symbol.type() == Symbol.Type.PARAMETER_DATA) {
                             // Accept data parameters (REF/VAL → FDR) in REGISTER positions
                             if (expectedType != InstructionArgumentType.REGISTER) {
                                 diagnostics.reportError(
@@ -110,7 +125,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                         instructionNode.sourceInfo().lineNumber()
                                 );
                             }
-                        } else if (symbol.type() == Symbol.Type.LOCATION_VARIABLE) {
+                        } else if (symbol.type() == Symbol.Type.PARAMETER_LOCATION) {
                             // Accept location parameters (LREF/LVAL → FLR) in LOCATION_REGISTER positions
                             if (expectedType != InstructionArgumentType.LOCATION_REGISTER) {
                                 diagnostics.reportError(

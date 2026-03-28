@@ -12,21 +12,21 @@ import { ValueFormatter } from '../../utils/ValueFormatter.js';
 export class ParameterTokenHandler {
     /**
      * Determines if this handler can process the given token.
-     * It handles tokens identified as 'VARIABLE' type that are in a procedure scope (not global).
+     * It handles tokens identified as 'PARAMETER' type that are in a procedure scope (not global).
      *
      * @param {string} tokenText The text of the token.
      * @param {object} tokenInfo Metadata about the token from the compiler.
-     * @returns {boolean} True if the token is a 'VARIABLE' type in a procedure scope, false otherwise.
+     * @returns {boolean} True if the token is a 'PARAMETER' type in a procedure scope, false otherwise.
      */
     canHandle(tokenText, tokenInfo) {
         if (!tokenInfo) {
             return false;
         }
         
-        const isVariableType = tokenInfo.tokenType === 'VARIABLE';
+        const isParameterType = tokenInfo.tokenType === 'PARAMETER';
         const isInProcedureScope = tokenInfo.scope && tokenInfo.scope.toUpperCase() !== 'GLOBAL';
         
-        return isVariableType && isInProcedureScope;
+        return isParameterType && isInProcedureScope;
     }
 
     /**
