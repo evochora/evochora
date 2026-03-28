@@ -502,8 +502,10 @@ class ArtemisQueueResourceTest {
 
         // Add a message: input is active, output still has space
         queue.put(BatchInfo.newBuilder().setTickStart(1).build());
-        assertThat(queue.getUsageState("queue-in")).isEqualTo(UsageState.ACTIVE);
-        assertThat(queue.getUsageState("queue-out")).isEqualTo(UsageState.ACTIVE);
+        await().atMost(2, TimeUnit.SECONDS).untilAsserted(() -> {
+            assertThat(queue.getUsageState("queue-in")).isEqualTo(UsageState.ACTIVE);
+            assertThat(queue.getUsageState("queue-out")).isEqualTo(UsageState.ACTIVE);
+        });
     }
 
     @Test
