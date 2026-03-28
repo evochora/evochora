@@ -267,6 +267,98 @@ public class VMControlFlowInstructionTest {
                 .isEqualTo(lr0Id);
     }
 
+    /**
+     * Tests that callee writes to STACK_SAVED registers do not leak to the caller
+     * when the caller never wrote to any STACK_SAVED register (stackSavedDirty=false at CALL).
+     * Bug: savedRegisters=null when !dirty → no restore on RET → callee values leak.
+     */
+    @Test
+    @Tag("unit")
+    void testCallRetDoesNotLeakCalleeStackSavedRegisters() {
+        CallRetSetup setup = setupCallRet(99999);
+
+        // Verify PDR0 is 0 (default) and stackSavedDirty is false
+        assertThat((int) org.readOperand(RegisterBank.PDR.base)).isEqualTo(0);
+
+        // CALL
+        placeInstruction("CALL", setup.labelHash);
+        sim.tick();
+        assertThat(org.getCallStack()).hasSize(1);
+
+        // Callee writes PDR0 = 42
+        org.writeOperand(RegisterBank.PDR.base, 42);
+
+        // RET
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("RET")), setup.afterLabel);
+        sim.tick();
+        assertThat(org.getCallStack()).isEmpty();
+
+        // PDR0 must be 0 (caller's state), not 42 (callee's value that should not leak)
+        assertThat((int) org.readOperand(RegisterBank.PDR.base))
+                .as("Callee's PDR0 write must not leak to caller when savedRegisters was null")
+                .isEqualTo(0);
+    }
+
+    /**
+     * Tests that nested callee writes to PERSISTENT registers do not leak to the intermediate
+     * caller when that caller never wrote any PERSISTENT register (no stored snapshot).
+     * Scenario: Main → CALL A → CALL B, B writes SDR0=42, B RETs to A → A must see SDR0=0.
+     */
+    @Test
+    @Tag("unit")
+    void testNestedCallRetDoesNotLeakCalleePersistentRegisters() {
+        // Set up two procedures: A at pos 20, B at pos 40
+        int hashA = 88801 & Config.VALUE_MASK;
+        int hashB = 88802 & Config.VALUE_MASK;
+        int[] labelPosA = new int[]{20};
+        int[] afterLabelA = new int[]{21}; // WAIT — A's body, we'll replace with CALL B
+        int[] labelPosB = new int[]{40};
+        int[] afterLabelB = new int[]{41}; // WAIT — B's body
+
+        environment.setMolecule(new Molecule(Config.TYPE_LABEL, hashA), labelPosA);
+        environment.setMolecule(new Molecule(Config.TYPE_LABEL, hashB), labelPosB);
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), afterLabelA);
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), afterLabelB);
+
+        // Return target for Main's CALL A
+        int[] returnTarget = org.getNextInstructionPosition(org.getIp(), org.getDv(), environment);
+        returnTarget = org.getNextInstructionPosition(returnTarget, org.getDv(), environment);
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), returnTarget);
+
+        // Tick 1: Main CALL A (persistentDirty=false, no persistent save)
+        placeInstruction("CALL", hashA);
+        sim.tick();
+        assertThat(org.getCallStack()).hasSize(1);
+
+        // Now inside A. Place CALL B at A's body position
+        int callOpcode = Instruction.getInstructionIdByName("CALL");
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, callOpcode), afterLabelA);
+        int[] callBOperand = org.getNextInstructionPosition(afterLabelA, org.getDv(), environment);
+        environment.setMolecule(new Molecule(Config.TYPE_DATA, hashB), callBOperand);
+        // Return target for A's CALL B
+        int[] returnFromB = org.getNextInstructionPosition(callBOperand, org.getDv(), environment);
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), returnFromB);
+
+        // Tick 2: A CALL B (persistentDirty still false, no persistent save for A)
+        sim.tick();
+        assertThat(org.getCallStack()).hasSize(2);
+
+        // Inside B: write SDR0 = 42 (first persistent write, sets persistentDirty=true)
+        org.writeOperand(RegisterBank.SDR.base, 42);
+
+        // RET from B
+        environment.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("RET")), afterLabelB);
+
+        // Tick 3: B RET → should restore A's persistent state (A has no snapshot → must reset)
+        sim.tick();
+        assertThat(org.getCallStack()).hasSize(1);
+
+        // SDR0 must be 0 (A's default), not 42 (B's value that should not leak to A)
+        assertThat((int) org.readOperand(RegisterBank.SDR.base))
+                .as("B's SDR0=42 must not leak to A when A has no persistent snapshot")
+                .isEqualTo(0);
+    }
+
     // --- Persistent register (SDR/SLR) tests ---
 
     /**
@@ -509,6 +601,58 @@ public class VMControlFlowInstructionTest {
         assertThat((int) stalOrg.readOperand(RegisterBank.SDR.base))
                 .as("SDR0 should be 77 — stall recovery must reset currentProcLabelHash so persistent state is attributed to main")
                 .isEqualTo(77);
+    }
+
+    /**
+     * Tests that recoverFromStall does not leak callee's STACK_SAVED register writes
+     * when the caller had never written any STACK_SAVED register (savedRegisters=null).
+     * Setup: CALL → callee executes SETI %PDR0 → next instruction is in empty zone → stall.
+     */
+    @Test
+    @Tag("unit")
+    void testRecoverFromStallDoesNotLeakCalleeStackSavedRegisters() {
+        Environment nonToroidal = new Environment(new int[]{100}, false);
+        Simulation stalSim = SimulationTestUtils.createSimulation(nonToroidal);
+        Organism stalOrg = Organism.create(stalSim, new int[]{5}, 1000);
+        stalSim.addOrganism(stalOrg);
+
+        // PDR0 = 0 (default), stackSavedDirty=false
+        assertThat((int) stalOrg.readOperand(RegisterBank.PDR.base)).isEqualTo(0);
+
+        // Place CALL at pos 5, targeting label at pos 90
+        int labelHash = 55555 & Config.VALUE_MASK;
+        int callOpcode = Instruction.getInstructionIdByName("CALL");
+        nonToroidal.setMolecule(new Molecule(Config.TYPE_CODE, callOpcode), new int[]{5});
+        nonToroidal.setMolecule(new Molecule(Config.TYPE_DATA, labelHash), new int[]{6});
+        // WAIT at return target (pos 7)
+        nonToroidal.setMolecule(new Molecule(Config.TYPE_CODE, Instruction.getInstructionIdByName("WAIT")), new int[]{7});
+
+        // Label at pos 90, SETI %PDR0 DATA:42 at pos 91 (callee code)
+        nonToroidal.setMolecule(new Molecule(Config.TYPE_LABEL, labelHash), new int[]{90});
+        int setiOpcode = Instruction.getInstructionIdByName("SETI");
+        nonToroidal.setMolecule(new Molecule(Config.TYPE_CODE, setiOpcode), new int[]{91});
+        // SETI operands: register ID for PDR0, then DATA:42
+        nonToroidal.setMolecule(new Molecule(Config.TYPE_REGISTER, RegisterBank.PDR.base), new int[]{92});
+        nonToroidal.setMolecule(new Molecule(Config.TYPE_DATA, 42), new int[]{93});
+        // Pos 94+ is empty → after SETI executes, skipNopCells finds nothing → stall
+
+        // Tick 1: CALL → jumps to pos 91 (after label at 90)
+        stalSim.tick();
+        assertThat(stalOrg.getCallStack()).hasSize(1);
+
+        // Tick 2: SETI %PDR0 DATA:42 → executes, then skipNopCells → empty → stall → recovery
+        stalSim.tick();
+
+        // After recovery: call stack should be empty, instructionFailed should be true
+        assertThat(stalOrg.getCallStack()).isEmpty();
+        assertThat(stalOrg.isInstructionFailed()).isTrue();
+
+        // PDR0 must be 0 (caller's default), not 42 (callee's write that should not leak)
+        assertThat((int) stalOrg.readOperand(RegisterBank.PDR.base))
+                .as("Callee's PDR0=42 must not leak to caller after stall recovery with null savedRegisters")
+                .isEqualTo(0);
+
+        stalOrg.resetTickState();
     }
 
     @org.junit.jupiter.api.AfterEach

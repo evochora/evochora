@@ -108,6 +108,8 @@ public final class ProcedureCallHandler {
 
         if (returnFrame.savedRegisters() != null) {
             organism.restoreStackSavedRegisters(returnFrame.savedRegisters());
+        } else if (organism.isStackSavedDirty()) {
+            organism.resetStackSavedRegisters();
         }
 
         // Always track which procedure is active
@@ -121,6 +123,8 @@ public final class ProcedureCallHandler {
             Object[] callerState = organism.getPersistentRegisterState().get(callerLabelHash);
             if (callerState != null) {
                 organism.restorePersistentRegisters(callerState);
+            } else {
+                organism.resetPersistentRegisters();
             }
         }
 

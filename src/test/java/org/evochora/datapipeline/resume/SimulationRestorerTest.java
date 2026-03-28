@@ -233,6 +233,57 @@ class SimulationRestorerTest {
         assertThat(simulation.getAllGenomesEverSeen()).containsExactlyInAnyOrder(111L, 222L, 333L);
     }
 
+    @Test
+    void restore_FailureCallStack_Preserved() {
+        SimulationMetadata metadata = createMinimalMetadata();
+
+        // Build a ProcFrame for the failure call stack
+        org.evochora.datapipeline.api.contracts.ProcFrame protoFrame =
+                org.evochora.datapipeline.api.contracts.ProcFrame.newBuilder()
+                    .setProcName("FAILING_PROC")
+                    .setLabelHash(12345)
+                    .setAbsoluteReturnIp(createVector(5, 0))
+                    .setAbsoluteCallIp(createVector(3, 0))
+                    .build();
+
+        OrganismState failedOrg = OrganismState.newBuilder()
+            .setOrganismId(99)
+            .setBirthTick(0)
+            .setEnergy(500)
+            .setIp(createVector(10, 10))
+            .setDv(createVector(1, 0))
+            .setInitialPosition(createVector(0, 0))
+            .setInstructionFailed(true)
+            .setFailureReason("Call stack overflow")
+            .addFailureCallStack(protoFrame)
+            .addAllRegisters(ProtoTestUtils.buildFlatRegisters(null, null, null, null))
+            .setIsDead(false)
+            .build();
+
+        TickData snapshot = TickData.newBuilder()
+            .setSimulationRunId(TEST_RUN_ID)
+            .setTickNumber(100)
+            .setCaptureTimeMs(System.currentTimeMillis())
+            .setTotalOrganismsCreated(10)
+            .setCellColumns(CellDataColumns.newBuilder().build())
+            .addOrganisms(failedOrg)
+            .build();
+
+        ResumeCheckpoint checkpoint = new ResumeCheckpoint(metadata, snapshot);
+        SimulationRestorer.RestoredState state = SimulationRestorer.restore(checkpoint, randomProvider, 1);
+        Simulation simulation = state.simulation();
+
+        assertThat(simulation.getOrganisms()).hasSize(1);
+        Organism org = simulation.getOrganisms().get(0);
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).isEqualTo("Call stack overflow");
+        assertThat(org.getFailureCallStack()).isNotNull();
+        assertThat(org.getFailureCallStack()).hasSize(1);
+        assertThat(org.getFailureCallStack().peek().procName()).isEqualTo("FAILING_PROC");
+        assertThat(org.getFailureCallStack().peek().labelHash()).isEqualTo(12345);
+    }
+
     // ==================== Helper Methods ====================
 
     private SimulationMetadata createMinimalMetadata() {

@@ -272,6 +272,32 @@ public class EmissionCallerMarshallingTest {
 
         @Test
         @Tag("unit")
+        @DisplayName("Should marshall CALL with multiple LVAL and LREF in correct location-stack order")
+        void marshallsCallWithMultipleLvalAndLref() {
+            // IR for: CALL proc LREF %LR0 %LR1 LVAL %LR2
+            IrReg lr0 = new IrReg("%LR0");
+            IrReg lr1 = new IrReg("%LR1");
+            IrReg lr2 = new IrReg("%LR2");
+            IrLabelRef target = new IrLabelRef("proc");
+            IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(), List.of(), List.of(lr0, lr1), List.of(lr2), src("main.s", 1));
+
+            List<IrItem> out = runEmission(List.of(call));
+
+            // Pre-call order: LVAL (reverse) then LREF (reverse)
+            // PUSL %LR2 (LVAL, only one), PUSL %LR1 (LREF reverse), PUSL %LR0 (LREF reverse)
+            // Post-call: POPL LREF (reverse) for write-back
+            // POPL %LR1, POPL %LR0
+            assertThat(out).hasSize(6);
+            assertThat(out.get(0)).isEqualTo(IrInstruction.synthetic("PUSL", List.of(lr2), call.source()));
+            assertThat(out.get(1)).isEqualTo(IrInstruction.synthetic("PUSL", List.of(lr1), call.source()));
+            assertThat(out.get(2)).isEqualTo(IrInstruction.synthetic("PUSL", List.of(lr0), call.source()));
+            assertThat(out.get(3)).isEqualTo(call);
+            assertThat(out.get(4)).isEqualTo(IrInstruction.synthetic("POPL", List.of(lr1), call.source()));
+            assertThat(out.get(5)).isEqualTo(IrInstruction.synthetic("POPL", List.of(lr0), call.source()));
+        }
+
+        @Test
+        @Tag("unit")
         @DisplayName("Should marshall CALL with mixed REF + LREF (data + location marshalling)")
         void marshallsCallWithMixedRefAndLref() {
             // IR for: CALL proc REF %DR0 LREF %LR0

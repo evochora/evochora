@@ -234,7 +234,7 @@ public class Organism {
 
         // Build flat register array
         this.registers = new Object[RegisterBank.TOTAL_REGISTER_COUNT];
-        int dims = b.ip != null ? b.ip.length : 2;
+        int dims = b.ip.length;
         if (b.flatRegisters != null) {
             System.arraycopy(b.flatRegisters, 0, this.registers, 0,
                     Math.min(b.flatRegisters.length, this.registers.length));
@@ -798,6 +798,8 @@ public class Organism {
             ProcFrame frame = callStack.pop();
             if (frame.savedRegisters() != null) {
                 restoreStackSavedRegisters(frame.savedRegisters());
+            } else if (stackSavedDirty) {
+                resetStackSavedRegisters();
             }
             // Always track which procedure is active (same as ProcedureCallHandler.executeReturn)
             int callerLabelHash = callStack.isEmpty() ? MAIN_LEVEL_LABEL_HASH : callStack.peek().labelHash();
@@ -1285,6 +1287,19 @@ public class Organism {
         for (RegisterBank bank : banks) {
             System.arraycopy(snapshot, offset, registers, bank.slotOffset(), bank.count);
             offset += bank.count;
+        }
+    }
+
+    /**
+     * Resets all STACK_SAVED register values to their defaults (0 for data, zero-vector for location).
+     * Used when a callee modified STACK_SAVED registers but no snapshot was taken at CALL time
+     * (because the caller had never written to any STACK_SAVED register).
+     */
+    public void resetStackSavedRegisters() {
+        for (RegisterBank bank : RegisterBank.allSavedOnCall()) {
+            for (int i = 0; i < bank.count; i++) {
+                registers[bank.slotOffset() + i] = bank.isLocation ? new int[ip.length] : 0;
+            }
         }
     }
 

@@ -558,6 +558,13 @@ public class SimulationRestorer {
         if (state.getInstructionFailed()) {
             String reason = state.hasFailureReason() ? state.getFailureReason() : "Unknown";
             builder.failed(true, reason);
+            if (state.getFailureCallStackCount() > 0) {
+                Deque<Organism.ProcFrame> failureStack = new ArrayDeque<>();
+                for (org.evochora.datapipeline.api.contracts.ProcFrame protoFrame : state.getFailureCallStackList()) {
+                    failureStack.push(convertProcFrame(protoFrame));
+                }
+                builder.failureCallStack(failureStack);
+            }
         }
 
         // Persistent register state + dirty flags

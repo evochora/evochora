@@ -1,5 +1,6 @@
 package org.evochora.compiler.directives;
 
+import org.evochora.runtime.Config;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
@@ -94,7 +95,7 @@ public class RegDirectiveTest {
     @Test
     @Tag("unit")
     void testRegDirectiveWithInvalidRegister() {
-        String source = ".REG COUNTER %DR99";
+        String source = ".REG COUNTER %DR" + Config.NUM_DATA_REGISTERS;
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
@@ -257,7 +258,7 @@ public class RegDirectiveTest {
     void testRegDirectivePdrBoundsInsideProc() {
         String source = String.join("\n",
                 ".PROC MY_PROC",
-                "  .REG %TMP %PDR99",
+                "  .REG %TMP %PDR" + Config.NUM_PDR_REGISTERS,
                 ".ENDP"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
@@ -351,7 +352,7 @@ public class RegDirectiveTest {
     @Test
     @Tag("unit")
     void testRegDirectiveLrOutOfBounds() {
-        String source = ".REG POSITION %LR99";
+        String source = ".REG POSITION %LR" + Config.NUM_LOCATION_REGISTERS;
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();

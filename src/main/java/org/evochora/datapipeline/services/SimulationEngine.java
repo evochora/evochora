@@ -1032,15 +1032,14 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     private static org.evochora.datapipeline.api.contracts.RegisterValue convertRegisterValueReuse(
             Object rv, org.evochora.datapipeline.api.contracts.RegisterValue.Builder registerBuilder, Vector.Builder vectorBuilder) {
         registerBuilder.clear();
-        if (rv == null) {
-            registerBuilder.setScalar(0);
-        } else if (rv instanceof Integer) {
+        if (rv instanceof Integer) {
             registerBuilder.setScalar((Integer) rv);
         } else if (rv instanceof int[]) {
             registerBuilder.setVector(convertVectorReuse((int[]) rv, vectorBuilder));
         } else {
             throw new IllegalStateException(
-                "RegisterValue must be Integer or int[], but got: " + rv.getClass().getName());
+                "RegisterValue must be Integer or int[], but got: " +
+                (rv == null ? "null" : rv.getClass().getName()));
         }
         return registerBuilder.build();
     }

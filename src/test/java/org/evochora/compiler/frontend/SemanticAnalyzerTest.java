@@ -1,5 +1,6 @@
 package org.evochora.compiler.frontend;
 
+import org.evochora.runtime.Config;
 import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.lexer.Lexer;
@@ -415,8 +416,7 @@ public class SemanticAnalyzerTest {
     @Test
     @Tag("unit")
     void testUnknownRegisterIsReported() {
-        // %DR99 ist kein valider Registername in unserem ISA-Schema (nur %DR0-%DR7)
-        String source = "SETI %DR99 DATA:1";
+        String source = "SETI %DR" + Config.NUM_DATA_REGISTERS + " DATA:1";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
@@ -425,7 +425,7 @@ public class SemanticAnalyzerTest {
         analyzer.analyze(ast);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().get(0).message()).contains("%DR99");
+        assertThat(diagnostics.getDiagnostics().get(0).message()).contains("%DR" + Config.NUM_DATA_REGISTERS);
     }
 
     /**
