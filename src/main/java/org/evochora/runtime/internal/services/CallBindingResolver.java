@@ -27,13 +27,7 @@ public final class CallBindingResolver {
         Organism organism = context.getOrganism();
         int[] ipBeforeFetch = organism.getIpBeforeFetch();
 
-        // The only correct method: Global Registry (absolute coordinate)
-        CallBindingRegistry registry = CallBindingRegistry.getInstance();
-        Map<Integer, Integer> bindings = registry.getBindingForAbsoluteCoord(ipBeforeFetch);
-        if (bindings != null) {
-            return bindings;
-        }
-
-        return null;
+        int flatIndex = context.getWorld().properties.toFlatIndex(ipBeforeFetch);
+        return CallBindingRegistry.getInstance().getBinding(flatIndex);
     }
 }

@@ -214,7 +214,8 @@ public class RuntimeIntegrationTest {
         for (var binding : corruptedArtifact.callSiteBindings().entrySet()) {
             int[] coord = corruptedArtifact.linearAddressToCoord().get(binding.getKey());
             if (coord != null) {
-                CallBindingRegistry.getInstance().registerBindingForAbsoluteCoord(coord, binding.getValue());
+                int flatIndex = env.properties.toFlatIndex(coord);
+                CallBindingRegistry.getInstance().registerBinding(flatIndex, binding.getValue());
             }
         }
 

@@ -244,8 +244,9 @@ public class VMControlFlowInstructionTest {
         int dr1Id = 1; // DR1
         int lr0Id = RegisterBank.LR.base; // LR0
         CallBindingRegistry.getInstance().clearAll();
-        CallBindingRegistry.getInstance().registerBindingForAbsoluteCoord(
-                org.getIp(), java.util.Map.of(
+        int flatIndex = environment.properties.toFlatIndex(org.getIp());
+        CallBindingRegistry.getInstance().registerBinding(
+                flatIndex, java.util.Map.of(
                         RegisterBank.FDR.base + 0, dr1Id,
                         RegisterBank.FLR.base + 0, lr0Id));
 

@@ -55,15 +55,16 @@ public final class ProcedureCallHandler {
         }
 
         if (organism.isPersistentDirty()) {
-            // Save caller's persistent register state
             Map<Integer, Object[]> persistentState = organism.getPersistentRegisterState();
-            persistentState.put(organism.getCurrentProcLabelHash(), organism.snapshotPersistentRegisters());
 
-            // Check limit before potentially adding a new entry
+            // Check limit before saving — avoid unnecessary snapshot + put if limit exceeded
             if (!persistentState.containsKey(labelHash) && persistentState.size() >= Config.PERSISTENT_STATE_MAX_PROCEDURES) {
                 organism.instructionFailed("Persistent register store limit exceeded");
                 return;
             }
+
+            // Save caller's persistent register state
+            persistentState.put(organism.getCurrentProcLabelHash(), organism.snapshotPersistentRegisters());
 
             // Switch to callee's persistent register state
             Object[] calleeState = persistentState.get(labelHash);

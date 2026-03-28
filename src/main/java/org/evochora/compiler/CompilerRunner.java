@@ -67,7 +67,8 @@ public final class CompilerRunner {
                 for (int i = 0; i < startPos.length; i++) {
                     absoluteCoord[i] = startPos[i] + relativeCoord[i];
                 }
-                registry.registerBindingForAbsoluteCoord(absoluteCoord, binding.getValue());
+                int flatIndex = environment.properties.toFlatIndex(absoluteCoord);
+                registry.registerBinding(flatIndex, binding.getValue());
             }
         }
 
