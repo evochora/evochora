@@ -11,8 +11,10 @@ public enum TokenKind {
     CONSTANT,
     /** A procedure defined with .PROC. */
     PROCEDURE,
-    /** A variable, such as a procedure parameter. */
-    VARIABLE,
+    /** A procedure parameter (REF/VAL/LREF/LVAL). */
+    PARAMETER,
+    /** A physical register token (%DR0, %LR1) that is not an alias or parameter. */
+    REGISTER,
     /** A register alias defined with .REG. */
     ALIAS,
     /** An instruction opcode (e.g., CALL, RET, NOP, MOV). */

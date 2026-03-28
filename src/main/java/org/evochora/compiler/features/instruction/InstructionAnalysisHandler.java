@@ -100,7 +100,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                         instructionNode.sourceInfo().lineNumber()
                                 );
                             }
-                        } else if (symbol.type() == Symbol.Type.VARIABLE) {
+                        } else if (symbol.type() == Symbol.Type.PARAMETER_DATA) {
                             // Accept data parameters (REF/VAL → FDR) in REGISTER positions
                             if (expectedType != InstructionArgumentType.REGISTER) {
                                 diagnostics.reportError(
@@ -110,7 +110,7 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                         instructionNode.sourceInfo().lineNumber()
                                 );
                             }
-                        } else if (symbol.type() == Symbol.Type.LOCATION_VARIABLE) {
+                        } else if (symbol.type() == Symbol.Type.PARAMETER_LOCATION) {
                             // Accept location parameters (LREF/LVAL → FLR) in LOCATION_REGISTER positions
                             if (expectedType != InstructionArgumentType.LOCATION_REGISTER) {
                                 diagnostics.reportError(

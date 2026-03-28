@@ -12,7 +12,7 @@ import java.util.List;
  * Token map contributor for {@link ProcedureNode}.
  *
  * <p>Adds the procedure name as a {@link TokenKind#PROCEDURE} token in global scope,
- * and all formal parameters as {@link TokenKind#VARIABLE} tokens in the procedure's scope.</p>
+ * and all formal parameters as {@link TokenKind#PARAMETER} tokens in the procedure's scope.</p>
  */
 public class ProcedureTokenMapContributor implements ITokenMapContributor {
 
@@ -37,7 +37,7 @@ public class ProcedureTokenMapContributor implements ITokenMapContributor {
 		for (ProcedureNode.ParamDecl param : params) {
 			context.addToken(
 				param.sourceInfo(),
-				param.name(), TokenKind.VARIABLE, scope);
+				param.name(), TokenKind.PARAMETER, scope);
 		}
 	}
 }

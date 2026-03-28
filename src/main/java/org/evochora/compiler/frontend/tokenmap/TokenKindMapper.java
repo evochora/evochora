@@ -22,7 +22,7 @@ public final class TokenKindMapper {
             case LABEL -> TokenKind.LABEL;
             case CONSTANT -> TokenKind.CONSTANT;
             case PROCEDURE -> TokenKind.PROCEDURE;
-            case VARIABLE, LOCATION_VARIABLE -> TokenKind.VARIABLE;
+            case PARAMETER_DATA, PARAMETER_LOCATION -> TokenKind.PARAMETER;
             case ALIAS -> TokenKind.ALIAS;
         };
     }

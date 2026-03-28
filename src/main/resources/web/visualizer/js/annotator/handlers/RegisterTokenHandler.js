@@ -9,7 +9,7 @@ import { ValueFormatter } from '../../utils/ValueFormatter.js';
 export class RegisterTokenHandler {
     /**
      * Determines if this handler can process the given token.
-     * It handles tokens identified as 'ALIAS' or 'VARIABLE' that start with '%'.
+     * It handles tokens identified as 'ALIAS' or 'REGISTER'.
      *
      * @param {string} tokenText The text of the token.
      * @param {object} tokenInfo Metadata about the token from the compiler.
@@ -17,7 +17,7 @@ export class RegisterTokenHandler {
      */
     canHandle(token, tokenInfo) {
         const type = tokenInfo.tokenType;
-        return type === 'ALIAS' || (type === 'VARIABLE' && token.startsWith('%'));
+        return type === 'ALIAS' || type === 'REGISTER';
     }
 
     /**
