@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.Deque;
 
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
@@ -45,7 +46,7 @@ public class OrganismTest {
     @Test
     @Tag("unit")
     void testPlanTickStrictTypingOnNonCodeCell() {
-        Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 100);
         sim.addOrganism(org);
         // Place a DATA symbol at IP - should be treated as NOP (auto-skipped)
         environment.setMolecule(new Molecule(Config.TYPE_DATA, 1), org.getIp());
@@ -65,7 +66,7 @@ public class OrganismTest {
     @Test
     @Tag("unit")
     void testPlanTickUnknownOpcodeProducesNop() {
-        Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 100);
         sim.addOrganism(org);
         // Place a CODE opcode that doesn't exist (e.g., 999)
         environment.setMolecule(new Molecule(Config.TYPE_CODE, 999), org.getIp());
@@ -88,7 +89,7 @@ public class OrganismTest {
     void testEnergyDecreasesAndDeath() {
         // Start with small energy; execute WAIT until dead
         // Use WAIT (not NOP) because NOP is instant-skip
-        Organism org = Organism.create(sim, new int[]{0, 0}, 2, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 2);
         sim.addOrganism(org);
         int waitId = Instruction.getInstructionIdByName("WAIT");
         environment.setMolecule(new Molecule(Config.TYPE_CODE, waitId), new int[]{0, 0});
@@ -111,7 +112,7 @@ public class OrganismTest {
     @Test
     @Tag("unit")
     void testIpAdvancesAlongDv() {
-        Organism org = Organism.create(sim, new int[]{0, 0}, 10, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 10);
         sim.addOrganism(org);
         // Move along +X
         org.setDv(new int[]{1, 0});
@@ -137,7 +138,7 @@ public class OrganismTest {
     @Test
     @Tag("unit")
     void testGetTargetCoordinateFromDp() {
-        Organism org = Organism.create(sim, new int[]{10, 10}, 100, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{10, 10}, 100);
         sim.addOrganism(org);
         // Set DP to somewhere else to ensure DP is used
         org.setDp(0, new int[]{5, 5});        int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);        assertThat(target).isEqualTo(new int[]{5, 6});
@@ -150,7 +151,7 @@ public class OrganismTest {
     @Test
     @Tag("unit")
     void testDataStackPushPopOrder() {
-        Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 100);
         Deque<Object> ds = org.getDataStack();
         int a = new Molecule(Config.TYPE_DATA, 1).toInt();
         int b = new Molecule(Config.TYPE_DATA, 2).toInt();
@@ -165,27 +166,27 @@ public class OrganismTest {
 
     /**
      * Verifies the basic set and get functionality for all main register types:
-     * Data Registers (DR), Pointer Registers (PR), and Formal Parameter Registers (FPR).
+     * Data Registers (DR), Procedure-local Data Registers (PDR), and Formal Data Registers (FDR).
      * This is a unit test for the organism's register state management.
      */
     @Test
     @Tag("unit")
-    void testRegisterAccessDrPrFpr() {
-        Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
+    void testRegisterAccessDrPdrFdr() {
+        Organism org = Organism.create(sim, new int[]{0, 0}, 100);
 
         // DR
         int dataVal = new Molecule(Config.TYPE_DATA, 42).toInt();
-        org.setDr(0, dataVal);
-        assertThat(org.getDr(0)).isEqualTo(dataVal);
+        org.writeOperand(0, dataVal);
+        assertThat(org.readOperand(0)).isEqualTo(dataVal);
 
-        // PR
-        org.setPr(0, dataVal);
-        assertThat(org.getPr(0)).isEqualTo(dataVal);
+        // PDR
+        org.writeOperand(RegisterBank.PDR.base, dataVal);
+        assertThat(org.readOperand(RegisterBank.PDR.base)).isEqualTo(dataVal);
 
-        // FPR
+        // FDR
         int[] vec = new int[]{3, 4};
-        org.setFpr(0, vec);
-        assertThat(org.getFpr(0)).isEqualTo(vec);
+        org.writeOperand(RegisterBank.FDR.base, vec);
+        assertThat(org.readOperand(RegisterBank.FDR.base)).isEqualTo(vec);
     }
 
     // ==================== Cell Accessibility Tests ====================
@@ -197,7 +198,7 @@ public class OrganismTest {
     @Test
     @Tag("unit")
     void testIsCellAccessible_OwnedBySelf_ReturnsTrue() {
-        Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 100);
         sim.addOrganism(org);
         
         assertThat(org.isCellAccessible(org.getId())).isTrue();
@@ -210,10 +211,10 @@ public class OrganismTest {
     @Test
     @Tag("unit")
     void testIsCellAccessible_OwnedByParent_ReturnsFalse() {
-        Organism parent = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
+        Organism parent = Organism.create(sim, new int[]{0, 0}, 100);
         sim.addOrganism(parent);
         
-        Organism child = Organism.create(sim, new int[]{1, 0}, 100, sim.getLogger());
+        Organism child = Organism.create(sim, new int[]{1, 0}, 100);
         child.setParentId(parent.getId());
         sim.addOrganism(child);
         
@@ -227,8 +228,8 @@ public class OrganismTest {
     @Test
     @Tag("unit")
     void testIsCellAccessible_OwnedByOther_ReturnsFalse() {
-        Organism org1 = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
-        Organism org2 = Organism.create(sim, new int[]{1, 0}, 100, sim.getLogger());
+        Organism org1 = Organism.create(sim, new int[]{0, 0}, 100);
+        Organism org2 = Organism.create(sim, new int[]{1, 0}, 100);
         sim.addOrganism(org1);
         sim.addOrganism(org2);
         
@@ -241,7 +242,7 @@ public class OrganismTest {
     @Test
     @Tag("unit")
     void testIsCellAccessible_Unowned_ReturnsFalse() {
-        Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 100);
         sim.addOrganism(org);
         
         assertThat(org.isCellAccessible(0)).isFalse();
@@ -255,7 +256,7 @@ public class OrganismTest {
     @Test
     @Tag("unit")
     void testMrRegister_MaskedTo4Bits() {
-        Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 100);
         
         org.setMr(15); // Max 4-bit value
         assertThat(org.getMr()).isEqualTo(15);
@@ -273,7 +274,7 @@ public class OrganismTest {
     @Test
     @Tag("unit")
     void testMrRegister_DefaultsToZero() {
-        Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 100);
         assertThat(org.getMr()).isEqualTo(0);
     }
 
@@ -286,7 +287,7 @@ public class OrganismTest {
     @Test
     @Tag("unit")
     void testDeathClearsOwnershipAndMarker() {
-        Organism org = Organism.create(sim, new int[]{10, 10}, 100, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{10, 10}, 100);
         sim.addOrganism(org);
         
         // Place some molecules owned by this organism with marker=5
@@ -327,7 +328,7 @@ public class OrganismTest {
     @Tag("unit")
     void testMaxSkipRecoveryToInitialPosition() {
         int[] initialPos = new int[]{50, 50};
-        Organism org = Organism.create(sim, initialPos, 100, sim.getLogger());
+        Organism org = Organism.create(sim, initialPos, 100);
         sim.addOrganism(org);
 
         // Move IP away from initial position into empty space
@@ -348,15 +349,14 @@ public class OrganismTest {
     @Tag("unit")
     void testMaxSkipRecoveryUnwindsCallStack() {
         int[] initialPos = new int[]{50, 50};
-        Organism org = Organism.create(sim, initialPos, 100, sim.getLogger());
+        Organism org = Organism.create(sim, initialPos, 100);
         sim.addOrganism(org);
 
         int[] returnAddr = new int[]{60, 50};
-        Object[] savedPrs = org.getPrs().toArray(new Object[0]);
-        Object[] savedFprs = org.getFprs().toArray(new Object[0]);
+        Object[] savedRegisters = org.snapshotStackSavedRegisters();
         org.getCallStack().push(new Organism.ProcFrame(
-                "PROC", returnAddr, new int[]{55, 50},
-                savedPrs, savedFprs, java.util.Collections.emptyMap()));
+                "PROC", 0, returnAddr, new int[]{55, 50},
+                savedRegisters, java.util.Collections.emptyMap()));
 
         // Move IP into empty space
         org.setIp(new int[]{80, 50});
@@ -369,36 +369,93 @@ public class OrganismTest {
     }
 
     /**
-     * Verifies that PRs are restored from the popped call frame during stall recovery,
+     * Verifies that PDRs are restored from the popped call frame during stall recovery,
      * matching the RET instruction's semantics.
      */
     @Test
     @Tag("unit")
-    void testMaxSkipRecoveryRestoresPrs() {
+    void testMaxSkipRecoveryRestoresPdrs() {
         int[] initialPos = new int[]{50, 50};
-        Organism org = Organism.create(sim, initialPos, 100, sim.getLogger());
+        Organism org = Organism.create(sim, initialPos, 100);
         sim.addOrganism(org);
 
-        // Set known PR values and capture snapshot (caller's state)
-        org.setPr(0, 42);
-        org.setPr(1, 99);
-        Object[] callerPrs = org.getPrs().toArray(new Object[0]);
-        Object[] callerFprs = org.getFprs().toArray(new Object[0]);
+        // Set known PDR values and capture snapshot (caller's state)
+        org.writeOperand(RegisterBank.PDR.base, 42);
+        org.writeOperand(RegisterBank.PDR.base + 1, 99);
+        Object[] callerRegisters = org.snapshotStackSavedRegisters();
 
-        // Simulate what a CALL does: push frame with caller's PRs, then change PRs
+        // Simulate what a CALL does: push frame with caller's registers, then change PDRs
         org.getCallStack().push(new Organism.ProcFrame(
-                "PROC", new int[]{60, 50}, new int[]{55, 50},
-                callerPrs, callerFprs, java.util.Collections.emptyMap()));
-        org.setPr(0, 777);
-        org.setPr(1, 888);
+                "PROC", 0, new int[]{60, 50}, new int[]{55, 50},
+                callerRegisters, java.util.Collections.emptyMap()));
+        org.writeOperand(RegisterBank.PDR.base, 777);
+        org.writeOperand(RegisterBank.PDR.base + 1, 888);
 
         // Move IP into empty space and trigger recovery
         org.setIp(new int[]{80, 50});
         org.skipNopCells(environment);
 
-        // PRs should be restored to caller's saved values
-        assertThat(org.getPr(0)).isEqualTo(42);
-        assertThat(org.getPr(1)).isEqualTo(99);
+        // PDRs should be restored to caller's saved values
+        assertThat(org.readOperand(RegisterBank.PDR.base)).isEqualTo(42);
+        assertThat(org.readOperand(RegisterBank.PDR.base + 1)).isEqualTo(99);
+    }
+
+    /**
+     * Verifies that FDR values are correctly restored when a nested CALL/RET occurs.
+     * Caller sets FDR0, calls sub-procedure which modifies FDR0, sub-procedure returns.
+     * After return, caller's FDR0 must be restored.
+     */
+    @Test
+    @Tag("unit")
+    void testNestedCallRestoresFdrs() {
+        int[] initialPos = new int[]{50, 50};
+        Organism org = Organism.create(sim, initialPos, 100);
+        sim.addOrganism(org);
+
+        org.writeOperand(RegisterBank.FDR.base, 111);
+        org.writeOperand(RegisterBank.FDR.base + 1, 222);
+        Object[] callerRegisters = org.snapshotStackSavedRegisters();
+
+        org.getCallStack().push(new Organism.ProcFrame(
+                "OUTER", 0, new int[]{60, 50}, new int[]{55, 50},
+                callerRegisters, java.util.Collections.emptyMap()));
+        org.writeOperand(RegisterBank.FDR.base, 999);
+        org.writeOperand(RegisterBank.FDR.base + 1, 888);
+
+        // Simulate RET: restore from frame
+        Organism.ProcFrame frame = org.getCallStack().pop();
+        org.restoreStackSavedRegisters(frame.savedRegisters());
+
+        assertThat(org.readOperand(RegisterBank.FDR.base)).isEqualTo(111);
+        assertThat(org.readOperand(RegisterBank.FDR.base + 1)).isEqualTo(222);
+    }
+
+    /**
+     * Verifies that PLR values are correctly saved on CALL and restored on RET.
+     * Caller sets PLR0 to a known vector, snapshots, pushes frame, overwrites PLR0,
+     * then restores. The restored PLR0 must match the original value.
+     */
+    @Test
+    @Tag("unit")
+    void testNestedCallRestoresPlrs() {
+        int[] initialPos = new int[]{50, 50};
+        Organism org = Organism.create(sim, initialPos, 100);
+        sim.addOrganism(org);
+
+        int[] originalVec = new int[]{10, 20};
+        org.writeLocationOperand(RegisterBank.PLR.base, originalVec);
+        Object[] callerRegisters = org.snapshotStackSavedRegisters();
+
+        org.getCallStack().push(new Organism.ProcFrame(
+                "OUTER", 0, new int[]{60, 50}, new int[]{55, 50},
+                callerRegisters, java.util.Collections.emptyMap()));
+        org.writeLocationOperand(RegisterBank.PLR.base, new int[]{0, 0});
+
+        // Simulate RET: restore from frame
+        Organism.ProcFrame frame = org.getCallStack().pop();
+        org.restoreStackSavedRegisters(frame.savedRegisters());
+
+        assertThat((int[]) org.readOperand(RegisterBank.PLR.base)).isEqualTo(originalVec);
     }
 
     /**
@@ -410,7 +467,7 @@ public class OrganismTest {
     @Tag("unit")
     void testMaxSkipAppliesErrorPenalty() {
         int startEnergy = 100;
-        Organism org = Organism.create(sim, new int[]{50, 50}, startEnergy, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{50, 50}, startEnergy);
         sim.addOrganism(org);
         // Environment is empty (all CODE:0 = NOP), so after NOP execution
         // the IP advances and skipNopCells will hit max-skip.
@@ -432,21 +489,20 @@ public class OrganismTest {
     @Tag("unit")
     void testMaxSkipProgressiveRecovery() {
         int[] initialPos = new int[]{50, 50};
-        Organism org = Organism.create(sim, initialPos, 100, sim.getLogger());
+        Organism org = Organism.create(sim, initialPos, 100);
         sim.addOrganism(org);
 
         // Push two frames (frame 2 on top, frame 1 below)
         int[] returnAddr1 = new int[]{60, 50};
         int[] returnAddr2 = new int[]{70, 50};
-        Object[] prs = org.getPrs().toArray(new Object[0]);
-        Object[] fprs = org.getFprs().toArray(new Object[0]);
+        Object[] savedRegs = org.snapshotStackSavedRegisters();
 
         org.getCallStack().push(new Organism.ProcFrame(
-                "PROC1", returnAddr1, new int[]{55, 50},
-                prs, fprs, java.util.Collections.emptyMap()));
+                "PROC1", 1, returnAddr1, new int[]{55, 50},
+                savedRegs, java.util.Collections.emptyMap()));
         org.getCallStack().push(new Organism.ProcFrame(
-                "PROC2", returnAddr2, new int[]{65, 50},
-                prs, fprs, java.util.Collections.emptyMap()));
+                "PROC2", 2, returnAddr2, new int[]{65, 50},
+                savedRegs, java.util.Collections.emptyMap()));
 
         // First max-skip: pops PROC2, IP → returnAddr2
         org.setIp(new int[]{80, 50});

@@ -5,7 +5,7 @@ import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.symbols.Symbol;
 import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.compiler.frontend.semantics.analysis.IAnalysisHandler;
-import org.evochora.runtime.Config;
+import org.evochora.runtime.isa.RegisterBank;
 
 /**
  * Handles the semantic analysis of .REG directives.
@@ -23,44 +23,43 @@ public class RegAnalysisHandler implements IAnalysisHandler {
     private void processRegDirective(RegNode regNode, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         String registerText = regNode.register();
         if (!isValidRegister(registerText)) {
+            StringBuilder validRanges = new StringBuilder();
+            for (RegisterBank bank : RegisterBank.values()) {
+                if (bank.count > 0 && !bank.isForbidden) {
+                    if (!validRanges.isEmpty()) validRanges.append(", ");
+                    validRanges.append(bank.prefix).append("0-").append(bank.prefix).append(bank.count - 1);
+                }
+            }
             diagnostics.reportError(
-                String.format("Invalid register '%s'. .REG directive supports data registers %%DR0-%%DR%d and location registers %%LR0-%%LR%d.",
-                    registerText, Config.NUM_DATA_REGISTERS - 1, Config.NUM_LOCATION_REGISTERS - 1),
+                String.format("Invalid register '%s'. Valid registers: %s.", registerText, validRanges),
                 regNode.sourceInfo().fileName(),
                 regNode.sourceInfo().lineNumber()
             );
             return;
         }
 
-        symbolTable.define(new Symbol(regNode.alias(), regNode.sourceInfo(), Symbol.Type.ALIAS));
+        symbolTable.define(new Symbol(regNode.alias(), regNode.sourceInfo(), Symbol.Type.ALIAS, regNode));
     }
 
     /**
-     * Validates that a register string represents a valid register for .REG directive.
-     * Supports both data registers (%DRx) and location registers (%LRx).
-     * @param registerText The register text to validate (e.g., "%DR0", "%LR3")
-     * @return true if the register is valid, false otherwise
+     * Validates that a register string represents a valid, non-forbidden register with an in-bounds index.
+     * Forbidden banks (FDR, FLR) are rejected — they cannot be aliased directly.
+     *
+     * @param registerText the register text to validate (e.g., "%DR0", "%PDR2", "%LR3")
+     * @return {@code true} if the register is syntactically valid, non-forbidden, and within bounds
      */
     private boolean isValidRegister(String registerText) {
         if (registerText == null || !registerText.startsWith("%")) {
             return false;
         }
-
-        if (registerText.length() < 4) {
-            return false;
-        }
-
-        String registerType = registerText.substring(1, 3);
-
+        String upper = registerText.toUpperCase();
         try {
-            int registerNumber = Integer.parseInt(registerText.substring(3));
-
-            if (registerType.equals("DR")) {
-                return registerNumber >= 0 && registerNumber < Config.NUM_DATA_REGISTERS;
-            } else if (registerType.equals("LR")) {
-                return registerNumber >= 0 && registerNumber < Config.NUM_LOCATION_REGISTERS;
+            for (RegisterBank bank : RegisterBank.values()) {
+                if (bank.count > 0 && !bank.isForbidden && upper.startsWith(bank.prefix)) {
+                    int index = Integer.parseInt(upper.substring(bank.prefixLength));
+                    return index >= 0 && index < bank.count;
+                }
             }
-
             return false;
         } catch (NumberFormatException e) {
             return false;

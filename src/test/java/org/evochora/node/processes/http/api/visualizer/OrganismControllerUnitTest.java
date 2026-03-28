@@ -96,8 +96,8 @@ class OrganismControllerUnitTest {
 
             OrganismRuntimeView runtimeView = new OrganismRuntimeView(
                     100, new int[]{1, 2}, new int[]{0, 1}, new int[][]{{5, 5}}, 0,
-                    Collections.emptyList(), Collections.emptyList(), Collections.emptyList(),
-                    Collections.emptyList(), Collections.emptyList(), Collections.emptyList(),
+                    Collections.emptyList(),
+                    Collections.emptyList(), Collections.emptyList(),
                     Collections.emptyList(), false, null, Collections.emptyList(),
                     instructions, 0, 0);
 

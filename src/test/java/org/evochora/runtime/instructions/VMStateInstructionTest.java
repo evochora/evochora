@@ -36,7 +36,7 @@ public class VMStateInstructionTest {
     void setUp() {
         environment = new Environment(new int[]{100, 100}, true);
         sim = SimulationTestUtils.createSimulation(environment);
-        org = Organism.create(sim, startPos, 1000, sim.getLogger());
+        org = Organism.create(sim, startPos, 1000);
         sim.addOrganism(org);
     }
 
@@ -76,7 +76,7 @@ public class VMStateInstructionTest {
     @Tag("unit")
     void testTurn() {
         int[] vec = new int[]{1, 0};
-        org.setDr(0, vec);
+        org.writeOperand(0, vec);
         placeInstruction("TURN", 0);
         sim.tick();
         assertThat(org.getDv()).isEqualTo(vec);
@@ -104,7 +104,7 @@ public class VMStateInstructionTest {
         placeInstruction("NRG", 0);
         sim.tick();
         int er = org.getEr();
-        int regVal = (Integer) org.getDr(0);
+        int regVal = (Integer) org.readOperand(0);
         assertThat(Molecule.fromInt(regVal).toScalarValue()).isEqualTo(er);
     }
 
@@ -131,7 +131,7 @@ public class VMStateInstructionTest {
         placeInstruction("NTR", 0);
         sim.tick();
         int sr = org.getSr();
-        int regVal = (Integer) org.getDr(0);
+        int regVal = (Integer) org.readOperand(0);
         assertThat(Molecule.fromInt(regVal).toScalarValue()).isEqualTo(sr);
     }
 
@@ -157,7 +157,7 @@ public class VMStateInstructionTest {
     void testDiff() {
         org.setDp(0, org.getIp());        placeInstruction("DIFF", 0);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new int[]{0, 0});
+        assertThat(org.readOperand(0)).isEqualTo(new int[]{0, 0});
     }
 
     /**
@@ -169,7 +169,7 @@ public class VMStateInstructionTest {
     void testPos() {
         placeInstruction("POS", 0);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new int[]{0,0});
+        assertThat(org.readOperand(0)).isEqualTo(new int[]{0,0});
     }
 
     /**
@@ -179,10 +179,10 @@ public class VMStateInstructionTest {
     @Test
     @Tag("unit")
     void testRand() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 10).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 10).toInt());
         placeInstruction("RAND", 0);
         sim.tick();
-        int val = Molecule.fromInt((Integer) org.getDr(0)).toScalarValue();
+        int val = Molecule.fromInt((Integer) org.readOperand(0)).toScalarValue();
         assertThat(val).isGreaterThanOrEqualTo(0).isLessThan(10);
     }
 
@@ -252,7 +252,7 @@ public class VMStateInstructionTest {
         placeInstruction("SYNC");
         sim.tick();
         int[] vec = new int[]{0, 1};
-        org.setDr(0, vec);
+        org.writeOperand(0, vec);
         placeInstruction("SEEK", 0);
         sim.tick();
         placeInstruction("DIFS");
@@ -292,7 +292,7 @@ public class VMStateInstructionTest {
     @Test
     @Tag("unit")
     void testAdprSetsActiveDpIndexFromRegister() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("ADPR", 0);
         sim.tick();
         int[] expected = org.getIp();
@@ -325,7 +325,7 @@ public class VMStateInstructionTest {
     @Tag("unit")
     void testSeek() {
         org.setDp(0, org.getIp());        int[] vec = new int[]{0, 1};
-        org.setDr(0, vec);
+        org.writeOperand(0, vec);
         int[] expected = org.getTargetCoordinate(org.getDp(0), vec, environment);        placeInstruction("SEEK", 0);
         sim.tick();
         assertThat(org.getDp(0)).isEqualTo(expected);    }
@@ -366,11 +366,11 @@ public class VMStateInstructionTest {
         int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment);        int payload = new Molecule(Config.TYPE_STRUCTURE, 3).toInt();
         environment.setMolecule(Molecule.fromInt(payload), target);
 
-        org.setDr(1, vec);
+        org.writeOperand(1, vec);
         placeInstruction("SCAN", 0, 1);
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(payload);
+        assertThat(org.readOperand(0)).isEqualTo(payload);
         assertThat(environment.getMolecule(target).toInt()).isEqualTo(payload);
     }
 
@@ -388,7 +388,7 @@ public class VMStateInstructionTest {
         placeInstructionWithVector("SCNI", 0, vec);
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(payload);
+        assertThat(org.readOperand(0)).isEqualTo(payload);
         assertThat(environment.getMolecule(target).toInt()).isEqualTo(payload);
     }
 
@@ -421,7 +421,7 @@ public class VMStateInstructionTest {
         int[] expectedDv = org.getDv();
         placeInstruction("GDVR", 0);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(expectedDv);
+        assertThat(org.readOperand(0)).isEqualTo(expectedDv);
     }
 
     /**
@@ -498,7 +498,7 @@ public class VMStateInstructionTest {
     @Tag("unit")
     void testSmr_SetsMarkerRegisterFromDataRegister() {
         int markerValue = 7;
-        org.setDr(0, new Molecule(Config.TYPE_DATA, markerValue).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, markerValue).toInt());
         
         placeInstruction("SMR", 0); // SMR %DR0
         sim.tick();
@@ -535,7 +535,7 @@ public class VMStateInstructionTest {
     void testSmr_MasksValueTo4Bits() {
         // Value 20 = 0b10100, should be masked to 0b0100 = 4
         int largeValue = 20;
-        org.setDr(0, new Molecule(Config.TYPE_DATA, largeValue).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, largeValue).toInt());
         
         placeInstruction("SMR", 0);
         sim.tick();
@@ -547,7 +547,7 @@ public class VMStateInstructionTest {
     @Tag("unit")
     void testSmr_FailsWithNonDataType() {
         // Set register to ENERGY type instead of DATA
-        org.setDr(0, new Molecule(Config.TYPE_ENERGY, 5).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_ENERGY, 5).toInt());
         
         placeInstruction("SMR", 0);
         sim.tick();
@@ -580,9 +580,9 @@ public class VMStateInstructionTest {
         environment.setMolecule(mol3, org.getId(), moleculePos3);
         
         // Prepare FORK: delta=1|0, energy=100, dv=1|0
-        org.setDr(0, new int[]{1, 0}); // delta
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 100).toInt()); // energy
-        org.setDr(2, new int[]{1, 0}); // childDv
+        org.writeOperand(0, new int[]{1, 0}); // delta
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 100).toInt()); // energy
+        org.writeOperand(2, new int[]{1, 0}); // childDv
         
         // Place empty cell for child IP
         int[] childIpPos = org.getTargetCoordinate(org.getActiveDp(), new int[]{1, 0}, environment);
@@ -623,7 +623,7 @@ public class VMStateInstructionTest {
         placeInstruction("GMR", 0); // GMR %DR0
         sim.tick();
 
-        Molecule result = Molecule.fromInt((Integer) org.getDr(0));
+        Molecule result = Molecule.fromInt((Integer) org.readOperand(0));
         assertThat(result.type()).isEqualTo(Config.TYPE_DATA);
         assertThat(result.value()).isEqualTo(7);
     }
@@ -651,7 +651,7 @@ public class VMStateInstructionTest {
         placeInstruction("GMR", 0);
         sim.tick();
 
-        Molecule result = Molecule.fromInt((Integer) org.getDr(0));
+        Molecule result = Molecule.fromInt((Integer) org.readOperand(0));
         assertThat(result.value()).isEqualTo(0);
     }
 
@@ -696,7 +696,7 @@ public class VMStateInstructionTest {
         environment.setMolecule(new Molecule(Config.TYPE_DATA, 99, 7), pos1); // marker=7
         environment.setOwnerId(org.getId(), pos1);
 
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 7).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 7).toInt());
 
         placeInstruction("CMR", 0); // CMR %DR0
         sim.tick();
@@ -726,7 +726,7 @@ public class VMStateInstructionTest {
     @Tag("unit")
     void testCmri_OnlyOrphansOwnMolecules() {
         // Create another organism
-        Organism other = Organism.create(sim, new int[]{50, 50}, 500, sim.getLogger());
+        Organism other = Organism.create(sim, new int[]{50, 50}, 500);
         sim.addOrganism(other);
 
         int[] ownPos = new int[]{10, 10};
@@ -755,7 +755,7 @@ public class VMStateInstructionTest {
     @Tag("unit")
     void testCmr_FailsWithNonDataType() {
         // Use register variant to test type check (similar to testSmr_FailsWithNonDataType)
-        org.setDr(0, new Molecule(Config.TYPE_ENERGY, 3).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_ENERGY, 3).toInt());
 
         placeInstruction("CMR", 0);
         sim.tick();

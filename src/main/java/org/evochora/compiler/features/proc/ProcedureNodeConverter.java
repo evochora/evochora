@@ -14,7 +14,8 @@ import java.util.stream.Collectors;
 
 /**
  * Converts {@link ProcedureNode} into generic enter/exit directives (namespace "core").
- * The body is expected to be present in the AST sequence and handled separately by the generator.
+ * Registers both data parameters (REF/VAL → FDR) and location parameters (LREF/LVAL → FLR)
+ * in separate IrGenContext scopes so that convertOperand resolves them to the correct register bank.
  */
 public final class ProcedureNodeConverter implements IAstNodeToIrConverter<ProcedureNode> {
 
@@ -23,43 +24,59 @@ public final class ProcedureNodeConverter implements IAstNodeToIrConverter<Proce
 		String qualifiedName = ctx.qualifyName(node.name());
 		ctx.emit(new org.evochora.compiler.model.ir.IrLabelDef(qualifiedName, ctx.sourceOf(node)));
 
-		List<String> allParams = new ArrayList<>();
-		if (node.parameters() != null) {
-			node.parameters().stream().map(ProcedureNode.ParamDecl::name).forEach(allParams::add);
-		}
+		// Data parameters (REF + VAL → FDR indices)
+		List<String> allDataParams = new ArrayList<>();
 		if (node.refParameters() != null) {
-			node.refParameters().stream().map(ProcedureNode.ParamDecl::name).forEach(allParams::add);
+			node.refParameters().stream().map(ProcedureNode.ParamDecl::name).forEach(allDataParams::add);
 		}
 		if (node.valParameters() != null) {
-			node.valParameters().stream().map(ProcedureNode.ParamDecl::name).forEach(allParams::add);
+			node.valParameters().stream().map(ProcedureNode.ParamDecl::name).forEach(allDataParams::add);
 		}
-		ctx.pushProcedureParams(allParams);
+		ctx.pushProcedureParams(allDataParams);
 
-		Map<String, IrValue> enterArgs = new HashMap<>();
-		enterArgs.put("name", new IrValue.Str(qualifiedName));
-		enterArgs.put("arity", new IrValue.Int64(node.parameters() != null ? node.parameters().size() : 0));
-		enterArgs.put("exported", new IrValue.Bool(node.exported()));
-		if (node.refParameters() != null) {
-			enterArgs.put("refParams", new IrValue.ListVal(node.refParameters().stream().map(p -> new IrValue.Str(p.name())).collect(Collectors.toList())));
+		// Location parameters (LREF + LVAL → FLR indices)
+		List<String> allLocationParams = new ArrayList<>();
+		if (node.lrefParameters() != null) {
+			node.lrefParameters().stream().map(ProcedureNode.ParamDecl::name).forEach(allLocationParams::add);
 		}
-		if (node.valParameters() != null) {
-			enterArgs.put("valParams", new IrValue.ListVal(node.valParameters().stream().map(p -> new IrValue.Str(p.name())).collect(Collectors.toList())));
+		if (node.lvalParameters() != null) {
+			node.lvalParameters().stream().map(ProcedureNode.ParamDecl::name).forEach(allLocationParams::add);
 		}
+		ctx.pushProcedureLocationParams(allLocationParams);
+
+		int lrefArity = node.lrefParameters() != null ? node.lrefParameters().size() : 0;
+		int lvalArity = node.lvalParameters() != null ? node.lvalParameters().size() : 0;
+
+		Map<String, IrValue> enterArgs = buildProcArgs(node, qualifiedName, lrefArity, lvalArity);
 		ctx.emit(new IrDirective("core", "proc_enter", enterArgs, ctx.sourceOf(node)));
 
 		node.body().forEach(ctx::convert);
 
-		Map<String, IrValue> exitArgs = new HashMap<>();
-		exitArgs.put("name", new IrValue.Str(qualifiedName));
-		exitArgs.put("arity", new IrValue.Int64(node.parameters() != null ? node.parameters().size() : 0));
-		exitArgs.put("exported", new IrValue.Bool(node.exported()));
+		Map<String, IrValue> exitArgs = buildProcArgs(node, qualifiedName, lrefArity, lvalArity);
+		ctx.emit(new IrDirective("core", "proc_exit", exitArgs, ctx.sourceOf(node)));
+
+		ctx.popProcedureLocationParams();
+		ctx.popProcedureParams();
+	}
+
+	private Map<String, IrValue> buildProcArgs(ProcedureNode node, String qualifiedName, int lrefArity, int lvalArity) {
+		Map<String, IrValue> args = new HashMap<>();
+		args.put("name", new IrValue.Str(qualifiedName));
+		args.put("exported", new IrValue.Bool(node.exported()));
 		if (node.refParameters() != null) {
-			exitArgs.put("refParams", new IrValue.ListVal(node.refParameters().stream().map(p -> new IrValue.Str(p.name())).collect(Collectors.toList())));
+			args.put("refParams", new IrValue.ListVal(node.refParameters().stream().map(p -> new IrValue.Str(p.name())).collect(Collectors.toList())));
 		}
 		if (node.valParameters() != null) {
-			exitArgs.put("valParams", new IrValue.ListVal(node.valParameters().stream().map(p -> new IrValue.Str(p.name())).collect(Collectors.toList())));
+			args.put("valParams", new IrValue.ListVal(node.valParameters().stream().map(p -> new IrValue.Str(p.name())).collect(Collectors.toList())));
 		}
-		ctx.emit(new IrDirective("core", "proc_exit", exitArgs, ctx.sourceOf(node)));
-		ctx.popProcedureParams();
+		if (node.lrefParameters() != null) {
+			args.put("lrefParams", new IrValue.ListVal(node.lrefParameters().stream().map(p -> new IrValue.Str(p.name())).collect(Collectors.toList())));
+		}
+		if (node.lvalParameters() != null) {
+			args.put("lvalParams", new IrValue.ListVal(node.lvalParameters().stream().map(p -> new IrValue.Str(p.name())).collect(Collectors.toList())));
+		}
+		args.put("lrefArity", new IrValue.Int64(lrefArity));
+		args.put("lvalArity", new IrValue.Int64(lvalArity));
+		return args;
 	}
 }

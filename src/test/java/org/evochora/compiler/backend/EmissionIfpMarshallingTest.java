@@ -9,7 +9,6 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import java.util.Collections;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -45,7 +44,7 @@ class EmissionIfpMarshallingTest {
         IrReg rA = new IrReg("%rA");
         IrInstruction ifpr = new IrInstruction("IFPR", List.of(vecReg), src("main.s", 1));
         IrLabelRef target = new IrLabelRef("myProc");
-        IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rA), Collections.emptyList(), src("main.s", 2));
+        IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rA), List.of(), List.of(), List.of(), src("main.s", 2));
 
         List<IrItem> out = runEmission(List.of(ifpr, call));
 
@@ -79,7 +78,7 @@ class EmissionIfpMarshallingTest {
         IrReg rA = new IrReg("%rA");
         IrInstruction ifpi = new IrInstruction("IFPI", List.of(new IrReg("1|0")), src("main.s", 1));
         IrLabelRef target = new IrLabelRef("myProc");
-        IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rA), Collections.emptyList(), src("main.s", 2));
+        IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rA), List.of(), List.of(), List.of(), src("main.s", 2));
 
         List<IrItem> out = runEmission(List.of(ifpi, call));
 
@@ -111,9 +110,9 @@ class EmissionIfpMarshallingTest {
     void shouldTransformConditionalCallWithIfps() {
         // IR for: IFPS, CALL myProc REF %rA
         IrReg rA = new IrReg("%rA");
-        IrInstruction ifps = new IrInstruction("IFPS", Collections.emptyList(), src("main.s", 1));
+        IrInstruction ifps = new IrInstruction("IFPS", List.of(), src("main.s", 1));
         IrLabelRef target = new IrLabelRef("myProc");
-        IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rA), Collections.emptyList(), src("main.s", 2));
+        IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rA), List.of(), List.of(), List.of(), src("main.s", 2));
 
         List<IrItem> out = runEmission(List.of(ifps, call));
 

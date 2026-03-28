@@ -36,7 +36,7 @@ public class VMDataInstructionTest {
     void setUp() {
         environment = new Environment(new int[]{100, 100}, true);
         sim = SimulationTestUtils.createSimulation(environment);
-        org = Organism.create(sim, startPos, 1000, sim.getLogger());
+        org = Organism.create(sim, startPos, 1000);
         sim.addOrganism(org);
     }
 
@@ -78,7 +78,7 @@ public class VMDataInstructionTest {
         int immediateValue = new Molecule(Config.TYPE_DATA, 123).toInt();
         placeInstruction("SETI", 0, immediateValue);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(immediateValue);
+        assertThat(org.readOperand(0)).isEqualTo(immediateValue);
     }
 
     /**
@@ -89,10 +89,10 @@ public class VMDataInstructionTest {
     @Tag("unit")
     void testSetr() {
         int srcValue = new Molecule(Config.TYPE_DATA, 456).toInt();
-        org.setDr(1, srcValue);
+        org.writeOperand(1, srcValue);
         placeInstruction("SETR", 0, 1);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(srcValue);
+        assertThat(org.readOperand(0)).isEqualTo(srcValue);
     }
 
     /**
@@ -105,7 +105,7 @@ public class VMDataInstructionTest {
         int[] vec = new int[]{3, 4};
         placeInstructionWithRegisterAndVector("SETV", 0, vec);
         sim.tick();
-        Object reg0 = org.getDr(0);
+        Object reg0 = org.readOperand(0);
         assertThat(reg0).isInstanceOf(int[].class);
         assertThat((int[]) reg0).containsExactly(vec);
     }
@@ -118,7 +118,7 @@ public class VMDataInstructionTest {
     @Tag("unit")
     void testPush() {
         int value = new Molecule(Config.TYPE_DATA, 789).toInt();
-        org.setDr(0, value);
+        org.writeOperand(0, value);
         placeInstruction("PUSH", 0);
         sim.tick();
         assertThat(org.getDataStack().pop()).isEqualTo(value);
@@ -135,7 +135,7 @@ public class VMDataInstructionTest {
         org.getDataStack().push(value);
         placeInstruction("POP", 0);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(value);
+        assertThat(org.readOperand(0)).isEqualTo(value);
     }
 
     /**
@@ -188,7 +188,7 @@ public class VMDataInstructionTest {
         // Erstelle eine neue Simulation mit dem kompilierten Code
         Environment testEnv = new Environment(new int[]{100, 100}, true);
         Simulation testSim = SimulationTestUtils.createSimulation(testEnv);
-        Organism testOrg = Organism.create(testSim, new int[]{0, 0}, 1000, testSim.getLogger());
+        Organism testOrg = Organism.create(testSim, new int[]{0, 0}, 1000);
         testSim.addOrganism(testOrg);
         
         // Platziere den kompilierten Code im Environment
@@ -202,7 +202,7 @@ public class VMDataInstructionTest {
         testSim.tick();
         
         // Prüfe ob DR5 korrekt gesetzt wurde
-        Object dr5Value = testOrg.getDr(5);
+        Object dr5Value = testOrg.readOperand(5);
         assertThat(dr5Value).isInstanceOf(int[].class);
         
         // Prüfe dass der Vektor korrekt ist
@@ -219,12 +219,12 @@ public class VMDataInstructionTest {
     void testXchg() {
         int value1 = new Molecule(Config.TYPE_DATA, 111).toInt();
         int value2 = new Molecule(Config.TYPE_DATA, 222).toInt();
-        org.setDr(0, value1);
-        org.setDr(1, value2);
+        org.writeOperand(0, value1);
+        org.writeOperand(1, value2);
         placeInstruction("XCHG", 0, 1);
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(value2);
-        assertThat(org.getDr(1)).isEqualTo(value1);
+        assertThat(org.readOperand(0)).isEqualTo(value2);
+        assertThat(org.readOperand(1)).isEqualTo(value1);
     }
 
     /**
@@ -235,11 +235,11 @@ public class VMDataInstructionTest {
     void testXchgVectors() {
         int[] vec1 = new int[]{1, 2};
         int[] vec2 = new int[]{3, 4};
-        org.setDr(0, vec1);
-        org.setDr(1, vec2);
+        org.writeOperand(0, vec1);
+        org.writeOperand(1, vec2);
         placeInstruction("XCHG", 0, 1);
         sim.tick();
-        assertThat((int[]) org.getDr(0)).containsExactly(3, 4);
-        assertThat((int[]) org.getDr(1)).containsExactly(1, 2);
+        assertThat((int[]) org.readOperand(0)).containsExactly(3, 4);
+        assertThat((int[]) org.readOperand(1)).containsExactly(1, 2);
     }
 }

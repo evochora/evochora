@@ -15,7 +15,9 @@ import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
+import org.evochora.test.utils.ProtoTestUtils;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Molecule;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -154,7 +156,7 @@ class H2DatabaseReaderInstructionResolutionTest {
         
         // DPLR %LR0 - LOCATION_REGISTER argument
         int dplrOpcode = Instruction.getInstructionIdByName("DPLR") | org.evochora.runtime.Config.TYPE_CODE;
-        int lrArg = new Molecule(org.evochora.runtime.Config.TYPE_REGISTER, org.evochora.runtime.isa.Instruction.LR_BASE).toInt(); // %LR0
+        int lrArg = new Molecule(org.evochora.runtime.Config.TYPE_REGISTER, org.evochora.runtime.isa.RegisterBank.LR.base).toInt(); // %LR0
 
         writeOrganismWithInstructionAndLocationRegisters(1L, 1, dplrOpcode, java.util.List.of(lrArg), 3,
                 new int[][]{{5, 6}, {7, 8}, null, null}); // LR0=[5,6], LR1=[7,8], LR2/LR3=null
@@ -276,7 +278,7 @@ class H2DatabaseReaderInstructionResolutionTest {
                     .setDv(Vector.newBuilder().addComponents(0).addComponents(1).build())
                     .addDataPointers(Vector.newBuilder().addComponents(5).addComponents(5).build())
                     .setActiveDpIndex(0)
-                    .addDataRegisters(RegisterValue.newBuilder().setScalar(42).build())
+                    .addAllRegisters(ProtoTestUtils.buildFlatRegisters(new int[]{42}, null, null, null))
                     .setInstructionOpcodeId(lastOpcodeId)
                     .setInstructionEnergyCost(energyCost)
                     .setIpBeforeFetch(Vector.newBuilder().addComponents(1).addComponents(2).build())
@@ -323,7 +325,7 @@ class H2DatabaseReaderInstructionResolutionTest {
                     .setDv(Vector.newBuilder().addComponents(0).addComponents(1).build())
                     .addDataPointers(Vector.newBuilder().addComponents(5).addComponents(5).build())
                     .setActiveDpIndex(0)
-                    .addDataRegisters(RegisterValue.newBuilder().setScalar(42).build())
+                    .addAllRegisters(ProtoTestUtils.buildFlatRegisters(new int[]{42}, locationRegisters, null, null))
                     .setInstructionOpcodeId(opcodeId)
                     .setInstructionEnergyCost(energyCost)
                     .setIpBeforeFetch(ipBeforeFetch)
@@ -331,22 +333,6 @@ class H2DatabaseReaderInstructionResolutionTest {
 
             for (Integer arg : rawArguments) {
                 orgBuilder.addInstructionRawArguments(arg);
-            }
-
-            // Add location registers if provided
-            if (locationRegisters != null) {
-                for (int[] lr : locationRegisters) {
-                    if (lr != null) {
-                        Vector.Builder lrBuilder = Vector.newBuilder();
-                        for (int component : lr) {
-                            lrBuilder.addComponents(component);
-                        }
-                        orgBuilder.addLocationRegisters(lrBuilder.build());
-                    } else {
-                        // Add empty vector for null entries (to maintain index alignment)
-                        orgBuilder.addLocationRegisters(Vector.newBuilder().build());
-                    }
-                }
             }
             
             // Add register values before execution (required for annotation display)
@@ -368,14 +354,19 @@ class H2DatabaseReaderInstructionResolutionTest {
                             
                             // Get register value before execution from current registers
                             if (argType == org.evochora.runtime.isa.InstructionArgumentType.REGISTER) {
-                                // DR/PR/FPR register - get from dataRegisters
-                                if (registerId == 0 && orgBuilder.getDataRegistersCount() > 0) {
-                                    orgBuilder.putInstructionRegisterValuesBefore(registerId, orgBuilder.getDataRegisters(0));
+                                RegisterBank regBank = RegisterBank.forId(registerId);
+                                if (regBank != null) {
+                                    int slot = RegisterBank.ID_TO_SLOT[registerId];
+                                    if (slot >= 0 && slot < orgBuilder.getRegistersCount()) {
+                                        orgBuilder.putInstructionRegisterValuesBefore(registerId, orgBuilder.getRegisters(slot));
+                                    }
                                 }
                             } else {
-                                // LOCATION_REGISTER - get from locationRegisters
-                                if (locationRegisters != null && registerId >= 0 && registerId < locationRegisters.length) {
-                                    int[] lr = locationRegisters[registerId];
+                                // LOCATION_REGISTER - get from locationRegisters via bank-relative index
+                                RegisterBank locBank = RegisterBank.forId(registerId);
+                                int locIndex = locBank != null ? registerId - locBank.base : -1;
+                                if (locationRegisters != null && locIndex >= 0 && locIndex < locationRegisters.length) {
+                                    int[] lr = locationRegisters[locIndex];
                                     if (lr != null) {
                                         Vector.Builder lrBuilder = Vector.newBuilder();
                                         for (int component : lr) {

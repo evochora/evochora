@@ -18,7 +18,6 @@ import org.evochora.compiler.features.dir.DirDirectiveHandler;
 import org.evochora.compiler.features.importdir.ImportDirectiveHandler;
 import org.evochora.compiler.features.org.OrgDirectiveHandler;
 import org.evochora.compiler.features.place.PlaceDirectiveHandler;
-import org.evochora.compiler.features.proc.PregDirectiveHandler;
 import org.evochora.compiler.features.proc.ProcDirectiveHandler;
 import org.evochora.compiler.features.reg.RegDirectiveHandler;
 import org.evochora.compiler.features.require.RequireDirectiveHandler;
@@ -367,7 +366,7 @@ class ModuleSourceDefineIntegrationTest {
         // Phase 6: AST Post-Processing (skip Phase 5 TokenMap — not needed for these tests)
         ModuleContextTracker tracker = new ModuleContextTracker(symbolTable);
         symbolTable.setCurrentModule(rootAliasChain);
-        AstPostProcessor postProcessor = new AstPostProcessor(symbolTable, tracker, TestRegistries.postProcessRegistry());
+        AstPostProcessor postProcessor = new AstPostProcessor(symbolTable, tracker, new org.evochora.compiler.model.ScopeTracker(symbolTable), TestRegistries.postProcessRegistry());
         for (int i = 0; i < ast.size(); i++) {
             ast.set(i, postProcessor.process(ast.get(i)));
         }
@@ -390,7 +389,6 @@ class ModuleSourceDefineIntegrationTest {
         reg.register(".DEFINE", new DefineDirectiveHandler());
         reg.register(".REG", new RegDirectiveHandler());
         reg.register(".PROC", new ProcDirectiveHandler());
-        reg.register(".PREG", new PregDirectiveHandler());
         reg.register(".ORG", new OrgDirectiveHandler());
         reg.register(".DIR", new DirDirectiveHandler());
         reg.register(".PLACE", new PlaceDirectiveHandler());

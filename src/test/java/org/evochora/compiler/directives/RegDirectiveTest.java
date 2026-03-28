@@ -1,5 +1,6 @@
 package org.evochora.compiler.directives;
 
+import org.evochora.runtime.Config;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
@@ -66,7 +67,7 @@ public class RegDirectiveTest {
         semanticAnalyzer.analyze(ast);
 
         // AST Post-Processing - Resolves register aliases
-        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable), TestRegistries.postProcessRegistry());
+        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable), new org.evochora.compiler.model.ScopeTracker(symbolTable), TestRegistries.postProcessRegistry());
         List<AstNode> processedAst = ast.stream()
             .map(node -> astPostProcessor.process(node))
             .toList();
@@ -89,94 +90,186 @@ public class RegDirectiveTest {
     }
 
     /**
-     * Verifies that the semantic analyzer correctly rejects invalid register references.
-     * This test ensures that our enhanced validation catches out-of-bounds registers.
+     * Verifies that out-of-bounds register indices are rejected at parse time.
      */
     @Test
     @Tag("unit")
     void testRegDirectiveWithInvalidRegister() {
-        // Arrange - Test with out-of-bounds register
-        String source = String.join("\n",
-                ".REG COUNTER %DR99",  // Invalid: DR99 doesn't exist (only DR0-DR7)
-                "SETI COUNTER DATA:42"
-        );
+        String source = ".REG COUNTER %DR" + Config.NUM_DATA_REGISTERS;
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
-        // Act - Run semantic analysis
-        List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
-        semanticAnalyzer.analyze(ast);
+        parser.parse();
 
-        // Assert - Should have compilation error
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("Invalid register '%DR99'");
-        assertThat(diagnostics.summary()).contains(String.format(".REG directive supports data registers %%DR0-%%DR%d and location registers %%LR0-%%LR%d", 
-            org.evochora.runtime.Config.NUM_DATA_REGISTERS - 1, 
-            org.evochora.runtime.Config.NUM_LOCATION_REGISTERS - 1));
+        assertThat(diagnostics.summary()).contains("Expected a register");
     }
 
     /**
-     * Verifies that the semantic analyzer correctly rejects non-DR/LR register types.
+     * Verifies that PDR registers are not available outside a .PROC block.
      */
     @Test
     @Tag("unit")
-    void testRegDirectiveWithNonDRRegister() {
-        // Arrange - Test with non-DR/LR register (PR and FPR are not allowed in .REG)
-        String source = String.join("\n",
-                ".REG COUNTER %PR0",  // Invalid: .REG only supports DR and LR registers
-                "SETI COUNTER DATA:42"
-        );
+    void testRegDirectivePdrOutsideProcIsRejected() {
+        String source = ".REG COUNTER %PDR0";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
-        // Act - Run semantic analysis
-        List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
-        SymbolTable symbolTable = new SymbolTable(diagnostics);
-        SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
-        semanticAnalyzer.analyze(ast);
+        parser.parse();
 
-        // Assert - Should have compilation error
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("Invalid register '%PR0'");
-        assertThat(diagnostics.summary()).contains(String.format(".REG directive supports data registers %%DR0-%%DR%d and location registers %%LR0-%%LR%d", 
-            org.evochora.runtime.Config.NUM_DATA_REGISTERS - 1, 
-            org.evochora.runtime.Config.NUM_LOCATION_REGISTERS - 1));
+        assertThat(diagnostics.summary()).contains("not available in the current scope");
     }
 
     /**
-     * Verifies that the semantic analyzer correctly rejects invalid register types.
+     * Verifies that PLR registers are rejected outside a .PROC block (proc-scoped).
      */
     @Test
     @Tag("unit")
-    void testRegDirectiveWithInvalidRegisterType() {
-        // Arrange - Test with invalid register type
+    void testRegDirectivePlrOutsideProcIsRejected() {
+        String source = ".REG %POS %PLR0";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics);
+        List<Token> tokens = lexer.scanTokens();
+        Parser parser = new Parser(tokens, diagnostics, registry());
+
+        parser.parse();
+
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.summary()).contains("not available in the current scope");
+    }
+
+    /**
+     * Verifies that FLR registers cannot be aliased — they are managed by the CALL binding mechanism.
+     */
+    @Test
+    @Tag("unit")
+    void testRegDirectiveFlrIsForbidden() {
+        String source = ".REG %LOC_PARAM %FLR0";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics);
+        List<Token> tokens = lexer.scanTokens();
+        Parser parser = new Parser(tokens, diagnostics, registry());
+
+        parser.parse();
+
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.summary()).contains("cannot be aliased");
+    }
+
+    /**
+     * Verifies that FDR registers cannot be aliased — they are managed by the CALL binding mechanism.
+     */
+    @Test
+    @Tag("unit")
+    void testRegDirectiveFdrIsForbidden() {
+        String source = ".REG PARAM %FDR0";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics);
+        List<Token> tokens = lexer.scanTokens();
+        Parser parser = new Parser(tokens, diagnostics, registry());
+
+        parser.parse();
+
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.summary()).contains("cannot be aliased");
+    }
+
+    /**
+     * Verifies that PDR registers are accepted inside a .PROC block.
+     */
+    @Test
+    @Tag("unit")
+    void testRegDirectivePdrInsideProcIsAccepted() {
         String source = String.join("\n",
-                ".REG COUNTER %PR0",  // Invalid: .REG only supports DR registers, not PR registers
-                "SETI COUNTER DATA:42"
+                ".PROC MY_PROC",
+                "  .REG %TMP %PDR0",
+                ".ENDP"
         );
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         Lexer lexer = new Lexer(source, diagnostics);
         List<Token> tokens = lexer.scanTokens();
         Parser parser = new Parser(tokens, diagnostics, registry());
 
-        // Act - Run semantic analysis
+        parser.parse();
+
+        assertThat(diagnostics.hasErrors()).isFalse();
+    }
+
+    /**
+     * Verifies that a PDR alias inside a .PROC block resolves correctly through
+     * the full pipeline (Parser → Semantic Analysis → AstPostProcessor).
+     */
+    @Test
+    @Tag("unit")
+    void testRegDirectivePdrAliasResolvesInsideProc() {
+        String source = String.join("\n",
+                ".PROC MY_PROC",
+                "  .REG %TMP %PDR0",
+                "  SETI %TMP DATA:42",
+                "  RET",
+                ".ENDP"
+        );
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics);
+        List<Token> tokens = lexer.scanTokens();
+        Parser parser = new Parser(tokens, diagnostics, registry());
+
         List<AstNode> ast = parser.parse().stream().filter(Objects::nonNull).toList();
+
+        String rootAliasChain = "";
         SymbolTable symbolTable = new SymbolTable(diagnostics);
+        symbolTable.registerModule(rootAliasChain, "<memory>");
+        symbolTable.setCurrentModule(rootAliasChain);
         SemanticAnalyzer semanticAnalyzer = new SemanticAnalyzer(diagnostics, symbolTable, null, null, null, TestRegistries.analysisRegistry(symbolTable, diagnostics), new org.evochora.compiler.frontend.semantics.ModuleSetupRegistry());
         semanticAnalyzer.analyze(ast);
 
-        // Assert - Should have compilation error
+        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable), new org.evochora.compiler.model.ScopeTracker(symbolTable), TestRegistries.postProcessRegistry());
+        List<AstNode> processedAst = ast.stream()
+            .map(node -> astPostProcessor.process(node))
+            .toList();
+
+        assertThat(diagnostics.hasErrors()).as(diagnostics.summary()).isFalse();
+
+        // The ProcedureNode's body should contain the SETI instruction with %TMP resolved to %PDR0
+        assertThat(processedAst.get(0)).isInstanceOf(org.evochora.compiler.features.proc.ProcedureNode.class);
+        org.evochora.compiler.features.proc.ProcedureNode proc = (org.evochora.compiler.features.proc.ProcedureNode) processedAst.get(0);
+        // Body: RegNode, InstructionNode(SETI), InstructionNode(RET)
+        assertThat(proc.body()).hasSizeGreaterThanOrEqualTo(2);
+        AstNode setiNode = proc.body().stream()
+                .filter(n -> n instanceof InstructionNode && "SETI".equals(((InstructionNode) n).opcode()))
+                .findFirst().orElse(null);
+        assertThat(setiNode).isNotNull();
+        InstructionNode seti = (InstructionNode) setiNode;
+        assertThat(seti.arguments().get(0)).isInstanceOf(RegisterNode.class);
+        RegisterNode reg = (RegisterNode) seti.arguments().get(0);
+        assertThat(reg.getName()).as("Alias %TMP should resolve to %PDR0").isEqualTo("%PDR0");
+    }
+
+    /**
+     * Verifies that out-of-bounds PDR indices are rejected even inside a .PROC block.
+     */
+    @Test
+    @Tag("unit")
+    void testRegDirectivePdrBoundsInsideProc() {
+        String source = String.join("\n",
+                ".PROC MY_PROC",
+                "  .REG %TMP %PDR" + Config.NUM_PDR_REGISTERS,
+                ".ENDP"
+        );
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics);
+        List<Token> tokens = lexer.scanTokens();
+        Parser parser = new Parser(tokens, diagnostics, registry());
+
+        parser.parse();
+
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.summary()).contains("Invalid register '%PR0'");
-        assertThat(diagnostics.summary()).contains(String.format(".REG directive supports data registers %%DR0-%%DR%d and location registers %%LR0-%%LR%d", 
-            org.evochora.runtime.Config.NUM_DATA_REGISTERS - 1, 
-            org.evochora.runtime.Config.NUM_LOCATION_REGISTERS - 1));
+        assertThat(diagnostics.summary()).contains("Expected a register");
     }
 
     /**
@@ -207,7 +300,7 @@ public class RegDirectiveTest {
         semanticAnalyzer.analyze(ast);
 
         // AST Post-Processing - Resolves register aliases
-        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable), TestRegistries.postProcessRegistry());
+        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable), new org.evochora.compiler.model.ScopeTracker(symbolTable), TestRegistries.postProcessRegistry());
         List<AstNode> processedAst = ast.stream()
             .map(node -> astPostProcessor.process(node))
             .toList();
@@ -229,9 +322,90 @@ public class RegDirectiveTest {
         assertThat(reg.getName()).isEqualTo("%LR0");
     }
 
+    /**
+     * Verifies that PDR remains available after an inner .PROC block closes,
+     * because the outer .PROC scope still holds a reference count.
+     */
+    @Test
+    @Tag("unit")
+    void testRegDirectiveNestedProcPdrStaysAvailable() {
+        String source = String.join("\n",
+                ".PROC OUTER",
+                "  .PROC INNER",
+                "  .ENDP",
+                "  .REG %TMP %PDR0",
+                ".ENDP"
+        );
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics);
+        List<Token> tokens = lexer.scanTokens();
+        Parser parser = new Parser(tokens, diagnostics, registry());
+
+        parser.parse();
+
+        assertThat(diagnostics.hasErrors()).isFalse();
+    }
+
+    /**
+     * Verifies that out-of-bounds LR indices are rejected.
+     */
+    @Test
+    @Tag("unit")
+    void testRegDirectiveLrOutOfBounds() {
+        String source = ".REG POSITION %LR" + Config.NUM_LOCATION_REGISTERS;
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics);
+        List<Token> tokens = lexer.scanTokens();
+        Parser parser = new Parser(tokens, diagnostics, registry());
+
+        parser.parse();
+
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.summary()).contains("Expected a register");
+    }
+
+    /**
+     * Verifies that tokens with unknown register banks are not recognized as REGISTER tokens
+     * by the lexer and thus rejected by the parser.
+     */
+    @Test
+    @Tag("unit")
+    void testRegDirectiveUnknownBank() {
+        String source = ".REG X %XYZ0";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics);
+        List<Token> tokens = lexer.scanTokens();
+        Parser parser = new Parser(tokens, diagnostics, registry());
+
+        parser.parse();
+
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.summary()).contains("Expected a register after the alias name in .REG");
+    }
+
+    /**
+     * Verifies that tokens with non-numeric register indices are not recognized as REGISTER tokens
+     * by the lexer and thus rejected by the parser.
+     */
+    @Test
+    @Tag("unit")
+    void testRegDirectiveInvalidRegisterIndex() {
+        String source = ".REG X %DRabc";
+        DiagnosticsEngine diagnostics = new DiagnosticsEngine();
+        Lexer lexer = new Lexer(source, diagnostics);
+        List<Token> tokens = lexer.scanTokens();
+        Parser parser = new Parser(tokens, diagnostics, registry());
+
+        parser.parse();
+
+        assertThat(diagnostics.hasErrors()).isTrue();
+        assertThat(diagnostics.summary()).contains("Expected a register after the alias name in .REG");
+    }
+
     private static ParserStatementRegistry registry() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".REG", new RegDirectiveHandler());
+        reg.register(".PROC", new org.evochora.compiler.features.proc.ProcDirectiveHandler());
         reg.registerDefault(new org.evochora.compiler.features.instruction.InstructionParsingHandler());
         return reg;
     }

@@ -304,16 +304,15 @@ message SourceInfo {
 }
 
 // Maps a CALL instruction to its parameter register bindings.
-// Protobuf-compatible representation of Map.Entry<Integer, int[]>.
-// The int[] contains register IDs (DR, PR, FPR) that are bound to the procedure's formal parameter registers.
+// Each binding maps a formal register ID (FDR_BASE+i or FLR_BASE+i) to the source register ID.
 message CallSiteBinding {
   // Linear address of CALL instruction
   int32 linear_address = 1;
 
-  // Register IDs bound to the procedure's formal parameter registers (FPRs).
-  // These are the source register IDs (DR, PR, FPR) that are passed as parameters.
-  // Example: [0, 5] means DR0 and DR5 are bound to FPR0 and FPR1 respectively.
-  repeated int32 register_ids = 2;
+  // Formal register ID → source register ID.
+  // Keys are formal register IDs (e.g., FDR0=1024, FLR0=1280).
+  // Values are source register IDs (e.g., DR0=0, LR0=256).
+  map<int32, int32> bindings = 2;
 }
 
 // Maps a linear address back to coordinates.
@@ -326,18 +325,19 @@ message LinearAddressToCoord {
   Vector coord = 2;
 }
 
-// Enumeration for parameter types (REF, VAL, or legacy WITH).
+// Enumeration for parameter types.
 enum ParamType {
-  PARAM_TYPE_REF = 0;   // Call-by-reference parameter
-  PARAM_TYPE_VAL = 1;   // Call-by-value parameter
-  PARAM_TYPE_WITH = 2;  // Legacy WITH syntax parameter
+  PARAM_TYPE_REF = 0;    // Scalar call-by-reference parameter (FDR)
+  PARAM_TYPE_VAL = 1;    // Scalar call-by-value parameter (FDR)
+  PARAM_TYPE_LREF = 2;   // Location call-by-reference parameter (FLR)
+  PARAM_TYPE_LVAL = 3;   // Location call-by-value parameter (FLR)
 }
 
 // Represents a single procedure parameter with its name and type.
 message ParamInfo {
   // Parameter name (e.g., "PROC1REG1")
   string name = 1;
-  // Parameter type (REF, VAL, or WITH)
+  // Parameter type (REF, VAL, LREF, or LVAL)
   ParamType type = 2;
 }
 

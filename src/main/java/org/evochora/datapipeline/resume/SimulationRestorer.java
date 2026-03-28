@@ -27,6 +27,7 @@ import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.PlacedMoleculeMapping;
 import org.evochora.datapipeline.api.contracts.PluginState;
 import org.evochora.datapipeline.api.contracts.ProcFrame;
+import org.evochora.datapipeline.api.contracts.ProcedureRegisterSnapshot;
 import org.evochora.datapipeline.api.contracts.RegisterValue;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.SourceMapEntry;
@@ -193,22 +194,10 @@ public class SimulationRestorer {
         List<OrganismState> organismStates = snapshot.getOrganismsList();
         List<PluginState> pluginStates = snapshot.getPluginStatesList();
 
-        // 7. Restore genome hash set from snapshot (with backwards-compatible fallback)
+        // 7. Restore genome hash set from snapshot
         LongOpenHashSet allGenomesEverSeen = new LongOpenHashSet();
-        List<Long> savedHashes = snapshot.getAllGenomeHashesEverSeenList();
-        if (!savedHashes.isEmpty()) {
-            for (long hash : savedHashes) {
-                allGenomesEverSeen.add(hash);
-            }
-        } else {
-            // Backwards compatibility: old simulations have no saved genome set.
-            // Reconstruct from living organisms' genome hashes (loses extinct genomes).
-            for (OrganismState org : organismStates) {
-                long hash = org.getGenomeHash();
-                if (hash != 0L) {
-                    allGenomesEverSeen.add(hash);
-                }
-            }
+        for (long hash : snapshot.getAllGenomeHashesEverSeenList()) {
+            allGenomesEverSeen.add(hash);
         }
 
         log.debug("Resume state: currentTick={}, totalOrganismsCreated={}, totalUniqueGenomes={}, organisms={}",
@@ -382,12 +371,12 @@ public class SimulationRestorer {
             sourceMap.put(entry.getLinearAddress(), convertProtoSourceInfo(entry.getSourceInfo()));
         }
 
-        // Convert call site bindings
-        Map<Integer, int[]> callSiteBindings = new HashMap<>();
+        // Convert call site bindings (formal register ID → source register ID)
+        Map<Integer, Map<Integer, Integer>> callSiteBindings = new HashMap<>();
         for (CallSiteBinding binding : proto.getCallSiteBindingsList()) {
             callSiteBindings.put(
                 binding.getLinearAddress(),
-                binding.getRegisterIdsList().stream().mapToInt(Integer::intValue).toArray()
+                new HashMap<>(binding.getBindingsMap())
             );
         }
 
@@ -529,22 +518,13 @@ public class SimulationRestorer {
             builder.activeDpIndex(state.getActiveDpIndex());
         }
 
-        // Registers
-        if (state.getDataRegistersCount() > 0) {
-            builder.dataRegisters(convertRegisterValues(state.getDataRegistersList()));
-        }
-        if (state.getProcedureRegistersCount() > 0) {
-            builder.procRegisters(convertRegisterValues(state.getProcedureRegistersList()));
-        }
-        if (state.getFormalParamRegistersCount() > 0) {
-            builder.formalParamRegisters(convertRegisterValues(state.getFormalParamRegistersList()));
-        }
-        if (state.getLocationRegistersCount() > 0) {
-            List<Object> lrs = new ArrayList<>();
-            for (Vector v : state.getLocationRegistersList()) {
-                lrs.add(toIntArray(v));
+        // Registers (flat array)
+        if (state.getRegistersCount() > 0) {
+            Object[] regs = new Object[state.getRegistersCount()];
+            for (int i = 0; i < state.getRegistersCount(); i++) {
+                regs[i] = convertRegisterValue(state.getRegisters(i));
             }
-            builder.locationRegisters(lrs);
+            builder.registers(regs);
         }
 
         // Stacks
@@ -578,20 +558,32 @@ public class SimulationRestorer {
         if (state.getInstructionFailed()) {
             String reason = state.hasFailureReason() ? state.getFailureReason() : "Unknown";
             builder.failed(true, reason);
+            if (state.getFailureCallStackCount() > 0) {
+                Deque<Organism.ProcFrame> failureStack = new ArrayDeque<>();
+                for (org.evochora.datapipeline.api.contracts.ProcFrame protoFrame : state.getFailureCallStackList()) {
+                    failureStack.push(convertProcFrame(protoFrame));
+                }
+                builder.failureCallStack(failureStack);
+            }
+        }
+
+        // Persistent register state + dirty flags
+        builder.currentProcLabelHash(state.getCurrentProcLabelHash());
+        builder.stackSavedDirty(state.getStackSavedDirty());
+        builder.persistentDirty(state.getPersistentDirty());
+        if (state.hasPersistentRegisterStore()) {
+            Map<Integer, Object[]> persistentState = new HashMap<>();
+            for (ProcedureRegisterSnapshot snapshot : state.getPersistentRegisterStore().getProcedureSnapshotsList()) {
+                Object[] regs = new Object[snapshot.getRegistersCount()];
+                for (int i = 0; i < snapshot.getRegistersCount(); i++) {
+                    regs[i] = convertRegisterValue(snapshot.getRegisters(i));
+                }
+                persistentState.put(snapshot.getLabelHash(), regs);
+            }
+            builder.persistentRegisterState(persistentState);
         }
 
         return builder.build(simulation);
-    }
-
-    /**
-     * Converts a list of RegisterValue protos to a list of Objects (Integer or int[]).
-     */
-    private static List<Object> convertRegisterValues(List<RegisterValue> values) {
-        List<Object> result = new ArrayList<>();
-        for (RegisterValue rv : values) {
-            result.add(convertRegisterValue(rv));
-        }
-        return result;
     }
 
     /**
@@ -610,27 +602,20 @@ public class SimulationRestorer {
      * Converts a ProcFrame proto to runtime ProcFrame.
      */
     private static Organism.ProcFrame convertProcFrame(ProcFrame pf) {
-        // Convert saved registers
-        Object[] savedPrs = new Object[pf.getSavedPrsCount()];
-        for (int i = 0; i < pf.getSavedPrsCount(); i++) {
-            savedPrs[i] = convertRegisterValue(pf.getSavedPrs(i));
+        Object[] savedRegisters = new Object[pf.getSavedRegistersCount()];
+        for (int i = 0; i < savedRegisters.length; i++) {
+            savedRegisters[i] = convertRegisterValue(pf.getSavedRegisters(i));
         }
 
-        Object[] savedFprs = new Object[pf.getSavedFprsCount()];
-        for (int i = 0; i < pf.getSavedFprsCount(); i++) {
-            savedFprs[i] = convertRegisterValue(pf.getSavedFprs(i));
-        }
-
-        // Convert FPR bindings map
-        Map<Integer, Integer> fprBindings = new HashMap<>(pf.getFprBindingsMap());
+        Map<Integer, Integer> parameterBindings = new HashMap<>(pf.getParameterBindingsMap());
 
         return new Organism.ProcFrame(
             pf.getProcName(),
+            pf.getLabelHash(),
             toIntArray(pf.getAbsoluteReturnIp()),
             toIntArray(pf.getAbsoluteCallIp()),
-            savedPrs,
-            savedFprs,
-            fprBindings
+            savedRegisters,
+            parameterBindings
         );
     }
 

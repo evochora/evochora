@@ -88,7 +88,8 @@ The Evochora platform is designed to serve as a flexible testbed for digital evo
          |   +-------------v----------------------------------v------+   |
          |   |                  Virtual Machine                      |   |
          |   |                                                       |   |
-         |   |  Registers: [DRs] [PRs] [FPRs] [LRs] (Locations)      |   |
+         |   |  Registers: [DRs] [LRs] [PDRs] [PLRs]                 |   |
+         |   |             [FDRs] [FLRs] [SDRs] [SLRs]               |   |
          |   |                                                       |   |
          |   |  Stacks:    [Data Stack] [Call Stack] [Loc. Stack]    |   |
          |   |                                                       |   |
@@ -121,11 +122,11 @@ The VM separates an organism's "processor" from its "actuators":
 
 To support complex behaviors, the VM provides a rich set of internal components, whose counts and sizes are configurable:
 
-**Registers**: A versatile array of registers is available, including:
-- General-purpose **Data Registers (DRs)**
-- Procedure-scoped registers (**PRs**)
-- Formal parameter registers (**FPRs**)
-- **Location Registers (LRs)** for storing n-dimensional coordinates
+**Registers**: 8 register banks organized by scope (Global, Proc-Local, Formal, Static) and type (Data, Location). Data registers (`*DR`) hold any value; Location registers (`*LR`) hold only vectors and have dedicated instructions for moving the Data Pointer to stored positions with ownership enforcement.
+- **Global**: **DRs** and **LRs** — persist across procedure calls
+- **Proc-Local**: **PDRs** and **PLRs** — automatically saved/restored on CALL/RET
+- **Formal**: **FDRs** and **FLRs** — used for procedure parameter passing (REF/VAL/LREF/LVAL)
+- **Static**: **SDRs** and **SLRs** — persistent per-procedure state, enabling procedures to function as stateful "organs" with internal memory
 
 **Stacks**: Three distinct stacks manage program flow and memory:
 - **Data Stack (DS)** for general computation

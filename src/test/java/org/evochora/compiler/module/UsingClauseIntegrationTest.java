@@ -19,7 +19,6 @@ import org.evochora.compiler.features.dir.DirDirectiveHandler;
 import org.evochora.compiler.features.importdir.ImportDirectiveHandler;
 import org.evochora.compiler.features.org.OrgDirectiveHandler;
 import org.evochora.compiler.features.place.PlaceDirectiveHandler;
-import org.evochora.compiler.features.proc.PregDirectiveHandler;
 import org.evochora.compiler.features.proc.ProcDirectiveHandler;
 import org.evochora.compiler.features.reg.RegDirectiveHandler;
 import org.evochora.compiler.features.require.RequireDirectiveHandler;
@@ -323,7 +322,6 @@ class UsingClauseIntegrationTest {
         reg.register(".DEFINE", new DefineDirectiveHandler());
         reg.register(".REG", new RegDirectiveHandler());
         reg.register(".PROC", new ProcDirectiveHandler());
-        reg.register(".PREG", new PregDirectiveHandler());
         reg.register(".ORG", new OrgDirectiveHandler());
         reg.register(".DIR", new DirDirectiveHandler());
         reg.register(".PLACE", new PlaceDirectiveHandler());

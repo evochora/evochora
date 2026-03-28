@@ -62,13 +62,25 @@ Pointers are special-purpose registers that define an organism's position and or
 
 Registers are the primary working memory of the organism. They can hold either scalar values (any molecule type like `CODE`, `DATA`, `ENERGY`, or `STRUCTURE`) or vector values (e.g., `1|0`).
 
-* **Global Data Registers (`%DRx`)**: A set of 8 general-purpose registers (`%DR0` to `%DR7`) for storing and manipulating data. Their values persist across procedure calls.
+The register architecture uses 8 banks organized by scope (Global, Proc-Local, Formal, Static) and type (Data, Location). 
 
-* **Procedure-Local Registers (`%PRx`)**: A set of 2 temporary registers (`%PR0`, `%PR1`) intended for use within a procedure. Their values are automatically saved to the Call Stack upon a `CALL` instruction and restored upon `RET`, making them safe to use without interfering with the caller's state.
+Data registers (`*DR`) can hold any value — scalars or vectors. Location registers (`*LR`) hold only vectors and have dedicated location instructions (`SKLR`, `DPLR`, `PUSL`, etc.) that can move the active Data Pointer directly to the stored position. These instructions enforce ownership checks — the DP can only jump to previously visited positions or label-known positions.
 
-* **Formal Parameter Registers (`%FPRx`)**: A set of 8 internal registers (`%FPR0` to `%FPR7`) used exclusively for parameter passing in procedures defined with a `.WITH` clause. They cannot be accessed directly by name in the code.
+**Global Registers** — persist across procedure calls, always available:
+* **Data Registers (`%DRx`)**: 8 general-purpose registers (`%DR0` to `%DR7`).
+* **Location Registers (`%LRx`)**: 4 registers (`%LR0` to `%LR3`).
 
-* **Location Registers (`%LRx`)**: A set of 4 registers (`%LR0` to `%LR3`) for storing vector values (coordinates or direction vectors).
+**Proc-Local Registers** — automatically saved on `CALL` and restored on `RET`, only available inside `.PROC` blocks:
+* **Proc-Local Data Registers (`%PDRx`)**: 8 registers (`%PDR0` to `%PDR7`).
+* **Proc-Local Location Registers (`%PLRx`)**: 4 registers (`%PLR0` to `%PLR3`).
+
+**Formal Registers** — used for parameter passing in procedures (REF/VAL/LREF/LVAL), automatically saved on `CALL` and restored on `RET`. Cannot be accessed directly by name — the compiler maps procedure parameter names to these registers:
+* **Formal Data Registers (`%FDRx`)**: 8 registers (`%FDR0` to `%FDR7`) for REF/VAL parameters.
+* **Formal Location Registers (`%FLRx`)**: 4 registers (`%FLR0` to `%FLR3`) for LREF/LVAL parameters.
+
+**Static Registers** — persistent across procedure calls with per-procedure backing store. Each procedure has its own independent copy that is saved/restored when entering/leaving the procedure:
+* **Static Data Registers (`%SDRx`)**: 8 registers (`%SDR0` to `%SDR7`).
+* **Static Location Registers (`%SLRx`)**: 4 registers (`%SLR0` to `%SLR3`).
 
 * **Molecule Marker Register (`MR`)**: A 4-bit register (values 0-15) that determines the marker value embedded into molecules when the organism writes them to the environment. The marker is used during `FORK` to selectively transfer ownership of molecules to offspring.
 
@@ -80,7 +92,7 @@ The VM includes three distinct stacks to manage data and control flow.
 
 * **Location Stack (`LS`)**: A dedicated LIFO stack for storing vector values, separate from the `DS`.
 
-* **Call Stack (`CS`)**: This stack is managed automatically by `CALL` and `RET` instructions. It stores return addresses and the state of the `%PRx` registers, enabling structured programming with nested procedure calls.
+* **Call Stack (`CS`)**: This stack is managed automatically by `CALL` and `RET` instructions. It stores return addresses, the state of all proc-local and formal registers (`%PDRx`, `%PLRx`, `%FDRx`, `%FLRx`), and parameter bindings, enabling structured programming with nested procedure calls.
 
 ### Thermodynamic Selection Pressure
 
@@ -237,7 +249,7 @@ All values in Evochora are fundamentally represented as **Molecules**, but the a
 
 ### Registers
 
-The most common way to reference a value is through a register. Registers are specified by their name, such as `%DR0` or `%PR1`. They can be used as arguments in most instructions.
+The most common way to reference a value is through a register. Registers are specified by their name, such as `%DR0` or `%PDR1`. They can be used as arguments in most instructions.
 
 ### Typed Literals
 
@@ -382,12 +394,14 @@ Scans axis-aligned neighbors around the active DP and returns a bitmask indicati
 * `JMPI <Label>`: Jumps to `<Label>`.
 * `JMPR %VEC_REG>`: Jumps to the vector address in `<%VEC_REG>`.
 * `JMPS`: Jumps to the vector address popped from the stack.
-  `CALL <Label> [REF %reg1 ...] [VAL %reg2|Literal ...]`: Calls the procedure at `<Label>`, optionally passing parameters.
-    - `REF`: Passes registers by reference.
-    - `VAL`: Passes registers or literal values by value.
+  `CALL <Label> [REF %reg ...] [VAL %reg|Literal ...] [LREF %lreg ...] [LVAL %lreg|Label ...]`: Calls the procedure at `<Label>`, optionally passing parameters.
+    - `REF`: Passes registers by reference. Modifications inside the procedure affect the caller's register.
+    - `VAL`: Passes registers or literal values by value. Modifications are local.
+    - `LREF`: Passes location registers by reference. Modifications to the FLR inside the procedure are written back to the caller's location register on `RET`.
+    - `LVAL`: Passes location registers or label positions by value. When a label is passed, its position is resolved via fuzzy matching at call time.
     - **Example**:
       ```
-      CALL myProc REF %DR0 VAL %DR1 DATA:42
+      CALL myProc REF %DR0 VAL %DR1 DATA:42 LREF %LR0 LVAL MY_LABEL
       ```
 * `RET`: Returns from a procedure.
 
@@ -460,21 +474,23 @@ Note on conflicts: If a world interaction loses conflict resolution for its targ
 
 ### Location Stack and Register Operations
 
-These instructions manage the Location Stack (`LS`) and Location Registers (`%LRx`).
+These instructions manage the Location Stack (`LS`) and location registers. All instructions that accept a location register operand work with any location bank (`%LRx`, `%PLRx`, `%FLRx`, `%SLRx`).
 
 * `DUPL`, `SWPL`, `DRPL`, `ROTL`: Standard stack operations (Duplicate, Swap, Drop, Rotate) for the `LS`.
 * `DPLS`: Pushes the active `DP` onto the `LS`.
 * `SKLS`: Pops a vector from `LS` and sets it as the active `DP`.
 * `LSDS`: Pops a vector from `LS` and pushes it onto the `DS`.
-* `DPLR %LR<Index>`: Copies the active `DP` into `%LR<Index>`.
-* `SKLR %LR<Index>`: Sets the active `DP` to the vector stored in `%LR<Index>`.
-* `PUSL %LR<Index>`: Pushes the vector from `%LR<Index>` onto the `LS`.
-* `POPL %LR<Index>`: Pops a vector from `LS` into `%LR<Index>`.
-* `LRDR %DEST_REG %LR<Index>`: Copies the vector from `%LR<Index>` into `<%DEST_REG>`.
-* `LRDS %LR<Index>`: Pushes the vector from `%LR<Index>` onto the `DS`.
-* `LSDR %DEST_REG`: Copies the top vector from `LS` into `<%DEST_REG>` without popping.
-* `LRLR %LR<Dest> %LR<Src>`: Copies the vector from `%LR<Src>` into `%LR<Dest>`.
-* `CRLR %LR<Index>`: Sets `%LR<Index>` to the vector `[0, 0]`.
+* `DPLR %LOC_REG`: Copies the active `DP` into the location register.
+* `SKLR %LOC_REG`: Sets the active `DP` to the vector stored in the location register.
+* `PUSL %LOC_REG`: Pushes the vector from the location register onto the `LS`.
+* `PSLI <Label>`: Resolves a label position via fuzzy matching and pushes it onto the `LS`. Target must be unowned or owned by self.
+* `POPL %LOC_REG`: Pops a vector from `LS` into the location register.
+* `LRDR %DEST_REG %LOC_REG`: Copies the vector from the location register into the data register.
+* `LRDS %LOC_REG`: Pushes the vector from the location register onto the `DS`.
+* `LSDR %DEST_REG`: Copies the top vector from `LS` into the data register without popping.
+* `LRLR %LOC_DEST %LOC_SRC`: Copies the vector from one location register to another.
+* `LRLI %LOC_REG <Label>`: Resolves a label position via fuzzy matching and stores it in the location register. Target must be unowned or owned by self.
+* `CRLR %LOC_REG`: Clears the location register to `[0, 0]`.
 * `SKJI <Label>`, `SKJR %REG`, `SKJS`: Sets the active `DP` to a label position using fuzzy matching (like `JMPI`). Target must be unowned or owned by self.
 
 ### Vector Component Operations
@@ -632,21 +648,25 @@ All paths in `.IMPORT`, `.REQUIRE`, and `.SOURCE` are resolved against configure
 
 #### `.PROC`
 
-* **Syntax**: `[EXPORT] .PROC <Name> [REF <param1> ...] [VAL <param2> ...] / .ENDP`
-* **Effect**: Defines a procedure.
+* **Syntax**: `[EXPORT] .PROC <Name> [REF <param> ...] [VAL <param> ...] [LREF <param> ...] [LVAL <param> ...] / .ENDP`
+* **Effect**: Defines a procedure with named parameters.
     - `EXPORT`: Prefix modifier that makes the procedure visible to other modules.
-    - `REF`: Defines **call-by-reference** parameters. The procedure receives a direct reference to the caller's register. Any modification inside the procedure affects the original register.
-    - `VAL`: Defines **call-by-value** parameters. The procedure receives a copy of the value from the caller's register. Modifications are local and do not affect the original register.
+    - `REF`: **call-by-reference** parameters (mapped to `%FDRx`). Modifications inside the procedure affect the caller's register.
+    - `VAL`: **call-by-value** parameters (mapped to `%FDRx`). Modifications are local.
+    - `LREF`: Location **call-by-reference** parameters (mapped to `%FLRx`). Modifications to the FLR inside the procedure are written back to the caller's location register on `RET`.
+    - `LVAL`: Location **call-by-value** parameters (mapped to `%FLRx`). The caller can pass a location register or a label (resolved via fuzzy matching at call time).
     - **Example**:
       ```
-      .PROC myProc REF reg_a VAL val_b  # reg_a is by-reference, val_b is by-value
-        SETI reg_a DATA:100             # This changes the caller's register for reg_a
-        SETI val_b DATA:200             # This only changes the local copy for val_b
+      .PROC myProc REF reg_a VAL val_b LREF loc_c
+        SETI reg_a DATA:100             # Changes the caller's register for reg_a
+        SETI val_b DATA:200             # Only changes the local copy for val_b
+        SKLR loc_c                      # Moves DP to the passed location
+        CRLR loc_c                      # Clears FLR0 — written back to caller on RET
         RET
       .ENDP
       ```
 
-* `.PREG <%ALIAS> <%PROCREGISTER>`: Within a `.PROC` block, assigns an alias to a procedure-local register (`%PR0` or `%PR1`).
+* `.REG` also works inside `.PROC` blocks with procedure-local registers: `.REG %TMP %PDR0` aliases `%PDR0` as `%TMP`, `.REG %POS %PLR0` aliases `%PLR0` as `%POS`. Proc-local registers (`%PDRx`, `%PLRx`) are only available inside `.PROC` blocks.
 
 #### Example: Simple Module Import
 

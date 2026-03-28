@@ -49,7 +49,7 @@ class NopInstructionCompilerTest extends CompilerTestBase {
             env.setMolecule(new Molecule(Config.TYPE_CODE, waitId), new int[]{1, 0});
 
             Simulation sim = SimulationTestUtils.createSimulation(env);
-            Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+            Organism org = Organism.create(sim, new int[]{0, 0}, 1000);
             sim.addOrganism(org);
 
             sim.tick();

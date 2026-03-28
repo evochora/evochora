@@ -42,14 +42,40 @@ public final class Config {
     public static final int NUM_DATA_REGISTERS = 8;
 
     /**
-     * The number of procedure registers available for storing code addresses.
+     * The number of procedure-local data registers (PDR) available per call frame.
      */
-    public static final int NUM_PROC_REGISTERS = 8;
+    public static final int NUM_PDR_REGISTERS = 8;
 
     /**
-     * The number of registers used for passing formal parameters to procedures.
+     * The number of procedure-local location registers (PLR) available per call frame.
      */
-    public static final int NUM_FORMAL_PARAM_REGISTERS = 8;
+    public static final int NUM_PLR_REGISTERS = 4;
+
+    /**
+     * The number of formal data registers (FDR) used for passing parameters to procedures.
+     */
+    public static final int NUM_FDR_REGISTERS = 8;
+
+    /**
+     * The number of static data registers (SDR) with per-procedure persistent backing store.
+     */
+    public static final int NUM_SDR_REGISTERS = 8;
+
+    /**
+     * The number of static location registers (SLR) with per-procedure persistent backing store.
+     */
+    public static final int NUM_SLR_REGISTERS = 4;
+
+    /**
+     * The number of formal location registers (FLR) used for passing location parameters to procedures.
+     */
+    public static final int NUM_FLR_REGISTERS = 4;
+
+    /**
+     * The maximum number of distinct procedures for which an organism can maintain
+     * persistent register state. Exceeding this limit triggers an instruction failure.
+     */
+    public static final int PERSISTENT_STATE_MAX_PROCEDURES = 1024;
 
     /**
      * The maximum depth of the data stack.
@@ -171,7 +197,7 @@ public final class Config {
 
     /**
      * The type code for a cell representing a register reference (register operand).
-     * Register references encode register IDs (DR 0-7, PR 1000-1007, FPR 2000-2007, LR 3000-3003)
+     * Register references encode register IDs (DR, PDR, FDR, LR — ranges defined by Instruction.*_BASE and Config.NUM_*_REGISTERS)
      * so that mutation systems can apply bank-aware mutation strategies.
      */
     public static final int TYPE_REGISTER = (0x06 & ((1 << TYPE_BITS) - 1)) << TYPE_SHIFT;

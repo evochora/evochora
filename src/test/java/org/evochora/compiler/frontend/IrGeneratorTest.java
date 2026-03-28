@@ -17,7 +17,6 @@ import org.evochora.compiler.features.instruction.InstructionNodeConverter;
 import org.evochora.compiler.features.label.LabelNodeConverter;
 import org.evochora.compiler.features.org.OrgNodeConverter;
 import org.evochora.compiler.features.place.PlaceNodeConverter;
-import org.evochora.compiler.features.proc.PregNodeConverter;
 import org.evochora.compiler.features.proc.ProcedureNodeConverter;
 import org.evochora.compiler.features.reg.RegNodeConverter;
 import org.evochora.compiler.features.require.RequireNodeConverter;
@@ -25,7 +24,6 @@ import org.evochora.compiler.features.ctx.PopCtxNode;
 import org.evochora.compiler.features.ctx.PopCtxNodeConverter;
 import org.evochora.compiler.features.ctx.PushCtxNode;
 import org.evochora.compiler.features.ctx.PushCtxNodeConverter;
-import org.evochora.compiler.features.proc.PregNode;
 import org.evochora.compiler.features.define.DefineNode;
 import org.evochora.compiler.features.dir.DirNode;
 import org.evochora.compiler.features.importdir.ImportNode;
@@ -46,7 +44,6 @@ import org.evochora.compiler.features.dir.DirDirectiveHandler;
 import org.evochora.compiler.features.importdir.ImportDirectiveHandler;
 import org.evochora.compiler.features.org.OrgDirectiveHandler;
 import org.evochora.compiler.features.place.PlaceDirectiveHandler;
-import org.evochora.compiler.features.proc.PregDirectiveHandler;
 import org.evochora.compiler.features.proc.ProcDirectiveHandler;
 import org.evochora.compiler.features.reg.RegDirectiveHandler;
 import org.evochora.compiler.features.require.RequireDirectiveHandler;
@@ -163,7 +160,7 @@ public class IrGeneratorTest {
 
         assertEquals(1, callInstruction.refOperands().size());
         assertInstanceOf(IrReg.class, callInstruction.refOperands().get(0));
-        assertEquals("%FPR0", ((IrReg) callInstruction.refOperands().get(0)).name());
+        assertEquals("%FDR0", ((IrReg) callInstruction.refOperands().get(0)).name());
 
         assertTrue(callInstruction.valOperands().isEmpty());
     }
@@ -242,14 +239,14 @@ public class IrGeneratorTest {
         assertTrue(addrInstructionOpt.isPresent(), "ADDR instruction not found in IR");
         IrInstruction addrInstruction = addrInstructionOpt.get();
 
-        // Check that parameters are resolved to %FPRx registers
+        // Check that parameters are resolved to %FDRx registers
         assertEquals(2, addrInstruction.operands().size());
         assertInstanceOf(IrReg.class, addrInstruction.operands().get(0));
         assertInstanceOf(IrReg.class, addrInstruction.operands().get(1));
         
-        // REF parameter should be %FPR0, VAL parameter should be %FPR1
-        assertEquals("%FPR0", ((IrReg) addrInstruction.operands().get(0)).name());
-        assertEquals("%FPR1", ((IrReg) addrInstruction.operands().get(1)).name());
+        // REF parameter should be %FDR0, VAL parameter should be %FDR1
+        assertEquals("%FDR0", ((IrReg) addrInstruction.operands().get(0)).name());
+        assertEquals("%FDR1", ((IrReg) addrInstruction.operands().get(1)).name());
     }
 
     @Test
@@ -273,14 +270,14 @@ public class IrGeneratorTest {
         assertTrue(addrInstructionOpt.isPresent(), "ADDR instruction not found in IR");
         IrInstruction addrInstruction = addrInstructionOpt.get();
 
-        // Check that parameters are resolved to %FPRx registers
+        // Check that parameters are resolved to %FDRx registers
         assertEquals(2, addrInstruction.operands().size());
         assertInstanceOf(IrReg.class, addrInstruction.operands().get(0));
         assertInstanceOf(IrReg.class, addrInstruction.operands().get(1));
         
-        // VAL parameters should be %FPR0 and %FPR1
-        assertEquals("%FPR0", ((IrReg) addrInstruction.operands().get(0)).name());
-        assertEquals("%FPR1", ((IrReg) addrInstruction.operands().get(1)).name());
+        // VAL parameters should be %FDR0 and %FDR1
+        assertEquals("%FDR0", ((IrReg) addrInstruction.operands().get(0)).name());
+        assertEquals("%FDR1", ((IrReg) addrInstruction.operands().get(1)).name());
     }
 
     @Test
@@ -313,15 +310,15 @@ public class IrGeneratorTest {
         assertInstanceOf(IrLabelRef.class, callInstruction.operands().get(0));
         assertEquals("innerProc", ((IrLabelRef) callInstruction.operands().get(0)).labelName());
 
-        // Check REF operands - should be resolved to %FPRx
+        // Check REF operands - should be resolved to %FDRx
         assertEquals(1, callInstruction.refOperands().size());
         assertInstanceOf(IrReg.class, callInstruction.refOperands().get(0));
-        assertEquals("%FPR0", ((IrReg) callInstruction.refOperands().get(0)).name());
+        assertEquals("%FDR0", ((IrReg) callInstruction.refOperands().get(0)).name());
 
-        // Check VAL operands - should be resolved to %FPRx
+        // Check VAL operands - should be resolved to %FDRx
         assertEquals(1, callInstruction.valOperands().size());
         assertInstanceOf(IrReg.class, callInstruction.valOperands().get(0));
-        assertEquals("%FPR1", ((IrReg) callInstruction.valOperands().get(0)).name());
+        assertEquals("%FDR1", ((IrReg) callInstruction.valOperands().get(0)).name());
     }
 
     private static ParserStatementRegistry allHandlers() {
@@ -329,7 +326,6 @@ public class IrGeneratorTest {
         reg.register(".DEFINE", new DefineDirectiveHandler());
         reg.register(".REG", new RegDirectiveHandler());
         reg.register(".PROC", new ProcDirectiveHandler());
-        reg.register(".PREG", new PregDirectiveHandler());
         reg.register(".ORG", new OrgDirectiveHandler());
         reg.register(".DIR", new DirDirectiveHandler());
         reg.register(".PLACE", new PlaceDirectiveHandler());
@@ -355,7 +351,6 @@ public class IrGeneratorTest {
         reg.register(ImportNode.class, new ImportNodeConverter());
         reg.register(RequireNode.class, new RequireNodeConverter());
         reg.register(RegNode.class, new RegNodeConverter());
-        reg.register(PregNode.class, new PregNodeConverter());
         reg.register(org.evochora.compiler.features.proc.CallNode.class, new org.evochora.compiler.features.proc.CallNodeConverter());
         reg.register(PushCtxNode.class, new PushCtxNodeConverter());
         reg.register(PopCtxNode.class, new PopCtxNodeConverter());

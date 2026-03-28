@@ -35,7 +35,7 @@ public class VMStateInstructionAdvancedTest {
     void setUp() {
         environment = new Environment(new int[]{50, 50}, true);
         sim = SimulationTestUtils.createSimulation(environment);
-        org = Organism.create(sim, new int[]{10, 10}, 1000, sim.getLogger());
+        org = Organism.create(sim, new int[]{10, 10}, 1000);
         sim.addOrganism(org);
     }
 
@@ -57,10 +57,10 @@ public class VMStateInstructionAdvancedTest {
     @Tag("unit")
     void testRbirSelectsSingleBitSubsetOfSource() {
         int sourceMask = new Molecule(Config.TYPE_DATA, (1 << 0) | (1 << 2) | (1 << 3)).toInt();
-        org.setDr(1, sourceMask);
+        org.writeOperand(1, sourceMask);
         placeInstruction("RBIR", 0, 1); // %DR0, %DR1
         sim.tick();
-        int resultPacked = (Integer) org.getDr(0);
+        int resultPacked = (Integer) org.readOperand(0);
         Molecule result = Molecule.fromInt(resultPacked);
         int val = result.toScalarValue();
         // Must be power of two and subset of source
@@ -92,7 +92,7 @@ public class VMStateInstructionAdvancedTest {
 
         placeInstruction("SPNR", 0);
         sim.tick();
-        int resultPacked = (Integer) org.getDr(0);
+        int resultPacked = (Integer) org.readOperand(0);
         assertThat(Molecule.fromInt(resultPacked).toScalarValue()).isEqualTo(0);
     }
 
@@ -135,12 +135,12 @@ public class VMStateInstructionAdvancedTest {
         // Other neighbors are left as CODE:0 (not STRUCTURE)
 
         // Put type in %DR1
-        org.setDr(1, new Molecule(Config.TYPE_STRUCTURE, 123).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_STRUCTURE, 123).toInt());
         // Ensure arguments are placed along +Y to avoid overwriting +X neighbor
         org.setDv(new int[]{0, 1});
         placeInstruction("SNTR", 0, 1); // %DR0 (dest), %DR1 (type)
         sim.tick();
-        int resultPacked = (Integer) org.getDr(0);
+        int resultPacked = (Integer) org.readOperand(0);
         int mask = Molecule.fromInt(resultPacked).toScalarValue();
         int expected = (1 << 0) | (1 << 3); // +X (bit0) and -Y (bit3)
         assertThat(mask & expected).isEqualTo(expected);
@@ -164,7 +164,7 @@ public class VMStateInstructionAdvancedTest {
         int[] arg2 = org.getNextInstructionPosition(arg1, org.getDv(), environment); // immediate cell
         environment.setMolecule(new Molecule(Config.TYPE_ENERGY, 0), arg2);
         sim.tick();
-        int resultPacked = (Integer) org.getDr(0);
+        int resultPacked = (Integer) org.readOperand(0);
         int mask = Molecule.fromInt(resultPacked).toScalarValue();
         int expected = (1 << 1); // -X (bit1)
         assertThat(mask & expected).isEqualTo(expected);
@@ -202,7 +202,7 @@ public class VMStateInstructionAdvancedTest {
         int zero = new Molecule(Config.TYPE_DATA, 0).toInt();
         placeInstruction("RBII", 0, zero); // %DR0, DATA:0
         sim.tick();
-        int resultPacked = (Integer) org.getDr(0);
+        int resultPacked = (Integer) org.readOperand(0);
         Molecule result = Molecule.fromInt(resultPacked);
         assertThat(result.toScalarValue()).isEqualTo(0);
     }

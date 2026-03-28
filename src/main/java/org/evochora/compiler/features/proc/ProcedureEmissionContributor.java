@@ -52,11 +52,21 @@ public final class ProcedureEmissionContributor implements IEmissionContributor 
             }
         }
 
-        // Old-style WITH parameters: derive from arity (no names in directive)
-        IrValue arityValue = dir.args().get("arity");
-        if (arityValue instanceof IrValue.Int64 arityInt && arityInt.value() > 0) {
-            for (int i = 0; i < arityInt.value(); i++) {
-                params.add(new ParamInfo("param" + i, ParamType.WITH));
+        IrValue lrefParamsValue = dir.args().get("lrefParams");
+        if (lrefParamsValue instanceof IrValue.ListVal lrefList) {
+            for (IrValue v : lrefList.elements()) {
+                if (v instanceof IrValue.Str s) {
+                    params.add(new ParamInfo(s.value(), ParamType.LREF));
+                }
+            }
+        }
+
+        IrValue lvalParamsValue = dir.args().get("lvalParams");
+        if (lvalParamsValue instanceof IrValue.ListVal lvalList) {
+            for (IrValue v : lvalList.elements()) {
+                if (v instanceof IrValue.Str s) {
+                    params.add(new ParamInfo(s.value(), ParamType.LVAL));
+                }
             }
         }
 

@@ -223,7 +223,7 @@ class SimulationResumeTest {
         );
 
         // Create a new organism using normal factory (as if born after resume)
-        Organism newOrg = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
+        Organism newOrg = Organism.create(sim, new int[]{0, 0}, 100);
 
         // New organism should get ID 51 (next after 50)
         assertThat(newOrg.getId()).isEqualTo(51);
@@ -246,7 +246,7 @@ class SimulationResumeTest {
         assertThat(sim.getTotalOrganismsCreatedCount()).isEqualTo(100);
 
         // After creating one, should be 101
-        Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
+        Organism.create(sim, new int[]{0, 0}, 100);
         assertThat(sim.getTotalOrganismsCreatedCount()).isEqualTo(101);
     }
 
@@ -266,7 +266,7 @@ class SimulationResumeTest {
         );
 
         // First organism should get ID 1
-        Organism org = Organism.create(sim, new int[]{0, 0}, 100, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 100);
         assertThat(org.getId()).isEqualTo(1);
     }
 

@@ -35,7 +35,7 @@ public record ProgramArtifact(
         Map<int[], Integer> machineCodeLayout,
         Map<int[], PlacedMolecule> initialWorldObjects,
         Map<Integer, SourceInfo> sourceMap,
-        Map<Integer, int[]> callSiteBindings,
+        Map<Integer, Map<Integer, Integer>> callSiteBindings,
         Map<String, Integer> relativeCoordToLinearAddress,
         Map<Integer, int[]> linearAddressToCoord,
         Map<String, Integer> registerAliasMap,

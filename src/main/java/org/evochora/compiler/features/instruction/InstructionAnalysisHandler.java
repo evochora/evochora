@@ -16,6 +16,7 @@ import org.evochora.compiler.model.symbols.SymbolTable;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.InstructionArgumentType;
 import org.evochora.runtime.isa.InstructionSignature;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.Config;
 
 import java.util.Optional;
@@ -100,10 +101,20 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                                 );
                             }
                         } else if (symbol.type() == Symbol.Type.VARIABLE) {
-                            // Accept formal parameters as register placeholders
+                            // Accept data parameters (REF/VAL → FDR) in REGISTER positions
                             if (expectedType != InstructionArgumentType.REGISTER) {
                                 diagnostics.reportError(
-                                        String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got PARAMETER.",
+                                        String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got data parameter.",
+                                                i + 1, instructionName, expectedType),
+                                        instructionNode.sourceInfo().fileName(),
+                                        instructionNode.sourceInfo().lineNumber()
+                                );
+                            }
+                        } else if (symbol.type() == Symbol.Type.LOCATION_VARIABLE) {
+                            // Accept location parameters (LREF/LVAL → FLR) in LOCATION_REGISTER positions
+                            if (expectedType != InstructionArgumentType.LOCATION_REGISTER) {
+                                diagnostics.reportError(
+                                        String.format("Argument %d for instruction '%s' has the wrong type. Expected %s, but got location parameter.",
                                                 i + 1, instructionName, expectedType),
                                         instructionNode.sourceInfo().fileName(),
                                         instructionNode.sourceInfo().lineNumber()
@@ -132,84 +143,51 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                         );
                     }
 
-                    // Additional validations
-                    // 1) Register validity (%DRx, %PRx, %FPRx) - aliases are already replaced in the parser
+                    // Additional validations via RegisterBank enum iteration
                     if (expectedType == InstructionArgumentType.REGISTER && argumentNode instanceof RegisterNode regNode) {
                         String tokenText = regNode.getName();
                         String u = tokenText.toUpperCase();
-                        
-                        // Validate register bounds based on configuration
-                        if (u.startsWith("%DR")) {
-                            try {
-                                int regNum = Integer.parseInt(u.substring(3));
-                                if (regNum < 0 || regNum >= Config.NUM_DATA_REGISTERS) {
+
+                        RegisterBank matchedBank = null;
+                        int regNum = -1;
+                        for (RegisterBank bank : RegisterBank.values()) {
+                            if (bank.count > 0 && !bank.isLocation && u.startsWith(bank.prefix)) {
+                                matchedBank = bank;
+                                try {
+                                    regNum = Integer.parseInt(u.substring(bank.prefixLength));
+                                } catch (NumberFormatException e) {
                                     diagnostics.reportError(
-                                            String.format("Data register '%s' is out of bounds. Valid range: %%DR0-%%DR%d.", 
-                                                tokenText, Config.NUM_DATA_REGISTERS - 1),
+                                            String.format("Invalid register format '%s'.", tokenText),
                                             regNode.sourceInfo().fileName(),
                                             regNode.sourceInfo().lineNumber()
                                     );
                                     return;
                                 }
-                            } catch (NumberFormatException e) {
-                                diagnostics.reportError(
-                                        String.format("Invalid data register format '%s'.", tokenText),
-                                        regNode.sourceInfo().fileName(),
-                                        regNode.sourceInfo().lineNumber()
-                                );
-                                return;
+                                break;
                             }
-                        } else if (u.startsWith("%PR")) {
-                            try {
-                                int regNum = Integer.parseInt(u.substring(3));
-                                if (regNum < 0 || regNum >= Config.NUM_PROC_REGISTERS) {
-                                    diagnostics.reportError(
-                                            String.format("Procedure register '%s' is out of bounds. Valid range: %%PR0-%%PR%d.", 
-                                                tokenText, Config.NUM_PROC_REGISTERS - 1),
-                                            regNode.sourceInfo().fileName(),
-                                            regNode.sourceInfo().lineNumber()
-                                    );
-                                    return;
-                                }
-                            } catch (NumberFormatException e) {
-                                diagnostics.reportError(
-                                        String.format("Invalid procedure register format '%s'.", tokenText),
-                                        regNode.sourceInfo().fileName(),
-                                        regNode.sourceInfo().lineNumber()
-                                );
-                                return;
-                            }
-                        } else if (u.startsWith("%FPR")) {
-                            try {
-                                int regNum = Integer.parseInt(u.substring(4));
-                                if (regNum < 0 || regNum >= Config.NUM_FORMAL_PARAM_REGISTERS) {
-                                    diagnostics.reportError(
-                                            String.format("Formal parameter register '%s' is out of bounds. Valid range: %%FPR0-%%FPR%d.", 
-                                                tokenText, Config.NUM_FORMAL_PARAM_REGISTERS - 1),
-                                            regNode.sourceInfo().fileName(),
-                                            regNode.sourceInfo().lineNumber()
-                                    );
-                                    return;
-                                }
-                            } catch (NumberFormatException e) {
-                                diagnostics.reportError(
-                                        String.format("Invalid formal parameter register format '%s'.", tokenText),
-                                        regNode.sourceInfo().fileName(),
-                                        regNode.sourceInfo().lineNumber()
-                                );
-                                return;
-                            }
-                            
-                            // Prohibition: Direct access to %FPRx should not be allowed
-                            diagnostics.reportError(
-                                    "Access to formal parameter registers (%FPRx) is not allowed in user code.",
-                                    regNode.sourceInfo().fileName(),
-                                    regNode.sourceInfo().lineNumber()
-                            );
-                            return;
                         }
-                        
-                        // If we get here, the register format is valid, so resolve it
+
+                        if (matchedBank != null) {
+                            if (regNum < 0 || regNum >= matchedBank.count) {
+                                diagnostics.reportError(
+                                        String.format("Register '%s' is out of bounds. Valid range: %s0-%s%d.",
+                                                tokenText, matchedBank.prefix, matchedBank.prefix, matchedBank.count - 1),
+                                        regNode.sourceInfo().fileName(),
+                                        regNode.sourceInfo().lineNumber()
+                                );
+                                return;
+                            }
+                            if (matchedBank.isForbidden) {
+                                diagnostics.reportError(
+                                        "Access to " + matchedBank.prefix.substring(1) + " registers is not allowed in user code — managed by the CALL binding mechanism.",
+                                        regNode.sourceInfo().fileName(),
+                                        regNode.sourceInfo().lineNumber()
+                                );
+                                return;
+                            }
+                        }
+
+                        // Resolve and validate
                         Optional<Integer> regId = Instruction.resolveRegToken(tokenText);
                         if (regId.isEmpty()) {
                             diagnostics.reportError(
@@ -221,31 +199,40 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
                     } else if (expectedType == InstructionArgumentType.LOCATION_REGISTER && argumentNode instanceof RegisterNode regNode) {
                         String tokenText = regNode.getName();
                         String u = tokenText.toUpperCase();
-                        
-                        if (u.startsWith("%LR")) {
-                            try {
-                                int regNum = Integer.parseInt(u.substring(3));
-                                if (regNum < 0 || regNum >= Config.NUM_LOCATION_REGISTERS) {
+
+                        RegisterBank matchedBank = null;
+                        int regNum = -1;
+                        for (RegisterBank bank : RegisterBank.values()) {
+                            if (bank.count > 0 && bank.isLocation && u.startsWith(bank.prefix)) {
+                                matchedBank = bank;
+                                try {
+                                    regNum = Integer.parseInt(u.substring(bank.prefixLength));
+                                } catch (NumberFormatException e) {
                                     diagnostics.reportError(
-                                            String.format("Location register '%s' is out of bounds. Valid range: %%LR0-%%LR%d.", 
-                                                tokenText, Config.NUM_LOCATION_REGISTERS - 1),
+                                            String.format("Invalid location register format '%s'.", tokenText),
                                             regNode.sourceInfo().fileName(),
                                             regNode.sourceInfo().lineNumber()
                                     );
                                     return;
                                 }
-                            } catch (NumberFormatException e) {
-                                diagnostics.reportError(
-                                        String.format("Invalid location register format '%s'.", tokenText),
-                                        regNode.sourceInfo().fileName(),
-                                        regNode.sourceInfo().lineNumber()
-                                );
-                                return;
+                                break;
                             }
-                        } else {
+                        }
+
+                        if (matchedBank == null) {
                             diagnostics.reportError(
-                                    String.format("Argument %d for instruction '%s' expects a location register (%%LRx), but got '%s'.",
+                                    String.format("Argument %d for instruction '%s' expects a location register, but got '%s'.",
                                         i + 1, instructionName, tokenText),
+                                    regNode.sourceInfo().fileName(),
+                                    regNode.sourceInfo().lineNumber()
+                            );
+                            return;
+                        }
+
+                        if (regNum < 0 || regNum >= matchedBank.count) {
+                            diagnostics.reportError(
+                                    String.format("Location register '%s' is out of bounds. Valid range: %s0-%s%d.",
+                                        tokenText, matchedBank.prefix, matchedBank.prefix, matchedBank.count - 1),
                                     regNode.sourceInfo().fileName(),
                                     regNode.sourceInfo().lineNumber()
                             );
@@ -280,8 +267,10 @@ public class InstructionAnalysisHandler implements IAnalysisHandler {
     private InstructionArgumentType getArgumentTypeFromNode(AstNode node) {
         if (node instanceof RegisterNode regNode) {
             String tokenText = regNode.getName().toUpperCase();
-            if (tokenText.startsWith("%LR")) {
-                return InstructionArgumentType.LOCATION_REGISTER;
+            for (RegisterBank bank : RegisterBank.values()) {
+                if (bank.count > 0 && bank.isLocation && tokenText.startsWith(bank.prefix)) {
+                    return InstructionArgumentType.LOCATION_REGISTER;
+                }
             }
             return InstructionArgumentType.REGISTER;
         }

@@ -8,57 +8,69 @@ import org.evochora.compiler.model.token.TokenType;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Parses the CALL instruction syntax, producing a {@link CallNode}.
- * Supports both new syntax (REF/VAL parameters) and legacy syntax (WITH parameters).
+ * Supports REF/VAL/LREF/LVAL parameter keywords.
  */
 public class CallStatementHandler implements IParserStatementHandler {
+
+    private static final Set<String> PARAM_KEYWORDS = Set.of("REF", "VAL", "LREF", "LVAL");
 
     @Override
     public AstNode parse(ParsingContext context) {
         Token opcode = context.advance(); // consume CALL (OPCODE token)
         AstNode procName = context.expression();
 
-        // Check for new syntax (REF/VAL)
-        if (context.check(TokenType.IDENTIFIER) &&
-                ("REF".equalsIgnoreCase(context.peek().text()) || "VAL".equalsIgnoreCase(context.peek().text()))) {
+        // Check for new syntax (REF/VAL/LREF/LVAL)
+        if (context.check(TokenType.IDENTIFIER) && isParamKeyword(context.peek().text())) {
             List<AstNode> refArguments = new ArrayList<>();
             List<AstNode> valArguments = new ArrayList<>();
-            boolean refParsed = false;
-            boolean valParsed = false;
+            List<AstNode> lrefArguments = new ArrayList<>();
+            List<AstNode> lvalArguments = new ArrayList<>();
 
             while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
-                if (!refParsed && context.check(TokenType.IDENTIFIER) && "REF".equalsIgnoreCase(context.peek().text())) {
-                    context.advance(); // Consume REF
-                    refParsed = true;
+                if (context.check(TokenType.IDENTIFIER) && "REF".equalsIgnoreCase(context.peek().text())) {
+                    context.advance();
                     while (!context.isAtEnd() && !context.check(TokenType.NEWLINE) &&
-                            !(context.check(TokenType.IDENTIFIER) && "VAL".equalsIgnoreCase(context.peek().text()))) {
+                            !(context.check(TokenType.IDENTIFIER) && isParamKeyword(context.peek().text()))) {
                         refArguments.add(context.expression());
                     }
-                } else if (!valParsed && context.check(TokenType.IDENTIFIER) && "VAL".equalsIgnoreCase(context.peek().text())) {
-                    context.advance(); // Consume VAL
-                    valParsed = true;
+                } else if (context.check(TokenType.IDENTIFIER) && "VAL".equalsIgnoreCase(context.peek().text())) {
+                    context.advance();
                     while (!context.isAtEnd() && !context.check(TokenType.NEWLINE) &&
-                            !(context.check(TokenType.IDENTIFIER) && "REF".equalsIgnoreCase(context.peek().text()))) {
+                            !(context.check(TokenType.IDENTIFIER) && isParamKeyword(context.peek().text()))) {
                         valArguments.add(context.expression());
+                    }
+                } else if (context.check(TokenType.IDENTIFIER) && "LREF".equalsIgnoreCase(context.peek().text())) {
+                    context.advance();
+                    while (!context.isAtEnd() && !context.check(TokenType.NEWLINE) &&
+                            !(context.check(TokenType.IDENTIFIER) && isParamKeyword(context.peek().text()))) {
+                        lrefArguments.add(context.expression());
+                    }
+                } else if (context.check(TokenType.IDENTIFIER) && "LVAL".equalsIgnoreCase(context.peek().text())) {
+                    context.advance();
+                    while (!context.isAtEnd() && !context.check(TokenType.NEWLINE) &&
+                            !(context.check(TokenType.IDENTIFIER) && isParamKeyword(context.peek().text()))) {
+                        lvalArguments.add(context.expression());
                     }
                 } else {
                     Token unexpected = context.advance();
                     context.getDiagnostics().reportError(
-                            "Unexpected token '" + unexpected.text() + "' in CALL statement. Expected REF, VAL, or newline.",
+                            "Unexpected token '" + unexpected.text() + "' in CALL statement. Expected REF, VAL, LREF, LVAL, or newline.",
                             unexpected.fileName(), unexpected.line());
                     break;
                 }
             }
-            return new CallNode(procName, refArguments, valArguments, List.of(), opcode.toSourceInfo());
+            return new CallNode(procName, refArguments, valArguments, lrefArguments, lvalArguments, opcode.toSourceInfo());
         } else {
-            // Legacy syntax: CALL proc [WITH] arg1, arg2, ...
-            List<AstNode> legacyArguments = new ArrayList<>();
-            while (!context.isAtEnd() && !context.check(TokenType.NEWLINE)) {
-                legacyArguments.add(context.expression());
-            }
-            return new CallNode(procName, List.of(), List.of(), legacyArguments, opcode.toSourceInfo());
+            // No parameter keywords — plain CALL with no arguments
+            return new CallNode(procName, List.of(), List.of(), List.of(), List.of(), opcode.toSourceInfo());
         }
+    }
+
+    private static boolean isParamKeyword(String text) {
+        return PARAM_KEYWORDS.contains(text.toUpperCase());
     }
 }

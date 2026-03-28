@@ -3,6 +3,7 @@ package org.evochora.compiler.frontend.lexer;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.token.TokenType;
+import org.evochora.runtime.isa.RegisterBank;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -145,7 +146,7 @@ public class Lexer {
     
     /**
      * Checks if a token represents a valid register pattern.
-     * Valid patterns are: %DRx, %PRx, %FPRx, %LRx where x is a number.
+     * Valid patterns are register tokens matching a {@link RegisterBank} prefix with a numeric suffix (e.g., %DR0, %PLR1, %SLR2).
      * 
      * @param text the token text to check
      * @return true if the text represents a valid register pattern
@@ -154,14 +155,19 @@ public class Lexer {
         if (!text.startsWith("%")) {
             return false;
         }
-        
-        // Check for valid register patterns
-        if (text.matches("%DR\\d+")) return true;  // %DR0, %DR1, etc.
-        if (text.matches("%PR\\d+")) return true;  // %PR0, %PR1, etc.
-        if (text.matches("%FPR\\d+")) return true; // %FPR0, %FPR1, etc.
-        if (text.matches("%LR\\d+")) return true;  // %LR0, %LR1, etc.
-        
-        // Not a valid register pattern
+        String upper = text.toUpperCase();
+        for (RegisterBank bank : RegisterBank.values()) {
+            if (bank.count > 0 && upper.startsWith(bank.prefix)) {
+                String suffix = upper.substring(bank.prefix.length());
+                if (suffix.isEmpty()) continue;
+                try {
+                    int index = Integer.parseInt(suffix);
+                    if (index >= 0 && index < bank.count) return true;
+                } catch (NumberFormatException e) {
+                    continue;
+                }
+            }
+        }
         return false;
     }
 

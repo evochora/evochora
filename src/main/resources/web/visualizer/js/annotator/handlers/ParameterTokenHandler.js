@@ -3,10 +3,9 @@ import { ValueFormatter } from '../../utils/ValueFormatter.js';
 
 /**
  * Handles the annotation of tokens that are procedure parameter names.
- * Shows the complete binding chain from source register to current FPR and its value.
- * Format: [%DR0→%FPR1→%FPR0=Value] where the chain shows data flow from source (DR/PR)
- * to intermediate bindings to the current parameter register (FPR), and Value is always
- * read from the current FPR (which may differ from the source if modified in the procedure).
+ * Shows the complete binding chain from source register to the formal register and its value.
+ * Data parameters (REF/VAL) resolve to FDR: [%DR0→%FDR1→%FDR0=Value]
+ * Location parameters (LREF/LVAL) resolve to FLR: [%LR0→%FLR1→%FLR0=Value]
  * Works anywhere in procedure bodies, not just on .PROC directive lines.
  * Resolves parameter bindings by walking the call stack to find the complete chain.
  */
@@ -32,9 +31,9 @@ export class ParameterTokenHandler {
 
     /**
      * Analyzes the parameter token to create an annotation with its binding chain and current value.
-     * Resolves the complete binding chain through the call stack (from source DR/PR to current FPR),
-     * then reads the value from the current FPR (not from the source, as FPR values may be modified).
-     * The binding chain is displayed reversed: from source to target (e.g., %DR0→%FPR1→%FPR0).
+     * Resolves the complete binding chain through the call stack (from source register to formal register),
+     * then reads the value from the formal register (FDR for data params, FLR for location params).
+     * The binding chain is displayed reversed: from source to target (e.g., %DR0→%FDR1→%FDR0).
      *
      * @param {string} tokenText The text of the token (the parameter name).
      * @param {object} tokenInfo Metadata about the token.
@@ -86,34 +85,39 @@ export class ParameterTokenHandler {
             throw new Error(`Cannot annotate parameter "${tokenText}": not found in procedure "${procName}" parameter list.`);
         }
 
+        // Determine if this is a location parameter (LREF/LVAL) or data parameter (REF/VAL)
+        const paramType = params[paramIndex].type ? params[paramIndex].type.toUpperCase() : '';
+        const isLocationParam = paramType === 'LREF' || paramType === 'LVAL';
+
+        // Calculate bank-specific index: count preceding params of the same bank type
+        const bankSpecificIndex = params
+            .slice(0, paramIndex)
+            .filter(p => {
+                const t = (p.type || '').toUpperCase();
+                const isLocation = t === 'LREF' || t === 'LVAL';
+                return isLocation === isLocationParam;
+            }).length;
+
         // Resolve the binding chain through the call stack using artifact bindings
-        // resolveBindingChainWithPath returns the complete path of register IDs in display order
-        // Path format: [DR0, FPR1, FPR0] - from source DR to parameter FPR
-        const bindingPath = AnnotationUtils.resolveBindingChainWithPath(paramIndex, organismState.callStack, artifact, organismState);
+        const bindingPath = AnnotationUtils.resolveBindingChainWithPath(bankSpecificIndex, organismState.callStack, artifact, organismState, isLocationParam);
 
         if (bindingPath.length === 0) {
             throw new Error(`Cannot annotate parameter "${tokenText}": binding path is empty.`);
         }
 
-        // Get the value from the LAST register in the chain (the currently valid FPR)
-        // bindingPath ends with the parameter's FPR (e.g., [DR0, FPR1, FPR0])
-        // This FPR holds the current value, which may differ from the source DR/PR if modified
+        // Get the value from the LAST register in the chain (the formal register: FDR or FLR)
+        // bindingPath ends with the parameter's formal register (e.g., [DR0, FDR1, FDR0] or [LR0, FLR0])
         const currentRegId = bindingPath[bindingPath.length - 1];
 
-        // Get the register value from the current FPR
-        // getRegisterValueById now throws Error directly if register not found or invalid input
         const value = AnnotationUtils.getRegisterValueById(currentRegId, organismState);
 
-        // Format the binding path: %DR0→%FPR1→%FPR0
-        // The path is already in display order (source to target)
+        // Format the binding path: %DR0→%FDR1→%FDR0 or %LR0→%FLR0
         const pathNames = bindingPath.map(regId => AnnotationUtils.formatRegisterName(regId));
         const pathDisplay = pathNames.join('→');
 
-        // Format the value
         const formattedValue = ValueFormatter.format(value);
 
-        // Always show the complete chain (even if it has only one element)
-        // Format: [%DR0→%FPR1→%FPR0=Value] where Value is from FPR0 (current, last element)
+        // Format: [%DR0→%FDR1→%FDR0=Value] where Value is from the formal register (last element)
         return {
             annotationText: `[${pathDisplay}=${formattedValue}]`,
             kind: 'param'

@@ -24,9 +24,11 @@ public record Symbol(String name, SourceInfo sourceInfo, Type type, AstNode node
         CONSTANT,
         /** A procedure defined with .PROC. */
         PROCEDURE,
-        /** A variable, such as a procedure parameter. */
+        /** A data variable, such as a REF/VAL procedure parameter (resolves to FDR). */
         VARIABLE,
-        /** A register alias defined with .REG or .PREG. */
+        /** A location variable, such as an LREF/LVAL procedure parameter (resolves to FLR). */
+        LOCATION_VARIABLE,
+        /** A register alias defined with .REG. */
         ALIAS
     }
 

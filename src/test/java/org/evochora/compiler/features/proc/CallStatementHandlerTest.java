@@ -70,17 +70,23 @@ class CallStatementHandlerTest {
     }
 
     @Test
-    void legacySyntax_withArgs() {
-        CallNode node = parseCall("CALL myProc %DR0");
+    void zeroArgCall() {
+        CallNode node = parseCall("CALL myProc");
 
-        assertThat(node.legacyArguments()).hasSize(1);
+        assertThat(node.refArguments()).isEmpty();
+        assertThat(node.valArguments()).isEmpty();
+        assertThat(node.lrefArguments()).isEmpty();
+        assertThat(node.lvalArguments()).isEmpty();
     }
 
     @Test
-    void legacySyntax_noArgs() {
-        CallNode node = parseCall("CALL myProc");
+    void lrefAndLvalArgs() {
+        CallNode node = parseCall("CALL myProc LREF %LR0 LVAL %LR1");
 
-        assertThat(node.legacyArguments()).isEmpty();
+        assertThat(node.refArguments()).isEmpty();
+        assertThat(node.valArguments()).isEmpty();
+        assertThat(node.lrefArguments()).hasSize(1);
+        assertThat(node.lvalArguments()).hasSize(1);
     }
 
     @Test

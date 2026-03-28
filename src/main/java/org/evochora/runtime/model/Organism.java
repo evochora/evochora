@@ -4,13 +4,16 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Deque;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 import java.util.stream.Collectors;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -73,15 +76,22 @@ public class Organism {
     private int mr; // Molecule Marker Register
     private long genomeHash = 0L; // Genome hash computed at birth
     private long deathTick = -1L; // Tick when organism died (-1 if alive)
-    private final List<Object> drs;
-    private final List<Object> prs;
-    private final List<Object> fprs;
-    private final List<Object> lrs;
+    private final Object[] registers;
     private final Deque<Object> dataStack;
     private final Deque<int[]> locationStack;
     private final Deque<ProcFrame> callStack;
+    /** Sentinel labelHash for Main-level persistent state. Outside the 20-bit labelHash range. */
+    public static final int MAIN_LEVEL_LABEL_HASH = -1;
+    /** Which procedure's persistent register state is currently active in the flat array. */
+    private int currentProcLabelHash = MAIN_LEVEL_LABEL_HASH;
+    /** Per-procedure backing store for PERSISTENT registers, keyed by labelHash. */
+    private final Map<Integer, Object[]> persistentRegisterState = new HashMap<>();
     private boolean isDead = false;
-    private boolean loggingEnabled = false;
+    /** Set to true on first write to any STACK_SAVED register. Skips snapshot/restore when false. */
+    private boolean stackSavedDirty = false;
+    /** Set to true on first write to any PERSISTENT register. Skips persistent state ops when false. */
+    private boolean persistentDirty = false;
+
     private boolean instructionFailed = false;
     private boolean previousInstructionFailed = false;
     private String failureReason = null;
@@ -90,38 +100,26 @@ public class Organism {
     /**
      * Represents a single frame on the call stack, created by a CALL instruction.
      * It stores the necessary state to return to the caller correctly.
+     *
+     * @param procName The name of the procedure.
+     * @param labelHash The label hash identifying this procedure (used for persistent register state).
+     * @param absoluteReturnIp The absolute return IP.
+     * @param absoluteCallIp The absolute address of the CALL instruction that created this frame.
+     * @param savedRegisters Compact array of all STACK_SAVED register values in RegisterBank enum order.
+     * @param parameterBindings Maps formal register IDs (FDR/FLR) to source register IDs for parameter binding visualization.
      */
-    public static final class ProcFrame {
-        public final String procName;
-        public final int[] absoluteReturnIp;
-        public final int[] absoluteCallIp;
-        public final Object[] savedPrs;
-        public final Object[] savedFprs;
-        public final java.util.Map<Integer, Integer> fprBindings;
-
-        /**
-         * Constructs a new ProcFrame.
-         * @param procName The name of the procedure.
-         * @param absoluteReturnIp The absolute return IP.
-         * @param absoluteCallIp The absolute address of the CALL instruction that created this frame.
-         * @param savedPrs The saved PRs.
-         * @param savedFprs The saved FPRs.
-         * @param fprBindings The FPR bindings.
-         */
-        public ProcFrame(String procName, int[] absoluteReturnIp, int[] absoluteCallIp, Object[] savedPrs, Object[] savedFprs, java.util.Map<Integer, Integer> fprBindings) {
-            this.procName = procName;
-            this.absoluteReturnIp = absoluteReturnIp;
-            this.absoluteCallIp = absoluteCallIp;
-            this.savedPrs = savedPrs;
-            this.savedFprs = savedFprs;
-            this.fprBindings = fprBindings;
-        }
-    }
+    public record ProcFrame(
+            String procName,
+            int labelHash,
+            int[] absoluteReturnIp,
+            int[] absoluteCallIp,
+            Object[] savedRegisters,
+            java.util.Map<Integer, Integer> parameterBindings
+    ) {}
     private boolean skipIpAdvance = false;
     private int[] ipBeforeFetch;
     private int[] dvBeforeFetch;
     private InstructionExecutionData lastInstructionExecution = null;
-    private final Logger logger;
     private final Simulation simulation;
     private final int[] initialPosition;
     private final Random random;
@@ -136,10 +134,9 @@ public class Organism {
      * @param id The unique identifier for this organism.
      * @param startIp The initial coordinate of the Instruction Pointer (IP).
      * @param initialEnergy The starting energy (ER) of the organism.
-     * @param logger The logger instance for logging events.
      * @param simulation The simulation instance this organism belongs to.
      */
-    Organism(int id, int[] startIp, int initialEnergy, Logger logger, Simulation simulation) {
+    Organism(int id, int[] startIp, int initialEnergy, Simulation simulation) {
         this.id = id;
         this.ip = startIp;
         this.dps = new ArrayList<>(Config.NUM_DATA_POINTERS);
@@ -158,26 +155,16 @@ public class Organism {
         this.er = initialEnergy;
         this.sr = 0;
         this.mr = 0;
-        this.logger = logger;
         this.simulation = simulation;
         this.dv = new int[startIp.length];
         this.dv[0] = 1; // Default direction: +X
-        this.drs = new ArrayList<>(Config.NUM_DATA_REGISTERS);
-        for (int i = 0; i < Config.NUM_DATA_REGISTERS; i++) {
-            this.drs.add(0);
+        this.registers = new Object[RegisterBank.TOTAL_REGISTER_COUNT];
+        for (RegisterBank bank : RegisterBank.values()) {
+            for (int i = 0; i < bank.count; i++) {
+                registers[bank.slotOffset() + i] = bank.isLocation ? new int[startIp.length] : 0;
+            }
         }
-        this.prs = new ArrayList<>(Config.NUM_PROC_REGISTERS);
-        for (int i = 0; i < Config.NUM_PROC_REGISTERS; i++) {
-            this.prs.add(0);
-        }
-        this.fprs = new ArrayList<>(Config.NUM_FORMAL_PARAM_REGISTERS);
-        for (int i = 0; i < Config.NUM_FORMAL_PARAM_REGISTERS; i++) {
-            this.fprs.add(0);
-        }
-        this.lrs = new ArrayList<>(Config.NUM_LOCATION_REGISTERS);
-        for (int i = 0; i < Config.NUM_LOCATION_REGISTERS; i++) {
-            this.lrs.add(new int[startIp.length]);
-        }
+        this.persistentRegisterState.put(MAIN_LEVEL_LABEL_HASH, snapshotPersistentRegisters());
         this.locationStack = new ArrayDeque<>(Config.LOCATION_STACK_MAX_DEPTH);
         this.dataStack = new ArrayDeque<>(Config.STACK_MAX_DEPTH);
         this.callStack = new ArrayDeque<>(Config.CALL_STACK_MAX_DEPTH);
@@ -200,12 +187,11 @@ public class Organism {
      * @param simulation The simulation instance.
      * @param startIp The initial coordinate of the Instruction Pointer.
      * @param initialEnergy The starting energy.
-     * @param logger The logger instance.
      * @return A newly created Organism.
      */
-    public static Organism create(Simulation simulation, int[] startIp, int initialEnergy, Logger logger) {
+    public static Organism create(Simulation simulation, int[] startIp, int initialEnergy) {
         int newId = simulation.getNextOrganismId();
-        return new Organism(newId, startIp, initialEnergy, logger, simulation);
+        return new Organism(newId, startIp, initialEnergy, simulation);
     }
 
     /**
@@ -246,11 +232,20 @@ public class Organism {
         }
         this.activeDpIndex = b.activeDpIndex;
 
-        // Copy registers (shallow copy is fine, values are immutable Integer or int[])
-        this.drs = new ArrayList<>(b.drs);
-        this.prs = new ArrayList<>(b.prs);
-        this.fprs = new ArrayList<>(b.fprs);
-        this.lrs = new ArrayList<>(b.lrs);
+        // Build flat register array
+        this.registers = new Object[RegisterBank.TOTAL_REGISTER_COUNT];
+        int dims = b.ip.length;
+        if (b.flatRegisters != null) {
+            System.arraycopy(b.flatRegisters, 0, this.registers, 0,
+                    Math.min(b.flatRegisters.length, this.registers.length));
+        }
+        // Fill any unset slots with defaults
+        for (int i = 0; i < this.registers.length; i++) {
+            if (this.registers[i] == null) {
+                RegisterBank bank = RegisterBank.SLOT_TO_BANK[i];
+                this.registers[i] = bank != null && bank.isLocation ? new int[dims] : 0;
+            }
+        }
 
         // Copy stacks
         this.dataStack = new ArrayDeque<>(b.dataStack);
@@ -264,11 +259,19 @@ public class Organism {
         this.failureCallStack = b.failureCallStack != null
             ? new ArrayDeque<>(b.failureCallStack) : null;
 
+        // Persistent register state
+        this.currentProcLabelHash = b.currentProcLabelHash;
+        if (b.persistentRegisterState != null) {
+            this.persistentRegisterState.putAll(b.persistentRegisterState);
+        } else {
+            this.persistentRegisterState.put(MAIN_LEVEL_LABEL_HASH, snapshotPersistentRegisters());
+        }
+
+        this.stackSavedDirty = b.stackSavedDirty;
+        this.persistentDirty = b.persistentDirty;
+
         // Derived fields from simulation
         this.simulation = simulation;
-        this.logger = null; // Restored organisms don't have individual loggers
-        this.loggingEnabled = false;
-
         // Load limits and constants from simulation config
         com.typesafe.config.Config orgConfig = simulation.getOrganismConfig();
         this.maxEnergy = orgConfig.getInt("max-energy");
@@ -319,10 +322,7 @@ public class Organism {
         private long deathTick = -1L;
         private List<int[]> dps = new ArrayList<>();
         private int activeDpIndex = 0;
-        private List<Object> drs = new ArrayList<>();
-        private List<Object> prs = new ArrayList<>();
-        private List<Object> fprs = new ArrayList<>();
-        private List<Object> lrs = new ArrayList<>();
+        private Object[] flatRegisters = null;
         private Deque<Object> dataStack = new ArrayDeque<>();
         private Deque<int[]> locationStack = new ArrayDeque<>();
         private Deque<ProcFrame> callStack = new ArrayDeque<>();
@@ -331,6 +331,10 @@ public class Organism {
         private boolean instructionFailed = false;
         private String failureReason = null;
         private Deque<ProcFrame> failureCallStack = null;
+        private Map<Integer, Object[]> persistentRegisterState = null;
+        private int currentProcLabelHash = MAIN_LEVEL_LABEL_HASH;
+        private boolean stackSavedDirty = false;
+        private boolean persistentDirty = false;
 
         private RestoreBuilder(int id, long birthTick) {
             this.id = id;
@@ -409,27 +413,11 @@ public class Organism {
             return this;
         }
 
-        /** Sets all data register values. */
-        public RestoreBuilder dataRegisters(List<Object> drs) {
-            this.drs = drs;
-            return this;
-        }
-
-        /** Sets all procedure register values. */
-        public RestoreBuilder procRegisters(List<Object> prs) {
-            this.prs = prs;
-            return this;
-        }
-
-        /** Sets all formal parameter register values. */
-        public RestoreBuilder formalParamRegisters(List<Object> fprs) {
-            this.fprs = fprs;
-            return this;
-        }
-
-        /** Sets all location register values. */
-        public RestoreBuilder locationRegisters(List<Object> lrs) {
-            this.lrs = lrs;
+        /**
+         * Sets all register values from a flat array in RegisterBank slot order.
+         */
+        public RestoreBuilder registers(Object[] regs) {
+            this.flatRegisters = regs;
             return this;
         }
 
@@ -478,6 +466,30 @@ public class Organism {
         /** Sets the call stack at the time of failure. */
         public RestoreBuilder failureCallStack(Deque<ProcFrame> stack) {
             this.failureCallStack = stack;
+            return this;
+        }
+
+        /** Sets the per-procedure persistent register backing store. */
+        public RestoreBuilder persistentRegisterState(Map<Integer, Object[]> state) {
+            this.persistentRegisterState = state;
+            return this;
+        }
+
+        /** Sets the labelHash of the currently active procedure for persistent state. */
+        public RestoreBuilder currentProcLabelHash(int labelHash) {
+            this.currentProcLabelHash = labelHash;
+            return this;
+        }
+
+        /** Sets whether any STACK_SAVED register has been written. */
+        public RestoreBuilder stackSavedDirty(boolean dirty) {
+            this.stackSavedDirty = dirty;
+            return this;
+        }
+
+        /** Sets whether any PERSISTENT register has been written. */
+        public RestoreBuilder persistentDirty(boolean dirty) {
+            this.persistentDirty = dirty;
             return this;
         }
 
@@ -641,10 +653,6 @@ public class Organism {
     public void kill(String reason) {
         this.isDead = true;
         this.deathTick = simulation.getCurrentTick();
-        if (this.loggingEnabled) {
-            this.loggingEnabled = false;
-            this.simulation.onOrganismLoggingChanged(false);
-        }
         if (!this.instructionFailed) {
             instructionFailed(reason);
         }
@@ -775,7 +783,7 @@ public class Organism {
      * Recovers the instruction pointer after a stall (max-skip exceeded).
      * <p>
      * If the call stack is non-empty, pops the top frame and restores the IP
-     * to the frame's return address, also restoring procedure registers (PRs)
+     * to the frame's return address, also restoring procedure-local data registers (PDRs)
      * to the caller's saved state — matching the RET instruction's semantics.
      * <p>
      * If the call stack is empty, falls back to the organism's initial position
@@ -788,8 +796,24 @@ public class Organism {
     private void recoverFromStall() {
         if (!callStack.isEmpty()) {
             ProcFrame frame = callStack.pop();
-            restorePrs(frame.savedPrs);
-            setIp(frame.absoluteReturnIp);
+            if (frame.savedRegisters() != null) {
+                restoreStackSavedRegisters(frame.savedRegisters());
+            } else if (stackSavedDirty) {
+                resetStackSavedRegisters();
+            }
+            // Always track which procedure is active (same as ProcedureCallHandler.executeReturn)
+            int callerLabelHash = callStack.isEmpty() ? MAIN_LEVEL_LABEL_HASH : callStack.peek().labelHash();
+            if (persistentDirty) {
+                persistentRegisterState.put(currentProcLabelHash, snapshotPersistentRegisters());
+                Object[] callerState = persistentRegisterState.get(callerLabelHash);
+                if (callerState != null) {
+                    restorePersistentRegisters(callerState);
+                } else {
+                    resetPersistentRegisters();
+                }
+            }
+            currentProcLabelHash = callerLabelHash;
+            setIp(frame.absoluteReturnIp());
         } else {
             setIp(Arrays.copyOf(initialPosition, initialPosition.length));
         }
@@ -868,40 +892,6 @@ public class Organism {
     }
 
     // --- Public API for Instructions ---
-
-    /**
-     * Sets the value of a Data Register (DR).
-     *
-     * @param index The index of the register (0-7).
-     * @param value The value to set (must be {@code Integer} or {@code int[]}).
-     * @return {@code true} on success, {@code false} on failure.
-     */
-    public boolean setDr(int index, Object value) {
-        if (index >= 0 && index < this.drs.size()) {
-            if (value instanceof Integer || value instanceof int[]) {
-                this.drs.set(index, value);
-                return true;
-            }
-            this.instructionFailed("Attempted to set unsupported type " + (value != null ? value.getClass().getSimpleName() : "null") + " to DR " + index);
-            return false;
-        }
-        this.instructionFailed("DR index out of bounds: " + index);
-        return false;
-    }
-
-    /**
-     * Gets the value of a Data Register (DR).
-     *
-     * @param index The index of the register (0-7).
-     * @return The value of the register, or {@code null} if the index is invalid.
-     */
-    public Object getDr(int index) {
-        if (index >= 0 && index < this.drs.size()) {
-            return this.drs.get(index);
-        }
-        this.instructionFailed("DR index out of bounds: " + index);
-        return null;
-    }
 
     /**
      * Sets the Instruction Pointer (IP) to a new coordinate.
@@ -1131,29 +1121,17 @@ public class Organism {
     /** @return The tick when this organism died, or -1L if still alive. */
     public long getDeathTick() { return deathTick; }
 
-    /** @return A copy of the list of Data Registers (DRs). */
-    public List<Object> getDrs() { return new ArrayList<>(drs); }
+    /** @return A copy of the flat register array in RegisterBank slot order. */
+    public Object[] getRegisters() { return Arrays.copyOf(registers, registers.length); }
+
     /** @return true if the organism is dead, false otherwise. */
     public boolean isDead() { return isDead; }
-    /** @return true if detailed logging is enabled for this organism. */
-    public boolean isLoggingEnabled() { return loggingEnabled; }
-    /** Enables or disables detailed logging for this organism.
-     * @param loggingEnabled true to enable logging, false to disable.
-     */
-    public void setLoggingEnabled(boolean loggingEnabled) {
-        if (this.loggingEnabled != loggingEnabled) {
-            this.loggingEnabled = loggingEnabled;
-            this.simulation.onOrganismLoggingChanged(loggingEnabled);
-        }
-    }
     /** @return true if the current instruction has failed. */
     public boolean isInstructionFailed() { return instructionFailed; }
     /** @return true if the previous tick's instruction failed. Used by IFER/INER conditionals. */
     public boolean wasPreviousInstructionFailed() { return previousInstructionFailed; }
     /** @return The reason for the last instruction failure. */
     public String getFailureReason() { return failureReason; }
-    /** @return The logger instance. */
-    public Logger getLogger() { return logger; }
     /** @return A copy of the current Direction Vector (DV). */
     public int[] getDv() { return Arrays.copyOf(dv, dv.length); }
     /** @return The simulation instance. */
@@ -1167,149 +1145,6 @@ public class Organism {
     /** @return A reference to the Call Stack (CS). */
     public Deque<ProcFrame> getCallStack() { 
         return this.callStack;
-    }
-
-    /** @return A copy of the list of Procedure-local Registers (PRs). */
-    public List<Object> getPrs() { return new ArrayList<>(this.prs); }
-
-    /**
-     * Sets the value of a Procedure-local Register (PR).
-     *
-     * @param index The index of the register.
-     * @param value The value to set.
-     * @return {@code true} on success, {@code false} on failure.
-     */
-    public boolean setPr(int index, Object value) {
-        if (index >= 0 && index < this.prs.size()) {
-            if (value instanceof Integer || value instanceof int[]) {
-                this.prs.set(index, value);
-                return true;
-            }
-            this.instructionFailed("Attempted to set unsupported type " + (value != null ? value.getClass().getSimpleName() : "null") + " to PR " + index);
-            return false;
-        }
-        this.instructionFailed("PR index out of bounds: " + index);
-        return false;
-    }
-
-    /**
-     * Gets the value of a Procedure-local Register (PR).
-     *
-     * @param index The index of the register.
-     * @return The value, or {@code null} on failure.
-     */
-    public Object getPr(int index) {
-        if (index >= 0 && index < this.prs.size()) {
-            return this.prs.get(index);
-        }
-        this.instructionFailed("PR index out of bounds: " + index);
-        return null;
-    }
-
-    /**
-     * Restores the state of all PRs from a snapshot array.
-     *
-     * @param snapshot The snapshot to restore from.
-     */
-    public void restorePrs(Object[] snapshot) {
-        if (snapshot == null || snapshot.length != this.prs.size()) {
-            this.instructionFailed("Invalid PR snapshot size: expected " + this.prs.size() + ", got " + (snapshot == null ? "null" : snapshot.length));
-            return;
-        }
-        for (int i = 0; i < snapshot.length; i++) {
-            this.prs.set(i, snapshot[i]);
-        }
-    }
-
-    /** @return A copy of the list of Formal Parameter Registers (FPRs). */
-    public List<Object> getFprs() { return new ArrayList<>(this.fprs); }
-
-    /**
-     * Sets the value of a Formal Parameter Register (FPR).
-     *
-     * @param index The index of the register.
-     * @param value The value to set.
-     * @return {@code true} on success, {@code false} on failure.
-     */
-    public boolean setFpr(int index, Object value) {
-        if (index >= 0 && index < this.fprs.size()) {
-            if (value instanceof Integer || value instanceof int[]) {
-                this.fprs.set(index, value);
-                return true;
-            }
-            this.instructionFailed("Attempted to set unsupported type " + (value != null ? value.getClass().getSimpleName() : "null") + " to FPR " + index);
-            return false;
-        }
-        this.instructionFailed("FPR index out of bounds: " + index);
-        return false;
-    }
-
-    /**
-     * Gets the value of a Formal Parameter Register (FPR).
-     *
-     * @param index The index of the register.
-     * @return The value, or {@code null} on failure.
-     */
-    public Object getFpr(int index) {
-        if (index >= 0 && index < this.fprs.size()) {
-            return this.fprs.get(index);
-        }
-        this.instructionFailed("FPR index out of bounds: " + index);
-        return null;
-    }
-
-    /**
-     * Restores the state of all FPRs from a snapshot array.
-     *
-     * @param snapshot The snapshot to restore from.
-     */
-    public void restoreFprs(Object[] snapshot) {
-        if (snapshot == null || snapshot.length > this.fprs.size()) {
-            this.instructionFailed("Invalid FPR snapshot for restore");
-            return;
-        }
-        for (int i = 0; i < snapshot.length; i++) {
-            this.fprs.set(i, snapshot[i]);
-        }
-    }
-
-    /**
-     * Gets a copy of the list of Location Registers (LRs).
-     *
-     * @return A new list containing the vector values of all LRs.
-     */
-    public List<Object> getLrs() {
-        return new ArrayList<>(this.lrs);
-    }
-
-    /**
-     * Sets the value of a Location Register (LR).
-     *
-     * @param index The index of the register.
-     * @param value The vector value to set.
-     * @return {@code true} on success, {@code false} on failure.
-     */
-    public boolean setLr(int index, int[] value) {
-        if (index >= 0 && index < this.lrs.size()) {
-            this.lrs.set(index, value);
-            return true;
-        }
-        this.instructionFailed("LR index out of bounds: " + index);
-        return false;
-    }
-
-    /**
-     * Gets the value of a Location Register (LR).
-     *
-     * @param index The index of the register.
-     * @return The vector value, or {@code null} on failure.
-     */
-    public int[] getLr(int index) {
-        if (index >= 0 && index < this.lrs.size()) {
-            return (int[]) this.lrs.get(index);
-        }
-        this.instructionFailed("LR index out of bounds: " + index);
-        return null;
     }
 
     /**
@@ -1336,50 +1171,202 @@ public class Organism {
     public Deque<ProcFrame> getFailureCallStack() { return this.failureCallStack; }
 
     /**
-     * Reads a value from a register (DR, PR, FPR, or LR) using its full numeric ID.
+     * Reads a value from any register using its full numeric ID.
+     * Dispatches via flat array lookup — O(1) regardless of bank count.
      *
-     * @param id The full ID of the register (e.g., 5 for DR5, 1002 for PR2, 3001 for LR1).
-     * @return The value read from the register.
+     * @param id the full register ID
+     * @return the register value, or {@code null} if the ID is invalid
      */
     public Object readOperand(int id) {
-        if (id >= Instruction.LR_BASE && id < Instruction.LR_BASE + Config.NUM_LOCATION_REGISTERS) {
-            return getLr(id - Instruction.LR_BASE);
+        if (id < 0 || id >= RegisterBank.TABLE_SIZE) {
+            this.instructionFailed("Invalid register ID: " + id);
+            return null;
         }
-        if (id >= Instruction.FPR_BASE && id < Instruction.FPR_BASE + Config.NUM_FORMAL_PARAM_REGISTERS) {
-            return getFpr(id - Instruction.FPR_BASE);
+        int slot = RegisterBank.ID_TO_SLOT[id];
+        if (slot == -1) {
+            this.instructionFailed("Invalid register ID: " + id);
+            return null;
         }
-        if (id >= Instruction.PR_BASE && id < Instruction.PR_BASE + Config.NUM_PROC_REGISTERS) {
-            return getPr(id - Instruction.PR_BASE);
-        }
-        if (id >= 0 && id < Config.NUM_DATA_REGISTERS) {
-            return getDr(id);
-        }
-        this.instructionFailed("Invalid register ID: " + id);
-        return null;
+        return registers[slot];
     }
 
     /**
-     * Writes a value to a register (DR, PR, FPR, or LR) using its full numeric ID.
+     * Checks whether a register ID belongs to a location register bank.
+     * Uses {@link RegisterBank#IS_LOCATION_BY_ID} for O(1) lookup.
      *
-     * @param id The full ID of the register.
-     * @param value The value to write.
-     * @return {@code true} if the write was successful.
+     * @param id the full register ID
+     * @return {@code true} if the ID is in a location register bank
+     */
+    public static boolean isLocationBank(int id) {
+        return RegisterBank.isLocationBank(id);
+    }
+
+    /**
+     * Writes a value to a data register using its full numeric ID.
+     * Location register writes are rejected — use {@link #writeLocationOperand(int, int[])} instead.
+     *
+     * @param id the full ID of the register
+     * @param value the value to write
+     * @return {@code true} if the write was successful
      */
     public boolean writeOperand(int id, Object value) {
-        if (id >= Instruction.LR_BASE && id < Instruction.LR_BASE + Config.NUM_LOCATION_REGISTERS) {
-            return setLr(id - Instruction.LR_BASE, (int[]) value);
+        if (id < 0 || id >= RegisterBank.TABLE_SIZE) {
+            this.instructionFailed("Invalid register ID: " + id);
+            return false;
         }
-        if (id >= Instruction.FPR_BASE && id < Instruction.FPR_BASE + Config.NUM_FORMAL_PARAM_REGISTERS) {
-            return setFpr(id - Instruction.FPR_BASE, value);
+        int slot = RegisterBank.ID_TO_SLOT[id];
+        if (slot == -1) {
+            this.instructionFailed("Invalid register ID: " + id);
+            return false;
         }
-        if (id >= Instruction.PR_BASE && id < Instruction.PR_BASE + Config.NUM_PROC_REGISTERS) {
-            return setPr(id - Instruction.PR_BASE, value);
+        if (RegisterBank.IS_LOCATION_BY_ID[id]) {
+            this.instructionFailed("Cannot write to location register via data instruction");
+            return false;
         }
-        if (id >= 0 && id < Config.NUM_DATA_REGISTERS) {
-            return setDr(id, value);
-        }
-        this.instructionFailed("Invalid register ID: " + id);
-        return false;
+        if (!stackSavedDirty && RegisterBank.IS_STACK_SAVED_BY_ID[id]) stackSavedDirty = true;
+        if (!persistentDirty && RegisterBank.IS_PERSISTENT_BY_ID[id]) persistentDirty = true;
+        registers[slot] = value;
+        return true;
     }
-    
+
+    /**
+     * Writes a vector value to a location register using its full numeric ID.
+     * Only accepts location register banks — data register writes are rejected.
+     *
+     * @param id the full ID of the location register
+     * @param value the vector value to write
+     * @return {@code true} if the write was successful
+     */
+    public boolean writeLocationOperand(int id, int[] value) {
+        if (id < 0 || id >= RegisterBank.TABLE_SIZE) {
+            this.instructionFailed("Invalid register ID: " + id);
+            return false;
+        }
+        int slot = RegisterBank.ID_TO_SLOT[id];
+        if (slot == -1) {
+            this.instructionFailed("Invalid register ID: " + id);
+            return false;
+        }
+        if (!RegisterBank.IS_LOCATION_BY_ID[id]) {
+            this.instructionFailed("Cannot write to non-location register via location instruction: " + id);
+            return false;
+        }
+        if (!stackSavedDirty && RegisterBank.IS_STACK_SAVED_BY_ID[id]) stackSavedDirty = true;
+        if (!persistentDirty && RegisterBank.IS_PERSISTENT_BY_ID[id]) persistentDirty = true;
+        registers[slot] = value;
+        return true;
+    }
+
+    /**
+     * Creates a compact snapshot of all STACK_SAVED register values for a ProcFrame.
+     * The layout follows RegisterBank enum declaration order.
+     */
+    public Object[] snapshotStackSavedRegisters() {
+        List<RegisterBank> banks = RegisterBank.allSavedOnCall();
+        Object[] snapshot = new Object[RegisterBank.STACK_SAVED_SNAPSHOT_SIZE];
+        int offset = 0;
+        for (RegisterBank bank : banks) {
+            System.arraycopy(registers, bank.slotOffset(), snapshot, offset, bank.count);
+            offset += bank.count;
+        }
+        return snapshot;
+    }
+
+    /**
+     * Restores all STACK_SAVED register values from a compact ProcFrame snapshot.
+     * The layout must match the one created by {@link #snapshotStackSavedRegisters()}.
+     */
+    public void restoreStackSavedRegisters(Object[] snapshot) {
+        if (snapshot == null || snapshot.length != RegisterBank.STACK_SAVED_SNAPSHOT_SIZE) {
+            throw new IllegalArgumentException(
+                    "STACK_SAVED snapshot must contain " + RegisterBank.STACK_SAVED_SNAPSHOT_SIZE
+                            + " values, got " + (snapshot == null ? "null" : snapshot.length));
+        }
+        List<RegisterBank> banks = RegisterBank.allSavedOnCall();
+        int offset = 0;
+        for (RegisterBank bank : banks) {
+            System.arraycopy(snapshot, offset, registers, bank.slotOffset(), bank.count);
+            offset += bank.count;
+        }
+    }
+
+    /**
+     * Resets all STACK_SAVED register values to their defaults (0 for data, zero-vector for location).
+     * Used when a callee modified STACK_SAVED registers but no snapshot was taken at CALL time
+     * (because the caller had never written to any STACK_SAVED register).
+     */
+    public void resetStackSavedRegisters() {
+        for (RegisterBank bank : RegisterBank.allSavedOnCall()) {
+            for (int i = 0; i < bank.count; i++) {
+                registers[bank.slotOffset() + i] = bank.isLocation ? new int[ip.length] : 0;
+            }
+        }
+    }
+
+    /**
+     * Creates a compact snapshot of all PERSISTENT register values.
+     * The layout follows RegisterBank enum declaration order.
+     */
+    public Object[] snapshotPersistentRegisters() {
+        List<RegisterBank> banks = RegisterBank.allPersistent();
+        Object[] snapshot = new Object[RegisterBank.PERSISTENT_SNAPSHOT_SIZE];
+        int offset = 0;
+        for (RegisterBank bank : banks) {
+            System.arraycopy(registers, bank.slotOffset(), snapshot, offset, bank.count);
+            offset += bank.count;
+        }
+        return snapshot;
+    }
+
+    /**
+     * Restores all PERSISTENT register values from a compact snapshot.
+     * The layout must match the one created by {@link #snapshotPersistentRegisters()}.
+     */
+    public void restorePersistentRegisters(Object[] snapshot) {
+        if (snapshot == null || snapshot.length != RegisterBank.PERSISTENT_SNAPSHOT_SIZE) {
+            throw new IllegalArgumentException(
+                    "PERSISTENT snapshot must contain " + RegisterBank.PERSISTENT_SNAPSHOT_SIZE
+                            + " values, got " + (snapshot == null ? "null" : snapshot.length));
+        }
+        List<RegisterBank> banks = RegisterBank.allPersistent();
+        int offset = 0;
+        for (RegisterBank bank : banks) {
+            System.arraycopy(snapshot, offset, registers, bank.slotOffset(), bank.count);
+            offset += bank.count;
+        }
+    }
+
+    /**
+     * Resets all PERSISTENT register slots to type-dependent defaults
+     * (0 for data banks, zero-vector for location banks).
+     */
+    public void resetPersistentRegisters() {
+        for (RegisterBank bank : RegisterBank.allPersistent()) {
+            for (int i = 0; i < bank.count; i++) {
+                registers[bank.slotOffset() + i] = bank.isLocation ? new int[ip.length] : 0;
+            }
+        }
+    }
+
+    /** Returns the per-procedure persistent register backing store. */
+    public Map<Integer, Object[]> getPersistentRegisterState() { return persistentRegisterState; }
+
+    /** Replaces the persistent register backing store (used during restore). */
+    public void setPersistentRegisterState(Map<Integer, Object[]> state) {
+        this.persistentRegisterState.clear();
+        this.persistentRegisterState.putAll(state);
+    }
+
+    /** Returns the labelHash of the currently active procedure for persistent state. */
+    public int getCurrentProcLabelHash() { return currentProcLabelHash; }
+
+    /** Sets the labelHash of the currently active procedure for persistent state. */
+    public void setCurrentProcLabelHash(int labelHash) { this.currentProcLabelHash = labelHash; }
+
+    /** Returns whether any STACK_SAVED register has been written during this organism's lifetime. */
+    public boolean isStackSavedDirty() { return stackSavedDirty; }
+
+    /** Returns whether any PERSISTENT register has been written during this organism's lifetime. */
+    public boolean isPersistentDirty() { return persistentDirty; }
+
 }

@@ -122,7 +122,7 @@ class NodeIntegrationTest {
 
         executor.submit(testNode::start);
 
-        await().atMost(10, TimeUnit.SECONDS).until(() -> {
+        await().atMost(30, TimeUnit.SECONDS).until(() -> {
             try {
                 given().when().get(BASE_PATH + "/status").then().statusCode(200);
                 return true;

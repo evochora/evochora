@@ -10,11 +10,12 @@ import java.util.Deque;
 import java.util.List;
 import java.util.Map;
 
+import org.evochora.runtime.Config;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.junit.extensions.logging.ExpectLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.evochora.runtime.Simulation;
-import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.test.utils.SimulationTestUtils;
 import org.junit.jupiter.api.BeforeAll;
@@ -71,12 +72,30 @@ class OrganismRestoreBuilderTest {
     void testRestoreBuilder_AllFields() {
         // Prepare complex state
         List<int[]> dps = Arrays.asList(new int[]{1, 2}, new int[]{3, 4});
-        List<Object> drs = new ArrayList<>(Arrays.asList(100, 200, 300, 400, 500, 600, 700, 800));
-        List<Object> prs = new ArrayList<>(Arrays.asList(10, 20, 30, 40));
-        List<Object> fprs = new ArrayList<>(Arrays.asList(5, 6, 7, 8));
-        List<Object> lrs = new ArrayList<>(Arrays.asList(
-            new int[]{0, 0}, new int[]{1, 1}, new int[]{2, 2}, new int[]{3, 3}
-        ));
+        // Build flat register array in RegisterBank enum order: DR(8) + LR(4) + PDR(8) + FDR(8)
+        Object[] regs = new Object[RegisterBank.TOTAL_REGISTER_COUNT];
+        // DR0-DR7
+        regs[RegisterBank.DR.slotOffset()] = 100; regs[RegisterBank.DR.slotOffset() + 1] = 200;
+        regs[RegisterBank.DR.slotOffset() + 2] = 300; regs[RegisterBank.DR.slotOffset() + 3] = 400;
+        regs[RegisterBank.DR.slotOffset() + 4] = 500; regs[RegisterBank.DR.slotOffset() + 5] = 600;
+        regs[RegisterBank.DR.slotOffset() + 6] = 700; regs[RegisterBank.DR.slotOffset() + 7] = 800;
+        // LR0-LR3
+        regs[RegisterBank.LR.slotOffset()] = new int[]{0, 0}; regs[RegisterBank.LR.slotOffset() + 1] = new int[]{1, 1};
+        regs[RegisterBank.LR.slotOffset() + 2] = new int[]{2, 2}; regs[RegisterBank.LR.slotOffset() + 3] = new int[]{3, 3};
+        // PDR0-PDR3
+        regs[RegisterBank.PDR.slotOffset()] = 10; regs[RegisterBank.PDR.slotOffset() + 1] = 20;
+        regs[RegisterBank.PDR.slotOffset() + 2] = 30; regs[RegisterBank.PDR.slotOffset() + 3] = 40;
+        // FDR0-FDR3
+        regs[RegisterBank.FDR.slotOffset()] = 5; regs[RegisterBank.FDR.slotOffset() + 1] = 6;
+        regs[RegisterBank.FDR.slotOffset() + 2] = 7; regs[RegisterBank.FDR.slotOffset() + 3] = 8;
+        // Fill remaining slots with defaults
+        for (RegisterBank bank : RegisterBank.values()) {
+            for (int i = 0; i < bank.count; i++) {
+                if (regs[bank.slotOffset() + i] == null) {
+                    regs[bank.slotOffset() + i] = bank.isLocation ? new int[]{0, 0} : 0;
+                }
+            }
+        }
 
         Deque<Object> dataStack = new ArrayDeque<>();
         dataStack.push(42);
@@ -86,12 +105,16 @@ class OrganismRestoreBuilderTest {
         locationStack.push(new int[]{7, 8});
 
         Deque<Organism.ProcFrame> callStack = new ArrayDeque<>();
+        // Compact savedRegisters: PDR values (8 slots) + FDR values (8 slots) in enum order
+        Object[] savedRegisters = new Object[Config.NUM_PDR_REGISTERS + Config.NUM_FDR_REGISTERS];
+        savedRegisters[0] = 1; savedRegisters[1] = 2; // PDR0, PDR1
+        savedRegisters[Config.NUM_PDR_REGISTERS] = 3; savedRegisters[Config.NUM_PDR_REGISTERS + 1] = 4; // FDR0, FDR1
         callStack.push(new Organism.ProcFrame(
             "testProc",
+            0,
             new int[]{50, 50},
             new int[]{40, 40},
-            new Object[]{1, 2},
-            new Object[]{3, 4},
+            savedRegisters,
             Map.of(0, 1)
         ));
 
@@ -106,10 +129,7 @@ class OrganismRestoreBuilderTest {
             .marker(7)
             .dataPointers(dps)
             .activeDpIndex(1)
-            .dataRegisters(drs)
-            .procRegisters(prs)
-            .formalParamRegisters(fprs)
-            .locationRegisters(lrs)
+            .registers(regs)
             .dataStack(dataStack)
             .locationStack(locationStack)
             .callStack(callStack)
@@ -130,12 +150,9 @@ class OrganismRestoreBuilderTest {
         assertThat(org.getActiveDpIndex()).isEqualTo(1);
         assertThat(org.getDp(0)).isEqualTo(new int[]{1, 2});
         assertThat(org.getDp(1)).isEqualTo(new int[]{3, 4});
-        assertThat(org.getDrs()).hasSize(8);
-        assertThat(org.getDr(0)).isEqualTo(100);
-        assertThat(org.getPrs()).hasSize(4);
-        assertThat(org.getPr(0)).isEqualTo(10);
-        assertThat(org.getFprs()).hasSize(4);
-        assertThat(org.getFpr(0)).isEqualTo(5);
+        assertThat(org.readOperand(0)).isEqualTo(100);
+        assertThat(org.readOperand(RegisterBank.PDR.base)).isEqualTo(10);
+        assertThat(org.readOperand(RegisterBank.FDR.base)).isEqualTo(5);
         assertThat(org.getDataStack()).hasSize(2);
         assertThat(org.getLocationStack()).hasSize(1);
         assertThat(org.getCallStack()).hasSize(1);
@@ -355,16 +372,21 @@ class OrganismRestoreBuilderTest {
     @Tag("unit")
     void testRestoreBuilder_RoundTrip() {
         // Create original organism
-        Organism original = Organism.create(simulation, new int[]{10, 10}, 500, simulation.getLogger());
+        Organism original = Organism.create(simulation, new int[]{10, 10}, 500);
         original.setParentId(5);
         original.setBirthTick(1000L);
         original.setProgramId("test-prog");
         original.setDv(new int[]{0, 1});
         original.addSr(50);
         original.setMr(3);
-        original.setDr(0, 42);
-        original.setPr(0, 100);
-        original.setFpr(0, new int[]{1, 2});
+        original.writeOperand(RegisterBank.DR.base, 42);                        // DR0
+        original.writeLocationOperand(RegisterBank.LR.base, new int[]{3, 4});   // LR0
+        original.writeOperand(RegisterBank.PDR.base, 100);                      // PDR0
+        original.writeLocationOperand(RegisterBank.PLR.base, new int[]{5, 6});  // PLR0
+        original.writeOperand(RegisterBank.FDR.base, 200);                      // FDR0
+        original.writeLocationOperand(RegisterBank.FLR.base, new int[]{1, 2});  // FLR0
+        original.writeOperand(RegisterBank.SDR.base, 300);                      // SDR0
+        original.writeLocationOperand(RegisterBank.SLR.base, new int[]{7, 8});  // SLR0
 
         // Restore using builder
         Organism restored = Organism.restore(original.getId(), original.getBirthTick())
@@ -378,10 +400,7 @@ class OrganismRestoreBuilderTest {
             .marker(original.getMr())
             .dataPointers(original.getDps())
             .activeDpIndex(original.getActiveDpIndex())
-            .dataRegisters(original.getDrs())
-            .procRegisters(original.getPrs())
-            .formalParamRegisters(original.getFprs())
-            .locationRegisters(original.getLrs())
+            .registers(original.getRegisters().clone())
             .dataStack(original.getDataStack())
             .locationStack(original.getLocationStack())
             .callStack(original.getCallStack())
@@ -399,8 +418,13 @@ class OrganismRestoreBuilderTest {
         assertThat(restored.getEr()).isEqualTo(original.getEr());
         assertThat(restored.getSr()).isEqualTo(original.getSr());
         assertThat(restored.getMr()).isEqualTo(original.getMr());
-        assertThat(restored.getDr(0)).isEqualTo(original.getDr(0));
-        assertThat(restored.getPr(0)).isEqualTo(original.getPr(0));
-        assertThat(restored.getFpr(0)).isEqualTo(original.getFpr(0));
+        assertThat(restored.readOperand(RegisterBank.DR.base)).isEqualTo(original.readOperand(RegisterBank.DR.base));
+        assertThat(restored.readOperand(RegisterBank.LR.base)).isEqualTo(original.readOperand(RegisterBank.LR.base));
+        assertThat(restored.readOperand(RegisterBank.PDR.base)).isEqualTo(original.readOperand(RegisterBank.PDR.base));
+        assertThat(restored.readOperand(RegisterBank.PLR.base)).isEqualTo(original.readOperand(RegisterBank.PLR.base));
+        assertThat(restored.readOperand(RegisterBank.FDR.base)).isEqualTo(original.readOperand(RegisterBank.FDR.base));
+        assertThat(restored.readOperand(RegisterBank.FLR.base)).isEqualTo(original.readOperand(RegisterBank.FLR.base));
+        assertThat(restored.readOperand(RegisterBank.SDR.base)).isEqualTo(original.readOperand(RegisterBank.SDR.base));
+        assertThat(restored.readOperand(RegisterBank.SLR.base)).isEqualTo(original.readOperand(RegisterBank.SLR.base));
     }
 }

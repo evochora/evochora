@@ -16,7 +16,7 @@ package org.evochora.datapipeline.api.memory;
  * <strong>Memory Size Constants (Java Heap after Protobuf deserialization):</strong>
  * <ul>
  *   <li>{@link #BYTES_PER_CELL}: 56 bytes - CellState with 4 int32 fields + Protobuf overhead</li>
- *   <li>{@link #BYTES_PER_ORGANISM}: 800 bytes - OrganismState with nested Vectors, RegisterValues, stacks</li>
+ *   <li>{@link #BYTES_PER_ORGANISM}: 2000 bytes - OrganismState with 48 RegisterValues, Vectors, stacks, persistent state</li>
  *   <li>{@link #TICKDATA_WRAPPER_OVERHEAD}: 500 bytes - TickData wrapper (simulation_run_id, rng_state, etc.)</li>
  * </ul>
  * <p>
@@ -74,19 +74,19 @@ public record SimulationParameters(
     /**
      * Bytes per OrganismState in Java heap after Protobuf deserialization.
      * <p>
-     * Breakdown:
+     * Breakdown (8-bank register architecture, 48 register slots):
      * <ul>
      *   <li>Object header + base fields: 80 bytes</li>
      *   <li>Strings (program_id, failure_reason): 60 bytes</li>
-     *   <li>7 Vector messages (ip, initial_position, dv, ip_before_fetch, dv_before_fetch, etc.): 280 bytes</li>
-     *   <li>RegisterValue lists (data_registers, procedure_registers, formal_param_registers): 120 bytes</li>
-     *   <li>Vector lists (location_registers, data_pointers): 80 bytes</li>
+     *   <li>7 Vector messages (ip, initial_position, dv, etc.): 280 bytes</li>
+     *   <li>48 RegisterValue messages (32 scalar × 20 + 16 vector × 40): 1280 bytes</li>
      *   <li>Stacks (data_stack, location_stack, call_stack): 120 bytes</li>
      *   <li>Maps (instruction_register_values_before): 60 bytes</li>
+     *   <li>PersistentRegisterStore (typical 1 snapshot): 120 bytes</li>
      * </ul>
-     * Total: ~800 bytes per OrganismState
+     * Total: ~2000 bytes per OrganismState
      */
-    public static final int BYTES_PER_ORGANISM = 800;
+    public static final int BYTES_PER_ORGANISM = 2000;
     
     /**
      * Overhead bytes for TickData wrapper (excluding cells and organisms).
@@ -113,15 +113,16 @@ public record SimulationParameters(
      * <p>
      * Breakdown (typical worst case without deep stacks):
      * <ul>
-     *   <li>24 register values (DR+PR+FPR): ~192 bytes</li>
+     *   <li>48 register values (32 scalar × 5 + 16 vector × 12): ~352 bytes</li>
      *   <li>9 vectors (ip, initial_position, dv, data_pointers, etc.): ~207 bytes</li>
      *   <li>Fixed scalars (ids, energy, flags, counters): ~80 bytes</li>
      *   <li>Strings (program_id): ~30 bytes</li>
      *   <li>Instruction execution data + next instruction preview: ~80 bytes</li>
+     *   <li>PersistentRegisterStore (typical 1 snapshot): ~150 bytes</li>
      * </ul>
      * Protobuf wire format is more compact than Java heap (no object headers/padding).
      */
-    public static final int SERIALIZED_BYTES_PER_ORGANISM = 600;
+    public static final int SERIALIZED_BYTES_PER_ORGANISM = 900;
 
     /**
      * Serialized TickData wrapper overhead in protobuf wire format.

@@ -37,10 +37,10 @@ public class VMConditionalInstructionTest {
         environment = new Environment(new int[]{100, 100}, true);
         sim = SimulationTestUtils.createSimulation(environment);
         // Create a dummy organism to ensure the main test organism does not have ID 0
-        Organism.create(sim, new int[]{-1, -1}, 1, sim.getLogger());
-        org = Organism.create(sim, startPos, 1000, sim.getLogger());
+        Organism.create(sim, new int[]{-1, -1}, 1);
+        org = Organism.create(sim, startPos, 1000);
         sim.addOrganism(org);
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0).toInt());
     }
 
     private void placeInstruction(String name, Integer... args) {
@@ -99,15 +99,15 @@ public class VMConditionalInstructionTest {
     @Test
     @Tag("unit")
     void testIfr_TrueCondition_ExecutesNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 0).toInt());
         placeInstruction("IFR", 0, 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFR"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
@@ -118,15 +118,15 @@ public class VMConditionalInstructionTest {
     @Test
     @Tag("unit")
     void testIfr_FalseCondition_SkipsNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 1).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("IFR", 0, 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFR"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
@@ -137,14 +137,14 @@ public class VMConditionalInstructionTest {
     @Test
     @Tag("unit")
     void testIfi_TrueCondition_ExecutesNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0).toInt());
         placeInstruction("IFI", 0, 0);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFI"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
@@ -155,14 +155,14 @@ public class VMConditionalInstructionTest {
     @Test
     @Tag("unit")
     void testIfi_FalseCondition_SkipsNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("IFI", 0, 0);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFI"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
@@ -181,7 +181,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
@@ -200,7 +200,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
@@ -211,15 +211,15 @@ public class VMConditionalInstructionTest {
     @Test
     @Tag("unit")
     void testLtr_TrueCondition_ExecutesNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 2).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 1).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 2).toInt());
         placeInstruction("LTR", 0, 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LTR"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 2).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 2).toInt());
         assertNoInstructionFailure();
     }
 
@@ -230,15 +230,15 @@ public class VMConditionalInstructionTest {
     @Test
     @Tag("unit")
     void testLtr_FalseCondition_SkipsNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 2).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 1).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 2).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("LTR", 0, 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LTR"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 2).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 2).toInt());
         assertNoInstructionFailure();
     }
 
@@ -249,14 +249,14 @@ public class VMConditionalInstructionTest {
     @Test
     @Tag("unit")
     void testLti_TrueCondition_ExecutesNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("LTI", 0, 2);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LTI"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 2).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 2).toInt());
         assertNoInstructionFailure();
     }
 
@@ -267,14 +267,14 @@ public class VMConditionalInstructionTest {
     @Test
     @Tag("unit")
     void testLti_FalseCondition_SkipsNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 2).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 2).toInt());
         placeInstruction("LTI", 0, 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LTI"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 2).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 2).toInt());
         assertNoInstructionFailure();
     }
 
@@ -294,7 +294,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
@@ -314,7 +314,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
@@ -325,15 +325,15 @@ public class VMConditionalInstructionTest {
     @Test
     @Tag("unit")
     void testGtr_TrueCondition_ExecutesNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 3).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 2).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 3).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 2).toInt());
         placeInstruction("GTR", 0, 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GTR"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 4).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 4).toInt());
         assertNoInstructionFailure();
     }
 
@@ -344,15 +344,15 @@ public class VMConditionalInstructionTest {
     @Test
     @Tag("unit")
     void testGtr_FalseCondition_SkipsNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 2).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 1).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 2).toInt());
         placeInstruction("GTR", 0, 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GTR"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
@@ -363,14 +363,14 @@ public class VMConditionalInstructionTest {
     @Test
     @Tag("unit")
     void testGti_TrueCondition_ExecutesNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 2).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 2).toInt());
         placeInstruction("GTI", 0, 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GTI"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 3).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 3).toInt());
         assertNoInstructionFailure();
     }
 
@@ -381,14 +381,14 @@ public class VMConditionalInstructionTest {
     @Test
     @Tag("unit")
     void testGti_FalseCondition_SkipsNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("GTI", 0, 2);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GTI"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
@@ -408,7 +408,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
@@ -428,7 +428,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
@@ -439,15 +439,15 @@ public class VMConditionalInstructionTest {
     @Test
     @Tag("unit")
     void testIftr_TrueCondition_ExecutesNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 7).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 9).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 7).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 9).toInt());
         placeInstruction("IFTR", 0, 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFTR"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 8).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 8).toInt());
         assertNoInstructionFailure();
     }
 
@@ -458,15 +458,15 @@ public class VMConditionalInstructionTest {
     @Test
     @Tag("unit")
     void testIftr_FalseCondition_SkipsNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_CODE, 2).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_CODE, 2).toInt());
         placeInstruction("IFTR", 0, 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFTR"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
@@ -478,14 +478,14 @@ public class VMConditionalInstructionTest {
     @Tag("unit")
     void testIfti_TrueCondition_ExecutesNext() {
         // Register TYPE_DATA, Immediate TYPE_DATA (von placeInstruction) -> true
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0).toInt());
         placeInstruction("IFTI", 0, 123);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFTI"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
@@ -497,14 +497,14 @@ public class VMConditionalInstructionTest {
     @Tag("unit")
     void testIfti_FalseCondition_SkipsNext() {
         // Register TYPE_CODE, Immediate TYPE_DATA -> false
-        org.setDr(0, new Molecule(Config.TYPE_CODE, 5).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_CODE, 5).toInt());
         placeInstruction("IFTI", 0, 123);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFTI"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_CODE, 5).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_CODE, 5).toInt());
         assertNoInstructionFailure();
     }
 
@@ -523,7 +523,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
@@ -534,12 +534,12 @@ public class VMConditionalInstructionTest {
     @Test
     @Tag("unit")
     void testIfmr_NotOwned_SkipsNext() {
-        org.setDr(1, new int[]{0, 1}); // unit vector
+        org.writeOperand(1, new int[]{0, 1}); // unit vector
         placeInstruction("IFMR", 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFMR"), environment));
         sim.tick();
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
@@ -550,13 +550,13 @@ public class VMConditionalInstructionTest {
     @Test
     @Tag("unit")
     void testIfmr_Owned_ExecutesNext() {
-        org.setDr(1, new int[]{0, 1}); // unit vector
+        org.writeOperand(1, new int[]{0, 1}); // unit vector
         int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);        environment.setOwnerId(org.getId(), target);
         placeInstruction("IFMR", 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFMR"), environment));
         sim.tick();
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
@@ -571,7 +571,7 @@ public class VMConditionalInstructionTest {
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFMI"), environment));
         sim.tick();
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
@@ -587,7 +587,7 @@ public class VMConditionalInstructionTest {
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFMS"), environment));
         sim.tick();
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
@@ -598,7 +598,7 @@ public class VMConditionalInstructionTest {
     @Test
     @Tag("unit")
     void testIfmr_InvalidVector_Fails() {
-        org.setDr(1, new int[]{1, 1}); // not a unit vector
+        org.writeOperand(1, new int[]{1, 1}); // not a unit vector
         placeInstruction("IFMR", 1);
         sim.tick();
         assertThat(org.isInstructionFailed()).isTrue();
@@ -620,65 +620,65 @@ public class VMConditionalInstructionTest {
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
     @Test
     @Tag("unit")
     void testInr_TrueCondition_ExecutesNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 1).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("INR", 0, 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INR"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
     @Test
     @Tag("unit")
     void testInr_FalseCondition_SkipsNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 0).toInt());
         placeInstruction("INR", 0, 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INR"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
     @Test
     @Tag("unit")
     void testIni_TrueCondition_ExecutesNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("INI", 0, 0);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INI"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 2).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 2).toInt());
         assertNoInstructionFailure();
     }
 
     @Test
     @Tag("unit")
     void testIni_FalseCondition_SkipsNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0).toInt());
         placeInstruction("INI", 0, 0);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INI"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
@@ -693,7 +693,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
@@ -708,65 +708,65 @@ public class VMConditionalInstructionTest {
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
     @Test
     @Tag("unit")
     void testGetr_TrueCondition_ExecutesNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 2).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 1).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 2).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("GETR", 0, 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GETR"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 3).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 3).toInt());
         assertNoInstructionFailure();
     }
 
     @Test
     @Tag("unit")
     void testGetr_FalseCondition_SkipsNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 2).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 1).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 2).toInt());
         placeInstruction("GETR", 0, 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GETR"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
     @Test
     @Tag("unit")
     void testGeti_TrueCondition_ExecutesNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 2).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 2).toInt());
         placeInstruction("GETI", 0, 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GETI"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 3).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 3).toInt());
         assertNoInstructionFailure();
     }
 
     @Test
     @Tag("unit")
     void testGeti_FalseCondition_SkipsNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("GETI", 0, 2);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("GETI"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
@@ -781,7 +781,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
@@ -796,65 +796,65 @@ public class VMConditionalInstructionTest {
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
     @Test
     @Tag("unit")
     void testLetr_TrueCondition_ExecutesNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 2).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 1).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 2).toInt());
         placeInstruction("LETR", 0, 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LETR"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 2).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 2).toInt());
         assertNoInstructionFailure();
     }
 
     @Test
     @Tag("unit")
     void testLetr_FalseCondition_SkipsNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 2).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 1).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 2).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("LETR", 0, 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LETR"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 2).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 2).toInt());
         assertNoInstructionFailure();
     }
 
     @Test
     @Tag("unit")
     void testLeti_TrueCondition_ExecutesNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 1).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 1).toInt());
         placeInstruction("LETI", 0, 2);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LETI"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 2).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 2).toInt());
         assertNoInstructionFailure();
     }
 
     @Test
     @Tag("unit")
     void testLeti_FalseCondition_SkipsNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 2).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 2).toInt());
         placeInstruction("LETI", 0, 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("LETI"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 2).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 2).toInt());
         assertNoInstructionFailure();
     }
 
@@ -869,7 +869,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
@@ -884,65 +884,65 @@ public class VMConditionalInstructionTest {
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
     @Test
     @Tag("unit")
     void testIntr_TrueCondition_ExecutesNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_CODE, 2).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_CODE, 2).toInt());
         placeInstruction("INTR", 0, 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INTR"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
     @Test
     @Tag("unit")
     void testIntr_FalseCondition_SkipsNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 7).toInt());
-        org.setDr(1, new Molecule(Config.TYPE_DATA, 9).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 7).toInt());
+        org.writeOperand(1, new Molecule(Config.TYPE_DATA, 9).toInt());
         placeInstruction("INTR", 0, 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INTR"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 7).toInt());
         assertNoInstructionFailure();
     }
 
     @Test
     @Tag("unit")
     void testInti_TrueCondition_ExecutesNext() {
-        org.setDr(0, new Molecule(Config.TYPE_CODE, 5).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_CODE, 5).toInt());
         placeInstruction("INTI", 0, 123);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INTI"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_CODE, 6).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_CODE, 6).toInt());
         assertNoInstructionFailure();
     }
 
     @Test
     @Tag("unit")
     void testInti_FalseCondition_SkipsNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0).toInt());
         placeInstruction("INTI", 0, 123);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INTI"), environment));
 
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
@@ -957,7 +957,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
@@ -972,33 +972,33 @@ public class VMConditionalInstructionTest {
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
     @Test
     @Tag("unit")
     void testInmr_NotOwned_ExecutesNext() {
-        org.setDr(1, new int[]{0, 1}); // unit vector
+        org.writeOperand(1, new int[]{0, 1}); // unit vector
         placeInstruction("INMR", 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INMR"), environment));
         sim.tick();
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
     @Test
     @Tag("unit")
     void testInmr_Owned_SkipsNext() {
-        org.setDr(1, new int[]{0, 1}); // unit vector
+        org.writeOperand(1, new int[]{0, 1}); // unit vector
         int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
         environment.setOwnerId(org.getId(), target);
         placeInstruction("INMR", 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INMR"), environment));
         sim.tick();
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
@@ -1009,7 +1009,7 @@ public class VMConditionalInstructionTest {
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INMI"), environment));
         sim.tick();
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
@@ -1022,7 +1022,7 @@ public class VMConditionalInstructionTest {
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INMI"), environment));
         sim.tick();
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
@@ -1034,7 +1034,7 @@ public class VMConditionalInstructionTest {
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INMS"), environment));
         sim.tick();
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
@@ -1048,7 +1048,7 @@ public class VMConditionalInstructionTest {
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INMS"), environment));
         sim.tick();
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
@@ -1057,71 +1057,71 @@ public class VMConditionalInstructionTest {
     @Test
     @Tag("unit")
     void testIffr_Foreign_ExecutesNext() {
-        org.setDr(1, new int[]{0, 1}); // unit vector
+        org.writeOperand(1, new int[]{0, 1}); // unit vector
         int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
         environment.setOwnerId(999, target); // Foreign owner
         placeInstruction("IFFR", 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFFR"), environment));
         sim.tick();
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
     @Test
     @Tag("unit")
     void testIffr_NotForeign_SkipsNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
-        org.setDr(1, new int[]{0, 1}); // unit vector
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.writeOperand(1, new int[]{0, 1}); // unit vector
         // Vacant (no owner) - not foreign
         placeInstruction("IFFR", 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFFR"), environment));
         sim.tick();
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
     @Test
     @Tag("unit")
     void testIffr_Own_SkipsNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
-        org.setDr(1, new int[]{0, 1}); // unit vector
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.writeOperand(1, new int[]{0, 1}); // unit vector
         int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
         environment.setOwnerId(org.getId(), target); // Own
         placeInstruction("IFFR", 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFFR"), environment));
         sim.tick();
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
     @Test
     @Tag("unit")
     void testInfr_Foreign_SkipsNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
-        org.setDr(1, new int[]{0, 1}); // unit vector
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.writeOperand(1, new int[]{0, 1}); // unit vector
         int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
         environment.setOwnerId(999, target); // Foreign owner
         placeInstruction("INFR", 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INFR"), environment));
         sim.tick();
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
     @Test
     @Tag("unit")
     void testInfr_NotForeign_ExecutesNext() {
-        org.setDr(1, new int[]{0, 1}); // unit vector
+        org.writeOperand(1, new int[]{0, 1}); // unit vector
         // Vacant (no owner) - should execute next
         placeInstruction("INFR", 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INFR"), environment));
         sim.tick();
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
@@ -1134,7 +1134,7 @@ public class VMConditionalInstructionTest {
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFFI"), environment));
         sim.tick();
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
@@ -1147,7 +1147,7 @@ public class VMConditionalInstructionTest {
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INFI"), environment));
         sim.tick();
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
@@ -1161,7 +1161,7 @@ public class VMConditionalInstructionTest {
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFFS"), environment));
         sim.tick();
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
@@ -1175,7 +1175,7 @@ public class VMConditionalInstructionTest {
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INFS"), environment));
         sim.tick();
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
@@ -1184,70 +1184,70 @@ public class VMConditionalInstructionTest {
     @Test
     @Tag("unit")
     void testIfvr_Vacant_ExecutesNext() {
-        org.setDr(1, new int[]{0, 1}); // unit vector
+        org.writeOperand(1, new int[]{0, 1}); // unit vector
         // Vacant (no owner, ownerId == 0)
         placeInstruction("IFVR", 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFVR"), environment));
         sim.tick();
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
     @Test
     @Tag("unit")
     void testIfvr_NotVacant_SkipsNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
-        org.setDr(1, new int[]{0, 1}); // unit vector
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.writeOperand(1, new int[]{0, 1}); // unit vector
         int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
         environment.setOwnerId(999, target); // Foreign owner
         placeInstruction("IFVR", 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFVR"), environment));
         sim.tick();
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
     @Test
     @Tag("unit")
     void testIfvr_Own_SkipsNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
-        org.setDr(1, new int[]{0, 1}); // unit vector
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.writeOperand(1, new int[]{0, 1}); // unit vector
         int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
         environment.setOwnerId(org.getId(), target); // Own
         placeInstruction("IFVR", 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFVR"), environment));
         sim.tick();
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
     @Test
     @Tag("unit")
     void testInvr_Vacant_SkipsNext() {
-        org.setDr(1, new int[]{0, 1}); // unit vector
+        org.writeOperand(1, new int[]{0, 1}); // unit vector
         // Vacant (no owner)
         placeInstruction("INVR", 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INVR"), environment));
         sim.tick();
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
     @Test
     @Tag("unit")
     void testInvr_NotVacant_ExecutesNext() {
-        org.setDr(1, new int[]{0, 1}); // unit vector
+        org.writeOperand(1, new int[]{0, 1}); // unit vector
         int[] target = org.getTargetCoordinate(org.getDp(0), new int[]{0, 1}, environment);
         environment.setOwnerId(999, target); // Foreign owner
         placeInstruction("INVR", 1);
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INVR"), environment));
         sim.tick();
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
@@ -1259,7 +1259,7 @@ public class VMConditionalInstructionTest {
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFVI"), environment));
         sim.tick();
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
@@ -1271,7 +1271,7 @@ public class VMConditionalInstructionTest {
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INVI"), environment));
         sim.tick();
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
@@ -1284,7 +1284,7 @@ public class VMConditionalInstructionTest {
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFVS"), environment));
         sim.tick();
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
@@ -1297,7 +1297,7 @@ public class VMConditionalInstructionTest {
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INVS"), environment));
         sim.tick();
         sim.tick();
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
@@ -1311,7 +1311,7 @@ public class VMConditionalInstructionTest {
     @Test
     @Tag("unit")
     void testIfer_PreviousFailed_ExecutesNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0).toInt());
         org.instructionFailed("simulated failure for test");
 
         placeInstruction("IFER");
@@ -1320,7 +1320,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
     }
 
     /**
@@ -1330,7 +1330,7 @@ public class VMConditionalInstructionTest {
     @Test
     @Tag("unit")
     void testIfer_PreviousSucceeded_SkipsNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0).toInt());
 
         placeInstruction("IFER");
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("IFER"), environment));
@@ -1338,7 +1338,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
         assertNoInstructionFailure();
     }
 
@@ -1349,7 +1349,7 @@ public class VMConditionalInstructionTest {
     @Test
     @Tag("unit")
     void testIner_PreviousSucceeded_ExecutesNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0).toInt());
 
         placeInstruction("INER");
         placeFollowingAddi(Instruction.getInstructionLengthById(Instruction.getInstructionIdByName("INER"), environment));
@@ -1357,7 +1357,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
         assertNoInstructionFailure();
     }
 
@@ -1368,7 +1368,7 @@ public class VMConditionalInstructionTest {
     @Test
     @Tag("unit")
     void testIner_PreviousFailed_SkipsNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0).toInt());
         org.instructionFailed("simulated failure for test");
 
         placeInstruction("INER");
@@ -1377,7 +1377,7 @@ public class VMConditionalInstructionTest {
         sim.tick();
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 0).toInt());
     }
 
     /**
@@ -1387,7 +1387,7 @@ public class VMConditionalInstructionTest {
     @Test
     @Tag("unit")
     void testIfer_afterRealFailingDivi_executesNext() {
-        org.setDr(0, new Molecule(Config.TYPE_DATA, 0).toInt());
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, 0).toInt());
 
         // Tick 1: DIVI %DR0 DATA:0 (division by zero → fails)
         placeInstruction("DIVI", 0, 0);
@@ -1420,6 +1420,6 @@ public class VMConditionalInstructionTest {
         sim.tick(); // Tick 2: IFER → previousFailed=true → execute next
         sim.tick(); // Tick 3: ADDI → DR0 = 1
 
-        assertThat(org.getDr(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
+        assertThat(org.readOperand(0)).isEqualTo(new Molecule(Config.TYPE_DATA, 1).toInt());
     }
 }

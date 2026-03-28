@@ -217,11 +217,11 @@ export class OrganismInstructionView {
     }
     
     /**
-     * Gets the register name from its ID and a known type (e.g., "DR", "PR").
+     * Gets the register name from its ID and a known type (e.g., "DR", "PDR").
      * This is the preferred and most reliable way to determine the register name.
      *
      * @param {number} registerId - The numeric ID of the register.
-     * @param {string} registerType - The type of the register ("DR", "PR", "FPR", "LR").
+     * @param {string} registerType - The type of the register ("DR", "PDR", "FDR", "LR").
      * @returns {string} The formatted register name (e.g., "%DR0").
      * @private
      */
@@ -229,7 +229,7 @@ export class OrganismInstructionView {
      * Gets the register name from its ID and optional type using the central utility.
      * 
      * @param {number} registerId - The numeric ID of the register.
-     * @param {string} registerType - The explicit register type ('FPR', 'PR', 'DR', 'LR').
+     * @param {string} registerType - The explicit register type ('FDR', 'PDR', 'DR', 'LR').
      * @returns {string} The formatted register name.
      * @private
      */

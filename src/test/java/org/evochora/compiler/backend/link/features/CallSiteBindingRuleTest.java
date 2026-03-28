@@ -1,6 +1,7 @@
 package org.evochora.compiler.backend.link.features;
 
 import org.evochora.compiler.api.SourceInfo;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.compiler.backend.layout.LayoutResult;
 import org.evochora.compiler.features.proc.CallSiteBindingRule;
 import org.evochora.compiler.backend.link.LinkingContext;
@@ -15,6 +16,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -52,6 +54,8 @@ class CallSiteBindingRuleTest {
                 List.of(new IrImm(0)),
                 List.of(new IrReg("%DR0"), new IrReg("%DR1")),
                 List.of(),
+                List.of(),
+                List.of(),
                 dummySource
         );
 
@@ -59,7 +63,10 @@ class CallSiteBindingRuleTest {
 
         assertThat(result).isSameAs(call);
         assertThat(context.callSiteBindings()).containsKey(0);
-        assertThat(context.callSiteBindings().get(0)).containsExactly(0, 1);
+        Map<Integer, Integer> bindings = context.callSiteBindings().get(0);
+        assertThat(bindings).containsEntry(RegisterBank.FDR.base + 0, 0);
+        assertThat(bindings).containsEntry(RegisterBank.FDR.base + 1, 1);
+        assertThat(bindings).hasSize(2);
     }
 
     @Test
@@ -68,13 +75,17 @@ class CallSiteBindingRuleTest {
                 "CALL",
                 List.of(new IrImm(0)),
                 List.of(),
-                List.of(new IrReg("%PR1")),
+                List.of(new IrReg("%PDR1")),
+                List.of(),
+                List.of(),
                 dummySource
         );
 
         rule.apply(call, context, layout);
 
-        assertThat(context.callSiteBindings().get(0)).containsExactly(1001);
+        Map<Integer, Integer> bindings = context.callSiteBindings().get(0);
+        assertThat(bindings).containsEntry(RegisterBank.FDR.base + 0, RegisterBank.PDR.base + 1);
+        assertThat(bindings).hasSize(1);
     }
 
     @Test
@@ -83,13 +94,18 @@ class CallSiteBindingRuleTest {
                 "CALL",
                 List.of(new IrImm(0)),
                 List.of(new IrReg("%DR2")),
-                List.of(new IrReg("%PR0")),
+                List.of(new IrReg("%PDR0")),
+                List.of(),
+                List.of(),
                 dummySource
         );
 
         rule.apply(call, context, layout);
 
-        assertThat(context.callSiteBindings().get(0)).containsExactly(2, 1000);
+        Map<Integer, Integer> bindings = context.callSiteBindings().get(0);
+        assertThat(bindings).containsEntry(RegisterBank.FDR.base + 0, 2);
+        assertThat(bindings).containsEntry(RegisterBank.FDR.base + 1, RegisterBank.PDR.base);
+        assertThat(bindings).hasSize(2);
     }
 
     @Test
@@ -97,6 +113,8 @@ class CallSiteBindingRuleTest {
         IrInstruction call = new IrCallInstruction(
                 "CALL",
                 List.of(new IrImm(0)),
+                List.of(),
+                List.of(),
                 List.of(),
                 List.of(),
                 dummySource
@@ -131,6 +149,8 @@ class CallSiteBindingRuleTest {
                 List.of(new IrImm(0)),
                 List.of(new IrReg("%DR0")),
                 List.of(),
+                List.of(),
+                List.of(),
                 dummySource
         );
 
@@ -138,6 +158,8 @@ class CallSiteBindingRuleTest {
 
         assertThat(context.callSiteBindings()).containsKey(2);
         assertThat(context.callSiteBindings()).doesNotContainKey(0);
+        Map<Integer, Integer> bindings = context.callSiteBindings().get(2);
+        assertThat(bindings).containsEntry(RegisterBank.FDR.base + 0, 0);
     }
 
     @Test
@@ -147,6 +169,8 @@ class CallSiteBindingRuleTest {
                 List.of(new IrImm(0)),
                 List.of(new IrReg("%UNKNOWN")),
                 List.of(),
+                List.of(),
+                List.of(),
                 dummySource
         );
 
@@ -155,20 +179,51 @@ class CallSiteBindingRuleTest {
                 .hasMessageContaining("%UNKNOWN");
     }
 
+    @Test
+    void collectsMixedRefAndLrefBindings() {
+        IrInstruction call = new IrCallInstruction(
+                "CALL",
+                List.of(new IrImm(0)),
+                List.of(new IrReg("%DR1")),
+                List.of(),
+                List.of(new IrReg("%LR0")),
+                List.of(),
+                dummySource
+        );
+
+        rule.apply(call, context, layout);
+
+        Map<Integer, Integer> bindings = context.callSiteBindings().get(0);
+        assertThat(bindings).containsEntry(RegisterBank.FDR.base + 0, 1);
+        assertThat(bindings).containsEntry(RegisterBank.FLR.base + 0, RegisterBank.LR.base);
+        assertThat(bindings).hasSize(2);
+    }
+
     /**
      * Minimal ISA stub that resolves register tokens to IDs
      * following the standard register bank layout.
      */
     private static class StubInstructionSet implements IInstructionSet {
-        private static final int PR_BASE = 1000;
-
         @Override
         public Optional<Integer> resolveRegisterToken(String token) {
             String upper = token.toUpperCase().replace("%", "");
-            if (upper.startsWith("DR")) {
-                return parseIndex(upper, "DR", 0);
-            } else if (upper.startsWith("PR")) {
-                return parseIndex(upper, "PR", PR_BASE);
+            // Order matters: check longer prefixes first to avoid "LR" matching "PLR"
+            if (upper.startsWith("PDR")) {
+                return parseIndex(upper, "PDR", RegisterBank.PDR.base);
+            } else if (upper.startsWith("PLR")) {
+                return parseIndex(upper, "PLR", RegisterBank.PLR.base);
+            } else if (upper.startsWith("FDR")) {
+                return parseIndex(upper, "FDR", RegisterBank.FDR.base);
+            } else if (upper.startsWith("FLR")) {
+                return parseIndex(upper, "FLR", RegisterBank.FLR.base);
+            } else if (upper.startsWith("SDR")) {
+                return parseIndex(upper, "SDR", RegisterBank.SDR.base);
+            } else if (upper.startsWith("SLR")) {
+                return parseIndex(upper, "SLR", RegisterBank.SLR.base);
+            } else if (upper.startsWith("DR")) {
+                return parseIndex(upper, "DR", RegisterBank.DR.base);
+            } else if (upper.startsWith("LR")) {
+                return parseIndex(upper, "LR", RegisterBank.LR.base);
             }
             return Optional.empty();
         }

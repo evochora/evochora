@@ -12,6 +12,7 @@ import org.evochora.datapipeline.CellStateTestHelper;
 import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.RegisterValue;
+import org.evochora.test.utils.ProtoTestUtils;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.Vector;
@@ -258,7 +259,7 @@ class H2DatabaseReaderTest {
                     .setDv(Vector.newBuilder().addComponents(0).addComponents(1).build())
                     .addDataPointers(Vector.newBuilder().addComponents(5).addComponents(5).build())
                     .setActiveDpIndex(0)
-                    .addDataRegisters(RegisterValue.newBuilder().setScalar(42).build())
+                    .addAllRegisters(ProtoTestUtils.buildFlatRegisters(new int[]{42}, null, null, null))
                     .setInstructionOpcodeId(setiOpcode)
                     .addInstructionRawArguments(regArg)
                     .addInstructionRawArguments(immArg)

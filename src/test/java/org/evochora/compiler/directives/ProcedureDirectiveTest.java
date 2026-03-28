@@ -3,14 +3,14 @@ package org.evochora.compiler.directives;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.frontend.parser.Parser;
 import org.evochora.compiler.frontend.parser.ParserStatementRegistry;
-import org.evochora.compiler.features.proc.PregDirectiveHandler;
 import org.evochora.compiler.features.proc.ProcDirectiveHandler;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.model.ast.AstNode;
 import org.evochora.compiler.model.ast.InstructionNode;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
-import org.evochora.compiler.features.proc.PregNode;
 import org.evochora.compiler.features.proc.ProcedureNode;
+import org.evochora.compiler.features.reg.RegDirectiveHandler;
+import org.evochora.compiler.features.reg.RegNode;
 
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
@@ -113,7 +113,7 @@ public class ProcedureDirectiveTest {
 
     /**
      * Verifies that the parser can handle a full procedure definition including the EXPORT keyword,
-     * parameters, and nested directives like {@code .PREG}.
+     * parameters, and nested directives like {@code .REG}.
      * This is a unit test for the parser.
      */
     @Test
@@ -123,7 +123,7 @@ public class ProcedureDirectiveTest {
         // Arrange
         String source = String.join("\n",
                 "EXPORT .PROC FULL_PROC REF A",
-                "  .PREG %TMP %PR0",
+                "  .REG %TMP %PDR0",
                 "  NOP",
                 ".ENDP"
         );
@@ -147,7 +147,7 @@ public class ProcedureDirectiveTest {
                 .filter(n -> !(n instanceof InstructionNode))
                 .toList();
         assertThat(bodyDirectives).hasSize(1);
-        assertThat(bodyDirectives.get(0)).isInstanceOf(PregNode.class);
+        assertThat(bodyDirectives.get(0)).isInstanceOf(RegNode.class);
     }
 
     @Test
@@ -168,7 +168,7 @@ public class ProcedureDirectiveTest {
         assertThat(procNode.name()).isEqualTo("myProc");
         assertThat(procNode.refParameters()).hasSize(2).extracting(ProcedureNode.ParamDecl::name).containsExactly("rA", "rB");
         assertThat(procNode.valParameters()).isEmpty();
-        assertThat(procNode.parameters()).isEmpty();
+
     }
 
     @Test
@@ -189,7 +189,7 @@ public class ProcedureDirectiveTest {
         assertThat(procNode.name()).isEqualTo("myProc");
         assertThat(procNode.valParameters()).hasSize(2).extracting(ProcedureNode.ParamDecl::name).containsExactly("v1", "v2");
         assertThat(procNode.refParameters()).isEmpty();
-        assertThat(procNode.parameters()).isEmpty();
+
     }
 
     @Test
@@ -210,7 +210,7 @@ public class ProcedureDirectiveTest {
         assertThat(procNode.name()).isEqualTo("myProc");
         assertThat(procNode.refParameters()).hasSize(1).extracting(ProcedureNode.ParamDecl::name).containsExactly("rA");
         assertThat(procNode.valParameters()).hasSize(1).extracting(ProcedureNode.ParamDecl::name).containsExactly("v1");
-        assertThat(procNode.parameters()).isEmpty();
+
     }
 
     @Test
@@ -231,7 +231,7 @@ public class ProcedureDirectiveTest {
         assertThat(procNode.name()).isEqualTo("myProc");
         assertThat(procNode.valParameters()).hasSize(1).extracting(ProcedureNode.ParamDecl::name).containsExactly("v1");
         assertThat(procNode.refParameters()).hasSize(1).extracting(ProcedureNode.ParamDecl::name).containsExactly("rA");
-        assertThat(procNode.parameters()).isEmpty();
+
     }
 
     @Test
@@ -252,13 +252,13 @@ public class ProcedureDirectiveTest {
         assertThat(procNode.name()).isEqualTo("myProc");
         assertThat(procNode.refParameters()).isEmpty();
         assertThat(procNode.valParameters()).isEmpty();
-        assertThat(procNode.parameters()).isEmpty();
+
     }
 
     private static ParserStatementRegistry registry() {
         ParserStatementRegistry reg = new ParserStatementRegistry();
         reg.register(".PROC", new ProcDirectiveHandler());
-        reg.register(".PREG", new PregDirectiveHandler());
+        reg.register(".REG", new RegDirectiveHandler());
         reg.register(".LABEL", new org.evochora.compiler.features.label.LabelDirectiveHandler());
         reg.register("CALL", new org.evochora.compiler.features.proc.CallStatementHandler());
         reg.registerDefault(new org.evochora.compiler.features.instruction.InstructionParsingHandler());

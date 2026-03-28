@@ -21,14 +21,12 @@ public final class OrganismRuntimeView {
     /** Currently active data pointer index (0 or 1). */
     public final int activeDpIndex;
 
-    /** Data registers (DR0-DR7) with type and value. */
-    public final List<RegisterValueView> dataRegisters;
-    /** Procedure registers (PR0-PR7) storing code addresses. */
-    public final List<RegisterValueView> procedureRegisters;
-    /** Formal parameter registers (FPR0-FPR7) for procedure calls. */
-    public final List<RegisterValueView> formalParamRegisters;
-    /** Location registers (LR0-LR3) storing coordinate vectors. */
-    public final List<int[]> locationRegisters;
+    /**
+     * Flat register array in RegisterBank enum order.
+     * Slot layout matches RegisterBank.slotOffset(): DR[0..7], LR[8..11], PDR[12..19], PLR[20..23], FDR[24..31], FLR[32..35], SDR[36..43], SLR[44..47].
+     * Each element is a {@link RegisterValueView}.
+     */
+    public final List<RegisterValueView> registers;
     /** Data stack contents (LIFO). */
     public final List<RegisterValueView> dataStack;
     /** Location stack contents (LIFO). */
@@ -57,10 +55,7 @@ public final class OrganismRuntimeView {
      * @param dv                      Direction vector for IP advancement.
      * @param dataPointers            Data pointer coordinates.
      * @param activeDpIndex           Currently active data pointer index.
-     * @param dataRegisters           Data registers (DR0-DR7).
-     * @param procedureRegisters      Procedure registers (PR0-PR7).
-     * @param formalParamRegisters    Formal parameter registers (FPR0-FPR7).
-     * @param locationRegisters       Location registers (LR0-LR3).
+     * @param registers               Flat register array in RegisterBank enum order.
      * @param dataStack               Data stack contents.
      * @param locationStack           Location stack contents.
      * @param callStack               Call stack with procedure frames.
@@ -76,10 +71,7 @@ public final class OrganismRuntimeView {
                                int[] dv,
                                int[][] dataPointers,
                                int activeDpIndex,
-                               List<RegisterValueView> dataRegisters,
-                               List<RegisterValueView> procedureRegisters,
-                               List<RegisterValueView> formalParamRegisters,
-                               List<int[]> locationRegisters,
+                               List<RegisterValueView> registers,
                                List<RegisterValueView> dataStack,
                                List<int[]> locationStack,
                                List<ProcFrameView> callStack,
@@ -94,10 +86,7 @@ public final class OrganismRuntimeView {
         this.dv = dv;
         this.dataPointers = dataPointers;
         this.activeDpIndex = activeDpIndex;
-        this.dataRegisters = dataRegisters;
-        this.procedureRegisters = procedureRegisters;
-        this.formalParamRegisters = formalParamRegisters;
-        this.locationRegisters = locationRegisters;
+        this.registers = registers;
         this.dataStack = dataStack;
         this.locationStack = locationStack;
         this.callStack = callStack;
@@ -109,5 +98,3 @@ public final class OrganismRuntimeView {
         this.moleculeMarkerRegister = moleculeMarkerRegister;
     }
 }
-
-

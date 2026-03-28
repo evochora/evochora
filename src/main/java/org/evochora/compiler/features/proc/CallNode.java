@@ -9,28 +9,30 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * AST node representing a CALL instruction. Separates procedure call semantics
- * from generic instructions, carrying REF/VAL arguments (new syntax) or
- * legacy WITH arguments.
+ * AST node representing a CALL instruction. Carries REF/VAL/LREF/LVAL arguments
+ * for procedure parameter passing.
  *
  * @param procedureName The name expression of the called procedure.
- * @param refArguments REF arguments (new syntax). Empty if legacy syntax.
- * @param valArguments VAL arguments (new syntax). Empty if legacy syntax.
- * @param legacyArguments Old-style WITH arguments. Empty if new syntax.
+ * @param refArguments Scalar reference arguments from REF keyword.
+ * @param valArguments Scalar value arguments from VAL keyword.
+ * @param lrefArguments Location reference arguments from LREF keyword.
+ * @param lvalArguments Location value arguments from LVAL keyword.
  * @param sourceInfo Source location of the CALL keyword.
  */
 public record CallNode(
         AstNode procedureName,
         List<AstNode> refArguments,
         List<AstNode> valArguments,
-        List<AstNode> legacyArguments,
+        List<AstNode> lrefArguments,
+        List<AstNode> lvalArguments,
         SourceInfo sourceInfo
 ) implements AstNode, ISourceLocatable {
 
     public CallNode {
         if (refArguments == null) refArguments = Collections.emptyList();
         if (valArguments == null) valArguments = Collections.emptyList();
-        if (legacyArguments == null) legacyArguments = Collections.emptyList();
+        if (lrefArguments == null) lrefArguments = Collections.emptyList();
+        if (lvalArguments == null) lvalArguments = Collections.emptyList();
     }
 
     @Override
@@ -39,7 +41,8 @@ public record CallNode(
         if (procedureName != null) children.add(procedureName);
         children.addAll(refArguments);
         children.addAll(valArguments);
-        children.addAll(legacyArguments);
+        children.addAll(lrefArguments);
+        children.addAll(lvalArguments);
         return children;
     }
 
@@ -51,8 +54,10 @@ public record CallNode(
         for (int i = 0; i < refArguments.size(); i++) newRef.add(newChildren.get(idx++));
         List<AstNode> newVal = new ArrayList<>();
         for (int i = 0; i < valArguments.size(); i++) newVal.add(newChildren.get(idx++));
-        List<AstNode> newLegacy = new ArrayList<>();
-        for (int i = 0; i < legacyArguments.size(); i++) newLegacy.add(newChildren.get(idx++));
-        return new CallNode(newProcName, newRef, newVal, newLegacy, sourceInfo);
+        List<AstNode> newLref = new ArrayList<>();
+        for (int i = 0; i < lrefArguments.size(); i++) newLref.add(newChildren.get(idx++));
+        List<AstNode> newLval = new ArrayList<>();
+        for (int i = 0; i < lvalArguments.size(); i++) newLval.add(newChildren.get(idx++));
+        return new CallNode(newProcName, newRef, newVal, newLref, newLval, sourceInfo);
     }
 }

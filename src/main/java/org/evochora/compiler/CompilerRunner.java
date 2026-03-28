@@ -37,7 +37,7 @@ public final class CompilerRunner {
         Environment environment = simulation.getEnvironment();
         
         // First, create the organism so we have the ownerId
-        Organism org = Organism.create(simulation, startPos, 1000, simulation.getLogger());
+        Organism org = Organism.create(simulation, startPos, 1000);
         org.setProgramId(artifact.programId());
         simulation.addOrganism(org);
         
@@ -57,9 +57,9 @@ public final class CompilerRunner {
             environment.setMolecule(new Molecule(pm.type(), pm.value()), org.getId(), abs);
         }
 
-        // NEW: Register the call site bindings
+        // Register the call site bindings (formal register ID → source register ID)
         CallBindingRegistry registry = CallBindingRegistry.getInstance();
-        for (Map.Entry<Integer, int[]> binding : artifact.callSiteBindings().entrySet()) {
+        for (Map.Entry<Integer, Map<Integer, Integer>> binding : artifact.callSiteBindings().entrySet()) {
             int linearAddress = binding.getKey();
             int[] relativeCoord = artifact.linearAddressToCoord().get(linearAddress);
             if (relativeCoord != null) {
@@ -67,7 +67,8 @@ public final class CompilerRunner {
                 for (int i = 0; i < startPos.length; i++) {
                     absoluteCoord[i] = startPos[i] + relativeCoord[i];
                 }
-                registry.registerBindingForAbsoluteCoord(absoluteCoord, binding.getValue());
+                int flatIndex = environment.properties.toFlatIndex(absoluteCoord);
+                registry.registerBinding(flatIndex, binding.getValue());
             }
         }
 

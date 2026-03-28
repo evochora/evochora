@@ -26,6 +26,8 @@ import org.evochora.datapipeline.api.contracts.InstructionMapping;
 import org.evochora.datapipeline.api.contracts.LineTokenLookup;
 import org.evochora.datapipeline.api.contracts.LinearAddressToCoord;
 import org.evochora.datapipeline.api.contracts.OrganismState;
+import org.evochora.datapipeline.api.contracts.PersistentRegisterStore;
+import org.evochora.datapipeline.api.contracts.ProcedureRegisterSnapshot;
 import org.evochora.datapipeline.api.contracts.PlacedMoleculeMapping;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.SourceInfo;
@@ -479,7 +481,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             ProgramInfo info = programInfo.get(programPath);
             int[] startPosition = positions.stream().mapToInt(i -> i).toArray();
 
-            Organism organism = Organism.create(simulation, startPosition, orgConfig.getInt("initialEnergy"), log);
+            Organism organism = Organism.create(simulation, startPosition, orgConfig.getInt("initialEnergy"));
             organism.setProgramId(info.programId());
             simulation.addOrganism(organism);
             placeOrganismCodeAndObjects(simulation, organism, info.artifact(), startPosition);
@@ -760,17 +762,9 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         }
         organismStateBuilder.setActiveDpIndex(o.getActiveDpIndex());
 
-        for (Object rv : o.getDrs()) {
-            organismStateBuilder.addDataRegisters(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
-        }
-        for (Object rv : o.getPrs()) {
-            organismStateBuilder.addProcedureRegisters(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
-        }
-        for (Object rv : o.getFprs()) {
-            organismStateBuilder.addFormalParamRegisters(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
-        }
-        for (Object loc : o.getLrs()) {
-            organismStateBuilder.addLocationRegisters(convertVectorReuse((int[]) loc, vectorBuilder));
+        Object[] registers = o.getRegisters();
+        for (int slot = 0; slot < registers.length; slot++) {
+            organismStateBuilder.addRegisters(convertRegisterValueReuse(registers[slot], registerValueBuilder, vectorBuilder));
         }
         for (Object rv : o.getDataStack()) {
             organismStateBuilder.addDataStack(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
@@ -840,6 +834,21 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         if (o.getDeathTick() >= 0) {
             organismStateBuilder.setDeathTick(o.getDeathTick());
         }
+
+        // Persistent register state + dirty flags
+        organismStateBuilder.setCurrentProcLabelHash(o.getCurrentProcLabelHash());
+        organismStateBuilder.setStackSavedDirty(o.isStackSavedDirty());
+        organismStateBuilder.setPersistentDirty(o.isPersistentDirty());
+        PersistentRegisterStore.Builder storeBuilder = PersistentRegisterStore.newBuilder();
+        for (Map.Entry<Integer, Object[]> entry : o.getPersistentRegisterState().entrySet()) {
+            ProcedureRegisterSnapshot.Builder snapshotBuilder = ProcedureRegisterSnapshot.newBuilder()
+                    .setLabelHash(entry.getKey());
+            for (Object rv : entry.getValue()) {
+                snapshotBuilder.addRegisters(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
+            }
+            storeBuilder.addProcedureSnapshots(snapshotBuilder.build());
+        }
+        organismStateBuilder.setPersistentRegisterStore(storeBuilder.build());
 
         return organismStateBuilder.build();
     }
@@ -915,12 +924,10 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                         .setLinearAddress(address)
                         .setSourceInfo(convertSourceInfo(sourceInfo))));
 
-        artifact.callSiteBindings().forEach((address, registerIds) ->
+        artifact.callSiteBindings().forEach((address, bindingsMap) ->
                 builder.addCallSiteBindings(CallSiteBinding.newBuilder()
                         .setLinearAddress(address)
-                        .addAllRegisterIds(java.util.Arrays.stream(registerIds)
-                                .boxed()
-                                .collect(java.util.stream.Collectors.toList()))));
+                        .putAllBindings(bindingsMap)));
 
         builder.putAllRelativeCoordToLinearAddress(artifact.relativeCoordToLinearAddress());
 
@@ -1040,20 +1047,15 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     private org.evochora.datapipeline.api.contracts.ProcFrame convertProcFrameReuse(ProcFrame frame) {
         procFrameBuilder.clear();
         procFrameBuilder
-                .setProcName(frame.procName)
-                .setAbsoluteReturnIp(convertVectorReuse(frame.absoluteReturnIp, vectorBuilder))
-                .setAbsoluteCallIp(convertVectorReuse(frame.absoluteCallIp, vectorBuilder))
-                .putAllFprBindings(frame.fprBindings);
+                .setProcName(frame.procName())
+                .setLabelHash(frame.labelHash())
+                .setAbsoluteReturnIp(convertVectorReuse(frame.absoluteReturnIp(), vectorBuilder))
+                .setAbsoluteCallIp(convertVectorReuse(frame.absoluteCallIp(), vectorBuilder))
+                .putAllParameterBindings(frame.parameterBindings());
 
-        if (frame.savedPrs != null) {
-            for (Object rv : frame.savedPrs) {
-                procFrameBuilder.addSavedPrs(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
-            }
-        }
-
-        if (frame.savedFprs != null) {
-            for (Object rv : frame.savedFprs) {
-                procFrameBuilder.addSavedFprs(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
+        if (frame.savedRegisters() != null) {
+            for (Object rv : frame.savedRegisters()) {
+                procFrameBuilder.addSavedRegisters(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
             }
         }
 
@@ -1156,19 +1158,20 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         ));
         
         // 3. Organisms in memory - realistic worst-case estimate
-        // Per organism breakdown:
-        //   - Base object + fields + int[] arrays: ~1 KB
+        // Per organism breakdown (8-bank architecture, 48 register slots):
+        //   - Base object + fields + registers (48 slots): ~2.1 KB
         //   - dataStack (128 max × 16 bytes boxed): ~2 KB
         //   - locationStack (64 max × 28 bytes int[]): ~2 KB
-        //   - callStack (realistic ~20 ProcFrames × 600 bytes): ~12 KB
-        // Total: ~17 KB per organism (conservative for typical deep recursion)
-        // Note: Worst-case with full 128-frame call stack would be ~82 KB
-        long bytesPerOrganism = 17 * 1024; // ~17KB per organism
+        //   - callStack (realistic ~20 ProcFrames × 0.8 KB): ~16 KB
+        //   - persistentRegisterState (realistic ~5 entries × 0.3 KB): ~1.5 KB
+        // Total: ~24 KB per organism (conservative for typical deep recursion + persistent state)
+        // Note: Worst-case with full 128-frame call stack + 1024 persistent entries would be ~450 KB
+        long bytesPerOrganism = 24 * 1024; // ~24KB per organism
         long organismsBytes = (long) params.maxOrganisms() * bytesPerOrganism;
         estimates.add(new MemoryEstimate(
             serviceName + " (Organisms)",
             organismsBytes,
-            String.format("%d max organisms × ~17 KB (registers, stacks incl. ~20 call frames)", params.maxOrganisms()),
+            String.format("%d max organisms × ~24 KB (48 registers, stacks, ~20 call frames, ~5 persistent entries)", params.maxOrganisms()),
             MemoryEstimate.Category.SERVICE_BATCH
         ));
         

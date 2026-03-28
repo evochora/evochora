@@ -86,8 +86,29 @@ class RegAnalysisHandlerTest {
     }
 
     @Test
-    void testInvalidRegisterType() {
-        RegNode regNode = new RegNode("INVALID", "%PR0", TEST_SOURCE);
+    void testValidPdrRegister() {
+        RegNode regNode = new RegNode("TMP", "%PDR0", TEST_SOURCE);
+
+        handler.analyze(regNode, symbolTable, diagnostics);
+
+        assertFalse(diagnostics.hasErrors());
+        assertTrue(symbolTable.resolve("TMP", "test.s").isPresent());
+        assertEquals(Symbol.Type.ALIAS, symbolTable.resolve("TMP", "test.s").get().symbol().type());
+    }
+
+    @Test
+    void testPdrOutOfBounds() {
+        RegNode regNode = new RegNode("INVALID", "%PDR" + Config.NUM_PDR_REGISTERS, TEST_SOURCE);
+
+        handler.analyze(regNode, symbolTable, diagnostics);
+
+        assertTrue(diagnostics.hasErrors());
+        assertFalse(symbolTable.resolve("INVALID", "test.s").isPresent());
+    }
+
+    @Test
+    void testUnknownRegisterBank() {
+        RegNode regNode = new RegNode("INVALID", "%XYZ0", TEST_SOURCE);
 
         handler.analyze(regNode, symbolTable, diagnostics);
 
@@ -113,5 +134,25 @@ class RegAnalysisHandlerTest {
 
         assertTrue(diagnostics.hasErrors());
         assertFalse(symbolTable.resolve("INVALID", "test.s").isPresent());
+    }
+
+    @Test
+    void testForbiddenFdrRegisterRejected() {
+        RegNode regNode = new RegNode("PARAM", "%FDR0", TEST_SOURCE);
+
+        handler.analyze(regNode, symbolTable, diagnostics);
+
+        assertTrue(diagnostics.hasErrors());
+        assertFalse(symbolTable.resolve("PARAM", "test.s").isPresent());
+    }
+
+    @Test
+    void testForbiddenFlrRegisterRejected() {
+        RegNode regNode = new RegNode("LOC_PARAM", "%FLR0", TEST_SOURCE);
+
+        handler.analyze(regNode, symbolTable, diagnostics);
+
+        assertTrue(diagnostics.hasErrors());
+        assertFalse(symbolTable.resolve("LOC_PARAM", "test.s").isPresent());
     }
 }

@@ -303,5 +303,5 @@ protobuf {
 }
 
 jmh {
-    jvmArgs.set(listOf("-Xmx4g"))
+    jvmArgs.set(listOf("-Xmx8g"))
 }

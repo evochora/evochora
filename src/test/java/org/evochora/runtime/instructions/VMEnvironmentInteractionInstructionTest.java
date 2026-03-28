@@ -36,7 +36,7 @@ public class VMEnvironmentInteractionInstructionTest {
     void setUp() {
         environment = new Environment(new int[]{100, 100}, true);
         sim = SimulationTestUtils.createSimulation(environment);
-        org = Organism.create(sim, startPos, 2000, sim.getLogger());
+        org = Organism.create(sim, startPos, 2000);
         sim.addOrganism(org);
     }
 
@@ -72,8 +72,8 @@ public class VMEnvironmentInteractionInstructionTest {
     void testPoke() {
         int[] vec = new int[]{0, 1};
         int payload = new Molecule(Config.TYPE_DATA, 77).toInt();
-        org.setDr(0, payload);
-        org.setDr(1, vec);
+        org.writeOperand(0, payload);
+        org.writeOperand(1, vec);
 
         placeInstruction("POKE", 0, 1);
         int[] targetPos = org.getTargetCoordinate(org.getDp(0), vec, environment);
@@ -93,7 +93,7 @@ public class VMEnvironmentInteractionInstructionTest {
     @Tag("unit")
     void testPoki() {
         int payload = new Molecule(Config.TYPE_DATA, 88).toInt();
-        org.setDr(0, payload);
+        org.writeOperand(0, payload);
 
         placeInstruction("POKI", 0, 0, 1);
         int[] vec = new int[]{0, 1};
@@ -139,11 +139,11 @@ public class VMEnvironmentInteractionInstructionTest {
         int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment);        int payload = new Molecule(Config.TYPE_DATA, 7).toInt();
         environment.setMolecule(Molecule.fromInt(payload), target);
 
-        org.setDr(1, vec);
+        org.writeOperand(1, vec);
         placeInstruction("PEEK", 0, 1);
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(payload);
+        assertThat((int) org.readOperand(0)).isEqualTo(payload);
         assertThat(environment.getMolecule(target).isEmpty()).isTrue();
     }
 
@@ -161,7 +161,7 @@ public class VMEnvironmentInteractionInstructionTest {
         placeInstructionWithVector("PEKI", 0, vec);
         sim.tick();
 
-        assertThat(org.getDr(0)).isEqualTo(payload);
+        assertThat((int) org.readOperand(0)).isEqualTo(payload);
         assertThat(environment.getMolecule(target).isEmpty()).isTrue();
     }
 
@@ -200,16 +200,16 @@ public class VMEnvironmentInteractionInstructionTest {
         environment.setMolecule(Molecule.fromInt(originalPayload), 999, targetPos); // Foreign owner ID 999
         
         // Set up registers: target reg, vector reg
-        org.setDr(0, newPayload); // register contains value to write, will receive peeked value
-        org.setDr(1, vec); // vector register
+        org.writeOperand(0, newPayload); // register contains value to write, will receive peeked value
+        org.writeOperand(1, vec); // vector register
 
         placeInstruction("PPKR", 0, 1);
         sim.tick();
 
         assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
-        
+
         // Verify PPKR worked correctly: register contains peeked value, cell contains new value
-        assertThat(org.getDr(0)).isEqualTo(originalPayload).as("Register should contain DATA:99 (read from cell 0|1)");
+        assertThat((int) org.readOperand(0)).isEqualTo(originalPayload).as("Register should contain DATA:99 (read from cell 0|1)");
         assertThat(environment.getMolecule(targetPos).toInt()).isEqualTo(newPayload).as("Cell should contain DATA:111 (written from %DR0)");
         
         // Verify energy costs: PPKR(DATA->DATA) costs peek 5 (foreign DATA) + poke 6 (DATA) = 11
@@ -235,16 +235,16 @@ public class VMEnvironmentInteractionInstructionTest {
         
         
         // Set up register: contains value to write, will receive peeked value
-        org.setDr(0, newPayload); // register contains value to write
+        org.writeOperand(0, newPayload); // register contains value to write
 
         int initialEr = org.getEr();
         placeInstruction("PPKI", 0, 0, 1); // PPKI %REG <Vector> - Vector components: [0,1]
         sim.tick();
 
         assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
-        
+
         // Verify PPKI worked correctly: register contains peeked value, cell contains new value
-        assertThat(org.getDr(0)).isEqualTo(originalPayload).as("Register should contain DATA:99 (read from cell 0|1)");
+        assertThat((int) org.readOperand(0)).isEqualTo(originalPayload).as("Register should contain DATA:99 (read from cell 0|1)");
         assertThat(environment.getMolecule(targetPos).toInt()).isEqualTo(newPayload).as("Cell should contain DATA:111 (written from %DR0)");
         
         // Verify energy costs: PPKI(DATA->DATA) costs peek 5 (foreign DATA) + poke 6 (DATA) = 11
@@ -300,16 +300,16 @@ public class VMEnvironmentInteractionInstructionTest {
         int[] targetPos = org.getTargetCoordinate(org.getDp(0), vec, environment);
         
         // Set up registers
-        org.setDr(0, newPayload); // register contains value to write, will receive peeked value
-        org.setDr(1, vec); // vector register
+        org.writeOperand(0, newPayload); // register contains value to write, will receive peeked value
+        org.writeOperand(1, vec); // vector register
 
         placeInstruction("PPKR", 0, 1);
         sim.tick();
 
         assertThat(org.isInstructionFailed()).as("Instruction failed: " + org.getFailureReason()).isFalse();
-        
+
         // Verify PPKR on empty cell: register contains empty molecule, cell contains new value
-        assertThat(org.getDr(0)).isEqualTo(emptyMolecule).as("Register should contain empty molecule (CODE:0) when cell was empty");
+        assertThat((int) org.readOperand(0)).isEqualTo(emptyMolecule).as("Register should contain empty molecule (CODE:0) when cell was empty");
         assertThat(environment.getMolecule(targetPos).toInt()).isEqualTo(newPayload).as("Cell should contain the new molecule that was written");
         
         // Verify energy costs: PPKR on empty cell: peek 0 (unowned empty) + poke 6 (DATA) = 6
@@ -333,8 +333,8 @@ public class VMEnvironmentInteractionInstructionTest {
         int expectedMarker = 7;
         org.setMr(expectedMarker);
         
-        org.setDr(0, payload);
-        org.setDr(1, vec);
+        org.writeOperand(0, payload);
+        org.writeOperand(1, vec);
 
         placeInstruction("POKE", 0, 1);
         int[] targetPos = org.getTargetCoordinate(org.getDp(0), vec, environment);
@@ -395,8 +395,8 @@ public class VMEnvironmentInteractionInstructionTest {
         // Setup POKE to write DATA:50 to an empty cell
         int moleculeValue = 50;
         int[] vec = new int[]{0, 1};
-        org.setDr(0, new Molecule(Config.TYPE_DATA, moleculeValue).toInt());
-        org.setDr(1, vec);
+        org.writeOperand(0, new Molecule(Config.TYPE_DATA, moleculeValue).toInt());
+        org.writeOperand(1, vec);
         placeInstruction("POKE", 0, 1);
         
         // When: Execute one tick

@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.OrganismState;
-import org.evochora.datapipeline.api.contracts.RegisterValue;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.Vector;
@@ -17,6 +16,8 @@ import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.isa.RegisterBank;
+import org.evochora.test.utils.ProtoTestUtils;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -94,8 +95,7 @@ class SimulationRestorerTest {
             .addDataPointers(createVector(10, 10))
             .addDataPointers(createVector(20, 20))
             .setActiveDpIndex(1)
-            .addDataRegisters(RegisterValue.newBuilder().setScalar(100).build())
-            .addProcedureRegisters(RegisterValue.newBuilder().setScalar(200).build())
+            .addAllRegisters(ProtoTestUtils.buildFlatRegisters(new int[]{100}, null, new int[]{200}, null))
             .setIsDead(false)
             .build();
 
@@ -125,8 +125,8 @@ class SimulationRestorerTest {
         assertThat(org.getSr()).isEqualTo(50);
         assertThat(org.getMr()).isEqualTo(3);
         assertThat(org.getActiveDpIndex()).isEqualTo(1);
-        assertThat(org.getDr(0)).isEqualTo(100);
-        assertThat(org.getPr(0)).isEqualTo(200);
+        assertThat(org.readOperand(0)).isEqualTo(100);
+        assertThat(org.readOperand(RegisterBank.PDR.base)).isEqualTo(200);
     }
 
     @Test
@@ -234,50 +234,54 @@ class SimulationRestorerTest {
     }
 
     @Test
-    void restore_OldSimulation_FallsBackToLivingOrganisms() {
+    void restore_FailureCallStack_Preserved() {
         SimulationMetadata metadata = createMinimalMetadata();
 
-        // Old simulation without genome hash fields (defaults to empty list)
-        OrganismState org1 = OrganismState.newBuilder()
-            .setOrganismId(1)
+        // Build a ProcFrame for the failure call stack
+        org.evochora.datapipeline.api.contracts.ProcFrame protoFrame =
+                org.evochora.datapipeline.api.contracts.ProcFrame.newBuilder()
+                    .setProcName("FAILING_PROC")
+                    .setLabelHash(12345)
+                    .setAbsoluteReturnIp(createVector(5, 0))
+                    .setAbsoluteCallIp(createVector(3, 0))
+                    .build();
+
+        OrganismState failedOrg = OrganismState.newBuilder()
+            .setOrganismId(99)
             .setBirthTick(0)
             .setEnergy(500)
-            .setGenomeHash(111L)
             .setIp(createVector(10, 10))
             .setDv(createVector(1, 0))
-            .setInitialPosition(createVector(5, 5))
-            .setIsDead(false)
-            .build();
-
-        OrganismState org2 = OrganismState.newBuilder()
-            .setOrganismId(2)
-            .setBirthTick(0)
-            .setEnergy(300)
-            .setGenomeHash(222L)
-            .setIp(createVector(20, 20))
-            .setDv(createVector(0, 1))
-            .setInitialPosition(createVector(15, 15))
+            .setInitialPosition(createVector(0, 0))
+            .setInstructionFailed(true)
+            .setFailureReason("Call stack overflow")
+            .addFailureCallStack(protoFrame)
+            .addAllRegisters(ProtoTestUtils.buildFlatRegisters(null, null, null, null))
             .setIsDead(false)
             .build();
 
         TickData snapshot = TickData.newBuilder()
             .setSimulationRunId(TEST_RUN_ID)
-            .setTickNumber(1000)
+            .setTickNumber(100)
             .setCaptureTimeMs(System.currentTimeMillis())
-            .setTotalOrganismsCreated(50)
-            // No genome hash fields set (old simulation format)
+            .setTotalOrganismsCreated(10)
             .setCellColumns(CellDataColumns.newBuilder().build())
-            .addOrganisms(org1)
-            .addOrganisms(org2)
+            .addOrganisms(failedOrg)
             .build();
 
         ResumeCheckpoint checkpoint = new ResumeCheckpoint(metadata, snapshot);
         SimulationRestorer.RestoredState state = SimulationRestorer.restore(checkpoint, randomProvider, 1);
         Simulation simulation = state.simulation();
 
-        // Fallback: reconstructed from living organisms
-        assertThat(simulation.getTotalUniqueGenomesCount()).isEqualTo(2);
-        assertThat(simulation.getAllGenomesEverSeen()).containsExactlyInAnyOrder(111L, 222L);
+        assertThat(simulation.getOrganisms()).hasSize(1);
+        Organism org = simulation.getOrganisms().get(0);
+
+        assertThat(org.isInstructionFailed()).isTrue();
+        assertThat(org.getFailureReason()).isEqualTo("Call stack overflow");
+        assertThat(org.getFailureCallStack()).isNotNull();
+        assertThat(org.getFailureCallStack()).hasSize(1);
+        assertThat(org.getFailureCallStack().peek().procName()).isEqualTo("FAILING_PROC");
+        assertThat(org.getFailureCallStack().peek().labelHash()).isEqualTo(12345);
     }
 
     // ==================== Helper Methods ====================
@@ -362,4 +366,5 @@ class SimulationRestorerTest {
         }
         return builder.build();
     }
+
 }

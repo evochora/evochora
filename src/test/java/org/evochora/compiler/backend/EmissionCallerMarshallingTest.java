@@ -15,15 +15,12 @@ import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Tests the emission rules for caller marshalling, covering both the new REF/VAL
- * parameter passing and the legacy `core:call_with` directive. These tests ensure
+ * Tests the emission rules for caller marshalling. These tests ensure
  * that the compiler correctly generates PUSH, POP, PUSI, and DROP instructions
  * around a CALL instruction to manage the stack for procedure calls.
  * This is a unit test and does not require any external resources.
@@ -62,7 +59,7 @@ public class EmissionCallerMarshallingTest {
             IrReg rB = new IrReg("%rB");
             IrImm imm123 = new IrImm(123);
             IrLabelRef target = new IrLabelRef("myProc");
-            IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rB), List.of(imm123), src("main.s", 1));
+            IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rB), List.of(imm123), List.of(), List.of(), src("main.s", 1));
 
             List<IrItem> out = runEmission(List.of(call));
 
@@ -82,7 +79,7 @@ public class EmissionCallerMarshallingTest {
             IrReg rX = new IrReg("%rX");
             IrReg rY = new IrReg("%rY");
             IrLabelRef target = new IrLabelRef("p");
-            IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rX, rY), Collections.emptyList(), src("main.s", 1));
+            IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rX, rY), Collections.emptyList(), List.of(), List.of(), src("main.s", 1));
 
             List<IrItem> out = runEmission(List.of(call));
 
@@ -100,7 +97,7 @@ public class EmissionCallerMarshallingTest {
         @DisplayName("Should not marshall a plain CALL instruction")
         void doesNotMarshallPlainCall() {
             // IR for: CALL someLabel
-            IrInstruction call = new IrCallInstruction("CALL", List.of(new IrLabelRef("someLabel")), List.of(), List.of(), src("main.s", 1));
+            IrInstruction call = new IrCallInstruction("CALL", List.of(new IrLabelRef("someLabel")), List.of(), List.of(), List.of(), List.of(), src("main.s", 1));
 
             List<IrItem> out = runEmission(List.of(call));
 
@@ -114,7 +111,7 @@ public class EmissionCallerMarshallingTest {
             // IR for: CALL myProc VAL myLabel
             IrLabelRef target = new IrLabelRef("myProc");
             IrLabelRef labelParam = new IrLabelRef("myLabel");
-            IrInstruction call = new IrCallInstruction("CALL", List.of(target), Collections.emptyList(), List.of(labelParam), src("main.s", 1));
+            IrInstruction call = new IrCallInstruction("CALL", List.of(target), Collections.emptyList(), List.of(labelParam), List.of(), List.of(), src("main.s", 1));
 
             List<IrItem> out = runEmission(List.of(call));
 
@@ -133,7 +130,7 @@ public class EmissionCallerMarshallingTest {
             IrImm imm123 = new IrImm(123);
             IrLabelRef target = new IrLabelRef("myProc");
             IrLabelRef labelParam = new IrLabelRef("myLabel");
-            IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rA), List.of(imm123, labelParam), src("main.s", 1));
+            IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rA), List.of(imm123, labelParam), List.of(), List.of(), src("main.s", 1));
 
             List<IrItem> out = runEmission(List.of(call));
 
@@ -154,7 +151,7 @@ public class EmissionCallerMarshallingTest {
             IrReg rA = new IrReg("%rA");
             IrInstruction ifr = new IrInstruction("IFR", List.of(rA), src("main.s", 1));
             IrLabelRef target = new IrLabelRef("myProc");
-            IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rA), Collections.emptyList(), src("main.s", 2));
+            IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rA), Collections.emptyList(), List.of(), List.of(), src("main.s", 2));
 
             List<IrItem> out = runEmission(List.of(ifr, call));
 
@@ -189,7 +186,7 @@ public class EmissionCallerMarshallingTest {
             IrReg rA = new IrReg("%rA");
             IrInstruction ifer = new IrInstruction("IFER", Collections.emptyList(), src("main.s", 1));
             IrLabelRef target = new IrLabelRef("myProc");
-            IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rA), Collections.emptyList(), src("main.s", 2));
+            IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(rA), Collections.emptyList(), List.of(), List.of(), src("main.s", 2));
 
             List<IrItem> out = runEmission(List.of(ifer, call));
 
@@ -217,18 +214,122 @@ public class EmissionCallerMarshallingTest {
         }
     }
 
+    @Nested
+    @DisplayName("LREF/LVAL Location Marshalling")
+    class LrefLvalMarshalling {
+
+        @Test
+        @Tag("unit")
+        @DisplayName("Should marshall CALL with LREF operand (PUSL pre-call, POPL post-call)")
+        void marshallsCallWithLref() {
+            // IR for: CALL proc LREF %LR0
+            IrReg lr0 = new IrReg("%LR0");
+            IrLabelRef target = new IrLabelRef("proc");
+            IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(), List.of(), List.of(lr0), List.of(), src("main.s", 1));
+
+            List<IrItem> out = runEmission(List.of(call));
+
+            // Expect: PUSL %LR0, CALL proc, POPL %LR0
+            assertThat(out).hasSize(3);
+            assertThat(out.get(0)).isEqualTo(IrInstruction.synthetic("PUSL", List.of(lr0), call.source()));
+            assertThat(out.get(1)).isEqualTo(call);
+            assertThat(out.get(2)).isEqualTo(IrInstruction.synthetic("POPL", List.of(lr0), call.source()));
+        }
+
+        @Test
+        @Tag("unit")
+        @DisplayName("Should marshall CALL with LVAL register operand (PUSL pre-call, no post-call)")
+        void marshallsCallWithLvalRegister() {
+            // IR for: CALL proc LVAL %LR1
+            IrReg lr1 = new IrReg("%LR1");
+            IrLabelRef target = new IrLabelRef("proc");
+            IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(), List.of(), List.of(), List.of(lr1), src("main.s", 1));
+
+            List<IrItem> out = runEmission(List.of(call));
+
+            // Expect: PUSL %LR1, CALL proc (no POPL — LVAL is by value, no write-back)
+            assertThat(out).hasSize(2);
+            assertThat(out.get(0)).isEqualTo(IrInstruction.synthetic("PUSL", List.of(lr1), call.source()));
+            assertThat(out.get(1)).isEqualTo(call);
+        }
+
+        @Test
+        @Tag("unit")
+        @DisplayName("Should marshall CALL with LVAL label operand using PSLI instead of PUSL")
+        void marshallsCallWithLvalLabel() {
+            // IR for: CALL proc LVAL MY_LABEL
+            IrLabelRef target = new IrLabelRef("proc");
+            IrLabelRef labelParam = new IrLabelRef("MY_LABEL");
+            IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(), List.of(), List.of(), List.of(labelParam), src("main.s", 1));
+
+            List<IrItem> out = runEmission(List.of(call));
+
+            // Expect: PSLI MY_LABEL, CALL proc (PSLI for labels, not PUSL)
+            assertThat(out).hasSize(2);
+            assertThat(out.get(0)).isEqualTo(IrInstruction.synthetic("PSLI", List.of(labelParam), call.source()));
+            assertThat(out.get(1)).isEqualTo(call);
+        }
+
+        @Test
+        @Tag("unit")
+        @DisplayName("Should marshall CALL with multiple LVAL and LREF in correct location-stack order")
+        void marshallsCallWithMultipleLvalAndLref() {
+            // IR for: CALL proc LREF %LR0 %LR1 LVAL %LR2
+            IrReg lr0 = new IrReg("%LR0");
+            IrReg lr1 = new IrReg("%LR1");
+            IrReg lr2 = new IrReg("%LR2");
+            IrLabelRef target = new IrLabelRef("proc");
+            IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(), List.of(), List.of(lr0, lr1), List.of(lr2), src("main.s", 1));
+
+            List<IrItem> out = runEmission(List.of(call));
+
+            // Pre-call order: LVAL (reverse) then LREF (reverse)
+            // PUSL %LR2 (LVAL, only one), PUSL %LR1 (LREF reverse), PUSL %LR0 (LREF reverse)
+            // Post-call: POPL LREF (reverse) for write-back
+            // POPL %LR1, POPL %LR0
+            assertThat(out).hasSize(6);
+            assertThat(out.get(0)).isEqualTo(IrInstruction.synthetic("PUSL", List.of(lr2), call.source()));
+            assertThat(out.get(1)).isEqualTo(IrInstruction.synthetic("PUSL", List.of(lr1), call.source()));
+            assertThat(out.get(2)).isEqualTo(IrInstruction.synthetic("PUSL", List.of(lr0), call.source()));
+            assertThat(out.get(3)).isEqualTo(call);
+            assertThat(out.get(4)).isEqualTo(IrInstruction.synthetic("POPL", List.of(lr1), call.source()));
+            assertThat(out.get(5)).isEqualTo(IrInstruction.synthetic("POPL", List.of(lr0), call.source()));
+        }
+
+        @Test
+        @Tag("unit")
+        @DisplayName("Should marshall CALL with mixed REF + LREF (data + location marshalling)")
+        void marshallsCallWithMixedRefAndLref() {
+            // IR for: CALL proc REF %DR0 LREF %LR0
+            IrReg dr0 = new IrReg("%DR0");
+            IrReg lr0 = new IrReg("%LR0");
+            IrLabelRef target = new IrLabelRef("proc");
+            IrInstruction call = new IrCallInstruction("CALL", List.of(target), List.of(dr0), List.of(), List.of(lr0), List.of(), src("main.s", 1));
+
+            List<IrItem> out = runEmission(List.of(call));
+
+            // Expect: PUSH %DR0, PUSL %LR0, CALL proc, POPL %LR0, POP %DR0
+            // Pre-call order: data args first (VAL then REF in reverse), then location args (LVAL then LREF in reverse)
+            // Post-call order: LREF popped first (location stack), then REF popped (data stack)
+            assertThat(out).hasSize(5);
+            assertThat(out.get(0)).isEqualTo(IrInstruction.synthetic("PUSH", List.of(dr0), call.source()));
+            assertThat(out.get(1)).isEqualTo(IrInstruction.synthetic("PUSL", List.of(lr0), call.source()));
+            assertThat(out.get(2)).isEqualTo(call);
+            assertThat(out.get(3)).isEqualTo(IrInstruction.synthetic("POPL", List.of(lr0), call.source()));
+            assertThat(out.get(4)).isEqualTo(IrInstruction.synthetic("POP", List.of(dr0), call.source()));
+        }
+    }
+
     @Test
     @Tag("unit")
     @DisplayName("SourceInfo is preserved for marshalling")
     void sourceInfoIsPreservedForMarshalling() {
-        // Test the CallerMarshallingRule in isolation with a simple core:call_with directive
-        IrDirective callWith = new IrDirective("core", "call_with", 
-            Map.of("actuals", new IrValue.ListVal(List.of(new IrValue.Str("%DR1")))), 
-            src("test.s", 5));
-        IrInstruction call = new IrCallInstruction("CALL", List.of(new IrVec(new int[]{1, 0})), List.of(), List.of(), src("test.s", 5));
+        // Test the CallerMarshallingRule with a REF parameter CALL
+        IrInstruction call = new IrCallInstruction("CALL", List.of(new IrVec(new int[]{1, 0})),
+                List.of(new IrReg("%DR1")), List.of(), List.of(), List.of(), src("test.s", 5));
         IrInstruction nop = new IrInstruction("NOP", Collections.emptyList(), src("test.s", 6));
-        
-        List<IrItem> items = List.of(callWith, call, nop);
+
+        List<IrItem> items = List.of(call, nop);
 
         // Apply only the CallerMarshallingRule
         CallerMarshallingRule rule = new CallerMarshallingRule();
@@ -267,34 +368,4 @@ public class EmissionCallerMarshallingTest {
         }
     }
 
-    @Nested
-    @DisplayName("Legacy `core:call_with` Marshalling")
-    class LegacyMarshalling {
-        @Test
-        @Tag("unit")
-        @DisplayName("Should insert PUSH/POP for `core:call_with` directive")
-        void insertsCallerPushPopAroundCall() {
-            // core:call_with { actuals: ["%DR1", "%DR2"] } followed by CALL
-            Map<String, IrValue> args = new HashMap<>();
-            args.put("actuals", new IrValue.ListVal(List.of(new IrValue.Str("%DR1"), new IrValue.Str("%DR2"))));
-            IrDirective callWith = new IrDirective("core", "call_with", args, src("main.s", 1));
-
-            IrInstruction call = new IrCallInstruction("CALL", List.of(new IrVec(new int[]{1, 0})), List.of(), List.of(), src("main.s", 2));
-            List<IrItem> items = List.of(callWith, call);
-
-            List<IrItem> out = runEmission(items);
-
-            // Expect: PUSH %DR1, PUSH %DR2, CALL, POP %DR2, POP %DR1
-            assertThat(out).hasSize(5);
-            assertThat(((IrInstruction) out.get(0)).opcode()).isEqualTo("PUSH");
-            assertThat(((IrReg) ((IrInstruction) out.get(0)).operands().get(0)).name()).isEqualTo("%DR1");
-            assertThat(((IrInstruction) out.get(1)).opcode()).isEqualTo("PUSH");
-            assertThat(((IrReg) ((IrInstruction) out.get(1)).operands().get(0)).name()).isEqualTo("%DR2");
-            assertThat(((IrInstruction) out.get(2)).opcode()).isEqualTo("CALL");
-            assertThat(((IrInstruction) out.get(3)).opcode()).isEqualTo("POP");
-            assertThat(((IrReg) ((IrInstruction) out.get(3)).operands().get(0)).name()).isEqualTo("%DR2");
-            assertThat(((IrInstruction) out.get(4)).opcode()).isEqualTo("POP");
-            assertThat(((IrReg) ((IrInstruction) out.get(4)).operands().get(0)).name()).isEqualTo("%DR1");
-        }
-    }
 }

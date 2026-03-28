@@ -480,7 +480,7 @@ export class OrganismSourceView {
     updateStatusBar(activeLocation, organismState) {
         if (!this.dom.status) return;
 
-        // Collect warning message (location error or opcode mismatch)
+        // Collect warning message (location error, opcode mismatch, or unknown procedure)
         let warning = null;
 
         if (activeLocation && activeLocation.error) {
@@ -489,6 +489,13 @@ export class OrganismSourceView {
             const mismatch = this.detectOpcodeMismatch(activeLocation, organismState);
             if (mismatch) {
                 warning = `Opcode mismatch: expected ${mismatch.expected}, found ${mismatch.actual}`;
+            }
+        }
+
+        if (!warning) {
+            const unknownProc = this.detectUnknownProcedure(organismState);
+            if (unknownProc) {
+                warning = unknownProc;
             }
         }
 
@@ -534,6 +541,34 @@ export class OrganismSourceView {
             return { expected: expectedInstruction.opcode, actual: actualOpcode };
         }
         return null;
+    }
+
+    /**
+     * Detects if the organism is inside a procedure that is not in the compiled artifact.
+     *
+     * @param {object|null} organismState - The organism state with callStack.
+     * @returns {string|null} Warning message or null if all procedures are known.
+     * @private
+     */
+    detectUnknownProcedure(organismState) {
+        if (!organismState?.callStack || !Array.isArray(organismState.callStack) || organismState.callStack.length === 0) return null;
+        if (!this.artifact?.procNameToParamNames) return null;
+
+        const topFrame = organismState.callStack[0];
+        if (!topFrame) return null;
+
+        const procName = topFrame.procName || '';
+        const procNameUpper = procName.toUpperCase();
+
+        if (procNameUpper && this.artifact.procNameToParamNames[procNameUpper]) return null;
+
+        const callIp = topFrame.absoluteCallIp;
+        const posStr = (callIp && Array.isArray(callIp)) ? ` called at [${callIp.join('|')}]` : '';
+
+        if (procName) {
+            return `Unknown procedure: ${procName}${posStr}`;
+        }
+        return `Unknown procedure${posStr}`;
     }
 
     /**

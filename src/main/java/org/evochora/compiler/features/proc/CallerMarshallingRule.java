@@ -1,6 +1,5 @@
 package org.evochora.compiler.features.proc;
 
-import org.evochora.compiler.api.SourceInfo;
 import org.evochora.compiler.backend.emit.ConditionalUtils;
 import org.evochora.compiler.backend.emit.IEmissionRule;
 import org.evochora.compiler.model.ir.*;
@@ -37,25 +36,15 @@ public final class CallerMarshallingRule implements IEmissionRule {
                 }
             }
 
-            // Handle a standard, non-conditional CALL (including REF/VAL).
+            // Handle a standard, non-conditional CALL (including REF/VAL/LREF/LVAL).
             if (currentItem instanceof IrCallInstruction call) {
-                if (!call.refOperands().isEmpty() || !call.valOperands().isEmpty()) {
+                if (!call.refOperands().isEmpty() || !call.valOperands().isEmpty()
+                        || !call.lrefOperands().isEmpty() || !call.lvalOperands().isEmpty()) {
                     emitStandardMarshalling(out, call);
                 } else {
                     out.add(call); // Plain CALL with no params.
                 }
                 i++;
-                continue;
-            }
-
-            // Legacy logic for `core:call_with`
-            if (currentItem instanceof IrDirective dir && "core".equals(dir.namespace()) && "call_with".equals(dir.name())) {
-                if (i + 1 < items.size() && items.get(i + 1) instanceof IrInstruction call && "CALL".equals(call.opcode())) {
-                    handleLegacyCallWith(out, dir, call, items.get(i + 1));
-                    i += 2;
-                    continue;
-                }
-                i++; // Drop directive if not followed by CALL.
                 continue;
             }
 
@@ -100,36 +89,31 @@ public final class CallerMarshallingRule implements IEmissionRule {
             out.add(IrInstruction.synthetic("PUSH", List.of(call.refOperands().get(j)), call.source()));
         }
 
+        // Pre-call: Push location arguments (LVAL then LREF, in reverse order) onto location stack
+        for (int j = call.lvalOperands().size() - 1; j >= 0; j--) {
+            IrOperand operand = call.lvalOperands().get(j);
+            if (operand instanceof IrLabelRef) {
+                out.add(IrInstruction.synthetic("PSLI", List.of(operand), call.source()));
+            } else {
+                out.add(IrInstruction.synthetic("PUSL", List.of(operand), call.source()));
+            }
+        }
+        for (int j = call.lrefOperands().size() - 1; j >= 0; j--) {
+            out.add(IrInstruction.synthetic("PUSL", List.of(call.lrefOperands().get(j)), call.source()));
+        }
+
         // The CALL itself.
         out.add(call);
 
-        // Post-call: Clean up stack (pop REF args in correct order to match callee's PUSH).
-        // Reverse order: stack is LIFO, so the last-pushed register must be popped first.
+        // Post-call: Pop LREF args from location stack (write-back modified values to source registers)
+        for (int j = call.lrefOperands().size() - 1; j >= 0; j--) {
+            out.add(IrInstruction.synthetic("POPL", List.of(call.lrefOperands().get(j)), call.source()));
+        }
+
+        // Post-call: Pop REF args from data stack (write-back modified values to source registers)
         for (int j = call.refOperands().size() - 1; j >= 0; j--) {
             out.add(IrInstruction.synthetic("POP", List.of(call.refOperands().get(j)), call.source()));
         }
     }
 
-    private void handleLegacyCallWith(List<IrItem> out, IrDirective dir, IrInstruction call, IrItem nextItem) {
-        IrValue.ListVal listVal = (IrValue.ListVal) dir.args().get("actuals");
-        List<IrValue> vals = listVal != null ? listVal.elements() : List.of();
-        List<String> actualRegs = new ArrayList<>(vals.size());
-        for (IrValue v : vals) {
-            if (v instanceof IrValue.Str s) actualRegs.add(s.value());
-        }
-
-        SourceInfo originalSourceInfo = call.source();
-        for (String r : actualRegs) {
-            out.add(IrInstruction.synthetic("PUSH", List.of(new IrReg(r)), originalSourceInfo));
-        }
-        // Enrich the CALL with refOperands so the Linker can extract bindings directly from the IR
-        List<IrOperand> enrichedRefOps = actualRegs.stream()
-                .map(r -> (IrOperand) new IrReg(r))
-                .toList();
-        out.add(new IrCallInstruction(call.opcode(), call.operands(),
-                enrichedRefOps, List.of(), call.source()));
-        for (int a = actualRegs.size() - 1; a >= 0; a--) {
-            out.add(IrInstruction.synthetic("POP", List.of(new IrReg(actualRegs.get(a))), originalSourceInfo));
-        }
-    }
 }

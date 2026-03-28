@@ -33,6 +33,7 @@ import org.evochora.datapipeline.resources.database.H2Database;
 import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
 import org.evochora.datapipeline.resources.topics.H2TopicResource;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
+import org.evochora.test.utils.ProtoTestUtils;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
 import org.junit.jupiter.api.AfterEach;
@@ -314,8 +315,7 @@ class OrganismIndexerIntegrationTest {
                 .setDv(dv)
                 .addDataPointers(Vector.newBuilder().addComponents(5).addComponents(5).build())
                 .setActiveDpIndex(0)
-                .addDataRegisters(RegisterValue.newBuilder().setScalar(7).build())
-                .addLocationRegisters(Vector.newBuilder().addComponents(2).addComponents(3).build())
+                .addAllRegisters(ProtoTestUtils.buildFlatRegisters(new int[]{7}, new int[][]{{2, 3}}, null, null))
                 .addDataStack(RegisterValue.newBuilder().setScalar(9).build())
                 .addLocationStack(Vector.newBuilder().addComponents(4).addComponents(4).build())
                 .addCallStack(ProcFrame.newBuilder()

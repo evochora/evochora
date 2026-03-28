@@ -8,6 +8,7 @@ import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.isa.RegisterBank;
 
 /**
  * Helper class to track instruction execution and register states during test execution.
@@ -60,15 +61,11 @@ public class ExecutionTracker {
     }
 
     private static class RegisterState {
-        final List<Object> drs;
-        final List<Object> prs;
-        final List<Object> fprs;
+        final Object[] registers;
         final int er;
 
         RegisterState(Organism org) {
-            this.drs = new ArrayList<>(org.getDrs());
-            this.prs = new ArrayList<>(org.getPrs());
-            this.fprs = new ArrayList<>(org.getFprs());
+            this.registers = org.getRegisters();
             this.er = org.getEr();
         }
     }
@@ -194,35 +191,13 @@ public class ExecutionTracker {
 
     private void appendRegisters(StringBuilder sb, RegisterState state) {
         sb.append(String.format("    ER: %d\n", state.er));
-        if (!state.drs.isEmpty()) {
-            sb.append("    DRs: ");
-            for (int i = 0; i < state.drs.size(); i++) {
-                Object dr = state.drs.get(i);
-                if (dr != null) {
-                    Molecule m = Molecule.fromInt((Integer) dr);
-                    sb.append(String.format("DR%d=%d ", i, m.toScalarValue()));
-                }
-            }
-            sb.append("\n");
-        }
-        if (!state.prs.isEmpty()) {
-            sb.append("    PRs: ");
-            for (int i = 0; i < state.prs.size(); i++) {
-                Object pr = state.prs.get(i);
-                if (pr != null) {
-                    Molecule m = Molecule.fromInt((Integer) pr);
-                    sb.append(String.format("PR%d=%d ", i, m.toScalarValue()));
-                }
-            }
-            sb.append("\n");
-        }
-        if (!state.fprs.isEmpty()) {
-            sb.append("    FPRs: ");
-            for (int i = 0; i < state.fprs.size(); i++) {
-                Object fpr = state.fprs.get(i);
-                if (fpr != null) {
-                    Molecule m = Molecule.fromInt((Integer) fpr);
-                    sb.append(String.format("FPR%d=%d ", i, m.toScalarValue()));
+        for (RegisterBank bank : RegisterBank.values()) {
+            sb.append(String.format("    %ss: ", bank.name()));
+            for (int i = 0; i < bank.count; i++) {
+                Object val = state.registers[bank.slotOffset() + i];
+                if (val instanceof Integer) {
+                    Molecule m = Molecule.fromInt((Integer) val);
+                    sb.append(String.format("%s%d=%d ", bank.name(), i, m.toScalarValue()));
                 }
             }
             sb.append("\n");

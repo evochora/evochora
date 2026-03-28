@@ -51,7 +51,7 @@ public class EnergyCostTest {
     @Test
     @Tag("unit")
     void testPokeConsumesEnergyOnSuccess() {
-        Organism org = Organism.create(sim, new int[]{10, 10}, 1000, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{10, 10}, 1000);
         sim.addOrganism(org);
         org.setDp(0, org.getIp());
 
@@ -62,8 +62,8 @@ public class EnergyCostTest {
         environment.setMolecule(new Molecule(Config.TYPE_CODE, 0), target);
 
         int payload = new Molecule(Config.TYPE_DATA, 50).toInt();
-        org.setDr(0, payload);      // value register
-        org.setDr(1, vec);          // vector register
+        org.writeOperand(0, payload);      // value register
+        org.writeOperand(1, vec);          // vector register
 
         int initialEr = org.getEr();
 
@@ -84,7 +84,7 @@ public class EnergyCostTest {
     @Test
     @Tag("unit")
     void testPokeConsumesEnergyEvenOnOccupiedTarget() {
-        Organism org = Organism.create(sim, new int[]{20, 20}, 1000, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{20, 20}, 1000);
         sim.addOrganism(org);
         org.setDp(0, org.getIp());
 
@@ -95,8 +95,8 @@ public class EnergyCostTest {
         environment.setMolecule(new Molecule(Config.TYPE_DATA, 1), target);
 
         int payload = new Molecule(Config.TYPE_DATA, 60).toInt();
-        org.setDr(0, payload);
-        org.setDr(1, vec);
+        org.writeOperand(0, payload);
+        org.writeOperand(1, vec);
 
         int initialEr = org.getEr();
 
@@ -117,7 +117,7 @@ public class EnergyCostTest {
     @Test
     @Tag("unit")
     void testPeekDataConsumesEnergy() {
-        Organism org = Organism.create(sim, new int[]{30, 30}, 1000, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{30, 30}, 1000);
         sim.addOrganism(org);
         org.setDp(0, org.getIp());
 
@@ -127,14 +127,14 @@ public class EnergyCostTest {
         int dataVal = new Molecule(Config.TYPE_DATA, 33).toInt();
         environment.setMolecule(Molecule.fromInt(dataVal), 999, target); // Foreign owner ID 999
 
-        org.setDr(1, vec); // vector register
+        org.writeOperand(1, vec); // vector register
         int initialEr = org.getEr();
 
         placeInstruction(org, "PEEK", 0, 1); // store into DR0
         sim.tick();
 
         assertThat(org.isInstructionFailed()).isFalse();
-        assertThat(org.getDr(0)).isEqualTo(dataVal);
+        assertThat((int) org.readOperand(0)).isEqualTo(dataVal);
         // PEEK(DATA) foreign costs +5
         assertThat(org.getEr()).isLessThanOrEqualTo(initialEr - 5);
     }
@@ -146,7 +146,7 @@ public class EnergyCostTest {
     @Test
     @Tag("unit")
     void testPeekStructureOwnedBySelf_NoEnergyCost() {
-        Organism org = Organism.create(sim, new int[]{40, 40}, 1000, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{40, 40}, 1000);
         sim.addOrganism(org);
         org.setDp(0, org.getIp());
 
@@ -157,14 +157,14 @@ public class EnergyCostTest {
         environment.setMolecule(Molecule.fromInt(structVal), target);
         environment.setOwnerId(org.getId(), target[0], target[1]);
 
-        org.setDr(1, vec);
+        org.writeOperand(1, vec);
         int initialEr = org.getEr();
 
         placeInstruction(org, "PEEK", 0, 1);
         sim.tick();
 
         assertThat(org.isInstructionFailed()).isFalse();
-        assertThat(org.getDr(0)).isEqualTo(structVal);
+        assertThat((int) org.readOperand(0)).isEqualTo(structVal);
         // No cost on self-owned structure (no base cost anymore)
         assertThat(org.getEr()).isEqualTo(initialEr);
     }
@@ -176,7 +176,7 @@ public class EnergyCostTest {
     @Test
     @Tag("unit")
     void testPeekStructureForeignConsumesEnergy() {
-        Organism org = Organism.create(sim, new int[]{50, 50}, 1000, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{50, 50}, 1000);
         sim.addOrganism(org);
         org.setDp(0, org.getIp());
 
@@ -187,14 +187,14 @@ public class EnergyCostTest {
         environment.setMolecule(Molecule.fromInt(structVal), target);
         environment.setOwnerId(org.getId() + 999, target[0], target[1]); // foreign owner
 
-        org.setDr(1, vec);
+        org.writeOperand(1, vec);
         int initialEr = org.getEr();
 
         placeInstruction(org, "PEEK", 0, 1);
         sim.tick();
 
         assertThat(org.isInstructionFailed()).isFalse();
-        assertThat(org.getDr(0)).isEqualTo(structVal);
+        assertThat((int) org.readOperand(0)).isEqualTo(structVal);
         // Must charge |12| energy (allow per-tick overhead)
         assertThat(org.getEr()).isLessThanOrEqualTo(initialEr - 12);
     }
@@ -207,7 +207,7 @@ public class EnergyCostTest {
     @Test
     @Tag("unit")
     void testPeekEnergyHarvestsAndClampsToMax() {
-        Organism org = Organism.create(sim, new int[]{60, 60}, 100, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{60, 60}, 100);
         sim.addOrganism(org);
         org.setDp(0, org.getIp());
 
@@ -217,7 +217,7 @@ public class EnergyCostTest {
         int energyAvailable = 80;
         environment.setMolecule(new Molecule(Config.TYPE_ENERGY, energyAvailable), target);
 
-        org.setDr(1, vec);
+        org.writeOperand(1, vec);
         int initialEr = org.getEr();
         int expectedHarvest = Math.min(energyAvailable, org.getMaxEnergy() - initialEr);
 

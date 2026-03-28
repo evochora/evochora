@@ -23,6 +23,7 @@ import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 import org.evochora.datapipeline.api.resources.database.dto.ProcFrameView;
 import org.evochora.datapipeline.api.resources.database.dto.RegisterValueView;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
+import org.evochora.test.utils.ProtoTestUtils;
 import org.evochora.runtime.model.Molecule;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -164,9 +165,9 @@ class H2DatabaseOrganismReaderTest {
             assertThat(state.dataPointers[0]).containsExactly(5);
             assertThat(state.activeDpIndex).isEqualTo(0);
 
-            // Runtime view: cold path (blob)
-            assertThat(state.dataRegisters).hasSize(1);
-            RegisterValueView drv = state.dataRegisters.get(0);
+            // Runtime view: cold path (blob) — flat register array: DR, LR, PDR, PLR, FDR, FLR, SDR, SLR
+            assertThat(state.registers).hasSize(org.evochora.runtime.isa.RegisterBank.TOTAL_REGISTER_COUNT);
+            RegisterValueView drv = state.registers.get(0); // DR0
             assertThat(drv.kind).isEqualTo(RegisterValueView.Kind.MOLECULE);
             // buildOrganismState uses scalar=7, which corresponds to a molecule with value 7
             Molecule mol = Molecule.fromInt(7);
@@ -231,8 +232,7 @@ class H2DatabaseOrganismReaderTest {
                 .setDv(dv)
                 .addDataPointers(Vector.newBuilder().addComponents(5).build())
                 .setActiveDpIndex(0)
-                .addDataRegisters(RegisterValue.newBuilder().setScalar(7).build())
-                .addLocationRegisters(Vector.newBuilder().addComponents(2).addComponents(3).build())
+                .addAllRegisters(ProtoTestUtils.buildFlatRegisters(new int[]{7}, new int[][]{{2, 3}}, null, null))
                 .addDataStack(RegisterValue.newBuilder().setScalar(9).build())
                 .addLocationStack(Vector.newBuilder().addComponents(4).build())
                 .addCallStack(ProcFrame.newBuilder()

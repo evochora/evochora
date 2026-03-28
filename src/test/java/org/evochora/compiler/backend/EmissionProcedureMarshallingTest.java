@@ -64,12 +64,12 @@ public class EmissionProcedureMarshallingTest {
         assertThat(instructions).hasSize(5);
         // Assert Logic: POP, POP, NOP, PUSH, RET
         assertThat(instructions.get(0).opcode()).isEqualTo("POP");
-        assertThat(((IrReg) instructions.get(0).operands().get(0)).name()).isEqualTo("%FPR0");
+        assertThat(((IrReg) instructions.get(0).operands().get(0)).name()).isEqualTo("%FDR0");
         assertThat(instructions.get(1).opcode()).isEqualTo("POP");
-        assertThat(((IrReg) instructions.get(1).operands().get(0)).name()).isEqualTo("%FPR1");
+        assertThat(((IrReg) instructions.get(1).operands().get(0)).name()).isEqualTo("%FDR1");
         assertThat(instructions.get(2).opcode()).isEqualTo("NOP");
         assertThat(instructions.get(3).opcode()).isEqualTo("PUSH");
-        assertThat(((IrReg) instructions.get(3).operands().get(0)).name()).isEqualTo("%FPR0");
+        assertThat(((IrReg) instructions.get(3).operands().get(0)).name()).isEqualTo("%FDR0");
         assertThat(instructions.get(4).opcode()).isEqualTo("RET");
 
         // Assert SourceInfo
@@ -78,39 +78,6 @@ public class EmissionProcedureMarshallingTest {
         assertThat(instructions.get(2).source().lineNumber()).isEqualTo(3); // NOP
         assertThat(instructions.get(3).source().lineNumber()).isEqualTo(4); // PUSH
         assertThat(instructions.get(4).source().lineNumber()).isEqualTo(4); // RET
-    }
-
-    @Test
-    @Tag("unit")
-    @DisplayName("Should handle legacy `arity` procedure correctly")
-    void backwardCompatibilityTest() {
-        Map<String, IrValue> enterArgs = new HashMap<>();
-        enterArgs.put("name", new IrValue.Str("old"));
-        enterArgs.put("arity", new IrValue.Int64(1));
-        IrDirective procEnter = new IrDirective("core", "proc_enter", enterArgs, src("test.s", 2));
-
-        List<IrItem> body = List.of(
-            new IrInstruction("NOP", List.of(), src("test.s", 3)),
-            new IrInstruction("RET", List.of(), src("test.s", 4))
-        );
-
-        IrDirective procExit = new IrDirective("core", "proc_exit", new HashMap<>(), src("test.s", 5));
-
-        List<IrItem> items = new java.util.ArrayList<>();
-        items.add(procEnter);
-        items.addAll(body);
-        items.add(procExit);
-
-        ProcedureMarshallingRule rule = new ProcedureMarshallingRule();
-        List<IrItem> rewritten = rule.apply(items);
-
-        List<IrInstruction> instructions = rewritten.stream().filter(i -> i instanceof IrInstruction).map(i -> (IrInstruction) i).collect(Collectors.toList());
-
-        assertThat(instructions).hasSize(4);
-        assertThat(instructions.get(0).opcode()).isEqualTo("POP");
-        assertThat(instructions.get(1).opcode()).isEqualTo("NOP");
-        assertThat(instructions.get(2).opcode()).isEqualTo("PUSH");
-        assertThat(instructions.get(3).opcode()).isEqualTo("RET");
     }
 
     @Test
@@ -152,13 +119,13 @@ public class EmissionProcedureMarshallingTest {
             .map(i -> (IrLabelDef) i)
             .collect(Collectors.toList());
 
-        // Expect: POP %FPR0, POP %FPR1, INR %rB, JMPI _safe_ret_X, PUSH %FPR0, RET, _safe_ret_X:
+        // Expect: POP %FDR0, POP %FDR1, INR %rB, JMPI _safe_ret_X, PUSH %FDR0, RET, _safe_ret_X:
         assertThat(instructions).hasSize(6);
         assertThat(labels).hasSize(1);
 
         // Prologue
-        assertThat(instructions.get(0).opcode()).isEqualTo("POP"); // %FPR0 for %rA
-        assertThat(instructions.get(1).opcode()).isEqualTo("POP"); // %FPR1 for %rB
+        assertThat(instructions.get(0).opcode()).isEqualTo("POP"); // %FDR0 for %rA
+        assertThat(instructions.get(1).opcode()).isEqualTo("POP"); // %FDR1 for %rB
 
         // Conditional RET logic
         IrInstruction negated = instructions.get(2);
@@ -172,8 +139,8 @@ public class EmissionProcedureMarshallingTest {
         assertThat(labelName).startsWith("_safe_ret_");
 
         // Epilogue
-        assertThat(instructions.get(4).opcode()).isEqualTo("PUSH"); // PUSH %FPR0 for ref param %rA
-        assertThat(((IrReg) instructions.get(4).operands().get(0)).name()).isEqualTo("%FPR0");
+        assertThat(instructions.get(4).opcode()).isEqualTo("PUSH"); // PUSH %FDR0 for ref param %rA
+        assertThat(((IrReg) instructions.get(4).operands().get(0)).name()).isEqualTo("%FDR0");
         assertThat(instructions.get(5).opcode()).isEqualTo("RET");
 
         // Label

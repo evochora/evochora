@@ -85,7 +85,7 @@ class InstructionInterceptorTest {
         simulation = new Simulation(environment, policyManager, organismConfig, 1);
 
         // Create organism at position [5, 5] with 1000 energy
-        organism = Organism.create(simulation, new int[]{5, 5}, 1000, null);
+        organism = Organism.create(simulation, new int[]{5, 5}, 1000);
         simulation.addOrganism(organism);
 
         // Place NOP instruction at organism's IP
@@ -394,7 +394,7 @@ class InstructionInterceptorTest {
         environment.setMolecule(new Molecule(Config.TYPE_DATA, 100), organism.getId(), new int[]{7, 5});
 
         // Set initial value in DR0
-        organism.setDr(0, new Molecule(Config.TYPE_DATA, 50).toInt());
+        organism.writeOperand(0, new Molecule(Config.TYPE_DATA, 50).toInt());
 
         // Interceptor modifies the immediate operand from 100 to 200
         simulation.addInstructionInterceptor(new TestInterceptor() {
@@ -412,7 +412,7 @@ class InstructionInterceptorTest {
         simulation.tick();
 
         // Verify: DR0 should be 50 + 200 = 250 (not 50 + 100 = 150)
-        int result = Molecule.fromInt((Integer) organism.getDr(0)).toScalarValue();
+        int result = Molecule.fromInt((Integer) organism.readOperand(0)).toScalarValue();
         assertThat(result).isEqualTo(250);
     }
 

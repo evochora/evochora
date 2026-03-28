@@ -65,13 +65,13 @@ public class OwnershipTests {
 
         // SEEK (register-based vector)
         {
-            Organism org = Organism.create(sim, new int[]{10, 10}, 2000, sim.getLogger());
+            Organism org = Organism.create(sim, new int[]{10, 10}, 2000);
             sim.addOrganism(org);
             org.setDp(0, org.getIp());
             int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment);            environment.setMolecule(Molecule.fromInt(payload), target);
             environment.setOwnerId(org.getId(), target[0], target[1]);
 
-            org.setDr(1, vec);
+            org.writeOperand(1, vec);
             placeInstruction(org, "SEEK", 1);
 
             sim.tick();
@@ -81,7 +81,7 @@ public class OwnershipTests {
 
         // SEKI (immediate vector)
         {
-            Organism org = Organism.create(sim, new int[]{20, 20}, 2000, sim.getLogger());
+            Organism org = Organism.create(sim, new int[]{20, 20}, 2000);
             sim.addOrganism(org);
             org.setDp(0, org.getIp());
             int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment);            environment.setMolecule(Molecule.fromInt(payload), target);
@@ -96,7 +96,7 @@ public class OwnershipTests {
 
         // SEKS (stack-based vector)
         {
-            Organism org = Organism.create(sim, new int[]{30, 30}, 2000, sim.getLogger());
+            Organism org = Organism.create(sim, new int[]{30, 30}, 2000);
             sim.addOrganism(org);
             org.setDp(0, org.getIp());
             int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment);            environment.setMolecule(Molecule.fromInt(payload), target);
@@ -124,13 +124,13 @@ public class OwnershipTests {
 
         // SEEK failure on foreign-owned
         {
-            Organism org = Organism.create(sim, new int[]{40, 10}, 2000, sim.getLogger());
+            Organism org = Organism.create(sim, new int[]{40, 10}, 2000);
             sim.addOrganism(org);
             org.setDp(0, org.getIp());
             int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment);            environment.setMolecule(Molecule.fromInt(payload), target);
             environment.setOwnerId(org.getId() + 1, target[0], target[1]);
 
-            org.setDr(1, vec);
+            org.writeOperand(1, vec);
             placeInstruction(org, "SEEK", 1);
 
             sim.tick();
@@ -140,7 +140,7 @@ public class OwnershipTests {
 
         // SEKI failure on foreign-owned
         {
-            Organism org = Organism.create(sim, new int[]{50, 20}, 2000, sim.getLogger());
+            Organism org = Organism.create(sim, new int[]{50, 20}, 2000);
             sim.addOrganism(org);
             org.setDp(0, org.getIp());
             int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment);            environment.setMolecule(Molecule.fromInt(payload), target);
@@ -155,7 +155,7 @@ public class OwnershipTests {
 
         // SEKS failure on foreign-owned
         {
-            Organism org = Organism.create(sim, new int[]{60, 30}, 2000, sim.getLogger());
+            Organism org = Organism.create(sim, new int[]{60, 30}, 2000);
             sim.addOrganism(org);
             org.setDp(0, org.getIp());
             int[] target = org.getTargetCoordinate(org.getDp(0), vec, environment);            environment.setMolecule(Molecule.fromInt(payload), target);

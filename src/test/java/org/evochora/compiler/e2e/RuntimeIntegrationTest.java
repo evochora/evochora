@@ -8,6 +8,7 @@ import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.test.utils.SimulationTestUtils;
 import org.junit.jupiter.api.BeforeAll;
@@ -34,6 +35,11 @@ public class RuntimeIntegrationTest {
 		Instruction.init();
 	}
 
+	@org.junit.jupiter.api.AfterEach
+	void cleanup() {
+		CallBindingRegistry.getInstance().clearAll();
+	}
+
 	/**
 	 * Compiles a procedure with parameters, loads it into a simulation, and runs it.
 	 * This test verifies that the compiled code can be executed by an organism in the runtime environment.
@@ -45,14 +51,15 @@ public class RuntimeIntegrationTest {
     @Tag("integration")
 	void procedureWithParametersAddsValuesAtRuntime() throws Exception {
 		String source = String.join("\n",
-				"EXPORT .PROC ADD2 REF A B",
-				"  ADDR A B",
-				"  RET",
-				".ENDP",
 				"SETI %DR0 DATA:1",
 				"SETI %DR1 DATA:2",
 				"CALL ADD2 REF %DR0 %DR1",
-				"NOP"
+				"WAIT",
+				".ORG 0|5",
+				"EXPORT .PROC ADD2 REF A B",
+				"  ADDR A B",
+				"  RET",
+				".ENDP"
 		);
 
 		Compiler compiler = new Compiler();
@@ -71,17 +78,24 @@ public class RuntimeIntegrationTest {
 			env.setMolecule(Molecule.fromInt(e.getValue()), abs);
 		}
 
-		Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+		Organism org = Organism.create(sim, new int[]{0, 0}, 1000);
 		org.setProgramId(artifact.programId());
 		sim.addOrganism(org);
 
-		// Run a few ticks to execute SETI, SETI, CALL, and within proc ADDR and RET
-		for (int i = 0; i < 10; i++) sim.tick();
+		// Track execution to debug instruction sequence
+		// Full cycle: SETI(1)+SETI(2)+PUSH(3)+PUSH(4)+CALL(5)+POP(6)+POP(7)+ADDR(8)+PUSH(9)+PUSH(10)+RET(11)+POP(12)+POP(13)+WAIT(14)
+		for (int i = 0; i < 14; i++) sim.tick();
 
-		// Basic runtime sanity checks
-		assertThat(org.getDrs().size()).isGreaterThan(1);
-		assertThat(org.getDrs().get(0)).isNotNull();
-		assertThat(org.getDrs().get(1)).isNotNull();
+		assertThat(org.isInstructionFailed()).as("Failure: " + org.getFailureReason()).isFalse();
+
+		// ADDR adds scalar values: DATA:1 + DATA:2 = DATA:3.
+		// REF writes back FDR0 to DR0. DR0 should contain Molecule(TYPE_DATA, 3).
+		int dr0Raw = (int) org.readOperand(0);
+		int dr1Raw = (int) org.readOperand(1);
+		assertThat(Molecule.fromInt(dr0Raw).toScalarValue())
+				.as("DR0 should be 3 after ADD2(1,2) with REF write-back (raw=%d)", dr0Raw).isEqualTo(3);
+		assertThat(Molecule.fromInt(dr1Raw).toScalarValue())
+				.as("DR1 should remain 2 (raw=%d)", dr1Raw).isEqualTo(2);
 	}
 
     /**
@@ -123,7 +137,7 @@ public class RuntimeIntegrationTest {
             env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());
         }
 
-        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000);
         org.setProgramId(artifact.programId());
         sim.addOrganism(org);
 
@@ -133,7 +147,7 @@ public class RuntimeIntegrationTest {
             sim.tick();
         }
 
-        Molecule result = Molecule.fromInt((Integer) org.getDr(0));
+        Molecule result = Molecule.fromInt((Integer) org.readOperand(0));
         assertThat(result.toScalarValue())
                 .as("Der Wert sollte nach dem Prozeduraufruf auf 42 inkrementiert sein, auch ohne Artefakt.")
                 .isEqualTo(42);
@@ -160,9 +174,9 @@ public class RuntimeIntegrationTest {
         ProgramArtifact correctArtifact = compiler.compile(Arrays.asList(sourceCode.split("\\r?\\n")), "correct.s", envProps);
         assertThat(correctArtifact).isNotNull();
 
-        Map<Integer, int[]> corruptedBindings = new HashMap<>();
+        Map<Integer, Map<Integer, Integer>> corruptedBindings = new HashMap<>();
         correctArtifact.callSiteBindings().forEach((addr, bindings) -> {
-            corruptedBindings.put(addr, new int[]{1});
+            corruptedBindings.put(addr, Map.of(RegisterBank.FDR.base, 1));
         });
 
         ProgramArtifact corruptedArtifact = new ProgramArtifact(
@@ -192,7 +206,7 @@ public class RuntimeIntegrationTest {
 
         sim.setProgramArtifacts(Map.of(corruptedArtifact.programId(), corruptedArtifact));
 
-        Organism org = Organism.create(sim, new int[]{0, 0}, 1000, sim.getLogger());
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000);
         org.setProgramId(correctArtifact.programId());
         sim.addOrganism(org);
 
@@ -200,7 +214,8 @@ public class RuntimeIntegrationTest {
         for (var binding : corruptedArtifact.callSiteBindings().entrySet()) {
             int[] coord = corruptedArtifact.linearAddressToCoord().get(binding.getKey());
             if (coord != null) {
-                CallBindingRegistry.getInstance().registerBindingForAbsoluteCoord(coord, binding.getValue());
+                int flatIndex = env.properties.toFlatIndex(coord);
+                CallBindingRegistry.getInstance().registerBinding(flatIndex, binding.getValue());
             }
         }
 
@@ -219,10 +234,333 @@ public class RuntimeIntegrationTest {
         //String trace = tracker.getTraceAsString();
         //System.out.println(trace);
 
-        Molecule result = Molecule.fromInt((Integer) org.getDr(0));
+        Molecule result = Molecule.fromInt((Integer) org.readOperand(0));
         assertThat(result.toScalarValue())
                 .as("Das Ergebnis der Addition muss 30 sein, basierend auf dem Maschinencode, nicht dem falschen Artefakt.\n" /*+ trace*/)
                 .isEqualTo(30);
         assertThat(org.isInstructionFailed()).isFalse();
     }
+
+    /**
+     * Verifies that PLR (Proc-Local Location Registers) are correctly saved on CALL
+     * and restored on RET. PROC_A stores the active DP in %PLR0 via DPLR, then calls
+     * PROC_B which overwrites %PLR0 with a different position. After PROC_B returns,
+     * PROC_A's %PLR0 must be restored to the original value.
+     */
+    @Test
+    @Tag("integration")
+    void plrIsSavedAndRestoredAcrossProcedureCalls() throws Exception {
+        String source = String.join("\n",
+                // Main: call PROC_A
+                "CALL PROC_A",
+                "WAIT",
+                // PROC_A at a different location
+                ".ORG 0|1",
+                "EXPORT .PROC PROC_A",
+                "  DPLR %PLR0",          // Save current DP to PLR0
+                "  CALL PROC_B",         // PROC_B will overwrite PLR0
+                "  SKLR %PLR0",          // After return, PLR0 should be restored — move DP back
+                "  RET",
+                ".ENDP",
+                // PROC_B at another location
+                ".ORG 0|3",
+                "EXPORT .PROC PROC_B",
+                "  .REG %TMP %PLR0",     // Alias for readability
+                "  CRLR %TMP",           // Clear PLR0 to [0,0] — overwrites caller's value
+                "  RET",
+                ".ENDP"
+        );
+
+        Compiler compiler = new Compiler();
+        EnvironmentProperties envProps = new EnvironmentProperties(new int[]{64, 64}, true);
+        ProgramArtifact artifact = compiler.compile(Arrays.asList(source.split("\\r?\\n")), "plr_save_restore.s", envProps);
+        assertThat(artifact).isNotNull();
+
+        Environment env = new Environment(envProps);
+        Simulation sim = SimulationTestUtils.createSimulation(env);
+
+        for (Map.Entry<int[], Integer> e : artifact.machineCodeLayout().entrySet()) {
+            env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());
+        }
+
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000);
+        org.setProgramId(artifact.programId());
+        sim.addOrganism(org);
+
+        // Set DP to a distinctive non-zero position so DPLR %PLR0 captures [3,3]
+        org.setDp(0, new int[]{3, 3});
+
+        // Run enough ticks to execute: CALL PROC_A, DPLR, CALL PROC_B, CRLR, RET, SKLR, RET, WAIT
+        for (int i = 0; i < 20; i++) {
+            sim.tick();
+        }
+
+        assertThat(org.isInstructionFailed()).as("Failure: " + org.getFailureReason()).isFalse();
+
+        // PROC_A executes SKLR %PLR0 after PROC_B returns. If PLR0 was correctly
+        // restored to [3,3] (saved before CALL PROC_B), then the active DP moved to [3,3].
+        // The DP is not affected by the outer RET, so we can check it after all returns.
+        assertThat(org.getActiveDp())
+                .as("Active DP should be [3,3] — SKLR used the restored PLR0, not PROC_B's [0,0]")
+                .isEqualTo(new int[]{3, 3});
+    }
+
+    /**
+     * Verifies that SDR (Static Data Registers) persist across procedure calls
+     * and are isolated between different procedures. COUNTER increments %SDR0
+     * on each call, copies it to %DR0, then returns. Calling it three times
+     * should yield DR0 == 3. A second procedure COUNTER_B copies its own %SDR0
+     * to %DR1 — it should be 0 (independent backing store).
+     */
+    @Test
+    @Tag("integration")
+    void sdrPersistsAcrossCallsAndIsIsolatedBetweenProcedures() throws Exception {
+        String source = String.join("\n",
+                // Main: call COUNTER three times, then COUNTER_B once
+                "CALL COUNTER",
+                "CALL COUNTER",
+                "CALL COUNTER",
+                "CALL COUNTER_B",
+                "WAIT",
+                // COUNTER: increment SDR0, copy to DR0
+                ".ORG 0|1",
+                "EXPORT .PROC COUNTER",
+                "  ADDI %SDR0 DATA:1",
+                "  SETR %DR0 %SDR0",
+                "  RET",
+                ".ENDP",
+                // COUNTER_B: copy SDR0 to DR1 (should be 0 — separate backing store)
+                ".ORG 0|3",
+                "EXPORT .PROC COUNTER_B",
+                "  SETR %DR1 %SDR0",
+                "  RET",
+                ".ENDP"
+        );
+
+        Compiler compiler = new Compiler();
+        EnvironmentProperties envProps = new EnvironmentProperties(new int[]{64, 64}, true);
+        ProgramArtifact artifact = compiler.compile(Arrays.asList(source.split("\\r?\\n")), "sdr_persistent.s", envProps);
+        assertThat(artifact).isNotNull();
+
+        Environment env = new Environment(envProps);
+        Simulation sim = SimulationTestUtils.createSimulation(env);
+
+        for (Map.Entry<int[], Integer> e : artifact.machineCodeLayout().entrySet()) {
+            env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());
+        }
+
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000);
+        org.setProgramId(artifact.programId());
+        sim.addOrganism(org);
+
+        // 16 ticks: 3× CALL COUNTER (4 ticks each) + 1× CALL COUNTER_B (3 ticks) + WAIT (1 tick)
+        for (int i = 0; i < 16; i++) {
+            sim.tick();
+        }
+
+        assertThat(org.isInstructionFailed()).as("Failure: " + org.getFailureReason()).isFalse();
+
+        // COUNTER was called 3x, each time incrementing SDR0 and copying to DR0
+        Molecule dr0 = Molecule.fromInt((Integer) org.readOperand(0));
+        assertThat(dr0.toScalarValue())
+                .as("DR0 should be 3 after three COUNTER calls")
+                .isEqualTo(3);
+
+        // COUNTER_B has its own SDR0 (never incremented), copied to DR1
+        Molecule dr1 = Molecule.fromInt((Integer) org.readOperand(1));
+        assertThat(dr1.toScalarValue())
+                .as("DR1 should be 0 — COUNTER_B has an independent SDR backing store")
+                .isEqualTo(0);
+    }
+
+    /**
+     * Verifies LREF location parameter passing: a procedure receives a location register
+     * by reference, modifies it (clears to [0,0]), and the modified value is written back
+     * to the caller's source register after RET.
+     */
+    @Test
+    @Tag("integration")
+    void lrefLocationParameterPassingAndWriteBack() throws Exception {
+        String source = String.join("\n",
+                // Main: save DP to LR0, call CLEAR_POS LREF %LR0, check LR0 is [0,0]
+                "DPLR %LR0",                    // LR0 = current DP (non-zero position)
+                "CALL CLEAR_POS LREF %LR0",     // Pass LR0 by location reference
+                "WAIT",
+                // CLEAR_POS clears the passed location to [0,0]
+                ".ORG 0|1",
+                "EXPORT .PROC CLEAR_POS LREF lPos",
+                "  CRLR lPos",                  // Clear FLR0 to [0,0]
+                "  RET",
+                ".ENDP"
+        );
+
+        Compiler compiler = new Compiler();
+        EnvironmentProperties envProps = new EnvironmentProperties(new int[]{64, 64}, true);
+        ProgramArtifact artifact = compiler.compile(Arrays.asList(source.split("\\r?\\n")), "lref_test.s", envProps);
+        assertThat(artifact).isNotNull();
+
+        Environment env = new Environment(envProps);
+        Simulation sim = SimulationTestUtils.createSimulation(env);
+
+        for (Map.Entry<int[], Integer> e : artifact.machineCodeLayout().entrySet()) {
+            env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());
+        }
+
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000);
+        org.setProgramId(artifact.programId());
+        sim.addOrganism(org);
+
+        // Set DP to non-zero so DPLR %LR0 captures a distinctive value
+        org.setDp(0, new int[]{5, 7});
+
+        // Run exactly: DPLR(1) + PUSL(2) + CALL(3) + POPL(4) + CRLR(5) + PUSL(6) + RET(7) + POPL(8) + WAIT(9)
+        // Do not run more ticks — the program loops and DPLR would overwrite LR0 again
+        for (int i = 0; i < 9; i++) {
+            sim.tick();
+        }
+
+        assertThat(org.isInstructionFailed()).as("Failure: " + org.getFailureReason()).isFalse();
+
+        // LR0 was [5,7] before CALL (from DPLR). CLEAR_POS sets FLR0 to [0,0].
+        // LREF write-back copies FLR0 back to LR0. So LR0 should be [0,0], not [5,7].
+        int[] lr0Value = (int[]) org.readOperand(RegisterBank.LR.base);
+        assertThat(lr0Value).as("LR0 should be [0,0] after LREF write-back from CLEAR_POS (was [5,7] before CALL)")
+                .isEqualTo(new int[]{0, 0});
+    }
+
+    /**
+     * Tests LVAL with a label argument via procedure call.
+     * PSLI resolves the label via fuzzy matching at CALL time,
+     * the procedure receives the resolved position in FLR0 via POPL.
+     * The procedure copies the FLR value into LR0 for verification after RET.
+     */
+    @Test
+    @Tag("integration")
+    void lvalWithLabelPassesResolvedPositionToProcedure() throws Exception {
+        String source = String.join("\n",
+                ".ORG 0|10",
+                "TARGET:",
+                "NOP",
+                ".ORG 0|0",
+                "CALL SAVE_POS LVAL TARGET",
+                "WAIT",
+                ".ORG 0|3",
+                "EXPORT .PROC SAVE_POS LVAL lDest",
+                "  LRLR %LR0 lDest",        // Copy FLR0 (resolved label position) into LR0
+                "  RET",
+                ".ENDP"
+        );
+
+        Compiler compiler = new Compiler();
+        EnvironmentProperties envProps = new EnvironmentProperties(new int[]{64, 64}, true);
+        ProgramArtifact artifact = compiler.compile(Arrays.asList(source.split("\\r?\\n")), "lval_label_test.s", envProps);
+        assertThat(artifact).isNotNull();
+
+        Environment env = new Environment(envProps);
+        Simulation sim = SimulationTestUtils.createSimulation(env);
+
+        for (Map.Entry<int[], Integer> e : artifact.machineCodeLayout().entrySet()) {
+            env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());
+        }
+
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000);
+        org.setProgramId(artifact.programId());
+        sim.addOrganism(org);
+
+        for (int i = 0; i < 20; i++) {
+            sim.tick();
+        }
+
+        assertThat(org.isInstructionFailed()).as("Failure: " + org.getFailureReason()).isFalse();
+
+        // LR0 should contain TARGET's resolved position [0,10]
+        int[] lr0Value = (int[]) org.readOperand(RegisterBank.LR.base);
+        assertThat(lr0Value).as("LR0 should contain TARGET's position [0,10] passed via LVAL").isEqualTo(new int[]{0, 10});
+    }
+
+    /**
+     * Tests the PSLI instruction directly: resolves a label via fuzzy matching
+     * and pushes the resolved position onto the location stack.
+     */
+    @Test
+    @Tag("integration")
+    void psliPushesResolvedLabelPositionOntoLocationStack() throws Exception {
+        String source = String.join("\n",
+                ".ORG 0|10",
+                "TARGET:",
+                "NOP",
+                ".ORG 0|0",
+                "PSLI TARGET",
+                "POPL %LR0",
+                "WAIT"
+        );
+
+        Compiler compiler = new Compiler();
+        EnvironmentProperties envProps = new EnvironmentProperties(new int[]{64, 64}, true);
+        ProgramArtifact artifact = compiler.compile(Arrays.asList(source.split("\\r?\\n")), "psli_test.s", envProps);
+        assertThat(artifact).isNotNull();
+
+        Environment env = new Environment(envProps);
+        Simulation sim = SimulationTestUtils.createSimulation(env);
+
+        for (Map.Entry<int[], Integer> e : artifact.machineCodeLayout().entrySet()) {
+            env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());
+        }
+
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000);
+        org.setProgramId(artifact.programId());
+        sim.addOrganism(org);
+
+        for (int i = 0; i < 10; i++) {
+            sim.tick();
+        }
+
+        assertThat(org.isInstructionFailed()).as("Failure: " + org.getFailureReason()).isFalse();
+
+        int[] lr0Value = (int[]) org.readOperand(RegisterBank.LR.base);
+        assertThat(lr0Value).as("LR0 should contain TARGET's position [0,10]").isEqualTo(new int[]{0, 10});
+    }
+
+    /**
+     * Tests the LRLI instruction directly: resolves a label via fuzzy matching
+     * and writes the resolved position into a location register.
+     */
+    @Test
+    @Tag("integration")
+    void lrliWritesResolvedLabelPositionToLocationRegister() throws Exception {
+        String source = String.join("\n",
+                ".ORG 0|10",
+                "TARGET:",
+                "NOP",
+                ".ORG 0|0",
+                "LRLI %LR0 TARGET",
+                "WAIT"
+        );
+
+        Compiler compiler = new Compiler();
+        EnvironmentProperties envProps = new EnvironmentProperties(new int[]{64, 64}, true);
+        ProgramArtifact artifact = compiler.compile(Arrays.asList(source.split("\\r?\\n")), "lrli_test.s", envProps);
+        assertThat(artifact).isNotNull();
+
+        Environment env = new Environment(envProps);
+        Simulation sim = SimulationTestUtils.createSimulation(env);
+
+        for (Map.Entry<int[], Integer> e : artifact.machineCodeLayout().entrySet()) {
+            env.setMolecule(Molecule.fromInt(e.getValue()), e.getKey());
+        }
+
+        Organism org = Organism.create(sim, new int[]{0, 0}, 1000);
+        org.setProgramId(artifact.programId());
+        sim.addOrganism(org);
+
+        for (int i = 0; i < 10; i++) {
+            sim.tick();
+        }
+
+        assertThat(org.isInstructionFailed()).as("Failure: " + org.getFailureReason()).isFalse();
+
+        int[] lr0Value = (int[]) org.readOperand(RegisterBank.LR.base);
+        assertThat(lr0Value).as("LR0 should contain TARGET's position [0,10]").isEqualTo(new int[]{0, 10});
+    }
+
 }

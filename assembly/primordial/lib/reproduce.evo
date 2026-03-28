@@ -19,11 +19,11 @@ EXPORT CONTINUE_STATE:
 .ORG 0|0
 EXPORT .PROC CONTINUE REF ER
 
-  .PREG %SHELL   %PR0     # Shell molecule used as terminator symbol
-  .PREG %DIRMASK %PR1     # Reproduction direction as bitmask - static local state
-  .PREG %DIRVEC  %PR2     # Reproduction direction as unit vector
-  .PREG %SIDEVEC %PR3     # Vector to shell side in first/last row, else DATA:0; in local state DATA:1 for right (last row) and DATA:-1 for left (first row)
-  .PREG %TMP     %PR4     # Temporary register for quick comparisons
+  .REG %SHELL   %PDR0     # Shell molecule used as terminator symbol
+  .REG %DIRMASK %PDR1     # Reproduction direction as bitmask - static local state
+  .REG %DIRVEC  %PDR2     # Reproduction direction as unit vector
+  .REG %SIDEVEC %PDR3     # Vector to shell side in first/last row, else DATA:0; in local state DATA:1 for right (last row) and DATA:-1 for left (first row)
+  .REG %TMP     %PDR4     # Temporary register for quick comparisons
 
   # Entry point with redundant jumps for mutation resistance
   NOP^4; JMPI CONTINUE_INIT; NOP^48; JMPI CONTINUE_INIT

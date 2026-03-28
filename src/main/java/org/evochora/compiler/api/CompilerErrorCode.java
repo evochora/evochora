@@ -18,14 +18,6 @@ public enum CompilerErrorCode {
     PROC_FORMAL_MUST_NOT_BE_PERCENT,
     /** A routine parameter name collides with an instruction name. */
     ROUTINE_PARAMETER_COLLIDES_WITH_INSTRUCTION,
-    /** .PREG directive has invalid syntax. */
-    PREG_INVALID_SYNTAX,
-    /** A physical register alias name must start with '%'. */
-    PREG_NAME_MUST_START_WITH_PERCENT,
-    /** A physical register alias index is invalid. */
-    PREG_INVALID_INDEX,
-    /** .PREG directive is invalid outside of a procedure. */
-    INVALID_PREG_OUTSIDE_PROC,
     /** .IMPORT directive has invalid syntax. */
     INVALID_IMPORT_SYNTAX,
     /** .SOURCE directive has invalid syntax. */
@@ -35,8 +27,6 @@ public enum CompilerErrorCode {
     // region Semantic Analysis Errors
     /** An unknown routine (procedure or external function) was called. */
     UNKNOWN_ROUTINE,
-    /** A WITH clause was used on a non-procedure call. */
-    WITH_CLAUSE_REQUIRES_PROC,
     /** A .REQUIRE directive was used for a symbol that was not imported. */
     MISSING_IMPORT_FOR_REQUIRE,
     /** An unknown instruction mnemonic was used. */

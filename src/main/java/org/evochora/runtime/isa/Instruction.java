@@ -134,19 +134,6 @@ public abstract class Instruction {
     }
 
     /**
-     * Base address for procedure registers.
-     */
-    public static final int PR_BASE = 1000;
-    /**
-     * Base address for formal parameter registers.
-     */
-    public static final int FPR_BASE = 2000;
-    /**
-     * Base address for location registers.
-     */
-    public static final int LR_BASE = 3000;
-
-    /**
      * Constructs a new instruction.
      * @param organism The organism executing the instruction.
      * @param fullOpcodeId The full opcode ID of the instruction.
@@ -164,6 +151,18 @@ public abstract class Instruction {
      */
     protected boolean writeOperand(int id, Object value) {
         return organism.writeOperand(id, value);
+    }
+
+    /**
+     * Writes a vector value to a location register.
+     * Only accepts location register banks — data register writes are rejected.
+     *
+     * @param id the full ID of the location register
+     * @param value the vector value to write
+     * @return true if the write was successful, false otherwise
+     */
+    protected boolean writeLocationOperand(int id, int[] value) {
+        return organism.writeLocationOperand(id, value);
     }
 
     /**
@@ -276,20 +275,8 @@ public abstract class Instruction {
                     resolved.add(new Operand(vec, -1));
                 }
                 case LABEL -> {
-                    int[] delta = new int[dims];
-                    delta[0] = extractSignedValue(rawMol);
-                    for (int d = 1; d < dims; d++) {
-                        dimPos += sign;
-                        if (isToroidal) {
-                            if (dimPos < 0) dimPos = dimSize - 1;
-                            else if (dimPos >= dimSize) dimPos = 0;
-                        }
-                        rawMol = (dimPos >= 0 && dimPos < dimSize)
-                                ? environment.getMoleculeInt(baseFlatIp + dimPos * dimStride)
-                                : 0;
-                        delta[d] = extractSignedValue(rawMol);
-                    }
-                    resolved.add(new Operand(delta, -1));
+                    int labelHash = rawMol & Config.VALUE_MASK;
+                    resolved.add(new Operand(labelHash, -1));
                 }
                 default -> {}
             }
@@ -372,6 +359,26 @@ public abstract class Instruction {
             return null;
         }
         return environment.getCoordinateFromIndex(targetFlatIndex);
+    }
+
+    /**
+     * Validates that the target coordinates are accessible to the organism.
+     * The target must be either unowned or owned by the organism itself.
+     *
+     * @param targetCoords The coordinates to check.
+     * @param organism     The organism performing the access.
+     * @param environment  The environment containing ownership data.
+     * @param instructionName The instruction name for the error message.
+     * @return {@code true} if the target is accessible, {@code false} if the instruction failed.
+     */
+    protected boolean validateOwnership(int[] targetCoords, Organism organism,
+                                        Environment environment, String instructionName) {
+        int ownerIdAtTarget = environment.getOwnerId(targetCoords);
+        if (ownerIdAtTarget != 0 && !organism.isCellAccessible(ownerIdAtTarget)) {
+            organism.instructionFailed(instructionName + ": Target cell is owned by another organism.");
+            return false;
+        }
+        return true;
     }
 
     /**
@@ -556,21 +563,14 @@ public abstract class Instruction {
         }
         String u = token.toUpperCase();
         try {
-            if (u.startsWith("%DR")) {
-                int regNum = Integer.parseInt(u.substring(3));
-                return Optional.of(regNum);
-            }
-            if (u.startsWith("%PR")) {
-                int regNum = Integer.parseInt(u.substring(3));
-                return Optional.of(PR_BASE + regNum);
-            }
-            if (u.startsWith("%FPR")) {
-                int regNum = Integer.parseInt(u.substring(4));
-                return Optional.of(FPR_BASE + regNum);
-            }
-            if (u.startsWith("%LR")) {
-                int regNum = Integer.parseInt(u.substring(3));
-                return Optional.of(LR_BASE + regNum);
+            for (RegisterBank bank : RegisterBank.values()) {
+                if (bank.count > 0 && u.startsWith(bank.prefix)) {
+                    int regNum = Integer.parseInt(u.substring(bank.prefixLength));
+                    if (regNum < 0 || regNum >= bank.count) {
+                        return Optional.empty();
+                    }
+                    return Optional.of(bank.base + regNum);
+                }
             }
         } catch (NumberFormatException ignore) {
             // Falls through to empty Optional if, e.g., "%DR" has no number.

@@ -19,10 +19,10 @@ import java.util.List;
 
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.OrganismStateList;
-import org.evochora.datapipeline.api.contracts.RegisterValue;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.utils.compression.NoneCodec;
+import org.evochora.test.utils.ProtoTestUtils;
 import org.evochora.datapipeline.utils.compression.ZstdCodec;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.BeforeEach;
@@ -324,7 +324,7 @@ class SingleBlobOrgStrategyTest {
             .setDv(Vector.newBuilder().addComponents(0).addComponents(1).build())
             .addDataPointers(Vector.newBuilder().addComponents(5).build())
             .setActiveDpIndex(0)
-            .addDataRegisters(RegisterValue.newBuilder().setScalar(7).build())
+            .addAllRegisters(ProtoTestUtils.buildFlatRegisters(new int[]{7}, null, null, null))
             .build();
     }
     

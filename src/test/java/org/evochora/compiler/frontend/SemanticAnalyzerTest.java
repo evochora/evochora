@@ -1,5 +1,6 @@
 package org.evochora.compiler.frontend;
 
+import org.evochora.runtime.Config;
 import org.evochora.compiler.diagnostics.Diagnostic;
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
 import org.evochora.compiler.frontend.lexer.Lexer;
@@ -13,7 +14,6 @@ import org.evochora.compiler.features.dir.DirDirectiveHandler;
 import org.evochora.compiler.features.importdir.ImportDirectiveHandler;
 import org.evochora.compiler.features.org.OrgDirectiveHandler;
 import org.evochora.compiler.features.place.PlaceDirectiveHandler;
-import org.evochora.compiler.features.proc.PregDirectiveHandler;
 import org.evochora.compiler.features.proc.ProcDirectiveHandler;
 import org.evochora.compiler.features.reg.RegDirectiveHandler;
 import org.evochora.compiler.features.require.RequireDirectiveHandler;
@@ -416,8 +416,7 @@ public class SemanticAnalyzerTest {
     @Test
     @Tag("unit")
     void testUnknownRegisterIsReported() {
-        // %DR99 ist kein valider Registername in unserem ISA-Schema (nur %DR0-%DR7)
-        String source = "SETI %DR99 DATA:1";
+        String source = "SETI %DR" + Config.NUM_DATA_REGISTERS + " DATA:1";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
@@ -426,7 +425,7 @@ public class SemanticAnalyzerTest {
         analyzer.analyze(ast);
 
         assertThat(diagnostics.hasErrors()).isTrue();
-        assertThat(diagnostics.getDiagnostics().get(0).message()).contains("Data register '%DR99' is out of bounds");
+        assertThat(diagnostics.getDiagnostics().get(0).message()).contains("%DR" + Config.NUM_DATA_REGISTERS);
     }
 
     /**
@@ -452,14 +451,14 @@ public class SemanticAnalyzerTest {
     }
 
     /**
-     * Verifies that direct access to formal parameter registers (e.g., %FPR0) is forbidden
+     * Verifies that direct access to formal parameter registers (e.g., %FDR0) is forbidden
      * outside of the compiler-generated procedure prologue/epilogue.
      * This is a unit test for ISA rule enforcement.
      */
     @Test
     @Tag("unit")
-    void testDirectAccessToFprIsForbidden() {
-        String source = "ADDI %FPR0 DATA:1";
+    void testDirectAccessToFdrIsForbidden() {
+        String source = "ADDI %FDR0 DATA:1";
         DiagnosticsEngine diagnostics = new DiagnosticsEngine();
         List<AstNode> ast = getAst(source, diagnostics);
 
@@ -469,7 +468,7 @@ public class SemanticAnalyzerTest {
 
         assertThat(diagnostics.hasErrors()).isTrue();
         assertThat(diagnostics.getDiagnostics().get(0).message())
-                .contains("Access to formal parameter registers (%FPRx) is not allowed");
+                .contains("Access to FDR registers is not allowed in user code");
     }
 
     /**
@@ -619,7 +618,6 @@ public class SemanticAnalyzerTest {
         reg.register(".DEFINE", new DefineDirectiveHandler());
         reg.register(".REG", new RegDirectiveHandler());
         reg.register(".PROC", new ProcDirectiveHandler());
-        reg.register(".PREG", new PregDirectiveHandler());
         reg.register(".ORG", new OrgDirectiveHandler());
         reg.register(".DIR", new DirDirectiveHandler());
         reg.register(".PLACE", new PlaceDirectiveHandler());

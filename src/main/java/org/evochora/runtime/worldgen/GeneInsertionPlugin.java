@@ -5,6 +5,7 @@ import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.Instruction.OperandSource;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
@@ -341,27 +342,16 @@ public class GeneInsertionPlugin implements IBirthHandler {
     }
 
     /**
-     * Parses register configuration (DR, PR, FPR banks).
+     * Parses register configuration (DR bank, hardcoded).
      *
      * @param config The REGISTER sub-config.
-     * @return The parsed register config.
+     * @return The parsed register config with {@link RegisterBank#DR} base.
      */
     private RegisterConfig parseRegisterConfig(com.typesafe.config.Config config) {
-        List<String> bankNames = config.getStringList("banks");
         List<Integer> range = config.getIntList("range");
         int rangeMin = range.get(0);
         int rangeMax = range.get(1);
-
-        List<int[]> banks = new ArrayList<>();
-        for (String bank : bankNames) {
-            int base = switch (bank.toUpperCase()) {
-                case "DR" -> 0;
-                case "PR" -> Instruction.PR_BASE;
-                case "FPR" -> Instruction.FPR_BASE;
-                default -> throw new IllegalArgumentException("Unknown register bank: " + bank);
-            };
-            banks.add(new int[]{base, rangeMin, rangeMax});
-        }
+        List<int[]> banks = List.of(new int[]{RegisterBank.DR.base, rangeMin, rangeMax});
         return new RegisterConfig(banks);
     }
 
@@ -369,13 +359,13 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * Parses location register configuration (LR bank).
      *
      * @param config The LOCATION_REGISTER sub-config.
-     * @return The parsed register config with LR_BASE.
+     * @return The parsed register config with {@link RegisterBank#LR} base.
      */
     private RegisterConfig parseLocationRegisterConfig(com.typesafe.config.Config config) {
         List<Integer> range = config.getIntList("range");
         int rangeMin = range.get(0);
         int rangeMax = range.get(1);
-        List<int[]> banks = List.of(new int[]{Instruction.LR_BASE, rangeMin, rangeMax});
+        List<int[]> banks = List.of(new int[]{RegisterBank.LR.base, rangeMin, rangeMax});
         return new RegisterConfig(banks);
     }
 

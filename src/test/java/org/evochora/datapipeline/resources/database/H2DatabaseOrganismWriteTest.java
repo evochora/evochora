@@ -16,6 +16,7 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.utils.compression.CompressionCodecFactory;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
+import org.evochora.test.utils.ProtoTestUtils;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
@@ -131,7 +132,7 @@ class H2DatabaseOrganismWriteTest {
                     
                     OrganismState state = orgList.getOrganisms(0);
                     assertThat(state.getOrganismId()).isEqualTo(1);
-                    assertThat(state.getDataRegistersCount()).isEqualTo(1);
+                    assertThat(state.getRegistersCount()).isEqualTo(org.evochora.runtime.isa.RegisterBank.TOTAL_REGISTER_COUNT);
                     assertThat(state.getCallStackCount()).isEqualTo(1);
                     assertThat(state.getInstructionFailed()).isTrue();
                     assertThat(state.hasFailureReason()).isTrue();
@@ -200,8 +201,7 @@ class H2DatabaseOrganismWriteTest {
                 .setDv(dv)
                 .addDataPointers(Vector.newBuilder().addComponents(5).build())
                 .setActiveDpIndex(0)
-                .addDataRegisters(RegisterValue.newBuilder().setScalar(7).build())
-                .addLocationRegisters(Vector.newBuilder().addComponents(2).addComponents(3).build())
+                .addAllRegisters(ProtoTestUtils.buildFlatRegisters(new int[]{7}, new int[][]{{2, 3}}, null, null))
                 .addDataStack(RegisterValue.newBuilder().setScalar(9).build())
                 .addLocationStack(Vector.newBuilder().addComponents(4).build())
                 .addCallStack(ProcFrame.newBuilder()
