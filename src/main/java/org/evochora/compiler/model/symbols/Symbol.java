@@ -28,8 +28,12 @@ public record Symbol(String name, SourceInfo sourceInfo, Type type, AstNode node
         PARAMETER_DATA,
         /** A location procedure parameter (LREF/LVAL, resolves to FLR). */
         PARAMETER_LOCATION,
-        /** A register alias defined with .REG. */
-        ALIAS
+        /** A module alias defined with .IMPORT AS or .REQUIRE AS. */
+        MODULE_ALIAS,
+        /** A data register alias (.REG %X %DR0, target is a data bank). */
+        REGISTER_ALIAS_DATA,
+        /** A location register alias (.REG %X %LR0, target is a location bank). */
+        REGISTER_ALIAS_LOCATION
     }
 
     /**

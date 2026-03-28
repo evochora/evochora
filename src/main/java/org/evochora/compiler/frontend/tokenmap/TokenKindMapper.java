@@ -23,7 +23,8 @@ public final class TokenKindMapper {
             case CONSTANT -> TokenKind.CONSTANT;
             case PROCEDURE -> TokenKind.PROCEDURE;
             case PARAMETER_DATA, PARAMETER_LOCATION -> TokenKind.PARAMETER;
-            case ALIAS -> TokenKind.ALIAS;
+            case REGISTER_ALIAS_DATA, REGISTER_ALIAS_LOCATION -> TokenKind.ALIAS;
+            case MODULE_ALIAS -> TokenKind.MODULE_ALIAS;
         };
     }
 }

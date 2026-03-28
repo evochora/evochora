@@ -20,6 +20,6 @@ public class RequireSymbolCollector implements ISymbolCollector {
     @Override
     public void collect(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         RequireNode requireNode = (RequireNode) node;
-        symbolTable.define(new Symbol(requireNode.alias(), requireNode.sourceInfo(), Symbol.Type.ALIAS, requireNode));
+        symbolTable.define(new Symbol(requireNode.alias(), requireNode.sourceInfo(), Symbol.Type.MODULE_ALIAS, requireNode));
     }
 }

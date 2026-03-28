@@ -102,7 +102,8 @@ public class AstPostProcessor implements IPostProcessContext {
         Optional<ResolvedSymbol> symbolOpt = symbolTable.resolve(identifierName, idNode.sourceInfo().fileName());
         if (symbolOpt.isPresent()) {
             Symbol symbol = symbolOpt.get().symbol();
-            if (symbol.type() == Symbol.Type.ALIAS && symbol.node() instanceof IRegisterAlias alias) {
+            if ((symbol.type() == Symbol.Type.REGISTER_ALIAS_DATA || symbol.type() == Symbol.Type.REGISTER_ALIAS_LOCATION)
+                    && symbol.node() instanceof IRegisterAlias alias) {
                 createRegisterReplacement(idNode, identifierName.toUpperCase(), alias.register());
                 return;
             }

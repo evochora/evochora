@@ -65,13 +65,13 @@ class RegisterAliasScopeTest {
         symbolTable.define(new Symbol("PROC_A", SRC, Symbol.Type.PROCEDURE, procA));
         SymbolTable.Scope scopeA = symbolTable.enterScope("PROC_A");
         symbolTable.registerNodeScope(procA, scopeA);
-        symbolTable.define(new Symbol("COUNTER", SRC, Symbol.Type.ALIAS, regA));
+        symbolTable.define(new Symbol("COUNTER", SRC, Symbol.Type.REGISTER_ALIAS_DATA, regA));
         symbolTable.leaveScope();
 
         symbolTable.define(new Symbol("PROC_B", SRC, Symbol.Type.PROCEDURE, procB));
         SymbolTable.Scope scopeB = symbolTable.enterScope("PROC_B");
         symbolTable.registerNodeScope(procB, scopeB);
-        symbolTable.define(new Symbol("COUNTER", SRC, Symbol.Type.ALIAS, regB));
+        symbolTable.define(new Symbol("COUNTER", SRC, Symbol.Type.REGISTER_ALIAS_DATA, regB));
         symbolTable.leaveScope();
 
         // Process
@@ -101,7 +101,7 @@ class RegisterAliasScopeTest {
         RegNode moduleReg = new RegNode("X", "%DR0", SRC);
         RegNode procReg = new RegNode("X", "%PDR0", SRC);
 
-        symbolTable.define(new Symbol("X", SRC, Symbol.Type.ALIAS, moduleReg));
+        symbolTable.define(new Symbol("X", SRC, Symbol.Type.REGISTER_ALIAS_DATA, moduleReg));
 
         IdentifierNode useOutside = new IdentifierNode("X", SRC);
         IdentifierNode useInside = new IdentifierNode("X", SRC);
@@ -113,7 +113,7 @@ class RegisterAliasScopeTest {
         symbolTable.define(new Symbol("MY_PROC", SRC, Symbol.Type.PROCEDURE, proc));
         SymbolTable.Scope procScope = symbolTable.enterScope("MY_PROC");
         symbolTable.registerNodeScope(proc, procScope);
-        symbolTable.define(new Symbol("X", SRC, Symbol.Type.ALIAS, procReg));
+        symbolTable.define(new Symbol("X", SRC, Symbol.Type.REGISTER_ALIAS_DATA, procReg));
         symbolTable.leaveScope();
 
         AstPostProcessor processor = createProcessor();
@@ -136,7 +136,7 @@ class RegisterAliasScopeTest {
         // Module-level: .REG %GLOBAL %DR7
         // Proc: no .REG for GLOBAL — should inherit from module scope
         RegNode moduleReg = new RegNode("GLOBAL", "%DR7", SRC);
-        symbolTable.define(new Symbol("GLOBAL", SRC, Symbol.Type.ALIAS, moduleReg));
+        symbolTable.define(new Symbol("GLOBAL", SRC, Symbol.Type.REGISTER_ALIAS_DATA, moduleReg));
 
         IdentifierNode useInProc = new IdentifierNode("GLOBAL", SRC);
         InstructionNode instrInProc = new InstructionNode("SETI", List.of(useInProc), SRC);

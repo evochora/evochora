@@ -1,6 +1,7 @@
 package org.evochora.compiler.directives;
 
 import org.evochora.compiler.diagnostics.DiagnosticsEngine;
+import org.evochora.compiler.model.ScopeTracker;
 import org.evochora.compiler.frontend.lexer.Lexer;
 import org.evochora.compiler.model.token.Token;
 import org.evochora.compiler.frontend.parser.Parser;
@@ -92,7 +93,7 @@ public class DefineDirectiveTest {
         semanticAnalyzer.analyze(ast);
 
         // AST Post-Processing - Resolves constants
-        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable), new org.evochora.compiler.model.ScopeTracker(symbolTable), TestRegistries.postProcessRegistry());
+        AstPostProcessor astPostProcessor = new AstPostProcessor(symbolTable, new ModuleContextTracker(symbolTable), new ScopeTracker(symbolTable), TestRegistries.postProcessRegistry());
         List<AstNode> processedAst = ast.stream()
             .map(node -> astPostProcessor.process(node))
             .toList();

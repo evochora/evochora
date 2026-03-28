@@ -17,6 +17,8 @@ public enum TokenKind {
     REGISTER,
     /** A register alias defined with .REG. */
     ALIAS,
+    /** A module alias defined with .IMPORT AS or .REQUIRE AS. */
+    MODULE_ALIAS,
     /** An instruction opcode (e.g., CALL, RET, NOP, MOV). */
     INSTRUCTION
 }

@@ -41,7 +41,7 @@ class RegAnalysisHandlerTest {
 
         assertFalse(diagnostics.hasErrors());
         assertTrue(symbolTable.resolve("COUNTER", "test.s").isPresent());
-        assertEquals(Symbol.Type.ALIAS, symbolTable.resolve("COUNTER", "test.s").get().symbol().type());
+        assertEquals(Symbol.Type.REGISTER_ALIAS_DATA, symbolTable.resolve("COUNTER", "test.s").get().symbol().type());
     }
 
     @Test
@@ -52,7 +52,7 @@ class RegAnalysisHandlerTest {
 
         assertFalse(diagnostics.hasErrors());
         assertTrue(symbolTable.resolve("POSITION", "test.s").isPresent());
-        assertEquals(Symbol.Type.ALIAS, symbolTable.resolve("POSITION", "test.s").get().symbol().type());
+        assertEquals(Symbol.Type.REGISTER_ALIAS_LOCATION, symbolTable.resolve("POSITION", "test.s").get().symbol().type());
     }
 
     @Test
@@ -93,7 +93,7 @@ class RegAnalysisHandlerTest {
 
         assertFalse(diagnostics.hasErrors());
         assertTrue(symbolTable.resolve("TMP", "test.s").isPresent());
-        assertEquals(Symbol.Type.ALIAS, symbolTable.resolve("TMP", "test.s").get().symbol().type());
+        assertEquals(Symbol.Type.REGISTER_ALIAS_DATA, symbolTable.resolve("TMP", "test.s").get().symbol().type());
     }
 
     @Test

@@ -20,6 +20,6 @@ public class ImportSymbolCollector implements ISymbolCollector {
     @Override
     public void collect(AstNode node, SymbolTable symbolTable, DiagnosticsEngine diagnostics) {
         ImportNode importNode = (ImportNode) node;
-        symbolTable.define(new Symbol(importNode.alias(), importNode.sourceInfo(), Symbol.Type.ALIAS, importNode));
+        symbolTable.define(new Symbol(importNode.alias(), importNode.sourceInfo(), Symbol.Type.MODULE_ALIAS, importNode));
     }
 }

@@ -69,7 +69,10 @@ public class CallAnalysisHandler implements IAnalysisHandler {
         // Validate REF argument types
         for (AstNode refArg : callNode.refArguments()) {
             if (refArg instanceof RegisterNode) continue;
-            if (refArg instanceof IdentifierNode) continue;
+            if (refArg instanceof IdentifierNode idNode) {
+                validateDataIdentifier(idNode, "REF", symbolTable, diagnostics, callNode);
+                continue;
+            }
             diagnostics.reportError("REF arguments must be registers.",
                     callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
         }
@@ -79,7 +82,10 @@ public class CallAnalysisHandler implements IAnalysisHandler {
             if (valArg instanceof RegisterNode) continue;
             if (valArg instanceof NumberLiteralNode) continue;
             if (valArg instanceof TypedLiteralNode) continue;
-            if (valArg instanceof IdentifierNode) continue;
+            if (valArg instanceof IdentifierNode idNode) {
+                validateDataIdentifierOrLabel(idNode, "VAL", symbolTable, diagnostics, callNode);
+                continue;
+            }
             diagnostics.reportError("VAL arguments must be registers, literals, or labels.",
                     callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
         }
@@ -106,8 +112,8 @@ public class CallAnalysisHandler implements IAnalysisHandler {
                 }
                 diagnostics.reportError("LREF arguments must be location registers (LR, PLR, SLR), got '" + regNode.getName() + "'.",
                         callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
-            } else if (lrefArg instanceof IdentifierNode) {
-                continue; // Alias — resolved later
+            } else if (lrefArg instanceof IdentifierNode idNode) {
+                validateLocationIdentifier(idNode, "LREF", symbolTable, diagnostics, callNode);
             } else {
                 diagnostics.reportError("LREF arguments must be location registers.",
                         callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
@@ -124,12 +130,94 @@ public class CallAnalysisHandler implements IAnalysisHandler {
                 }
                 diagnostics.reportError("LVAL arguments must be location registers, got '" + regNode.getName() + "'.",
                         callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
-            } else if (lvalArg instanceof IdentifierNode) {
-                continue; // Alias or label — resolved later in IrGenContext.convertOperand()
+            } else if (lvalArg instanceof IdentifierNode idNode) {
+                validateLocationIdentifierOrLabel(idNode, "LVAL", symbolTable, diagnostics, callNode);
             } else {
                 diagnostics.reportError("LVAL arguments must be location registers.",
                         callNode.sourceInfo().fileName(), callNode.sourceInfo().lineNumber());
             }
+        }
+    }
+
+    private void validateDataIdentifier(IdentifierNode idNode, String position,
+                                        SymbolTable st, DiagnosticsEngine diag, CallNode call) {
+        Optional<ResolvedSymbol> opt = st.resolve(idNode.text(), idNode.sourceInfo().fileName());
+        if (opt.isEmpty()) {
+            diag.reportError(position + " argument '" + idNode.text() + "' is not defined.",
+                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+            return;
+        }
+        Symbol.Type type = opt.get().symbol().type();
+        if (type == Symbol.Type.REGISTER_ALIAS_DATA || type == Symbol.Type.PARAMETER_DATA) return;
+        if (type == Symbol.Type.REGISTER_ALIAS_LOCATION) {
+            diag.reportError(position + " argument '" + idNode.text() + "' is a location register alias, expected a data register.",
+                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+        } else if (type == Symbol.Type.PARAMETER_LOCATION) {
+            diag.reportError(position + " argument '" + idNode.text() + "' is a location parameter, expected a data register.",
+                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+        } else if (type == Symbol.Type.MODULE_ALIAS) {
+            diag.reportError("Module alias '" + idNode.text() + "' cannot be used as a CALL argument.",
+                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+        }
+    }
+
+    private void validateDataIdentifierOrLabel(IdentifierNode idNode, String position,
+                                               SymbolTable st, DiagnosticsEngine diag, CallNode call) {
+        Optional<ResolvedSymbol> opt = st.resolve(idNode.text(), idNode.sourceInfo().fileName());
+        if (opt.isEmpty()) return;
+        Symbol.Type type = opt.get().symbol().type();
+        if (type == Symbol.Type.REGISTER_ALIAS_DATA || type == Symbol.Type.PARAMETER_DATA) return;
+        if (type == Symbol.Type.LABEL || type == Symbol.Type.PROCEDURE || type == Symbol.Type.CONSTANT) return;
+        if (type == Symbol.Type.REGISTER_ALIAS_LOCATION) {
+            diag.reportError(position + " argument '" + idNode.text() + "' is a location register alias, expected a data register.",
+                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+        } else if (type == Symbol.Type.PARAMETER_LOCATION) {
+            diag.reportError(position + " argument '" + idNode.text() + "' is a location parameter, expected a data register.",
+                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+        } else if (type == Symbol.Type.MODULE_ALIAS) {
+            diag.reportError("Module alias '" + idNode.text() + "' cannot be used as a CALL argument.",
+                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+        }
+    }
+
+    private void validateLocationIdentifier(IdentifierNode idNode, String position,
+                                            SymbolTable st, DiagnosticsEngine diag, CallNode call) {
+        Optional<ResolvedSymbol> opt = st.resolve(idNode.text(), idNode.sourceInfo().fileName());
+        if (opt.isEmpty()) {
+            diag.reportError(position + " argument '" + idNode.text() + "' is not defined.",
+                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+            return;
+        }
+        Symbol.Type type = opt.get().symbol().type();
+        if (type == Symbol.Type.REGISTER_ALIAS_LOCATION || type == Symbol.Type.PARAMETER_LOCATION) return;
+        if (type == Symbol.Type.REGISTER_ALIAS_DATA) {
+            diag.reportError(position + " argument '" + idNode.text() + "' is a data register alias, expected a location register.",
+                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+        } else if (type == Symbol.Type.PARAMETER_DATA) {
+            diag.reportError(position + " argument '" + idNode.text() + "' is a data parameter, expected a location register.",
+                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+        } else if (type == Symbol.Type.MODULE_ALIAS) {
+            diag.reportError("Module alias '" + idNode.text() + "' cannot be used as a CALL argument.",
+                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+        }
+    }
+
+    private void validateLocationIdentifierOrLabel(IdentifierNode idNode, String position,
+                                                   SymbolTable st, DiagnosticsEngine diag, CallNode call) {
+        Optional<ResolvedSymbol> opt = st.resolve(idNode.text(), idNode.sourceInfo().fileName());
+        if (opt.isEmpty()) return;
+        Symbol.Type type = opt.get().symbol().type();
+        if (type == Symbol.Type.REGISTER_ALIAS_LOCATION || type == Symbol.Type.PARAMETER_LOCATION) return;
+        if (type == Symbol.Type.LABEL || type == Symbol.Type.PROCEDURE || type == Symbol.Type.CONSTANT) return;
+        if (type == Symbol.Type.REGISTER_ALIAS_DATA) {
+            diag.reportError(position + " argument '" + idNode.text() + "' is a data register alias, expected a location register.",
+                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+        } else if (type == Symbol.Type.PARAMETER_DATA) {
+            diag.reportError(position + " argument '" + idNode.text() + "' is a data parameter, expected a location register.",
+                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+        } else if (type == Symbol.Type.MODULE_ALIAS) {
+            diag.reportError("Module alias '" + idNode.text() + "' cannot be used as a CALL argument.",
+                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
         }
     }
 }
