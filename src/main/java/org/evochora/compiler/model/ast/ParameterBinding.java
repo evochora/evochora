@@ -1,6 +1,7 @@
 package org.evochora.compiler.model.ast;
 
 import java.util.List;
+import java.util.Objects;
 
 /**
  * Synthetic AST node carrying a parameter's compile-time register binding.
@@ -10,6 +11,10 @@ import java.util.List;
  * @param targetRegister The target formal register (e.g., "%FDR0", "%FLR1").
  */
 public record ParameterBinding(String targetRegister) implements AstNode, IParameterBinding {
+
+    public ParameterBinding {
+        Objects.requireNonNull(targetRegister, "targetRegister must not be null");
+    }
 
     @Override
     public List<AstNode> getChildren() {

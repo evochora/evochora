@@ -181,6 +181,10 @@ public class CallAnalysisHandler implements IAnalysisHandler {
         } else if (type == Symbol.Type.MODULE_ALIAS) {
             diag.reportError("Module alias '" + idNode.text() + "' cannot be used as a CALL argument.",
                     call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+        } else {
+            diag.reportError(position + " argument '" + idNode.text()
+                    + "' must resolve to a data register, label, or constant.",
+                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
         }
     }
 
@@ -225,6 +229,10 @@ public class CallAnalysisHandler implements IAnalysisHandler {
                     call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
         } else if (type == Symbol.Type.MODULE_ALIAS) {
             diag.reportError("Module alias '" + idNode.text() + "' cannot be used as a CALL argument.",
+                    call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
+        } else {
+            diag.reportError(position + " argument '" + idNode.text()
+                    + "' must resolve to a location register, label, or constant.",
                     call.sourceInfo().fileName(), call.sourceInfo().lineNumber());
         }
     }
