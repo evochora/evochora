@@ -1,3 +1,7 @@
 
 *.jar -text
 gradle/wrapper/gradle-wrapper.jar -text
+
+# Notebooks are committed without execution state (outputs, execution counts).
+# Requires a one-time local setup, see notebooks/README.md.
+*.ipynb filter=nbstrip
