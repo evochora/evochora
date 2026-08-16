@@ -305,3 +305,63 @@ protobuf {
 jmh {
     jvmArgs.set(listOf("-Xmx8g"))
 }
+
+// Notebooks are committed without execution state (outputs, execution counts). This is done by a
+// git clean filter, which Git deliberately does not let a repository define for itself — a
+// repository could otherwise run arbitrary commands on every clone. Registering it is therefore a
+// per-clone step, and this task performs it during the first build so nobody has to remember it.
+// CI enforces the result independently, see .github/workflows/build.yml.
+val registerNotebookFilter = tasks.register("registerNotebookFilter") {
+    group = "build setup"
+    description = "Registers the git clean filter that strips notebook execution state"
+
+    val gitDir = rootProject.file(".git")
+    val repoRoot = rootProject.projectDir
+    val runningInCi = providers.environmentVariable("CI").isPresent
+    val configKey = "filter.nbstrip.clean"
+
+    // Absent in source archives and container builds; irrelevant on CI runners, which never commit.
+    onlyIf { gitDir.exists() && !runningInCi }
+
+    doLast {
+        fun run(vararg command: String): Pair<Int, String> {
+            val process = ProcessBuilder(*command)
+                .directory(repoRoot)
+                .redirectErrorStream(true)
+                .start()
+            val output = process.inputStream.bufferedReader().readText().trim()
+            return process.waitFor() to output
+        }
+
+        val (existingStatus, existingValue) = run("git", "config", "--get", configKey)
+        if (existingStatus == 0 && existingValue.isNotEmpty()) {
+            logger.info("Notebook filter already registered as: $existingValue")
+            return@doLast
+        }
+
+        val interpreter = if (System.getProperty("os.name").startsWith("Windows")) "python" else "python3"
+        val (interpreterStatus, _) = try {
+            run(interpreter, "--version")
+        } catch (e: Exception) {
+            -1 to ""
+        }
+        if (interpreterStatus != 0) {
+            // A filter whose command cannot run makes every `git add` of a notebook fail, which is
+            // worse than having no filter at all.
+            logger.warn("Notebook filter not registered: '$interpreter' is not available. " +
+                    "Notebooks would be committed with their outputs — see notebooks/README.md.")
+            return@doLast
+        }
+
+        val (writeStatus, writeOutput) = run("git", "config", configKey, "$interpreter tools/nbstrip.py")
+        if (writeStatus == 0) {
+            logger.lifecycle("Registered git filter '$configKey' — notebooks are committed without outputs.")
+        } else {
+            logger.warn("Could not register the notebook filter: $writeOutput")
+        }
+    }
+}
+
+tasks.named("build") {
+    dependsOn(registerNotebookFilter)
+}

@@ -13,6 +13,21 @@ on:
     types: [ published ]
 
 jobs:
+  notebooks:
+    name: Verify Notebooks
+    runs-on: ubuntu-latest
+    # Notebooks are committed without outputs, enforced by a git clean filter that each clone
+    # has to register once. Git silently ignores an unregistered filter, so this job is what
+    # actually keeps generated data out of the repository.
+    if: github.event_name != 'release'
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Verify notebooks contain no execution state
+        run: python3 tools/nbstrip.py --check notebooks
+
   test:
     name: Build & Test
     runs-on: ${{ matrix.os }}
