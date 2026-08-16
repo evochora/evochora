@@ -96,7 +96,21 @@ random provider makes reservoir sampling deterministic. Assert that the mutated 
 
 ## Decisions required before implementation
 
-1. **Clamp or wrap** at `[-524288, 524287]`. Clamping keeps two absorbing walls, but far away from the
-   sign boundary where they no longer distort direction vectors.
+1. **Clamp or wrap** at `[-524288, 524287]`.
+
+   Arguments for clamping: wrapping maps a value near `+524287` to a value near `-524288` in a single
+   mutation step — a jump across the entire value range. That reintroduces exactly the kind of
+   discontinuity this fix removes, only relocated to the range boundary. Clamping keeps two absorbing
+   walls, but after the fix they sit at `±2^19`, orders of magnitude outside every value the primordial
+   uses; an absorbing wall only distorts values that actually reach it.
+
+   Arguments for wrapping: no absorbing states at all — every value keeps a full-sized mutation
+   neighbourhood, and the value space becomes homogeneous. This matters only if organisms are expected
+   to evolve values near the range boundary.
+
 2. **Reproducibility.** The fix changes mutation behaviour, so existing runs no longer reproduce under the
    same seed.
+
+   Context for the decision: any faithful fix necessarily changes mutation outcomes — preserving
+   seed-compatibility would mean preserving the defect. Old runs remain reproducible with old builds.
+   The cost is therefore a documentation task (note the behaviour change), not a design constraint.
