@@ -1,8 +1,28 @@
 # Local State Proposal
 
+**Status: IDEA — not decided.**
+
 This document specifies the `.STATE`, `.LOAD`, and `.STORE` directives for managing persistent module-level data. These directives replace the manual pattern of `.ORG` + `.PLACE` + exported labels + `STATIC_LOAD`/`STATIC_STORE` macros.
 
-This proposal builds on the [Module System](MODULE_SYSTEM.md) and is designed to work within its namespace and visibility rules.
+This proposal builds on the Module System (`docs/outdated/proposals/accomplished/MODULE_SYSTEM.md`) and is designed to work within its namespace and visibility rules.
+
+## Relation to persistent registers (SDR/SLR)
+
+The SDR/SLR register banks also provide state that survives across procedure calls, but they solve a
+different problem. The two mechanisms are orthogonal:
+
+| | Grid state (`.STATE`) | SDR/SLR |
+|---|---|---|
+| Storage | molecules on the grid — part of the genome | organism-internal registers |
+| On reproduction | copied to the child with the genome | child starts at defaults |
+| Mutable by mutation operators | yes (DATA molecules) | no |
+| Evolvable | yes | no |
+| Capacity | arbitrary field count | 8 SDR + 4 SLR per procedure |
+| Lifetime | across generations | lifetime of one organism |
+| Visible to other organisms | yes — readable and writable in space | no |
+
+State whose values are meant to be tuned by evolution must live on the grid. SDR/SLR are runtime
+scratch state for a single organism's lifetime.
 
 ## Motivation
 
@@ -17,9 +37,9 @@ HARVEST_STATE: EXPORT
 .PLACE DATA:89 3|2
 
 .PROC HARVEST EXPORT
-  STATIC3_LOAD HARVEST_STATE %PR0 %PR1 %PR2
+  STATIC3_LOAD HARVEST_STATE %PDR0 %PDR1 %PDR2
   # ... logic ...
-  STATIC3_STORE HARVEST_STATE %PR0 %PR1 %PR2
+  STATIC3_STORE HARVEST_STATE %PDR0 %PDR1 %PDR2
   RET
 .ENDP
 ```
@@ -61,7 +81,7 @@ State blocks are module-level declarations (not inside procedures). They follow 
 Loads all fields of a state block into the specified registers. The compiler generates the necessary DP manipulation: save DP, jump to the state label, read each field sequentially into the registers, restore DP.
 
 ```assembly
-.LOAD HARVEST_STATE %PR0 %PR1 %PR2
+.LOAD HARVEST_STATE %PDR0 %PDR1 %PDR2
 ```
 
 The compiler validates that the number of registers matches the number of fields in the state block. A mismatch is a compiler error.
@@ -71,14 +91,14 @@ The compiler validates that the number of registers matches the number of fields
 Stores the specified register values back into the state block fields. Same DP manipulation as `.LOAD`, but writing instead of reading.
 
 ```assembly
-.STORE HARVEST_STATE %PR0 %PR1 %PR2
+.STORE HARVEST_STATE %PDR0 %PDR1 %PDR2
 ```
 
 Same validation: register count must match field count.
 
 ## Generated Code
 
-For a state block with 3 fields, `.LOAD HARVEST_STATE %PR0 %PR1 %PR2` generates approximately:
+For a state block with 3 fields, `.LOAD HARVEST_STATE %PDR0 %PDR1 %PDR2` generates approximately:
 
 ```assembly
 # Save DP
@@ -87,11 +107,11 @@ DPLS
 SYNC
 # ... DP navigation to HARVEST_STATE label ...
 # Read fields sequentially
-SCNI %PR0 1|0    # Read field 0
+SCNI %PDR0 1|0    # Read field 0
 SEKI 1|0          # Advance
-SCNI %PR1 1|0    # Read field 1
+SCNI %PDR1 1|0    # Read field 1
 SEKI 1|0          # Advance
-SCNI %PR2 1|0    # Read field 2
+SCNI %PDR2 1|0    # Read field 2
 # Restore DP
 SKLS
 ```
@@ -121,11 +141,11 @@ The exact generated code depends on the grid layout and the state block's positi
 .ENDP
 
 .PROC HARVEST EXPORT
-  .LOAD HARVEST_STATE %PR0 %PR1 %PR2
+  .LOAD HARVEST_STATE %PDR0 %PDR1 %PDR2
 
-  # ... harvesting logic using %PR0, %PR1, %PR2 ...
+  # ... harvesting logic using %PDR0, %PDR1, %PDR2 ...
 
-  .STORE HARVEST_STATE %PR0 %PR1 %PR2
+  .STORE HARVEST_STATE %PDR0 %PDR1 %PDR2
   RET
 .ENDP
 ```
