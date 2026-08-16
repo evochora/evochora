@@ -302,6 +302,19 @@ protobuf {
     }
 }
 
+// The protobuf plugin adds a generated-sources directory to every source set, but proto files
+// exist only in src/main/proto. For the other source sets nothing is ever generated, so their
+// directories stay absent and IDEs report them as missing source folders. Removing them keeps the
+// build model in line with where proto files actually live.
+afterEvaluate {
+    val generatedProtoRoot = layout.buildDirectory.dir("generated/sources/proto").get().asFile
+    sourceSets.configureEach {
+        if (name != SourceSet.MAIN_SOURCE_SET_NAME) {
+            java.setSrcDirs(java.srcDirs.filterNot { it.startsWith(generatedProtoRoot) })
+        }
+    }
+}
+
 jmh {
     jvmArgs.set(listOf("-Xmx8g"))
 }
