@@ -1204,12 +1204,21 @@ public class Organism {
     /**
      * Writes a value to a data register using its full numeric ID.
      * Location register writes are rejected — use {@link #writeLocationOperand(int, int[])} instead.
+     * <p>
+     * A {@code null} value cannot originate from executing code — every caller supplies an
+     * {@code Integer} or an {@code int[]} — so it indicates a defect in the calling instruction.
+     * It is rejected here rather than stored, because a null register surfaces far from its origin:
+     * as a failure during state serialization, or as an undefined value on a later read.
      *
      * @param id the full ID of the register
      * @param value the value to write
      * @return {@code true} if the write was successful
      */
     public boolean writeOperand(int id, Object value) {
+        if (value == null) {
+            this.instructionFailed("Null value for register write");
+            return false;
+        }
         if (id < 0 || id >= RegisterBank.TABLE_SIZE) {
             this.instructionFailed("Invalid register ID: " + id);
             return false;
@@ -1232,12 +1241,19 @@ public class Organism {
     /**
      * Writes a vector value to a location register using its full numeric ID.
      * Only accepts location register banks — data register writes are rejected.
+     * <p>
+     * A {@code null} value indicates a defect in the calling instruction and is rejected for the
+     * same reason as in {@link #writeOperand(int, Object)}.
      *
      * @param id the full ID of the location register
      * @param value the vector value to write
      * @return {@code true} if the write was successful
      */
     public boolean writeLocationOperand(int id, int[] value) {
+        if (value == null) {
+            this.instructionFailed("Null value for location register write");
+            return false;
+        }
         if (id < 0 || id >= RegisterBank.TABLE_SIZE) {
             this.instructionFailed("Invalid register ID: " + id);
             return false;

@@ -57,6 +57,7 @@ import org.evochora.runtime.spi.IDeathHandler;
 import org.evochora.runtime.spi.IInstructionInterceptor;
 import org.evochora.runtime.spi.ISimulationPlugin;
 import org.evochora.runtime.spi.ITickPlugin;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.GenomeHasher;
@@ -571,7 +572,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                             log.debug("Failed to send tick data for tick {} during shutdown", tick);
                             break;
                         }
-                        log.warn("Failed to capture or send tick data for tick {}", tick);
+                        log.warn("Failed to capture or send tick data for tick {}", tick, e);
                         recordError("SEND_ERROR", "Failed to send tick data", String.format("Tick: %d", tick));
                     }
                 }
@@ -764,7 +765,11 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
         Object[] registers = o.getRegisters();
         for (int slot = 0; slot < registers.length; slot++) {
-            organismStateBuilder.addRegisters(convertRegisterValueReuse(registers[slot], registerValueBuilder, vectorBuilder));
+            Object rv = registers[slot];
+            if (rv == null) {
+                rv = defaultForRegisterSlot(slot, o);
+            }
+            organismStateBuilder.addRegisters(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
         }
         for (Object rv : o.getDataStack()) {
             organismStateBuilder.addDataStack(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
@@ -1029,7 +1034,41 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         return builder.build();
     }
 
-    private static org.evochora.datapipeline.api.contracts.RegisterValue convertRegisterValueReuse(
+    /**
+     * Returns the type-correct default for a register slot whose value is missing.
+     * <p>
+     * A register slot is never {@code null} in a well-formed organism — every bank is filled with
+     * defaults on construction and on restore. Encountering one means the organism state is corrupt,
+     * which is reported here but does not abort the run: serialization is an observer of the
+     * simulation, and aborting a long-running simulation over a display value would be worse than
+     * emitting a substitute.
+     * <p>
+     * The organism itself is deliberately left untouched. Writing the default back would set the
+     * bank's dirty flag and thereby change CALL/RET snapshot behavior, and because state is only
+     * serialized on sampled ticks, the simulation would then depend on how often it is observed.
+     * The consequence of not repairing is that the warning repeats for every sampled tick as long as
+     * the corrupt slot exists.
+     *
+     * @param slot flat register array index whose value was missing
+     * @param o the organism being serialized
+     * @return {@code 0} for data banks, a zero vector for location banks
+     */
+    private Object defaultForRegisterSlot(int slot, Organism o) {
+        RegisterBank bank = RegisterBank.SLOT_TO_BANK[slot];
+        log.warn("Null register at slot {} ({}) for organism {} — substituting default for serialization",
+                slot, bank != null ? bank.name() : "UNKNOWN", o.getId());
+        return bank != null && bank.isLocation ? new int[o.getIp().length] : 0;
+    }
+
+    /**
+     * Converts a register value into its Protobuf representation, reusing the supplied builders.
+     * <p>
+     * Values are either {@code Integer} or {@code int[]}. Anything else indicates corrupt organism
+     * state; a substitute scalar is emitted rather than aborting the run, for the same reason as in
+     * {@link #defaultForRegisterSlot(int, Organism)}. Affected ticks are identifiable in the log, not
+     * in the data itself — analyses that must exclude corrupt ticks need the log to do so.
+     */
+    private org.evochora.datapipeline.api.contracts.RegisterValue convertRegisterValueReuse(
             Object rv, org.evochora.datapipeline.api.contracts.RegisterValue.Builder registerBuilder, Vector.Builder vectorBuilder) {
         registerBuilder.clear();
         if (rv instanceof Integer) {
@@ -1037,9 +1076,9 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         } else if (rv instanceof int[]) {
             registerBuilder.setVector(convertVectorReuse((int[]) rv, vectorBuilder));
         } else {
-            throw new IllegalStateException(
-                "RegisterValue must be Integer or int[], but got: " +
-                (rv == null ? "null" : rv.getClass().getName()));
+            log.warn("Unexpected register value type during serialization: {} — substituting scalar 0",
+                    rv == null ? "null" : rv.getClass().getName());
+            registerBuilder.setScalar(0);
         }
         return registerBuilder.build();
     }

@@ -1,6 +1,7 @@
 package org.evochora.datapipeline.resume;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
@@ -282,6 +283,112 @@ class SimulationRestorerTest {
         assertThat(org.getFailureCallStack()).hasSize(1);
         assertThat(org.getFailureCallStack().peek().procName()).isEqualTo("FAILING_PROC");
         assertThat(org.getFailureCallStack().peek().labelHash()).isEqualTo(12345);
+    }
+
+    // ==================== Call Stack Register Snapshots ====================
+
+    /**
+     * A call frame whose caller had not written any stack-saved register carries no snapshot.
+     * At runtime that absence is expressed as {@code null}, and RET distinguishes it from a real
+     * snapshot: {@code null} resets the stack-saved banks, a snapshot restores them.
+     * <p>
+     * Protobuf represents both an absent and an empty snapshot as an empty repeated field, so the
+     * distinction has to be re-derived on restore. Restoring an empty array instead of
+     * {@code null} would make RET attempt a restore from a zero-length snapshot, which the runtime
+     * rejects — see {@link #restoreStackSavedRegisters_EmptySnapshot_Rejected()}.
+     */
+    @Test
+    void restore_CallFrameWithoutRegisterSnapshot_KeepsSnapshotAbsent() {
+        Organism organism = restoreOrganismWithCallFrame(
+                org.evochora.datapipeline.api.contracts.ProcFrame.newBuilder()
+                    .setProcName("NO_SNAPSHOT_PROC")
+                    .setLabelHash(4711)
+                    .setAbsoluteReturnIp(createVector(5, 0))
+                    .setAbsoluteCallIp(createVector(3, 0))
+                    .build());
+
+        assertThat(organism.getCallStack()).hasSize(1);
+        assertThat(organism.getCallStack().peek().savedRegisters()).isNull();
+    }
+
+    @Test
+    void restore_CallFrameWithRegisterSnapshot_RestoresValues() {
+        org.evochora.datapipeline.api.contracts.ProcFrame.Builder frame =
+                org.evochora.datapipeline.api.contracts.ProcFrame.newBuilder()
+                    .setProcName("SNAPSHOT_PROC")
+                    .setLabelHash(4712)
+                    .setAbsoluteReturnIp(createVector(5, 0))
+                    .setAbsoluteCallIp(createVector(3, 0));
+
+        // One entry per stack-saved register slot, in RegisterBank declaration order. The first
+        // PDR slot carries a recognizable value, the remaining slots stay at their defaults.
+        for (RegisterBank bank : RegisterBank.allSavedOnCall()) {
+            for (int i = 0; i < bank.count; i++) {
+                int value = bank == RegisterBank.PDR && i == 0 ? 4242 : 0;
+                frame.addSavedRegisters(bank.isLocation
+                        ? org.evochora.datapipeline.api.contracts.RegisterValue.newBuilder()
+                            .setVector(createVector(0, 0)).build()
+                        : org.evochora.datapipeline.api.contracts.RegisterValue.newBuilder()
+                            .setScalar(value).build());
+            }
+        }
+
+        Organism organism = restoreOrganismWithCallFrame(frame.build());
+
+        Object[] savedRegisters = organism.getCallStack().peek().savedRegisters();
+        assertThat(savedRegisters).isNotNull();
+        assertThat(savedRegisters).hasSize(RegisterBank.STACK_SAVED_SNAPSHOT_SIZE);
+        assertThat(savedRegisters[0]).isEqualTo(4242);
+    }
+
+    /**
+     * Documents why an absent snapshot must not become an empty array: the runtime accepts only a
+     * snapshot of the exact stack-saved size.
+     */
+    @Test
+    void restoreStackSavedRegisters_EmptySnapshot_Rejected() {
+        Organism organism = restoreOrganismWithCallFrame(
+                org.evochora.datapipeline.api.contracts.ProcFrame.newBuilder()
+                    .setProcName("ANY_PROC")
+                    .setLabelHash(4713)
+                    .setAbsoluteReturnIp(createVector(5, 0))
+                    .setAbsoluteCallIp(createVector(3, 0))
+                    .build());
+
+        assertThatThrownBy(() -> organism.restoreStackSavedRegisters(new Object[0]))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining(String.valueOf(RegisterBank.STACK_SAVED_SNAPSHOT_SIZE));
+    }
+
+    /** Restores a single organism whose call stack holds exactly the given frame. */
+    private Organism restoreOrganismWithCallFrame(
+            org.evochora.datapipeline.api.contracts.ProcFrame frame) {
+        OrganismState organismState = OrganismState.newBuilder()
+            .setOrganismId(7)
+            .setBirthTick(0)
+            .setEnergy(500)
+            .setIp(createVector(10, 10))
+            .setDv(createVector(1, 0))
+            .setInitialPosition(createVector(0, 0))
+            .addAllRegisters(ProtoTestUtils.buildFlatRegisters(null, null, null, null))
+            .addCallStack(frame)
+            .setIsDead(false)
+            .build();
+
+        TickData snapshot = TickData.newBuilder()
+            .setSimulationRunId(TEST_RUN_ID)
+            .setTickNumber(100)
+            .setCaptureTimeMs(System.currentTimeMillis())
+            .setTotalOrganismsCreated(10)
+            .setCellColumns(CellDataColumns.newBuilder().build())
+            .addOrganisms(organismState)
+            .build();
+
+        ResumeCheckpoint checkpoint = new ResumeCheckpoint(createMinimalMetadata(), snapshot);
+        Simulation simulation = SimulationRestorer.restore(checkpoint, randomProvider, 1).simulation();
+
+        assertThat(simulation.getOrganisms()).hasSize(1);
+        return simulation.getOrganisms().get(0);
     }
 
     // ==================== Helper Methods ====================

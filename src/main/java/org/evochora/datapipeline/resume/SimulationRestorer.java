@@ -600,11 +600,23 @@ public class SimulationRestorer {
 
     /**
      * Converts a ProcFrame proto to runtime ProcFrame.
+     * <p>
+     * An absent register snapshot must be restored as {@code null}, not as an empty array. At
+     * runtime, {@code null} means "the caller had not written any stack-saved register, so no
+     * snapshot was taken", and RET reacts to it by resetting those registers instead of restoring
+     * them. Protobuf cannot express that distinction — a repeated field is empty in both cases —
+     * so the distinction is re-established here by the element count.
+     * <p>
+     * An empty array instead of {@code null} would make RET attempt a restore from a zero-length
+     * snapshot, which the runtime rejects as a size mismatch.
      */
     private static Organism.ProcFrame convertProcFrame(ProcFrame pf) {
-        Object[] savedRegisters = new Object[pf.getSavedRegistersCount()];
-        for (int i = 0; i < savedRegisters.length; i++) {
-            savedRegisters[i] = convertRegisterValue(pf.getSavedRegisters(i));
+        Object[] savedRegisters = null;
+        if (pf.getSavedRegistersCount() > 0) {
+            savedRegisters = new Object[pf.getSavedRegistersCount()];
+            for (int i = 0; i < savedRegisters.length; i++) {
+                savedRegisters[i] = convertRegisterValue(pf.getSavedRegisters(i));
+            }
         }
 
         Map<Integer, Integer> parameterBindings = new HashMap<>(pf.getParameterBindingsMap());
