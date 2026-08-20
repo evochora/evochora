@@ -6,6 +6,7 @@ import java.util.BitSet;
 import java.util.function.IntConsumer;
 
 import org.evochora.runtime.Config;
+import org.evochora.runtime.TickWorkerPool;
 import org.evochora.runtime.isa.IEnvironmentReader;
 
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
@@ -208,6 +209,7 @@ public class Environment implements IEnvironmentReader {
      * @param coord The coordinate to set the molecule at.
      */
     public void setMolecule(Molecule molecule, int... coord) {
+        assert outsideParallelWave();
         int index = getFlatIndex(coord);
         if (index != -1) {
             int oldMoleculeInt = this.grid[index];
@@ -235,6 +237,7 @@ public class Environment implements IEnvironmentReader {
      * @param coord The coordinate to set the molecule at.
      */
     public void setMolecule(Molecule molecule, int ownerId, int... coord) {
+        assert outsideParallelWave();
         int index = getFlatIndex(coord);
         if (index != -1) {
             int oldMoleculeInt = this.grid[index];
@@ -280,6 +283,7 @@ public class Environment implements IEnvironmentReader {
      * @param coord The coordinate to set the owner ID at.
      */
     public void setOwnerId(int ownerId, int... coord) {
+        assert outsideParallelWave();
         int index = getFlatIndex(coord);
         if (index != -1) {
             // Track change for delta compression (owner change is also a change)
@@ -374,6 +378,25 @@ public class Environment implements IEnvironmentReader {
      * Updates the occupied indices tracking based on the current state of the cell.
      * @param flatIndex The flat index to check and update.
      */
+    /**
+     * Guards every mutation against the parallel wave of a tick. Inside that wave several
+     * organisms execute concurrently against a snapshot of the environment; a write there would
+     * race with other threads and make the run depend on scheduling. Only instructions registered
+     * as parallel-safe run in the wave, so a failing assertion means an instruction is registered
+     * as parallel-safe but modifies the environment. Evaluated only with assertions enabled (test
+     * runs); carries no cost in production.
+     *
+     * @return {@code true} when the calling thread is not inside the parallel wave
+     */
+    private static boolean outsideParallelWave() {
+        if (TickWorkerPool.isInParallelWave()) {
+            throw new AssertionError("Environment modified inside the parallel wave of a tick: "
+                    + "only organism-local instructions may run there; an instruction registered as "
+                    + "parallel-safe must not write to the environment");
+        }
+        return true;
+    }
+
     private void updateOccupiedIndices(int flatIndex) {
         int value = this.grid[flatIndex];
         int owner = this.ownerGrid[flatIndex];
@@ -537,6 +560,7 @@ public class Environment implements IEnvironmentReader {
      * @return The number of molecules transferred.
      */
     public int transferOwnership(int fromOwnerId, int toOwnerId, int markerToMatch) {
+        assert outsideParallelWave();
         IntOpenHashSet fromSet = cellsByOwner.get(fromOwnerId);
         if (fromSet == null || fromSet.isEmpty()) {
             return 0;
@@ -589,6 +613,7 @@ public class Environment implements IEnvironmentReader {
      * @return The number of cells that were cleared.
      */
     public int clearOwnershipFor(int ownerId) {
+        assert outsideParallelWave();
         IntOpenHashSet owned = cellsByOwner.remove(ownerId);
         if (owned == null || owned.isEmpty()) {
             return 0;
@@ -624,6 +649,7 @@ public class Environment implements IEnvironmentReader {
      * @return The number of molecules that were removed.
      */
     public int clearMarkersFor(int ownerId, int markerToMatch) {
+        assert outsideParallelWave();
         IntOpenHashSet owned = cellsByOwner.get(ownerId);
         if (owned == null || owned.isEmpty()) {
             return 0;
