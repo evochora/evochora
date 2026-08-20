@@ -45,6 +45,12 @@ jobs:
             IMPORTANT: ALWAYS provide a comprehensive review and post a PR comment,
             even if no critical issues are found. Never be silent.
 
+            Do the review yourself, in this conversation. Do NOT delegate to subagents
+            (the Agent tool, including the project's own agents under .claude/agents/):
+            this job ends when your turn ends, and a review left with a background agent
+            is never posted. Read the guidelines and the diff directly, then write the
+            comment before you finish.
+
             ## Your Review Process
 
             1. First, read the project guidelines:
