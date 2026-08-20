@@ -117,6 +117,36 @@ public class SimulationTestUtils {
      * @return A Simulation instance configured for testing.
      */
     public static Simulation createSimulation(Environment environment, int maxEnergy, int maxEntropy, int errorPenaltyCost) {
+        return createSimulation(environment, maxEnergy, maxEntropy, errorPenaltyCost, 1);
+    }
+
+    /**
+     * Creates a Simulation with standard test configuration and an explicit thread count.
+     * <p>
+     * Tests that exercise the parallel tick path use this overload; all other defaults
+     * match {@link #createSimulation(Environment)}. Callers must invoke
+     * {@link Simulation#shutdown()} to release the worker pool when {@code parallelism > 1}.
+     *
+     * @param environment The environment for the simulation.
+     * @param parallelism The thread count (1 = sequential, N = N worker threads).
+     * @return A Simulation instance configured for testing.
+     */
+    public static Simulation createSimulation(Environment environment, int parallelism) {
+        return createSimulation(environment, DEFAULT_MAX_ENERGY, DEFAULT_MAX_ENTROPY, DEFAULT_ERROR_PENALTY_COST, parallelism);
+    }
+
+    /**
+     * Creates a Simulation with custom organism configuration and an explicit thread count.
+     *
+     * @param environment The environment for the simulation.
+     * @param maxEnergy Maximum energy for organisms.
+     * @param maxEntropy Maximum entropy for organisms.
+     * @param errorPenaltyCost Energy penalty for instruction failures.
+     * @param parallelism The thread count (1 = sequential, N = N worker threads).
+     * @return A Simulation instance configured for testing.
+     */
+    public static Simulation createSimulation(Environment environment, int maxEnergy, int maxEntropy,
+                                              int errorPenaltyCost, int parallelism) {
         Config organismConfig = ConfigFactory.parseMap(Map.of(
             "max-energy", maxEnergy,
             "max-entropy", maxEntropy,
@@ -126,6 +156,6 @@ public class SimulationTestUtils {
         Config thermoConfig = ConfigFactory.parseString(THERMODYNAMIC_CONFIG);
         ThermodynamicPolicyManager policyManager = new ThermodynamicPolicyManager(thermoConfig);
 
-        return new Simulation(environment, policyManager, organismConfig, 1);
+        return new Simulation(environment, policyManager, organismConfig, parallelism);
     }
 }
