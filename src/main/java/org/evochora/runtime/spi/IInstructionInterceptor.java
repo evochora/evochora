@@ -18,9 +18,15 @@ package org.evochora.runtime.spi;
  * <p>
  * Implementations must provide a constructor with signature:
  * {@code (IRandomProvider rng, com.typesafe.config.Config options)}
- * <p>
- * The IRandomProvider enables deterministic random number generation for
- * reproducible simulations. Use {@code rng.asJavaRandom()} for a Random instance.
+ *
+ * <h2>Randomness</h2>
+ * {@link #intercept} runs inside the parallel wave of a tick, where a value taken from a shared
+ * random source would be handed out in scheduling order and make the run irreproducible.
+ * Randomness inside {@code intercept} therefore comes exclusively from
+ * {@code context.getOrganism().getRandom()}: its values depend only on seed, tick and organism.
+ * The {@code IRandomProvider} passed to the constructor serves the sequential hooks a plugin may
+ * implement in addition (for example {@link IBirthHandler}); a draw from it inside
+ * {@code intercept} fails with an {@link IllegalStateException}.
  *
  * @see InterceptionContext
  * @see ITickPlugin

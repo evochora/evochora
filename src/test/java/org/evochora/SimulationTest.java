@@ -2,6 +2,7 @@ package org.evochora;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
+import org.evochora.runtime.VirtualMachine;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
@@ -49,14 +50,14 @@ public class SimulationTest {
         return org.getTargetCoordinate(org.getDp(0), vec, environment);    }
 
     /**
-     * Tests conflict resolution when two organisms target the same location.
-     * The test verifies that the organism with the lower ID successfully writes its data,
-     * while the other organism's write is ignored.
+     * Tests conflict resolution when two organisms target the same location: exactly one write
+     * takes effect; the other organism fails with the conflict-loss reason, pays the error
+     * penalty and keeps its instruction pointer for a retry.
      * This is a unit test and relies on the in-memory {@link Simulation} and {@link Environment}.
      */
     @Test
     @Tag("unit")
-    void testConflictResolutionSameTargetLowerIdWins() {
+    void testConflictResolutionSameTarget_oneWritesOtherLoses() {
         Organism orgLow = Organism.create(sim, new int[]{0, 0}, 2000);
         orgLow.setDv(new int[]{1, 0});
         orgLow.setDp(0, new int[]{0, 0});        int payloadLow = new Molecule(Config.TYPE_DATA, 11).toInt();
@@ -74,15 +75,22 @@ public class SimulationTest {
         placeInstruction(orgHigh, "POKI", 0, 0, 1);
 
         int[] target = targetFromDp(orgLow, new int[]{0, 1});
+        int penalty = sim.getOrganismConfig().getInt("error-penalty-cost");
 
         sim.tick();
 
-        assertThat(environment.getMolecule(target).toInt()).isEqualTo(payloadLow);
-        assertThat(orgHigh.getEr()).isEqualTo(2000);
+        int written = environment.getMolecule(target).toInt();
+        assertThat(written).isIn(payloadLow, payloadHigh);
+        Organism winner = written == payloadLow ? orgLow : orgHigh;
+        Organism loser = winner == orgLow ? orgHigh : orgLow;
+
+        assertThat(winner.isInstructionFailed()).as("Winner failed: " + winner.getFailureReason()).isFalse();
         // POKI(DATA) costs 6 energy (no base cost, all in one)
-        assertThat(orgLow.getEr()).isLessThanOrEqualTo(2000 - 6);
-        assertThat(orgLow.isInstructionFailed()).as("Winner failed: " + orgLow.getFailureReason()).isFalse();
-        assertThat(orgHigh.isInstructionFailed()).as("Loser failed: " + orgHigh.getFailureReason()).isFalse();
+        assertThat(winner.getEr()).isLessThanOrEqualTo(2000 - 6);
+        assertThat(loser.isInstructionFailed()).isTrue();
+        assertThat(loser.getFailureReason()).isEqualTo(VirtualMachine.LOST_WRITE_CONFLICT);
+        assertThat(loser.getEr()).isEqualTo(2000 - penalty);
+        assertThat(loser.getIp()).isEqualTo(loser.getInitialPosition());
     }
 
     /**

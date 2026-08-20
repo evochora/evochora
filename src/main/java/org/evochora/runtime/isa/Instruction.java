@@ -343,7 +343,7 @@ public abstract class Instruction {
      * @param labelHash The 20-bit hash value of the target label.
      * @param callerCoords The coordinates to use for distance calculation
      *                     (e.g., organism's IP for JMPI, or active DP for SKJI).
-     * @param organism The organism executing the instruction (used for ownership checks).
+     * @param organism The organism executing the instruction (ownership checks and random source).
      * @param environment The environment containing the LabelIndex.
      * @return The absolute coordinates of the best matching label, or null if no match found.
      */
@@ -353,7 +353,8 @@ public abstract class Instruction {
                 labelHash,
                 organism.getId(),
                 callerCoords,
-                environment
+                environment,
+                organism.getRandom()
         );
         if (targetFlatIndex < 0) {
             return null;
@@ -733,9 +734,20 @@ public abstract class Instruction {
     protected boolean executedInTick = false;
 
     /**
-     * Represents the status of an instruction after conflict resolution.
+     * The outcome of conflict resolution for an instruction. Statuses starting with {@code LOST}
+     * mark an instruction that is still handed to the virtual machine, which books it as a failed
+     * instruction without executing it.
      */
-    public enum ConflictResolutionStatus { NOT_APPLICABLE, WON_EXECUTION, LOST_TARGET_OCCUPIED, LOST_TARGET_EMPTY, LOST_LOWER_ID_WON, LOST_OTHER_REASON }
+    public enum ConflictResolutionStatus {
+        NOT_APPLICABLE, WON_EXECUTION, LOST_TARGET_OCCUPIED, LOST_TARGET_EMPTY, LOST_PRIORITY, LOST_OTHER_REASON;
+
+        /**
+         * @return whether this status marks a lost conflict
+         */
+        public boolean isLoss() {
+            return this != NOT_APPLICABLE && this != WON_EXECUTION;
+        }
+    }
     protected ConflictResolutionStatus conflictStatus = ConflictResolutionStatus.NOT_APPLICABLE;
     
     /** Cached operands - resolved once, returned on subsequent calls (idempotent). */
@@ -746,14 +758,15 @@ public abstract class Instruction {
 
 
     /**
-     * Checks if the instruction was executed in the current tick.
-     * @return true if executed, false otherwise.
+     * Checks whether the virtual machine processes this instruction in the current tick. A
+     * conflict loser is processed too: it is booked as a failure instead of being executed.
+     * @return true if processed in this tick, false otherwise.
      */
     public boolean isExecutedInTick() { return executedInTick; }
 
     /**
-     * Sets whether the instruction was executed in the current tick.
-     * @param executedInTick true if executed, false otherwise.
+     * Sets whether the virtual machine processes this instruction in the current tick.
+     * @param executedInTick true if processed, false otherwise.
      */
     public void setExecutedInTick(boolean executedInTick) { this.executedInTick = executedInTick; }
 

@@ -2,6 +2,7 @@ package org.evochora.runtime.label;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.OrganismRandom;
 
 import java.util.Collection;
 
@@ -60,10 +61,13 @@ public class LabelIndex {
      * @param codeOwner The owner ID of the executing code
      * @param callerCoords The coordinates of the calling instruction (for distance calculation)
      * @param environment The environment (for coordinate conversion and toroidal distance)
+     * @param random The random source of the organism executing the lookup (see
+     *               {@link ILabelMatchingStrategy#findTarget})
      * @return The flat index of the best matching label, or -1 if no match found
      */
-    public int findTarget(int searchValue, int codeOwner, int[] callerCoords, Environment environment) {
-        return strategy.findTarget(searchValue, codeOwner, callerCoords, environment);
+    public int findTarget(int searchValue, int codeOwner, int[] callerCoords, Environment environment,
+                          OrganismRandom random) {
+        return strategy.findTarget(searchValue, codeOwner, callerCoords, environment, random);
     }
 
     /**

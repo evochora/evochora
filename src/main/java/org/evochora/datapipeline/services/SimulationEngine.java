@@ -445,7 +445,6 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
         applyParallelismScaling(simulation, runtimeConfig);
         simulation.setRandomProvider(randomProvider);
-        labelMatchingStrategy.setRandomProvider(randomProvider.deriveFor("labelMatching", 0));
         simulation.setProgramArtifacts(compiledPrograms);
 
         // Register tick plugins with simulation

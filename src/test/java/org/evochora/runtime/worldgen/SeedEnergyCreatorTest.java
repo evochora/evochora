@@ -27,6 +27,8 @@ public class SeedEnergyCreatorTest {
         return new IRandomProvider() {
             private final Random random = new Random(seed);
             @Override
+            public long seed() { return seed; }
+            @Override
             public Random asJavaRandom() {
                 return random;
             }
@@ -34,8 +36,6 @@ public class SeedEnergyCreatorTest {
             public double nextDouble() { return random.nextDouble(); }
             @Override
             public int nextInt(int bound) { return random.nextInt(bound); }
-            @Override
-            public IRandomProvider deriveFor(String context, long salt) { return this; }
             @Override
             public byte[] saveState() { return new byte[0]; }
             @Override

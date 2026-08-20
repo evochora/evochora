@@ -49,7 +49,7 @@ class SimulationRestorerTest {
 
     @BeforeEach
     void setUp() {
-        // Use real random provider instead of mock since Organism needs deriveFor()
+        // A real provider: the restorer reads its seed and loads the checkpointed state into it
         randomProvider = new SeededRandomProvider(42L);
     }
 

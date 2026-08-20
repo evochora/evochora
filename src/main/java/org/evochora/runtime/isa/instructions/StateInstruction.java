@@ -1,7 +1,6 @@
 package org.evochora.runtime.isa.instructions;
 
 import java.util.List;
-import java.util.Random;
 
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
@@ -319,8 +318,7 @@ public class StateInstruction extends Instruction {
             organism.instructionFailed("RAND upper bound must be > 0.");
             return;
         }
-        Random random = organism.getRandom();
-        int randomValue = random.nextInt(upperBound);
+        int randomValue = organism.getRandom().nextInt(upperBound);
         writeOperand(op.rawSourceId(), new Molecule(s.type(), randomValue).toInt());
     }
 

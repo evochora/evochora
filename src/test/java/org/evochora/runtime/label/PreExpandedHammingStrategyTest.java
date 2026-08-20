@@ -1,9 +1,8 @@
 package org.evochora.runtime.label;
 
-import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
-import org.evochora.runtime.spi.IRandomProvider;
+import org.evochora.runtime.model.OrganismRandom;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -12,7 +11,6 @@ import java.util.HashMap;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Unit tests for PreExpandedHammingStrategy.
@@ -33,6 +31,7 @@ class PreExpandedHammingStrategyTest {
     private PreExpandedHammingStrategy strategy;
     private Environment environment;
     private int[] callerCoords;
+    private OrganismRandom random;
 
     @BeforeEach
     void setUp() {
@@ -42,6 +41,9 @@ class PreExpandedHammingStrategyTest {
         EnvironmentProperties props = new EnvironmentProperties(new int[]{64, 64}, true);
         environment = new Environment(props);
         callerCoords = new int[]{0, 0};
+        // The random source of the organism performing the lookups, positioned at a fixed tick
+        random = new OrganismRandom(1);
+        random.beginTick(42L);
     }
 
     @Test
@@ -61,7 +63,7 @@ class PreExpandedHammingStrategyTest {
         LabelEntry entry = new LabelEntry(flatIndex, owner, 0);
         strategy.addLabel(labelValue, entry);
 
-        int result = strategy.findTarget(labelValue, owner, callerCoords, environment);
+        int result = strategy.findTarget(labelValue, owner, callerCoords, environment, random);
         assertThat(result).isEqualTo(flatIndex);
     }
 
@@ -75,7 +77,7 @@ class PreExpandedHammingStrategyTest {
         LabelEntry entry = new LabelEntry(flatIndex, owner, 0);
         strategy.addLabel(labelValue, entry);
 
-        int result = strategy.findTarget(searchValue, owner, callerCoords, environment);
+        int result = strategy.findTarget(searchValue, owner, callerCoords, environment, random);
         assertThat(result).isEqualTo(flatIndex);
     }
 
@@ -89,7 +91,7 @@ class PreExpandedHammingStrategyTest {
         LabelEntry entry = new LabelEntry(flatIndex, owner, 0);
         strategy.addLabel(labelValue, entry);
 
-        int result = strategy.findTarget(searchValue, owner, callerCoords, environment);
+        int result = strategy.findTarget(searchValue, owner, callerCoords, environment, random);
         assertThat(result).isEqualTo(flatIndex);
     }
 
@@ -103,7 +105,7 @@ class PreExpandedHammingStrategyTest {
         LabelEntry entry = new LabelEntry(flatIndex, owner, 0);
         strategy.addLabel(labelValue, entry);
 
-        int result = strategy.findTarget(searchValue, owner, callerCoords, environment);
+        int result = strategy.findTarget(searchValue, owner, callerCoords, environment, random);
         assertThat(result).isEqualTo(-1);
     }
 
@@ -122,7 +124,7 @@ class PreExpandedHammingStrategyTest {
         strategy.addLabel(labelValue, ownEntry);
 
         // Own label should be preferred (lower score: distance + 0 vs distance + 20)
-        int result = strategy.findTarget(labelValue, ownOwner, callerCoords, environment);
+        int result = strategy.findTarget(labelValue, ownOwner, callerCoords, environment, random);
         assertThat(result).isEqualTo(65);
     }
 
@@ -141,7 +143,7 @@ class PreExpandedHammingStrategyTest {
         strategy.addLabel(labelValue, entryWithoutMarker);
 
         // Label without marker should be preferred (marker makes first one "foreign")
-        int result = strategy.findTarget(labelValue, owner, callerCoords, environment);
+        int result = strategy.findTarget(labelValue, owner, callerCoords, environment, random);
         assertThat(result).isEqualTo(65);
     }
 
@@ -166,7 +168,7 @@ class PreExpandedHammingStrategyTest {
         // Own fuzzy: score = 50 + ~1 + 0 = ~51
         // Foreign exact: score = 0 + ~1 + 100 = ~101
         // Own wins due to foreignPenalty outweighing hammingWeight
-        int result = strategy.findTarget(exactValue, ownOwner, callerCoords, environment);
+        int result = strategy.findTarget(exactValue, ownOwner, callerCoords, environment, random);
         assertThat(result).isEqualTo(64); // Own label wins despite 1-bit mutation
     }
 
@@ -185,7 +187,7 @@ class PreExpandedHammingStrategyTest {
         strategy.addLabel(labelValue, nearEntry);
 
         // Closer label should win
-        int result = strategy.findTarget(labelValue, owner, callerCoords, environment);
+        int result = strategy.findTarget(labelValue, owner, callerCoords, environment, random);
         assertThat(result).isEqualTo(1);
     }
 
@@ -204,7 +206,7 @@ class PreExpandedHammingStrategyTest {
         strategy.addLabel(labelValue, entry2);
 
         // Both are foreign with similar distance, lower owner ID wins (determinism)
-        int result = strategy.findTarget(labelValue, 1, callerCoords, environment);
+        int result = strategy.findTarget(labelValue, 1, callerCoords, environment, random);
         assertThat(result).isEqualTo(64); // owner1 (3) < owner2 (5)
     }
 
@@ -259,13 +261,13 @@ class PreExpandedHammingStrategyTest {
         strategy.addLabel(labelValue, entry);
 
         // Verify it exists
-        assertThat(strategy.findTarget(labelValue, owner, callerCoords, environment)).isEqualTo(flatIndex);
+        assertThat(strategy.findTarget(labelValue, owner, callerCoords, environment, random)).isEqualTo(flatIndex);
 
         // Remove it
         strategy.removeLabel(labelValue, flatIndex);
 
         // Should no longer be found
-        assertThat(strategy.findTarget(labelValue, owner, callerCoords, environment)).isEqualTo(-1);
+        assertThat(strategy.findTarget(labelValue, owner, callerCoords, environment, random)).isEqualTo(-1);
     }
 
     @Test
@@ -283,13 +285,13 @@ class PreExpandedHammingStrategyTest {
 
         // Check a few specific neighbors
         // Distance 1: flip bit 0
-        assertThat(strategy.findTarget(1, owner, callerCoords, environment)).isEqualTo(flatIndex);
+        assertThat(strategy.findTarget(1, owner, callerCoords, environment, random)).isEqualTo(flatIndex);
         // Distance 1: flip bit 19
-        assertThat(strategy.findTarget(1 << 19, owner, callerCoords, environment)).isEqualTo(flatIndex);
+        assertThat(strategy.findTarget(1 << 19, owner, callerCoords, environment, random)).isEqualTo(flatIndex);
         // Distance 2: flip bits 0 and 1
-        assertThat(strategy.findTarget(3, owner, callerCoords, environment)).isEqualTo(flatIndex);
+        assertThat(strategy.findTarget(3, owner, callerCoords, environment, random)).isEqualTo(flatIndex);
         // Distance 3: flip bits 0, 1, and 2 - should NOT match
-        assertThat(strategy.findTarget(7, owner, callerCoords, environment)).isEqualTo(-1);
+        assertThat(strategy.findTarget(7, owner, callerCoords, environment, random)).isEqualTo(-1);
     }
 
     @Test
@@ -309,7 +311,7 @@ class PreExpandedHammingStrategyTest {
         strategy.addLabel(labelValue, entryB);
 
         // Both have same toroidal distance (1), both foreign, lower owner wins
-        int result = strategy.findTarget(labelValue, owner, callerCoords, environment);
+        int result = strategy.findTarget(labelValue, owner, callerCoords, environment, random);
         assertThat(result).isEqualTo(1); // owner 2 < owner 3
     }
 
@@ -317,10 +319,8 @@ class PreExpandedHammingStrategyTest {
 
     @Test
     void testSelectionSpreadZeroIsDeterministic() {
-        // selectionSpread=0 with a random provider injected must still behave deterministically
+        // selectionSpread=0 must ignore the organism's random source and always pick the closest label
         PreExpandedHammingStrategy strat = new PreExpandedHammingStrategy(2, 100, 50, 0);
-        IRandomProvider rng = new SeededRandomProvider(42).deriveFor("labelMatching", 0);
-        strat.setRandomProvider(rng);
 
         int labelValue = 12345;
         int owner = 1;
@@ -330,31 +330,15 @@ class PreExpandedHammingStrategyTest {
 
         // Run 10 times — must always pick the closer label
         for (int i = 0; i < 10; i++) {
-            int result = strat.findTarget(labelValue, owner, callerCoords, environment);
+            int result = strat.findTarget(labelValue, owner, callerCoords, environment, random);
             assertThat(result).isEqualTo(1);
         }
-    }
-
-    @Test
-    void testStochasticWithoutRandomProviderThrows() {
-        PreExpandedHammingStrategy strat = new PreExpandedHammingStrategy(2, 100, 50, 50);
-        // No setRandomProvider call
-
-        int labelValue = 12345;
-        int owner = 1;
-        strat.addLabel(labelValue, new LabelEntry(1, owner, 0));
-
-        assertThatThrownBy(() -> strat.findTarget(labelValue, owner, callerCoords, environment))
-            .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("selectionSpread");
     }
 
     @Test
     void testStochasticDistributesEqualDistanceDuplicates() {
         // Two labels at equal distance should be selected roughly equally
         PreExpandedHammingStrategy strat = new PreExpandedHammingStrategy(2, 100, 50, 50);
-        IRandomProvider rng = new SeededRandomProvider(42).deriveFor("labelMatching", 0);
-        strat.setRandomProvider(rng);
 
         int labelValue = 12345;
         int owner = 1;
@@ -364,7 +348,7 @@ class PreExpandedHammingStrategyTest {
 
         Map<Integer, Integer> counts = new HashMap<>();
         for (int i = 0; i < 20; i++) {
-            int result = strat.findTarget(labelValue, owner, callerCoords, environment);
+            int result = strat.findTarget(labelValue, owner, callerCoords, environment, random);
             counts.merge(result, 1, Integer::sum);
         }
 
@@ -377,8 +361,6 @@ class PreExpandedHammingStrategyTest {
     void testStochasticFavorsCloserLabel() {
         // Near label should be selected more often than far label
         PreExpandedHammingStrategy strat = new PreExpandedHammingStrategy(2, 100, 50, 20);
-        IRandomProvider rng = new SeededRandomProvider(42).deriveFor("labelMatching", 0);
-        strat.setRandomProvider(rng);
 
         int labelValue = 12345;
         int owner = 1;
@@ -390,7 +372,7 @@ class PreExpandedHammingStrategyTest {
 
         int nearCount = 0;
         for (int i = 0; i < 20; i++) {
-            if (strat.findTarget(labelValue, owner, callerCoords, environment) == nearIndex) {
+            if (strat.findTarget(labelValue, owner, callerCoords, environment, random) == nearIndex) {
                 nearCount++;
             }
         }
@@ -404,8 +386,6 @@ class PreExpandedHammingStrategyTest {
     void testHighSpreadFlattensDistanceBias() {
         // With very high selectionSpread, even distant labels get a fair chance
         PreExpandedHammingStrategy strat = new PreExpandedHammingStrategy(2, 100, 50, 1000);
-        IRandomProvider rng = new SeededRandomProvider(42).deriveFor("labelMatching", 0);
-        strat.setRandomProvider(rng);
 
         int labelValue = 12345;
         int owner = 1;
@@ -415,7 +395,7 @@ class PreExpandedHammingStrategyTest {
 
         Map<Integer, Integer> counts = new HashMap<>();
         for (int i = 0; i < 20; i++) {
-            int result = strat.findTarget(labelValue, owner, callerCoords, environment);
+            int result = strat.findTarget(labelValue, owner, callerCoords, environment, random);
             counts.merge(result, 1, Integer::sum);
         }
 
@@ -429,8 +409,6 @@ class PreExpandedHammingStrategyTest {
     void testStochasticOnlyAffectsPhase1() {
         // Phase 2 (foreign/fuzzy labels) must remain deterministic
         PreExpandedHammingStrategy strat = new PreExpandedHammingStrategy(2, 100, 50, 50);
-        IRandomProvider rng = new SeededRandomProvider(42).deriveFor("labelMatching", 0);
-        strat.setRandomProvider(rng);
 
         int labelValue = 12345;
         int foreignOwner = 2;
@@ -439,9 +417,9 @@ class PreExpandedHammingStrategyTest {
         strat.addLabel(labelValue, new LabelEntry(64, foreignOwner, 0));
         strat.addLabel(labelValue, new LabelEntry(65, foreignOwner, 0));
 
-        int firstResult = strat.findTarget(labelValue, callingOwner, callerCoords, environment);
+        int firstResult = strat.findTarget(labelValue, callingOwner, callerCoords, environment, random);
         for (int i = 0; i < 10; i++) {
-            int result = strat.findTarget(labelValue, callingOwner, callerCoords, environment);
+            int result = strat.findTarget(labelValue, callingOwner, callerCoords, environment, random);
             assertThat(result).isEqualTo(firstResult);
         }
     }

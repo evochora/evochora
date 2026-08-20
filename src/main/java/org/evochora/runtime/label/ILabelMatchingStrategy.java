@@ -1,7 +1,7 @@
 package org.evochora.runtime.label;
 
 import org.evochora.runtime.model.Environment;
-import org.evochora.runtime.spi.IRandomProvider;
+import org.evochora.runtime.model.OrganismRandom;
 
 import java.util.Collection;
 
@@ -35,9 +35,14 @@ public interface ILabelMatchingStrategy {
      * @param codeOwner The owner ID of the executing code
      * @param callerCoords The coordinates of the calling instruction (for distance calculation)
      * @param environment The environment (for coordinate conversion and toroidal distance)
+     * @param random The random source of the organism executing the lookup; the only source of
+     *               randomness a strategy may use, so that a stochastic choice depends on the
+     *               calling organism alone and never on which thread performs the lookup.
+     *               Must not be null.
      * @return The flat index of the best matching label, or -1 if no match found
      */
-    int findTarget(int searchValue, int codeOwner, int[] callerCoords, Environment environment);
+    int findTarget(int searchValue, int codeOwner, int[] callerCoords, Environment environment,
+                   OrganismRandom random);
 
     /**
      * Adds a label entry to the index.
@@ -111,20 +116,4 @@ public interface ILabelMatchingStrategy {
      * @return The score weight per Hamming distance (typically 50)
      */
     int getHammingWeight();
-
-    /**
-     * Sets the random provider for stochastic label selection.
-     * <p>
-     * When a strategy supports stochastic selection (e.g., {@code selectionSpread > 0}),
-     * this provider supplies the randomness. The provider should be a derived
-     * sub-stream obtained via {@code IRandomProvider.deriveFor("labelMatching", 0)}.
-     * <p>
-     * The default implementation is a no-op, so strategies that do not support
-     * stochastic selection need not override this method.
-     *
-     * @param randomProvider The random provider for label selection
-     */
-    default void setRandomProvider(IRandomProvider randomProvider) {
-        // No-op by default; strategies that support stochastic selection override this.
-    }
 }

@@ -176,7 +176,7 @@ class LabelRewritePluginTest {
 
         // Before rewrite: label index should find the original hash
         int beforeResult = environment.getLabelIndex().findTarget(
-                originalHash, child.getId(), new int[]{5, 5}, environment);
+                originalHash, child.getId(), new int[]{5, 5}, environment, child.getRandom());
         assertThat(beforeResult).as("Label should be found before rewrite").isGreaterThanOrEqualTo(0);
 
         LabelRewritePlugin plugin = new LabelRewritePlugin(new SeededRandomProvider(42L));
@@ -184,13 +184,13 @@ class LabelRewritePluginTest {
 
         // After rewrite: original hash should no longer be found
         int afterOriginal = environment.getLabelIndex().findTarget(
-                originalHash, child.getId(), new int[]{5, 5}, environment);
+                originalHash, child.getId(), new int[]{5, 5}, environment, child.getRandom());
         assertThat(afterOriginal).as("Original label hash should not be found after rewrite").isEqualTo(-1);
 
         // After rewrite: new hash should be found
         int newHash = environment.getMolecule(5, 5).value() & Config.VALUE_MASK;
         int afterNew = environment.getLabelIndex().findTarget(
-                newHash, child.getId(), new int[]{5, 5}, environment);
+                newHash, child.getId(), new int[]{5, 5}, environment, child.getRandom());
         assertThat(afterNew).as("Rewritten label hash should be found").isGreaterThanOrEqualTo(0);
     }
 

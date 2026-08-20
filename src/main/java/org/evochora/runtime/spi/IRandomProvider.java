@@ -4,13 +4,28 @@ import java.util.Random;
 
 /**
  * Provides deterministic randomness scoped to a Simulation.
- * Implementations should be pure with respect to the provided seed and
- * support derivation of child providers for independent sub-streams.
+ * Implementations must be pure with respect to the provided seed.
+ * <p>
+ * This is the randomness of the sequential parts of a tick (tick plugins, birth and death
+ * handlers), consumed in their deterministic call order. Code that runs for a specific organism
+ * inside the parallel wave uses the organism's own
+ * {@link org.evochora.runtime.model.OrganismRandom} instead; implementations reject draws made
+ * there with an {@link IllegalStateException}.
  * <p>
  * Implements {@link ISerializable} to support simulation checkpointing and resume.
  * </p>
  */
 public interface IRandomProvider extends ISerializable {
+
+    /**
+     * Returns the root seed of this provider.
+     * <p>
+     * The seed identifies the run's randomness as a whole: it is fixed at construction and is not
+     * affected by drawing values or by {@link #loadState(byte[])}.
+     *
+     * @return the seed this provider was created with
+     */
+    long seed();
 
     /**
      * Returns a random integer in the range [0, bound).
@@ -34,16 +49,6 @@ public interface IRandomProvider extends ISerializable {
      * @return the Random instance
      */
     Random asJavaRandom();
-
-    /**
-     * Creates a derived provider that is deterministically based on this provider and the given scope/key.
-     * Use this to create independent sub-streams (e.g., per organism or per strategy instance).
-     *
-     * @param scope a stable, descriptive scope name (e.g., "organism", "energyStrategy")
-     * @param key a stable numeric key (e.g., organism id, strategy index)
-     * @return a derived random provider
-     */
-    IRandomProvider deriveFor(String scope, long key);
 }
 
 

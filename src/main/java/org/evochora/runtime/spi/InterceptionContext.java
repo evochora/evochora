@@ -30,12 +30,15 @@ import org.evochora.runtime.model.Organism;
  * not the environment.
  *
  * <h2>Thread Safety</h2>
- * Currently, interceptors run sequentially per organism. Future versions may
- * parallelize interception across organisms. Interceptors must not:
+ * Interceptors run inside the parallel wave of a tick: several organisms are intercepted at the
+ * same time on different threads, each thread with its own context instance. Interceptors must
+ * not:
  * <ul>
  *   <li>Modify shared state between organisms</li>
  *   <li>Access other organisms' data</li>
  *   <li>Write to the environment (read-only via organism is acceptable)</li>
+ *   <li>Draw from a shared random source — randomness comes from
+ *       {@code getOrganism().getRandom()}, whose values depend only on seed, tick and organism</li>
  * </ul>
  *
  * @see IInstructionInterceptor

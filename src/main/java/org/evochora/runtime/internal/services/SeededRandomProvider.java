@@ -1,12 +1,13 @@
 package org.evochora.runtime.internal.services;
 
+import org.evochora.runtime.TickWorkerPool;
 import org.evochora.runtime.spi.IRandomProvider;
-import org.apache.commons.math3.random.Well19937c;
 import org.apache.commons.math3.random.RandomAdaptor;
+import org.apache.commons.math3.random.RandomGenerator;
+import org.apache.commons.math3.random.Well19937c;
 
 import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.util.Random;
 
 /**
@@ -18,7 +19,11 @@ import java.util.Random;
  * RNG with excellent statistical properties and a period of 2^19937-1.
  * </p>
  * <p>
- * Supports deterministic derivation of child providers using a stable hashing scheme.
+ * Every draw — including those made through {@link #asJavaRandom()} — is rejected with an
+ * {@link IllegalStateException} while the calling thread executes the parallel wave of a tick
+ * ({@link TickWorkerPool#isInParallelWave()}). A value drawn there would be handed out in
+ * scheduling order and make the run irreproducible; code in that phase uses the organism's own
+ * {@link org.evochora.runtime.model.OrganismRandom} instead.
  * </p>
  */
 public final class SeededRandomProvider implements IRandomProvider {
@@ -49,75 +54,60 @@ public final class SeededRandomProvider implements IRandomProvider {
         }
     }
 
-    /**
-     * Private constructor for derived providers.
-     * @param seed The seed for the new provider.
-     * @param alreadyHashed A flag to indicate if the seed is already hashed.
-     */
-    private SeededRandomProvider(long seed, boolean alreadyHashed) {
-        this.seed = seed;
-        this.rng = new Well19937c(seed);
-
-        // Initialize reflection fields once for fast repeated access
-        try {
-            this.vField = rng.getClass().getSuperclass().getDeclaredField("v");
-            this.indexField = rng.getClass().getSuperclass().getDeclaredField("index");
-            this.vField.setAccessible(true);
-            this.indexField.setAccessible(true);
-        } catch (NoSuchFieldException e) {
-            throw new RuntimeException("Failed to initialize RNG reflection fields", e);
-        }
+    @Override
+    public long seed() {
+        return seed;
     }
 
     @Override
     public int nextInt(int bound) {
+        rejectDrawInParallelWave();
         return rng.nextInt(bound);
     }
 
     @Override
     public double nextDouble() {
+        rejectDrawInParallelWave();
         return rng.nextDouble();
     }
 
     @Override
     public Random asJavaRandom() {
-        // Wrap the Well19937c in a Random-compatible adapter
-        return new RandomAdaptor(rng);
+        return new RandomAdaptor(new GuardedGenerator(rng));
     }
 
-    @Override
-    public IRandomProvider deriveFor(String scope, long key) {
-        long h = mix64(seed);
-        h = mix64(h ^ mix64(hashString(scope)));
-        h = mix64(h ^ mix64(key));
-        return new SeededRandomProvider(h, true);
-    }
-
-    /**
-     * Hashes a string using the FNV-1a 64-bit algorithm.
-     * @param s The string to hash.
-     * @return The hashed value.
-     */
-    private static long hashString(String s) {
-        if (s == null) return 0L;
-        byte[] b = s.getBytes(StandardCharsets.UTF_8);
-        long h = 1469598103934665603L; // FNV-1a 64-bit offset basis
-        for (byte value : b) {
-            h ^= (value & 0xFF);
-            h *= 1099511628211L; // FNV-1a prime
+    private static void rejectDrawInParallelWave() {
+        if (TickWorkerPool.isInParallelWave()) {
+            throw new IllegalStateException(
+                    "IRandomProvider is reserved for the sequential parts of a tick (tick plugins, birth and "
+                    + "death handlers). Code running for an organism inside the parallel wave - instructions "
+                    + "and instruction interceptors - must use Organism.getRandom() instead.");
         }
-        return h;
     }
 
     /**
-     * A SplitMix64 mix function for good bit diffusion.
-     * @param z The value to mix.
-     * @return The mixed value.
+     * Delegates to the underlying generator after rejecting draws made inside the parallel wave,
+     * so that the {@link Random} view handed out by {@link #asJavaRandom()} is guarded like the
+     * provider itself.
      */
-    private static long mix64(long z) {
-        z = (z ^ (z >>> 33)) * 0xff51afd7ed558ccdL;
-        z = (z ^ (z >>> 33)) * 0xc4ceb9fe1a85ec53L;
-        return z ^ (z >>> 33);
+    private static final class GuardedGenerator implements RandomGenerator {
+        private final RandomGenerator delegate;
+
+        GuardedGenerator(RandomGenerator delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override public void setSeed(int seed) { delegate.setSeed(seed); }
+        @Override public void setSeed(int[] seed) { delegate.setSeed(seed); }
+        @Override public void setSeed(long seed) { delegate.setSeed(seed); }
+        @Override public void nextBytes(byte[] bytes) { rejectDrawInParallelWave(); delegate.nextBytes(bytes); }
+        @Override public int nextInt() { rejectDrawInParallelWave(); return delegate.nextInt(); }
+        @Override public int nextInt(int n) { rejectDrawInParallelWave(); return delegate.nextInt(n); }
+        @Override public long nextLong() { rejectDrawInParallelWave(); return delegate.nextLong(); }
+        @Override public boolean nextBoolean() { rejectDrawInParallelWave(); return delegate.nextBoolean(); }
+        @Override public float nextFloat() { rejectDrawInParallelWave(); return delegate.nextFloat(); }
+        @Override public double nextDouble() { rejectDrawInParallelWave(); return delegate.nextDouble(); }
+        @Override public double nextGaussian() { rejectDrawInParallelWave(); return delegate.nextGaussian(); }
     }
 
     @Override

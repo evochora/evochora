@@ -45,6 +45,13 @@ public class TickWorkerPool {
 
     private static final ThreadLocal<Integer> THREAD_INDEX = new ThreadLocal<>();
 
+    /**
+     * Whether the calling thread is currently executing the parallel wave of a tick. Worker
+     * threads never do anything else; the simulation thread sets it while it processes its own
+     * share of the wave, inside a dispatch or when it runs the whole wave alone.
+     */
+    private static final ThreadLocal<Boolean> IN_PARALLEL_WAVE = new ThreadLocal<>();
+
     private final Thread[] workers;
     private final int totalThreads;
 
@@ -104,6 +111,31 @@ public class TickWorkerPool {
     }
 
     /**
+     * Tells whether the calling thread is executing the parallel wave of a tick — the phase in
+     * which organisms are planned and their local instructions executed, possibly on several
+     * threads at once. Code in this phase must not consume shared randomness; the check lets
+     * such consumers fail fast instead of silently making the run scheduling-dependent.
+     *
+     * @return {@code true} while the calling thread is inside the parallel wave
+     */
+    public static boolean isInParallelWave() {
+        return Boolean.TRUE.equals(IN_PARALLEL_WAVE.get());
+    }
+
+    /**
+     * Marks the calling thread as executing the parallel wave. Pair with
+     * {@link #leaveParallelWave()} in a {@code finally} block.
+     */
+    public static void enterParallelWave() {
+        IN_PARALLEL_WAVE.set(Boolean.TRUE);
+    }
+
+    /** Clears the mark set by {@link #enterParallelWave()}. */
+    public static void leaveParallelWave() {
+        IN_PARALLEL_WAVE.set(Boolean.FALSE);
+    }
+
+    /**
      * Dispatches work across all threads and blocks until completion.
      * Equivalent to {@code dispatch(totalSize, totalThreads, task)}.
      *
@@ -160,12 +192,15 @@ public class TickWorkerPool {
         // Main thread executes chunk 0
         THREAD_INDEX.set(0);
         Throwable mainException = null;
+        enterParallelWave();
         try {
             int chunkSize = (totalSize + active - 1) / active;
             int to = Math.min(chunkSize, totalSize);
             task.run(0, to);
         } catch (Throwable t) {
             mainException = t;
+        } finally {
+            leaveParallelWave();
         }
 
         // Wait for active workers to finish
@@ -223,6 +258,7 @@ public class TickWorkerPool {
      */
     private void workerLoop(int workerIndex) {
         THREAD_INDEX.set(workerIndex);
+        enterParallelWave();
         int lastPhase = phase;
         readyWorkers.incrementAndGet();
 

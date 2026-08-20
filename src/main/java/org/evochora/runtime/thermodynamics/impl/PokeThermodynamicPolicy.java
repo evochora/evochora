@@ -127,7 +127,7 @@ public class PokeThermodynamicPolicy implements IThermodynamicPolicy {
         ConflictResolutionStatus status = context.instruction().getConflictStatus();
         if (status == ConflictResolutionStatus.LOST_TARGET_OCCUPIED ||
             status == ConflictResolutionStatus.LOST_TARGET_EMPTY || // Should not happen for POKE
-            status == ConflictResolutionStatus.LOST_LOWER_ID_WON ||
+            status == ConflictResolutionStatus.LOST_PRIORITY ||
             status == ConflictResolutionStatus.LOST_OTHER_REASON) {
             return 0;
         }
