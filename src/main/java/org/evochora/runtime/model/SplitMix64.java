@@ -8,9 +8,10 @@ package org.evochora.runtime.model;
  * turned into statistically independent-looking values. Advancing an input by
  * {@link #GOLDEN_GAMMA} between calls yields the SplitMix64 generator sequence.
  * <p>
- * Because the function is a bijection, distinct inputs always produce distinct outputs — a
- * property the simulation relies on to keep the randomness of different ticks and organisms
- * free of collisions by construction.
+ * The function itself is a bijection: distinct inputs produce distinct outputs. Callers that fold
+ * several values into one input before mixing (such as {@link OrganismRandom}) inherit no such
+ * guarantee for the folded pair — only the practical independence of a 64-bit full-avalanche
+ * hash.
  */
 public final class SplitMix64 {
 

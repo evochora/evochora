@@ -28,8 +28,9 @@ import java.util.Collection;
  * int targetIndex = index.findTarget(labelValue, codeOwner, callerCoords, environment, organism.getRandom());
  * </pre>
  * <p>
- * Thread Safety: Not thread-safe. All operations are expected to be called from
- * the main simulation thread.
+ * Thread Safety: lookups ({@link #findTarget}) are safe for concurrent callers and are issued
+ * from every thread of the parallel wave; mutations are issued only from the simulation thread
+ * outside the wave, through the environment's own mutators.
  */
 public class LabelIndex {
 

@@ -95,6 +95,12 @@ class ResumeNeutralityTest {
     }
 
     @Test
+    void resumedRun_isNeutralAcrossAChangeOfThreadCount() {
+        assertResumeNeutral(1, 2);
+        assertResumeNeutral(2, 1);
+    }
+
+    @Test
     void serializer_andRestorer_roundTripEveryOrganismField() {
         World world = new World(1);
         Organism organism = world.sim.getOrganisms().get(0);
@@ -216,26 +222,35 @@ class ResumeNeutralityTest {
     // ===================================================================================
 
     private void assertResumeNeutral(int parallelism) {
+        assertResumeNeutral(parallelism, parallelism);
+    }
+
+    /**
+     * The reference runs uninterrupted with {@code parallelismBefore}; the candidate runs with
+     * {@code parallelismBefore} until the first pause and with {@code parallelismAfter} after
+     * every resume. Resuming on a different thread count must not change the trajectory.
+     */
+    private void assertResumeNeutral(int parallelismBefore, int parallelismAfter) {
         int totalTicks = 30;
         int firstPause = 7;
         int secondPause = 19;
 
-        World reference = new World(parallelism);
+        World reference = new World(parallelismBefore);
         List<long[]> expected = tick(reference.sim, totalTicks);
 
-        World interrupted = new World(parallelism);
+        World interrupted = new World(parallelismBefore);
         List<long[]> actual = new ArrayList<>(tick(interrupted.sim, firstPause));
-        SimulationRestorer.RestoredState onceResumed = restore(interrupted, parallelism);
+        SimulationRestorer.RestoredState onceResumed = restore(interrupted, parallelismAfter);
         simulations.add(onceResumed.simulation());
         actual.addAll(tick(onceResumed.simulation(), secondPause - firstPause));
-        SimulationRestorer.RestoredState twiceResumed = restore(onceResumed.simulation(), onceResumed.randomProvider(), parallelism);
+        SimulationRestorer.RestoredState twiceResumed = restore(onceResumed.simulation(), onceResumed.randomProvider(), parallelismAfter);
         simulations.add(twiceResumed.simulation());
         actual.addAll(tick(twiceResumed.simulation(), totalTicks - secondPause));
 
         assertThat(actual).as("tick count").hasSameSizeAs(expected);
         for (int t = 0; t < expected.size(); t++) {
             assertThat(actual.get(t))
-                    .as("state after tick %d differs (parallelism=%d)", t + 1, parallelism)
+                    .as("state after tick %d differs (parallelism %d -> %d)", t + 1, parallelismBefore, parallelismAfter)
                     .isEqualTo(expected.get(t));
         }
     }

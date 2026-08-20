@@ -127,6 +127,10 @@ public class TickWorkerPool {
      * propagated to the caller after all other threads have finished their
      * current chunk. The first exception wins; subsequent exceptions are suppressed.
      * <p>
+     * The pool exists for the parallel wave of a tick and for nothing else: every task runs
+     * with {@link ParallelWave#isActive()} set, on the main thread for the duration of its
+     * chunk and on worker threads permanently.
+     * <p>
      * Must be called from the main thread only. Not reentrant.
      *
      * @param totalSize     the total number of work items (must be &gt;= 0)

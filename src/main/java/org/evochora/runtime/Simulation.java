@@ -486,6 +486,10 @@ public class Simulation {
                 for (IInstructionInterceptor interceptor : instructionInterceptors) {
                     try {
                         interceptor.intercept(context);
+                    } catch (IllegalStateException e) {
+                        // A violated execution contract (e.g. shared randomness drawn inside the
+                        // parallel wave) invalidates the run; it must not be downgraded to a warning.
+                        throw e;
                     } catch (Exception e) {
                         LOG.warn("Interceptor '{}' failed for organism {} at tick {}: {}",
                                 interceptor.getClass().getSimpleName(), organism.getId(),
@@ -497,13 +501,13 @@ public class Simulation {
 
             instruction.setConflictStatus(Instruction.ConflictResolutionStatus.NOT_APPLICABLE);
             if (Instruction.isParallelExecuteSafe(instruction.getFullOpcodeId())) {
-                instruction.setExecutedInTick(true);
+                instruction.setProcessedInTick(true);
                 executeSingleInstruction(instruction);
                 if (organism.isDead()) {
                     diedInWave1[i] = true;
                 }
             } else {
-                instruction.setExecutedInTick(false);
+                instruction.setProcessedInTick(false);
             }
 
             planned[i] = instruction;
@@ -517,7 +521,7 @@ public class Simulation {
      * @param instruction The instruction to execute
      */
     private void executeSingleInstruction(Instruction instruction) {
-        if (!instruction.isExecutedInTick()) return;
+        if (!instruction.isProcessedInTick()) return;
         Organism organism = instruction.getOrganism();
 
         vm.execute(instruction);
@@ -676,7 +680,7 @@ public class Simulation {
 
         for (Instruction instruction : instructions) {
             // Every instruction is processed by the VM; losers are booked as failures there.
-            instruction.setExecutedInTick(true);
+            instruction.setProcessedInTick(true);
             if (instruction instanceof IEnvironmentModifyingInstruction modInstruction) {
                 List<int[]> targetCoords = modInstruction.getTargetCoordinates();
                 // Without a target cell (e.g. invalid arguments) the instruction runs, detects the

@@ -30,8 +30,9 @@ import java.util.function.IntConsumer;
  * Memory usage is proportional to the number of labels (one entry per label),
  * independent of tolerance. Insert, remove, and update operations are O(1).
  * <p>
- * Thread Safety: Not thread-safe. All operations are expected to be called from
- * the main simulation thread.
+ * Thread Safety: {@link #findTarget} only reads and is called concurrently from every thread of
+ * the parallel wave; {@link #addLabel}, {@link #removeLabel} and {@link #updateOwner} are called
+ * only from the simulation thread outside the wave.
  */
 public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
 

@@ -1,10 +1,10 @@
 package org.evochora.runtime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.isa.Instruction;
@@ -161,26 +161,27 @@ class DeterministicExecutionTest {
     // ===================================================================================
 
     @Test
-    void rootProvider_rejectsDrawsFromInstructionInterceptor() {
-        assertThat(rejectedDrawsInInterceptor(1)).as("single-thread wave").isEqualTo(JUMPERS);
-        assertThat(rejectedDrawsInInterceptor(2)).as("multi-thread wave").isEqualTo(JUMPERS);
+    void rootProvider_drawFromInstructionInterceptor_failsTheTick() {
+        assertThatThrownBy(() -> tickWithRootDrawingInterceptor(1))
+                .as("single-thread wave")
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Organism.getRandom()");
+        assertThatThrownBy(() -> tickWithRootDrawingInterceptor(2))
+                .as("multi-thread wave: the pool propagates the worker's exception unchanged")
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Organism.getRandom()");
     }
 
     /**
-     * Registers an interceptor that tries to draw from the simulation's root provider for every
-     * organism and counts how often the draw is rejected. Returns that count after one tick.
+     * Registers an interceptor that draws from the simulation's root provider — a violation of
+     * the execution contract that must abort the tick instead of being logged and ignored.
      */
-    private int rejectedDrawsInInterceptor(int parallelism) {
+    private void tickWithRootDrawingInterceptor(int parallelism) {
         JumperWorld world = newJumperWorld(JUMPERS, parallelism);
-        AtomicInteger rejected = new AtomicInteger();
         world.sim.addInstructionInterceptor(new IInstructionInterceptor() {
             @Override
             public void intercept(InterceptionContext context) {
-                try {
-                    world.provider.nextInt(10);
-                } catch (IllegalStateException expected) {
-                    rejected.incrementAndGet();
-                }
+                world.provider.nextInt(10);
             }
 
             @Override
@@ -195,7 +196,6 @@ class DeterministicExecutionTest {
         });
 
         world.sim.tick();
-        return rejected.get();
     }
 
     // ===================================================================================

@@ -731,7 +731,7 @@ public abstract class Instruction {
 
     // --- Conflict Resolution Logic ---
 
-    protected boolean executedInTick = false;
+    protected boolean processedInTick = false;
 
     /**
      * The outcome of conflict resolution for an instruction.
@@ -758,13 +758,13 @@ public abstract class Instruction {
      * conflict loser is processed too: it is booked as a failure instead of being executed.
      * @return true if processed in this tick, false otherwise.
      */
-    public boolean isExecutedInTick() { return executedInTick; }
+    public boolean isProcessedInTick() { return processedInTick; }
 
     /**
      * Sets whether the virtual machine processes this instruction in the current tick.
-     * @param executedInTick true if processed, false otherwise.
+     * @param processedInTick true if processed, false otherwise.
      */
-    public void setExecutedInTick(boolean executedInTick) { this.executedInTick = executedInTick; }
+    public void setProcessedInTick(boolean processedInTick) { this.processedInTick = processedInTick; }
 
     /**
      * Gets the conflict resolution status of the instruction.
