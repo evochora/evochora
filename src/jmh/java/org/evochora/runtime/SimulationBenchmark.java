@@ -10,11 +10,14 @@ import java.util.concurrent.TimeUnit;
 import org.evochora.compiler.Compiler;
 import org.evochora.compiler.api.CompilationException;
 import org.evochora.compiler.api.ProgramArtifact;
+import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.label.PreExpandedHammingStrategy;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.spi.IRandomProvider;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
 import org.openjdk.jmh.annotations.Benchmark;
 import org.openjdk.jmh.annotations.BenchmarkMode;
@@ -166,6 +169,15 @@ public class SimulationBenchmark {
     @Param({"4"})
     private int parallelism;
 
+    /**
+     * Selection spread of the label-matching strategy. {@code 0} selects the closest own label
+     * deterministically; a positive value enables weighted-random selection among own exact
+     * matches, which draws one random number for every jump or call that resolves to an own
+     * exact match and therefore exercises the organism's random source on the control-flow path.
+     */
+    @Param({"0"})
+    private int selectionSpread;
+
     private Map<String, ProgramArtifact> compiledPrograms;
     private EnvironmentProperties envProps;
     private Simulation simulation;
@@ -196,7 +208,12 @@ public class SimulationBenchmark {
      */
     @Setup(Level.Iteration)
     public void setupSimulation() {
-        Environment env = new Environment(envProps);
+        PreExpandedHammingStrategy labelMatchingStrategy = new PreExpandedHammingStrategy(
+                PreExpandedHammingStrategy.DEFAULT_TOLERANCE,
+                PreExpandedHammingStrategy.DEFAULT_FOREIGN_PENALTY,
+                PreExpandedHammingStrategy.DEFAULT_HAMMING_WEIGHT,
+                selectionSpread);
+        Environment env = new Environment(envProps, labelMatchingStrategy);
 
         Config organismConfig = ConfigFactory.parseMap(Map.of(
                 "max-energy", MAX_ENERGY,
@@ -208,7 +225,10 @@ public class SimulationBenchmark {
 
         // No parallelism-scaling set: parallelism @Param is used directly to isolate per-P throughput
         simulation = new Simulation(env, policyManager, organismConfig, parallelism);
-        simulation.setRandomProvider(new org.evochora.runtime.internal.services.SeededRandomProvider(42));
+        // Random source wired exactly as SimulationEngine does it for a production run; organisms
+        // derive their own randomness (including stochastic label selection) from its seed.
+        IRandomProvider randomProvider = new SeededRandomProvider(42);
+        simulation.setRandomProvider(randomProvider);
 
         ProgramArtifact artifact = compiledPrograms.get(assembly);
         placeOrganisms(env, artifact);

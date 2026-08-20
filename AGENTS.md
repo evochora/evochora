@@ -36,6 +36,7 @@ Evochora is an artificial life simulator for research into digital evolution. It
 ./gradlew run --args="node run"  # Run simulation node
 ./gradlew run --args="--help"    # Show CLI help
 ./gradlew distZip distTar    # Create distribution archives
+./gradlew jmhJar             # Build the JMH benchmark jar (see docs/BENCHMARKING.md)
 ```
 
 ## Running the Application
@@ -265,6 +266,10 @@ See `.agents/architecture-guidelines.md` for full review criteria.
 
 **Coverage Goal:**
 - Optional: 60%+ line coverage (JaCoCo)
+
+**Benchmarks:**
+- JMH benchmarks live in `src/jmh/`; they are relative before/after measurements, never absolute references
+- Procedure, required environment conditions, and validity criteria: [docs/BENCHMARKING.md](docs/BENCHMARKING.md)
 
 ## Logging Guidelines
 
