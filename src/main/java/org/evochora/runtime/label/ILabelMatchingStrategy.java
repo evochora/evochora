@@ -46,6 +46,10 @@ public interface ILabelMatchingStrategy {
 
     /**
      * Adds a label entry to the index.
+     * <p>
+     * The result of {@link #findTarget} must depend only on the set of entries present, never on
+     * the order in which they were added: an index rebuilt from a snapshot adds the same entries
+     * in a different order and must resolve every lookup identically.
      *
      * @param labelValue The label's value (20-bit hash)
      * @param entry The label entry containing position and ownership info

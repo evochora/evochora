@@ -318,6 +318,31 @@ class PreExpandedHammingStrategyTest {
     // === Stochastic selection tests ===
 
     @Test
+    void stochasticSelection_isIndependentOfInsertionOrder() {
+        int labelValue = 12345;
+        int owner = 1;
+        LabelEntry near = new LabelEntry(1, owner, 0);
+        LabelEntry far = new LabelEntry(10, owner, 0);
+
+        PreExpandedHammingStrategy nearFirst = new PreExpandedHammingStrategy(2, 100, 50, 50);
+        nearFirst.addLabel(labelValue, near);
+        nearFirst.addLabel(labelValue, far);
+        PreExpandedHammingStrategy farFirst = new PreExpandedHammingStrategy(2, 100, 50, 50);
+        farFirst.addLabel(labelValue, far);
+        farFirst.addLabel(labelValue, near);
+
+        OrganismRandom randomA = new OrganismRandom(1);
+        OrganismRandom randomB = new OrganismRandom(1);
+        for (int tick = 0; tick < 64; tick++) {
+            randomA.beginTick(tick);
+            randomB.beginTick(tick);
+            assertThat(farFirst.findTarget(labelValue, owner, callerCoords, environment, randomB))
+                    .as("tick %d: same draws must select the same label regardless of insertion order", tick)
+                    .isEqualTo(nearFirst.findTarget(labelValue, owner, callerCoords, environment, randomA));
+        }
+    }
+
+    @Test
     void testSelectionSpreadZeroIsDeterministic() {
         // selectionSpread=0 must ignore the organism's random source and always pick the closest label
         PreExpandedHammingStrategy strat = new PreExpandedHammingStrategy(2, 100, 50, 0);

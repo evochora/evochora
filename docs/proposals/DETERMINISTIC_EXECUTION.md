@@ -97,6 +97,15 @@ diverge at tick 1, the label resume test at tick 8, the `RAND` resume test resta
 sequence (`…, 428, 898, 608, …` instead of `…, 428, 973, 666, …`), and the visibility test reads
 the written value sequentially but the empty cell in parallel.
 
+**Pipeline-layer resume test** (`ResumeNeutralityTest`, unit, datapipeline): a live simulation is
+serialized with `OrganismStateSerializer` (extracted from `SimulationEngine`) and the tick-data
+encoder, rebuilt by the real `SimulationRestorer`, and must continue identically — twice resumed,
+with one and two threads; plus a field-by-field organism round trip through the runtime's own
+accessors. Writing this test exposed and fixed a further defect: stochastic label selection
+iterated the index entries of one label value in insertion order, which a rebuilt index does not
+reproduce; entries are now kept ordered by flat index on insertion (`addLabel`), so the selection
+depends on the environment's content alone.
+
 **Manual acceptance** (not in the suite — a replicating population over many ticks is far too
 expensive for it): two CLI runs with the same seed and configuration, and one run paused and
 resumed, compared on the persisted tick data. This is performed once after the implementation is

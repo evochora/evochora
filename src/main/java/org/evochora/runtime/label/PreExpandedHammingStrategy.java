@@ -309,7 +309,15 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
 
     @Override
     public void addLabel(int labelValue, LabelEntry entry) {
-        valueToLabels.computeIfAbsent(labelValue, k -> new ArrayList<>()).add(entry);
+        // Entries of one value are kept ordered by flat index, so that candidate order — and with
+        // it the stochastic selection — depends on the environment's content alone, never on the
+        // order in which labels were placed (a resumed run rebuilds the index from a snapshot).
+        List<LabelEntry> entries = valueToLabels.computeIfAbsent(labelValue, k -> new ArrayList<>());
+        int position = entries.size();
+        while (position > 0 && entries.get(position - 1).flatIndex() > entry.flatIndex()) {
+            position--;
+        }
+        entries.add(position, entry);
     }
 
     @Override
