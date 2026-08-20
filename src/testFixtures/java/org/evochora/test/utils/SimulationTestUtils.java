@@ -3,6 +3,7 @@ package org.evochora.test.utils;
 import java.util.Map;
 
 import org.evochora.runtime.Simulation;
+import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
 
@@ -15,7 +16,8 @@ import com.typesafe.config.ConfigFactory;
  * This class provides factory methods that create Simulation instances with
  * default thermodynamic policies and organism limits suitable for testing.
  * Tests should use these methods instead of directly calling the Simulation constructor
- * to ensure they work with the configurable policy system.
+ * to ensure they work with the configurable policy system. Every simulation created here has a
+ * seeded random provider installed, which a simulation needs before it can tick.
  * <p>
  * The thermodynamic configuration is defined inline to ensure test isolation from
  * application configuration files (reference.conf, evochora.conf).
@@ -30,6 +32,12 @@ public class SimulationTestUtils {
 
     /** Default energy penalty for instruction failures. */
     private static final int DEFAULT_ERROR_PENALTY_COST = 10;
+
+    /**
+     * Seed of the random provider installed on every test simulation. Tests that depend on a
+     * particular seed install their own provider after creation.
+     */
+    private static final long DEFAULT_SEED = 42L;
 
     /**
      * Standard thermodynamic configuration for tests.
@@ -156,6 +164,8 @@ public class SimulationTestUtils {
         Config thermoConfig = ConfigFactory.parseString(THERMODYNAMIC_CONFIG);
         ThermodynamicPolicyManager policyManager = new ThermodynamicPolicyManager(thermoConfig);
 
-        return new Simulation(environment, policyManager, organismConfig, parallelism);
+        Simulation simulation = new Simulation(environment, policyManager, organismConfig, parallelism);
+        simulation.setRandomProvider(new SeededRandomProvider(DEFAULT_SEED));
+        return simulation;
     }
 }

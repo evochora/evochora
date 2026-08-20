@@ -14,6 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Tag;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Tests the {@link Simulation} class, focusing on conflict resolution and instruction execution.
@@ -91,6 +92,20 @@ public class SimulationTest {
         assertThat(loser.getFailureReason()).isEqualTo(VirtualMachine.LOST_WRITE_CONFLICT);
         assertThat(loser.getEr()).isEqualTo(2000 - penalty);
         assertThat(loser.getIp()).isEqualTo(loser.getInitialPosition());
+    }
+
+    /**
+     * A simulation without a random provider has no run seed to derive organism randomness from
+     * and must refuse to tick instead of silently running with an arbitrary seed.
+     */
+    @Test
+    @Tag("unit")
+    void tick_withoutRandomProvider_failsFast() {
+        Simulation bare = new Simulation(environment, sim.getPolicyManager(), sim.getOrganismConfig(), 1);
+
+        assertThatThrownBy(bare::tick)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("random provider");
     }
 
     /**

@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.isa.IEnvironmentModifyingInstruction;
@@ -66,10 +67,7 @@ public class Simulation {
     private final LongOpenHashSet allGenomesEverSeen = new LongOpenHashSet();
     private IRandomProvider randomProvider;
 
-    /**
-     * The run's seed, taken from the random provider. Without a provider (runtime tests) it is 0,
-     * which still yields a fully deterministic run.
-     */
+    /** The run's seed, taken from the random provider when it is installed. */
     private long seed;
 
     /**
@@ -184,11 +182,12 @@ public class Simulation {
 
     /**
      * Sets the random number provider for the simulation. The provider's seed also becomes the
-     * run seed from which every organism's randomness is derived.
-     * @param provider The random provider to use.
+     * run seed from which every organism's randomness is derived; a simulation cannot tick
+     * without one.
+     * @param provider The random provider to use; must not be null.
      */
     public void setRandomProvider(IRandomProvider provider) {
-        this.randomProvider = provider;
+        this.randomProvider = Objects.requireNonNull(provider, "random provider");
         this.seed = provider.seed();
     }
 
@@ -348,6 +347,11 @@ public class Simulation {
      */
     public void tick() {
         if (Thread.currentThread().isInterrupted()) return;
+        if (randomProvider == null) {
+            throw new IllegalStateException(
+                    "Simulation has no random provider; install one with setRandomProvider before ticking "
+                    + "- the run seed and all organism randomness derive from it");
+        }
 
         newOrganismsThisTick.clear();
         tickSeed = SplitMix64.mix(seed ^ SplitMix64.mix(currentTick));

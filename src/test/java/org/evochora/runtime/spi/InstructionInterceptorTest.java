@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
+import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.instructions.NopInstruction;
 import org.evochora.runtime.model.Environment;
@@ -83,6 +84,7 @@ class InstructionInterceptorTest {
         ));
 
         simulation = new Simulation(environment, policyManager, organismConfig, 1);
+        simulation.setRandomProvider(new SeededRandomProvider(42L));
 
         // Create organism at position [5, 5] with 1000 energy
         organism = Organism.create(simulation, new int[]{5, 5}, 1000);
