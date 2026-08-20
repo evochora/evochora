@@ -13,8 +13,14 @@ Documents under [`ideas/`](ideas/) are not proposals — see below.
 | [DATA_MUTATION_SIGN_FIX](DATA_MUTATION_SIGN_FIX.md) | TO BE REVIEWED | Scale-proportional DATA mutation is not smooth for negative values; verified defect in `GeneSubstitutionPlugin` with a test-first fix plan |
 | [PERSISTED_FORMAT_VERSIONING](PERSISTED_FORMAT_VERSIONING.md) | TO BE REVIEWED | Storage batches, run database and run metadata carry no format version, so data written by an incompatible build is read silently or fails without naming the cause; one version constant plus fail-fast reads |
 | [DEPENDENCY_UPDATE](DEPENDENCY_UPDATE.md) | TO BE REVIEWED | 24 of 32 dependencies behind, six by a major version; removal of the unused JLine pair, three build hygiene fixes, and a staged update procedure derived from what the test suite can and cannot verify |
+| [DETERMINISTIC_EXECUTION](DETERMINISTIC_EXECUTION.md) | IMPLEMENTED ON BRANCH | Same seed + config + code does not reproduce a run today (shared label RNG raced in the parallel wave, RNG streams not restored on resume, sequential ≠ parallel semantics); design: computed per-organism randomness `hash(seed, tick, id, n)` with no persisted state, snapshot tick semantics as single code path; checkpoint format unchanged |
+| [CONFLICT_LOSS_SEMANTICS](CONFLICT_LOSS_SEMANTICS.md) | IMPLEMENTED ON BRANCH | Losing a write conflict becomes an instruction failure with retry (own failure reason, error penalty, IP held) and lowest-ID-wins is replaced by a computed per-tick priority; removes free invisible starvation and the permanent age bias; lands with DETERMINISTIC_EXECUTION |
+| [ANALYTICS_PLUGIN_STATE](ANALYTICS_PLUGIN_STATE.md) | PROBLEM VERIFIED, SOLUTION TO BE DISCUSSED | Stateful analytics plugins (`GenerationDepthPlugin`, `GenomeAnalyticsPlugin`) lose their in-memory state on indexer restart and silently emit wrong data afterwards; proposed: plugin `saveState`/`loadState` persisted atomically with the indexer's progress marker, mirroring the existing `ITickPlugin` mechanism |
 
-The two are related: DEPENDENCY_UPDATE establishes which formats a compatibility fixture may
+CONFLICT_LOSS_SEMANTICS reuses DETERMINISTIC_EXECUTION's computed-randomness primitive and must
+land in the same change set.
+
+The two dependency documents are related: DEPENDENCY_UPDATE establishes which formats a compatibility fixture may
 legitimately cover, and delegates the formats this codebase owns to PERSISTED_FORMAT_VERSIONING.
 
 ## Compiler enhancements
