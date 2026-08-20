@@ -1,4 +1,4 @@
-package org.evochora.runtime.internal.services;
+package org.evochora.runtime.model;
 
 /**
  * The SplitMix64 mixing function and its stream increment.

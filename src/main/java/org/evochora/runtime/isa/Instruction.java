@@ -734,19 +734,15 @@ public abstract class Instruction {
     protected boolean executedInTick = false;
 
     /**
-     * The outcome of conflict resolution for an instruction. Statuses starting with {@code LOST}
-     * mark an instruction that is still handed to the virtual machine, which books it as a failed
-     * instruction without executing it.
+     * The outcome of conflict resolution for an instruction.
+     * <p>
+     * {@link #LOST_PRIORITY} is assigned before execution: the instruction is still handed to the
+     * virtual machine, which books it as a failed instruction without executing it and keeps the
+     * instruction pointer for a retry. The other {@code LOST} statuses describe outcomes detected
+     * during execution. Thermodynamic policies charge only base costs for any {@code LOST} status.
      */
     public enum ConflictResolutionStatus {
-        NOT_APPLICABLE, WON_EXECUTION, LOST_TARGET_OCCUPIED, LOST_TARGET_EMPTY, LOST_PRIORITY, LOST_OTHER_REASON;
-
-        /**
-         * @return whether this status marks a lost conflict
-         */
-        public boolean isLoss() {
-            return this != NOT_APPLICABLE && this != WON_EXECUTION;
-        }
+        NOT_APPLICABLE, WON_EXECUTION, LOST_TARGET_OCCUPIED, LOST_TARGET_EMPTY, LOST_PRIORITY, LOST_OTHER_REASON
     }
     protected ConflictResolutionStatus conflictStatus = ConflictResolutionStatus.NOT_APPLICABLE;
     

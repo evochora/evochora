@@ -167,6 +167,12 @@ public class PokeThermodynamicPolicy implements IThermodynamicPolicy {
         // Configuration: positive entropy = generation, negative entropy = dissipation.
         // For POKE, entropy values should be negative (dissipation).
 
+        // A write that lost its conflict never happens and therefore dissipates nothing
+        ConflictResolutionStatus status = context.instruction().getConflictStatus();
+        if (status != ConflictResolutionStatus.WON_EXECUTION && status != ConflictResolutionStatus.NOT_APPLICABLE) {
+            return 0;
+        }
+
         Molecule toWrite = getMoleculeToWrite(context.resolvedOperands());
         if (toWrite != null) {
             Rule rule = typeRules.get(toWrite.type());

@@ -70,6 +70,9 @@ class SeededRandomProviderTest {
                 .isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> pool.dispatch(2, (from, to) -> javaView.nextDouble()))
                 .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> pool.dispatch(2, (from, to) -> javaView.setSeed(1L)))
+                .as("reseeding the shared generator from the wave is rejected too")
+                .isInstanceOf(IllegalStateException.class);
 
         // Outside the wave the same provider works again
         assertThat(provider.nextInt(10)).isBetween(0, 9);

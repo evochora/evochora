@@ -44,6 +44,8 @@ class EnvironmentParallelWaveGuardTest {
                 .rootCause().isInstanceOf(AssertionError.class).hasMessageContaining("parallel wave");
         assertThatThrownBy(() -> pool.dispatch(2, (from, to) -> env.setMolecule(data, 1, new int[]{from, 0})))
                 .rootCause().isInstanceOf(AssertionError.class);
+        assertThatThrownBy(() -> pool.dispatch(2, (from, to) -> env.setMoleculeByIndex(from, data)))
+                .rootCause().isInstanceOf(AssertionError.class);
         assertThatThrownBy(() -> pool.dispatch(2, (from, to) -> env.setOwnerId(1, new int[]{from, 0})))
                 .rootCause().isInstanceOf(AssertionError.class);
         assertThatThrownBy(() -> pool.dispatch(2, (from, to) -> env.transferOwnership(1, 2, 0)))

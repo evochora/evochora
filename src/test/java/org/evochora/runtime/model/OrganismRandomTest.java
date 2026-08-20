@@ -18,6 +18,26 @@ class OrganismRandomTest {
 
     private static final long TICK_SEED = 0x5DEECE66DL;
 
+    // Golden values of the pinned formula (organism 7, tick seed above); see formula_isPinned
+    private static final long GOLDEN_STREAM_SEED = 7036782591541029441L;
+    private static final Long[] GOLDEN_DRAWS = {-1696964772237652086L, 1458786141316874717L, -4942829624786792684L};
+    private static final long GOLDEN_MIX_OF_ONE = 6238072747940578789L;
+
+    /**
+     * The formula is part of every recorded trajectory: a resumed run recomputes exactly these
+     * values. Any change to the mixing constants, the composition of seed, tick and ID, or the
+     * draw index start would silently alter all runs, so the concrete values are pinned here.
+     */
+    @Test
+    void formula_isPinned() {
+        OrganismRandom random = new OrganismRandom(7);
+        random.beginTick(TICK_SEED);
+
+        assertThat(random.tickStreamSeed()).isEqualTo(GOLDEN_STREAM_SEED);
+        assertThat(draw(random, 3)).containsExactly(GOLDEN_DRAWS);
+        assertThat(SplitMix64.mix(1L)).isEqualTo(GOLDEN_MIX_OF_ONE);
+    }
+
     @Test
     void sameTickSeedAndId_produceSameSequence() {
         OrganismRandom a = new OrganismRandom(7);

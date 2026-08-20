@@ -107,12 +107,18 @@ public class VirtualMachine {
         }
 
         try {
-            // Logic moved from Organism.processTickAction() here
-            int[] rawArgs = organism.getRawArgumentsFromEnvironment(instruction.getLength(this.environment), this.environment);
+            // A conflict loser is booked as a failure but not executed; it leaves no execution
+            // record, so the argument and register capture below is skipped for it.
+            boolean lostConflict = instruction.getConflictStatus() == Instruction.ConflictResolutionStatus.LOST_PRIORITY;
 
-            // Collect register values BEFORE execution (for annotation display)
-            Map<Integer, Object> registerValuesBefore = collectRegisterValues(organism, instruction.getFullOpcodeId(), rawArgs);
-            
+            int[] rawArgs = null;
+            Map<Integer, Object> registerValuesBefore = null;
+            if (!lostConflict) {
+                rawArgs = organism.getRawArgumentsFromEnvironment(instruction.getLength(this.environment), this.environment);
+                // Collect register values BEFORE execution (for annotation display)
+                registerValuesBefore = collectRegisterValues(organism, instruction.getFullOpcodeId(), rawArgs);
+            }
+
             // Track energy and entropy before execution to calculate total changes
             int energyBefore = organism.getEr();
             int entropyBefore = organism.getSr();
@@ -125,7 +131,6 @@ public class VirtualMachine {
 
             // 2. Commit the stack reads now that we know this instruction will execute. A conflict
             //    loser consumes nothing: it retries with the same operands next tick.
-            boolean lostConflict = instruction.getConflictStatus().isLoss();
             if (!lostConflict) {
                 instruction.commitStackReads();
             }
@@ -186,15 +191,18 @@ public class VirtualMachine {
             int entropyAfter = organism.getSr();
             int totalEntropyDelta = entropyAfter - entropyBefore;
 
-            // Store instruction execution data for history tracking
-            Organism.InstructionExecutionData executionData = new Organism.InstructionExecutionData(
-                instruction.getFullOpcodeId(),
-                rawArgs,
-                totalEnergyCost,
-                totalEntropyDelta,
-                registerValuesBefore
-            );
-            organism.setLastInstructionExecution(executionData);
+            // Store instruction execution data for history tracking. A conflict loser was not
+            // executed, so it leaves no execution record; its failure reason is the trace.
+            if (!lostConflict) {
+                Organism.InstructionExecutionData executionData = new Organism.InstructionExecutionData(
+                    instruction.getFullOpcodeId(),
+                    rawArgs,
+                    totalEnergyCost,
+                    totalEntropyDelta,
+                    registerValuesBefore
+                );
+                organism.setLastInstructionExecution(executionData);
+            }
 
             if (organism.getEr() <= 0) {
                 organism.kill("Ran out of energy");

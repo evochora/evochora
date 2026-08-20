@@ -32,6 +32,7 @@ public interface IRandomProvider extends ISerializable {
      *
      * @param bound exclusive upper bound, must be > 0
      * @return the random int
+     * @throws IllegalStateException if called inside the parallel wave of a tick
      */
     int nextInt(int bound);
 
@@ -39,6 +40,7 @@ public interface IRandomProvider extends ISerializable {
      * Returns a random double in the range [0.0, 1.0).
      *
      * @return the random double
+     * @throws IllegalStateException if called inside the parallel wave of a tick
      */
     double nextDouble();
 
@@ -46,7 +48,8 @@ public interface IRandomProvider extends ISerializable {
      * Provides access to an underlying {@link Random} instance for APIs that require it
      * (e.g., {@code Collections.shuffle}).
      *
-     * @return the Random instance
+     * @return the Random instance; its draws are subject to the same parallel-wave rejection as
+     *         this provider's own methods
      */
     Random asJavaRandom();
 }

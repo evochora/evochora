@@ -1,7 +1,5 @@
 package org.evochora.runtime.model;
 
-import org.evochora.runtime.internal.services.SplitMix64;
-
 /**
  * The random number source of a single organism.
  * <p>

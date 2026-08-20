@@ -109,9 +109,13 @@ checkpoint.
   reason, error penalty, death checks — but skips `commitStackReads` and `instruction.execute`
   and sets `skipIpAdvance`, so the retry next tick sees identical operands.
 - Winner selection: `Simulation.resolveConflicts` scans each contested cell for the smallest
-  `tickStreamSeed()` with the ID backstop. A loss at any target cell is sticky: an instruction
-  that loses at one cell and would win at another loses as a whole (all-or-nothing), which the
-  former per-cell sort did not guarantee.
+  `tickStreamSeed()` with the ID backstop. Every environment-modifying instruction targets at
+  most one cell today; an instruction reporting several target cells is rejected with an
+  `IllegalStateException`, because an all-or-nothing rule across cells (and the question whether
+  a cell whose winner lost elsewhere should be re-awarded) needs a definition together with the
+  first such instruction, not speculative code without a test.
+- A conflict loser records no instruction-execution data (it was not executed), so the
+  instruction-usage analytics count only executed instructions; its trace is the failure reason.
 - `ConflictResolutionStatus.LOST_LOWER_ID_WON` was renamed `LOST_PRIORITY`; the enum remains an
   in-memory diagnostic.
 

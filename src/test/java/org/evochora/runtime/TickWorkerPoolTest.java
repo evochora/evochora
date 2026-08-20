@@ -27,19 +27,19 @@ class TickWorkerPoolTest {
     }
 
     @Test
-    void isInParallelWave_isTrueOnlyWhileDispatching() {
+    void parallelWave_isActiveOnAllThreadsWhileDispatchingAndOffTheMainThreadAfterwards() {
         pool = new TickWorkerPool(2);
         boolean[] insideWave = new boolean[2];
 
-        assertThat(TickWorkerPool.isInParallelWave()).isFalse();
+        assertThat(ParallelWave.isActive()).isFalse();
         pool.dispatch(2, (from, to) -> {
             for (int i = from; i < to; i++) {
-                insideWave[i] = TickWorkerPool.isInParallelWave();
+                insideWave[i] = ParallelWave.isActive();
             }
         });
 
         assertThat(insideWave).as("main thread chunk, worker chunk").containsOnly(true);
-        assertThat(TickWorkerPool.isInParallelWave()).isFalse();
+        assertThat(ParallelWave.isActive()).as("main thread has left the wave").isFalse();
     }
 
     @Test

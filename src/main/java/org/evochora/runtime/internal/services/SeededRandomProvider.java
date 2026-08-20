@@ -1,6 +1,6 @@
 package org.evochora.runtime.internal.services;
 
-import org.evochora.runtime.TickWorkerPool;
+import org.evochora.runtime.ParallelWave;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.apache.commons.math3.random.RandomAdaptor;
 import org.apache.commons.math3.random.RandomGenerator;
@@ -21,7 +21,7 @@ import java.util.Random;
  * <p>
  * Every draw — including those made through {@link #asJavaRandom()} — is rejected with an
  * {@link IllegalStateException} while the calling thread executes the parallel wave of a tick
- * ({@link TickWorkerPool#isInParallelWave()}). A value drawn there would be handed out in
+ * ({@link ParallelWave#isActive()}). A value drawn there would be handed out in
  * scheduling order and make the run irreproducible; code in that phase uses the organism's own
  * {@link org.evochora.runtime.model.OrganismRandom} instead.
  * </p>
@@ -77,7 +77,7 @@ public final class SeededRandomProvider implements IRandomProvider {
     }
 
     private static void rejectDrawInParallelWave() {
-        if (TickWorkerPool.isInParallelWave()) {
+        if (ParallelWave.isActive()) {
             throw new IllegalStateException(
                     "IRandomProvider is reserved for the sequential parts of a tick (tick plugins, birth and "
                     + "death handlers). Code running for an organism inside the parallel wave - instructions "
@@ -97,9 +97,9 @@ public final class SeededRandomProvider implements IRandomProvider {
             this.delegate = delegate;
         }
 
-        @Override public void setSeed(int seed) { delegate.setSeed(seed); }
-        @Override public void setSeed(int[] seed) { delegate.setSeed(seed); }
-        @Override public void setSeed(long seed) { delegate.setSeed(seed); }
+        @Override public void setSeed(int seed) { rejectDrawInParallelWave(); delegate.setSeed(seed); }
+        @Override public void setSeed(int[] seed) { rejectDrawInParallelWave(); delegate.setSeed(seed); }
+        @Override public void setSeed(long seed) { rejectDrawInParallelWave(); delegate.setSeed(seed); }
         @Override public void nextBytes(byte[] bytes) { rejectDrawInParallelWave(); delegate.nextBytes(bytes); }
         @Override public int nextInt() { rejectDrawInParallelWave(); return delegate.nextInt(); }
         @Override public int nextInt(int n) { rejectDrawInParallelWave(); return delegate.nextInt(n); }

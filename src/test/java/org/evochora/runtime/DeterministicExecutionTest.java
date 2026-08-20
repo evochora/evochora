@@ -76,6 +76,19 @@ class DeterministicExecutionTest {
     }
 
     @Test
+    void labelSelection_isInvariantUnderParallelismScaling() {
+        List<int[][]> unscaled = runJumpers(4, JUMP_TICKS);
+
+        JumperWorld scaled = newJumperWorld(JUMPERS, 4);
+        // Below 8 organisms sequential, from 8 on two threads: with 16 organisms this caps the
+        // active thread count at 2 although 4 are configured.
+        scaled.sim.setParallelismScaling(new int[]{8}, new int[]{2});
+        List<int[][]> withScaling = tick(scaled.sim, JUMP_TICKS);
+
+        assertSameTrajectory(unscaled, withScaling, "parallelism=4 vs parallelism-scaling capping at 2");
+    }
+
+    @Test
     void labelSelection_isResumeNeutral() {
         int pauseTick = 7;
         int totalTicks = 20;

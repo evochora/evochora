@@ -6,7 +6,7 @@ import java.util.BitSet;
 import java.util.function.IntConsumer;
 
 import org.evochora.runtime.Config;
-import org.evochora.runtime.TickWorkerPool;
+import org.evochora.runtime.ParallelWave;
 import org.evochora.runtime.isa.IEnvironmentReader;
 
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
@@ -375,10 +375,6 @@ public class Environment implements IEnvironmentReader {
     }
     
     /**
-     * Updates the occupied indices tracking based on the current state of the cell.
-     * @param flatIndex The flat index to check and update.
-     */
-    /**
      * Guards every mutation against the parallel wave of a tick. Inside that wave several
      * organisms execute concurrently against a snapshot of the environment; a write there would
      * race with other threads and make the run depend on scheduling. Only instructions registered
@@ -389,7 +385,7 @@ public class Environment implements IEnvironmentReader {
      * @return {@code true} when the calling thread is not inside the parallel wave
      */
     private static boolean outsideParallelWave() {
-        if (TickWorkerPool.isInParallelWave()) {
+        if (ParallelWave.isActive()) {
             throw new AssertionError("Environment modified inside the parallel wave of a tick: "
                     + "only organism-local instructions may run there; an instruction registered as "
                     + "parallel-safe must not write to the environment");
@@ -397,6 +393,10 @@ public class Environment implements IEnvironmentReader {
         return true;
     }
 
+    /**
+     * Updates the occupied indices tracking based on the current state of the cell.
+     * @param flatIndex The flat index to check and update.
+     */
     private void updateOccupiedIndices(int flatIndex) {
         int value = this.grid[flatIndex];
         int owner = this.ownerGrid[flatIndex];
@@ -527,6 +527,7 @@ public class Environment implements IEnvironmentReader {
      * @param molecule The molecule to set
      */
     public void setMoleculeByIndex(int flatIndex, Molecule molecule) {
+        assert outsideParallelWave();
         int oldMoleculeInt = this.grid[flatIndex];
         int newMoleculeInt = molecule.toInt();
         this.grid[flatIndex] = newMoleculeInt;

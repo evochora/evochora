@@ -25,7 +25,7 @@ import java.util.Collection;
  * index.onMoleculeSet(flatIndex, oldMolecule, newMolecule, owner);
  *
  * // Called by ControlFlowInstruction to find jump target
- * int targetIndex = index.findTarget(labelValue, codeOwner);
+ * int targetIndex = index.findTarget(labelValue, codeOwner, callerCoords, environment, organism.getRandom());
  * </pre>
  * <p>
  * Thread Safety: Not thread-safe. All operations are expected to be called from

@@ -11,6 +11,7 @@ import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.model.SplitMix64;
 import org.evochora.test.utils.SimulationTestUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -134,7 +135,10 @@ class ConflictLossSemanticsTest {
         int energy = 40;
         Contest contest = new Contest(1, false, energy);
         int penalty = contest.sim.getOrganismConfig().getInt("error-penalty-cost");
-        int tickBound = (energy / penalty) * 2 + 2;
+        // Every tick one contender loses and pays at least the penalty; the other may pay nothing
+        // (its write is free in the fixture), so the two together need at most 2 * ceil(E/penalty)
+        // losing ticks before both are dead.
+        int tickBound = 2 * Math.ceilDiv(energy, penalty) + 2;
 
         for (int tick = 0; tick < tickBound && !(contest.a.isDead() && contest.b.isDead()); tick++) {
             contest.rearm();
@@ -263,18 +267,26 @@ class ConflictLossSemanticsTest {
             contest.rearm();
             contest.sim.tick();
             Organism winner = contest.winner();
-            Organism loser = contest.other(winner);
-            long winnerPriority = winner.getRandom().tickStreamSeed();
-            long loserPriority = loser.getRandom().tickStreamSeed();
-            assertThat(winnerPriority)
-                    .as("tick %d: the smaller tick priority wins", tick)
-                    .isLessThanOrEqualTo(loserPriority);
-            if (winnerPriority == loserPriority) {
-                assertThat(winner.getId()).as("ID backstop on equal priority").isLessThan(loser.getId());
-            }
+            assertThat(winner.getId())
+                    .as("tick %d: the winner is the contender with the smaller computed priority", tick)
+                    .isEqualTo(expectedWinnerId(SEED, tick, contest.a.getId(), contest.b.getId()));
             winners.add(winner.getId());
         }
         return winners;
+    }
+
+    /**
+     * Recomputes the agreed priority rule from its definition, independently of the simulation:
+     * {@code priority = mix(mix(seed ^ mix(tick)) ^ mix(id))}, smallest wins, lower ID on ties.
+     */
+    private static int expectedWinnerId(long seed, long tick, int idA, int idB) {
+        long tickSeed = SplitMix64.mix(seed ^ SplitMix64.mix(tick));
+        long priorityA = SplitMix64.mix(tickSeed ^ SplitMix64.mix(idA));
+        long priorityB = SplitMix64.mix(tickSeed ^ SplitMix64.mix(idB));
+        if (priorityA != priorityB) {
+            return priorityA < priorityB ? idA : idB;
+        }
+        return Math.min(idA, idB);
     }
 
     private static void placeWithVector(Environment env, Organism organism, String name, int register, int[] vector) {

@@ -8,10 +8,10 @@ import java.util.Map;
 import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.isa.IEnvironmentModifyingInstruction;
 import org.evochora.runtime.isa.Instruction;
-import org.evochora.runtime.internal.services.SplitMix64;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.OrganismRandom;
+import org.evochora.runtime.model.SplitMix64;
 import org.evochora.runtime.model.GenomeHasher;
 import org.evochora.runtime.spi.DeathContext;
 import org.evochora.runtime.spi.IBirthHandler;
@@ -415,11 +415,11 @@ public class Simulation {
             });
         } else {
             InterceptionContext context = instructionInterceptors.isEmpty() ? null : interceptContext;
-            TickWorkerPool.enterParallelWave();
+            ParallelWave.enter();
             try {
                 planAndExecuteLocal(0, size, context, Thread.currentThread(), planned, diedInWave1);
             } finally {
-                TickWorkerPool.leaveParallelWave();
+                ParallelWave.leave();
             }
         }
 
@@ -652,14 +652,18 @@ public class Simulation {
     }
 
     /**
-     * Resolves conflicts between organisms attempting to modify the same environment coordinates.
+     * Resolves conflicts between organisms attempting to modify the same environment cell.
      * <p>
      * At every contested cell the contender with the smallest tick priority wins; the priority is
      * the organism's {@link OrganismRandom#tickStreamSeed()}, a pure function of seed, tick and
      * organism ID, so winners reshuffle every tick and no organism can hold a cell permanently.
-     * Ties (bit-equal priorities) fall back to the lower organism ID. An instruction that loses at
-     * any of its target cells loses as a whole — it stays marked for the virtual machine, which
-     * books it as a failed instruction and keeps its instruction pointer for a retry.
+     * Ties (bit-equal priorities) fall back to the lower organism ID. A loser stays marked for the
+     * virtual machine, which books it as a failed instruction and keeps its instruction pointer
+     * for a retry.
+     * <p>
+     * Every environment-modifying instruction targets at most one cell. An instruction reporting
+     * several target cells would need a defined all-or-nothing semantics across cells and is
+     * rejected until such an instruction exists.
      *
      * @param instructions The environment-modifying instructions planned for the current tick.
      */
@@ -671,14 +675,17 @@ public class Simulation {
             instruction.setExecutedInTick(true);
             if (instruction instanceof IEnvironmentModifyingInstruction modInstruction) {
                 List<int[]> targetCoords = modInstruction.getTargetCoordinates();
-                // Without target cells (e.g. invalid arguments) the instruction runs, detects the
+                // Without a target cell (e.g. invalid arguments) the instruction runs, detects the
                 // error itself and fails gracefully.
-                if (targetCoords != null && !targetCoords.isEmpty()) {
-                    for (int[] coord : targetCoords) {
-                        int flatIndex = this.environment.properties.toFlatIndex(coord);
-                        contendersByFlatIndex.computeIfAbsent(flatIndex, k -> new ArrayList<>()).add(instruction);
-                    }
+                if (targetCoords == null || targetCoords.isEmpty()) {
+                    continue;
                 }
+                if (targetCoords.size() > 1) {
+                    throw new IllegalStateException(instruction.getName()
+                            + " reports " + targetCoords.size() + " target cells; conflict resolution is defined for one");
+                }
+                int flatIndex = this.environment.properties.toFlatIndex(targetCoords.get(0));
+                contendersByFlatIndex.computeIfAbsent(flatIndex, k -> new ArrayList<>()).add(instruction);
             }
         }
 
@@ -693,12 +700,9 @@ public class Simulation {
             }
 
             for (Instruction contender : contenders) {
-                if (contender != winner) {
-                    contender.setConflictStatus(Instruction.ConflictResolutionStatus.LOST_PRIORITY);
-                } else if (!contender.getConflictStatus().isLoss()) {
-                    // A loss at another target cell is final; a win never overrides it.
-                    contender.setConflictStatus(Instruction.ConflictResolutionStatus.WON_EXECUTION);
-                }
+                contender.setConflictStatus(contender == winner
+                        ? Instruction.ConflictResolutionStatus.WON_EXECUTION
+                        : Instruction.ConflictResolutionStatus.LOST_PRIORITY);
             }
         }
     }
