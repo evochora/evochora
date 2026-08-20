@@ -87,7 +87,7 @@ public class SimulationTest {
 
         assertThat(winner.isInstructionFailed()).as("Winner failed: " + winner.getFailureReason()).isFalse();
         // POKI(DATA) costs 6 energy (no base cost, all in one)
-        assertThat(winner.getEr()).isLessThanOrEqualTo(2000 - 6);
+        assertThat(winner.getEr()).isEqualTo(2000 - 6);
         assertThat(loser.isInstructionFailed()).isTrue();
         assertThat(loser.getFailureReason()).isEqualTo(VirtualMachine.LOST_WRITE_CONFLICT);
         assertThat(loser.getEr()).isEqualTo(2000 - penalty);

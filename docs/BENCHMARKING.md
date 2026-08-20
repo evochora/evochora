@@ -15,7 +15,7 @@ with `organisms` copies of one assembly program and runs ticks back to back.
 |---|---|---|
 | `assembly` | `REALISTIC`, `PROC_CALL` | `REALISTIC` is a general instruction mix (arithmetic, conditionals, environment access, jumps). `PROC_CALL` is a tight `CALL`/`RET` loop with `REF` and `VAL` parameters and stresses the procedure-frame path. |
 | `organisms` | `100`, `500`, `2000` | Population size; larger values shift the profile from per-tick overhead towards per-organism work and cache pressure. |
-| `parallelism` | `4` (default) | Worker threads for the plan and execute phases. Override on the command line (see below). |
+| `parallelism` | `4` (default) | Threads executing the parallel wave of a tick, the main thread included (`1` = main thread alone). Override on the command line (see below). |
 
 The benchmark deliberately isolates the instruction-execution hot path:
 

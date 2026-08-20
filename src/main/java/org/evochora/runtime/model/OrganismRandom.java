@@ -16,8 +16,9 @@ package org.evochora.runtime.model;
  *       scheduling.</li>
  *   <li>Nothing needs to be persisted: after a resume the tick number and organism ID are known,
  *       and the draw index starts at zero at the beginning of every tick.</li>
- *   <li>Streams of different organisms and different ticks are distinct by construction, because
- *       seed, tick and ID enter through bijective mixing.</li>
+ *   <li>Streams of different organisms and different ticks are independent in practice: seed,
+ *       tick and ID enter through full-avalanche mixing, so two streams coincide only on a
+ *       64-bit collision.</li>
  * </ul>
  * Each value costs a handful of arithmetic operations on organism-local fields; no shared memory
  * is touched. Not thread-safe: an instance belongs to exactly one organism and is used only by

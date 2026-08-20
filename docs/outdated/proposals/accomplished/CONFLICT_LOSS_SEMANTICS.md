@@ -61,8 +61,9 @@ instruction until the write succeeds or it dies. That is intended. Waiting for a
 allowed but costs base + penalty per tick and runs the entropy clock, so blocking strategies are
 selected against instead of being free.
 
-The all-or-nothing structure of resolution is unchanged: an instruction that loses at any of its
-target coordinates fails as a whole; no partial writes.
+Every environment-modifying instruction targets one cell, so a loss is always total; no partial
+writes exist. Instructions with several target cells are not supported by conflict resolution (see
+Implementation).
 
 ### 2. Winner selection: computed per-tick priority
 
@@ -80,9 +81,10 @@ lower organism ID wins as a total-order backstop.
 
 Properties: deterministic and resource-invariant (a pure function of seed, tick and IDs — no state,
 no ordering, no scheduling enters, satisfying contract R1/R2 of DETERMINISTIC_EXECUTION); no
-persistent bias (priorities reshuffle every tick, so under sustained contention every contender wins
-with equal long-run frequency and permanent starvation of one party is impossible); hot-path cost of
-one `mix64` per contender, no allocation.
+persistent bias (priorities reshuffle every tick; with a full-avalanche hash each contender is
+expected to win a contested cell equally often in the long run, and a fixed winner across ticks
+would require a systematic correlation the mixing is designed to exclude — an expectation, not a
+proven bound); hot-path cost of one `mix` per contender, no allocation.
 
 ### 3. No analytics changes
 

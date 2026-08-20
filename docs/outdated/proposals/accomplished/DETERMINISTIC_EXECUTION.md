@@ -146,16 +146,21 @@ contract consequences above). The design therefore separates randomness by *wher
   ```
 
   with `mix` the SplitMix64 finalizer (`SplitMix64.mix`, a bijection) and `GOLDEN_GAMMA` the
-  SplitMix64 increment. `(tick, organismId, n)` enter injectively, so no two draws in a run share
-  an input. `streamSeed` is exposed as `OrganismRandom.tickStreamSeed()`; it is the per-tick
-  priority used by [CONFLICT_LOSS_SEMANTICS](CONFLICT_LOSS_SEMANTICS.md).
+  SplitMix64 increment. The XOR of two mixed values is not injective in the pair, so distinct
+  `(tick, organismId)` pairs could in principle share a stream; with 64-bit full-avalanche
+  mixing that is a 2^-64-class collision and irrelevant in practice — determinism does not
+  depend on it, only the independence of streams does. `streamSeed` is exposed as
+  `OrganismRandom.tickStreamSeed()`; it is the per-tick priority used by
+  [CONFLICT_LOSS_SEMANTICS](CONFLICT_LOSS_SEMANTICS.md).
 
 Why computed randomness satisfies the contract:
 
 - **R1/R2:** the formula asks "which tick, which organism, which draw", never "who arrived first".
   Any thread computing it gets the same value; the thread count is irrelevant.
 - **R3:** the draw index resets to 0 at the start of every tick and `tick`, `organismId`, `seed`
-  are all known after a resume. Nothing needs to be persisted — **the checkpoint and tick-data formats do not
+  are all known after a resume. This relies on checkpoints being taken at tick boundaries, which
+  is where the engine samples (after `tick()` returns); a mid-tick checkpoint would have to
+  persist the in-flight draw index. Nothing needs to be persisted — **the checkpoint and tick-data formats do not
   change**. The `OrganismState` message appears in every sampled tick, so any per-organism state
   would have been paid on every sample; the computed scheme costs zero bytes.
 - **Quality:** SplitMix64 is designed to turn a counter into a statistically sound stream (it is

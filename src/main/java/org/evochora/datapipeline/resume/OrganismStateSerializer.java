@@ -33,6 +33,8 @@ public final class OrganismStateSerializer {
             org.evochora.datapipeline.api.contracts.RegisterValue.newBuilder();
     private final org.evochora.datapipeline.api.contracts.ProcFrame.Builder procFrameBuilder =
             org.evochora.datapipeline.api.contracts.ProcFrame.newBuilder();
+    private final PersistentRegisterStore.Builder storeBuilder = PersistentRegisterStore.newBuilder();
+    private final ProcedureRegisterSnapshot.Builder snapshotBuilder = ProcedureRegisterSnapshot.newBuilder();
 
 
     /**
@@ -143,11 +145,15 @@ public final class OrganismStateSerializer {
         organismStateBuilder.setCurrentProcLabelHash(o.getCurrentProcLabelHash());
         organismStateBuilder.setStackSavedDirty(o.isStackSavedDirty());
         organismStateBuilder.setPersistentDirty(o.isPersistentDirty());
-        PersistentRegisterStore.Builder storeBuilder = PersistentRegisterStore.newBuilder();
-        for (Map.Entry<Integer, Object[]> entry : o.getPersistentRegisterState().entrySet()) {
-            ProcedureRegisterSnapshot.Builder snapshotBuilder = ProcedureRegisterSnapshot.newBuilder()
-                    .setLabelHash(entry.getKey());
-            for (Object rv : entry.getValue()) {
+        // Emitted in ascending label-hash order: the organism keeps this state in a hash map whose
+        // iteration order is not canonical, and a checkpoint must not depend on insertion history.
+        storeBuilder.clear();
+        Map<Integer, Object[]> persistentState = o.getPersistentRegisterState();
+        int[] labelHashes = persistentState.keySet().stream().mapToInt(Integer::intValue).sorted().toArray();
+        for (int labelHash : labelHashes) {
+            snapshotBuilder.clear();
+            snapshotBuilder.setLabelHash(labelHash);
+            for (Object rv : persistentState.get(labelHash)) {
                 snapshotBuilder.addRegisters(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
             }
             storeBuilder.addProcedureSnapshots(snapshotBuilder.build());

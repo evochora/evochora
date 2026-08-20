@@ -48,11 +48,13 @@ class SeededRandomProviderTest {
         byte[] state = original.saveState();
         List<Integer> continuation = draw(original, 16);
 
-        SeededRandomProvider restored = new SeededRandomProvider(7L);
+        SeededRandomProvider restored = new SeededRandomProvider(99L);
         restored.loadState(state);
 
         assertThat(draw(restored, 16)).isEqualTo(continuation);
-        assertThat(restored.seed()).as("loading state keeps the seed").isEqualTo(7L);
+        assertThat(restored.seed())
+                .as("loadState transfers the generator position only; the seed stays the one the provider was created with")
+                .isEqualTo(99L);
     }
 
     @Test

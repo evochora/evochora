@@ -277,6 +277,11 @@ class ResumeNeutralityTest {
         for (int i = 0; i < n; i++) {
             sim.tick();
             List<Organism> organisms = sim.getOrganisms();
+            for (Organism organism : organisms) {
+                assertThat(organism.isInstructionFailed())
+                        .as("organism %d failed at tick %d: %s", organism.getId(), sim.getCurrentTick(), organism.getFailureReason())
+                        .isFalse();
+            }
             long[] state = new long[organisms.size() * 4];
             for (int o = 0; o < organisms.size(); o++) {
                 Organism organism = organisms.get(o);

@@ -408,11 +408,20 @@ class DeterministicExecutionTest {
     // Trajectory helpers
     // ===================================================================================
 
-    /** Ticks {@code n} times and records the instruction pointers of all organisms after each tick. */
+    /**
+     * Ticks {@code n} times and records the instruction pointers of all organisms after each tick.
+     * Every instruction must succeed: two runs failing identically would compare equal without
+     * exercising the behaviour under test.
+     */
     private static List<int[][]> tick(Simulation sim, int n) {
         List<int[][]> trajectory = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
             sim.tick();
+            for (Organism organism : sim.getOrganisms()) {
+                assertThat(organism.isInstructionFailed())
+                        .as("organism %d failed at tick %d: %s", organism.getId(), sim.getCurrentTick(), organism.getFailureReason())
+                        .isFalse();
+            }
             trajectory.add(ipsOf(sim));
         }
         return trajectory;

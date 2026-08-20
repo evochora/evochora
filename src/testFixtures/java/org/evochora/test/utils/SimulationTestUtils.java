@@ -136,7 +136,8 @@ public class SimulationTestUtils {
      * {@link Simulation#shutdown()} to release the worker pool when {@code parallelism > 1}.
      *
      * @param environment The environment for the simulation.
-     * @param parallelism The thread count (1 = sequential, N = N worker threads).
+     * @param parallelism Number of threads executing the parallel wave, the calling thread included
+     *                    (1 = the calling thread alone).
      * @return A Simulation instance configured for testing.
      */
     public static Simulation createSimulation(Environment environment, int parallelism) {
@@ -150,7 +151,8 @@ public class SimulationTestUtils {
      * @param maxEnergy Maximum energy for organisms.
      * @param maxEntropy Maximum entropy for organisms.
      * @param errorPenaltyCost Energy penalty for instruction failures.
-     * @param parallelism The thread count (1 = sequential, N = N worker threads).
+     * @param parallelism Number of threads executing the parallel wave, the calling thread included
+     *                    (1 = the calling thread alone).
      * @return A Simulation instance configured for testing.
      */
     public static Simulation createSimulation(Environment environment, int maxEnergy, int maxEntropy,
