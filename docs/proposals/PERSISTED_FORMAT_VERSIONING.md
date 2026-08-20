@@ -85,7 +85,7 @@ Two practice notes follow independently of the version stamp:
 - **Retired field numbers must be `reserved`** in the same commit that removes or renumbers a
   field. The stamp names the incompatibility; `reserved` prevents the silent-misread class if a
   check is ever bypassed, and makes renumbering visible in review.
-- [DETERMINISTIC_EXECUTION](DETERMINISTIC_EXECUTION.md) was expected to be the first bump; its
+- [DETERMINISTIC_EXECUTION](../outdated/proposals/accomplished/DETERMINISTIC_EXECUTION.md) was expected to be the first bump; its
   agreed design keeps the checkpoint format unchanged, so no bump is currently queued.
 
 ## Scope

@@ -1,7 +1,7 @@
 # Conflict Loss: Failure Semantics and Per-Tick Priority
 
-**Status: IMPLEMENTED on branch `feature/deterministic-execution` (2026-08-20), together with
-[DETERMINISTIC_EXECUTION](DETERMINISTIC_EXECUTION.md); awaiting review and merge.**
+**Status: ACCOMPLISHED — implemented on branch `feature/deterministic-execution` (PR #105,
+2026-08-20), together with [DETERMINISTIC_EXECUTION](DETERMINISTIC_EXECUTION.md).**
 
 ## Problem
 
@@ -20,7 +20,7 @@ instruction on the identical target next tick. Two structural defects follow:
    scale: in run `20260226-03114337`, 1 579 organisms were pinned for 140 million ticks — alive,
    zero instructions, zero failures, zero cost — behind lower-ID contenders on geyser-fed cells
    (verified end to end in
-   [DEMO_RUNS_PRE_WIPE_EVALUATION §9.12](../experiments/DEMO_RUNS_PRE_WIPE_EVALUATION.md)).
+   [DEMO_RUNS_PRE_WIPE_EVALUATION §9.12](../../../experiments/DEMO_RUNS_PRE_WIPE_EVALUATION.md)).
 2. **Permanent age bias.** Lowest-ID-wins means the same older organism wins the same contested cell
    every tick, forever. Starvation is not an edge case but the guaranteed outcome of persistent
    contention.
@@ -88,7 +88,7 @@ one `mix64` per contender, no allocation.
 
 The failure reason travels through the existing `failure_reason`/`failure_count` path. A per-cause
 failure breakdown, if ever wanted, is the existing
-[FAILURE_CAUSE_ANALYTICS](ideas/FAILURE_CAUSE_ANALYTICS.md) idea, where this reason becomes one
+[FAILURE_CAUSE_ANALYTICS](../../../proposals/ideas/FAILURE_CAUSE_ANALYTICS.md) idea, where this reason becomes one
 category. This proposal adds no metric, no column, and no backlog entry.
 
 ## Coordination

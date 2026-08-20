@@ -266,7 +266,7 @@ For a detailed technical breakdown of the engineering choices behind this perfor
 | Component | Status | Feature Highlights |
 | :--- | :--- | :--- |
 | **Virtual Machine** | ✔ Functional | Full register set, 3 stacks, dual-pointer architecture, procedural calls. |
-| **Determinism** | ✔ Verified | 100% reproducible runs via fixed seeds and strict conflict resolution. |
+| **Determinism** | ✔ Verified | Bit-identical runs from seed and configuration, independent of thread count and of pause/resume; conflict resolution by computed per-tick priority. |
 | **Compiler** | ✔ Functional | Multi-phase immutable pipeline with high-level assembly, procedures, macros and source-map generation. |
 | **Data Pipeline** | ✔ Functional | Decoupled architecture with resume capability and delta compression (Queue -> Persistence -> Indexer -> DB). |
 | **Visualizer** | ✔ Live | Web-based, tick-by-tick inspection, memory layout visualization and assembly debugger. |
@@ -319,19 +319,18 @@ The core simulation is optimized for throughput. The raw, in-memory simulation e
 
 The primary computational load (CPU) scales linearly with the number of active organisms (O(N)). The data pipeline load (I/O) is dominated by periodic full environment snapshots whose size scales with the environment, while incremental updates between snapshots use delta compression and scale only with the number of changes per tick.
 
-To move beyond the limitations of single-core execution, the simulation tick is architected in three distinct phases:
+The simulation tick has snapshot semantics — every organism acts against the world as it was at the start of the tick — and is executed in two waves:
 
-1.  **Plan**: All organisms concurrently determine their next instruction.
-2.  **Resolve**: A synchronous conflict resolver identifies and mediates competing claims on world resources (i.e., multiple organisms attempting to write to the same Molecule).
-3.  **Execute**: All non-conflicting instructions are executed concurrently.
+1.  **Plan and local execution**: All organisms determine their next instruction and, if it only changes their own state (arithmetic, jumps, reads), execute it immediately. This wave runs on a configurable number of worker threads over disjoint subsets of the population.
+2.  **Resolve and write**: Environment-modifying instructions pass a conflict resolver that mediates competing claims on the same Molecule, then execute sequentially in organism order. The winner of a contested cell is chosen by a priority computed per tick from seed and organism identity, so the same organism cannot hold a cell permanently; a loser pays the cost of a failed instruction and retries.
 
-This design explicitly anticipates parallelization. While the "Plan" and "Execute" phases are embarrassingly parallel, multithreading the simulation engine itself is planned for a future distributed cloud architecture. In the current in-process mode, available CPU cores are already fully utilized by the other concurrent services (e.g., Persistence, Indexing), making parallelization of the engine alone inefficient. For massive-scale experiments, a long-term vision involves partitioning the world into spatial regions managed by separate, distributed compute nodes. While this introduces synchronization challenges at the boundaries, the principle of locality inherent to organism behavior is expected to minimize inter-node communication, following the principles of **Indefinite Scalability** demonstrated by the **Moveable Feast Machine** [(Ackley, 2013)](#ref-ackley-2013), making this a viable path for future scaling.
+The thread count is an execution resource, not part of the simulated physics: a run produces the same trajectory whether it uses one thread or many, and whether it was paused and resumed. For massive-scale experiments, a long-term vision involves partitioning the world into spatial regions managed by separate, distributed compute nodes. While this introduces synchronization challenges at the boundaries, the principle of locality inherent to organism behavior is expected to minimize inter-node communication, following the principles of **Indefinite Scalability** demonstrated by the **Moveable Feast Machine** [(Ackley, 2013)](#ref-ackley-2013), making this a viable path for future scaling.
 
 ### 5.2 Data Pipeline and Reproducibility
 
 Large-scale simulations generate substantial data volumes, varying widely with environment size, snapshot frequency, and delta compression settings. The Evochora data pipeline is a decoupled, asynchronous system built on a foundation of abstract **Resources** to handle this throughput. The flow is designed for scalability: the `SimulationEngine` writes `TickData` messages to a queue. Multiple `PersistenceService` instances can act as competing consumers on this queue, writing data in batches to a durable storage resource. Downstream, various `IndexerService` types consume this stored data—again as competing consumer groups to build specialized indexes that are written to a database. This data powers the web-based visualizer. A key architectural principle is that all services are written against abstract resource interfaces (e.g., for queues and storage), allowing the underlying implementation to be seamlessly swapped from a high-performance in-process setup to a cloud-native, distributed one (e.g., message buses and object storage) without changing any service code. The indexing process is computationally intensive but parallelizable, and configurable sampling intervals allow researchers to trade temporal resolution for storage efficiency when running long simulations.
 
-Scientific rigor is ensured through **full determinism**. All sources of randomness use a fixed seed, and the conflict resolution mechanism is deterministic, guaranteeing that an experiment is perfectly reproducible.
+Scientific rigor is ensured through **full determinism**. Randomness consumed by the sequential parts of a tick comes from one seeded, checkpointed generator; randomness consumed while organisms execute concurrently is computed from seed, tick and organism identity rather than drawn from shared state, so it depends neither on thread scheduling nor on anything that would have to be persisted. Together with the computed conflict priority this guarantees that an experiment is bit-identically reproducible from seed and configuration, on any number of cores and across pauses.
 
 Resume from any persisted state and delta compression for reducing data volume without sacrificing replayability are both fully implemented, enabling the use of cost-effective spot instances for very long-running experiments.
 

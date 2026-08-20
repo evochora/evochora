@@ -1,7 +1,7 @@
 # Deterministic Execution
 
-**Status: IMPLEMENTED on branch `feature/deterministic-execution` (steps 1–6, 2026-08-20);
-JMH before/after comparison (step 7) and review outstanding.**
+**Status: ACCOMPLISHED — implemented on branch `feature/deterministic-execution` (PR #105,
+2026-08-20), including the JMH before/after comparison and review fixes.**
 
 This document records verified determinism defects, fixes the *contract* a solution must satisfy,
 and — in the [Design](#design) section — the agreed mechanism.
@@ -67,11 +67,11 @@ Consequences that follow from the contract (constraints, not design choices):
   decision), not by declaring one path canonical implicitly.
 - R3 requires that all randomness state be reconstructible from the checkpoint. That changes the
   checkpoint format — coordinate with
-  [PERSISTED_FORMAT_VERSIONING](PERSISTED_FORMAT_VERSIONING.md) (this would be a natural first
+  [PERSISTED_FORMAT_VERSIONING](../../../proposals/PERSISTED_FORMAT_VERSIONING.md) (this would be a natural first
   version bump).
 - Old runs are not migrated. They were produced under the current behaviour and remain what they
   are; the experiment record for run 20260402
-  ([docs/experiments/RUN_20260402_SELECTIVE_SWEEP.md](../experiments/RUN_20260402_SELECTIVE_SWEEP.md))
+  ([docs/experiments/RUN_20260402_SELECTIVE_SWEEP.md](../../../experiments/RUN_20260402_SELECTIVE_SWEEP.md))
   documents this explicitly.
 
 ## Acceptance tests
@@ -238,7 +238,7 @@ they influence speed only, which is their purpose.
 
 Unchanged. The root `rng_state` remains; no per-organism RNG state is added; the label-matching
 stream no longer exists. This proposal therefore does **not** depend on
-[PERSISTED_FORMAT_VERSIONING](PERSISTED_FORMAT_VERSIONING.md) and can land first.
+[PERSISTED_FORMAT_VERSIONING](../../../proposals/PERSISTED_FORMAT_VERSIONING.md) and can land first.
 
 ### Verification
 
