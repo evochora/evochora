@@ -983,11 +983,10 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         ));
         
         // 2. Environment sparse tracking structures (occupiedIndices, cellsByOwner)
-        // occupiedIndices: IntOpenHashSet - worst case ~24 bytes per occupied cell
+        // occupiedIndices: BitSet - totalCells / 8 bytes, independent of occupancy
         // cellsByOwner: Int2ObjectOpenHashMap<IntOpenHashSet> - variable per organism
         // changedSinceLastReset: BitSet - totalCells / 8 bytes
-        // Estimate: 50% cell occupancy × 24 bytes + BitSet + overhead
-        long sparseTrackingBytes = (params.totalCells() / 2) * 24  // occupiedIndices at 50% occupancy
+        long sparseTrackingBytes = (params.totalCells() + 7) / 8   // occupiedIndices BitSet
                                  + (params.totalCells() + 7) / 8   // changedSinceLastReset BitSet
                                  + (long) params.maxOrganisms() * 200;  // cellsByOwner (avg cells per organism)
         estimates.add(new MemoryEstimate(

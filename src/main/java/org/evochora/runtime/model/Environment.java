@@ -11,7 +11,6 @@ import org.evochora.runtime.isa.IEnvironmentReader;
 
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
-import it.unimi.dsi.fastutil.ints.IntSet;
 import org.evochora.runtime.label.ILabelMatchingStrategy;
 import org.evochora.runtime.label.LabelIndex;
 import org.evochora.runtime.label.PreExpandedHammingStrategy;
@@ -30,8 +29,14 @@ public class Environment implements IEnvironmentReader {
     private final int[] ownerGrid;
     private final int[] strides;
 
-    // Sparse cell tracking for performance optimization (using primitive int indices)
-    private final IntSet occupiedIndices;
+    /**
+     * One bit per cell, set while the cell holds a molecule or an owner. A bit set gives
+     * constant-time updates without hashing, a fixed memory footprint of one bit per cell, and —
+     * decisive for reproducible snapshots — iteration in ascending index order, so the order in
+     * which cells are serialized depends on the grid's content alone and not on the history of
+     * writes.
+     */
+    private final BitSet occupiedIndices;
     
     // Ownership index: maps ownerId -> set of flat indices owned by that organism
     // Enables O(1) lookup of all cells owned by a specific organism (for FORK transfer, death cleanup)
@@ -142,7 +147,7 @@ public class Environment implements IEnvironmentReader {
         }
 
         // Initialize sparse cell tracking if enabled (using primitive int indices for performance)
-        this.occupiedIndices = Config.ENABLE_SPARSE_CELL_TRACKING ? new IntOpenHashSet() : null;
+        this.occupiedIndices = Config.ENABLE_SPARSE_CELL_TRACKING ? new BitSet(totalCells) : null;
 
         // Initialize ownership index
         this.cellsByOwner = new Int2ObjectOpenHashMap<>();
@@ -403,10 +408,10 @@ public class Environment implements IEnvironmentReader {
 
         if (value != 0 || owner != 0) {
             // Cell is occupied - add to tracking
-            occupiedIndices.add(flatIndex);
+            occupiedIndices.set(flatIndex);
         } else {
             // Cell is empty - remove from tracking
-            occupiedIndices.remove(flatIndex);
+            occupiedIndices.clear(flatIndex);
         }
     }
 
@@ -434,20 +439,20 @@ public class Environment implements IEnvironmentReader {
     }
 
     /**
-     * Iterates all occupied cells using flat indices (OPTIMIZATION #2: Primitive API).
-     * This method provides zero-overhead iteration with direct flat index access.
-     * Enables JIT inlining when used with non-capturing method references.
+     * Iterates all occupied cells by flat index, in ascending index order.
+     * <p>
+     * The order is a property of the grid's content, so two environments with the same cells —
+     * a live one and one rebuilt from a snapshot — hand out their cells identically. The cost is
+     * proportional to the grid size (one word scan per 64 cells), not to the number of occupied
+     * cells; no allocation, no boxing.
      *
-     * Performance: ~75% faster than coordinate-based iteration (eliminates both
-     * index calculation overhead and callback boxing/unboxing).
-     *
-     * @param consumer Callback invoked with flat index for each occupied cell
+     * @param consumer Callback invoked with the flat index of each occupied cell
      */
     public void forEachOccupiedIndex(IntConsumer consumer) {
         if (occupiedIndices == null) return;
-
-        // Direct iteration over primitive int indices - zero allocation, maximum JIT optimization
-        occupiedIndices.forEach(consumer);
+        for (int i = occupiedIndices.nextSetBit(0); i >= 0; i = occupiedIndices.nextSetBit(i + 1)) {
+            consumer.accept(i);
+        }
     }
 
     /**
@@ -717,7 +722,7 @@ public class Environment implements IEnvironmentReader {
             labelIndex.onMoleculeSet(flatIndex, oldMoleculeInt, 0, 0);
             // Update sparse cell tracking if enabled
             if (Config.ENABLE_SPARSE_CELL_TRACKING && occupiedIndices != null) {
-                occupiedIndices.remove(flatIndex);
+                occupiedIndices.clear(flatIndex);
             }
         }
 

@@ -41,6 +41,34 @@ class EnvironmentIndexConsistencyTest {
     }
 
     @Test
+    void occupiedCells_areIteratedInIndexOrderRegardlessOfWriteHistory() {
+        List<int[]> positions = new ArrayList<>();
+        for (int y = 0; y < 30; y++) {
+            for (int x = 0; x < 30; x++) {
+                positions.add(new int[]{x, y});
+            }
+        }
+        Environment ascending = fill(positions);
+        Collections.shuffle(positions, new Random(5L));
+        Environment permuted = fill(positions);
+        // Churn the permuted one: remove and re-add a block, which reshuffles a hash-based index
+        for (int x = 0; x < 30; x++) {
+            permuted.setMolecule(new Molecule(Config.TYPE_CODE, 0), 0, new int[]{x, 7});
+        }
+        for (int x = 29; x >= 0; x--) {
+            permuted.setMolecule(new Molecule(Config.TYPE_DATA, x + 7), 1, new int[]{x, 7});
+        }
+
+        List<Integer> expected = new ArrayList<>();
+        ascending.forEachOccupiedIndex(expected::add);
+        List<Integer> actual = new ArrayList<>();
+        permuted.forEachOccupiedIndex(actual::add);
+
+        assertThat(expected).hasSize(900).isSorted();
+        assertThat(actual).isEqualTo(expected);
+    }
+
+    @Test
     void clearOwnershipFor_dropsEmptiedCellsFromTheOccupiedSet() {
         Environment env = new Environment(new EnvironmentProperties(new int[]{8, 8}, true));
         env.setMolecule(new Molecule(Config.TYPE_CODE, 0), 5, new int[]{1, 1}); // empty but owned
