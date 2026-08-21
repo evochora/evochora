@@ -10,7 +10,7 @@ import java.util.Random;
  * handlers), consumed in their deterministic call order. Code that runs for a specific organism
  * inside the parallel wave uses the organism's own
  * {@link org.evochora.runtime.model.OrganismRandom} instead; implementations reject draws made
- * there with an {@link IllegalStateException}.
+ * there with a {@link org.evochora.runtime.ParallelWaveViolation}.
  * <p>
  * Implements {@link ISerializable} to support simulation checkpointing and resume.
  * </p>
@@ -32,7 +32,7 @@ public interface IRandomProvider extends ISerializable {
      *
      * @param bound exclusive upper bound, must be > 0
      * @return the random int
-     * @throws IllegalStateException if called inside the parallel wave of a tick
+     * @throws org.evochora.runtime.ParallelWaveViolation if called inside the parallel wave of a tick
      */
     int nextInt(int bound);
 
@@ -40,7 +40,7 @@ public interface IRandomProvider extends ISerializable {
      * Returns a random double in the range [0.0, 1.0).
      *
      * @return the random double
-     * @throws IllegalStateException if called inside the parallel wave of a tick
+     * @throws org.evochora.runtime.ParallelWaveViolation if called inside the parallel wave of a tick
      */
     double nextDouble();
 

@@ -20,6 +20,10 @@ package org.evochora.runtime.model;
  *       tick and ID enter through full-avalanche mixing, so two streams coincide only on a
  *       64-bit collision.</li>
  * </ul>
+ * The seed of a tick's stream ({@link #tickStreamSeed()}) doubles as the organism's priority in
+ * that tick's conflict resolution: it is uniformly distributed and reshuffles every tick, and
+ * reusing it adds no second source of randomness to keep consistent.
+ * <p>
  * Each value costs a handful of arithmetic operations on organism-local fields; no shared memory
  * is touched. Not thread-safe: an instance belongs to exactly one organism and is used only by
  * the thread currently executing that organism.

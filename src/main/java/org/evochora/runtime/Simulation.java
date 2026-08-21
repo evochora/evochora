@@ -345,6 +345,11 @@ public class Simulation {
      * Executes a single simulation tick: tick plugins run first, then all organisms plan and
      * execute under snapshot semantics (see {@link #planResolveExecute()}), then birth handlers
      * run for the organisms born in this tick.
+     * <p>
+     * If the calling thread is interrupted while the tick runs, the tick stops where it is: some
+     * organisms have acted, others have not. The simulation is then in a state no complete tick
+     * ever produces and must be discarded, not continued or persisted — which is what the engine
+     * does, because it stops sampling as soon as a stop is requested.
      */
     public void tick() {
         if (Thread.currentThread().isInterrupted()) return;
@@ -354,7 +359,6 @@ public class Simulation {
                     + "- the run seed and all organism randomness derive from it");
         }
 
-        newOrganismsThisTick.clear();
         tickSeed = SplitMix64.mix(seed ^ SplitMix64.mix(currentTick));
 
         // Execute tick plugins before Plan-Resolve-Execute cycle
@@ -386,6 +390,7 @@ public class Simulation {
         }
 
         this.organisms.addAll(newOrganismsThisTick);
+        newOrganismsThisTick.clear();
         this.currentTick++;
     }
 
@@ -491,9 +496,8 @@ public class Simulation {
                 for (IInstructionInterceptor interceptor : instructionInterceptors) {
                     try {
                         interceptor.intercept(context);
-                    } catch (IllegalStateException e) {
-                        // A violated execution contract (e.g. shared randomness drawn inside the
-                        // parallel wave) invalidates the run; it must not be downgraded to a warning.
+                    } catch (ParallelWaveViolation e) {
+                        // The run is irreproducible from here on; never downgrade this to a warning.
                         throw e;
                     } catch (Exception e) {
                         LOG.warn("Interceptor '{}' failed for organism {} at tick {}: {}",

@@ -1,6 +1,7 @@
 package org.evochora.runtime.internal.services;
 
 import org.evochora.runtime.ParallelWave;
+import org.evochora.runtime.ParallelWaveViolation;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.apache.commons.math3.random.RandomAdaptor;
 import org.apache.commons.math3.random.RandomGenerator;
@@ -19,8 +20,8 @@ import java.util.Random;
  * RNG with excellent statistical properties and a period of 2^19937-1.
  * </p>
  * <p>
- * Every draw — including those made through {@link #asJavaRandom()} — is rejected with an
- * {@link IllegalStateException} while the calling thread executes the parallel wave of a tick
+ * Every draw — including those made through {@link #asJavaRandom()} — is rejected with a
+ * {@link ParallelWaveViolation} while the calling thread executes the parallel wave of a tick
  * ({@link ParallelWave#isActive()}). A value drawn there would be handed out in
  * scheduling order and make the run irreproducible; code in that phase uses the organism's own
  * {@link org.evochora.runtime.model.OrganismRandom} instead.
@@ -78,7 +79,7 @@ public final class SeededRandomProvider implements IRandomProvider {
 
     private static void rejectDrawInParallelWave() {
         if (ParallelWave.isActive()) {
-            throw new IllegalStateException(
+            throw new ParallelWaveViolation(
                     "IRandomProvider is reserved for the sequential parts of a tick (tick plugins, birth and "
                     + "death handlers). Code running for an organism inside the parallel wave - instructions "
                     + "and instruction interceptors - must use Organism.getRandom() instead.");

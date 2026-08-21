@@ -26,7 +26,8 @@ package org.evochora.runtime.spi;
  * {@code context.getOrganism().getRandom()}: its values depend only on seed, tick and organism.
  * The {@code IRandomProvider} passed to the constructor serves the sequential hooks a plugin may
  * implement in addition (for example {@link IBirthHandler}); a draw from it inside
- * {@code intercept} fails with an {@link IllegalStateException}.
+ * {@code intercept} fails with a {@link org.evochora.runtime.ParallelWaveViolation}, which
+ * aborts the tick.
  *
  * @see InterceptionContext
  * @see ITickPlugin

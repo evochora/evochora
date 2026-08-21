@@ -166,6 +166,19 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
         this.valueToLabels = new Int2ObjectOpenHashMap<>();
     }
 
+    /**
+     * Finds the best matching label in staged Hamming-distance order (exact, then one, two, three
+     * bit flips), stopping early when no later stage can beat the current best score. Among own
+     * exact matches the closest wins when {@code selectionSpread} is zero; otherwise one of them
+     * is chosen at random, weighted by inverse distance, with values drawn from {@code random}.
+     *
+     * @param searchValue the label value to search for
+     * @param codeOwner the owner ID of the executing code; its own labels are preferred
+     * @param callerCoords the coordinates of the calling instruction, for distance calculation
+     * @param environment the environment, for coordinate conversion and toroidal distance
+     * @param random the random source of the organism executing the lookup; must not be null
+     * @return the flat index of the best matching label, or -1 if no label is within tolerance
+     */
     @Override
     public int findTarget(int searchValue, int codeOwner, int[] callerCoords, Environment environment,
                           OrganismRandom random) {

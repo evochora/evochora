@@ -120,6 +120,7 @@ class ResumeNeutralityTest {
         organism.instructionFailed("test failure");
 
         Simulation restored = restore(world, 1).simulation();
+        simulations.add(restored);
         Organism rebuilt = restored.getOrganisms().stream()
                 .filter(o -> o.getId() == organism.getId()).findFirst().orElseThrow();
 

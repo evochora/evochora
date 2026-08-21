@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
+import org.evochora.runtime.ParallelWaveViolation;
 import org.evochora.runtime.TickWorkerPool;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Tag;
@@ -64,17 +65,17 @@ class SeededRandomProviderTest {
         pool = new TickWorkerPool(2);
 
         assertThatThrownBy(() -> pool.dispatch(2, (from, to) -> provider.nextInt(10)))
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(ParallelWaveViolation.class)
                 .hasMessageContaining("Organism.getRandom()");
         assertThatThrownBy(() -> pool.dispatch(2, (from, to) -> provider.nextDouble()))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(ParallelWaveViolation.class);
         assertThatThrownBy(() -> pool.dispatch(2, (from, to) -> javaView.nextInt(10)))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(ParallelWaveViolation.class);
         assertThatThrownBy(() -> pool.dispatch(2, (from, to) -> javaView.nextDouble()))
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(ParallelWaveViolation.class);
         assertThatThrownBy(() -> pool.dispatch(2, (from, to) -> javaView.setSeed(1L)))
                 .as("reseeding the shared generator from the wave is rejected too")
-                .isInstanceOf(IllegalStateException.class);
+                .isInstanceOf(ParallelWaveViolation.class);
 
         // Outside the wave the same provider works again
         assertThat(provider.nextInt(10)).isBetween(0, 9);

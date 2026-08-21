@@ -68,8 +68,9 @@ Consequences that follow from the contract (constraints, not design choices):
 - R3 requires that all randomness state be reconstructible from the checkpoint. When this
   contract was written, a checkpoint-format change (coordinated with
   [PERSISTED_FORMAT_VERSIONING](../../../proposals/PERSISTED_FORMAT_VERSIONING.md)) was expected;
-  the computed-randomness design below reconstructs every organism's state from seed, tick and
-  organism ID alone, so the format stayed unchanged.
+  the computed-randomness design below reconstructs every organism's stream from seed, tick and
+  organism ID alone and restarts the draw index at every tick boundary, so the format stayed
+  unchanged.
 - Old runs are not migrated. They were produced under the current behaviour and remain what they
   are; the experiment record for run 20260402
   ([docs/experiments/RUN_20260402_SELECTIVE_SWEEP.md](../../../experiments/RUN_20260402_SELECTIVE_SWEEP.md))

@@ -164,11 +164,11 @@ class DeterministicExecutionTest {
     void rootProvider_drawFromInstructionInterceptor_failsTheTick() {
         assertThatThrownBy(() -> tickWithRootDrawingInterceptor(1))
                 .as("single-thread wave")
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(ParallelWaveViolation.class)
                 .hasMessageContaining("Organism.getRandom()");
         assertThatThrownBy(() -> tickWithRootDrawingInterceptor(2))
                 .as("multi-thread wave: the pool propagates the worker's exception unchanged")
-                .isInstanceOf(IllegalStateException.class)
+                .isInstanceOf(ParallelWaveViolation.class)
                 .hasMessageContaining("Organism.getRandom()");
     }
 
