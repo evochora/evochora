@@ -982,17 +982,22 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             MemoryEstimate.Category.SERVICE_BATCH
         ));
         
-        // 2. Environment sparse tracking structures (occupiedIndices, cellsByOwner)
-        // occupiedIndices: BitSet - totalCells / 8 bytes, independent of occupancy
-        // cellsByOwner: Int2ObjectOpenHashMap<IntOpenHashSet> - variable per organism
-        // changedSinceLastReset: BitSet - totalCells / 8 bytes
-        long sparseTrackingBytes = (params.totalCells() + 7) / 8   // occupiedIndices BitSet
-                                 + (params.totalCells() + 7) / 8   // changedSinceLastReset BitSet
-                                 + (long) params.maxOrganisms() * 200;  // cellsByOwner (avg cells per organism)
+        // 2. Environment tracking structures
+        // occupiedIndices and changedSinceLastReset: one BitSet each, totalCells / 8 bytes,
+        //   independent of occupancy.
+        // cellsByOwner: Int2ObjectOpenHashMap<IntOpenHashSet>, one int entry per owned cell. At
+        //   100% occupancy every cell is owned, so the entry count is bounded by totalCells. An
+        //   open-addressing int set with load factor 0.75 and power-of-two capacity holds between
+        //   1.33 and 2.67 key slots per entry (4 bytes each); 12 bytes per cell covers the worst
+        //   case. Each set additionally costs a fixed object, array header and map slot (~100 bytes).
+        long bitSetBytes = (params.totalCells() + 7) / 8;
+        long cellsByOwnerBytes = params.totalCells() * 12L + (long) params.maxOrganisms() * 100;
+        long trackingBytes = 2 * bitSetBytes + cellsByOwnerBytes;
         estimates.add(new MemoryEstimate(
             serviceName + " (Environment tracking)",
-            sparseTrackingBytes,
-            String.format("occupiedIndices + cellsByOwner (%d orgs) + BitSet", params.maxOrganisms()),
+            trackingBytes,
+            String.format("2 BitSets (%d cells) + cellsByOwner (%d cells × 12 bytes + %d orgs × 100 bytes)",
+                params.totalCells(), params.totalCells(), params.maxOrganisms()),
             MemoryEstimate.Category.SERVICE_BATCH
         ));
         
@@ -1039,8 +1044,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         chunkBuilderBytes += (long) maxDeltas * params.estimateBytesPerDelta();
 
         // BitSet for change tracking: totalCells bits = totalCells / 8 bytes
-        long bitSetBytes = (params.totalCells() + 7) / 8;
-        chunkBuilderBytes += bitSetBytes;
+        chunkBuilderBytes += (params.totalCells() + 7) / 8;
 
         estimates.add(new MemoryEstimate(
             serviceName + " (Encoder)",
