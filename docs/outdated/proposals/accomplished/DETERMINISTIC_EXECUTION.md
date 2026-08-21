@@ -273,3 +273,14 @@ count regardless of available cores.
    `OrganismRandom.tickStreamSeed()`). (Done 2026-08-20; `ConflictLossSemanticsTest` 7/7.)
 7. Full test suite, the five CLI compile checks, JMH comparison against the baseline measured
    on 2026-08-20 before step 2 (same environment).
+   (Done 2026-08-20; see `docs/BENCHMARKING.md` for the method.)
+8. Manual acceptance (2026-08-21, `local.conf`-derived configuration, 1920×1080, primordial
+   population, 5 M ticks): run A (6 threads) and run B (2 threads) produced byte-identical
+   persisted tick data. Run C — run A paused and resumed from a checkpoint — initially diverged and
+   exposed four defects outside the suite's reach, all fixed on the branch: the restorer resumed
+   one tick too early; mutation operators chose sites from the owner's cell set in hash-iteration
+   order, which differs between a live and a rebuilt set (now flat-index order); the occupied-cell
+   index was not updated on death/fork ownership transfer; analytics plugin states were restored
+   in hash order (now registration order). The occupied-cell index is now a `BitSet`, so snapshots
+   are written in canonical order on live and resumed runs alike. After the fixes run C matched
+   run A. No acceptance data is kept.
