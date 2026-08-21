@@ -420,7 +420,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
         ensureBuffers(dims);
         computeStrides(shape, dims);
         computePerpStrides(shape, dims, dvDim);
-        buildScanLines(owned, env, dvDim);
+        buildScanLines(childId, env, dvDim);
         resolveWalkRanges(owned, env, dvDim, shape[dvDim]);
 
         MutationEntry entry = selectEntry();
@@ -611,11 +611,11 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * per scan line. Also scans for TYPE_LABEL molecules via reservoir sampling, storing
      * the result in {@link #reservoirLabelHash}.
      *
-     * @param owned The child's owned cell set.
+     * @param childId The child whose owned cells are grouped, visited in index order.
      * @param env The simulation environment.
      * @param dvDim The DV dimension index.
      */
-    private void buildScanLines(IntOpenHashSet owned, Environment env, int dvDim) {
+    private void buildScanLines(int childId, Environment env, int dvDim) {
         scanLineMap.clear();
         poolIndex = 0;
         reservoirLabelHash = -1;
@@ -623,7 +623,8 @@ public class GeneInsertionPlugin implements IBirthHandler {
 
         final int dvDimFinal = dvDim;
 
-        owned.forEach((int flatIndex) -> {
+        // Canonical (index) order: the choice below must not depend on write history
+        env.forEachCellOwnedByInIndexOrder(childId, (int flatIndex) -> {
             env.properties.flatIndexToCoordinates(flatIndex, coordBuffer);
 
             int perpKey = computePerpKey(coordBuffer, dvDimFinal);
@@ -658,7 +659,7 @@ public class GeneInsertionPlugin implements IBirthHandler {
      * DV coordinates of owned cells on that scan line, sorts them, and finds the largest gap to
      * determine the correct shortest arc.
      *
-     * @param owned The child's owned cell set.
+     * @param childId The child whose owned cells are grouped, visited in index order.
      * @param env The simulation environment.
      * @param dvDim The DV dimension index.
      * @param shapeDvDim The environment size along the DV dimension.

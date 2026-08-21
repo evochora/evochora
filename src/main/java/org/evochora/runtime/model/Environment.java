@@ -490,6 +490,32 @@ public class Environment implements IEnvironmentReader {
     }
 
     /**
+     * Hands the flat indices of all cells owned by {@code ownerId} to {@code consumer} in
+     * ascending index order — an order determined by the grid's content alone.
+     * <p>
+     * {@link #getCellsOwnedBy} iterates in hash order, which depends on the history of writes and
+     * therefore differs between a live organism and the same organism rebuilt from a snapshot. Any
+     * decision that iterates an owner's cells and draws randomness on the way (the mutation
+     * operators at birth) must use this method, or a resumed run diverges from its uninterrupted
+     * twin at the first birth. The cost is one sort of the owner's cell count per call, which is
+     * why it is meant for per-birth work, not for the per-tick path.
+     *
+     * @param ownerId the owner whose cells to visit
+     * @param consumer receives each flat index in ascending order
+     */
+    public void forEachCellOwnedByInIndexOrder(int ownerId, IntConsumer consumer) {
+        IntOpenHashSet owned = cellsByOwner.get(ownerId);
+        if (owned == null || owned.isEmpty()) {
+            return;
+        }
+        int[] indices = owned.toIntArray();
+        Arrays.sort(indices);
+        for (int index : indices) {
+            consumer.accept(index);
+        }
+    }
+
+    /**
      * Returns the set of flat indices owned by the specified organism.
      * <p>
      * Returns the internal set directly (no copy) for performance.
@@ -595,6 +621,10 @@ public class Environment implements IEnvironmentReader {
             int moleculeInt = grid[flatIndex];
             labelIndex.onOwnerChange(flatIndex, moleculeInt, toOwnerId);
             labelIndex.onMarkerChange(flatIndex, moleculeInt);
+            // An empty cell handed to "nobody" leaves the occupied set
+            if (Config.ENABLE_SPARSE_CELL_TRACKING && occupiedIndices != null) {
+                updateOccupiedIndices(flatIndex);
+            }
         }
         
         // Clean up empty set
@@ -631,6 +661,11 @@ public class Environment implements IEnvironmentReader {
             int moleculeInt = grid[flatIndex];
             labelIndex.onOwnerChange(flatIndex, moleculeInt, 0);
             labelIndex.onMarkerChange(flatIndex, moleculeInt);
+            // A cell that is now empty and unowned leaves the occupied set; otherwise every dead
+            // organism's footprint would stay in it (and in every snapshot) forever
+            if (Config.ENABLE_SPARSE_CELL_TRACKING && occupiedIndices != null) {
+                updateOccupiedIndices(flatIndex);
+            }
         });
 
         return count;

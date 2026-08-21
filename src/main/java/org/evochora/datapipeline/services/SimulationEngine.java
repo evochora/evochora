@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.IdentityHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -753,8 +753,10 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      * multiple plugin interfaces.
      */
     private List<PluginState> extractPluginStates() {
-        // Collect unique plugin instances (a plugin may be in multiple lists if it implements multiple interfaces)
-        Set<ISimulationPlugin> uniquePlugins = Collections.newSetFromMap(new IdentityHashMap<>());
+        // Collect unique plugin instances (a plugin may be in multiple lists if it implements multiple
+        // interfaces) in registration order, so that snapshots list them in configuration order
+        // rather than in an order that varies between JVM runs.
+        Set<ISimulationPlugin> uniquePlugins = new LinkedHashSet<>();
         for (PluginWithConfig p : tickPlugins) {
             uniquePlugins.add(p.plugin());
         }
