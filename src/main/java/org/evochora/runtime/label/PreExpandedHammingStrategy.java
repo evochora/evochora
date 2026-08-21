@@ -210,7 +210,7 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
                         long weight = (long) WEIGHT_PRECISION * selectionSpread / (distance + selectionSpread);
                         if (weight < 1) weight = 1;
                         totalWeight += weight;
-                        if (random.nextInt((int) Math.min(totalWeight, Integer.MAX_VALUE)) < weight) {
+                        if (random.nextLong(totalWeight) < weight) {
                             bestOwnExactIndex = entry.flatIndex();
                         }
                     } else {

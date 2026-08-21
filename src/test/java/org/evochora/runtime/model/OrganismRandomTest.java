@@ -22,6 +22,7 @@ class OrganismRandomTest {
     private static final long GOLDEN_STREAM_SEED = 7036782591541029441L;
     private static final Long[] GOLDEN_DRAWS = {-1696964772237652086L, 1458786141316874717L, -4942829624786792684L};
     private static final long GOLDEN_MIX_OF_ONE = 6238072747940578789L;
+    private static final long GOLDEN_BOUNDED_LONG = 908007355365L;
 
     /**
      * The formula is part of every recorded trajectory: a resumed run recomputes exactly these
@@ -36,6 +37,8 @@ class OrganismRandomTest {
         assertThat(random.tickStreamSeed()).isEqualTo(GOLDEN_STREAM_SEED);
         assertThat(draw(random, 3)).containsExactly(GOLDEN_DRAWS);
         assertThat(SplitMix64.mix(1L)).isEqualTo(GOLDEN_MIX_OF_ONE);
+        random.beginTick(TICK_SEED);
+        assertThat(random.nextLong(1_000_000_000_000L)).isEqualTo(GOLDEN_BOUNDED_LONG);
     }
 
     @Test
@@ -112,6 +115,41 @@ class OrganismRandomTest {
         for (int value = 0; value < bound; value++) {
             assertThat(histogram[value])
                     .as("count of value %d", value)
+                    .isBetween((int) (expected * 0.95), (int) (expected * 1.05));
+        }
+    }
+
+    @Test
+    void nextLongBound_staysWithinBoundAndCoversLargeRanges() {
+        OrganismRandom random = new OrganismRandom(3);
+        random.beginTick(TICK_SEED);
+        long[] bounds = {1L, 7L, 1_000L, (long) Integer.MAX_VALUE + 1, 1L << 40, Long.MAX_VALUE};
+
+        for (long bound : bounds) {
+            for (int i = 0; i < 1000; i++) {
+                assertThat(random.nextLong(bound)).isBetween(0L, bound - 1);
+            }
+        }
+        assertThatThrownBy(() -> random.nextLong(0L)).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void nextLongBound_isUniformBeyondTheIntRange() {
+        OrganismRandom random = new OrganismRandom(3);
+        random.beginTick(TICK_SEED);
+        long bound = 10L * Integer.MAX_VALUE;
+        int buckets = 10;
+        int draws = 100_000;
+        int[] histogram = new int[buckets];
+
+        for (int i = 0; i < draws; i++) {
+            histogram[(int) (random.nextLong(bound) / Integer.MAX_VALUE)]++;
+        }
+
+        int expected = draws / buckets;
+        for (int bucket = 0; bucket < buckets; bucket++) {
+            assertThat(histogram[bucket])
+                    .as("count of bucket %d", bucket)
                     .isBetween((int) (expected * 0.95), (int) (expected * 1.05));
         }
     }

@@ -18,7 +18,11 @@ import org.slf4j.LoggerFactory;
  * <p>
  * Serialization is an observer of the simulation: it never modifies the organism, because state
  * is only captured on sampled ticks and any write would make the run depend on how often it is
- * observed. Corrupt values are reported and substituted instead of aborting a long-running run.
+ * observed. Corrupt values are reported and substituted instead of aborting a long-running run —
+ * a deliberate, scoped exception to the fail-fast rule that applies elsewhere: the substitute
+ * affects only the recorded view of one register in one sampled tick, never the simulation, and
+ * aborting an experiment of hundreds of millions of ticks over a display value would be the
+ * greater damage. The warning names the tick, so affected records remain identifiable.
  * <p>
  * The Protobuf builders are reused across calls to avoid allocations per organism, so an instance
  * is <b>not thread-safe</b>; the engine owns one instance and calls it from its own thread.

@@ -108,6 +108,35 @@ public final class OrganismRandom {
     }
 
     /**
+     * Returns a uniformly distributed value in {@code [0, bound)} for bounds beyond the
+     * {@code int} range.
+     * <p>
+     * Uses the 64-bit multiply-high range reduction with rejection of the biased remainder, so
+     * every value in the range is equally likely.
+     *
+     * @param bound the exclusive upper bound, must be positive
+     * @return a value in {@code [0, bound)}
+     * @throws IllegalArgumentException if {@code bound <= 0}
+     */
+    public long nextLong(long bound) {
+        if (bound <= 0) {
+            throw new IllegalArgumentException("bound must be positive, got " + bound);
+        }
+        long value = nextLong();
+        long high = Math.multiplyHigh(value, bound) + ((value >> 63) & bound); // unsigned high word
+        long low = value * bound;
+        if (Long.compareUnsigned(low, bound) < 0) {
+            long threshold = Long.remainderUnsigned(-bound, bound);
+            while (Long.compareUnsigned(low, threshold) < 0) {
+                value = nextLong();
+                high = Math.multiplyHigh(value, bound) + ((value >> 63) & bound);
+                low = value * bound;
+            }
+        }
+        return high;
+    }
+
+    /**
      * Returns a uniformly distributed value in {@code [0.0, 1.0)}.
      *
      * @return a pseudo-random double
