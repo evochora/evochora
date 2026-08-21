@@ -343,7 +343,7 @@ public abstract class Instruction {
      * @param labelHash The 20-bit hash value of the target label.
      * @param callerCoords The coordinates to use for distance calculation
      *                     (e.g., organism's IP for JMPI, or active DP for SKJI).
-     * @param organism The organism executing the instruction (used for ownership checks).
+     * @param organism The organism executing the instruction (ownership checks and random source).
      * @param environment The environment containing the LabelIndex.
      * @return The absolute coordinates of the best matching label, or null if no match found.
      */
@@ -353,7 +353,8 @@ public abstract class Instruction {
                 labelHash,
                 organism.getId(),
                 callerCoords,
-                environment
+                environment,
+                organism.getRandom()
         );
         if (targetFlatIndex < 0) {
             return null;
@@ -730,12 +731,25 @@ public abstract class Instruction {
 
     // --- Conflict Resolution Logic ---
 
-    protected boolean executedInTick = false;
+    /**
+     * Whether the virtual machine processes this instruction in the current tick. Set for every
+     * planned instruction of a living organism; a conflict loser keeps it, because the VM still
+     * books the loss as a failed instruction without executing it.
+     */
+    protected boolean processedInTick = false;
 
     /**
-     * Represents the status of an instruction after conflict resolution.
+     * The outcome of conflict resolution for an instruction.
+     * <p>
+     * {@link #LOST_PRIORITY} is assigned before execution: the instruction is still handed to the
+     * virtual machine, which books it as a failed instruction without executing it and keeps the
+     * instruction pointer for a retry. {@link #LOST_TARGET_OCCUPIED} is assigned during execution
+     * when a write finds its target cell occupied. Thermodynamic policies charge only base costs
+     * for any {@code LOST} status.
      */
-    public enum ConflictResolutionStatus { NOT_APPLICABLE, WON_EXECUTION, LOST_TARGET_OCCUPIED, LOST_TARGET_EMPTY, LOST_LOWER_ID_WON, LOST_OTHER_REASON }
+    public enum ConflictResolutionStatus {
+        NOT_APPLICABLE, WON_EXECUTION, LOST_TARGET_OCCUPIED, LOST_PRIORITY
+    }
     protected ConflictResolutionStatus conflictStatus = ConflictResolutionStatus.NOT_APPLICABLE;
     
     /** Cached operands - resolved once, returned on subsequent calls (idempotent). */
@@ -746,16 +760,17 @@ public abstract class Instruction {
 
 
     /**
-     * Checks if the instruction was executed in the current tick.
-     * @return true if executed, false otherwise.
+     * Checks whether the virtual machine processes this instruction in the current tick. A
+     * conflict loser is processed too: it is booked as a failure instead of being executed.
+     * @return true if processed in this tick, false otherwise.
      */
-    public boolean isExecutedInTick() { return executedInTick; }
+    public boolean isProcessedInTick() { return processedInTick; }
 
     /**
-     * Sets whether the instruction was executed in the current tick.
-     * @param executedInTick true if executed, false otherwise.
+     * Sets whether the virtual machine processes this instruction in the current tick.
+     * @param processedInTick true if processed, false otherwise.
      */
-    public void setExecutedInTick(boolean executedInTick) { this.executedInTick = executedInTick; }
+    public void setProcessedInTick(boolean processedInTick) { this.processedInTick = processedInTick; }
 
     /**
      * Gets the conflict resolution status of the instruction.

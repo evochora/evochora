@@ -7,14 +7,12 @@ import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.stream.Collectors;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.RegisterBank;
-import org.evochora.runtime.spi.IRandomProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -122,7 +120,7 @@ public class Organism {
     private InstructionExecutionData lastInstructionExecution = null;
     private final Simulation simulation;
     private final int[] initialPosition;
-    private final Random random;
+    private final OrganismRandom random;
     private final int maxEnergy;
     private final int maxEntropy;
     private final int nopOpcodeId;
@@ -172,13 +170,7 @@ public class Organism {
         this.ipBeforeFetch = Arrays.copyOf(startIp, startIp.length);
         this.dvBeforeFetch = Arrays.copyOf(this.dv, this.dv.length);
         this.initialPosition = Arrays.copyOf(startIp, startIp.length);
-        IRandomProvider baseProvider = simulation.getRandomProvider();
-        if (baseProvider != null) {
-            this.random = baseProvider.deriveFor("organism", id).asJavaRandom();
-        } else {
-            this.random = new Random(id);
-        }
-        
+        this.random = new OrganismRandom(id);
     }
 
     /**
@@ -283,13 +275,7 @@ public class Organism {
         // Preserve original birth position from checkpoint data
         this.initialPosition = Arrays.copyOf(b.initialPosition, b.initialPosition.length);
 
-        // Initialize random from simulation's random provider
-        IRandomProvider baseProvider = simulation.getRandomProvider();
-        if (baseProvider != null) {
-            this.random = baseProvider.deriveFor("organism", this.id).asJavaRandom();
-        } else {
-            this.random = new Random(this.id);
-        }
+        this.random = new OrganismRandom(this.id);
 
         // Per-tick state is reset
         this.skipIpAdvance = false;
@@ -530,9 +516,11 @@ public class Organism {
     }
 
     /**
-     * Resets the organism's per-tick state. Called by the VirtualMachine before planning a new instruction.
+     * Resets the organism's per-tick state and positions its random stream at the start of the
+     * current tick. Called by the VirtualMachine before planning a new instruction.
      */
     public void resetTickState() {
+        this.random.beginTick(simulation.getTickSeed());
         this.previousInstructionFailed = this.instructionFailed;
         this.instructionFailed = false;
         this.failureReason = null;
@@ -1157,11 +1145,15 @@ public class Organism {
     }
 
     /**
-     * Gets the organism-specific random number generator.
+     * Gets the organism's random number source.
+     * <p>
+     * Instructions and interceptors that need randomness while executing for this organism must
+     * use this source: its values depend only on seed, tick and organism ID, never on thread
+     * scheduling.
      *
-     * @return The {@link Random} instance.
+     * @return The {@link OrganismRandom} of this organism.
      */
-    public Random getRandom() { return this.random; }
+    public OrganismRandom getRandom() { return this.random; }
 
     /**
      * Gets the call stack as it was at the moment an instruction failure occurred.

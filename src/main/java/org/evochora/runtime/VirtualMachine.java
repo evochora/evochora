@@ -28,6 +28,12 @@ import org.evochora.runtime.spi.thermodynamics.ThermodynamicContext;
  */
 public class VirtualMachine {
 
+    /**
+     * Failure reason recorded for an instruction that lost a write conflict. The instruction was
+     * never executed against the environment and is retried in the next tick.
+     */
+    public static final String LOST_WRITE_CONFLICT = "Lost write conflict";
+
     private final Environment environment;
     private final Simulation simulation; // Store simulation reference
 
@@ -101,12 +107,18 @@ public class VirtualMachine {
         }
 
         try {
-            // Logic moved from Organism.processTickAction() here
-            int[] rawArgs = organism.getRawArgumentsFromEnvironment(instruction.getLength(this.environment), this.environment);
+            // A conflict loser is booked as a failure but not executed; it leaves no execution
+            // record, so the argument and register capture below is skipped for it.
+            boolean lostConflict = instruction.getConflictStatus() == Instruction.ConflictResolutionStatus.LOST_PRIORITY;
 
-            // Collect register values BEFORE execution (for annotation display)
-            Map<Integer, Object> registerValuesBefore = collectRegisterValues(organism, instruction.getFullOpcodeId(), rawArgs);
-            
+            int[] rawArgs = null;
+            Map<Integer, Object> registerValuesBefore = null;
+            if (!lostConflict) {
+                rawArgs = organism.getRawArgumentsFromEnvironment(instruction.getLength(this.environment), this.environment);
+                // Collect register values BEFORE execution (for annotation display)
+                registerValuesBefore = collectRegisterValues(organism, instruction.getFullOpcodeId(), rawArgs);
+            }
+
             // Track energy and entropy before execution to calculate total changes
             int energyBefore = organism.getEr();
             int entropyBefore = organism.getSr();
@@ -117,8 +129,11 @@ public class VirtualMachine {
             // Note: resolveOperands only PEEKs stack values, actual POPs happen in commitStackReads()
             List<Instruction.Operand> resolvedOperands = instruction.resolveOperands(this.environment);
 
-            // 2. Commit the stack reads now that we know this instruction will execute
-            instruction.commitStackReads();
+            // 2. Commit the stack reads now that we know this instruction will execute. A conflict
+            //    loser consumes nothing: it retries with the same operands next tick.
+            if (!lostConflict) {
+                instruction.commitStackReads();
+            }
 
             // 3. Determine target info (only for env-modifying instructions that need it)
             Optional<ThermodynamicContext.TargetInfo> targetInfo = Optional.empty();
@@ -154,9 +169,16 @@ public class VirtualMachine {
             
             // --- Thermodynamic Logic End ---
 
-            ExecutionContext context = new ExecutionContext(organism, this.environment, false); // Always run in debug mode
-            ProgramArtifact artifact = this.simulation.getProgramArtifacts().get(organism.getProgramId());
-            instruction.execute(context, artifact);
+            if (lostConflict) {
+                // Booked like any failed instruction (penalty, death checks below), but the
+                // instruction pointer is held so the write is retried next tick.
+                organism.instructionFailed(LOST_WRITE_CONFLICT);
+                organism.setSkipIpAdvance(true);
+            } else {
+                ExecutionContext context = new ExecutionContext(organism, this.environment, false); // Always run in debug mode
+                ProgramArtifact artifact = this.simulation.getProgramArtifacts().get(organism.getProgramId());
+                instruction.execute(context, artifact);
+            }
 
             if (organism.isInstructionFailed()) {
                 int penalty = this.simulation.getOrganismConfig().getInt("error-penalty-cost");
@@ -169,15 +191,18 @@ public class VirtualMachine {
             int entropyAfter = organism.getSr();
             int totalEntropyDelta = entropyAfter - entropyBefore;
 
-            // Store instruction execution data for history tracking
-            Organism.InstructionExecutionData executionData = new Organism.InstructionExecutionData(
-                instruction.getFullOpcodeId(),
-                rawArgs,
-                totalEnergyCost,
-                totalEntropyDelta,
-                registerValuesBefore
-            );
-            organism.setLastInstructionExecution(executionData);
+            // Store instruction execution data for history tracking. A conflict loser was not
+            // executed, so it leaves no execution record; its failure reason is the trace.
+            if (!lostConflict) {
+                Organism.InstructionExecutionData executionData = new Organism.InstructionExecutionData(
+                    instruction.getFullOpcodeId(),
+                    rawArgs,
+                    totalEnergyCost,
+                    totalEntropyDelta,
+                    registerValuesBefore
+                );
+                organism.setLastInstructionExecution(executionData);
+            }
 
             if (organism.getEr() <= 0) {
                 organism.kill("Ran out of energy");

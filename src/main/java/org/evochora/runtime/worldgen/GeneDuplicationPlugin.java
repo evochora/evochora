@@ -200,7 +200,8 @@ public class GeneDuplicationPlugin implements IBirthHandler {
 
         final int dvDimFinal = dvDim;
 
-        owned.forEach((int flatIndex) -> {
+        // Canonical (index) order: the reservoir choice below must not depend on write history
+        env.forEachCellOwnedByInIndexOrder(childId, (int flatIndex) -> {
             env.properties.flatIndexToCoordinates(flatIndex, coordBuffer);
 
             int perpKey = computePerpKey(coordBuffer, dvDimFinal);

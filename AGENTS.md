@@ -36,6 +36,7 @@ Evochora is an artificial life simulator for research into digital evolution. It
 ./gradlew run --args="node run"  # Run simulation node
 ./gradlew run --args="--help"    # Show CLI help
 ./gradlew distZip distTar    # Create distribution archives
+./gradlew jmhJar             # Build the JMH benchmark jar (see docs/BENCHMARKING.md)
 ```
 
 ## Running the Application
@@ -150,8 +151,9 @@ There is a central document for AI agent guidelines that defines architectural p
 
 ## Runtime (`src/main/java/org/evochora/runtime/`)
 
-- **Plan-Execute Separation**: VM separates instruction planning from execution to enable future multithreading
-- **Conflict Resolution**: Simulation tick follows: plan → resolve conflicts → execute winning instructions
+- **Snapshot Tick Semantics**: All organisms act against the environment as it was at the start of the tick. Wave 1 (plan + organism-local instructions) runs on the worker pool or inline; wave 2 (environment-modifying instructions) runs sequentially after conflict resolution. The thread count (`runtime.parallelism`, `parallelism-scaling`) changes speed only, never the result.
+- **Conflict Resolution**: Contenders for one cell are ranked by a per-tick priority computed from seed, tick and organism ID (`OrganismRandom.tickStreamSeed()`); the loser is booked as a failed instruction (`"Lost write conflict"`, error penalty) and retries with its instruction pointer held.
+- **Two Kinds of Randomness**: The root `IRandomProvider` serves the sequential parts of a tick (tick plugins, birth/death handlers) and is checkpointed. Anything executing for an organism inside the parallel wave — instructions, interceptors, label matching — uses `Organism.getRandom()`, whose values are computed from seed, tick, organism ID and draw index and need no persistence. Drawing from the root provider inside the wave throws; `ParallelWave.isActive()` is the guard.
 - **Organism Autonomy**: Each Organism is a self-contained VM with own registers, stacks, and energy
 - **Embodied Organisms**: Organisms have an instruction pointer (IP) and data pointers (DPs) navigating the n-D grid
 - **Instruction Registry**: All instructions register via `Instruction.init()` with unique IDs and planners
@@ -265,6 +267,10 @@ See `.agents/architecture-guidelines.md` for full review criteria.
 
 **Coverage Goal:**
 - Optional: 60%+ line coverage (JaCoCo)
+
+**Benchmarks:**
+- JMH benchmarks live in `src/jmh/`; they are relative before/after measurements, never absolute references
+- Procedure, required environment conditions, and validity criteria: [docs/BENCHMARKING.md](docs/BENCHMARKING.md)
 
 ## Logging Guidelines
 

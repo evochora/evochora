@@ -3,6 +3,7 @@ package org.evochora.test.utils;
 import java.util.Map;
 
 import org.evochora.runtime.Simulation;
+import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
 
@@ -15,7 +16,8 @@ import com.typesafe.config.ConfigFactory;
  * This class provides factory methods that create Simulation instances with
  * default thermodynamic policies and organism limits suitable for testing.
  * Tests should use these methods instead of directly calling the Simulation constructor
- * to ensure they work with the configurable policy system.
+ * to ensure they work with the configurable policy system. Every simulation created here has a
+ * seeded random provider installed, which a simulation needs before it can tick.
  * <p>
  * The thermodynamic configuration is defined inline to ensure test isolation from
  * application configuration files (reference.conf, evochora.conf).
@@ -30,6 +32,12 @@ public class SimulationTestUtils {
 
     /** Default energy penalty for instruction failures. */
     private static final int DEFAULT_ERROR_PENALTY_COST = 10;
+
+    /**
+     * Seed of the random provider installed on every test simulation. Tests that depend on a
+     * particular seed install their own provider after creation.
+     */
+    private static final long DEFAULT_SEED = 42L;
 
     /**
      * Standard thermodynamic configuration for tests.
@@ -117,6 +125,38 @@ public class SimulationTestUtils {
      * @return A Simulation instance configured for testing.
      */
     public static Simulation createSimulation(Environment environment, int maxEnergy, int maxEntropy, int errorPenaltyCost) {
+        return createSimulation(environment, maxEnergy, maxEntropy, errorPenaltyCost, 1);
+    }
+
+    /**
+     * Creates a Simulation with standard test configuration and an explicit thread count.
+     * <p>
+     * Tests that exercise the parallel tick path use this overload; all other defaults
+     * match {@link #createSimulation(Environment)}. Callers must invoke
+     * {@link Simulation#shutdown()} to release the worker pool when {@code parallelism > 1}.
+     *
+     * @param environment The environment for the simulation.
+     * @param parallelism Number of threads executing the parallel wave, the calling thread included
+     *                    (1 = the calling thread alone).
+     * @return A Simulation instance configured for testing.
+     */
+    public static Simulation createSimulation(Environment environment, int parallelism) {
+        return createSimulation(environment, DEFAULT_MAX_ENERGY, DEFAULT_MAX_ENTROPY, DEFAULT_ERROR_PENALTY_COST, parallelism);
+    }
+
+    /**
+     * Creates a Simulation with custom organism configuration and an explicit thread count.
+     *
+     * @param environment The environment for the simulation.
+     * @param maxEnergy Maximum energy for organisms.
+     * @param maxEntropy Maximum entropy for organisms.
+     * @param errorPenaltyCost Energy penalty for instruction failures.
+     * @param parallelism Number of threads executing the parallel wave, the calling thread included
+     *                    (1 = the calling thread alone).
+     * @return A Simulation instance configured for testing.
+     */
+    public static Simulation createSimulation(Environment environment, int maxEnergy, int maxEntropy,
+                                              int errorPenaltyCost, int parallelism) {
         Config organismConfig = ConfigFactory.parseMap(Map.of(
             "max-energy", maxEnergy,
             "max-entropy", maxEntropy,
@@ -126,6 +166,8 @@ public class SimulationTestUtils {
         Config thermoConfig = ConfigFactory.parseString(THERMODYNAMIC_CONFIG);
         ThermodynamicPolicyManager policyManager = new ThermodynamicPolicyManager(thermoConfig);
 
-        return new Simulation(environment, policyManager, organismConfig, 1);
+        Simulation simulation = new Simulation(environment, policyManager, organismConfig, parallelism);
+        simulation.setRandomProvider(new SeededRandomProvider(DEFAULT_SEED));
+        return simulation;
     }
 }

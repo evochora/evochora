@@ -7,7 +7,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.IdentityHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -26,8 +26,6 @@ import org.evochora.datapipeline.api.contracts.InstructionMapping;
 import org.evochora.datapipeline.api.contracts.LineTokenLookup;
 import org.evochora.datapipeline.api.contracts.LinearAddressToCoord;
 import org.evochora.datapipeline.api.contracts.OrganismState;
-import org.evochora.datapipeline.api.contracts.PersistentRegisterStore;
-import org.evochora.datapipeline.api.contracts.ProcedureRegisterSnapshot;
 import org.evochora.datapipeline.api.contracts.PlacedMoleculeMapping;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.SourceInfo;
@@ -46,6 +44,7 @@ import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
+import org.evochora.datapipeline.resume.OrganismStateSerializer;
 import org.evochora.datapipeline.resume.ResumeCheckpoint;
 import org.evochora.datapipeline.resume.SimulationRestorer;
 import org.evochora.datapipeline.resume.SnapshotLoader;
@@ -57,12 +56,10 @@ import org.evochora.runtime.spi.IDeathHandler;
 import org.evochora.runtime.spi.IInstructionInterceptor;
 import org.evochora.runtime.spi.ISimulationPlugin;
 import org.evochora.runtime.spi.ITickPlugin;
-import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.GenomeHasher;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.model.Organism.ProcFrame;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
 
@@ -99,13 +96,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     private long lastTickCount = 0;
     private double ticksPerSecond = 0.0;
 
-    // Reusable Protobuf builders for organism state extraction (avoids allocations per organism)
-    private final OrganismState.Builder organismStateBuilder = OrganismState.newBuilder();
-    private final Vector.Builder vectorBuilder = Vector.newBuilder();
-    private final org.evochora.datapipeline.api.contracts.RegisterValue.Builder registerValueBuilder =
-            org.evochora.datapipeline.api.contracts.RegisterValue.newBuilder();
-    private final org.evochora.datapipeline.api.contracts.ProcFrame.Builder procFrameBuilder =
-            org.evochora.datapipeline.api.contracts.ProcFrame.newBuilder();
+    // Serializes organisms for tick data; one instance per engine (not thread-safe)
+    private final OrganismStateSerializer organismStateSerializer = new OrganismStateSerializer();
 
     // Helper record bundling program path, ID, and artifact for initialization and metadata building
     private record ProgramInfo(String programPath, String programId, ProgramArtifact artifact) {}
@@ -445,7 +437,6 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
         applyParallelismScaling(simulation, runtimeConfig);
         simulation.setRandomProvider(randomProvider);
-        labelMatchingStrategy.setRandomProvider(randomProvider.deriveFor("labelMatching", 0));
         simulation.setProgramArtifacts(compiledPrograms);
 
         // Register tick plugins with simulation
@@ -743,121 +734,6 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         return builder.build();
     }
 
-    private OrganismState extractOrganismState(Organism o) {
-        organismStateBuilder.clear();
-        vectorBuilder.clear();
-        registerValueBuilder.clear();
-
-        organismStateBuilder.setOrganismId(o.getId());
-        if (o.getParentId() != null) organismStateBuilder.setParentId(o.getParentId());
-        organismStateBuilder.setBirthTick(o.getBirthTick());
-        organismStateBuilder.setProgramId(o.getProgramId());
-        organismStateBuilder.setEnergy(o.getEr());
-
-        organismStateBuilder.setIp(convertVectorReuse(o.getIp(), vectorBuilder));
-        organismStateBuilder.setInitialPosition(convertVectorReuse(o.getInitialPosition(), vectorBuilder));
-        organismStateBuilder.setDv(convertVectorReuse(o.getDv(), vectorBuilder));
-
-        for (int[] dp : o.getDps()) {
-            organismStateBuilder.addDataPointers(convertVectorReuse(dp, vectorBuilder));
-        }
-        organismStateBuilder.setActiveDpIndex(o.getActiveDpIndex());
-
-        Object[] registers = o.getRegisters();
-        for (int slot = 0; slot < registers.length; slot++) {
-            Object rv = registers[slot];
-            if (rv == null) {
-                rv = defaultForRegisterSlot(slot, o);
-            }
-            organismStateBuilder.addRegisters(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
-        }
-        for (Object rv : o.getDataStack()) {
-            organismStateBuilder.addDataStack(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
-        }
-        for (int[] loc : o.getLocationStack()) {
-            organismStateBuilder.addLocationStack(convertVectorReuse(loc, vectorBuilder));
-        }
-        for (ProcFrame frame : o.getCallStack()) {
-            organismStateBuilder.addCallStack(convertProcFrameReuse(frame));
-        }
-
-        organismStateBuilder.setIsDead(o.isDead());
-        organismStateBuilder.setInstructionFailed(o.isInstructionFailed());
-        if (o.getFailureReason() != null) organismStateBuilder.setFailureReason(o.getFailureReason());
-        if (o.getFailureCallStack() != null) {
-            for (ProcFrame frame : o.getFailureCallStack()) {
-                organismStateBuilder.addFailureCallStack(convertProcFrameReuse(frame));
-            }
-        }
-
-        // Instruction execution data
-        Organism.InstructionExecutionData executionData = o.getLastInstructionExecution();
-        if (executionData != null) {
-            organismStateBuilder.setInstructionOpcodeId(executionData.opcodeId());
-            for (int arg : executionData.rawArguments()) {
-                organismStateBuilder.addInstructionRawArguments(arg);
-            }
-            organismStateBuilder.setInstructionEnergyCost(executionData.energyCost());
-            organismStateBuilder.setInstructionEntropyDelta(executionData.entropyDelta());
-
-            // Register values before execution (for annotation display)
-            if (executionData.registerValuesBefore() != null && !executionData.registerValuesBefore().isEmpty()) {
-                for (java.util.Map.Entry<Integer, Object> entry : executionData.registerValuesBefore().entrySet()) {
-                    int registerId = entry.getKey();
-                    Object registerValue = entry.getValue();
-                    org.evochora.datapipeline.api.contracts.RegisterValue protoValue =
-                        convertRegisterValueReuse(registerValue, registerValueBuilder, vectorBuilder);
-                    organismStateBuilder.putInstructionRegisterValuesBefore(registerId, protoValue);
-                }
-            }
-        }
-
-        // Next instruction preview (peek at molecule at current IP)
-        Organism.InstructionExecutionData nextData = simulation.getVirtualMachine().peekNextInstruction(o);
-        if (nextData != null) {
-            organismStateBuilder.setNextInstructionOpcodeId(nextData.opcodeId());
-            for (int arg : nextData.rawArguments()) {
-                organismStateBuilder.addNextInstructionRawArguments(arg);
-            }
-            if (nextData.registerValuesBefore() != null && !nextData.registerValuesBefore().isEmpty()) {
-                for (java.util.Map.Entry<Integer, Object> entry : nextData.registerValuesBefore().entrySet()) {
-                    org.evochora.datapipeline.api.contracts.RegisterValue protoValue =
-                        convertRegisterValueReuse(entry.getValue(), registerValueBuilder, vectorBuilder);
-                    organismStateBuilder.putNextInstructionRegisterValuesBefore(entry.getKey(), protoValue);
-                }
-            }
-        }
-
-        // IP and DV before fetch
-        organismStateBuilder.setIpBeforeFetch(convertVectorReuse(o.getIpBeforeFetch(), vectorBuilder));
-        organismStateBuilder.setDvBeforeFetch(convertVectorReuse(o.getDvBeforeFetch(), vectorBuilder));
-
-        // Special registers
-        organismStateBuilder.setEntropyRegister(o.getSr());
-        organismStateBuilder.setMoleculeMarkerRegister(o.getMr());
-        organismStateBuilder.setGenomeHash(o.getGenomeHash());
-        if (o.getDeathTick() >= 0) {
-            organismStateBuilder.setDeathTick(o.getDeathTick());
-        }
-
-        // Persistent register state + dirty flags
-        organismStateBuilder.setCurrentProcLabelHash(o.getCurrentProcLabelHash());
-        organismStateBuilder.setStackSavedDirty(o.isStackSavedDirty());
-        organismStateBuilder.setPersistentDirty(o.isPersistentDirty());
-        PersistentRegisterStore.Builder storeBuilder = PersistentRegisterStore.newBuilder();
-        for (Map.Entry<Integer, Object[]> entry : o.getPersistentRegisterState().entrySet()) {
-            ProcedureRegisterSnapshot.Builder snapshotBuilder = ProcedureRegisterSnapshot.newBuilder()
-                    .setLabelHash(entry.getKey());
-            for (Object rv : entry.getValue()) {
-                snapshotBuilder.addRegisters(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
-            }
-            storeBuilder.addProcedureSnapshots(snapshotBuilder.build());
-        }
-        organismStateBuilder.setPersistentRegisterStore(storeBuilder.build());
-
-        return organismStateBuilder.build();
-    }
-    
     /**
      * Extracts organism states for all organisms, including dead organisms awaiting final serialization.
      * Dead organisms are included once with is_dead=true and death_tick set, then pruned from memory.
@@ -865,7 +741,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      */
     private List<OrganismState> extractOrganismStates() {
         return simulation.getOrganisms().stream()
-                .map(this::extractOrganismState)
+                .map(organismStateSerializer::serialize)
                 .toList();
     }
     
@@ -877,8 +753,10 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      * multiple plugin interfaces.
      */
     private List<PluginState> extractPluginStates() {
-        // Collect unique plugin instances (a plugin may be in multiple lists if it implements multiple interfaces)
-        Set<ISimulationPlugin> uniquePlugins = Collections.newSetFromMap(new IdentityHashMap<>());
+        // Collect unique plugin instances (a plugin may be in multiple lists if it implements multiple
+        // interfaces) in registration order, so that snapshots list them in configuration order
+        // rather than in an order that varies between JVM runs.
+        Set<ISimulationPlugin> uniquePlugins = new LinkedHashSet<>();
         for (PluginWithConfig p : tickPlugins) {
             uniquePlugins.add(p.plugin());
         }
@@ -1024,83 +902,6 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         return builder.build();
     }
 
-    private static Vector convertVectorReuse(int[] components, Vector.Builder builder) {
-        builder.clear();
-        if (components != null) {
-            for (int c : components) {
-                builder.addComponents(c);
-            }
-        }
-        return builder.build();
-    }
-
-    /**
-     * Returns the type-correct default for a register slot whose value is missing.
-     * <p>
-     * A register slot is never {@code null} in a well-formed organism — every bank is filled with
-     * defaults on construction and on restore. Encountering one means the organism state is corrupt,
-     * which is reported here but does not abort the run: serialization is an observer of the
-     * simulation, and aborting a long-running simulation over a display value would be worse than
-     * emitting a substitute.
-     * <p>
-     * The organism itself is deliberately left untouched. Writing the default back would set the
-     * bank's dirty flag and thereby change CALL/RET snapshot behavior, and because state is only
-     * serialized on sampled ticks, the simulation would then depend on how often it is observed.
-     * The consequence of not repairing is that the warning repeats for every sampled tick as long as
-     * the corrupt slot exists.
-     *
-     * @param slot flat register array index whose value was missing
-     * @param o the organism being serialized
-     * @return {@code 0} for data banks, a zero vector for location banks
-     */
-    private Object defaultForRegisterSlot(int slot, Organism o) {
-        RegisterBank bank = RegisterBank.SLOT_TO_BANK[slot];
-        log.warn("Null register at slot {} ({}) for organism {} — substituting default for serialization",
-                slot, bank != null ? bank.name() : "UNKNOWN", o.getId());
-        return bank != null && bank.isLocation ? new int[o.getIp().length] : 0;
-    }
-
-    /**
-     * Converts a register value into its Protobuf representation, reusing the supplied builders.
-     * <p>
-     * Values are either {@code Integer} or {@code int[]}. Anything else indicates corrupt organism
-     * state; a substitute scalar is emitted rather than aborting the run, for the same reason as in
-     * {@link #defaultForRegisterSlot(int, Organism)}. Affected ticks are identifiable in the log, not
-     * in the data itself — analyses that must exclude corrupt ticks need the log to do so.
-     */
-    private org.evochora.datapipeline.api.contracts.RegisterValue convertRegisterValueReuse(
-            Object rv, org.evochora.datapipeline.api.contracts.RegisterValue.Builder registerBuilder, Vector.Builder vectorBuilder) {
-        registerBuilder.clear();
-        if (rv instanceof Integer) {
-            registerBuilder.setScalar((Integer) rv);
-        } else if (rv instanceof int[]) {
-            registerBuilder.setVector(convertVectorReuse((int[]) rv, vectorBuilder));
-        } else {
-            log.warn("Unexpected register value type during serialization: {} — substituting scalar 0",
-                    rv == null ? "null" : rv.getClass().getName());
-            registerBuilder.setScalar(0);
-        }
-        return registerBuilder.build();
-    }
-
-    private org.evochora.datapipeline.api.contracts.ProcFrame convertProcFrameReuse(ProcFrame frame) {
-        procFrameBuilder.clear();
-        procFrameBuilder
-                .setProcName(frame.procName())
-                .setLabelHash(frame.labelHash())
-                .setAbsoluteReturnIp(convertVectorReuse(frame.absoluteReturnIp(), vectorBuilder))
-                .setAbsoluteCallIp(convertVectorReuse(frame.absoluteCallIp(), vectorBuilder))
-                .putAllParameterBindings(frame.parameterBindings());
-
-        if (frame.savedRegisters() != null) {
-            for (Object rv : frame.savedRegisters()) {
-                procFrameBuilder.addSavedRegisters(convertRegisterValueReuse(rv, registerValueBuilder, vectorBuilder));
-            }
-        }
-
-        return procFrameBuilder.build();
-    }
-
     private void placeOrganismCodeAndObjects(Simulation sim, Organism organism, ProgramArtifact artifact, int[] startPosition) {
         // Place code in environment
         // ProgramArtifact guarantees deterministic iteration order (sorted by coordinate in Emitter)
@@ -1181,18 +982,22 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             MemoryEstimate.Category.SERVICE_BATCH
         ));
         
-        // 2. Environment sparse tracking structures (occupiedIndices, cellsByOwner)
-        // occupiedIndices: IntOpenHashSet - worst case ~24 bytes per occupied cell
-        // cellsByOwner: Int2ObjectOpenHashMap<IntOpenHashSet> - variable per organism
-        // changedSinceLastReset: BitSet - totalCells / 8 bytes
-        // Estimate: 50% cell occupancy × 24 bytes + BitSet + overhead
-        long sparseTrackingBytes = (params.totalCells() / 2) * 24  // occupiedIndices at 50% occupancy
-                                 + (params.totalCells() + 7) / 8   // changedSinceLastReset BitSet
-                                 + (long) params.maxOrganisms() * 200;  // cellsByOwner (avg cells per organism)
+        // 2. Environment tracking structures
+        // occupiedIndices and changedSinceLastReset: one BitSet each, totalCells / 8 bytes,
+        //   independent of occupancy.
+        // cellsByOwner: Int2ObjectOpenHashMap<IntOpenHashSet>, one int entry per owned cell. At
+        //   100% occupancy every cell is owned, so the entry count is bounded by totalCells. An
+        //   open-addressing int set with load factor 0.75 and power-of-two capacity holds between
+        //   1.33 and 2.67 key slots per entry (4 bytes each); 12 bytes per cell covers the worst
+        //   case. Each set additionally costs a fixed object, array header and map slot (~100 bytes).
+        long bitSetBytes = (params.totalCells() + 7) / 8;
+        long cellsByOwnerBytes = params.totalCells() * 12L + (long) params.maxOrganisms() * 100;
+        long trackingBytes = 2 * bitSetBytes + cellsByOwnerBytes;
         estimates.add(new MemoryEstimate(
             serviceName + " (Environment tracking)",
-            sparseTrackingBytes,
-            String.format("occupiedIndices + cellsByOwner (%d orgs) + BitSet", params.maxOrganisms()),
+            trackingBytes,
+            String.format("2 BitSets (%d cells) + cellsByOwner (%d cells × 12 bytes + %d orgs × 100 bytes)",
+                params.totalCells(), params.totalCells(), params.maxOrganisms()),
             MemoryEstimate.Category.SERVICE_BATCH
         ));
         
@@ -1239,8 +1044,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         chunkBuilderBytes += (long) maxDeltas * params.estimateBytesPerDelta();
 
         // BitSet for change tracking: totalCells bits = totalCells / 8 bytes
-        long bitSetBytes = (params.totalCells() + 7) / 8;
-        chunkBuilderBytes += bitSetBytes;
+        chunkBuilderBytes += (params.totalCells() + 7) / 8;
 
         estimates.add(new MemoryEstimate(
             serviceName + " (Encoder)",

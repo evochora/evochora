@@ -8,6 +8,12 @@ import com.typesafe.config.Config;
  * Implementations of this interface calculate the energy cost and entropy
  * delta for instruction execution based on the provided {@link ThermodynamicContext}.
  * Policies are loaded and configured via HOCON configuration files.
+ * <p>
+ * A policy is also consulted for an environment-modifying instruction that lost its write
+ * conflict ({@code context.instruction().getConflictStatus()} is a {@code LOST_*} status). Such
+ * an instruction is never executed against the environment, so a policy must charge only its
+ * base cost and base entropy for it — no read or write rules, no dissipation — and must not rely
+ * on the target cell's content, which reflects whatever the winner wrote.
  */
 public interface IThermodynamicPolicy {
 

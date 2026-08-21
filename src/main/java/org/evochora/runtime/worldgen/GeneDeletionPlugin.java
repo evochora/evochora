@@ -114,7 +114,8 @@ public class GeneDeletionPlugin implements IBirthHandler {
         labelHashes.clear();
         hashCounts.clear();
 
-        owned.forEach((int flatIndex) -> {
+        // Canonical (index) order: the choice below must not depend on write history
+        env.forEachCellOwnedByInIndexOrder(childId, (int flatIndex) -> {
             int moleculeInt = env.getMoleculeInt(flatIndex);
             if ((moleculeInt & Config.TYPE_MASK) == Config.TYPE_LABEL) {
                 int hash = moleculeInt & Config.VALUE_MASK;

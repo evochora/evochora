@@ -2,6 +2,7 @@ package org.evochora.runtime.label;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.OrganismRandom;
 
 import java.util.Collection;
 
@@ -24,11 +25,12 @@ import java.util.Collection;
  * index.onMoleculeSet(flatIndex, oldMolecule, newMolecule, owner);
  *
  * // Called by ControlFlowInstruction to find jump target
- * int targetIndex = index.findTarget(labelValue, codeOwner);
+ * int targetIndex = index.findTarget(labelValue, codeOwner, callerCoords, environment, organism.getRandom());
  * </pre>
  * <p>
- * Thread Safety: Not thread-safe. All operations are expected to be called from
- * the main simulation thread.
+ * Thread Safety: lookups ({@link #findTarget}) are safe for concurrent callers and are issued
+ * from every thread of the parallel wave; mutations are issued only from the simulation thread
+ * outside the wave, through the environment's own mutators.
  */
 public class LabelIndex {
 
@@ -60,10 +62,13 @@ public class LabelIndex {
      * @param codeOwner The owner ID of the executing code
      * @param callerCoords The coordinates of the calling instruction (for distance calculation)
      * @param environment The environment (for coordinate conversion and toroidal distance)
+     * @param random The random source of the organism executing the lookup (see
+     *               {@link ILabelMatchingStrategy#findTarget})
      * @return The flat index of the best matching label, or -1 if no match found
      */
-    public int findTarget(int searchValue, int codeOwner, int[] callerCoords, Environment environment) {
-        return strategy.findTarget(searchValue, codeOwner, callerCoords, environment);
+    public int findTarget(int searchValue, int codeOwner, int[] callerCoords, Environment environment,
+                          OrganismRandom random) {
+        return strategy.findTarget(searchValue, codeOwner, callerCoords, environment, random);
     }
 
     /**

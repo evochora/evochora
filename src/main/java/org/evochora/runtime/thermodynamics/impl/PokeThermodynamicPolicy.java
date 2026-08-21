@@ -123,12 +123,9 @@ public class PokeThermodynamicPolicy implements IThermodynamicPolicy {
 
     @Override
     public int getEnergyCost(ThermodynamicContext context) {
-        // If POKE lost the conflict (target occupied), it costs nothing
+        // A write that lost its conflict never happens and therefore costs nothing
         ConflictResolutionStatus status = context.instruction().getConflictStatus();
-        if (status == ConflictResolutionStatus.LOST_TARGET_OCCUPIED ||
-            status == ConflictResolutionStatus.LOST_TARGET_EMPTY || // Should not happen for POKE
-            status == ConflictResolutionStatus.LOST_LOWER_ID_WON ||
-            status == ConflictResolutionStatus.LOST_OTHER_REASON) {
+        if (status != ConflictResolutionStatus.WON_EXECUTION && status != ConflictResolutionStatus.NOT_APPLICABLE) {
             return 0;
         }
         
@@ -166,6 +163,12 @@ public class PokeThermodynamicPolicy implements IThermodynamicPolicy {
         // POKE only dissipates entropy, does NOT generate entropy from energy cost.
         // Configuration: positive entropy = generation, negative entropy = dissipation.
         // For POKE, entropy values should be negative (dissipation).
+
+        // A write that lost its conflict never happens and therefore dissipates nothing
+        ConflictResolutionStatus status = context.instruction().getConflictStatus();
+        if (status != ConflictResolutionStatus.WON_EXECUTION && status != ConflictResolutionStatus.NOT_APPLICABLE) {
+            return 0;
+        }
 
         Molecule toWrite = getMoleculeToWrite(context.resolvedOperands());
         if (toWrite != null) {

@@ -64,6 +64,30 @@ happens next depends on the change:
 The `IF NOT EXISTS` idiom is right for its actual purpose, which is idempotent concurrent
 initialisation. It is not a compatibility check and cannot serve as one.
 
+### Evidence: the 2026-03-28 renumbering
+
+The gap is not hypothetical. Commit `8919f646` (PR #103, register bank extension) renumbered most
+fields of `OrganismState`, `OrganismRuntimeState`, `ProcFrame` and `CallSiteBinding` — old numbers
+were re-used for new fields rather than retired. Verified consequences for runs written before
+that date (checked 2026-08-19 against the February 2026 demo-server runs):
+
+- Run metadata fails to parse (`CallSiteBinding` field 2 changed from packed ints to a map →
+  `InvalidProtocolBufferException: invalid tag (zero)`), which blocks the run entirely.
+- Every storage batch fails on `OrganismState` (field 23 packed ints re-read as a message; field 14
+  coordinate bytes re-read as a UTF-8 string).
+- Had those two hard stops not existed, ~20 further fields would have been **silently** misread —
+  among them the old `entropy_register` (29) as `death_tick` (live organisms reported dead) and
+  `genome_hash` (31) truncated into an instruction-argument list. The loud failure is luck, not
+  design: it depends on coordinate bytes being invalid UTF-8.
+
+Two practice notes follow independently of the version stamp:
+
+- **Retired field numbers must be `reserved`** in the same commit that removes or renumbers a
+  field. The stamp names the incompatibility; `reserved` prevents the silent-misread class if a
+  check is ever bypassed, and makes renumbering visible in review.
+- [DETERMINISTIC_EXECUTION](../outdated/proposals/accomplished/DETERMINISTIC_EXECUTION.md) was expected to be the first bump; its
+  agreed design keeps the checkpoint format unchanged, so no bump is currently queued.
+
 ## Scope
 
 The change adds a version stamp and a read-side check. It does not add migration, conversion or any
@@ -170,9 +194,13 @@ constant in the same commit.
    format is not recorded anywhere, so no reader can establish that they match today's contracts —
    accepting them means guessing, which is the behaviour this proposal exists to remove.
 
-   Arguments for grandfathering "absent" as version 1: existing runs stay usable, and in practice
-   the format has not changed since they were written. The cost is that the guarantee starts out
-   weaker than it appears — version 1 would mean "either genuinely version 1, or unknown".
+   Arguments for grandfathering "absent" as version 1: existing runs stay usable. The cost is that
+   the guarantee starts out weaker than it appears — version 1 would mean "either genuinely
+   version 1, or unknown". Note that the premise "the format has not changed since existing runs
+   were written" is false for part of the data: runs written before 2026-03-28 are already
+   unreadable or silently misreadable by current code (see *Evidence* above), so a blanket
+   grandfather clause would claim compatibility that provably does not hold; at most, runs written
+   after `8919f646` could be grandfathered.
 
 2. **Whether an explicit override exists for reading refused artifacts.**
 

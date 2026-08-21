@@ -3,7 +3,7 @@ package org.evochora.runtime.label;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Environment;
-import org.evochora.runtime.spi.IRandomProvider;
+import org.evochora.runtime.model.OrganismRandom;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -28,10 +28,13 @@ import java.util.function.IntConsumer;
  * {@code K * hammingWeight}, since no candidate at that distance can improve the result.
  * <p>
  * Memory usage is proportional to the number of labels (one entry per label),
- * independent of tolerance. Insert, remove, and update operations are O(1).
+ * independent of tolerance. Insert, remove and update are linear in the number of entries that
+ * share one label value (insert locates its position by binary search, then shifts the tail);
+ * with per-organism label namespaces that number is typically one.
  * <p>
- * Thread Safety: Not thread-safe. All operations are expected to be called from
- * the main simulation thread.
+ * Thread Safety: {@link #findTarget} only reads and is called concurrently from every thread of
+ * the parallel wave; {@link #addLabel}, {@link #removeLabel} and {@link #updateOwner} are called
+ * only from the simulation thread outside the wave.
  */
 public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
 
@@ -84,13 +87,6 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
     private final int foreignPenalty;
     private final int hammingWeight;
     private final int selectionSpread;
-
-    /**
-     * Random provider for stochastic label selection.
-     * Must be set via {@link #setRandomProvider} before {@link #findTarget} is called
-     * when {@code selectionSpread > 0}.
-     */
-    private IRandomProvider randomProvider;
 
     /**
      * Maps label value to its entries. Each label is stored only under its exact value.
@@ -159,8 +155,8 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
      * @param hammingWeight The score weight per Hamming distance
      * @param selectionSpread The selection spread for stochastic label selection among own exact matches.
      *                        0 = deterministic (closest wins). {@literal >}0 = weighted-random selection where
-     *                        the value is the half-weight distance (requires a random provider via
-     *                        {@link #setRandomProvider}).
+     *                        the value is the half-weight distance, drawn from the calling
+     *                        organism's random source.
      */
     public PreExpandedHammingStrategy(int tolerance, int foreignPenalty, int hammingWeight, int selectionSpread) {
         this.tolerance = tolerance;
@@ -170,14 +166,23 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
         this.valueToLabels = new Int2ObjectOpenHashMap<>();
     }
 
+    /**
+     * Finds the best matching label in staged Hamming-distance order (exact, then one, two, three
+     * bit flips), stopping early when no later stage can beat the current best score. Among own
+     * exact matches the closest wins when {@code selectionSpread} is zero; otherwise one of them
+     * is chosen at random, weighted by inverse distance, with values drawn from {@code random}.
+     *
+     * @param searchValue the label value to search for
+     * @param codeOwner the owner ID of the executing code; its own labels are preferred
+     * @param callerCoords the coordinates of the calling instruction, for distance calculation
+     * @param environment the environment, for coordinate conversion and toroidal distance
+     * @param random the random source of the organism executing the lookup; must not be null
+     * @return the flat index of the best matching label, or -1 if no label is within tolerance
+     */
     @Override
-    public int findTarget(int searchValue, int codeOwner, int[] callerCoords, Environment environment) {
+    public int findTarget(int searchValue, int codeOwner, int[] callerCoords, Environment environment,
+                          OrganismRandom random) {
         int[] shape = environment.getShape();
-
-        if (selectionSpread > 0 && randomProvider == null) {
-            throw new IllegalStateException(
-                "selectionSpread > 0 requires a random provider to be set via setRandomProvider()");
-        }
 
         int bestScore = Integer.MAX_VALUE;
         int bestFlatIndex = -1;
@@ -205,7 +210,7 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
                         long weight = (long) WEIGHT_PRECISION * selectionSpread / (distance + selectionSpread);
                         if (weight < 1) weight = 1;
                         totalWeight += weight;
-                        if (randomProvider.nextInt((int) Math.min(totalWeight, Integer.MAX_VALUE)) < weight) {
+                        if (random.nextLong(totalWeight) < weight) {
                             bestOwnExactIndex = entry.flatIndex();
                         }
                     } else {
@@ -320,7 +325,21 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
 
     @Override
     public void addLabel(int labelValue, LabelEntry entry) {
-        valueToLabels.computeIfAbsent(labelValue, k -> new ArrayList<>()).add(entry);
+        // Entries of one value are kept ordered by flat index, so that candidate order — and with
+        // it the stochastic selection — depends on the environment's content alone, never on the
+        // order in which labels were placed (a resumed run rebuilds the index from a snapshot).
+        List<LabelEntry> entries = valueToLabels.computeIfAbsent(labelValue, k -> new ArrayList<>());
+        int low = 0;
+        int high = entries.size();
+        while (low < high) {
+            int mid = (low + high) >>> 1;
+            if (entries.get(mid).flatIndex() < entry.flatIndex()) {
+                low = mid + 1;
+            } else {
+                high = mid;
+            }
+        }
+        entries.add(low, entry);
     }
 
     @Override
@@ -400,11 +419,6 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
      */
     public int getSelectionSpread() {
         return selectionSpread;
-    }
-
-    @Override
-    public void setRandomProvider(IRandomProvider randomProvider) {
-        this.randomProvider = randomProvider;
     }
 
     /**

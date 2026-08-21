@@ -3,6 +3,7 @@ package org.evochora.runtime.label;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
+import org.evochora.runtime.model.OrganismRandom;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -21,6 +22,7 @@ class LabelIndexTest {
     private LabelIndex labelIndex;
     private Environment environment;
     private int[] callerCoords;
+    private OrganismRandom random;
 
     @BeforeEach
     void setUp() {
@@ -29,11 +31,14 @@ class LabelIndexTest {
         EnvironmentProperties props = new EnvironmentProperties(new int[]{64, 64}, true);
         environment = new Environment(props);
         callerCoords = new int[]{0, 0};
+        // The random source of the organism performing the lookups, positioned at a fixed tick
+        random = new OrganismRandom(1);
+        random.beginTick(42L);
     }
 
     @Test
     void testFindTargetWithNoLabels() {
-        int result = labelIndex.findTarget(12345, 1, callerCoords, environment);
+        int result = labelIndex.findTarget(12345, 1, callerCoords, environment, random);
         assertThat(result).isEqualTo(-1);
     }
 
@@ -49,7 +54,7 @@ class LabelIndexTest {
         labelIndex.onMoleculeSet(flatIndex, 0, moleculeInt, owner);
 
         // Find the label
-        int result = labelIndex.findTarget(labelValue, owner, callerCoords, environment);
+        int result = labelIndex.findTarget(labelValue, owner, callerCoords, environment, random);
         assertThat(result).isEqualTo(flatIndex);
     }
 
@@ -63,13 +68,13 @@ class LabelIndexTest {
         labelIndex.onMoleculeSet(flatIndex, 0, moleculeInt, owner);
 
         // Verify it exists
-        assertThat(labelIndex.findTarget(labelValue, owner, callerCoords, environment)).isEqualTo(flatIndex);
+        assertThat(labelIndex.findTarget(labelValue, owner, callerCoords, environment, random)).isEqualTo(flatIndex);
 
         // Remove it (simulate clearing the cell)
         labelIndex.onMoleculeSet(flatIndex, moleculeInt, 0, owner);
 
         // Should no longer be found
-        assertThat(labelIndex.findTarget(labelValue, owner, callerCoords, environment)).isEqualTo(-1);
+        assertThat(labelIndex.findTarget(labelValue, owner, callerCoords, environment, random)).isEqualTo(-1);
     }
 
     @Test
@@ -85,15 +90,15 @@ class LabelIndexTest {
 
         // Add first label
         labelIndex.onMoleculeSet(flatIndex, 0, oldMolecule, owner);
-        assertThat(labelIndex.findTarget(oldValue, owner, callerCoords, environment)).isEqualTo(flatIndex);
+        assertThat(labelIndex.findTarget(oldValue, owner, callerCoords, environment, random)).isEqualTo(flatIndex);
 
         // Replace with new label
         labelIndex.onMoleculeSet(flatIndex, oldMolecule, newMolecule, owner);
 
         // Old value should not be found
-        assertThat(labelIndex.findTarget(oldValue, owner, callerCoords, environment)).isEqualTo(-1);
+        assertThat(labelIndex.findTarget(oldValue, owner, callerCoords, environment, random)).isEqualTo(-1);
         // New value should be found
-        assertThat(labelIndex.findTarget(newValue, owner, callerCoords, environment)).isEqualTo(flatIndex);
+        assertThat(labelIndex.findTarget(newValue, owner, callerCoords, environment, random)).isEqualTo(flatIndex);
     }
 
     @Test
@@ -107,14 +112,14 @@ class LabelIndexTest {
         labelIndex.onMoleculeSet(flatIndex, 0, moleculeInt, oldOwner);
 
         // Old owner can find it as "own"
-        int result1 = labelIndex.findTarget(labelValue, oldOwner, callerCoords, environment);
+        int result1 = labelIndex.findTarget(labelValue, oldOwner, callerCoords, environment, random);
         assertThat(result1).isEqualTo(flatIndex);
 
         // Change ownership
         labelIndex.onOwnerChange(flatIndex, moleculeInt, newOwner);
 
         // New owner can find it as "own"
-        int result2 = labelIndex.findTarget(labelValue, newOwner, callerCoords, environment);
+        int result2 = labelIndex.findTarget(labelValue, newOwner, callerCoords, environment, random);
         assertThat(result2).isEqualTo(flatIndex);
     }
 
@@ -127,7 +132,7 @@ class LabelIndexTest {
         labelIndex.onMoleculeSet(flatIndex, 0, dataMolecule, 1);
 
         // Should not be found
-        assertThat(labelIndex.findTarget(12345, 1, callerCoords, environment)).isEqualTo(-1);
+        assertThat(labelIndex.findTarget(12345, 1, callerCoords, environment, random)).isEqualTo(-1);
     }
 
     @Test

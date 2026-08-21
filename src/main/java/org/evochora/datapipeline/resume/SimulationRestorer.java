@@ -188,7 +188,11 @@ public class SimulationRestorer {
         populateCells(environment, snapshot.getCellColumns(), shape);
 
         // 6. Extract state from snapshot (always complete since we resume from chunk start)
-        long currentTick = snapshot.getTickNumber();
+        // A snapshot labelled T holds the state after simulation tick T, at which point the
+        // simulation's own counter already stands at T + 1; the restored simulation continues with
+        // that tick. Every tick-derived quantity (organism randomness, plugin schedules, birth ticks)
+        // depends on this counter, so an off-by-one here changes the run from the first tick on.
+        long currentTick = checkpoint.getResumeFromTick();
         long totalOrganismsCreated = snapshot.getTotalOrganismsCreated();
         ByteString rngState = snapshot.getRngState();
         List<OrganismState> organismStates = snapshot.getOrganismsList();
@@ -220,7 +224,6 @@ public class SimulationRestorer {
             log.debug("Loaded RNG state ({} bytes)", rngState.size());
         }
         simulation.setRandomProvider(randomProvider);
-        labelMatchingStrategy.setRandomProvider(randomProvider.deriveFor("labelMatching", 0));
 
         // 9. Restore ProgramArtifacts
         Map<String, ProgramArtifact> programs = restoreProgramArtifacts(metadata);

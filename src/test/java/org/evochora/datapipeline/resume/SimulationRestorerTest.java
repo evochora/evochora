@@ -49,7 +49,7 @@ class SimulationRestorerTest {
 
     @BeforeEach
     void setUp() {
-        // Use real random provider instead of mock since Organism needs deriveFor()
+        // A real provider: the restorer reads its seed and loads the checkpointed state into it
         randomProvider = new SeededRandomProvider(42L);
     }
 
@@ -71,7 +71,9 @@ class SimulationRestorerTest {
         Simulation simulation = state.simulation();
 
         // Verify simulation state
-        assertThat(simulation.getCurrentTick()).isEqualTo(1000);
+        assertThat(simulation.getCurrentTick())
+                .as("snapshot 1000 holds the state after tick 1000; the simulation continues with tick 1001")
+                .isEqualTo(1001);
         assertThat(simulation.getTotalOrganismsCreatedCount()).isEqualTo(100);
         assertThat(simulation.getEnvironment().getShape()).isEqualTo(new int[]{100, 100});
         assertThat(simulation.getOrganisms()).hasSize(1);

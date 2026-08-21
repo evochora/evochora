@@ -201,7 +201,8 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
         final int[] state = {-1, 0, 0, 0};
         final double[] ws = {0.0};
 
-        owned.forEach((int flatIndex) -> {
+        // Canonical (index) order: the reservoir choice below must not depend on write history
+        env.forEachCellOwnedByInIndexOrder(childId, (int flatIndex) -> {
             int moleculeInt = env.getMoleculeInt(flatIndex);
             if (moleculeInt == 0) {
                 return; // empty cell

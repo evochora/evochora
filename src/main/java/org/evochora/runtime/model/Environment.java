@@ -6,11 +6,11 @@ import java.util.BitSet;
 import java.util.function.IntConsumer;
 
 import org.evochora.runtime.Config;
+import org.evochora.runtime.ParallelWave;
 import org.evochora.runtime.isa.IEnvironmentReader;
 
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
-import it.unimi.dsi.fastutil.ints.IntSet;
 import org.evochora.runtime.label.ILabelMatchingStrategy;
 import org.evochora.runtime.label.LabelIndex;
 import org.evochora.runtime.label.PreExpandedHammingStrategy;
@@ -29,8 +29,14 @@ public class Environment implements IEnvironmentReader {
     private final int[] ownerGrid;
     private final int[] strides;
 
-    // Sparse cell tracking for performance optimization (using primitive int indices)
-    private final IntSet occupiedIndices;
+    /**
+     * One bit per cell, set while the cell holds a molecule or an owner. A bit set gives
+     * constant-time updates without hashing, a fixed memory footprint of one bit per cell, and —
+     * decisive for reproducible snapshots — iteration in ascending index order, so the order in
+     * which cells are serialized depends on the grid's content alone and not on the history of
+     * writes.
+     */
+    private final BitSet occupiedIndices;
     
     // Ownership index: maps ownerId -> set of flat indices owned by that organism
     // Enables O(1) lookup of all cells owned by a specific organism (for FORK transfer, death cleanup)
@@ -141,7 +147,7 @@ public class Environment implements IEnvironmentReader {
         }
 
         // Initialize sparse cell tracking if enabled (using primitive int indices for performance)
-        this.occupiedIndices = Config.ENABLE_SPARSE_CELL_TRACKING ? new IntOpenHashSet() : null;
+        this.occupiedIndices = Config.ENABLE_SPARSE_CELL_TRACKING ? new BitSet(totalCells) : null;
 
         // Initialize ownership index
         this.cellsByOwner = new Int2ObjectOpenHashMap<>();
@@ -208,6 +214,7 @@ public class Environment implements IEnvironmentReader {
      * @param coord The coordinate to set the molecule at.
      */
     public void setMolecule(Molecule molecule, int... coord) {
+        assert outsideParallelWave();
         int index = getFlatIndex(coord);
         if (index != -1) {
             int oldMoleculeInt = this.grid[index];
@@ -235,6 +242,7 @@ public class Environment implements IEnvironmentReader {
      * @param coord The coordinate to set the molecule at.
      */
     public void setMolecule(Molecule molecule, int ownerId, int... coord) {
+        assert outsideParallelWave();
         int index = getFlatIndex(coord);
         if (index != -1) {
             int oldMoleculeInt = this.grid[index];
@@ -280,6 +288,7 @@ public class Environment implements IEnvironmentReader {
      * @param coord The coordinate to set the owner ID at.
      */
     public void setOwnerId(int ownerId, int... coord) {
+        assert outsideParallelWave();
         int index = getFlatIndex(coord);
         if (index != -1) {
             // Track change for delta compression (owner change is also a change)
@@ -371,6 +380,25 @@ public class Environment implements IEnvironmentReader {
     }
     
     /**
+     * Guards every mutation against the parallel wave of a tick. Inside that wave several
+     * organisms execute concurrently against a snapshot of the environment; a write there would
+     * race with other threads and make the run depend on scheduling. Only instructions registered
+     * as parallel-safe run in the wave, so a failing assertion means an instruction is registered
+     * as parallel-safe but modifies the environment. Evaluated only with assertions enabled (test
+     * runs); carries no cost in production.
+     *
+     * @return {@code true} when the calling thread is not inside the parallel wave
+     */
+    private static boolean outsideParallelWave() {
+        if (ParallelWave.isActive()) {
+            throw new AssertionError("Environment modified inside the parallel wave of a tick: "
+                    + "only organism-local instructions may run there; an instruction registered as "
+                    + "parallel-safe must not write to the environment");
+        }
+        return true;
+    }
+
+    /**
      * Updates the occupied indices tracking based on the current state of the cell.
      * @param flatIndex The flat index to check and update.
      */
@@ -380,10 +408,10 @@ public class Environment implements IEnvironmentReader {
 
         if (value != 0 || owner != 0) {
             // Cell is occupied - add to tracking
-            occupiedIndices.add(flatIndex);
+            occupiedIndices.set(flatIndex);
         } else {
             // Cell is empty - remove from tracking
-            occupiedIndices.remove(flatIndex);
+            occupiedIndices.clear(flatIndex);
         }
     }
 
@@ -411,20 +439,20 @@ public class Environment implements IEnvironmentReader {
     }
 
     /**
-     * Iterates all occupied cells using flat indices (OPTIMIZATION #2: Primitive API).
-     * This method provides zero-overhead iteration with direct flat index access.
-     * Enables JIT inlining when used with non-capturing method references.
+     * Iterates all occupied cells by flat index, in ascending index order.
+     * <p>
+     * The order is a property of the grid's content, so two environments with the same cells —
+     * a live one and one rebuilt from a snapshot — hand out their cells identically. The cost is
+     * proportional to the grid size (one word scan per 64 cells), not to the number of occupied
+     * cells; no allocation, no boxing.
      *
-     * Performance: ~75% faster than coordinate-based iteration (eliminates both
-     * index calculation overhead and callback boxing/unboxing).
-     *
-     * @param consumer Callback invoked with flat index for each occupied cell
+     * @param consumer Callback invoked with the flat index of each occupied cell
      */
     public void forEachOccupiedIndex(IntConsumer consumer) {
         if (occupiedIndices == null) return;
-
-        // Direct iteration over primitive int indices - zero allocation, maximum JIT optimization
-        occupiedIndices.forEach(consumer);
+        for (int i = occupiedIndices.nextSetBit(0); i >= 0; i = occupiedIndices.nextSetBit(i + 1)) {
+            consumer.accept(i);
+        }
     }
 
     /**
@@ -467,6 +495,32 @@ public class Environment implements IEnvironmentReader {
     }
 
     /**
+     * Hands the flat indices of all cells owned by {@code ownerId} to {@code consumer} in
+     * ascending index order — an order determined by the grid's content alone.
+     * <p>
+     * {@link #getCellsOwnedBy} iterates in hash order, which depends on the history of writes and
+     * therefore differs between a live organism and the same organism rebuilt from a snapshot. Any
+     * decision that iterates an owner's cells and draws randomness on the way (the mutation
+     * operators at birth) must use this method, or a resumed run diverges from its uninterrupted
+     * twin at the first birth. The cost is one sort of the owner's cell count per call, which is
+     * why it is meant for per-birth work, not for the per-tick path.
+     *
+     * @param ownerId the owner whose cells to visit
+     * @param consumer receives each flat index in ascending order
+     */
+    public void forEachCellOwnedByInIndexOrder(int ownerId, IntConsumer consumer) {
+        IntOpenHashSet owned = cellsByOwner.get(ownerId);
+        if (owned == null || owned.isEmpty()) {
+            return;
+        }
+        int[] indices = owned.toIntArray();
+        Arrays.sort(indices);
+        for (int index : indices) {
+            consumer.accept(index);
+        }
+    }
+
+    /**
      * Returns the set of flat indices owned by the specified organism.
      * <p>
      * Returns the internal set directly (no copy) for performance.
@@ -504,6 +558,7 @@ public class Environment implements IEnvironmentReader {
      * @param molecule The molecule to set
      */
     public void setMoleculeByIndex(int flatIndex, Molecule molecule) {
+        assert outsideParallelWave();
         int oldMoleculeInt = this.grid[flatIndex];
         int newMoleculeInt = molecule.toInt();
         this.grid[flatIndex] = newMoleculeInt;
@@ -537,6 +592,7 @@ public class Environment implements IEnvironmentReader {
      * @return The number of molecules transferred.
      */
     public int transferOwnership(int fromOwnerId, int toOwnerId, int markerToMatch) {
+        assert outsideParallelWave();
         IntOpenHashSet fromSet = cellsByOwner.get(fromOwnerId);
         if (fromSet == null || fromSet.isEmpty()) {
             return 0;
@@ -570,6 +626,10 @@ public class Environment implements IEnvironmentReader {
             int moleculeInt = grid[flatIndex];
             labelIndex.onOwnerChange(flatIndex, moleculeInt, toOwnerId);
             labelIndex.onMarkerChange(flatIndex, moleculeInt);
+            // An empty cell handed to "nobody" leaves the occupied set
+            if (Config.ENABLE_SPARSE_CELL_TRACKING && occupiedIndices != null) {
+                updateOccupiedIndices(flatIndex);
+            }
         }
         
         // Clean up empty set
@@ -589,6 +649,7 @@ public class Environment implements IEnvironmentReader {
      * @return The number of cells that were cleared.
      */
     public int clearOwnershipFor(int ownerId) {
+        assert outsideParallelWave();
         IntOpenHashSet owned = cellsByOwner.remove(ownerId);
         if (owned == null || owned.isEmpty()) {
             return 0;
@@ -605,6 +666,11 @@ public class Environment implements IEnvironmentReader {
             int moleculeInt = grid[flatIndex];
             labelIndex.onOwnerChange(flatIndex, moleculeInt, 0);
             labelIndex.onMarkerChange(flatIndex, moleculeInt);
+            // A cell that is now empty and unowned leaves the occupied set; otherwise every dead
+            // organism's footprint would stay in it (and in every snapshot) forever
+            if (Config.ENABLE_SPARSE_CELL_TRACKING && occupiedIndices != null) {
+                updateOccupiedIndices(flatIndex);
+            }
         });
 
         return count;
@@ -624,6 +690,7 @@ public class Environment implements IEnvironmentReader {
      * @return The number of molecules that were removed.
      */
     public int clearMarkersFor(int ownerId, int markerToMatch) {
+        assert outsideParallelWave();
         IntOpenHashSet owned = cellsByOwner.get(ownerId);
         if (owned == null || owned.isEmpty()) {
             return 0;
@@ -655,7 +722,7 @@ public class Environment implements IEnvironmentReader {
             labelIndex.onMoleculeSet(flatIndex, oldMoleculeInt, 0, 0);
             // Update sparse cell tracking if enabled
             if (Config.ENABLE_SPARSE_CELL_TRACKING && occupiedIndices != null) {
-                occupiedIndices.remove(flatIndex);
+                occupiedIndices.clear(flatIndex);
             }
         }
 
