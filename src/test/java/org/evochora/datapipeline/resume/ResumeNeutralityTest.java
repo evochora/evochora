@@ -115,6 +115,9 @@ class ResumeNeutralityTest {
         organism.addSr(17);
         organism.writeOperand(3, new int[]{11, 12});
         world.sim.tick();
+        // A failure recorded with a non-empty call stack, as an instruction failing inside a
+        // procedure would leave it at the end of a tick
+        organism.instructionFailed("test failure");
 
         Simulation restored = restore(world, 1).simulation();
         Organism rebuilt = restored.getOrganisms().stream()
@@ -152,6 +155,9 @@ class ResumeNeutralityTest {
         assertThat(actual.getDeathTick()).isEqualTo(expected.getDeathTick());
         assertThat(actual.isInstructionFailed()).isEqualTo(expected.isInstructionFailed());
         assertThat(actual.getFailureReason()).isEqualTo(expected.getFailureReason());
+        assertThat(expected.getFailureCallStack()).as("scenario provides a failure call stack").isNotEmpty();
+        assertThat(new ArrayList<>(actual.getFailureCallStack())).usingRecursiveComparison()
+                .isEqualTo(new ArrayList<>(expected.getFailureCallStack()));
         assertThat(actual.getGenomeHash()).isEqualTo(expected.getGenomeHash());
         assertThat(actual.getCurrentProcLabelHash()).isEqualTo(expected.getCurrentProcLabelHash());
         assertThat(actual.isStackSavedDirty()).isEqualTo(expected.isStackSavedDirty());

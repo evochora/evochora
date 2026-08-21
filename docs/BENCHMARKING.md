@@ -16,6 +16,7 @@ with `organisms` copies of one assembly program and runs ticks back to back.
 | `assembly` | `REALISTIC`, `PROC_CALL` | `REALISTIC` is a general instruction mix (arithmetic, conditionals, environment access, jumps). `PROC_CALL` is a tight `CALL`/`RET` loop with `REF` and `VAL` parameters and stresses the procedure-frame path. |
 | `organisms` | `100`, `500`, `2000` | Population size; larger values shift the profile from per-tick overhead towards per-organism work and cache pressure. |
 | `parallelism` | `4` (default) | Threads executing the parallel wave of a tick, the main thread included (`1` = main thread alone). Override on the command line (see below). |
+| `selectionSpread` | `0` (default) | Selection spread of the label-matching strategy. `0` picks the closest own label deterministically; a positive value (production default `50`) enables weighted-random selection among own exact matches and draws one random number per jump or call, exercising the organism's random source on the control-flow path. Override on the command line, e.g. `-p selectionSpread=0,50`. |
 
 The benchmark deliberately isolates the instruction-execution hot path:
 
@@ -48,7 +49,7 @@ with a comparison run from another.
 
 ## Required conditions
 
-The simulation saturates its worker threads for the whole run. On most modern CPUs, and on
+The simulation saturates its execution threads (main thread and workers) for the whole run. On most modern CPUs, and on
 every laptop, this triggers turbo-boost and thermal-throttling behavior: the first seconds run
 at a high clock, the clock then drops as the package heats up, and the measured throughput
 decays over the course of a fork. Such a run produces a mean that depends on the cooling state

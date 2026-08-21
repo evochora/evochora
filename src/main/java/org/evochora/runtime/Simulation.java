@@ -64,6 +64,7 @@ public class Simulation {
     private int[] scalingOrganisms = {};
     private int[] scalingMaxThreads = {};
     private int nextOrganismId = 1;
+    private int organismsSinceYield = 0;
     private final LongOpenHashSet allGenomesEverSeen = new LongOpenHashSet();
     private IRandomProvider randomProvider;
 
@@ -472,7 +473,11 @@ public class Simulation {
      */
     private void planAndExecuteLocal(int from, int to, InterceptionContext context, Thread mainThread,
                                      Instruction[] planned, boolean[] diedInWave1) {
-        int processed = 0;
+        // Yield periodically so that other threads (control API, data pipeline) get scheduled
+        // during long stretches of ticking. On the calling thread the counter carries over from
+        // tick to tick, so small populations yield too; workers use a counter per chunk.
+        boolean onMainThread = Thread.currentThread() == mainThread;
+        int processed = onMainThread ? organismsSinceYield : 0;
         for (int i = from; i < to; i++) {
             if (mainThread.isInterrupted()) return;
             if ((++processed & 0xFFF) == 0) Thread.yield();
@@ -511,6 +516,9 @@ public class Simulation {
             }
 
             planned[i] = instruction;
+        }
+        if (onMainThread) {
+            organismsSinceYield = processed;
         }
     }
 

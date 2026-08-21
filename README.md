@@ -131,7 +131,7 @@ For the full scientific motivation, see the [Scientific Overview](docs/SCIENTIFI
 - **Jupyter Notebook** — A ready-to-use [data analysis notebook](https://colab.research.google.com/github/evochora/evochora/blob/main/notebooks/data_analysis_guide.ipynb?flush_cache=true) with phylogenetic trees, Muller plots, and cross-metric analysis using pandas, networkx, and DuckDB
 
 ### Trust Your Results
-- **Deterministic Simulation** — Seed-based; identical input produces identical output, guaranteed — independent of thread count and of pause/resume
+- **Deterministic Simulation** — Seed-based; identical input produces the identical simulation state and trajectory, guaranteed — independent of thread count and of pause/resume
 - **Complete Data Persistence** — Every tick is recorded; nothing is lost or aggregated away
 - **Decoupled Data Pipeline** — Raw data can be reindexed at any time with new or modified analytics plugins
 - **No Built-In Selection Bias** — By default, no global culling or task-based rewards; organisms survive through their own actions in a spatial environment

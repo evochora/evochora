@@ -28,7 +28,9 @@ import java.util.function.IntConsumer;
  * {@code K * hammingWeight}, since no candidate at that distance can improve the result.
  * <p>
  * Memory usage is proportional to the number of labels (one entry per label),
- * independent of tolerance. Insert, remove, and update operations are O(1).
+ * independent of tolerance. Insert, remove and update are linear in the number of entries that
+ * share one label value (insert locates its position by binary search, then shifts the tail);
+ * with per-organism label namespaces that number is typically one.
  * <p>
  * Thread Safety: {@link #findTarget} only reads and is called concurrently from every thread of
  * the parallel wave; {@link #addLabel}, {@link #removeLabel} and {@link #updateOwner} are called
@@ -314,11 +316,17 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
         // it the stochastic selection — depends on the environment's content alone, never on the
         // order in which labels were placed (a resumed run rebuilds the index from a snapshot).
         List<LabelEntry> entries = valueToLabels.computeIfAbsent(labelValue, k -> new ArrayList<>());
-        int position = entries.size();
-        while (position > 0 && entries.get(position - 1).flatIndex() > entry.flatIndex()) {
-            position--;
+        int low = 0;
+        int high = entries.size();
+        while (low < high) {
+            int mid = (low + high) >>> 1;
+            if (entries.get(mid).flatIndex() < entry.flatIndex()) {
+                low = mid + 1;
+            } else {
+                high = mid;
+            }
         }
-        entries.add(position, entry);
+        entries.add(low, entry);
     }
 
     @Override

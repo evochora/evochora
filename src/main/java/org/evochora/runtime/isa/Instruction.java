@@ -731,6 +731,11 @@ public abstract class Instruction {
 
     // --- Conflict Resolution Logic ---
 
+    /**
+     * Whether the virtual machine processes this instruction in the current tick. Set for every
+     * planned instruction of a living organism; a conflict loser keeps it, because the VM still
+     * books the loss as a failed instruction without executing it.
+     */
     protected boolean processedInTick = false;
 
     /**
