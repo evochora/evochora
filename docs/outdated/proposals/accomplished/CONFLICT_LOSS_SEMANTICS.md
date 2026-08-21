@@ -118,8 +118,9 @@ checkpoint.
   first such instruction, not speculative code without a test.
 - A conflict loser records no instruction-execution data (it was not executed), so the
   instruction-usage analytics count only executed instructions; its trace is the failure reason.
-- `ConflictResolutionStatus.LOST_LOWER_ID_WON` was renamed `LOST_PRIORITY`; the enum remains an
-  in-memory diagnostic.
+- `ConflictResolutionStatus.LOST_LOWER_ID_WON` was renamed `LOST_PRIORITY`; the never-assigned
+  `LOST_TARGET_EMPTY` and `LOST_OTHER_REASON` were removed. The enum remains an in-memory
+  diagnostic.
 
 ## Tests
 

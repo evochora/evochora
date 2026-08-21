@@ -123,12 +123,9 @@ public class PokeThermodynamicPolicy implements IThermodynamicPolicy {
 
     @Override
     public int getEnergyCost(ThermodynamicContext context) {
-        // If POKE lost the conflict (target occupied), it costs nothing
+        // A write that lost its conflict never happens and therefore costs nothing
         ConflictResolutionStatus status = context.instruction().getConflictStatus();
-        if (status == ConflictResolutionStatus.LOST_TARGET_OCCUPIED ||
-            status == ConflictResolutionStatus.LOST_TARGET_EMPTY || // Should not happen for POKE
-            status == ConflictResolutionStatus.LOST_PRIORITY ||
-            status == ConflictResolutionStatus.LOST_OTHER_REASON) {
+        if (status != ConflictResolutionStatus.WON_EXECUTION && status != ConflictResolutionStatus.NOT_APPLICABLE) {
             return 0;
         }
         

@@ -743,11 +743,12 @@ public abstract class Instruction {
      * <p>
      * {@link #LOST_PRIORITY} is assigned before execution: the instruction is still handed to the
      * virtual machine, which books it as a failed instruction without executing it and keeps the
-     * instruction pointer for a retry. The other {@code LOST} statuses describe outcomes detected
-     * during execution. Thermodynamic policies charge only base costs for any {@code LOST} status.
+     * instruction pointer for a retry. {@link #LOST_TARGET_OCCUPIED} is assigned during execution
+     * when a write finds its target cell occupied. Thermodynamic policies charge only base costs
+     * for any {@code LOST} status.
      */
     public enum ConflictResolutionStatus {
-        NOT_APPLICABLE, WON_EXECUTION, LOST_TARGET_OCCUPIED, LOST_TARGET_EMPTY, LOST_PRIORITY, LOST_OTHER_REASON
+        NOT_APPLICABLE, WON_EXECUTION, LOST_TARGET_OCCUPIED, LOST_PRIORITY
     }
     protected ConflictResolutionStatus conflictStatus = ConflictResolutionStatus.NOT_APPLICABLE;
     
