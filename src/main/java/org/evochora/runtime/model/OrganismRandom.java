@@ -72,6 +72,11 @@ public final class OrganismRandom {
 
     /**
      * Returns the next 64-bit value of the stream.
+     * <p>
+     * The mix input advances by the SplitMix64 golden-ratio increment per draw. Since the
+     * increment is odd, the inputs form a Weyl sequence of period 2^64: the first 2^64 draws of a
+     * tick stream all mix distinct inputs, so no number of draws an organism can make within one
+     * tick ever revisits a value.
      *
      * @return a pseudo-random long
      */
