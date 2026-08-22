@@ -314,7 +314,6 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 .map(b -> new BirthHandlerWithConfig(b.handler(), b.config()))
                 .toList();
 
-
             log.debug("Restored {} organisms from checkpoint", restored.simulation().getOrganisms().size());
 
             applyParallelismScaling(restored.simulation(), currentRuntimeConfig);
