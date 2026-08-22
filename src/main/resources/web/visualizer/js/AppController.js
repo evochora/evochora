@@ -312,6 +312,7 @@ export class AppController {
         // Reset view states so they re-render on next selection
         this.sourceView.setProgram(null);
         this.stateView.setProgram(null);
+        this.instructionView.setProgram(null);
         this.state.previousOrganismDetails = null;
     }
     
@@ -454,6 +455,17 @@ export class AppController {
             const state = details.state;
             
             if (details && staticInfo) {
+                // Resolve the program artifact once and give every view its context before any of
+                // them renders. Views read it while updating — the state view resolves procedure
+                // parameters through it, the instruction view resolves label names — so setting it
+                // afterwards would leave the first render of a newly selected organism incomplete.
+                const artifact = staticInfo.programId
+                    ? (this.programArtifactCache.get(staticInfo.programId) || null)
+                    : null;
+                this.stateView.setProgram(artifact);
+                this.instructionView.setProgram(artifact);
+                this.sourceView.setProgram(artifact);
+
                 // Update instruction view with last and next instructions
                 if (state && state.instructions) {
                     this.instructionView.update(state.instructions, this.state.currentTick);
@@ -521,33 +533,9 @@ export class AppController {
                     this.stateView.update(state, isForwardStep, previousState, staticInfo);
                 }
                 
-                // Update State View Artifact (Clean Architecture)
-                const programIdForState = staticInfo.programId;
-                if (programIdForState) {
-                    // 1. Resolve Artifact (Controller responsibility)
-                    let artifactForState = this.programArtifactCache.get(programIdForState) || null;
-
-                    // 2. Set Context (View decides if update needed)
-                    this.stateView.setProgram(artifactForState);
-                    this.instructionView.setProgram(artifactForState);
-                } else {
-                    this.stateView.setProgram(null);
-                    this.instructionView.setProgram(null);
-                }
-
-                // Update Source View (Clean Architecture)
-                const programId = staticInfo.programId;
-                if (programId) {
-                    // 1. Resolve Artifact (Controller responsibility)
-                    let artifact = this.programArtifactCache.get(programId) || null;
-                    
-                    // 2. Set Context (View decides if update needed)
-                    this.sourceView.setProgram(artifact);
-                    
-                    // 3. Update Dynamic State (Fast update)
+                // Update Source View with the current execution position
+                if (artifact) {
                     this.sourceView.updateExecutionState(state, staticInfo);
-                } else {
-                    this.sourceView.setProgram(null);
                 }
                 
                 // Save current details for next comparison
