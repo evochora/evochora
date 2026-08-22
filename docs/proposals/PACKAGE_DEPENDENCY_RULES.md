@@ -522,13 +522,23 @@ reference from every stack frame should reduce hot-path work and per-organism he
 been measured and is not a justification for the measure; it is recorded so a benchmark run can
 confirm or refute it.
 
-**Test impact.** A substantial number of tests construct artifacts or call `execute` directly and
-follow the signature change. Resume and determinism tests that compare organism state need updating
-because the procedure frame changes shape. The new resolution is covered by tests of the read path
-in the existing Java suite — a known hash resolves, an unknown hash yields an empty name, a run
-without the label map yields empty names throughout. Nothing moves into the front-end, which has no
-test coverage of any kind; keeping the change on the Java side is a deliberate part of the design
-rather than a coincidence.
+**Test impact — nine files, smaller than it looks.** No test calls `execute` directly; the VM tests
+drive instructions through `sim.tick()`. Of the 22 test files that mention `ProgramArtifact`, 21 are
+compiler tests that this measure does not touch. What remains: five files construct an
+`Organism.ProcFrame` and drop its first argument, three build a Protobuf frame and drop
+`setProcName`, and `RuntimeIntegrationTest` loses two calls to `setProgramArtifacts`.
+
+One test is removed rather than adapted. `procedureCopyOut_worksWithoutProgramArtifact` exists, by
+its own JavaDoc, to prove that the generated machine code needs no artifact at runtime — an
+assertion that has no counter-state left once the runtime holds no artifacts at all. Its remaining
+substance is covered better by its neighbour `procedureWithParametersAddsValuesAtRuntime`, which
+exercises the same REF copy-out, already runs without an artifact because it never sets one, and
+checks two parameters instead of one.
+
+The new resolution is covered by tests of the read path in the existing Java suite — a known hash
+resolves, an unknown hash yields an empty name, a run without the label map yields empty names
+throughout. Nothing moves into the front-end, which has no test coverage of any kind; keeping the
+change on the Java side is a deliberate part of the design rather than a coincidence.
 
 ## Measure 5 — Remove the wire format from the compiler API
 

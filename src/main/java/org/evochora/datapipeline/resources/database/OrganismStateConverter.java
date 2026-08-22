@@ -1,6 +1,5 @@
 package org.evochora.datapipeline.resources.database;
 
-import org.evochora.datapipeline.api.contracts.OrganismRuntimeState;
 import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.api.resources.database.dto.*;
 import org.evochora.runtime.isa.Instruction;

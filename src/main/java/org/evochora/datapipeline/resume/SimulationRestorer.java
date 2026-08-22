@@ -227,7 +227,6 @@ public class SimulationRestorer {
 
         // 9. Restore ProgramArtifacts
         Map<String, ProgramArtifact> programs = restoreProgramArtifacts(metadata);
-        simulation.setProgramArtifacts(programs);
         log.debug("Restored {} program artifacts", programs.size());
 
         // 10. Restore Organisms (including dead organisms awaiting final serialization)
@@ -625,7 +624,6 @@ public class SimulationRestorer {
         Map<Integer, Integer> parameterBindings = new HashMap<>(pf.getParameterBindingsMap());
 
         return new Organism.ProcFrame(
-            pf.getProcName(),
             pf.getLabelHash(),
             toIntArray(pf.getAbsoluteReturnIp()),
             toIntArray(pf.getAbsoluteCallIp()),

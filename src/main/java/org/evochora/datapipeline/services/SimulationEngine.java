@@ -433,7 +433,6 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
         applyParallelismScaling(simulation, runtimeConfig);
         simulation.setRandomProvider(randomProvider);
-        simulation.setProgramArtifacts(compiledPrograms);
 
         // Register tick plugins with simulation
         for (PluginWithConfig pwc : tickPluginsList) {

@@ -108,7 +108,7 @@ class ResumeNeutralityTest {
         organism.getDataStack().push(new Molecule(Config.TYPE_DATA, 5).toInt());
         organism.getDataStack().push(new int[]{1, 2});
         organism.getLocationStack().push(new int[]{3, 4});
-        organism.getCallStack().push(new Organism.ProcFrame("PROC", 123, new int[]{5, 5}, new int[]{6, 6},
+        organism.getCallStack().push(new Organism.ProcFrame(123, new int[]{5, 5}, new int[]{6, 6},
                 new Object[]{7, new int[]{8, 9}}, java.util.Map.of(0, 1)));
         organism.setDp(1, new int[]{9, 9});
         organism.setActiveDpIndex(1);

@@ -1,6 +1,5 @@
 package org.evochora.runtime.internal.services;
 
-import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.model.Environment;
@@ -20,10 +19,10 @@ public final class ProcedureCallHandler {
      * saving the current processor state, and jumping to the target procedure's address.
      * @param context The execution context for the current instruction.
      * @param targetIp The absolute coordinates of the target procedure (resolved via LabelIndex).
-     * @param labelHash The hash value of the target label (used to look up the procedure name).
-     * @param artifact The program artifact containing metadata about the procedure.
+     * @param labelHash The hash value of the target label, kept in the frame so that observers can
+     *                  resolve the procedure name when it is actually displayed.
      */
-    public static void executeCall(ExecutionContext context, int[] targetIp, int labelHash, ProgramArtifact artifact) {
+    public static void executeCall(ExecutionContext context, int[] targetIp, int labelHash) {
         Organism organism = context.getOrganism();
         Environment environment = context.getWorld();
 
@@ -48,12 +47,6 @@ public final class ProcedureCallHandler {
                 ? organism.snapshotStackSavedRegisters()
                 : null;
 
-        String procName = "";
-        if (artifact != null && artifact.labelValueToName() != null) {
-            String name = artifact.labelValueToName().get(labelHash);
-            if (name != null) procName = name;
-        }
-
         if (organism.isPersistentDirty()) {
             Map<Integer, Object[]> persistentState = organism.getPersistentRegisterState();
 
@@ -75,7 +68,7 @@ public final class ProcedureCallHandler {
             }
         }
 
-        Organism.ProcFrame frame = new Organism.ProcFrame(procName, labelHash, returnIp, ipBeforeFetch, savedRegisters, parameterBindings);
+        Organism.ProcFrame frame = new Organism.ProcFrame(labelHash, returnIp, ipBeforeFetch, savedRegisters, parameterBindings);
         organism.getCallStack().push(frame);
 
         // Always track which procedure is active (needed for correct save on RET after first dirty write)
