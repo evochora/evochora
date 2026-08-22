@@ -145,7 +145,8 @@ public class SimulationRestorer {
      * After calling this method, the returned state contains everything needed
      * to initialize SimulationEngine in resume mode:
      * <ul>
-     *   <li>The restored Simulation (with Environment, Organisms, ProgramArtifacts)</li>
+     *   <li>The restored Simulation with its Environment and Organisms</li>
+     *   <li>The ProgramArtifact map, keyed by program ID</li>
      *   <li>The IRandomProvider with restored RNG state</li>
      *   <li>The instantiated TickPlugins with restored state</li>
      *   <li>The original runId and metadata for continuity</li>

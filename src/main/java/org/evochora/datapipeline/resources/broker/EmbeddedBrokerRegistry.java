@@ -204,15 +204,16 @@ public final class EmbeddedBrokerRegistry {
      */
     public static void stopBroker(int serverId) throws Exception {
         synchronized (brokerLock) {
-            EmbeddedActiveMQ broker = brokerRegistry.remove(serverId);
+            // The broker leaves the registry only once it has actually stopped. Removing it first
+            // would make a failed shutdown look like a free server ID, and the next startup would
+            // then collide with a broker that still holds it.
+            EmbeddedActiveMQ broker = brokerRegistry.get(serverId);
             if (broker != null) {
-                try {
-                    log.info("Stopping Embedded ActiveMQ Artemis Broker (serverId={})...", serverId);
-                    broker.stop();
-                    log.info("Embedded ActiveMQ Artemis Broker (serverId={}) stopped.", serverId);
-                } finally {
-                    retentionRegistry.remove(serverId);
-                }
+                log.info("Stopping Embedded ActiveMQ Artemis Broker (serverId={})...", serverId);
+                broker.stop();
+                brokerRegistry.remove(serverId);
+                retentionRegistry.remove(serverId);
+                log.info("Embedded ActiveMQ Artemis Broker (serverId={}) stopped.", serverId);
             }
         }
     }
@@ -230,12 +231,13 @@ public final class EmbeddedBrokerRegistry {
     public static void resetForTesting() throws Exception {
         synchronized (brokerLock) {
             for (int id : new ArrayList<>(brokerRegistry.keySet())) {
-                EmbeddedActiveMQ broker = brokerRegistry.remove(id);
+                EmbeddedActiveMQ broker = brokerRegistry.get(id);
                 if (broker != null) {
                     broker.stop();
+                    brokerRegistry.remove(id);
+                    retentionRegistry.remove(id);
                 }
             }
-            retentionRegistry.clear();
         }
     }
 
@@ -266,9 +268,14 @@ public final class EmbeddedBrokerRegistry {
             artemisConfig.setLargeMessagesDirectory(dataDir + "/largemessages");
             artemisConfig.setPagingDirectory(dataDir + "/paging");
 
-            // Async large message writes: the queue purges stale messages on startup,
-            // so crash-durability is not needed and sync I/O would block producers
-            artemisConfig.setLargeMessageSync(false);
+            // Large messages are synced to disk only where their durability is load-bearing.
+            // With journal retention the broker is the archive a later consumer group replays
+            // from, so an unclean shutdown must not leave a large message body truncated. Without
+            // retention the queue purges stale messages on startup, so the sync would only block
+            // producers for data that is discarded anyway.
+            boolean retentionEnabled = !config.hasPath("journalRetention.enabled")
+                || config.getBoolean("journalRetention.enabled");
+            artemisConfig.setLargeMessageSync(retentionEnabled);
         }
     }
 
@@ -318,9 +325,14 @@ public final class EmbeddedBrokerRegistry {
 
         if (retentionEnabled) {
             if (!persistenceEnabled) {
-                log.warn("Journal retention requires persistenceEnabled=true. "
-                    + "Retention will be DISABLED.");
-                return false;
+                // Disabling retention here would be silent data loss with a delay: the broker
+                // starts, and only much later does a newly added indexer or analytics plugin
+                // receive nothing but new messages, because the history it should replay was
+                // never kept. The configuration asks for something it cannot get.
+                throw new IllegalArgumentException(
+                    "journalRetention.enabled=true requires persistenceEnabled=true "
+                    + "(broker serverId=" + serverId + "). Retention keeps the message history "
+                    + "that new consumer groups replay; without persistence there is none.");
             } else {
                 String dataDir = resolveDataDirectory(config);
                 String retentionDir = config.hasPath("journalRetention.directory")

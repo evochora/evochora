@@ -1,5 +1,6 @@
 package org.evochora.architecture;
 
+import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.classes;
 import static com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses;
 import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.slices;
 
@@ -52,13 +53,18 @@ class PackageDependencyRulesTest {
      * violation originating there is a violation of a {@code .proto} definition and is fixed at
      * that source.
      * <p>
-     * Test classes are excluded because test code legitimately reaches across package boundaries;
-     * a rule firing there constantly would end up being switched off.
+     * Test code is excluded because it legitimately reaches across package boundaries; a rule
+     * firing there constantly would end up being switched off. That includes the test fixtures and
+     * the JMH sources: both live under {@code org.evochora} like production code, reach the
+     * classpath as jars rather than class directories, and are therefore not caught by ArchUnit's
+     * test filter. They are excluded by location instead.
      */
     @BeforeAll
     static void importProductionClasses() {
         productionClasses = new ClassFileImporter()
                 .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
+                .withImportOption(location -> !location.contains("test-fixtures"))
+                .withImportOption(location -> !location.contains("-jmh"))
                 .importPackages(ROOT);
     }
 
@@ -122,6 +128,26 @@ class PackageDependencyRulesTest {
                 .should().dependOnClassesThat().resideInAnyPackage(
                         ROOT + ".compiler..",
                         ROOT + ".cli..")
+                .check(productionClasses);
+    }
+
+    /**
+     * Every production class lives in one of the packages the graph describes.
+     * <p>
+     * The rules above name the packages a given package may <em>not</em> reference. A sixth
+     * top-level package would appear in none of those lists and could therefore be referenced from
+     * anywhere unnoticed — the graph would silently stop describing the system. This rule forces a
+     * new package to be admitted to the graph before any code can live in it.
+     */
+    @Test
+    void everyClassLivesInADeclaredTopLevelPackage() {
+        classes().should().resideInAnyPackage(
+                        ROOT,
+                        ROOT + ".cli..",
+                        ROOT + ".compiler..",
+                        ROOT + ".datapipeline..",
+                        ROOT + ".node..",
+                        ROOT + ".runtime..")
                 .check(productionClasses);
     }
 

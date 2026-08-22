@@ -211,13 +211,19 @@ public class ArtemisTopicReaderDelegate<T extends Message>
                 log.debug("Replay triggered for new consumer group '{}' on topic '{}'",
                     this.consumerGroup, targetTopicName);
             } catch (Exception e) {
-                // Replay failure is not fatal - consumer still works for new messages
-                log.warn("Failed to replay historical messages for consumer group '{}': {}. "
-                    + "Consumer will only receive NEW messages.",
-                    this.consumerGroup, e.getMessage());
+                // A failed replay is fatal for this consumer. The whole point of a new consumer
+                // group is to work through the history that is already there — a newly added
+                // indexer or analytics plugin exists to index exactly those existing messages.
+                // Continuing would let it process only new ones and produce results that look
+                // complete but silently cover part of the run.
                 recordError("REPLAY_FAILED",
                     "Historical message replay failed for new consumer group",
                     "ConsumerGroup: " + this.consumerGroup + ", Error: " + e.getMessage());
+                throw new RuntimeException(
+                    "Failed to replay retained messages for new consumer group '"
+                    + this.consumerGroup + "' on topic '" + targetTopicName
+                    + "'. Refusing to consume only new messages, which would index the run"
+                    + " incompletely.", e);
             }
         }
         // =================================================================

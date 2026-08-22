@@ -506,9 +506,14 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
     void triggerReplay(String addressName, String queueName) throws Exception {
         ActiveMQServer server = getEmbeddedServer();
         if (server == null) {
-            log.warn("Cannot replay messages: embedded server not available. "
-                + "New consumer group '{}' will NOT receive historical messages.", queueName);
-            return;
+            // Returning here would hand the caller a consumer that quietly starts at the end of
+            // the stream. Replay exists so that a newly added consumer group works through the
+            // history; without a broker to replay from, that promise cannot be kept and the
+            // caller must learn it now rather than from incomplete results later.
+            throw new IllegalStateException(
+                "Cannot replay retained messages for queue '" + queueName + "': no embedded "
+                + "broker for serverId=" + serverId + ". Replay requires an in-VM broker; "
+                + "external brokers would need JMX-based replay, which is not implemented.");
         }
 
         log.debug("Replaying retained messages from address '{}' to queue '{}'...",

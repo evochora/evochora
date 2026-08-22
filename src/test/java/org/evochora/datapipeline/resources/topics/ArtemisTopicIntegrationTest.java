@@ -95,6 +95,7 @@ class ArtemisTopicIntegrationTest {
     static void teardownBroker() throws Exception {
         ArtemisTopicResource.resetKnownSubscriptionsForTesting();
         EmbeddedBrokerRegistry.resetForTesting();
+        deleteDirectory(testDir);
     }
 
     @Test
