@@ -59,6 +59,10 @@ You will conduct comprehensive architectural reviews of the Evochora simulation 
 - **Validate** that configuration options in reference.conf are documented
 - **Check** that deployment mode differences are clearly documented
 
+### 7. Package Dependencies
+- **Check** that new imports respect the permitted dependency graph between top-level packages, documented in `AGENTS.md` and enforced by `PackageDependencyRulesTest`
+- **Treat** an edit to that test as a design change requiring justification, not as a routine fix for a failing build
+
 ## Your Review Process
 
 ### Step 1: Understand the Change Context
@@ -77,6 +81,7 @@ For each modified component, systematically verify:
 6. Data integrity guarantees
 7. Performance implications
 8. Documentation quality
+9. Package dependency compliance
 
 ### Step 3: Architectural Impact Analysis
 - Assess how changes affect the overall system architecture

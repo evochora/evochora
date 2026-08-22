@@ -134,6 +134,24 @@ There is a central document for AI agent guidelines that defines architectural p
 
 # Architectural Principles
 
+## Package Dependencies (all of `src/main/java/org/evochora/`)
+
+Which top-level package may reference which other top-level package:
+
+```text
+cli          →  node, datapipeline, compiler, runtime
+node         →  datapipeline, runtime
+datapipeline →  compiler, runtime
+compiler     →  runtime
+runtime      →  (nothing)
+```
+
+- **Authority**: `PackageDependencyRulesTest` enforces this graph and is the single source of truth. The graph is repeated here for orientation only — when the two disagree, the test is right.
+- **`runtime` depends on nothing**: the simulation core carries no outward surface. Every type it borrowed from another package would have to be carried along by a reimplementation in another language.
+- **`compiler → runtime` is intended**: the instruction set is what the compiler targets.
+- **Process wrappers belong to `node`, domain logic to `datapipeline`**: node owns process lifecycles, not what runs inside them. An adapter joining the two lives on node's side, which is the permitted direction.
+- **Adding an edge**: a new dependency the graph does not permit fails the test, which names the classes involved. Withdraw the import, or change the rule and let the change be reviewed. Editing the rule is legitimate — doing it by reflex is what destroys its value.
+
 ## Compiler (`src/main/java/org/evochora/compiler/`)
 
 - **Immutability**: Compiler phases are immutable - each phase creates an immutable object and passes it to the next
