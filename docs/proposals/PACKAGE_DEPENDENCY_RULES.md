@@ -1,8 +1,8 @@
 # Package Dependency Rules
 
-**Status: TO BE REVIEWED — purpose, target graph and five measures agreed; to be implemented as one
-unit. Three optional packages are described at the end; whether they are implemented here, split
-into their own proposal or kept as issues is decided once the measures are done.**
+**Status: MEASURES IMPLEMENTED — the five measures are done and the rule is green; the target graph
+holds and all three cycles are resolved. The three optional packages at the end are undecided and
+are taken up on their own branch. This document stays here until they are resolved.**
 
 ## Purpose
 
