@@ -23,7 +23,7 @@ import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.topics.ITopicReader;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
-import org.evochora.node.processes.broker.EmbeddedBrokerProcess;
+import org.evochora.datapipeline.resources.broker.EmbeddedBrokerRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -111,13 +111,13 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
         super(name, options);
         
         this.brokerUrl = options.hasPath("brokerUrl") ? options.getString("brokerUrl") : "vm://0";
-        this.serverId = EmbeddedBrokerProcess.parseInVmServerId(brokerUrl);
+        this.serverId = EmbeddedBrokerRegistry.parseInVmServerId(brokerUrl);
         this.baseTopicName = options.hasPath("topicName") ? options.getString("topicName") : name;
         this.effectiveTopicName = this.baseTopicName; // Default to base name until runId is set
         this.claimTimeoutSeconds = options.hasPath("claimTimeout") ? options.getInt("claimTimeout") : 300;
         this.maxSizeBytesForEstimation = options.hasPath("maxSizeBytesForEstimation")
             ? options.getLong("maxSizeBytesForEstimation")
-            : EmbeddedBrokerProcess.DEFAULT_MAX_SIZE_BYTES;
+            : EmbeddedBrokerRegistry.DEFAULT_MAX_SIZE_BYTES;
         
         int maxPoolConnections = options.hasPath("maxPoolConnections") ? options.getInt("maxPoolConnections") : 1;
 
@@ -374,12 +374,12 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
      * Returns whether journal retention is enabled for this resource's broker.
      * <p>
      * <b>Thread Safety:</b> Safe to call from any thread (delegates to
-     * {@link EmbeddedBrokerProcess#isJournalRetentionEnabled(int)}).
+     * {@link EmbeddedBrokerRegistry#isJournalRetentionEnabled(int)}).
      *
      * @return true if retention is enabled and replay is available
      */
     boolean isJournalRetentionEnabled() {
-        return EmbeddedBrokerProcess.isJournalRetentionEnabled(serverId);
+        return EmbeddedBrokerRegistry.isJournalRetentionEnabled(serverId);
     }
 
     /**
@@ -388,12 +388,12 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
      * Used by reader delegates to query queue existence and trigger replay.
      * <p>
      * <b>Thread Safety:</b> Safe to call from any thread (delegates to
-     * {@link EmbeddedBrokerProcess#getServer(int)}).
+     * {@link EmbeddedBrokerRegistry#getServer(int)}).
      *
      * @return the ActiveMQServer, or null if broker not started or external broker used
      */
     ActiveMQServer getEmbeddedServer() {
-        return EmbeddedBrokerProcess.getServer(serverId);
+        return EmbeddedBrokerRegistry.getServer(serverId);
     }
 
     /**

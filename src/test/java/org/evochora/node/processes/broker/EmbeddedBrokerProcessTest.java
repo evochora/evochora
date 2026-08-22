@@ -15,6 +15,8 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
+import org.evochora.datapipeline.resources.broker.EmbeddedBrokerRegistry;
+
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 
@@ -32,12 +34,12 @@ class EmbeddedBrokerProcessTest {
 
     @BeforeEach
     void ensureCleanState() throws Exception {
-        EmbeddedBrokerProcess.resetForTesting();
+        EmbeddedBrokerRegistry.resetForTesting();
     }
 
     @AfterEach
     void cleanup() throws Exception {
-        EmbeddedBrokerProcess.resetForTesting();
+        EmbeddedBrokerRegistry.resetForTesting();
         deleteDirectory(new File(TEST_DIR_PATH));
     }
 
@@ -58,16 +60,16 @@ class EmbeddedBrokerProcessTest {
 
         EmbeddedBrokerProcess process = new EmbeddedBrokerProcess("test-broker", Map.of(), options);
 
-        assertThat(EmbeddedBrokerProcess.isBrokerStarted(0)).isFalse();
+        assertThat(EmbeddedBrokerRegistry.isBrokerStarted(0)).isFalse();
 
         process.start();
 
-        assertThat(EmbeddedBrokerProcess.isBrokerStarted(0)).isTrue();
-        assertThat(EmbeddedBrokerProcess.getServer(0)).isNotNull();
+        assertThat(EmbeddedBrokerRegistry.isBrokerStarted(0)).isTrue();
+        assertThat(EmbeddedBrokerRegistry.getServer(0)).isNotNull();
 
         process.stop();
 
-        assertThat(EmbeddedBrokerProcess.isBrokerStarted(0)).isFalse();
+        assertThat(EmbeddedBrokerRegistry.isBrokerStarted(0)).isFalse();
     }
 
     @Test
@@ -78,7 +80,7 @@ class EmbeddedBrokerProcessTest {
         EmbeddedBrokerProcess process = new EmbeddedBrokerProcess("test-broker-disabled", Map.of(), options);
         process.start();
 
-        assertThat(EmbeddedBrokerProcess.isBrokerStarted(0)).isFalse();
+        assertThat(EmbeddedBrokerRegistry.isBrokerStarted(0)).isFalse();
     }
 
     @Test
@@ -122,33 +124,23 @@ class EmbeddedBrokerProcessTest {
         queueBroker.start();
 
         // Both running independently
-        assertThat(EmbeddedBrokerProcess.isBrokerStarted(0)).isTrue();
-        assertThat(EmbeddedBrokerProcess.isBrokerStarted(1)).isTrue();
-        assertThat(EmbeddedBrokerProcess.getServer(0)).isNotNull();
-        assertThat(EmbeddedBrokerProcess.getServer(1)).isNotNull();
-        assertThat(EmbeddedBrokerProcess.getServer(0)).isNotSameAs(EmbeddedBrokerProcess.getServer(1));
+        assertThat(EmbeddedBrokerRegistry.isBrokerStarted(0)).isTrue();
+        assertThat(EmbeddedBrokerRegistry.isBrokerStarted(1)).isTrue();
+        assertThat(EmbeddedBrokerRegistry.getServer(0)).isNotNull();
+        assertThat(EmbeddedBrokerRegistry.getServer(1)).isNotNull();
+        assertThat(EmbeddedBrokerRegistry.getServer(0)).isNotSameAs(EmbeddedBrokerRegistry.getServer(1));
 
         // Retention only on topic broker
-        assertThat(EmbeddedBrokerProcess.isJournalRetentionEnabled(0)).isTrue();
-        assertThat(EmbeddedBrokerProcess.isJournalRetentionEnabled(1)).isFalse();
+        assertThat(EmbeddedBrokerRegistry.isJournalRetentionEnabled(0)).isTrue();
+        assertThat(EmbeddedBrokerRegistry.isJournalRetentionEnabled(1)).isFalse();
 
         // Stop queue broker, topic broker still running
         queueBroker.stop();
-        assertThat(EmbeddedBrokerProcess.isBrokerStarted(0)).isTrue();
-        assertThat(EmbeddedBrokerProcess.isBrokerStarted(1)).isFalse();
+        assertThat(EmbeddedBrokerRegistry.isBrokerStarted(0)).isTrue();
+        assertThat(EmbeddedBrokerRegistry.isBrokerStarted(1)).isFalse();
 
         topicBroker.stop();
-        assertThat(EmbeddedBrokerProcess.isBrokerStarted(0)).isFalse();
-    }
-
-    @Test
-    @DisplayName("Should parse InVM server-ID from broker URL")
-    void shouldParseInVmServerId() {
-        assertThat(EmbeddedBrokerProcess.parseInVmServerId("vm://0")).isEqualTo(0);
-        assertThat(EmbeddedBrokerProcess.parseInVmServerId("vm://1")).isEqualTo(1);
-        assertThat(EmbeddedBrokerProcess.parseInVmServerId("vm://42")).isEqualTo(42);
-        assertThat(EmbeddedBrokerProcess.parseInVmServerId("tcp://localhost:61616")).isEqualTo(-1);
-        assertThat(EmbeddedBrokerProcess.parseInVmServerId(null)).isEqualTo(-1);
+        assertThat(EmbeddedBrokerRegistry.isBrokerStarted(0)).isFalse();
     }
 
     private static void deleteDirectory(File dir) {

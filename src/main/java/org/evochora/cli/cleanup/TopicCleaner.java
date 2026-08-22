@@ -215,8 +215,8 @@ public class TopicCleaner {
      * Suppress Artemis logging during cleanup operations.
      * <p>
      * Only sets levels that have not been explicitly configured (via logback.xml),
-     * matching the null-check pattern used in
-     * {@link org.evochora.node.processes.broker.EmbeddedBrokerProcess#configureLogging()}.
+     * matching the null-check pattern the embedded broker uses when it configures
+     * Artemis logging.
      */
     private void suppressArtemisLogging() {
         ch.qos.logback.classic.Logger artemisLogger =

@@ -14,7 +14,7 @@ import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.topics.ITopicReader;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
 import org.evochora.datapipeline.api.resources.topics.TopicMessage;
-import org.evochora.node.processes.broker.EmbeddedBrokerProcess;
+import org.evochora.datapipeline.resources.broker.EmbeddedBrokerRegistry;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
@@ -76,7 +76,7 @@ class ArtemisTopicIntegrationTest {
                 directory = "%s/history"
             }
             """.formatted(configPath, configPath));
-        EmbeddedBrokerProcess.ensureStarted(brokerConfig);
+        EmbeddedBrokerRegistry.ensureStarted(brokerConfig);
 
         // Resource config: only topic-specific settings, no broker config
         sharedConfig = ConfigFactory.parseString("""
@@ -94,7 +94,7 @@ class ArtemisTopicIntegrationTest {
     @AfterAll
     static void teardownBroker() throws Exception {
         ArtemisTopicResource.resetKnownSubscriptionsForTesting();
-        EmbeddedBrokerProcess.resetForTesting();
+        EmbeddedBrokerRegistry.resetForTesting();
     }
 
     @Test
