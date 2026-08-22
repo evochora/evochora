@@ -145,7 +145,8 @@ public class SimulationRestorer {
      * After calling this method, the returned state contains everything needed
      * to initialize SimulationEngine in resume mode:
      * <ul>
-     *   <li>The restored Simulation (with Environment, Organisms, ProgramArtifacts)</li>
+     *   <li>The restored Simulation with its Environment and Organisms</li>
+     *   <li>The ProgramArtifact map, keyed by program ID</li>
      *   <li>The IRandomProvider with restored RNG state</li>
      *   <li>The instantiated TickPlugins with restored state</li>
      *   <li>The original runId and metadata for continuity</li>
@@ -227,7 +228,6 @@ public class SimulationRestorer {
 
         // 9. Restore ProgramArtifacts
         Map<String, ProgramArtifact> programs = restoreProgramArtifacts(metadata);
-        simulation.setProgramArtifacts(programs);
         log.debug("Restored {} program artifacts", programs.size());
 
         // 10. Restore Organisms (including dead organisms awaiting final serialization)
@@ -400,7 +400,7 @@ public class SimulationRestorer {
         proto.getProcNameToParamNamesMap().forEach((procName, paramNames) -> {
             List<ParamInfo> params = new ArrayList<>();
             for (var param : paramNames.getParamsList()) {
-                params.add(new ParamInfo(param.getName(), ParamType.fromProtobuf(param.getType())));
+                params.add(new ParamInfo(param.getName(), convertProtoParamType(param.getType())));
             }
             procNameToParamNames.put(procName, params);
         });
@@ -466,6 +466,32 @@ public class SimulationRestorer {
             labelValueToName,
             labelNameToValue
         );
+    }
+
+    /**
+     * Converts a Protobuf parameter type to the compiler's parameter type.
+     * <p>
+     * The mapping lives here rather than on the compiler type: the wire format belongs to this
+     * pipeline. An unknown or unrecognised value is a data error and fails rather than falling back
+     * to a default, which would silently misreport a procedure's calling convention.
+     *
+     * @param protoType the Protobuf parameter type, must not be null
+     * @return the corresponding compiler parameter type
+     * @throws IllegalArgumentException if the value is null, unrecognised or unknown
+     */
+    private static ParamType convertProtoParamType(
+            org.evochora.datapipeline.api.contracts.ParamType protoType) {
+        if (protoType == null) {
+            throw new IllegalArgumentException("Protobuf ParamType cannot be null");
+        }
+        return switch (protoType) {
+            case PARAM_TYPE_REF -> ParamType.REF;
+            case PARAM_TYPE_VAL -> ParamType.VAL;
+            case PARAM_TYPE_LREF -> ParamType.LREF;
+            case PARAM_TYPE_LVAL -> ParamType.LVAL;
+            case UNRECOGNIZED -> throw new IllegalArgumentException("Unrecognized ParamType: " + protoType);
+            default -> throw new IllegalArgumentException("Unknown ParamType: " + protoType);
+        };
     }
 
     /**
@@ -625,7 +651,6 @@ public class SimulationRestorer {
         Map<Integer, Integer> parameterBindings = new HashMap<>(pf.getParameterBindingsMap());
 
         return new Organism.ProcFrame(
-            pf.getProcName(),
             pf.getLabelHash(),
             toIntArray(pf.getAbsoluteReturnIp()),
             toIntArray(pf.getAbsoluteCallIp()),

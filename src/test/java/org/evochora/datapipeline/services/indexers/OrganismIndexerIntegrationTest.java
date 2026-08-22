@@ -319,13 +319,11 @@ class OrganismIndexerIntegrationTest {
                 .addDataStack(RegisterValue.newBuilder().setScalar(9).build())
                 .addLocationStack(Vector.newBuilder().addComponents(4).addComponents(4).build())
                 .addCallStack(ProcFrame.newBuilder()
-                        .setProcName("main")
                         .setAbsoluteReturnIp(Vector.newBuilder().addComponents(10).addComponents(10).build())
                         .build())
                 .setInstructionFailed(true)
                 .setFailureReason("integration-failure")
                 .addFailureCallStack(ProcFrame.newBuilder()
-                        .setProcName("fail")
                         .setAbsoluteReturnIp(Vector.newBuilder().addComponents(11).addComponents(11).build())
                         .build())
                 // Instruction execution data

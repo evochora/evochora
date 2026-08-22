@@ -5,7 +5,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.IEnvironmentModifyingInstruction;
 import org.evochora.runtime.isa.Instruction;
@@ -176,8 +175,7 @@ public class VirtualMachine {
                 organism.setSkipIpAdvance(true);
             } else {
                 ExecutionContext context = new ExecutionContext(organism, this.environment, false); // Always run in debug mode
-                ProgramArtifact artifact = this.simulation.getProgramArtifacts().get(organism.getProgramId());
-                instruction.execute(context, artifact);
+                instruction.execute(context);
             }
 
             if (organism.isInstructionFailed()) {

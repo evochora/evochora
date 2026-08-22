@@ -1,7 +1,8 @@
-package org.evochora.datapipeline;
+package org.evochora.node.processes.pipeline;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import org.evochora.datapipeline.ServiceManager;
 import org.evochora.node.processes.AbstractProcess;
 import org.evochora.node.spi.IServiceProvider;
 import org.slf4j.Logger;
@@ -19,7 +20,7 @@ import java.util.Map;
  * <p>Configuration structure (placed under node.processes.pipeline):</p>
  * <pre>
  * pipeline {
- *   className = "org.evochora.datapipeline.ServiceManagerProcess"
+ *   className = "org.evochora.node.processes.pipeline.ServiceManagerProcess"
  *   options {
  *     autoStart = true
  *     startupSequence = [...]

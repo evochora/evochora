@@ -1,12 +1,9 @@
 package org.evochora.runtime;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 
-import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.isa.IEnvironmentModifyingInstruction;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Environment;
@@ -78,24 +75,6 @@ public class Simulation {
      * function of seed, tick and ID.
      */
     private long tickSeed;
-
-    private Map<String, ProgramArtifact> programArtifacts = new HashMap<>();
-
-    /**
-     * Sets the program artifacts used in the simulation.
-     * @param artifacts A map of program names to their compiled artifacts.
-     */
-    public void setProgramArtifacts(Map<String, ProgramArtifact> artifacts) {
-        this.programArtifacts = artifacts;
-    }
-
-    /**
-     * Retrieves the program artifacts used in the simulation.
-     * @return A map of program artifacts.
-     */
-    public Map<String, ProgramArtifact> getProgramArtifacts() {
-        return programArtifacts;
-    }
 
     /**
      * Constructs a new Simulation instance.

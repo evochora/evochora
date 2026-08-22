@@ -39,7 +39,7 @@ import org.evochora.datapipeline.api.resources.queues.StreamingBatch;
 import org.evochora.datapipeline.resources.AbstractResource;
 import org.evochora.datapipeline.utils.JmsUtils;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
-import org.evochora.node.processes.broker.EmbeddedBrokerProcess;
+import org.evochora.datapipeline.resources.broker.EmbeddedBrokerRegistry;
 import org.evochora.datapipeline.resources.queues.wrappers.DirectInputQueueWrapper;
 import org.evochora.datapipeline.resources.queues.wrappers.DirectOutputQueueWrapper;
 import org.evochora.datapipeline.resources.queues.wrappers.MonitoredQueueConsumer;
@@ -165,7 +165,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
         Config finalConfig = options.withFallback(defaults);
 
         this.brokerUrl = finalConfig.hasPath("brokerUrl") ? finalConfig.getString("brokerUrl") : "vm://0";
-        this.serverId = EmbeddedBrokerProcess.parseInVmServerId(brokerUrl);
+        this.serverId = EmbeddedBrokerRegistry.parseInVmServerId(brokerUrl);
         this.queueName = finalConfig.hasPath("queueName") ? finalConfig.getString("queueName") : name;
         this.maxSizeBytes = finalConfig.getLong("maxSizeBytes");
         this.producerWindowSize = finalConfig.hasPath("producerWindowSize")
@@ -251,7 +251,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
      * messages, so no special address settings are needed.
      */
     private void configureQueueAddressSettings() {
-        ActiveMQServer server = EmbeddedBrokerProcess.getServer(serverId);
+        ActiveMQServer server = EmbeddedBrokerRegistry.getServer(serverId);
         if (server == null) {
             log.debug("No embedded server available for address settings — using broker defaults");
             return;
@@ -283,7 +283,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
      * (which is handled independently by {@link #seedTokenIfEmpty}).
      */
     private void purgeStaleMessages() {
-        ActiveMQServer server = EmbeddedBrokerProcess.getServer(serverId);
+        ActiveMQServer server = EmbeddedBrokerRegistry.getServer(serverId);
         if (server == null) {
             log.warn("Cannot purge stale messages from queue '{}': no embedded server available "
                 + "(purgeOnStartup requires an embedded broker)", queueName);
@@ -566,7 +566,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
      * Checks if the data queue address has reached its byte-size limit.
      */
     private boolean isQueueAtCapacity() {
-        ActiveMQServer server = EmbeddedBrokerProcess.getServer(serverId);
+        ActiveMQServer server = EmbeddedBrokerRegistry.getServer(serverId);
         if (server == null) {
             return false; // Can't check, let send proceed (BLOCK policy handles it)
         }
@@ -725,7 +725,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
      * Checks if the data queue currently has no messages available.
      */
     private boolean isDataQueueEmpty() {
-        ActiveMQServer server = EmbeddedBrokerProcess.getServer(serverId);
+        ActiveMQServer server = EmbeddedBrokerRegistry.getServer(serverId);
         if (server == null) {
             return false; // Can't check, assume non-empty (skip coalescing)
         }
@@ -984,7 +984,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
     }
 
     private long getQueueMessageCount() {
-        ActiveMQServer server = EmbeddedBrokerProcess.getServer(serverId);
+        ActiveMQServer server = EmbeddedBrokerRegistry.getServer(serverId);
         if (server == null) {
             return 0;
         }
@@ -1018,7 +1018,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
     }
 
     private long getAddressSize() {
-        ActiveMQServer server = EmbeddedBrokerProcess.getServer(serverId);
+        ActiveMQServer server = EmbeddedBrokerRegistry.getServer(serverId);
         if (server == null) {
             return 0;
         }

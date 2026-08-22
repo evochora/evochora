@@ -3,7 +3,6 @@ package org.evochora.runtime.isa.instructions;
 import java.util.List;
 import java.util.NoSuchElementException;
 
-import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.IEnvironmentModifyingInstruction;
@@ -62,7 +61,7 @@ public class EnvironmentInteractionInstruction extends Instruction implements IE
     }
 
     @Override
-    public void execute(ExecutionContext context, ProgramArtifact artifact) {
+    public void execute(ExecutionContext context) {
         Organism organism = context.getOrganism();
         try {
             String opName = getName();

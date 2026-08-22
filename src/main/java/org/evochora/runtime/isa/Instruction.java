@@ -10,7 +10,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.instructions.ArithmeticInstruction;
@@ -385,9 +384,8 @@ public abstract class Instruction {
     /**
      * Executes the instruction.
      * @param context The execution context.
-     * @param artifact The program artifact.
      */
-    public abstract void execute(ExecutionContext context, ProgramArtifact artifact);
+    public abstract void execute(ExecutionContext context);
 
     /**
      * Initializes the instruction set by registering all instruction families.

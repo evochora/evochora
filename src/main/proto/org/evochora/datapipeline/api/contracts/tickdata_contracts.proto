@@ -318,10 +318,12 @@ message DataPointerList {
 // Maps to org.evochora.runtime.model.ProcFrame class.
 // Captures the state needed to return from a procedure call.
 message ProcFrame {
-  // Name of the procedure being called
-  string proc_name = 1;
+  // Frames carry no procedure name: readers resolve it from label_hash via the program's label
+  // map. Field number 1 stays reserved so it cannot be given a second meaning.
+  reserved 1;
 
-  // LabelHash identifying the procedure (used for persistent register state lookup)
+  // LabelHash identifying the procedure. Used for persistent register state lookup, and as the
+  // input readers resolve the procedure name from via the program's label map.
   int32 label_hash = 2;
 
   // Absolute return address (where to resume after procedure returns)

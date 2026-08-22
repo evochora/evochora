@@ -80,6 +80,27 @@ public class H2DatabaseReader implements IDatabaseReader {
 
         return new EnvironmentProperties(shape, isToroidal);
     }
+
+    /**
+     * Looks up the label-hash-to-name map of the program an organism descends from.
+     * <p>
+     * Organisms carry the program ID of their ancestor, which identifies an entry in the run's
+     * metadata. An empty map is returned when the run predates the metadata field or the ID is
+     * absent; every procedure name then reads as empty, which is the truthful result for a frame
+     * whose name cannot be recovered.
+     *
+     * @param metadata  the run metadata, already loaded by the caller
+     * @param programId the organism's program ID
+     * @return the label map, never null
+     */
+    private Map<Integer, String> extractLabelValueToName(SimulationMetadata metadata, String programId) {
+        for (org.evochora.datapipeline.api.contracts.ProgramArtifact program : metadata.getProgramsList()) {
+            if (program.getProgramId().equals(programId)) {
+                return program.getLabelValueToNameMap();
+            }
+        }
+        return Map.of();
+    }
     
     @Override
     public SimulationMetadata getMetadata() throws SQLException, org.evochora.datapipeline.api.resources.database.MetadataNotFoundException {
@@ -199,7 +220,8 @@ public class H2DatabaseReader implements IDatabaseReader {
         }
         
         // Convert OrganismState to OrganismRuntimeView (includes both last and next instruction from protobuf)
-        OrganismRuntimeView state = convertOrganismStateToRuntimeView(orgState, envDimensions);
+        Map<Integer, String> labelValueToName = extractLabelValueToName(metadata, orgState.getProgramId());
+        OrganismRuntimeView state = convertOrganismStateToRuntimeView(orgState, envDimensions, labelValueToName);
 
         return new OrganismTickDetails(organismId, tickNumber, staticInfo, state);
     }
@@ -217,7 +239,8 @@ public class H2DatabaseReader implements IDatabaseReader {
      */
     private OrganismRuntimeView convertOrganismStateToRuntimeView(
             org.evochora.datapipeline.api.contracts.OrganismState orgState,
-            int[] envDimensions) throws SQLException {
+            int[] envDimensions,
+            Map<Integer, String> labelValueToName) throws SQLException {
         
         int energy = orgState.getEnergy();
         int[] ip = OrganismStateConverter.vectorToArray(orgState.getIp());
@@ -252,13 +275,13 @@ public class H2DatabaseReader implements IDatabaseReader {
         java.util.List<org.evochora.datapipeline.api.resources.database.dto.ProcFrameView> callStack = 
                 new java.util.ArrayList<>();
         for (var frame : orgState.getCallStackList()) {
-            callStack.add(OrganismStateConverter.convertProcFrame(frame));
+            callStack.add(OrganismStateConverter.convertProcFrame(frame, labelValueToName));
         }
         
         java.util.List<org.evochora.datapipeline.api.resources.database.dto.ProcFrameView> failureStack = 
                 new java.util.ArrayList<>();
         for (var frame : orgState.getFailureCallStackList()) {
-            failureStack.add(OrganismStateConverter.convertProcFrame(frame));
+            failureStack.add(OrganismStateConverter.convertProcFrame(frame, labelValueToName));
         }
         
         // Resolve instruction

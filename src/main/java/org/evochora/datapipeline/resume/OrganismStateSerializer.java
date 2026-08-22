@@ -229,7 +229,6 @@ public final class OrganismStateSerializer {
     private org.evochora.datapipeline.api.contracts.ProcFrame convertProcFrameReuse(ProcFrame frame) {
         procFrameBuilder.clear();
         procFrameBuilder
-                .setProcName(frame.procName())
                 .setLabelHash(frame.labelHash())
                 .setAbsoluteReturnIp(convertVectorReuse(frame.absoluteReturnIp(), vectorBuilder))
                 .setAbsoluteCallIp(convertVectorReuse(frame.absoluteCallIp(), vectorBuilder))

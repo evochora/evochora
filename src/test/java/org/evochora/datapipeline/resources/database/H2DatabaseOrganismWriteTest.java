@@ -205,13 +205,11 @@ class H2DatabaseOrganismWriteTest {
                 .addDataStack(RegisterValue.newBuilder().setScalar(9).build())
                 .addLocationStack(Vector.newBuilder().addComponents(4).build())
                 .addCallStack(ProcFrame.newBuilder()
-                        .setProcName("main")
                         .setAbsoluteReturnIp(Vector.newBuilder().addComponents(10).build())
                         .build())
                 .setInstructionFailed(true)
                 .setFailureReason("test-failure")
                 .addFailureCallStack(ProcFrame.newBuilder()
-                        .setProcName("fail")
                         .setAbsoluteReturnIp(Vector.newBuilder().addComponents(11).build())
                         .build())
                 // Instruction execution data

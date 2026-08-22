@@ -21,7 +21,7 @@ import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.queues.IInputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.evochora.datapipeline.api.resources.queues.StreamingBatch;
-import org.evochora.node.processes.broker.EmbeddedBrokerProcess;
+import org.evochora.datapipeline.resources.broker.EmbeddedBrokerRegistry;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
@@ -78,7 +78,7 @@ class ArtemisQueueResourceTest {
                 enabled = false
             }
             """.formatted(configPath));
-        EmbeddedBrokerProcess.ensureStarted(brokerConfig);
+        EmbeddedBrokerRegistry.ensureStarted(brokerConfig);
 
         // Resource config: only queue-specific settings, no broker config
         baseConfig = ConfigFactory.parseString("""
@@ -98,7 +98,7 @@ class ArtemisQueueResourceTest {
 
     @AfterAll
     static void teardownBroker() throws Exception {
-        EmbeddedBrokerProcess.resetForTesting();
+        EmbeddedBrokerRegistry.resetForTesting();
         if (testDir != null) {
             deleteDirectory(testDir);
         }

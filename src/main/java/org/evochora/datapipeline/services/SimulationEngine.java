@@ -99,11 +99,8 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
     // Serializes organisms for tick data; one instance per engine (not thread-safe)
     private final OrganismStateSerializer organismStateSerializer = new OrganismStateSerializer();
 
-    // Helper record bundling program path, ID, and artifact for initialization and metadata building
-    private record ProgramInfo(String programPath, String programId, ProgramArtifact artifact) {}
-
-    // Mapping from programPath (config key) to ProgramInfo for initialization and metadata building
-    private final Map<String, ProgramInfo> programInfoByPath = new HashMap<>();
+    // Compiled artifacts of this run, keyed by program ID, for metadata building and memory estimation
+    private final Map<String, ProgramArtifact> programArtifactsById = new HashMap<>();
 
     private record PluginWithConfig(ITickPlugin plugin, Config config) {}
     private record InterceptorWithConfig(IInstructionInterceptor interceptor, Config config) {}
@@ -130,7 +127,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         List<InterceptorWithConfig> instructionInterceptors,
         List<DeathHandlerWithConfig> deathHandlers,
         List<BirthHandlerWithConfig> birthHandlers,
-        Map<String, ProgramInfo> programInfo,
+        Map<String, ProgramArtifact> programArtifacts,
         String runId,
         long seed,
         long startTimeMs,
@@ -176,7 +173,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         this.seed = state.seed();
         this.startTimeMs = state.startTimeMs();
         this.currentTick.set(state.initialTick());
-        state.programInfo().forEach(programInfoByPath::put);
+        state.programArtifacts().forEach(programArtifactsById::put);
 
         // Intervals from state (config for new simulation, metadata for resume)
         this.samplingInterval = state.samplingInterval();
@@ -317,10 +314,6 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 .map(b -> new BirthHandlerWithConfig(b.handler(), b.config()))
                 .toList();
 
-            Map<String, ProgramInfo> programInfo = new HashMap<>();
-            restored.programArtifacts().forEach((id, artifact) ->
-                programInfo.put(id, new ProgramInfo(id, id, artifact)));
-
             log.debug("Restored {} organisms from checkpoint", restored.simulation().getOrganisms().size());
 
             applyParallelismScaling(restored.simulation(), currentRuntimeConfig);
@@ -333,7 +326,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 interceptors,
                 deathHandlersList,
                 birthHandlersList,
-                programInfo,
+                restored.programArtifacts(),
                 runId,
                 seed,
                 metadata.getStartTimeMs(),
@@ -365,7 +358,9 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
         // Compile programs
         Map<String, ProgramArtifact> compiledPrograms = new HashMap<>();
-        Map<String, ProgramInfo> programInfo = new HashMap<>();
+        // Local to initialisation: the configuration addresses programs by path, both for
+        // deduplicating the compile loop and for placing organisms. It dies with this method.
+        Map<String, ProgramArtifact> artifactsByPath = new HashMap<>();
         Compiler compiler = new Compiler();
 
         // Build compiler options from config
@@ -398,10 +393,10 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
         for (Config orgConfig : organismConfigs) {
             String programPath = orgConfig.getString("program");
-            if (!programInfo.containsKey(programPath)) {
+            if (!artifactsByPath.containsKey(programPath)) {
                 try {
                     ProgramArtifact artifact = compiler.compile(programPath, envProps, compilerOptions);
-                    programInfo.put(programPath, new ProgramInfo(programPath, artifact.programId(), artifact));
+                    artifactsByPath.put(programPath, artifact);
                     compiledPrograms.put(artifact.programId(), artifact);
                 } catch (CompilationException e) {
                     throw new IllegalArgumentException("Failed to compile program: " + programPath, e);
@@ -437,7 +432,6 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
 
         applyParallelismScaling(simulation, runtimeConfig);
         simulation.setRandomProvider(randomProvider);
-        simulation.setProgramArtifacts(compiledPrograms);
 
         // Register tick plugins with simulation
         for (PluginWithConfig pwc : tickPluginsList) {
@@ -470,13 +464,13 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             }
 
             String programPath = orgConfig.getString("program");
-            ProgramInfo info = programInfo.get(programPath);
+            ProgramArtifact artifact = artifactsByPath.get(programPath);
             int[] startPosition = positions.stream().mapToInt(i -> i).toArray();
 
             Organism organism = Organism.create(simulation, startPosition, orgConfig.getInt("initialEnergy"));
-            organism.setProgramId(info.programId());
+            organism.setProgramId(artifact.programId());
             simulation.addOrganism(organism);
-            placeOrganismCodeAndObjects(simulation, organism, info.artifact(), startPosition);
+            placeOrganismCodeAndObjects(simulation, organism, artifact, startPosition);
 
             // Compute genome hash for initial organism after code placement
             long genomeHash = GenomeHasher.computeGenomeHash(
@@ -493,7 +487,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             + "-" + UUID.randomUUID().toString();
 
         return new InitializedState(
-            simulation, randomProvider, tickPluginsList, interceptorsList, deathHandlersList, birthHandlersList, programInfo, runId, seed, startTimeMs, -1,
+            simulation, randomProvider, tickPluginsList, interceptorsList, deathHandlersList, birthHandlersList, compiledPrograms, runId, seed, startTimeMs, -1,
             readPositiveInt(options, "samplingInterval", 1),
             readInt(options, "accumulatedDeltaInterval", SimulationParameters.DEFAULT_ACCUMULATED_DELTA_INTERVAL),
             readInt(options, "snapshotInterval", SimulationParameters.DEFAULT_SNAPSHOT_INTERVAL),
@@ -725,7 +719,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         builder.setInitialSeed(this.seed);
 
         // Add compiled programs (cannot be derived from config)
-        simulation.getProgramArtifacts().values().forEach(artifact ->
+        programArtifactsById.values().forEach(artifact ->
             builder.addPrograms(convertProgramArtifact(artifact)));
 
         // Store complete config - all other values are read from here during resume
@@ -830,7 +824,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 org.evochora.datapipeline.api.contracts.ParamInfo.Builder paramBuilder = 
                         org.evochora.datapipeline.api.contracts.ParamInfo.newBuilder()
                         .setName(param.name())
-                        .setType(param.type().toProtobuf());
+                        .setType(convertParamType(param.type()));
                 paramsBuilder.addParams(paramBuilder.build());
             }
             builder.putProcNameToParamNames(procName, paramsBuilder.build());
@@ -894,6 +888,25 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             builder.setQualifiedName(tokenInfo.qualifiedName());
         }
         return builder.build();
+    }
+
+    /**
+     * Converts a compiler parameter type to its Protobuf counterpart.
+     * <p>
+     * The mapping lives here rather than on the compiler type: the wire format belongs to this
+     * pipeline, and a language concept has no business knowing how its observer stores it.
+     *
+     * @param type the compiler parameter type
+     * @return the corresponding Protobuf parameter type
+     */
+    private static org.evochora.datapipeline.api.contracts.ParamType convertParamType(
+            org.evochora.compiler.api.ParamType type) {
+        return switch (type) {
+            case REF -> org.evochora.datapipeline.api.contracts.ParamType.PARAM_TYPE_REF;
+            case VAL -> org.evochora.datapipeline.api.contracts.ParamType.PARAM_TYPE_VAL;
+            case LREF -> org.evochora.datapipeline.api.contracts.ParamType.PARAM_TYPE_LREF;
+            case LVAL -> org.evochora.datapipeline.api.contracts.ParamType.PARAM_TYPE_LVAL;
+        };
     }
 
     private static Vector convertVector(int[] components) {
@@ -1020,12 +1033,12 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
         ));
         
         // 3. Compiled programs cache - estimate ~100KB per unique program
-        long compiledProgramsBytes = (long) programInfoByPath.size() * 100 * 1024;
+        long compiledProgramsBytes = (long) programArtifactsById.size() * 100 * 1024;
         if (compiledProgramsBytes > 0) {
             estimates.add(new MemoryEstimate(
                 serviceName + " (Compiled Programs)",
                 compiledProgramsBytes,
-                String.format("%d programs × ~100 KB", programInfoByPath.size()),
+                String.format("%d programs × ~100 KB", programArtifactsById.size()),
                 MemoryEstimate.Category.SERVICE_BATCH
             ));
         }

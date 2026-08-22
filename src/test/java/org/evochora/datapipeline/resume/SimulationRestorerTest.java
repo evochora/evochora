@@ -243,7 +243,6 @@ class SimulationRestorerTest {
         // Build a ProcFrame for the failure call stack
         org.evochora.datapipeline.api.contracts.ProcFrame protoFrame =
                 org.evochora.datapipeline.api.contracts.ProcFrame.newBuilder()
-                    .setProcName("FAILING_PROC")
                     .setLabelHash(12345)
                     .setAbsoluteReturnIp(createVector(5, 0))
                     .setAbsoluteCallIp(createVector(3, 0))
@@ -283,7 +282,6 @@ class SimulationRestorerTest {
         assertThat(org.getFailureReason()).isEqualTo("Call stack overflow");
         assertThat(org.getFailureCallStack()).isNotNull();
         assertThat(org.getFailureCallStack()).hasSize(1);
-        assertThat(org.getFailureCallStack().peek().procName()).isEqualTo("FAILING_PROC");
         assertThat(org.getFailureCallStack().peek().labelHash()).isEqualTo(12345);
     }
 
@@ -303,7 +301,6 @@ class SimulationRestorerTest {
     void restore_CallFrameWithoutRegisterSnapshot_KeepsSnapshotAbsent() {
         Organism organism = restoreOrganismWithCallFrame(
                 org.evochora.datapipeline.api.contracts.ProcFrame.newBuilder()
-                    .setProcName("NO_SNAPSHOT_PROC")
                     .setLabelHash(4711)
                     .setAbsoluteReturnIp(createVector(5, 0))
                     .setAbsoluteCallIp(createVector(3, 0))
@@ -317,7 +314,6 @@ class SimulationRestorerTest {
     void restore_CallFrameWithRegisterSnapshot_RestoresValues() {
         org.evochora.datapipeline.api.contracts.ProcFrame.Builder frame =
                 org.evochora.datapipeline.api.contracts.ProcFrame.newBuilder()
-                    .setProcName("SNAPSHOT_PROC")
                     .setLabelHash(4712)
                     .setAbsoluteReturnIp(createVector(5, 0))
                     .setAbsoluteCallIp(createVector(3, 0));
@@ -351,7 +347,6 @@ class SimulationRestorerTest {
     void restoreStackSavedRegisters_EmptySnapshot_Rejected() {
         Organism organism = restoreOrganismWithCallFrame(
                 org.evochora.datapipeline.api.contracts.ProcFrame.newBuilder()
-                    .setProcName("ANY_PROC")
                     .setLabelHash(4713)
                     .setAbsoluteReturnIp(createVector(5, 0))
                     .setAbsoluteCallIp(createVector(3, 0))

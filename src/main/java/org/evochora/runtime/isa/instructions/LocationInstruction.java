@@ -1,6 +1,5 @@
 package org.evochora.runtime.isa.instructions;
 
-import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
@@ -84,7 +83,7 @@ public class LocationInstruction extends Instruction {
     }
 
     @Override
-    public void execute(ExecutionContext context, ProgramArtifact artifact) {
+    public void execute(ExecutionContext context) {
         Organism org = context.getOrganism();
         Environment env = context.getWorld();
         String name = getName();

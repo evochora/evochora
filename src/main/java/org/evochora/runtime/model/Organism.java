@@ -99,15 +99,15 @@ public class Organism {
      * Represents a single frame on the call stack, created by a CALL instruction.
      * It stores the necessary state to return to the caller correctly.
      *
-     * @param procName The name of the procedure.
-     * @param labelHash The label hash identifying this procedure (used for persistent register state).
+     * @param labelHash The label hash identifying this procedure. It serves the persistent register
+     *                  state, and it is what observers resolve a procedure name from when one is
+     *                  displayed — the frame itself carries no name.
      * @param absoluteReturnIp The absolute return IP.
      * @param absoluteCallIp The absolute address of the CALL instruction that created this frame.
      * @param savedRegisters Compact array of all STACK_SAVED register values in RegisterBank enum order.
      * @param parameterBindings Maps formal register IDs (FDR/FLR) to source register IDs for parameter binding visualization.
      */
     public record ProcFrame(
-            String procName,
             int labelHash,
             int[] absoluteReturnIp,
             int[] absoluteCallIp,

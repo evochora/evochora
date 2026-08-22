@@ -5,7 +5,6 @@ import java.util.Deque;
 import java.util.List;
 import java.util.NoSuchElementException;
 
-import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.isa.Instruction;
@@ -69,7 +68,7 @@ public class VectorInstruction extends Instruction {
     }
 
     @Override
-    public void execute(ExecutionContext context, ProgramArtifact artifact) {
+    public void execute(ExecutionContext context) {
         try {
             String opName = getName();
             List<Operand> operands = resolveOperands(context.getWorld());

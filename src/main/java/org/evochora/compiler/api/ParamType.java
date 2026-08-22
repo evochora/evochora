@@ -28,39 +28,4 @@ public enum ParamType {
      * Location call-by-value parameter. The location value is copied into FLR.
      */
     LVAL;
-
-    /**
-     * Converts a Protobuf ParamType to the Java ParamType enum.
-     *
-     * @param protoType The Protobuf ParamType.
-     * @return The corresponding Java ParamType.
-     * @throws IllegalArgumentException if the Protobuf type is unknown or UNRECOGNIZED.
-     */
-    public static ParamType fromProtobuf(org.evochora.datapipeline.api.contracts.ParamType protoType) {
-        if (protoType == null) {
-            throw new IllegalArgumentException("Protobuf ParamType cannot be null");
-        }
-        return switch (protoType) {
-            case PARAM_TYPE_REF -> REF;
-            case PARAM_TYPE_VAL -> VAL;
-            case PARAM_TYPE_LREF -> LREF;
-            case PARAM_TYPE_LVAL -> LVAL;
-            case UNRECOGNIZED -> throw new IllegalArgumentException("Unrecognized ParamType: " + protoType);
-            default -> throw new IllegalArgumentException("Unknown ParamType: " + protoType);
-        };
-    }
-
-    /**
-     * Converts this Java ParamType to the corresponding Protobuf ParamType.
-     *
-     * @return The Protobuf ParamType enum value.
-     */
-    public org.evochora.datapipeline.api.contracts.ParamType toProtobuf() {
-        return switch (this) {
-            case REF -> org.evochora.datapipeline.api.contracts.ParamType.PARAM_TYPE_REF;
-            case VAL -> org.evochora.datapipeline.api.contracts.ParamType.PARAM_TYPE_VAL;
-            case LREF -> org.evochora.datapipeline.api.contracts.ParamType.PARAM_TYPE_LREF;
-            case LVAL -> org.evochora.datapipeline.api.contracts.ParamType.PARAM_TYPE_LVAL;
-        };
-    }
 }

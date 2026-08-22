@@ -1,6 +1,5 @@
 package org.evochora.runtime.isa.instructions;
 
-import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.internal.services.ExecutionContext;
 import org.evochora.runtime.internal.services.ProcedureCallHandler;
@@ -53,7 +52,7 @@ public class ControlFlowInstruction extends Instruction {
     }
 
     @Override
-    public void execute(ExecutionContext context, ProgramArtifact artifact) {
+    public void execute(ExecutionContext context) {
         Organism organism = context.getOrganism();
         Environment environment = context.getWorld();
 
@@ -72,7 +71,7 @@ public class ControlFlowInstruction extends Instruction {
                         organism.instructionFailed("CALL: No matching label found for hash " + callLabelHash);
                         return;
                     }
-                    ProcedureCallHandler.executeCall(context, callTargetIp, callLabelHash, artifact);
+                    ProcedureCallHandler.executeCall(context, callTargetIp, callLabelHash);
                     break;
                 case "RET":
                     ProcedureCallHandler.executeReturn(context);
