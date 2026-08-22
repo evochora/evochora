@@ -156,13 +156,22 @@ public final class OrganismStateConverter {
     
     /**
      * Converts a Protobuf ProcFrame to a ProcFrameView DTO.
+     * <p>
+     * The procedure name is resolved from the frame's label hash. A hash the map does not contain
+     * yields an empty name, and that is the correct result rather than a fallback: an organism
+     * inherits its program ID from its ancestor while its code mutates, so a call may target a hash
+     * the original program never held. The name must never be replaced by a placeholder — callers
+     * distinguish named from unnamed frames by emptiness.
      *
      * @param frame The Protobuf ProcFrame
+     * @param labelValueToName Label hash to procedure name, from the run's program artifact;
+     *                         may be empty, in which case every name is empty
      * @return ProcFrameView DTO
      */
     public static ProcFrameView convertProcFrame(
-            org.evochora.datapipeline.api.contracts.ProcFrame frame) {
-        String procName = frame.getProcName();
+            org.evochora.datapipeline.api.contracts.ProcFrame frame,
+            Map<Integer, String> labelValueToName) {
+        String procName = labelValueToName.getOrDefault(frame.getLabelHash(), "");
         int[] absReturnIp = vectorToArray(frame.getAbsoluteReturnIp());
         int[] absCallIp = frame.hasAbsoluteCallIp() ? vectorToArray(frame.getAbsoluteCallIp()) : null;
 
@@ -392,123 +401,4 @@ public final class OrganismStateConverter {
                 failureReason
         );
     }
-    
-    /**
-     * Decodes an OrganismRuntimeState from a compressed blob and converts it to an OrganismRuntimeView DTO.
-     *
-     * @param energy         Energy level
-     * @param ip             Instruction pointer
-     * @param dv             Direction vector
-     * @param dataPointers   Data pointers
-     * @param activeDpIndex  Active data pointer index
-     * @param blobBytes      Compressed Protobuf blob
-     * @param envDimensions  Environment dimensions for instruction resolution (can be null)
-     * @return OrganismRuntimeView DTO
-     * @throws SQLException if deserialization fails
-     * @throws IllegalStateException if instruction data is corrupted (opcodeId without energyCost)
-     */
-    public static OrganismRuntimeView decodeRuntimeState(int energy,
-                                                         int[] ip,
-                                                         int[] dv,
-                                                         int[][] dataPointers,
-                                                         int activeDpIndex,
-                                                         byte[] blobBytes,
-                                                         int[] envDimensions) throws SQLException {
-        if (blobBytes == null) {
-            throw new SQLException("runtime_state_blob is null");
-        }
-
-        org.evochora.datapipeline.utils.compression.ICompressionCodec codec =
-                org.evochora.datapipeline.utils.compression.CompressionCodecFactory
-                        .detectFromMagicBytes(blobBytes);
-
-        OrganismRuntimeState state;
-        try (java.io.ByteArrayInputStream bais = new java.io.ByteArrayInputStream(blobBytes);
-             java.io.InputStream in = codec.wrapInputStream(bais)) {
-            state = OrganismRuntimeState.parseFrom(in);
-        } catch (Exception e) {
-            throw new SQLException("Failed to decode OrganismRuntimeState", e);
-        }
-
-        List<RegisterValueView> registers = new ArrayList<>(state.getRegistersCount());
-        for (org.evochora.datapipeline.api.contracts.RegisterValue rv : state.getRegistersList()) {
-            registers.add(convertRegisterValue(rv));
-        }
-
-        List<RegisterValueView> dataStack = new ArrayList<>(state.getDataStackCount());
-        for (org.evochora.datapipeline.api.contracts.RegisterValue rv : state.getDataStackList()) {
-            dataStack.add(convertRegisterValue(rv));
-        }
-
-        List<int[]> locationStack = new ArrayList<>(state.getLocationStackCount());
-        for (Vector v : state.getLocationStackList()) {
-            locationStack.add(vectorToArray(v));
-        }
-
-        List<ProcFrameView> callStack = new ArrayList<>(state.getCallStackCount());
-        for (org.evochora.datapipeline.api.contracts.ProcFrame frame : state.getCallStackList()) {
-            callStack.add(convertProcFrame(frame));
-        }
-
-        List<ProcFrameView> failureStack = new ArrayList<>(state.getFailureCallStackCount());
-        for (org.evochora.datapipeline.api.contracts.ProcFrame frame : state.getFailureCallStackList()) {
-            failureStack.add(convertProcFrame(frame));
-        }
-
-        // Resolve instructions
-        InstructionView lastInstruction = null;
-        if (state.hasInstructionOpcodeId() && envDimensions != null) {
-            // If opcodeId is present, energyCost must also be present (they are set together)
-            if (!state.hasInstructionEnergyCost()) {
-                throw new IllegalStateException(
-                    "Instruction execution data has opcode ID but no energy cost. " +
-                    "This indicates corrupted data - all executed instructions must have an energy cost.");
-            }
-            
-            // Read register values before execution from Protobuf
-            java.util.Map<Integer, RegisterValueView> registerValuesBefore = new java.util.HashMap<>();
-            if (state.getInstructionRegisterValuesBeforeCount() > 0) {
-                for (java.util.Map.Entry<Integer, org.evochora.datapipeline.api.contracts.RegisterValue> entry :
-                        state.getInstructionRegisterValuesBeforeMap().entrySet()) {
-                    int registerId = entry.getKey();
-                    RegisterValueView registerValue = convertRegisterValue(entry.getValue());
-                    registerValuesBefore.put(registerId, registerValue);
-                }
-            }
-            
-            lastInstruction = resolveInstructionView(
-                    state.getInstructionOpcodeId(),
-                    state.getInstructionRawArgumentsList(),
-                    state.getInstructionEnergyCost(),
-                    state.hasInstructionEntropyDelta() ? state.getInstructionEntropyDelta() : 0,
-                    state.hasInstructionIpBeforeFetch() ? vectorToArray(state.getInstructionIpBeforeFetch()) : null,
-                    state.hasInstructionDvBeforeFetch() ? vectorToArray(state.getInstructionDvBeforeFetch()) : null,
-                    state.getInstructionFailed(),
-                    state.getFailureReason().isEmpty() ? null : state.getFailureReason(),
-                    registers,
-                    envDimensions,
-                    registerValuesBefore
-            );
-        }
-        InstructionsView instructions = new InstructionsView(lastInstruction, null);
-
-        return new OrganismRuntimeView(
-                energy,
-                ip,
-                dv,
-                dataPointers,
-                activeDpIndex,
-                registers,
-                dataStack,
-                locationStack,
-                callStack,
-                state.getInstructionFailed(),
-                state.getFailureReason(),
-                failureStack,
-                instructions,
-                state.getEntropyRegister(),
-                state.getMoleculeMarkerRegister()
-        );
-    }
 }
-

@@ -134,6 +134,11 @@ class H2DatabaseOrganismReaderTest {
                         .build())
                     .setStartTimeMs(System.currentTimeMillis())
                     .setInitialSeed(42L)
+                    .addPrograms(org.evochora.datapipeline.api.contracts.ProgramArtifact.newBuilder()
+                        .setProgramId("prog-" + organismId)
+                        .putLabelValueToName(MAIN_LABEL_HASH, "main")
+                        .putLabelValueToName(FAIL_LABEL_HASH, "fail")
+                        .build())
                     .build();
             String metadataJson = org.evochora.datapipeline.utils.protobuf.ProtobufConverter.toJson(metadata);
             conn.createStatement().execute("INSERT INTO metadata (\"key\", \"value\") VALUES ('full_metadata', '" +
@@ -218,6 +223,10 @@ class H2DatabaseOrganismReaderTest {
         }
     }
 
+    /** Label hashes of the two frames written below; the run metadata maps them to names. */
+    private static final int MAIN_LABEL_HASH = 101;
+    private static final int FAIL_LABEL_HASH = 202;
+
     private OrganismState buildOrganismState(int id) {
         Vector ip = Vector.newBuilder().addComponents(1).build();
         Vector dv = Vector.newBuilder().addComponents(0).addComponents(1).build();
@@ -236,13 +245,13 @@ class H2DatabaseOrganismReaderTest {
                 .addDataStack(RegisterValue.newBuilder().setScalar(9).build())
                 .addLocationStack(Vector.newBuilder().addComponents(4).build())
                 .addCallStack(ProcFrame.newBuilder()
-                        .setProcName("main")
+                        .setLabelHash(MAIN_LABEL_HASH)
                         .setAbsoluteReturnIp(Vector.newBuilder().addComponents(10).build())
                         .build())
                 .setInstructionFailed(true)
                 .setFailureReason("test-failure")
                 .addFailureCallStack(ProcFrame.newBuilder()
-                        .setProcName("fail")
+                        .setLabelHash(FAIL_LABEL_HASH)
                         .setAbsoluteReturnIp(Vector.newBuilder().addComponents(11).build())
                         .build())
                 .build();
