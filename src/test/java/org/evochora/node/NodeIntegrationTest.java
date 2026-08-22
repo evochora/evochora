@@ -82,7 +82,7 @@ class NodeIntegrationTest {
             node {
               processes {
                 pipeline {
-                  className = "org.evochora.datapipeline.ServiceManagerProcess"
+                  className = "org.evochora.node.processes.pipeline.ServiceManagerProcess"
                   options = ${pipeline}
                 }
                 httpServer {
