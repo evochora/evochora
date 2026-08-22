@@ -825,7 +825,7 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
                 org.evochora.datapipeline.api.contracts.ParamInfo.Builder paramBuilder = 
                         org.evochora.datapipeline.api.contracts.ParamInfo.newBuilder()
                         .setName(param.name())
-                        .setType(param.type().toProtobuf());
+                        .setType(convertParamType(param.type()));
                 paramsBuilder.addParams(paramBuilder.build());
             }
             builder.putProcNameToParamNames(procName, paramsBuilder.build());
@@ -889,6 +889,25 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
             builder.setQualifiedName(tokenInfo.qualifiedName());
         }
         return builder.build();
+    }
+
+    /**
+     * Converts a compiler parameter type to its Protobuf counterpart.
+     * <p>
+     * The mapping lives here rather than on the compiler type: the wire format belongs to this
+     * pipeline, and a language concept has no business knowing how its observer stores it.
+     *
+     * @param type the compiler parameter type
+     * @return the corresponding Protobuf parameter type
+     */
+    private static org.evochora.datapipeline.api.contracts.ParamType convertParamType(
+            org.evochora.compiler.api.ParamType type) {
+        return switch (type) {
+            case REF -> org.evochora.datapipeline.api.contracts.ParamType.PARAM_TYPE_REF;
+            case VAL -> org.evochora.datapipeline.api.contracts.ParamType.PARAM_TYPE_VAL;
+            case LREF -> org.evochora.datapipeline.api.contracts.ParamType.PARAM_TYPE_LREF;
+            case LVAL -> org.evochora.datapipeline.api.contracts.ParamType.PARAM_TYPE_LVAL;
+        };
     }
 
     private static Vector convertVector(int[] components) {

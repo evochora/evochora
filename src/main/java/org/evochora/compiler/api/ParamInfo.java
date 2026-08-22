@@ -9,32 +9,4 @@ package org.evochora.compiler.api;
  * @param type The parameter type (REF, VAL, LREF, or LVAL).
  */
 public record ParamInfo(String name, ParamType type) {
-    /**
-     * Creates a ParamInfo from a Protobuf ParamInfo message.
-     *
-     * @param protoParamInfo The Protobuf ParamInfo message.
-     * @return A new ParamInfo record.
-     * @throws IllegalArgumentException if protoParamInfo is null or has invalid type.
-     */
-    public static ParamInfo fromProtobuf(org.evochora.datapipeline.api.contracts.ParamInfo protoParamInfo) {
-        if (protoParamInfo == null) {
-            throw new IllegalArgumentException("Protobuf ParamInfo cannot be null");
-        }
-        return new ParamInfo(
-            protoParamInfo.getName(),
-            ParamType.fromProtobuf(protoParamInfo.getType())
-        );
-    }
-    
-    /**
-     * Converts this ParamInfo to a Protobuf ParamInfo message.
-     *
-     * @return A new Protobuf ParamInfo.Builder instance.
-     */
-    public org.evochora.datapipeline.api.contracts.ParamInfo.Builder toProtobufBuilder() {
-        return org.evochora.datapipeline.api.contracts.ParamInfo.newBuilder()
-            .setName(name)
-            .setType(type.toProtobuf());
-    }
 }
-

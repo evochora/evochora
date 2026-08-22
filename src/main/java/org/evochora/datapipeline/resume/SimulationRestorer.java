@@ -399,7 +399,7 @@ public class SimulationRestorer {
         proto.getProcNameToParamNamesMap().forEach((procName, paramNames) -> {
             List<ParamInfo> params = new ArrayList<>();
             for (var param : paramNames.getParamsList()) {
-                params.add(new ParamInfo(param.getName(), ParamType.fromProtobuf(param.getType())));
+                params.add(new ParamInfo(param.getName(), convertProtoParamType(param.getType())));
             }
             procNameToParamNames.put(procName, params);
         });
@@ -465,6 +465,32 @@ public class SimulationRestorer {
             labelValueToName,
             labelNameToValue
         );
+    }
+
+    /**
+     * Converts a Protobuf parameter type to the compiler's parameter type.
+     * <p>
+     * The mapping lives here rather than on the compiler type: the wire format belongs to this
+     * pipeline. An unknown or unrecognised value is a data error and fails rather than falling back
+     * to a default, which would silently misreport a procedure's calling convention.
+     *
+     * @param protoType the Protobuf parameter type, must not be null
+     * @return the corresponding compiler parameter type
+     * @throws IllegalArgumentException if the value is null, unrecognised or unknown
+     */
+    private static ParamType convertProtoParamType(
+            org.evochora.datapipeline.api.contracts.ParamType protoType) {
+        if (protoType == null) {
+            throw new IllegalArgumentException("Protobuf ParamType cannot be null");
+        }
+        return switch (protoType) {
+            case PARAM_TYPE_REF -> ParamType.REF;
+            case PARAM_TYPE_VAL -> ParamType.VAL;
+            case PARAM_TYPE_LREF -> ParamType.LREF;
+            case PARAM_TYPE_LVAL -> ParamType.LVAL;
+            case UNRECOGNIZED -> throw new IllegalArgumentException("Unrecognized ParamType: " + protoType);
+            default -> throw new IllegalArgumentException("Unknown ParamType: " + protoType);
+        };
     }
 
     /**
