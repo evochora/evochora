@@ -1,6 +1,6 @@
 # Sign Handling in Scale-Proportional DATA Mutation
 
-**Status: TO BE IMPLEMENTED — verified defect, reviewed and concretized 2026-08-23. No open decisions.**
+**Status: ACCOMPLISHED — implemented on branch `feature/data-mutation-sign-fix`, 2026-08-24.**
 
 ## Problem
 

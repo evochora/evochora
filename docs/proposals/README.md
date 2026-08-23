@@ -13,7 +13,6 @@ table carries the whole order.
 
 | Document / Issue | Status | Summary |
 |---|---|---|
-| [DATA_MUTATION_SIGN_FIX](DATA_MUTATION_SIGN_FIX.md) | TO BE REVIEWED | Scale-proportional DATA mutation is not smooth for negative values; verified defect in `GeneSubstitutionPlugin` with a test-first fix plan |
 | [#111](https://github.com/evochora/evochora/issues/111) | IN REFINEMENT | `SimulationRestorer`: an unset `RegisterValue` is restored as a silent `0`; `TokenInfo` qualified name is lost on round trip |
 | [#106](https://github.com/evochora/evochora/issues/106) + [#107](https://github.com/evochora/evochora/issues/107) | IN REFINEMENT | Fail fast on resource setup (`ServiceManager`) and on a missing embedded broker (`ArtemisQueueResource`) — one change |
 | [#113](https://github.com/evochora/evochora/issues/113) | IN REFINEMENT | H2 reader pool ends with zero connections after a burst of slow reads and never recovers; every database-backed endpoint stays dead until restart (took the public demo down twice); same fail-fast cluster as #106/#107 |
