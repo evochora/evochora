@@ -29,7 +29,8 @@ import org.slf4j.LoggerFactory;
  * <ul>
  *   <li><b>CODE:</b> Flip to a different registered opcode (operation/family/variant modes)</li>
  *   <li><b>REGISTER:</b> ±1 within bank boundaries (DR stays DR, PDR stays PDR, etc.)</li>
- *   <li><b>DATA:</b> Scale-proportional perturbation: delta = max(1, round(|value|^exponent))</li>
+ *   <li><b>DATA:</b> Scale-proportional perturbation of the signed value:
+ *       delta = max(1, round(|value|^exponent)); a result leaving the 20-bit range wraps</li>
  *   <li><b>LABEL/LABELREF:</b> Flip N random bits in 19-bit hash</li>
  * </ul>
  * ENERGY and STRUCTURE molecules are never mutated (world-substance types).
@@ -96,9 +97,6 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
     public GeneSubstitutionPlugin(IRandomProvider randomProvider, com.typesafe.config.Config config) {
         this.random = randomProvider.asJavaRandom();
         this.substitutionRate = config.getDouble("substitutionRate");
-        if (substitutionRate < 0.0 || substitutionRate > 1.0) {
-            throw new IllegalArgumentException("substitutionRate must be in [0.0, 1.0], got: " + substitutionRate);
-        }
 
         com.typesafe.config.Config codeConfig = config.getConfig("CODE");
         double codeWeight = codeConfig.getDouble("weight");
@@ -112,6 +110,7 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
         com.typesafe.config.Config dataConfig = config.getConfig("DATA");
         double dataWeight = dataConfig.getDouble("weight");
         this.dataExponent = dataConfig.getDouble("exponent");
+        validateRanges(this.substitutionRate, this.dataExponent);
 
         com.typesafe.config.Config labelConfig = config.getConfig("LABEL");
         double labelWeight = labelConfig.getDouble("weight");
@@ -158,6 +157,7 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
         this.variantFlipWeight = variantFlipWeight;
         this.totalFlipWeight = operationFlipWeight + familyFlipWeight + variantFlipWeight;
         this.dataExponent = dataExponent;
+        validateRanges(this.substitutionRate, this.dataExponent);
         this.labelBitflips = labelBitflips;
         this.labelrefBitflips = labelrefBitflips;
 
@@ -197,7 +197,7 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
         }
 
         // Weighted reservoir sampling — state captured via arrays for lambda
-        // [0]=flatIndex, [1]=type (shifted), [2]=value, [3]=marker
+        // [0]=flatIndex, [1]=type (shifted), [2]=raw value, [3]=marker
         final int[] state = {-1, 0, 0, 0};
         final double[] ws = {0.0};
 
@@ -230,24 +230,24 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
         }
 
         int selectedType = state[1];
-        int selectedValue = state[2];
+        int selectedRawValue = state[2];
         int newValue;
 
         if (selectedType == Config.TYPE_CODE) {
-            newValue = mutateCode(selectedValue);
+            newValue = mutateCode(selectedRawValue);
         } else if (selectedType == Config.TYPE_REGISTER) {
-            newValue = mutateRegister(selectedValue);
+            newValue = mutateRegister(selectedRawValue);
         } else if (selectedType == Config.TYPE_DATA) {
-            newValue = mutateData(selectedValue);
+            newValue = mutateData(selectedRawValue);
         } else if (selectedType == Config.TYPE_LABEL) {
-            newValue = mutateLabelHash(selectedValue, labelBitflips);
+            newValue = mutateLabelHash(selectedRawValue, labelBitflips);
         } else if (selectedType == Config.TYPE_LABELREF) {
-            newValue = mutateLabelHash(selectedValue, labelrefBitflips);
+            newValue = mutateLabelHash(selectedRawValue, labelrefBitflips);
         } else {
             return;
         }
 
-        if (newValue == selectedValue) {
+        if (newValue == selectedRawValue) {
             LOG.debug("tick={} Organism {} gene substitution: no-op (value unchanged)", child.getBirthTick(), childId);
             return;
         }
@@ -257,7 +257,9 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
         if (LOG.isDebugEnabled()) {
             String typeName = typeNameForLog(selectedType);
             LOG.debug("tick={} Organism {} gene substitution: {}:{}->{} at flatIndex={}",
-                    child.getBirthTick(), childId, typeName, selectedValue, newValue, state[0]);
+                    child.getBirthTick(), childId, typeName,
+                    displayValueForLog(selectedType, selectedRawValue),
+                    displayValueForLog(selectedType, newValue), state[0]);
         }
     }
 
@@ -314,18 +316,25 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
      * Mutates a DATA molecule's value using scale-proportional perturbation.
      * <p>
      * Computes delta as {@code max(1, round(|value|^exponent))}, then adds a uniform random
-     * offset in {@code [-delta, +delta]}. The result is clamped to {@code [0, VALUE_MASK]}.
-     * This ensures small values change relatively strongly while large values change relatively
-     * weakly, producing smooth fitness landscape perturbations.
+     * offset in {@code [-delta, +delta]}. Small values therefore change relatively strongly and
+     * large values relatively weakly, producing smooth fitness landscape perturbations.
+     * <p>
+     * The perturbation runs on the sign-extended value, so a stored {@code -1} moves by one rather
+     * than by the delta belonging to the unsigned pattern {@code 1048575}. A result leaving the
+     * signed 20-bit range wraps modulo 2^20, which is how the instruction set treats arithmetic
+     * on these values as well.
+     * <p>
+     * Input and output are the raw 20-bit pattern, as for every mutator in this class: the caller
+     * compares the returned pattern against the sampled one to detect a no-op.
      *
-     * @param dataValue The current data value.
-     * @return The mutated data value, clamped to valid range.
+     * @param rawValue The current data value as the raw 20-bit pattern.
+     * @return The mutated value as the raw 20-bit pattern.
      */
-    private int mutateData(int dataValue) {
-        int delta = Math.max(1, (int) Math.round(Math.pow(Math.abs(dataValue), dataExponent)));
+    private int mutateData(int rawValue) {
+        int value = Molecule.extractSignedValue(rawValue);
+        int delta = Math.max(1, (int) Math.round(Math.pow(Math.abs(value), dataExponent)));
         int offset = random.nextInt(2 * delta + 1) - delta;
-        int newValue = dataValue + offset;
-        return Math.max(0, Math.min(Config.VALUE_MASK, newValue));
+        return (value + offset) & Config.VALUE_MASK;
     }
 
     /**
@@ -452,6 +461,32 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
     // ---- Utilities ----
 
     /**
+     * Rejects configuration values outside their valid range.
+     * <p>
+     * Both conditions are written positively, because {@code NaN} compares {@code false} to every
+     * bound and would pass a negated form. Its effects are silent: a {@code NaN} rate makes the
+     * probability test false and mutates every newborn, and a {@code NaN} exponent collapses delta
+     * to 1, turning the perturbation into a constant step of one.
+     * <p>
+     * The exponent is limited to {@code [0.0, 1.0]} by its meaning. At 0 the delta is 1 for every
+     * value, at 1 it equals the value itself, which is the strongest step that is still
+     * proportional. Beyond that the delta exceeds the value and the perturbation is no longer
+     * scale-proportional.
+     *
+     * @param substitutionRate Probability of substitution per newborn.
+     * @param dataExponent Exponent for scale-proportional DATA mutation.
+     * @throws IllegalArgumentException If either value lies outside {@code [0.0, 1.0]}.
+     */
+    private static void validateRanges(double substitutionRate, double dataExponent) {
+        if (!(substitutionRate >= 0.0 && substitutionRate <= 1.0)) {
+            throw new IllegalArgumentException("substitutionRate must be in [0.0, 1.0], got: " + substitutionRate);
+        }
+        if (!(dataExponent >= 0.0 && dataExponent <= 1.0)) {
+            throw new IllegalArgumentException("DATA exponent must be in [0.0, 1.0], got: " + dataExponent);
+        }
+    }
+
+    /**
      * Builds the type weight lookup array.
      *
      * @return Array indexed by (type >> TYPE_SHIFT), length {@value NUM_TYPES}.
@@ -467,6 +502,20 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
         weights[0x05] = labelrefWeight;  // TYPE_LABELREF
         weights[0x06] = registerWeight;  // TYPE_REGISTER
         return weights;
+    }
+
+    /**
+     * Returns the value to print for debug logging.
+     * <p>
+     * DATA values are numbers and are shown sign-extended, matching how every other reader of the
+     * cell sees them. The remaining types carry identifiers, for which the raw pattern is correct.
+     *
+     * @param type The shifted type constant.
+     * @param value The raw 20-bit value pattern.
+     * @return The value in the representation that belongs to the type.
+     */
+    private static int displayValueForLog(int type, int value) {
+        return type == Config.TYPE_DATA ? Molecule.extractSignedValue(value) : value;
     }
 
     /**

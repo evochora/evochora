@@ -15,9 +15,9 @@ import org.evochora.datapipeline.api.delta.ChunkCorruptedException;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.utils.MetadataConfigHelper;
-import org.evochora.datapipeline.utils.MoleculeDataUtils;
 import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.runtime.Config;
+import org.evochora.runtime.model.Molecule;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -340,7 +340,7 @@ public class InspectStorageSubcommand implements Callable<Integer> {
                 int ownerId = columns.getOwnerIds(i);
                 
                 int type = moleculeInt & Config.TYPE_MASK;
-                int value = MoleculeDataUtils.extractSignedValue(moleculeInt);
+                int value = Molecule.extractSignedValue(moleculeInt);
                 
                 out.printf("  Index: %d, Type: %d, Value: %d, Owner: %d%n",
                     flatIndex,

@@ -14,8 +14,8 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.utils.MetadataConfigHelper;
-import org.evochora.datapipeline.utils.MoleculeDataUtils;
 import org.evochora.runtime.Config;
+import org.evochora.runtime.model.Molecule;
 
 /**
  * Tracks the composition of the environment by molecule type.
@@ -183,7 +183,7 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
 
         if (type == Config.TYPE_CODE) {
             // CODE:0 is empty space (regardless of owner)
-            if (MoleculeDataUtils.extractSignedValue(moleculeInt) != 0) {
+            if (Molecule.extractSignedValue(moleculeInt) != 0) {
                 counts[0]++;
             }
             // CODE:0 not counted → will be part of emptyCells

@@ -17,11 +17,11 @@ import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
 import org.evochora.datapipeline.api.resources.database.dto.TickRange;
 import org.evochora.datapipeline.utils.MetadataConfigHelper;
-import org.evochora.datapipeline.utils.MoleculeDataUtils;
 import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.node.processes.http.api.pipeline.dto.ErrorResponseDto;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.EnvironmentProperties;
+import org.evochora.runtime.model.Molecule;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -433,7 +433,7 @@ public class EnvironmentController extends VisualizerBaseController {
 
             final int moleculeInt = cellColumns.getMoleculeData(i);
             final int moleculeType = moleculeInt & org.evochora.runtime.Config.TYPE_MASK;
-            final int moleculeValue = MoleculeDataUtils.extractSignedValue(moleculeInt);
+            final int moleculeValue = Molecule.extractSignedValue(moleculeInt);
             final int marker = (moleculeInt & org.evochora.runtime.Config.MARKER_MASK)
                     >> org.evochora.runtime.Config.MARKER_SHIFT;
             final int ownerId = cellColumns.getOwnerIds(i);
