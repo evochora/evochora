@@ -180,8 +180,8 @@ population grows until energy deaths balance births: the world fills, energy cel
    run is a statistical replication.
 2. Replication with further seeds under storage constraints (`sparse` profile, analytics only).
 3. Analytics gaps: death reason in tick data, lineage-based clade share, DATA blindness of the
-   genome hash. The `GenerationDepthPlugin` restart defect is now covered by
-   [ANALYTICS_PLUGIN_STATE](../proposals/ANALYTICS_PLUGIN_STATE.md).
+   genome hash. The `GenerationDepthPlugin` restart defect is tracked in
+   [#112](https://github.com/evochora/evochora/issues/112).
 4. Regime-diagnostic notebook (Eyad) on window 170–200 M.
 5. Primordial design decision (keep, fix, or adopt the evolved variant).
 6. Publication / community communication.

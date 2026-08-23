@@ -2,6 +2,12 @@
 
 **Status: TO BE REVIEWED — agreed procedure, decisions listed at the end.**
 
+> **Note (2026-08-23):** Scheduled after PERSISTED_FORMAT_VERSIONING, because the treatment of
+> own versus third-party formats decided there determines which safeguards an update needs. The
+> version tables below are a snapshot of 2026-08-17 and must be re-collected from
+> `maven-metadata.xml` before implementation; the procedure and the four rules do not age. All
+> dependencies are to be kept current, major versions included.
+
 ## Problem
 
 The dependency set in `build.gradle.kts` has drifted. Checked against `maven-metadata.xml` on

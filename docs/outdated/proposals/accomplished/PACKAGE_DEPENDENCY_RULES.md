@@ -1,8 +1,8 @@
 # Package Dependency Rules
 
-**Status: MEASURES IMPLEMENTED — the five measures are done and the rule is green; the target graph
-holds and all three cycles are resolved. The three optional packages at the end are undecided and
-are taken up on their own branch. This document stays here until they are resolved.**
+**Status: ACCOMPLISHED — the five measures are implemented (PR #108), the rule is green, the target
+graph holds and all three cycles are resolved. The three optional packages at the end were not
+implemented here; each continues as a GitHub issue (see *Optional packages*).**
 
 ## Purpose
 
@@ -577,6 +577,13 @@ The three packages below are not part of the measures. They stand outside the se
 the completion criterion: the rule from measure 1 turns green without any of them. Each is described
 here as a single agreed solution so that the decision — implement here, split into its own proposal,
 or leave as an issue — can be taken on a concrete description rather than a sketch.
+
+None of the three was implemented with the measures. Each lives on as a GitHub issue, and the issue —
+not the text below — is the current state: package A is
+[#109](https://github.com/evochora/evochora/issues/109), which supersedes the package name, class
+names and scope given here; packages B and C are [#107](https://github.com/evochora/evochora/issues/107)
+and [#106](https://github.com/evochora/evochora/issues/106), both carrying findings added after this
+document was written.
 
 ### Package A — One place for domain-to-wire conversion
 

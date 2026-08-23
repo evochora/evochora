@@ -1,7 +1,9 @@
 # Analytics Plugin State Across Indexer Restarts
 
-**Status: PROBLEM VERIFIED — a solution is proposed below, but it is NOT agreed and must be
-discussed before implementation.**
+**Status: CONVERTED TO ISSUE (2026-08-23) — not scheduled. The problem is verified and tracked in
+[#112](https://github.com/evochora/evochora/issues/112); the solution sketched below was never agreed.
+Analysis of runs happens in notebooks and scripts, the analytics frontend serves only as a quick
+overview, and its weaknesses are to be decided together when the frontend is taken up.**
 
 ## Problem
 
@@ -25,7 +27,7 @@ seamlessly, with silently wrong values:
   default 0) and the depth grows again from there. Verified in run `20260402-…`: `max_depth`
   collapses from three-digit values to single digits at ticks ≈70 M, ≈110 M and ≈175 M — exactly
   the indexer restarts — and climbs falsely afterwards
-  ([RUN_20260402_SELECTIVE_SWEEP §2.1](../experiments/RUN_20260402_SELECTIVE_SWEEP.md)).
+  ([RUN_20260402_SELECTIVE_SWEEP §2.1](../../../experiments/RUN_20260402_SELECTIVE_SWEEP.md)).
 - `GenomeAnalyticsPlugin` restarts its cumulative ranking from zero; how visibly this distorts the
   top-N selection depends on the population at restart time and has not been quantified.
 
@@ -57,7 +59,7 @@ Concretely:
    state describes. On restart, the indexer calls `loadState` before feeding the first resumed
    tick.
 3. The stored state is a persisted artifact and therefore falls under
-   [PERSISTED_FORMAT_VERSIONING](PERSISTED_FORMAT_VERSIONING.md): it carries the format version and
+   [PERSISTED_FORMAT_VERSIONING](../../../proposals/PERSISTED_FORMAT_VERSIONING.md): it carries the format version and
    is rejected fail-fast on mismatch (the safe reaction to a rejected state is the re-index of the
    remediation note above).
 

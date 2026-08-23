@@ -2,6 +2,11 @@
 
 **Status: TO BE REVIEWED**
 
+> **Review note (2026-08-23):** Before implementation, re-count the `.DEFINE` and END-directive
+> occurrences in steps 1 and 2 against the current assembly sources — the numbers are stale, and
+> `.ENDR` does not occur in any assembly file. Translate the German comments in the syntax block
+> and the heading "Verschachtelung example" to English.
+
 ## Problem
 
 ### 1. No mechanism for build variants

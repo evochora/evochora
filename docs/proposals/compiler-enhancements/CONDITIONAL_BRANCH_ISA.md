@@ -2,6 +2,12 @@
 
 **Status: TO BE REVIEWED**
 
+> **Review note (2026-08-23):** The proposed variant constants ignore that `Variant.L` and
+> `Variant.RL` already exist, and that `L` is registered with both LABEL and LOCATION_REGISTER
+> operands. Before implementation, reconcile the new slots with `Variant.java` and decide whether
+> branch variants share those slots (and thus the mutation pool) or get their own. Also fix the
+> Performance section: the label is resolved when the condition **is** met, not when it is not.
+
 ## Problem
 
 All 18 conditional operations (IF, IN, LT, GT, LET, GET, IFT, INT, IFM, INM, IFP, INP, IFF, INF, IFV, INV, IER, INE) use skip-next semantics: they skip the next instruction if the condition is not met. To implement a conditional branch, the programmer must write a skip-next + JMP pair:
@@ -98,6 +104,13 @@ Identical to skip-next but with branch instead of skip:
 This is the same label resolution used by JMPI/JMPR/JMPS. The LABEL operand is a LABELREF molecule in the code stream, resolved at runtime via the LabelIndex.
 
 ### Mutation Behavior
+
+> **Note (2026-08-23):** The skip-next + `JMPI` pair is not only a code-density issue but a
+> mutation surface: both selective sweeps observed so far (`RUN_20260402`, demo run 1) arose from
+> an insertion into the padding between such a pair, which made the jump unconditional. Branch
+> variants remove that surface in both directions. The decision to introduce them rests on the
+> assumption that mutations at these pairs are predominantly lethal and only rarely beneficial —
+> an assumption, not a measurement.
 
 - **Operation Flip** (keeps family + variant fixed): BFI (Op 0, Var RIL) → BNI (Op 1, Var RIL), BLI (Op 2, Var RIL), etc. Switches between different branch comparisons. Skip-next variants have different Variant numbers (RI ≠ RIL) and are not in the same mutation pool.
 - **Family Flip** (keeps operation + variant fixed): BFI (Family 4, Var RIL) → any instruction in another family with the same Variant RIL. Currently none exist, but future RIL instructions in other families would be valid flip targets.
