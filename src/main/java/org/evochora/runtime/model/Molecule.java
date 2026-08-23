@@ -58,6 +58,27 @@ public record Molecule(int type, int value, int marker) {
     }
 
     /**
+     * Extracts the sign-extended value component from a packed molecule integer.
+     * <p>
+     * The value occupies the lowest {@link Config#VALUE_BITS} bits in two's complement. The raw bit
+     * pattern on its own is unsigned, so a stored {@code -1} reads as {@code 1048575} unless it is
+     * sign-extended. This method is the single place where that conversion is implemented.
+     * <p>
+     * It is static and takes the packed integer rather than a {@code Molecule}, so that callers on
+     * the instruction-execution path can read the value without allocating a record.
+     *
+     * @param moleculeInt The packed molecule integer.
+     * @return The value component, sign-extended to a full {@code int}.
+     */
+    public static int extractSignedValue(int moleculeInt) {
+        int rawValue = moleculeInt & Config.VALUE_MASK;
+        if ((rawValue & (1 << (Config.VALUE_BITS - 1))) != 0) {
+            rawValue |= ~((1 << Config.VALUE_BITS) - 1);
+        }
+        return rawValue;
+    }
+
+    /**
      * Creates a molecule from its integer representation.
      * @param fullValue The integer representation of the molecule.
      * @return The created molecule.
@@ -70,10 +91,7 @@ public record Molecule(int type, int value, int marker) {
         // Use unsigned shift (>>>) to avoid sign-extension when bit 31 is set (marker >= 8)
         int marker = (fullValue & Config.MARKER_MASK) >>> Config.MARKER_SHIFT;
         int type = fullValue & Config.TYPE_MASK;
-        int rawValue = fullValue & Config.VALUE_MASK;
-        if ((rawValue & (1 << (Config.VALUE_BITS - 1))) != 0) {
-            rawValue |= ~((1 << Config.VALUE_BITS) - 1);
-        }
+        int rawValue = extractSignedValue(fullValue);
         
         // Invariant check: CODE:0 must have marker=0
         if (type == Config.TYPE_CODE && rawValue == 0 && marker != 0) {

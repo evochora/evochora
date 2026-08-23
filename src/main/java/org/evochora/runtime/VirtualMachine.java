@@ -78,7 +78,7 @@ public class VirtualMachine {
             }
         }
 
-        int opcodeId = Instruction.extractSignedValue(rawMol);
+        int opcodeId = Molecule.extractSignedValue(rawMol);
         Instruction.InstructionFactory factory = Instruction.getPlannerById(opcodeId);
         if (factory != null) {
             instruction = factory.create(organism, opcodeId);
@@ -266,7 +266,7 @@ public class VirtualMachine {
             return null;
         }
 
-        int opcodeId = Instruction.extractSignedValue(rawMol);
+        int opcodeId = Molecule.extractSignedValue(rawMol);
         if (Instruction.getPlannerById(opcodeId) == null) {
             return null;
         }
@@ -303,7 +303,7 @@ public class VirtualMachine {
         for (InstructionArgumentType argType : argTypes) {
             if (argType == InstructionArgumentType.REGISTER) {
                 if (argIndex < rawArgs.length) {
-                    int registerId = Instruction.extractSignedValue(rawArgs[argIndex]);
+                    int registerId = Molecule.extractSignedValue(rawArgs[argIndex]);
 
                     // Read register value (DR/PDR/FDR)
                     Object registerValue = organism.readOperand(registerId);
@@ -316,7 +316,7 @@ public class VirtualMachine {
                 }
             } else if (argType == InstructionArgumentType.LOCATION_REGISTER) {
                 if (argIndex < rawArgs.length) {
-                    int registerId = Instruction.extractSignedValue(rawArgs[argIndex]);
+                    int registerId = Molecule.extractSignedValue(rawArgs[argIndex]);
 
                     // Read location register value (identical to REGISTER branch)
                     Object lrValue = organism.readOperand(registerId);

@@ -24,6 +24,7 @@ import org.evochora.runtime.isa.instructions.StackInstruction;
 import org.evochora.runtime.isa.instructions.StateInstruction;
 import org.evochora.runtime.isa.instructions.VectorInstruction;
 import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
 
 import static org.evochora.runtime.isa.Family.*;
@@ -247,19 +248,19 @@ public abstract class Instruction {
 
             switch (source) {
                 case REGISTER -> {
-                    int regId = extractSignedValue(rawMol);
+                    int regId = Molecule.extractSignedValue(rawMol);
                     resolved.add(new Operand(organism.readOperand(regId), regId));
                 }
                 case IMMEDIATE -> {
                     resolved.add(new Operand(rawMol, -1));
                 }
                 case LOCATION_REGISTER -> {
-                    int regId = extractSignedValue(rawMol);
+                    int regId = Molecule.extractSignedValue(rawMol);
                     resolved.add(new Operand(null, regId));
                 }
                 case VECTOR -> {
                     int[] vec = new int[dims];
-                    vec[0] = extractSignedValue(rawMol);
+                    vec[0] = Molecule.extractSignedValue(rawMol);
                     for (int d = 1; d < dims; d++) {
                         dimPos += sign;
                         if (isToroidal) {
@@ -269,7 +270,7 @@ public abstract class Instruction {
                         rawMol = (dimPos >= 0 && dimPos < dimSize)
                                 ? environment.getMoleculeInt(baseFlatIp + dimPos * dimStride)
                                 : 0;
-                        vec[d] = extractSignedValue(rawMol);
+                        vec[d] = Molecule.extractSignedValue(rawMol);
                     }
                     resolved.add(new Operand(vec, -1));
                 }
@@ -282,21 +283,6 @@ public abstract class Instruction {
         }
         this.cachedOperands = resolved;
         return resolved;
-    }
-
-    /**
-     * Extracts the signed scalar value from a packed molecule integer.
-     * Equivalent to {@code Molecule.fromInt(moleculeInt).toScalarValue()}.
-     *
-     * @param moleculeInt The packed molecule integer.
-     * @return The sign-extended value component.
-     */
-    public static int extractSignedValue(int moleculeInt) {
-        int raw = moleculeInt & Config.VALUE_MASK;
-        if ((raw & (1 << (Config.VALUE_BITS - 1))) != 0) {
-            raw |= ~((1 << Config.VALUE_BITS) - 1);
-        }
-        return raw;
     }
 
     /**
