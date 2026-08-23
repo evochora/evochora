@@ -15,10 +15,14 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import com.typesafe.config.ConfigFactory;
 
 import java.util.Map;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -523,6 +527,71 @@ class GeneSubstitutionPluginTest {
             }
         }
         assertThat(sawNegative).as("at least one seed must reach -1 from 0").isPositive();
+    }
+
+    /**
+     * Magnitude and the delta it produces at the exponent 0.5 the test plugins use. The deltas are
+     * written out rather than recomputed with the production formula, so a wrong formula cannot
+     * confirm itself.
+     */
+    private static Stream<Arguments> dataMagnitudes() {
+        return Stream.of(
+                Arguments.of(0, 1),
+                Arguments.of(1, 1),
+                Arguments.of(100, 10),
+                Arguments.of(10000, 100),
+                Arguments.of(524287, 724));
+    }
+
+    /** Distance on the ring of 20-bit values, where 524287 and -524288 are neighbours. */
+    private static int ringDistance(int a, int b) {
+        int distance = Math.abs(a - b);
+        return Math.min(distance, (1 << Config.VALUE_BITS) - distance);
+    }
+
+    @ParameterizedTest(name = "|value|={0}, delta={1}")
+    @MethodSource("dataMagnitudes")
+    void dataPerturbationDependsOnMagnitudeOnly(int magnitude, int delta) {
+        int[] signs = magnitude == 0 ? new int[]{1} : new int[]{1, -1};
+        for (int sign : signs) {
+            int original = sign * magnitude;
+            int largestStep = 0;
+            for (int seed = 0; seed < 50; seed++) {
+                setUp();
+                placeData(5, 5, original);
+                GeneSubstitutionPlugin plugin = dataOnlyPlugin(new SeededRandomProvider(seed));
+                plugin.substitute(child, environment);
+
+                int step = ringDistance(environment.getMolecule(5, 5).value(), original);
+                assertThat(step).as("original=%d, seed=%d: step must not exceed delta", original, seed)
+                        .isLessThanOrEqualTo(delta);
+                largestStep = Math.max(largestStep, step);
+            }
+            // The upper bound alone would also hold for a mutator that only ever moves by one, so
+            // the delta has to be shown to be in use. Requiring the maximum to reach delta exactly
+            // would be flaky: at delta 724 that happens within 50 seeds in about 7% of cases.
+            assertThat(largestStep).as("original=%d: largest observed step", original)
+                    .isGreaterThanOrEqualTo((delta + 1) / 2);
+        }
+    }
+
+    @Test
+    void dataWrapsAtTheRangeBoundary() {
+        // At 524287 the delta is 724, so about half the seeds leave the range. Wrapping continues at
+        // the opposite end. This needs its own assertion: the bound above cannot detect a clamp,
+        // because a clamp moves the value less, never more.
+        int sawWrap = 0;
+        for (int seed = 0; seed < 50; seed++) {
+            setUp();
+            placeData(5, 5, 524287);
+            GeneSubstitutionPlugin plugin = dataOnlyPlugin(new SeededRandomProvider(seed));
+            plugin.substitute(child, environment);
+
+            if (environment.getMolecule(5, 5).value() < 0) {
+                sawWrap++;
+            }
+        }
+        assertThat(sawWrap).as("at least one seed must wrap past the upper bound").isPositive();
     }
 
     // ---- LABEL / LABELREF mutation tests ----
