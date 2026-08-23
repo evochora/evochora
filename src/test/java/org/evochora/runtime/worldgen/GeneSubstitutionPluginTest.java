@@ -456,6 +456,27 @@ class GeneSubstitutionPluginTest {
     // ---- DATA mutation tests ----
 
     @Test
+    void negativeDataMutatesToANeighbouringValue() {
+        // |-1| = 1, exponent 0.5: delta = max(1, round(1)) = 1, so the result must stay within [-2, 0].
+        int changed = 0;
+        for (int seed = 0; seed < 50; seed++) {
+            setUp();
+            placeData(5, 5, -1);
+            GeneSubstitutionPlugin plugin = dataOnlyPlugin(new SeededRandomProvider(seed));
+            plugin.substitute(child, environment);
+
+            int newValue = environment.getMolecule(5, 5).value();
+            assertThat(newValue).as("seed=%d: -1 must mutate to a neighbouring value", seed)
+                    .isBetween(-2, 0);
+            if (newValue != -1) {
+                changed++;
+            }
+        }
+        // Without this, the range assertion would also hold for a mutator that does nothing at all.
+        assertThat(changed).as("at least one seed must change the value").isPositive();
+    }
+
+    @Test
     void dataScaleProportionalDelta() {
         // For value=100, exponent=0.5: delta=max(1, round(sqrt(100)))=10
         // So results should be in [90, 110]
@@ -471,8 +492,8 @@ class GeneSubstitutionPluginTest {
     }
 
     @Test
-    void dataClampedToValidRange() {
-        // Test near zero: value=1, delta=max(1,round(1^0.5))=1, range=[0,2]
+    void dataNearZeroCrossesTheSignBoundary() {
+        // value=1, delta=max(1,round(1^0.5))=1, range=[0,2]
         for (int seed = 0; seed < 50; seed++) {
             setUp();
             placeData(5, 5, 1);
@@ -484,7 +505,9 @@ class GeneSubstitutionPluginTest {
                     .isBetween(0, 2);
         }
 
-        // Test at zero: value=0, delta=max(1,round(0^0.5))=1, range=[-1,1] clamped to [0,1]
+        // value=0, delta=max(1,round(0^0.5))=1, range=[-1,1]. The perturbation works on the signed
+        // value, so the sign boundary is an ordinary step and not a barrier.
+        int sawNegative = 0;
         for (int seed = 0; seed < 50; seed++) {
             setUp();
             placeData(5, 5, 0);
@@ -492,9 +515,13 @@ class GeneSubstitutionPluginTest {
             plugin.substitute(child, environment);
 
             int newValue = environment.getMolecule(5, 5).value();
-            assertThat(newValue).as("seed=%d: value=0 should stay in [0,1]", seed)
-                    .isBetween(0, 1);
+            assertThat(newValue).as("seed=%d: value=0 should stay in [-1,1]", seed)
+                    .isBetween(-1, 1);
+            if (newValue == -1) {
+                sawNegative++;
+            }
         }
+        assertThat(sawNegative).as("at least one seed must reach -1 from 0").isPositive();
     }
 
     // ---- LABEL / LABELREF mutation tests ----
