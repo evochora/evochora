@@ -97,9 +97,6 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
     public GeneSubstitutionPlugin(IRandomProvider randomProvider, com.typesafe.config.Config config) {
         this.random = randomProvider.asJavaRandom();
         this.substitutionRate = config.getDouble("substitutionRate");
-        if (substitutionRate < 0.0 || substitutionRate > 1.0) {
-            throw new IllegalArgumentException("substitutionRate must be in [0.0, 1.0], got: " + substitutionRate);
-        }
 
         com.typesafe.config.Config codeConfig = config.getConfig("CODE");
         double codeWeight = codeConfig.getDouble("weight");
@@ -113,6 +110,7 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
         com.typesafe.config.Config dataConfig = config.getConfig("DATA");
         double dataWeight = dataConfig.getDouble("weight");
         this.dataExponent = dataConfig.getDouble("exponent");
+        validateRanges(this.substitutionRate, this.dataExponent);
 
         com.typesafe.config.Config labelConfig = config.getConfig("LABEL");
         double labelWeight = labelConfig.getDouble("weight");
@@ -159,6 +157,7 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
         this.variantFlipWeight = variantFlipWeight;
         this.totalFlipWeight = operationFlipWeight + familyFlipWeight + variantFlipWeight;
         this.dataExponent = dataExponent;
+        validateRanges(this.substitutionRate, this.dataExponent);
         this.labelBitflips = labelBitflips;
         this.labelrefBitflips = labelrefBitflips;
 
@@ -460,6 +459,32 @@ public class GeneSubstitutionPlugin implements IBirthHandler {
     }
 
     // ---- Utilities ----
+
+    /**
+     * Rejects configuration values outside their valid range.
+     * <p>
+     * Both conditions are written positively, because {@code NaN} compares {@code false} to every
+     * bound and would pass a negated form. Its effects are silent: a {@code NaN} rate makes the
+     * probability test false and mutates every newborn, and a {@code NaN} exponent collapses delta
+     * to 1, turning the perturbation into a constant step of one.
+     * <p>
+     * The exponent is limited to {@code [0.0, 1.0]} by its meaning. At 0 the delta is 1 for every
+     * value, at 1 it equals the value itself, which is the strongest step that is still
+     * proportional. Beyond that the delta exceeds the value and the perturbation is no longer
+     * scale-proportional.
+     *
+     * @param substitutionRate Probability of substitution per newborn.
+     * @param dataExponent Exponent for scale-proportional DATA mutation.
+     * @throws IllegalArgumentException If either value lies outside {@code [0.0, 1.0]}.
+     */
+    private static void validateRanges(double substitutionRate, double dataExponent) {
+        if (!(substitutionRate >= 0.0 && substitutionRate <= 1.0)) {
+            throw new IllegalArgumentException("substitutionRate must be in [0.0, 1.0], got: " + substitutionRate);
+        }
+        if (!(dataExponent >= 0.0 && dataExponent <= 1.0)) {
+            throw new IllegalArgumentException("DATA exponent must be in [0.0, 1.0], got: " + dataExponent);
+        }
+    }
 
     /**
      * Builds the type weight lookup array.

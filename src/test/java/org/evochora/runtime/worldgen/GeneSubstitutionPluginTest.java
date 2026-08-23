@@ -21,6 +21,7 @@ import com.typesafe.config.ConfigFactory;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Unit tests for {@link GeneSubstitutionPlugin}.
@@ -714,6 +715,55 @@ class GeneSubstitutionPluginTest {
             }
         }
         assertThat(mutated).as("Should mutate value while preserving marker").isTrue();
+    }
+
+    // ---- Configuration validation tests ----
+
+    /** Creates a plugin with the given rate and DATA exponent, all other settings irrelevant. */
+    private GeneSubstitutionPlugin pluginWith(double substitutionRate, double dataExponent) {
+        return new GeneSubstitutionPlugin(new SeededRandomProvider(0), substitutionRate,
+                1.0, 1.0, 1.0, 1.0, 1.0,
+                0.7, 0.2, 0.1,
+                dataExponent, 1, 1);
+    }
+
+    @Test
+    void acceptsTheBoundsOfBothRanges() {
+        assertThat(pluginWith(0.0, 0.0)).isNotNull();
+        assertThat(pluginWith(1.0, 1.0)).isNotNull();
+    }
+
+    @Test
+    void rejectsSubstitutionRateOutsideItsRange() {
+        assertThatThrownBy(() -> pluginWith(-0.1, 0.5))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("substitutionRate");
+        assertThatThrownBy(() -> pluginWith(1.1, 0.5))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("substitutionRate");
+    }
+
+    @Test
+    void rejectsDataExponentOutsideItsRange() {
+        // Above 1.0 the delta exceeds the value; from about 1.58 the int cast of the rounded
+        // power truncates instead of saturating, which silently corrupts the delta.
+        assertThatThrownBy(() -> pluginWith(1.0, -0.1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("exponent");
+        assertThatThrownBy(() -> pluginWith(1.0, 1.1))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("exponent");
+    }
+
+    @Test
+    void rejectsNaNForBothValues() {
+        // NaN compares false to every bound, so a negated range check would let it through.
+        assertThatThrownBy(() -> pluginWith(Double.NaN, 0.5))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("substitutionRate");
+        assertThatThrownBy(() -> pluginWith(1.0, Double.NaN))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("exponent");
     }
 
     // ---- Plugin contract tests ----
