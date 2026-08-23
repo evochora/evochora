@@ -160,7 +160,7 @@ public class MinimapAggregator {
             for (int t = 0; t < NUM_TYPES; t++) {
                 totalCounted += counts[baseIdx + t];
             }
-            // Add missing cells as EMPTY with 6.25% weight
+            // Add missing cells as EMPTY with 2.5% weight
             final int backgroundCells = cellsPerBlock - totalCounted;
             if (backgroundCells > 0) {
                 final int weightedEmpty = backgroundCells / 25;  // 4% weight
