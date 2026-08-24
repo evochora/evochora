@@ -13,7 +13,6 @@ table carries the whole order.
 
 | Document / Issue | Status | Summary |
 |---|---|---|
-| [#111](https://github.com/evochora/evochora/issues/111) | IN REFINEMENT | `SimulationRestorer`: an unset `RegisterValue` is restored as a silent `0`; `TokenInfo` qualified name is lost on round trip |
 | [#106](https://github.com/evochora/evochora/issues/106) + [#107](https://github.com/evochora/evochora/issues/107) | IN REFINEMENT | Fail fast on resource setup (`ServiceManager`) and on a missing embedded broker (`ArtemisQueueResource`) — one change |
 | [#113](https://github.com/evochora/evochora/issues/113) | IN REFINEMENT | H2 reader pool ends with zero connections after a burst of slow reads and never recovers; every database-backed endpoint stays dead until restart (took the public demo down twice); same fail-fast cluster as #106/#107 |
 | [PERSISTED_FORMAT_VERSIONING](PERSISTED_FORMAT_VERSIONING.md) | TO BE REVIEWED | Storage batches, run database and run metadata carry no format version, so data written by an incompatible build is read silently or fails without naming the cause; one version constant plus fail-fast reads |
