@@ -171,73 +171,61 @@ Strategy States: 5
 
 ### Render Simulation Videos
 
-The `video` command renders simulation data into video files using ffmpeg. It defaults to the MKV container format, which is resilient to interruptions during rendering. If the process is stopped, the video file remains playable.
+The `video` command renders simulation data into video files using ffmpeg. A renderer subcommand
+selects how the world is drawn; each renderer adds its own options on top of the shared ones. The
+default container format is MKV, which stays playable if rendering is interrupted.
+
+Available renderers:
+
+- `video exact` — pixel-per-cell rendering with detailed organism markers
+- `video minimap` — aggregated overview matching the web visualizer's minimap style
+- `video lineage` — organism glows colored by genome lineage; with `--clade` restricted to
+  clade membership (given clades in distinct hues, everything else gray)
+- `video density` — instruction-pointer density heatmap
 
 ```bash
-# Basic video rendering (defaults to simulation.mkv)
-bin/evochora video --run-id <run-id>
+# Basic rendering (defaults to simulation.mkv next to the working directory)
+bin/evochora video minimap --run-id <run-id>
 
 # Specify output file and format
-bin/evochora video --run-id <run-id> --out simulation.mp4 --format mp4
+bin/evochora video minimap --run-id <run-id> --out simulation.mp4 --format mp4
 
-# Render with custom frame rate and sampling
-bin/evochora video --run-id <run-id> --out simulation.mkv --fps 30 --sampling-interval 100
+# Render every 100th tick at 30 fps
+bin/evochora video exact --run-id <run-id> --fps 30 --sampling-interval 100
 
-# Render specific tick range
-bin/evochora video --run-id <run-id> --out simulation.mkv --start-tick 1000 --end-tick 5000
+# Render a specific tick range
+bin/evochora video minimap --run-id <run-id> --start-tick 1000 --end-tick 5000
 
-# Render with overlay (tick number, timestamp, run ID)
-bin/evochora video --run-id <run-id> --out simulation.mkv --overlay-tick --overlay-time --overlay-run-id
+# Add the info overlay (tick number, alive count, cumulative births)
+bin/evochora video lineage --run-id <run-id> --overlay info
 
-# Render with custom quality and format
-bin/evochora video --run-id <run-id> --out simulation.webm --format webm --preset fast
+# Color two clades and gray out everything else (lineage renderer)
+bin/evochora video lineage --run-id <run-id> --clade <genomeHash>:21 --clade <genomeHash>:210
 
 # Use parallel rendering for better performance
-bin/evochora video --run-id <run-id> --out simulation.mkv --threads 4
+bin/evochora video minimap --run-id <run-id> --threads 4
 
-# See all available options
-bin/evochora help video
+# See the options of a renderer
+bin/evochora video lineage --help
 ```
 
-The `video` command renders simulation data into video files using ffmpeg. It supports various output formats (MKV, MP4, AVI, MOV, WebM), quality presets, frame rate control, and optional text overlays.
-
-**Key Features:**
-- **Resilient by default**: Uses MKV format to prevent corrupted files if rendering is interrupted.
-- **Performance optimized**: Uses efficient rendering with parallel frame processing support
-- **Flexible sampling**: Render every Nth tick to reduce video size
-- **Tick range filtering**: Render only specific tick ranges
-- **Text overlays**: Add tick number, timestamp, or run ID to video
-- **Multiple formats**: Support for MKV, MP4, AVI, MOV, WebM
-- **Quality presets**: Control encoding speed/quality tradeoff
-- **Progress tracking**: Real-time progress bar with ETA, throughput, and remaining time
-
-**Basic Parameters:**
-- `--run-id, -r`: Simulation run ID (required, or auto-discover latest run)
-- `--out, -o`: Output filename (required, default: simulation.mkv)
-- `--fps`: Frames per second for output video (default: 60)
+**Shared Parameters** (all renderers):
+- `--run-id`: Simulation run ID (defaults to the latest run)
+- `--out`: Output filename (default: simulation.mkv)
+- `--fps`: Frames per second for the output video (default: 60)
 - `--sampling-interval`: Render every Nth tick (default: 1)
-- `--cell-size`: Size of each cell in pixels (default: 4)
-- `--storage`: Storage resource name (default: tick-storage)
-
-**Advanced Options:**
-- `--start-tick`: Start rendering from this tick (inclusive)
-- `--end-tick`: Stop rendering at this tick (inclusive)
-- `--preset`: ffmpeg encoding preset: ultrafast/fast/medium/slow (default: fast)
+- `--start-tick` / `--end-tick`: Restrict the rendered tick range (inclusive)
 - `--format`: Output video format: mkv/mp4/avi/mov/webm (default: mkv)
-- `--threads`: Number of threads for parallel rendering (default: 1)
-
-**Overlay Options:**
-- `--overlay-tick`: Show tick number overlay
-- `--overlay-time`: Show timestamp overlay
-- `--overlay-run-id`: Show run ID overlay
-- `--overlay-position`: Overlay position: top-left/top-right/bottom-left/bottom-right (default: top-left)
-- `--overlay-font-size`: Overlay font size in pixels (default: 24)
-- `--overlay-color`: Overlay text color (e.g., white, yellow, #FF0000) (default: white)
-
-**Other Options:**
+- `--preset`: ffmpeg encoding preset: ultrafast/fast/medium/slow (default: fast)
+- `--threads`: Number of threads for parallel chunk rendering (default: 1)
+- `--overlay`: Overlays to apply, comma-separated; currently `info`
+- `--storage`: Storage resource name (default: tick-storage)
 - `--verbose`: Show detailed debug output from ffmpeg
 
-**Note**: The `video` command requires ffmpeg to be installed and available in your PATH. For a complete list of all options and their descriptions, run `bin/evochora help video`.
+Renderer-specific options (such as `--scale`, `--glow-size`, `--hue-shift`, `--clade`,
+`--cluster-grid`, `--blur-radius`) are documented by each renderer's `--help`.
+
+**Note**: The `video` command requires ffmpeg to be installed and available in your PATH. For a complete list of all options and their descriptions, run `bin/evochora video <renderer> --help`.
 
 ---
 

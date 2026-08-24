@@ -478,6 +478,174 @@ public class LineageRendererTest {
     }
 
     // ========================================================================
+    // Clade coloring
+    // ========================================================================
+
+    @Test
+    void testClade_rootAndDescendantColored_unrelatedGray() {
+        LineageRenderer.ColorState state = new LineageRenderer.ColorState(
+            25f, java.util.Map.of(100L, 21f), 20f);
+
+        OrganismState root = createOrganism(1, 20, 20, 100L);
+        OrganismState child = OrganismState.newBuilder()
+            .setOrganismId(2)
+            .setIp(createVector(80, 80))
+            .setDv(createVector(1, 0))
+            .setGenomeHash(200L)
+            .setParentId(1)
+            .build();
+        OrganismState unrelated = createOrganism(3, 20, 80, 300L);
+
+        state.processOrganisms(java.util.List.of(root, child, unrelated));
+
+        // The root genome carries the clade's base hue
+        assertThat(state.genomeHueMap.get(100L)).isEqualTo(21f);
+
+        // The descendant genome gets a distinct color of its own
+        assertThat(state.genomeColorOverride).containsKey(200L);
+
+        // The unrelated genome gets no hue -> rendered gray
+        assertThat(state.genomeHueMap).doesNotContainKey(300L);
+    }
+
+    @Test
+    void testClade_membershipProvenOnLaterTick() {
+        LineageRenderer.ColorState state = new LineageRenderer.ColorState(
+            25f, java.util.Map.of(100L, 21f), 20f);
+
+        // First tick: the child is seen while its parent organism is unknown -> gray for now
+        OrganismState child = OrganismState.newBuilder()
+            .setOrganismId(2)
+            .setIp(createVector(80, 80))
+            .setDv(createVector(1, 0))
+            .setGenomeHash(200L)
+            .setParentId(1)
+            .build();
+        state.processOrganisms(java.util.List.of(child));
+        assertThat(state.genomeHueMap).doesNotContainKey(200L);
+
+        // Later tick: the parent (clade root) appears -> descent becomes provable, child colored
+        OrganismState root = createOrganism(1, 20, 20, 100L);
+        state.processOrganisms(java.util.List.of(root, child));
+
+        assertThat(state.genomeHueMap.get(100L)).isEqualTo(21f);
+        assertThat(state.genomeColorOverride).containsKey(200L);
+    }
+
+    @Test
+    void testClade_deadRootCarrier_stillSeedsMembership() {
+        LineageRenderer.ColorState state = new LineageRenderer.ColorState(
+            25f, java.util.Map.of(100L, 21f), 20f);
+
+        // The root genome's only carrier is already dead when first seen; its child and
+        // grandchild genomes must still be proven members through the genome parent graph.
+        OrganismState deadRoot = OrganismState.newBuilder()
+            .setOrganismId(1)
+            .setIp(createVector(20, 20))
+            .setDv(createVector(1, 0))
+            .setGenomeHash(100L)
+            .setIsDead(true)
+            .build();
+        OrganismState child = OrganismState.newBuilder()
+            .setOrganismId(2)
+            .setIp(createVector(80, 80))
+            .setDv(createVector(1, 0))
+            .setGenomeHash(200L)
+            .setParentId(1)
+            .build();
+        state.processOrganisms(java.util.List.of(deadRoot, child));
+
+        OrganismState grandchild = OrganismState.newBuilder()
+            .setOrganismId(3)
+            .setIp(createVector(50, 50))
+            .setDv(createVector(1, 0))
+            .setGenomeHash(300L)
+            .setParentId(2)
+            .build();
+        state.processOrganisms(java.util.List.of(child, grandchild));
+
+        assertThat(state.genomeHueMap).containsKey(200L);
+        assertThat(state.genomeHueMap).containsKey(300L);
+        // Sibling genomes of one clade carry distinct colors
+        assertThat(state.genomeColorOverride.get(300L))
+            .isNotEqualTo(state.genomeColorOverride.get(200L));
+    }
+
+    @Test
+    void testClade_membersRenderVisibly() {
+        LineageRenderer renderer = createRenderer("--scale", "0.5", "--clade", "100:21");
+
+        TickData snapshot = TickData.newBuilder()
+            .setTickNumber(0)
+            .setCellColumns(CellDataColumns.getDefaultInstance())
+            .addOrganisms(createOrganism(1, 20, 20, 100L))
+            .addOrganisms(createOrganism(3, 80, 80, 300L))
+            .build();
+
+        int[] pixels = renderer.renderSnapshot(snapshot);
+
+        // Both the clade member and the gray non-member produce a glow
+        assertThat(pixels[10 * 50 + 10]).isNotEqualTo(EMPTY_COLOR);
+        assertThat(pixels[40 * 50 + 40]).isNotEqualTo(EMPTY_COLOR);
+    }
+
+    @Test
+    void testClade_spreadBoundsMemberHues() {
+        LineageRenderer.ColorState state = new LineageRenderer.ColorState(
+            25f, java.util.Map.of(100L, 180f), 5f);
+
+        OrganismState root = createOrganism(1, 20, 20, 100L);
+        java.util.List<OrganismState> organisms = new java.util.ArrayList<>();
+        organisms.add(root);
+        for (int i = 2; i <= 30; i++) {
+            organisms.add(OrganismState.newBuilder()
+                .setOrganismId(i)
+                .setIp(createVector(10, 10))
+                .setDv(createVector(1, 0))
+                .setGenomeHash(1000L + i)
+                .setParentId(1)
+                .build());
+        }
+        state.processOrganisms(organisms);
+
+        for (int i = 2; i <= 30; i++) {
+            float hue = state.genomeHueMap.get(1000L + i);
+            float delta = Math.abs(hue - 180f);
+            assertThat(Math.min(delta, 360f - delta)).isLessThanOrEqualTo(5f);
+        }
+    }
+
+    @Test
+    void testCladeSpread_outOfRange_throws() {
+        LineageRenderer renderer = new LineageRenderer();
+        new CommandLine(renderer).parseArgs("--clade", "100:21", "--clade-spread", "200");
+
+        assertThatThrownBy(() -> renderer.init(envProps))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("--clade-spread");
+    }
+
+    @Test
+    void testClade_invalidFormat_throws() {
+        LineageRenderer renderer = new LineageRenderer();
+        new CommandLine(renderer).parseArgs("--clade", "notAHash");
+
+        assertThatThrownBy(() -> renderer.init(envProps))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("--clade");
+    }
+
+    @Test
+    void testClade_hueOutOfRange_throws() {
+        LineageRenderer renderer = new LineageRenderer();
+        new CommandLine(renderer).parseArgs("--clade", "100:400");
+
+        assertThatThrownBy(() -> renderer.init(envProps))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("hue");
+    }
+
+    // ========================================================================
     // Helpers
     // ========================================================================
 

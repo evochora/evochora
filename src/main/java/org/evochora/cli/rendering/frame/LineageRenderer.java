@@ -41,6 +41,17 @@ import picocli.CommandLine.Option;
  * visual continuity for related lineages. Unrelated lineages receive well-separated
  * colors via the golden ratio sequence.
  * <p>
+ * With one or more {@code --clade <genomeHash>:<hue>} options the renderer switches to
+ * clade coloring: a genome belongs to a clade if it is the given genome itself or if it
+ * descends from it in the genome parent graph, which the renderer accumulates from the
+ * organism parent chain while it processes ticks. Members are drawn in hues around the
+ * clade's base hue with a deterministic per-genome deviation in hue (at most the
+ * {@code --clade-spread} half-width, default 20°), saturation and lightness — genomes
+ * within a clade stay visibly distinct, the clades stay clearly separated; every other
+ * organism is gray. A genome stays gray until its descent from a root is proven — the proof can
+ * arrive on a later tick, at which point the genome gains its clade color. Lineages that
+ * never become resolvable are under-counted (gray), never miscolored.
+ * <p>
  * The glow effect is softer than the minimap renderer: a semi-transparent core with
  * smooth quadratic falloff, producing gentle "territory clouds" rather than sharp dots.
  * <p>
@@ -48,6 +59,7 @@ import picocli.CommandLine.Option;
  * <pre>
  *   evochora video lineage --scale 0.3 --overlay info -o lineage.mkv
  *   evochora video lineage --scale 0.5 --hue-shift 5 --glow-size 1.5 -o lineage.mkv
+ *   evochora video lineage --clade -5127331321190430415:21 --clade -3579820754707553964:210 -o clades.mkv
  * </pre>
  * <p>
  * <strong>Thread Safety:</strong> Color state is shared between thread instances via
@@ -77,6 +89,19 @@ public class LineageRenderer extends AbstractFrameRenderer {
             description = "Organism clustering grid size in world cells (default: ${DEFAULT-VALUE})",
             defaultValue = "1")
     private int clusterGrid;
+
+    @Option(names = "--clade",
+            description = "Clade coloring: <genomeHash>:<hue> (repeatable). Genomes descending from "
+                    + "<genomeHash> are drawn in hues around <hue> (degrees, 0-360); all other "
+                    + "organisms are gray. Without this option, hues follow parent lineage.")
+    private java.util.List<String> clades;
+
+    @Option(names = "--clade-spread",
+            description = "Half-width in degrees of the hue range each clade's member colors may "
+                    + "use (default: ${DEFAULT-VALUE}). Choose smaller values when coloring many "
+                    + "clades so their hue ranges stay separable.",
+            defaultValue = "20")
+    private float cladeSpread;
 
     // ─────────────────────────────────────────────────────────────────────────────
     // Glow configuration (softer than minimap)
@@ -196,12 +221,53 @@ public class LineageRenderer extends AbstractFrameRenderer {
         int outputSize = outputWidth * outputHeight;
         this.glowDensity = new int[outputSize];
 
+        if (cladeSpread <= 0 || cladeSpread >= 180) {
+            throw new IllegalArgumentException(
+                    "--clade-spread must be in (0, 180), got: " + cladeSpread);
+        }
+
         // Color state (fresh on init; overwritten by createThreadInstance for shared state)
-        this.colorState = new ColorState(hueShift);
+        this.colorState = new ColorState(hueShift, parseClades(), cladeSpread);
 
         this.lastSnapshot = null;
         this.lastDelta = null;
         this.initialized = true;
+    }
+
+    /**
+     * Parses the {@code --clade} options into a genome-hash-to-hue map.
+     *
+     * @return Clade root genome hash to base hue; empty when no clades were given.
+     * @throws IllegalArgumentException If an option is not {@code <genomeHash>:<hue>}
+     *                                  or the hue is outside {@code [0, 360)}.
+     */
+    private Map<Long, Float> parseClades() {
+        Map<Long, Float> roots = new LinkedHashMap<>();
+        if (clades == null) {
+            return roots;
+        }
+        for (String spec : clades) {
+            int sep = spec.lastIndexOf(':');
+            if (sep <= 0 || sep == spec.length() - 1) {
+                throw new IllegalArgumentException(
+                        "Invalid --clade value '" + spec + "': expected <genomeHash>:<hue>");
+            }
+            final long hash;
+            final float hue;
+            try {
+                hash = Long.parseLong(spec.substring(0, sep));
+                hue = Float.parseFloat(spec.substring(sep + 1));
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException(
+                        "Invalid --clade value '" + spec + "': expected <genomeHash>:<hue>", e);
+            }
+            if (hue < 0 || hue >= 360) {
+                throw new IllegalArgumentException(
+                        "Invalid --clade hue " + hue + ": must be in [0, 360)");
+            }
+            roots.put(hash, hue);
+        }
+        return roots;
     }
 
     // ─────────────────────────────────────────────────────────────────────────────
@@ -300,6 +366,8 @@ public class LineageRenderer extends AbstractFrameRenderer {
      */
     private int getGenomeColor(long genomeHash) {
         if (genomeHash == 0) return 0x808080;
+        Integer override = colorState.genomeColorOverride.get(genomeHash);
+        if (override != null) return override;
         Float hue = colorState.genomeHueMap.get(genomeHash);
         if (hue == null) return 0x808080;
         return hslToRgb(hue, GLOW_SATURATION, GLOW_LIGHTNESS);
@@ -593,14 +661,38 @@ public class LineageRenderer extends AbstractFrameRenderer {
         private final AtomicInteger baseHueCounter = new AtomicInteger(0);
         /** Hue shift per mutation generation in degrees. */
         private final float hueShift;
+        /** Clade root genome hash → base hue. Empty means lineage-hue mode. */
+        private final Map<Long, Float> cladeHues;
+        /** Genome hash → parent genome hash, accumulated from organism parent links (clade mode only). */
+        private final ConcurrentHashMap<Long, Long> genomeParent = new ConcurrentHashMap<>();
+        /** Genome hash → clade root it was proven to descend from (clade mode only). */
+        private final ConcurrentHashMap<Long, Long> genomeCladeRoot = new ConcurrentHashMap<>();
+        /** Genome hash → final glow color for clade members (clade mode only). */
+        final ConcurrentHashMap<Long, Integer> genomeColorOverride = new ConcurrentHashMap<>();
+        /** Half-width of the per-genome hue deviation within a clade (degrees). */
+        private final float cladeSpread;
+        /** Saturation range of clade member colors. */
+        private static final float CLADE_SATURATION_MIN = 0.60f, CLADE_SATURATION_MAX = 0.90f;
+        /** Lightness range of clade member colors. */
+        private static final float CLADE_LIGHTNESS_MIN = 0.52f, CLADE_LIGHTNESS_MAX = 0.68f;
 
         /**
-         * Creates a new color state with the given hue shift.
+         * Creates a new color state.
          *
-         * @param hueShift Hue shift per mutation generation in degrees.
+         * @param hueShift    Hue shift per mutation generation in degrees (lineage-hue mode).
+         * @param cladeHues   Clade root genome hash to base hue; an empty map selects the
+         *                    lineage-hue mode, a non-empty map the clade coloring mode.
+         * @param cladeSpread Half-width in degrees of the hue range a clade's member colors
+         *                    may use (clade coloring mode).
          */
-        ColorState(float hueShift) {
+        ColorState(float hueShift, Map<Long, Float> cladeHues, float cladeSpread) {
             this.hueShift = hueShift;
+            this.cladeHues = cladeHues;
+            this.cladeSpread = cladeSpread;
+        }
+
+        private boolean cladeMode() {
+            return !cladeHues.isEmpty();
         }
 
         /**
@@ -623,6 +715,20 @@ public class LineageRenderer extends AbstractFrameRenderer {
                 }
             }
 
+            // Pass 1b (clade mode): grow the genome parent graph from organism parent links
+            if (cladeMode()) {
+                for (OrganismState org : organisms) {
+                    long genomeHash = org.getGenomeHash();
+                    if (genomeHash == 0 || !org.hasParentId()) {
+                        continue;
+                    }
+                    Long parentGenome = organismGenomeMap.get(org.getParentId());
+                    if (parentGenome != null && parentGenome != 0 && parentGenome != genomeHash) {
+                        genomeParent.putIfAbsent(genomeHash, parentGenome);
+                    }
+                }
+            }
+
             // Pass 2: Assign colors (now parent lookups succeed regardless of list order)
             for (OrganismState org : organisms) {
                 long genomeHash = org.getGenomeHash();
@@ -639,13 +745,19 @@ public class LineageRenderer extends AbstractFrameRenderer {
 
         /**
          * Assigns an HSL hue to a genome hash based on lineage.
-         * If the organism has a parent with a known genome hash color, the child's hue
-         * is derived with a small shift. Otherwise, a new base hue is assigned via
-         * the golden ratio sequence.
+         * <p>
+         * In clade mode the hue encodes clade membership (see {@link #assignCladeColor});
+         * otherwise, if the organism has a parent with a known genome hash color, the
+         * child's hue is derived with a small shift, and unrelated lineages receive a
+         * new base hue via the golden ratio sequence.
          *
          * @param org The organism whose genome hash needs a color.
          */
         private void assignGenomeColor(OrganismState org) {
+            if (cladeMode()) {
+                assignCladeColor(org);
+                return;
+            }
             long genomeHash = org.getGenomeHash();
 
             if (org.hasParentId()) {
@@ -663,6 +775,106 @@ public class LineageRenderer extends AbstractFrameRenderer {
             // No known parent lineage — assign from golden ratio sequence
             float hue = (BASE_HUE_START + baseHueCounter.getAndIncrement() * GOLDEN_ANGLE) % 360.0f;
             genomeHueMap.put(genomeHash, hue);
+        }
+
+        /**
+         * Tries to prove clade membership for a genome and assigns its color on success.
+         * <p>
+         * Membership is proven by walking the accumulated genome parent graph towards a
+         * clade root. Proven members receive the clade's base hue (the root itself) or the
+         * base hue plus a deterministic per-genome deviation of at most
+         * ±{@value #CLADE_JITTER_DEGREES}° (descendants), and keep that color. A genome
+         * whose descent cannot be proven yet stays uncolored (gray) and is retried on
+         * later ticks as the graph grows, so unresolvable lineages under-count clade
+         * membership rather than miscoloring it.
+         *
+         * @param org The organism whose genome hash needs a membership decision.
+         */
+        private void assignCladeColor(OrganismState org) {
+            long genomeHash = org.getGenomeHash();
+            Long root = findCladeRoot(genomeHash);
+            if (root == null) {
+                return;
+            }
+            if (genomeHash == root) {
+                genomeHueMap.put(genomeHash, cladeHues.get(root));
+                return;
+            }
+            float hue = cladeMemberHue(root, genomeHash);
+            genomeHueMap.put(genomeHash, hue);
+            genomeColorOverride.put(genomeHash, cladeMemberColor(hue, genomeHash));
+        }
+
+        /**
+         * Walks the genome parent graph from a genome towards a clade root, memoizing
+         * every proven genome on the path.
+         *
+         * The walk stops on a cycle: reversion pairs can produce cyclic parent edges,
+         * and a cyclic chain proves no descent.
+         *
+         * @param genomeHash The genome to resolve.
+         * @return The clade root the genome descends from, or {@code null} if its descent
+         *         is not (yet) provable from the accumulated graph.
+         */
+        private Long findCladeRoot(long genomeHash) {
+            List<Long> path = new ArrayList<>();
+            Set<Long> visited = new HashSet<>();
+            Long current = genomeHash;
+            Long root = null;
+            while (current != null && visited.add(current)) {
+                Long known = genomeCladeRoot.get(current);
+                if (known != null) {
+                    root = known;
+                    break;
+                }
+                if (cladeHues.containsKey(current)) {
+                    root = current;
+                    path.add(current);
+                    break;
+                }
+                path.add(current);
+                current = genomeParent.get(current);
+            }
+            if (root != null) {
+                for (Long g : path) {
+                    genomeCladeRoot.put(g, root);
+                }
+            }
+            return root;
+        }
+
+        /**
+         * The hue of a clade member: the clade's base hue plus a deterministic per-genome
+         * deviation of at most ± the configured clade spread.
+         *
+         * @param root       The clade root genome hash.
+         * @param genomeHash The member genome hash.
+         * @return Hue in degrees, in {@code [0, 360)}.
+         */
+        private float cladeMemberHue(long root, long genomeHash) {
+            long mixed = genomeHash * 0x9E3779B97F4A7C15L;
+            float unit = Long.remainderUnsigned(mixed >>> 16, 4001) / 4000.0f;
+            float jitter = (2.0f * unit - 1.0f) * cladeSpread;
+            return (cladeHues.get(root) + jitter + 360.0f) % 360.0f;
+        }
+
+        /**
+         * The glow color of a clade member: its jittered hue combined with deterministic
+         * per-genome saturation and lightness within a fixed band. Different genomes of one
+         * clade are therefore visibly distinct while the clade's hue region stays
+         * unmistakable; the root genome itself keeps the exact base color.
+         *
+         * @param hue        The member's hue from {@link #cladeMemberHue}.
+         * @param genomeHash The member genome hash.
+         * @return Packed RGB glow color.
+         */
+        private int cladeMemberColor(float hue, long genomeHash) {
+            long mixed = genomeHash * 0x9E3779B97F4A7C15L;
+            float saturation = CLADE_SATURATION_MIN + (CLADE_SATURATION_MAX - CLADE_SATURATION_MIN)
+                    * (Long.remainderUnsigned(mixed >>> 24, 97) / 96.0f);
+            float lightness = CLADE_LIGHTNESS_MIN + (CLADE_LIGHTNESS_MAX - CLADE_LIGHTNESS_MIN)
+                    * (Long.remainderUnsigned(mixed >>> 40, 89) / 88.0f);
+            return hslToRgb(hue, saturation, lightness);
         }
     }
 }
