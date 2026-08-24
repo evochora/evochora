@@ -228,8 +228,7 @@ public class Organism {
         this.registers = new Object[RegisterBank.TOTAL_REGISTER_COUNT];
         int dims = b.ip.length;
         if (b.flatRegisters != null) {
-            System.arraycopy(b.flatRegisters, 0, this.registers, 0,
-                    Math.min(b.flatRegisters.length, this.registers.length));
+            System.arraycopy(b.flatRegisters, 0, this.registers, 0, b.flatRegisters.length);
         }
         // Fill any unset slots with defaults
         for (int i = 0; i < this.registers.length; i++) {
@@ -413,20 +412,9 @@ public class Organism {
             return this;
         }
 
-        /** Sets the location stack contents, clamping to {@link Config#LOCATION_STACK_MAX_DEPTH}. */
+        /** Sets the location stack contents; a stack deeper than the limit is rejected by {@link #build}. */
         public RestoreBuilder locationStack(Deque<int[]> stack) {
-            if (stack.size() > Config.LOCATION_STACK_MAX_DEPTH) {
-                ArrayDeque<int[]> clamped = new ArrayDeque<>(Config.LOCATION_STACK_MAX_DEPTH);
-                int kept = 0;
-                for (int[] entry : stack) {
-                    if (kept >= Config.LOCATION_STACK_MAX_DEPTH) break;
-                    clamped.addLast(entry);
-                    kept++;
-                }
-                this.locationStack = clamped;
-            } else {
-                this.locationStack = stack;
-            }
+            this.locationStack = stack;
             return this;
         }
 
@@ -511,7 +499,62 @@ public class Organism {
                 LOG.warn("Organism {} restored with negative entropy {} — state may be corrupted",
                         id, sr);
             }
+            validateStateInvariants();
             return new Organism(this, simulation);
+        }
+
+        /**
+         * Rejects state that cannot describe an organism this build could have produced.
+         * <p>
+         * Values left unset still receive defaults — a caller may legitimately restore a minimal
+         * organism. What is rejected is a value that <em>is</em> set but does not fit the build:
+         * reshaping it would yield an organism different from the one the state described, and a
+         * resumed run must equal an uninterrupted one.
+         *
+         * @throws IllegalStateException if a set value contradicts this build's register banks,
+         *                               data pointer count, coordinate dimension or stack limits
+         */
+        private void validateStateInvariants() {
+            if (flatRegisters != null && flatRegisters.length != RegisterBank.TOTAL_REGISTER_COUNT) {
+                throw new IllegalStateException("Register array must hold "
+                        + RegisterBank.TOTAL_REGISTER_COUNT + " values, got " + flatRegisters.length);
+            }
+            if (!dps.isEmpty()) {
+                if (dps.size() != Config.NUM_DATA_POINTERS) {
+                    throw new IllegalStateException("Data pointers must number "
+                            + Config.NUM_DATA_POINTERS + ", got " + dps.size());
+                }
+                for (int[] dp : dps) {
+                    if (dp == null || dp.length != ip.length) {
+                        throw new IllegalStateException("Data pointer dimension must match the IP's "
+                                + ip.length + ", got " + (dp == null ? "null" : dp.length));
+                    }
+                }
+                if (activeDpIndex < 0 || activeDpIndex >= dps.size()) {
+                    throw new IllegalStateException("Active data pointer index " + activeDpIndex
+                            + " lies outside the " + Config.NUM_DATA_POINTERS + " data pointers");
+                }
+            }
+            requireStackWithinLimit("Data stack", dataStack.size(), Config.DS_MAX_DEPTH);
+            requireStackWithinLimit("Location stack", locationStack.size(), Config.LOCATION_STACK_MAX_DEPTH);
+            requireStackWithinLimit("Call stack", callStack.size(), Config.CALL_STACK_MAX_DEPTH);
+        }
+
+        /**
+         * Rejects a stack deeper than the instruction set allows. Such a depth describes a state no
+         * running organism can reach, because the instruction that would exceed the limit fails
+         * instead of pushing.
+         *
+         * @param name  the stack's name, for the message
+         * @param depth the restored depth
+         * @param limit the maximum depth the instruction set enforces
+         * @throws IllegalStateException if the depth exceeds the limit
+         */
+        private void requireStackWithinLimit(String name, int depth, int limit) {
+            if (depth > limit) {
+                throw new IllegalStateException(
+                        name + " depth " + depth + " exceeds the limit of " + limit);
+            }
         }
     }
 
