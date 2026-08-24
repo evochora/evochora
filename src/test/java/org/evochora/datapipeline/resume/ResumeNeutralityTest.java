@@ -55,78 +55,11 @@ class ResumeNeutralityTest {
     private static final String PROGRAM_ID = "resume-neutrality";
 
     /**
-     * Every plugin the neutrality run configures, so that plugin state is carried across the resume
-     * like any other state. {@link PluginCoverageTest} keeps this list in step with the code: a new
-     * plugin that is not listed here fails that test.
-     * <p>
-     * The world-generating plugins run every tick and are parameterised to stay active without
-     * crowding the organisms out of the cells they work on; the birth handlers only fire on
-     * reproduction, which does not happen here, but their state is still carried and compared.
+     * The resolved configuration this scenario runs on. No reproduction happens here, so the birth
+     * handlers stay idle whatever their rate; they are configured all the same, because their state
+     * is carried across the resume like any other.
      */
-    static final String PLUGINS_JSON = """
-            [
-              { "className": "org.evochora.runtime.worldgen.SeedEnergyCreator",
-                "options": { "percentage": 0.001, "amount": 5000, "amountVariance": 0.2 } },
-              { "className": "org.evochora.runtime.worldgen.GeyserCreator",
-                "options": { "percentage": 0.001, "interval": 5, "amount": 5000, "safetyRadius": 3 } },
-              { "className": "org.evochora.runtime.worldgen.SolarRadiationCreator",
-                "options": { "probability": 0.02, "amount": 5000, "safetyRadius": 1, "executionsPerTick": 1 } },
-              { "className": "org.evochora.runtime.worldgen.DecayOnDeath",
-                "options": { "replacement": "CODE:0" } },
-              { "className": "org.evochora.runtime.worldgen.LabelRewritePlugin",
-                "options": {} },
-              { "className": "org.evochora.runtime.worldgen.GeneDuplicationPlugin",
-                "options": { "duplicationRate": 0.1, "minNopSize": 8 } },
-              { "className": "org.evochora.runtime.worldgen.GeneDeletionPlugin",
-                "options": { "deletionRate": 0.025, "countExponent": 2.0 } },
-              { "className": "org.evochora.runtime.worldgen.GeneInsertionPlugin",
-                "options": { "mutationRate": 0.05,
-                             "entries": [
-                               { "instructions": "*", "weight": 3,
-                                 "args": { "REGISTER": { "range": [0, 7] },
-                                           "LOCATION_REGISTER": { "range": [0, 3] },
-                                           "DATA": { "min": 0, "max": 255 },
-                                           "LABELREF": "existing",
-                                           "VECTOR": "unit" } },
-                               { "type": "label", "weight": 1, "bitflips": 2 }
-                             ] } },
-              { "className": "org.evochora.runtime.worldgen.GeneSubstitutionPlugin",
-                "options": { "substitutionRate": 0.025,
-                             "CODE": { "weight": 1.0, "operationFlipWeight": 0.7,
-                                       "familyFlipWeight": 0.2, "variantFlipWeight": 0.1 },
-                             "REGISTER": { "weight": 1.0 },
-                             "DATA": { "weight": 1.0, "exponent": 0.7 },
-                             "LABEL": { "weight": 1.0, "bitflips": 1 },
-                             "LABELREF": { "weight": 1.0, "bitflips": 1 } } }
-            ]
-            """;
-
-    /** Resolved configuration both the reference simulation and the restorer are built from. */
-    private static final String CONFIG_JSON = """
-            {
-              "environment": { "shape": [%d, %d], "topology": "TORUS" },
-              "samplingInterval": 1,
-              "accumulatedDeltaInterval": 1,
-              "snapshotInterval": 1,
-              "chunkInterval": 1,
-              "plugins": %s,
-              "organisms": [],
-              "runtime": {
-                "organism": { "max-energy": 32767, "max-entropy": 8191, "error-penalty-cost": 10 },
-                "thermodynamics": {
-                  "default": {
-                    "className": "org.evochora.runtime.thermodynamics.impl.UniversalThermodynamicPolicy",
-                    "options": { "base-energy": 1, "base-entropy": 1 }
-                  },
-                  "overrides": { "instructions": {}, "families": {} }
-                },
-                "label-matching": {
-                  "className": "org.evochora.runtime.label.PreExpandedHammingStrategy",
-                  "options": { "tolerance": 2, "hammingWeight": 50, "foreignPenalty": 100, "selectionSpread": 50 }
-                }
-              }
-            }
-            """.formatted(SIZE, SIZE, PLUGINS_JSON);
+    private static final String CONFIG_JSON = ResumeNeutralityHarness.configJson(SIZE, 0.025);
 
     private final List<Simulation> simulations = new ArrayList<>();
 
@@ -185,7 +118,8 @@ class ResumeNeutralityTest {
         Organism rebuilt = restored.getOrganisms().stream()
                 .filter(o -> o.getId() == organism.getId()).findFirst().orElseThrow();
 
-        assertSameState(rebuilt, organism);
+        assertThat(ResumeNeutralityHarness.describe(rebuilt))
+                .isEqualTo(ResumeNeutralityHarness.describe(organism));
     }
 
     /**
@@ -258,16 +192,13 @@ class ResumeNeutralityTest {
         final List<ISimulationPlugin> plugins;
 
         World(int parallelism) {
-            com.typesafe.config.Config config = ConfigFactory.parseString(CONFIG_JSON);
-            env = new Environment(new EnvironmentProperties(new int[]{SIZE, SIZE}, true),
-                    Environment.createLabelMatchingStrategy(config.getConfig("runtime.label-matching")));
-            sim = new Simulation(env,
-                    new ThermodynamicPolicyManager(config.getConfig("runtime.thermodynamics")),
-                    config.getConfig("runtime.organism"), parallelism);
+            ResumeNeutralityHarness.Fixture fixture =
+                    ResumeNeutralityHarness.newFixture(CONFIG_JSON, SIZE, parallelism);
+            env = fixture.env();
+            sim = fixture.sim();
+            provider = fixture.provider();
+            plugins = fixture.plugins();
             simulations.add(sim);
-            provider = new SeededRandomProvider(SEED);
-            sim.setRandomProvider(provider);
-            plugins = registerConfiguredPlugins(sim, config, provider);
 
             for (int row = 0; row < JUMPERS; row++) {
                 Organism organism = Organism.create(sim, new int[]{0, row}, 10_000);
@@ -324,17 +255,18 @@ class ResumeNeutralityTest {
         int secondPause = 19;
 
         World reference = new World(parallelismBefore);
-        List<List<String>> expected = tick(reference.sim, totalTicks);
+        List<List<String>> expected = ResumeNeutralityHarness.tick(reference.sim, totalTicks, false);
 
         World interrupted = new World(parallelismBefore);
-        List<List<String>> actual = new ArrayList<>(tick(interrupted.sim, firstPause));
+        List<List<String>> actual = new ArrayList<>(ResumeNeutralityHarness.tick(interrupted.sim, firstPause, false));
         SimulationRestorer.RestoredState onceResumed = restore(interrupted, parallelismAfter);
         simulations.add(onceResumed.simulation());
-        actual.addAll(tick(onceResumed.simulation(), secondPause - firstPause));
-        SimulationRestorer.RestoredState twiceResumed = restore(onceResumed.simulation(),
-                onceResumed.randomProvider(), uniquePlugins(onceResumed), parallelismAfter);
+        actual.addAll(ResumeNeutralityHarness.tick(onceResumed.simulation(), secondPause - firstPause, false));
+        SimulationRestorer.RestoredState twiceResumed = ResumeNeutralityHarness.restore(
+                onceResumed.simulation(), onceResumed.randomProvider(),
+                ResumeNeutralityHarness.uniquePlugins(onceResumed), CONFIG_JSON, parallelismAfter);
         simulations.add(twiceResumed.simulation());
-        actual.addAll(tick(twiceResumed.simulation(), totalTicks - secondPause));
+        actual.addAll(ResumeNeutralityHarness.tick(twiceResumed.simulation(), totalTicks - secondPause, false));
 
         assertThat(actual).as("tick count").hasSameSizeAs(expected);
         for (int t = 0; t < expected.size(); t++) {
@@ -345,182 +277,7 @@ class ResumeNeutralityTest {
     }
 
     private SimulationRestorer.RestoredState restore(World world, int parallelism) {
-        return restore(world.sim, world.provider, world.plugins, parallelism);
-    }
-
-    /**
-     * Instantiates the configured plugins the way the restorer does and registers them, so the
-     * reference run carries the same plugin state the resumed run will be rebuilt with.
-     */
-    private static List<ISimulationPlugin> registerConfiguredPlugins(
-            Simulation sim, com.typesafe.config.Config config, IRandomProvider provider) {
-        List<ISimulationPlugin> plugins = new ArrayList<>();
-        for (com.typesafe.config.Config pluginConfig : config.getConfigList("plugins")) {
-            String className = pluginConfig.getString("className");
-            com.typesafe.config.Config options = pluginConfig.hasPath("options")
-                    ? pluginConfig.getConfig("options") : ConfigFactory.empty();
-            try {
-                Object plugin = Class.forName(className)
-                        .getConstructor(IRandomProvider.class, com.typesafe.config.Config.class)
-                        .newInstance(provider, options);
-                if (plugin instanceof ITickPlugin p) sim.addTickPlugin(p);
-                if (plugin instanceof IInstructionInterceptor p) sim.addInstructionInterceptor(p);
-                if (plugin instanceof IDeathHandler p) sim.addDeathHandler(p);
-                if (plugin instanceof IBirthHandler p) sim.addBirthHandler(p);
-                plugins.add((ISimulationPlugin) plugin);
-            } catch (ReflectiveOperationException e) {
-                throw new IllegalStateException("test plugin must be instantiable: " + className, e);
-            }
-        }
-        return plugins;
-    }
-
-    /** The plugin instances a restored state holds, each exactly once, in registration order. */
-    private static List<ISimulationPlugin> uniquePlugins(SimulationRestorer.RestoredState state) {
-        java.util.LinkedHashSet<ISimulationPlugin> unique = new java.util.LinkedHashSet<>();
-        state.tickPlugins().forEach(p -> unique.add(p.plugin()));
-        state.instructionInterceptors().forEach(p -> unique.add((ISimulationPlugin) p.interceptor()));
-        state.deathHandlers().forEach(p -> unique.add((ISimulationPlugin) p.handler()));
-        state.birthHandlers().forEach(p -> unique.add((ISimulationPlugin) p.handler()));
-        return new ArrayList<>(unique);
-    }
-
-    /**
-     * Serializes the live simulation the way the engine does (serializer for organisms, encoder
-     * for cells and counters), then rebuilds it with the restorer from that snapshot.
-     */
-    private SimulationRestorer.RestoredState restore(
-            Simulation live, IRandomProvider liveProvider, List<ISimulationPlugin> plugins, int parallelism) {
-        OrganismStateSerializer serializer = new OrganismStateSerializer();
-        List<OrganismState> states = live.getOrganisms().stream().map(serializer::serialize).toList();
-
-        // The engine labels the state after simulation tick T with T, while the simulation's own
-        // counter already stands at T + 1 at that point; the snapshot must carry the engine's label.
-        long snapshotTick = live.getCurrentTick() - 1;
-        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder("resume-test", (int) live.getEnvironment().getTotalCells(), 1, 1, 1);
-        Optional<TickDataChunk> chunk = encoder.captureTick(
-                snapshotTick, live.getEnvironment(), states,
-                live.getTotalOrganismsCreatedCount(), live.getTotalUniqueGenomesCount(), live.getAllGenomesEverSeen(),
-                ByteString.copyFrom(liveProvider.saveState()), pluginStates(plugins));
-        TickData snapshot = chunk.or(encoder::flushPartialChunk).orElseThrow().getSnapshot();
-
-        SimulationMetadata metadata = SimulationMetadata.newBuilder()
-                .setSimulationRunId("resume-test")
-                .setInitialSeed(SEED)
-                .setResolvedConfigJson(CONFIG_JSON)
-                .build();
-        return SimulationRestorer.restore(new ResumeCheckpoint(metadata, snapshot), new SeededRandomProvider(SEED), parallelism);
-    }
-
-    // ===================================================================================
-    // Trajectory
-    // ===================================================================================
-
-    /** Ticks and records, per tick, IP, DR0 and energy of every organism in index order. */
-    private static List<List<String>> tick(Simulation sim, int n) {
-        List<List<String>> trajectory = new ArrayList<>(n);
-        for (int i = 0; i < n; i++) {
-            sim.tick();
-            List<Organism> organisms = sim.getOrganisms();
-            for (Organism organism : organisms) {
-                assertThat(organism.isInstructionFailed())
-                        .as("organism %d failed at tick %d: %s", organism.getId(), sim.getCurrentTick(), organism.getFailureReason())
-                        .isFalse();
-            }
-            List<String> state = new ArrayList<>(organisms.size() + 1);
-            for (Organism organism : organisms) {
-                state.add(describe(organism));
-            }
-            state.add(describe(sim.getEnvironment()));
-            trajectory.add(state);
-        }
-        return trajectory;
-    }
-
-    /**
-     * Every piece of state an organism carries, as one line. A resumed run has to reproduce all of
-     * it, not just position and energy — a difference in a stack, a saved register snapshot or the
-     * persistent store changes the trajectory just as surely, only later and less visibly.
-     */
-    private static String describe(Organism o) {
-        StringBuilder line = new StringBuilder(256);
-        line.append("organism=").append(o.getId())
-            .append(" parent=").append(o.getParentId())
-            .append(" born=").append(o.getBirthTick())
-            .append(" program=").append(o.getProgramId())
-            .append(" genome=").append(o.getGenomeHash())
-            .append(" ip=").append(Arrays.toString(o.getIp()))
-            .append(" dv=").append(Arrays.toString(o.getDv()))
-            .append(" start=").append(Arrays.toString(o.getInitialPosition()))
-            .append(" er=").append(o.getEr())
-            .append(" sr=").append(o.getSr())
-            .append(" mr=").append(o.getMr())
-            .append(" dead=").append(o.isDead())
-            .append(" deathTick=").append(o.getDeathTick())
-            .append(" failed=").append(o.isInstructionFailed())
-            .append(" reason=").append(o.getFailureReason())
-            .append(" proc=").append(o.getCurrentProcLabelHash())
-            .append(" activeDp=").append(o.getActiveDpIndex())
-            .append(" dps=").append(vectors(o.getDps()))
-            .append(" registers=").append(values(Arrays.asList(o.getRegisters())))
-            .append(" dataStack=").append(values(new ArrayList<>(o.getDataStack())))
-            .append(" locationStack=").append(vectors(new ArrayList<>(o.getLocationStack())))
-            .append(" callStack=").append(frames(o.getCallStack()))
-            .append(" persistent=").append(persistent(o.getPersistentRegisterState()));
-        return line.toString();
-    }
-
-    /** Every occupied cell of the world, so a molecule restored to the wrong place shows up. */
-    private static String describe(Environment environment) {
-        StringBuilder line = new StringBuilder(256).append("world=");
-        int totalCells = environment.getTotalCells();
-        for (int index = 0; index < totalCells; index++) {
-            int[] coord = environment.getCoordinateFromIndex(index);
-            int molecule = environment.getMolecule(coord).toInt();
-            int owner = environment.getOwnerId(coord);
-            if (molecule != 0 || owner != 0) {
-                line.append(index).append(':').append(molecule).append('/').append(owner).append(' ');
-            }
-        }
-        return line.toString();
-    }
-
-    private static String values(List<Object> registerValues) {
-        StringBuilder out = new StringBuilder("[");
-        for (Object value : registerValues) {
-            out.append(value instanceof int[] vector ? Arrays.toString(vector) : String.valueOf(value)).append(',');
-        }
-        return out.append(']').toString();
-    }
-
-    private static String vectors(List<int[]> coordinates) {
-        StringBuilder out = new StringBuilder("[");
-        for (int[] coordinate : coordinates) {
-            out.append(Arrays.toString(coordinate)).append(',');
-        }
-        return out.append(']').toString();
-    }
-
-    private static String frames(Deque<Organism.ProcFrame> callStack) {
-        StringBuilder out = new StringBuilder("[");
-        for (Organism.ProcFrame frame : callStack) {
-            out.append(frame.labelHash())
-               .append('@').append(Arrays.toString(frame.absoluteReturnIp()))
-               .append("<-").append(Arrays.toString(frame.absoluteCallIp()))
-               .append(" saved=").append(frame.savedRegisters() == null
-                       ? "none" : values(Arrays.asList(frame.savedRegisters())))
-               .append(" bindings=").append(new TreeMap<>(frame.parameterBindings()))
-               .append(';');
-        }
-        return out.append(']').toString();
-    }
-
-    private static String persistent(Map<Integer, Object[]> persistentState) {
-        StringBuilder out = new StringBuilder("{");
-        for (Map.Entry<Integer, Object[]> entry : new TreeMap<>(persistentState).entrySet()) {
-            out.append(entry.getKey()).append('=')
-               .append(values(Arrays.asList(entry.getValue()))).append(';');
-        }
-        return out.append('}').toString();
+        return ResumeNeutralityHarness.restore(
+                world.sim, world.provider, world.plugins, CONFIG_JSON, parallelism);
     }
 }

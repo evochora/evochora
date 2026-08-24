@@ -15,7 +15,7 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 /**
- * Keeps {@link ResumeNeutralityTest} in step with the plugins that exist.
+ * Keeps {@link ResumeNeutralityHarness} in step with the plugins that exist.
  * <p>
  * A plugin carries state across a resume like any other part of the simulation, so leaving one out
  * of the neutrality run means its state is never proven to survive. Reading the plugin list from a
@@ -50,12 +50,12 @@ class PluginCoverageTest {
                 .filter(c -> !c.getModifiers().contains(JavaModifier.ABSTRACT))
                 .map(JavaClass::getFullName)
                 .filter(name -> !EXCLUDED.contains(name))
-                .filter(name -> !ResumeNeutralityTest.PLUGINS_JSON.contains(name))
+                .filter(name -> !ResumeNeutralityHarness.pluginsJson(1.0).contains(name))
                 .sorted()
                 .toList();
 
         assertThat(uncovered)
-                .as("plugins missing from ResumeNeutralityTest.PLUGINS_JSON — add them there, or "
+                .as("plugins missing from ResumeNeutralityHarness.pluginsJson(1.0) — add them there, or "
                         + "exclude them in this test with a reason")
                 .isEmpty();
     }
@@ -75,7 +75,7 @@ class PluginCoverageTest {
                 .map(JavaClass::getFullName)
                 .toList();
 
-        List<String> configured = ResumeNeutralityTest.PLUGINS_JSON.lines()
+        List<String> configured = ResumeNeutralityHarness.pluginsJson(1.0).lines()
                 .filter(line -> line.contains("\"className\""))
                 .map(line -> line.substring(line.indexOf("\"org.evochora") + 1))
                 .map(line -> line.substring(0, line.indexOf('"')))
