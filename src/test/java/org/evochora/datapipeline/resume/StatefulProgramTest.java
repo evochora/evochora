@@ -2,6 +2,8 @@ package org.evochora.datapipeline.resume;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.ArrayList;
+import java.util.List;
 
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
@@ -12,6 +14,7 @@ import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Organism;
 import org.evochora.test.utils.SimulationTestUtils;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -29,15 +32,24 @@ class StatefulProgramTest {
 
     private static final int SIZE = 64;
 
+    private final List<Simulation> simulations = new ArrayList<>();
+
     @BeforeAll
     static void init() {
         Instruction.init();
+    }
+
+    @AfterEach
+    void shutdownSimulations() {
+        simulations.forEach(Simulation::shutdown);
+        simulations.clear();
     }
 
     @Test
     void programTouchesEveryOrganismStructure_withoutFailing() {
         Environment environment = new Environment(new int[]{SIZE, SIZE}, true);
         Simulation simulation = SimulationTestUtils.createSimulation(environment);
+        simulations.add(simulation);
         simulation.setRandomProvider(new SeededRandomProvider(42L));
 
         Organism organism = StatefulProgram.place(simulation, environment, new int[]{0, 0}, 1_000_000);
@@ -55,7 +67,6 @@ class StatefulProgramTest {
         // Death by starvation or by exceeding the entropy limit is already covered by isDead above;
         // the remaining energy shows how much headroom the neutrality test has.
         assertThat(organism.getEr()).as("energy left").isGreaterThan(0);
-        simulation.shutdown();
     }
 
     /**
@@ -68,6 +79,7 @@ class StatefulProgramTest {
     void programFillsEveryStructureAtSomePointDuringOnePass() {
         Environment environment = new Environment(new int[]{SIZE, SIZE}, true);
         Simulation simulation = SimulationTestUtils.createSimulation(environment);
+        simulations.add(simulation);
         simulation.setRandomProvider(new SeededRandomProvider(42L));
 
         Organism organism = StatefulProgram.place(simulation, environment, new int[]{0, 0}, 1_000_000);
@@ -106,8 +118,6 @@ class StatefulProgramTest {
         assertThat(environment.getOwnerId(StatefulProgram.SCRATCH_CELL))
                 .as("program wrote to the world")
                 .isEqualTo(organism.getId());
-
-        simulation.shutdown();
     }
 
     private static boolean isNonZeroVector(Object value) {

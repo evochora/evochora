@@ -21,12 +21,12 @@ import org.evochora.runtime.model.Organism;
  * parent's cells whose marker matches the parent's marker register at the moment of the fork. This
  * class therefore lays out a second block of cells beside the program — the genome the child
  * inherits — and marks it. It holds what each plugin needs: labels for deletion and duplication,
- * code and data molecules for substitution, and a run of empty cells as the target region for
- * duplication and insertion.
+ * and code and data molecules for substitution.
  * <p>
- * The empty cells carry the marker too. An empty cell with a marker is not the integer zero, so it
- * is transferred like any other, and the transfer clears the marker — leaving the child with cells
- * that are genuinely empty and genuinely its own.
+ * The region the plugins write into is not inherited. Empty cells have no owner and never appear
+ * among a child's cells, so the plugins look for the gap <em>between</em> inherited molecules: they
+ * walk each scan line from the child's first to its last owned cell and treat everything empty in
+ * between as writable. The layout therefore leaves a run of untouched cells in the middle.
  */
 final class ForkProgram {
 

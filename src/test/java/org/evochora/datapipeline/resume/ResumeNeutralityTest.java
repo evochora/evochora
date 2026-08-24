@@ -36,7 +36,6 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import com.google.protobuf.ByteString;
 import com.typesafe.config.ConfigFactory;
 
 /**
@@ -102,8 +101,13 @@ class ResumeNeutralityTest {
         // one describes a frame no procedure call could leave behind, and RET would reject it.
         organism.writeOperand(RegisterBank.PDR.base, 7);
         organism.writeOperand(RegisterBank.PLR.base, new int[]{8, 9});
+        // Two frames, as a procedure calling another procedure leaves behind. One frame would hide
+        // any ordering mistake in the round trip, because a single-element stack reads the same in
+        // both directions.
         organism.getCallStack().push(new Organism.ProcFrame(123, new int[]{5, 5}, new int[]{6, 6},
                 organism.snapshotStackSavedRegisters(), java.util.Map.of(0, 1)));
+        organism.getCallStack().push(new Organism.ProcFrame(456, new int[]{7, 7}, new int[]{8, 8},
+                organism.snapshotStackSavedRegisters(), java.util.Map.of(1, 2)));
         organism.setDp(1, new int[]{9, 9});
         organism.setActiveDpIndex(1);
         organism.addSr(17);
@@ -120,59 +124,6 @@ class ResumeNeutralityTest {
 
         assertThat(ResumeNeutralityHarness.describe(rebuilt))
                 .isEqualTo(ResumeNeutralityHarness.describe(organism));
-    }
-
-    /**
-     * Compares every piece of simulation state an organism carries, through the runtime's own
-     * accessors — independent of how the serializer represents it, so that a field the serializer
-     * forgets shows up as a difference here.
-     */
-    private static void assertSameState(Organism actual, Organism expected) {
-        assertThat(actual.getId()).isEqualTo(expected.getId());
-        assertThat(actual.getParentId()).isEqualTo(expected.getParentId());
-        assertThat(actual.getBirthTick()).isEqualTo(expected.getBirthTick());
-        assertThat(actual.getProgramId()).isEqualTo(expected.getProgramId());
-        assertThat(actual.getEr()).as("energy").isEqualTo(expected.getEr());
-        assertThat(actual.getSr()).as("entropy").isEqualTo(expected.getSr());
-        assertThat(actual.getMr()).as("marker").isEqualTo(expected.getMr());
-        assertThat(actual.getIp()).isEqualTo(expected.getIp());
-        assertThat(actual.getDv()).isEqualTo(expected.getDv());
-        assertThat(actual.getInitialPosition()).isEqualTo(expected.getInitialPosition());
-        assertThat(actual.getDps()).usingRecursiveComparison().isEqualTo(expected.getDps());
-        assertThat(actual.getActiveDpIndex()).as("active DP").isEqualTo(expected.getActiveDpIndex());
-        assertThat(actual.getRegisters()).usingRecursiveComparison().isEqualTo(expected.getRegisters());
-        assertThat(new ArrayList<>(actual.getDataStack())).usingRecursiveComparison()
-                .isEqualTo(new ArrayList<>(expected.getDataStack()));
-        assertThat(new ArrayList<>(actual.getLocationStack())).usingRecursiveComparison()
-                .isEqualTo(new ArrayList<>(expected.getLocationStack()));
-        assertThat(new ArrayList<>(actual.getCallStack())).usingRecursiveComparison()
-                .isEqualTo(new ArrayList<>(expected.getCallStack()));
-        assertThat(actual.isDead()).isEqualTo(expected.isDead());
-        assertThat(actual.getDeathTick()).isEqualTo(expected.getDeathTick());
-        assertThat(actual.isInstructionFailed()).isEqualTo(expected.isInstructionFailed());
-        assertThat(actual.getFailureReason()).isEqualTo(expected.getFailureReason());
-        assertThat(expected.getFailureCallStack()).as("scenario provides a failure call stack").isNotEmpty();
-        assertThat(new ArrayList<>(actual.getFailureCallStack())).usingRecursiveComparison()
-                .isEqualTo(new ArrayList<>(expected.getFailureCallStack()));
-        assertThat(actual.getGenomeHash()).isEqualTo(expected.getGenomeHash());
-        assertThat(actual.getCurrentProcLabelHash()).isEqualTo(expected.getCurrentProcLabelHash());
-        assertThat(actual.isStackSavedDirty()).isEqualTo(expected.isStackSavedDirty());
-        assertThat(actual.isPersistentDirty()).isEqualTo(expected.isPersistentDirty());
-        assertThat(actual.getPersistentRegisterState()).usingRecursiveComparison()
-                .isEqualTo(expected.getPersistentRegisterState());
-    }
-
-    /** One state entry per plugin instance, in registration order, as the engine writes them. */
-    private static List<org.evochora.datapipeline.api.contracts.PluginState> pluginStates(
-            List<ISimulationPlugin> plugins) {
-        List<org.evochora.datapipeline.api.contracts.PluginState> states = new ArrayList<>(plugins.size());
-        for (ISimulationPlugin plugin : plugins) {
-            states.add(org.evochora.datapipeline.api.contracts.PluginState.newBuilder()
-                    .setPluginClass(plugin.getClass().getName())
-                    .setStateBlob(ByteString.copyFrom(plugin.saveState()))
-                    .build());
-        }
-        return states;
     }
 
     // ===================================================================================
@@ -255,25 +206,22 @@ class ResumeNeutralityTest {
         int secondPause = 19;
 
         World reference = new World(parallelismBefore);
-        List<List<String>> expected = ResumeNeutralityHarness.tick(reference.sim, totalTicks, false);
+        List<List<String>> expected = ResumeNeutralityHarness.tick(reference.sim, reference.plugins, totalTicks, false);
 
         World interrupted = new World(parallelismBefore);
-        List<List<String>> actual = new ArrayList<>(ResumeNeutralityHarness.tick(interrupted.sim, firstPause, false));
+        List<List<String>> actual = new ArrayList<>(ResumeNeutralityHarness.tick(interrupted.sim, interrupted.plugins, firstPause, false));
         SimulationRestorer.RestoredState onceResumed = restore(interrupted, parallelismAfter);
         simulations.add(onceResumed.simulation());
-        actual.addAll(ResumeNeutralityHarness.tick(onceResumed.simulation(), secondPause - firstPause, false));
+        actual.addAll(ResumeNeutralityHarness.tick(onceResumed.simulation(),
+                ResumeNeutralityHarness.uniquePlugins(onceResumed), secondPause - firstPause, false));
         SimulationRestorer.RestoredState twiceResumed = ResumeNeutralityHarness.restore(
                 onceResumed.simulation(), onceResumed.randomProvider(),
                 ResumeNeutralityHarness.uniquePlugins(onceResumed), CONFIG_JSON, parallelismAfter);
         simulations.add(twiceResumed.simulation());
-        actual.addAll(ResumeNeutralityHarness.tick(twiceResumed.simulation(), totalTicks - secondPause, false));
+        actual.addAll(ResumeNeutralityHarness.tick(twiceResumed.simulation(),
+                ResumeNeutralityHarness.uniquePlugins(twiceResumed), totalTicks - secondPause, false));
 
-        assertThat(actual).as("tick count").hasSameSizeAs(expected);
-        for (int t = 0; t < expected.size(); t++) {
-            assertThat(actual.get(t))
-                    .as("state after tick %d differs (parallelism %d -> %d)", t + 1, parallelismBefore, parallelismAfter)
-                    .isEqualTo(expected.get(t));
-        }
+        ResumeNeutralityHarness.assertSameTrajectory(expected, actual, "parallelism %d -> %d".formatted(parallelismBefore, parallelismAfter));
     }
 
     private SimulationRestorer.RestoredState restore(World world, int parallelism) {

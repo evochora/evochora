@@ -268,7 +268,8 @@ final class ResumeNeutralityHarness {
      *                      than as a puzzling state difference later
      * @return one entry per tick, each holding a line per organism plus one for the world
      */
-    static List<List<String>> tick(Simulation sim, int n, boolean allowFailures) {
+    static List<List<String>> tick(Simulation sim, List<ISimulationPlugin> plugins, int n,
+                                   boolean allowFailures) {
         List<List<String>> trajectory = new ArrayList<>(n);
         for (int i = 0; i < n; i++) {
             sim.tick();
@@ -281,14 +282,37 @@ final class ResumeNeutralityHarness {
                             .isFalse();
                 }
             }
-            List<String> state = new ArrayList<>(organisms.size() + 1);
+            List<String> state = new ArrayList<>(organisms.size() + 2);
             for (Organism organism : organisms) {
                 state.add(describe(organism));
             }
             state.add(describe(sim.getEnvironment()));
+            state.add(describe(plugins));
             trajectory.add(state);
         }
         return trajectory;
+    }
+
+    /**
+     * The state of every plugin, keyed by class. A plugin that resumes with a fresh state changes the
+     * run from that point on — the geyser positions are the clearest case — so it belongs in the
+     * comparison like any organism field. Keyed rather than positional, because the write side groups
+     * plugins by interface while the read side follows configuration order.
+     */
+    static String describe(List<ISimulationPlugin> plugins) {
+        StringBuilder line = new StringBuilder(128).append("plugins=");
+        for (Map.Entry<String, String> entry : pluginStateByClass(plugins).entrySet()) {
+            line.append(entry.getKey()).append(':').append(entry.getValue()).append(' ');
+        }
+        return line.toString();
+    }
+
+    private static TreeMap<String, String> pluginStateByClass(List<ISimulationPlugin> plugins) {
+        TreeMap<String, String> byClass = new TreeMap<>();
+        for (ISimulationPlugin plugin : plugins) {
+            byClass.put(plugin.getClass().getName(), Arrays.toString(plugin.saveState()));
+        }
+        return byClass;
     }
 
     /**
@@ -320,6 +344,10 @@ final class ResumeNeutralityHarness {
             .append(" dataStack=").append(values(new ArrayList<>(o.getDataStack())))
             .append(" locationStack=").append(vectors(new ArrayList<>(o.getLocationStack())))
             .append(" callStack=").append(frames(o.getCallStack()))
+            .append(" failureCallStack=").append(o.getFailureCallStack() == null
+                    ? "none" : frames(o.getFailureCallStack()))
+            .append(" stackSavedDirty=").append(o.isStackSavedDirty())
+            .append(" persistentDirty=").append(o.isPersistentDirty())
             .append(" persistent=").append(persistent(o.getPersistentRegisterState()))
             .toString();
     }
@@ -337,6 +365,55 @@ final class ResumeNeutralityHarness {
             }
         }
         return line.toString();
+    }
+
+    /**
+     * Compares two trajectories and fails on the first tick that differs, naming the entry and the
+     * part of it that changed.
+     * <p>
+     * A state line holds every field an organism carries, so a plain equality failure prints two
+     * lines of several hundred characters and leaves the reader to spot the difference. When a
+     * neutrality run does fail, the interesting question is always <em>which</em> field moved — that
+     * is what points at the cause.
+     *
+     * @param expected the uninterrupted run
+     * @param actual the interrupted and resumed run
+     * @param scenario how to describe this run in the failure message
+     */
+    static void assertSameTrajectory(List<List<String>> expected, List<List<String>> actual, String scenario) {
+        assertThat(actual).as("tick count (%s)", scenario).hasSameSizeAs(expected);
+        for (int tick = 0; tick < expected.size(); tick++) {
+            List<String> want = expected.get(tick);
+            List<String> got = actual.get(tick);
+            if (want.equals(got)) {
+                continue;
+            }
+            assertThat(got).as("number of state entries after tick %d (%s)", tick + 1, scenario)
+                    .hasSameSizeAs(want);
+            for (int entry = 0; entry < want.size(); entry++) {
+                assertThat(got.get(entry))
+                        .as("after tick %d, entry %d differs (%s)%n  %s",
+                                tick + 1, entry, scenario, firstDifference(want.get(entry), got.get(entry)))
+                        .isEqualTo(want.get(entry));
+            }
+        }
+    }
+
+    /** Names the first field where two state lines diverge, with both values. */
+    private static String firstDifference(String expected, String actual) {
+        String[] expectedFields = expected.split(" (?=[a-zA-Z]+=)");
+        String[] actualFields = actual.split(" (?=[a-zA-Z]+=)");
+        for (int i = 0; i < Math.min(expectedFields.length, actualFields.length); i++) {
+            if (!expectedFields[i].equals(actualFields[i])) {
+                return "first differing field:%n    expected: %s%n    actual:   %s"
+                        .formatted(abbreviate(expectedFields[i]), abbreviate(actualFields[i]));
+            }
+        }
+        return "the lines differ in length, not in a shared field";
+    }
+
+    private static String abbreviate(String field) {
+        return field.length() <= 200 ? field : field.substring(0, 200) + "…";
     }
 
     private static String values(List<Object> registerValues) {

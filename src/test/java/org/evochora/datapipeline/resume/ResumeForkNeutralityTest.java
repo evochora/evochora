@@ -86,7 +86,7 @@ class ResumeForkNeutralityTest {
         simulations.add(fixture.sim());
         Organism parent = ForkProgram.place(fixture.sim(), fixture.env(), new int[]{0, 0}, PARENT_ENERGY);
 
-        ResumeNeutralityHarness.tick(fixture.sim(), ForkProgram.FORK_TICK + 2, true);
+        ResumeNeutralityHarness.tick(fixture.sim(), fixture.plugins(), ForkProgram.FORK_TICK + 2, true);
 
         Organism child = child(fixture.sim(), parent);
         return cellsOf(fixture.env(), child.getId());
@@ -102,35 +102,32 @@ class ResumeForkNeutralityTest {
         int pauseAfterBirth = ForkProgram.FORK_TICK + 4;
 
         ResumeNeutralityHarness.Fixture reference = newWorld(parallelism);
-        List<List<String>> expected = ResumeNeutralityHarness.tick(reference.sim(), totalTicks, true);
+        List<List<String>> expected = ResumeNeutralityHarness.tick(reference.sim(), reference.plugins(), totalTicks, true);
 
         ResumeNeutralityHarness.Fixture interrupted = newWorld(parallelism);
         List<List<String>> actual = new ArrayList<>(
-                ResumeNeutralityHarness.tick(interrupted.sim(), pauseBeforeBirth, true));
+                ResumeNeutralityHarness.tick(interrupted.sim(), interrupted.plugins(), pauseBeforeBirth, true));
 
         SimulationRestorer.RestoredState beforeBirth = ResumeNeutralityHarness.restore(
                 interrupted.sim(), interrupted.provider(), interrupted.plugins(), MUTATING, parallelism);
         simulations.add(beforeBirth.simulation());
-        actual.addAll(ResumeNeutralityHarness.tick(
-                beforeBirth.simulation(), pauseAfterBirth - pauseBeforeBirth, true));
+        actual.addAll(ResumeNeutralityHarness.tick(beforeBirth.simulation(),
+                ResumeNeutralityHarness.uniquePlugins(beforeBirth),
+                pauseAfterBirth - pauseBeforeBirth, true));
 
         SimulationRestorer.RestoredState afterBirth = ResumeNeutralityHarness.restore(
                 beforeBirth.simulation(), beforeBirth.randomProvider(),
                 ResumeNeutralityHarness.uniquePlugins(beforeBirth), MUTATING, parallelism);
         simulations.add(afterBirth.simulation());
-        actual.addAll(ResumeNeutralityHarness.tick(
-                afterBirth.simulation(), totalTicks - pauseAfterBirth, true));
+        actual.addAll(ResumeNeutralityHarness.tick(afterBirth.simulation(),
+                ResumeNeutralityHarness.uniquePlugins(afterBirth),
+                totalTicks - pauseAfterBirth, true));
 
         assertThat(actual.get(totalTicks - 1))
                 .as("the run must have produced a child")
                 .hasSizeGreaterThan(expected.get(0).size());
 
-        assertThat(actual).as("tick count").hasSameSizeAs(expected);
-        for (int t = 0; t < expected.size(); t++) {
-            assertThat(actual.get(t))
-                    .as("state after tick %d differs (parallelism %d)", t + 1, parallelism)
-                    .isEqualTo(expected.get(t));
-        }
+        ResumeNeutralityHarness.assertSameTrajectory(expected, actual, "parallelism " + parallelism);
     }
 
     private ResumeNeutralityHarness.Fixture newWorld(int parallelism) {
