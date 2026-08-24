@@ -484,7 +484,7 @@ public class SimulationRestorer {
      *
      * @param protoType the Protobuf parameter type, must not be null
      * @return the corresponding compiler parameter type
-     * @throws IllegalArgumentException if the value is null, unrecognised or unknown
+     * @throws ResumeException if the value is null, unrecognised or unknown
      */
     private static ParamType convertProtoParamType(
             org.evochora.datapipeline.api.contracts.ParamType protoType) {
@@ -518,9 +518,15 @@ public class SimulationRestorer {
      */
     private static TokenInfo convertProtoTokenInfo(
             org.evochora.datapipeline.api.contracts.TokenInfo proto) {
+        TokenKind kind;
+        try {
+            kind = TokenKind.valueOf(proto.getTokenType());
+        } catch (IllegalArgumentException e) {
+            throw new ResumeException("Unknown token type: " + proto.getTokenType(), e);
+        }
         return new TokenInfo(
             proto.getTokenText(),
-            TokenKind.valueOf(proto.getTokenType()),
+            kind,
             proto.getScope(),
             proto.hasQualifiedName() ? proto.getQualifiedName() : null
         );
@@ -627,7 +633,7 @@ public class SimulationRestorer {
             if (state.getFailureCallStackCount() > 0) {
                 Deque<Organism.ProcFrame> failureStack = new ArrayDeque<>();
                 for (org.evochora.datapipeline.api.contracts.ProcFrame protoFrame : state.getFailureCallStackList()) {
-                    failureStack.push(convertProcFrame(protoFrame, organismId));
+                    failureStack.addLast(convertProcFrame(protoFrame, organismId));
                 }
                 builder.failureCallStack(failureStack);
             }
@@ -842,6 +848,10 @@ public class SimulationRestorer {
                         && !(plugin instanceof IDeathHandler) && !(plugin instanceof IBirthHandler)) {
                     log.warn("Plugin {} does not implement ITickPlugin, IInstructionInterceptor, IDeathHandler, or IBirthHandler", className);
                 }
+            } catch (ResumeException e) {
+                // Already says what is wrong with the checkpoint; wrapping it would replace that with
+                // "failed to instantiate", which is not what happened.
+                throw e;
             } catch (Exception e) {
                 throw new ResumeException("Failed to instantiate plugin: " + className, e);
             }

@@ -566,7 +566,8 @@ class SimulationRestorerTest {
         assertThatThrownBy(() -> SimulationRestorer.restore(
                     new ResumeCheckpoint(metadataWithLabelRewritePlugin(), snapshot), randomProvider, 1))
                 .isInstanceOf(ResumeException.class)
-                .hasMessageContaining(LabelRewritePlugin.class.getName());
+                .hasMessageContaining(LabelRewritePlugin.class.getName())
+                .hasMessageContaining("holds no state");
     }
 
     @Test
@@ -721,6 +722,54 @@ class SimulationRestorerTest {
         assertThatThrownBy(() -> SimulationRestorer.restore(
                     new ResumeCheckpoint(metadata, snapshot), randomProvider, 1))
                 .isInstanceOf(ResumeException.class);
+    }
+
+    /**
+     * A failure call stack is a copy of the call stack, so its frames carry an order: the frame the
+     * organism was in when the instruction failed, then its callers. Restoring it reversed would
+     * report the failure as having happened in the outermost procedure.
+     */
+    @Test
+    void restore_FailureCallStack_KeepsFrameOrder() {
+        org.evochora.datapipeline.api.contracts.ProcFrame outer = frame(100);
+        org.evochora.datapipeline.api.contracts.ProcFrame inner = frame(200);
+
+        SimulationRestorer.RestoredState state = restoreOrganism(wellFormedOrganism()
+                .setInstructionFailed(true)
+                .setFailureReason("failed inside a nested call")
+                .addFailureCallStack(outer)
+                .addFailureCallStack(inner)
+                .build());
+
+        Organism organism = state.simulation().getOrganisms().get(0);
+        assertThat(organism.getFailureCallStack())
+                .extracting(Organism.ProcFrame::labelHash)
+                .as("frames must come back in the order they were written")
+                .containsExactly(100, 200);
+    }
+
+    @Test
+    void restore_UnknownTokenType_Rejected() {
+        SimulationMetadata metadata = metadataWithToken(
+                org.evochora.datapipeline.api.contracts.TokenInfo.newBuilder()
+                    .setTokenText("HARVEST")
+                    .setTokenType("NOT_A_TOKEN_KIND")
+                    .setScope("global")
+                    .build());
+
+        assertThatThrownBy(() -> SimulationRestorer.restore(
+                    new ResumeCheckpoint(metadata, snapshotWith(createOrganismState(1, 500))),
+                    randomProvider, 1))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining("NOT_A_TOKEN_KIND");
+    }
+
+    private org.evochora.datapipeline.api.contracts.ProcFrame frame(int labelHash) {
+        return org.evochora.datapipeline.api.contracts.ProcFrame.newBuilder()
+            .setLabelHash(labelHash)
+            .setAbsoluteReturnIp(createVector(5, 0))
+            .setAbsoluteCallIp(createVector(3, 0))
+            .build();
     }
 
     // ==================== Token metadata round trip ====================

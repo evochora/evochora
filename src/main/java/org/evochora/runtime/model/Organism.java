@@ -530,10 +530,12 @@ public class Organism {
                                 + ip.length + ", got " + (dp == null ? "null" : dp.length));
                     }
                 }
-                if (activeDpIndex < 0 || activeDpIndex >= dps.size()) {
-                    throw new IllegalStateException("Active data pointer index " + activeDpIndex
-                            + " lies outside the " + Config.NUM_DATA_POINTERS + " data pointers");
-                }
+            }
+            // Checked outside the block above as well: with no pointers supplied, any index other
+            // than the untouched default cannot reference one.
+            if (activeDpIndex < 0 || activeDpIndex >= Math.max(dps.size(), 1)) {
+                throw new IllegalStateException("Active data pointer index " + activeDpIndex
+                        + " lies outside the " + dps.size() + " data pointers");
             }
             requireStackWithinLimit("Data stack", dataStack.size(), Config.DS_MAX_DEPTH);
             requireStackWithinLimit("Location stack", locationStack.size(), Config.LOCATION_STACK_MAX_DEPTH);

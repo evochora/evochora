@@ -447,6 +447,26 @@ class OrganismRestoreBuilderTest {
             .hasMessageContaining("dimension");
     }
 
+    /**
+     * An index is rejected even when no data pointers were supplied: it then cannot reference any
+     * pointer at all. Only the untouched default of zero passes, so restoring a minimal organism
+     * stays possible.
+     */
+    @Test
+    @Tag("unit")
+    void testRestoreBuilder_ActiveDpIndexWithoutDataPointers_ThrowsException() {
+        assertThatThrownBy(() ->
+            Organism.restore(1, 0L)
+                .ip(new int[]{0, 0})
+                .dv(new int[]{1, 0})
+                .initialPosition(new int[]{0, 0})
+                .activeDpIndex(1)
+                .build(simulation)
+        )
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("1");
+    }
+
     @Test
     @Tag("unit")
     void testRestoreBuilder_ActiveDpIndexOutOfRange_ThrowsException() {
