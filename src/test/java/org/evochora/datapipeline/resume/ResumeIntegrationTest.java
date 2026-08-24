@@ -35,6 +35,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import org.evochora.test.utils.ProtoTestUtils;
 
 /**
  * Integration tests for the resume-from-snapshot functionality.
@@ -287,6 +288,7 @@ class ResumeIntegrationTest {
             .addOrganisms(organism)
             .setCellColumns(CellDataColumns.newBuilder().build())
             .setTotalOrganismsCreated(1)
+            .setRngState(ProtoTestUtils.rngState(TEST_SEED))
             .build();
 
         TickDataChunk.Builder chunkBuilder = TickDataChunk.newBuilder()
@@ -322,6 +324,7 @@ class ResumeIntegrationTest {
             .addOrganisms(organism)
             .setCellColumns(CellDataColumns.newBuilder().build())
             .setTotalOrganismsCreated(1)
+            .setRngState(ProtoTestUtils.rngState(TEST_SEED))
             .build();
 
         TickDataChunk.Builder chunkBuilder = TickDataChunk.newBuilder()
@@ -350,14 +353,8 @@ class ResumeIntegrationTest {
     }
 
     private OrganismState createTestOrganism(int id, int energy) {
-        return OrganismState.newBuilder()
-            .setOrganismId(id)
-            .setEnergy(energy)
-            .setEntropyRegister(0)
+        return ProtoTestUtils.wellFormedOrganism(id, energy, 10, 10)
             .setBirthTick(1)
-            .setIp(createVector(10, 10))
-            .setDv(createVector(1, 0))
-            .setInitialPosition(createVector(5, 5))
             .build();
     }
 

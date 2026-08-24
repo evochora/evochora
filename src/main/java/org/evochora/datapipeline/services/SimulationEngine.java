@@ -748,8 +748,10 @@ public class SimulationEngine extends AbstractService implements IMemoryEstimata
      */
     private List<PluginState> extractPluginStates() {
         // Collect unique plugin instances (a plugin may be in multiple lists if it implements multiple
-        // interfaces) in registration order, so that snapshots list them in configuration order
-        // rather than in an order that varies between JVM runs.
+        // interfaces) in a stable order rather than one that varies between JVM runs. The order is by
+        // interface group first — tick plugins, then interceptors, death handlers, birth handlers — and
+        // by configuration order within each group. It is therefore not the configuration order itself,
+        // and readers must match states by plugin class, not by position.
         Set<ISimulationPlugin> uniquePlugins = new LinkedHashSet<>();
         for (PluginWithConfig p : tickPlugins) {
             uniquePlugins.add(p.plugin());

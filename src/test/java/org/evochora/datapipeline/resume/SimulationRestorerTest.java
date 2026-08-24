@@ -529,7 +529,7 @@ class SimulationRestorerTest {
 
         assertThatThrownBy(() -> restoreSnapshot(snapshotWithCells(cells)))
                 .isInstanceOf(ResumeException.class)
-                .hasMessageContaining("cell");
+                .hasMessageContaining("Cell columns disagree");
     }
 
     @Test

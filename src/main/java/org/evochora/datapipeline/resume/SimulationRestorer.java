@@ -4,8 +4,10 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.evochora.compiler.api.MachineInstructionInfo;
@@ -35,6 +37,7 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TokenMapEntry;
 import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.runtime.Simulation;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.label.ILabelMatchingStrategy;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
@@ -186,7 +189,7 @@ public class SimulationRestorer {
         Environment environment = new Environment(envProps, labelMatchingStrategy);
 
         // 5. Populate Environment cells from snapshot
-        populateCells(environment, snapshot.getCellColumns(), shape);
+        populateCells(environment, snapshot.getCellColumns());
 
         // 6. Extract state from snapshot (always complete since we resume from chunk start)
         // A snapshot labelled T holds the state after simulation tick T, at which point the
@@ -220,10 +223,12 @@ public class SimulationRestorer {
         );
 
         // 8. Restore RNG state
-        if (!rngState.isEmpty()) {
-            randomProvider.loadState(rngState.toByteArray());
-            log.debug("Loaded RNG state ({} bytes)", rngState.size());
+        if (rngState.isEmpty()) {
+            throw new ResumeException("Checkpoint at tick " + checkpoint.getCheckpointTick()
+                    + " carries no RNG state; the run cannot be continued deterministically");
         }
+        randomProvider.loadState(rngState.toByteArray());
+        log.debug("Loaded RNG state ({} bytes)", rngState.size());
         simulation.setRandomProvider(randomProvider);
 
         // 9. Restore ProgramArtifacts
@@ -293,38 +298,40 @@ public class SimulationRestorer {
 
     /**
      * Populates environment cells from columnar cell data.
+     * <p>
+     * The three columns are parallel: the i-th entries belong to one cell, so a length disagreement
+     * means the columns describe different cells and no pairing can be trusted. A flat index outside
+     * the environment belongs to a differently shaped world; converting it anyway would place the cell
+     * at a wrong but valid position, which is indistinguishable from correct data afterwards.
+     *
+     * @param environment the environment to populate
+     * @param cellData the columnar cell data from the snapshot
+     * @throws ResumeException if the columns disagree in length or an index lies outside the environment
      */
-    private static void populateCells(Environment environment, CellDataColumns cellData, int[] shape) {
+    private static void populateCells(Environment environment, CellDataColumns cellData) {
         List<Integer> flatIndices = cellData.getFlatIndicesList();
         List<Integer> moleculeData = cellData.getMoleculeDataList();
         List<Integer> ownerIds = cellData.getOwnerIdsList();
 
+        if (flatIndices.size() != moleculeData.size() || flatIndices.size() != ownerIds.size()) {
+            throw new ResumeException("Cell columns disagree in length: "
+                    + flatIndices.size() + " indices, " + moleculeData.size() + " molecules, "
+                    + ownerIds.size() + " owners");
+        }
+
+        int totalCells = environment.getTotalCells();
         for (int i = 0; i < flatIndices.size(); i++) {
             int flatIndex = flatIndices.get(i);
-            int moleculeValue = moleculeData.get(i);
-            int ownerId = ownerIds.get(i);
+            if (flatIndex < 0 || flatIndex >= totalCells) {
+                throw new ResumeException("Cell index " + flatIndex
+                        + " lies outside the environment's " + totalCells + " cells");
+            }
 
-            // Convert flat index to coordinates
-            int[] coord = flatIndexToCoord(flatIndex, shape);
-
-            // Convert packed int to Molecule and set with owner
+            int[] coord = environment.getCoordinateFromIndex(flatIndex);
             org.evochora.runtime.model.Molecule molecule =
-                org.evochora.runtime.model.Molecule.fromInt(moleculeValue);
-            environment.setMolecule(molecule, ownerId, coord);
+                org.evochora.runtime.model.Molecule.fromInt(moleculeData.get(i));
+            environment.setMolecule(molecule, ownerIds.get(i), coord);
         }
-    }
-
-    /**
-     * Converts a flat index to n-dimensional coordinates.
-     */
-    private static int[] flatIndexToCoord(int flatIndex, int[] shape) {
-        int[] coord = new int[shape.length];
-        int remaining = flatIndex;
-        for (int dim = shape.length - 1; dim >= 0; dim--) {
-            coord[dim] = remaining % shape[dim];
-            remaining /= shape[dim];
-        }
-        return coord;
     }
 
     /**
@@ -482,15 +489,15 @@ public class SimulationRestorer {
     private static ParamType convertProtoParamType(
             org.evochora.datapipeline.api.contracts.ParamType protoType) {
         if (protoType == null) {
-            throw new IllegalArgumentException("Protobuf ParamType cannot be null");
+            throw new ResumeException("Protobuf ParamType cannot be null");
         }
         return switch (protoType) {
             case PARAM_TYPE_REF -> ParamType.REF;
             case PARAM_TYPE_VAL -> ParamType.VAL;
             case PARAM_TYPE_LREF -> ParamType.LREF;
             case PARAM_TYPE_LVAL -> ParamType.LVAL;
-            case UNRECOGNIZED -> throw new IllegalArgumentException("Unrecognized ParamType: " + protoType);
-            default -> throw new IllegalArgumentException("Unknown ParamType: " + protoType);
+            case UNRECOGNIZED -> throw new ResumeException("Unrecognized ParamType: " + protoType);
+            default -> throw new ResumeException("Unknown ParamType: " + protoType);
         };
     }
 
@@ -504,13 +511,18 @@ public class SimulationRestorer {
 
     /**
      * Converts a protobuf TokenInfo to runtime TokenInfo.
+     * <p>
+     * The qualified name is optional in both representations: absent on the wire becomes {@code null}
+     * in the record, which is what "no qualification applies" means there. The empty string is not a
+     * valid qualified name and is therefore never produced.
      */
     private static TokenInfo convertProtoTokenInfo(
             org.evochora.datapipeline.api.contracts.TokenInfo proto) {
         return new TokenInfo(
             proto.getTokenText(),
             TokenKind.valueOf(proto.getTokenType()),
-            proto.getScope()
+            proto.getScope(),
+            proto.hasQualifiedName() ? proto.getQualifiedName() : null
         );
     }
 
@@ -533,34 +545,54 @@ public class SimulationRestorer {
         }
 
         // Program ID
-        if (!state.getProgramId().isEmpty()) {
-            builder.programId(state.getProgramId());
-        }
+        builder.programId(state.getProgramId());
 
         // Data pointers
-        if (state.getDataPointersCount() > 0) {
-            List<int[]> dps = new ArrayList<>();
-            for (Vector v : state.getDataPointersList()) {
-                dps.add(toIntArray(v));
-            }
-            builder.dataPointers(dps);
-            builder.activeDpIndex(state.getActiveDpIndex());
+        int organismId = state.getOrganismId();
+        if (state.getDataPointersCount() != org.evochora.runtime.Config.NUM_DATA_POINTERS) {
+            throw new ResumeException("Organism " + organismId + " has "
+                    + state.getDataPointersCount() + " data pointers, this build has "
+                    + org.evochora.runtime.Config.NUM_DATA_POINTERS);
         }
+        List<int[]> dps = new ArrayList<>();
+        for (Vector v : state.getDataPointersList()) {
+            dps.add(toIntArray(v));
+        }
+        builder.dataPointers(dps);
+        if (state.getActiveDpIndex() < 0 || state.getActiveDpIndex() >= dps.size()) {
+            throw new ResumeException("Organism " + organismId + " has active data pointer index "
+                    + state.getActiveDpIndex() + ", outside its " + dps.size() + " data pointers");
+        }
+        builder.activeDpIndex(state.getActiveDpIndex());
 
         // Registers (flat array)
-        if (state.getRegistersCount() > 0) {
-            Object[] regs = new Object[state.getRegistersCount()];
-            for (int i = 0; i < state.getRegistersCount(); i++) {
-                regs[i] = convertRegisterValue(state.getRegisters(i));
-            }
-            builder.registers(regs);
+        if (state.getRegistersCount() != RegisterBank.TOTAL_REGISTER_COUNT) {
+            throw new ResumeException("Organism " + organismId + " has "
+                    + state.getRegistersCount() + " registers, this build has "
+                    + RegisterBank.TOTAL_REGISTER_COUNT
+                    + "; the checkpoint was written with an incompatible register layout");
         }
+        Object[] regs = new Object[state.getRegistersCount()];
+        for (int i = 0; i < state.getRegistersCount(); i++) {
+            regs[i] = convertRegisterValue(
+                    state.getRegisters(i), organismId, RegisterOrigin.FLAT_REGISTER, i);
+        }
+        builder.registers(regs);
 
         // Stacks
+        requireStackWithinLimit(organismId, "data stack",
+                state.getDataStackCount(), org.evochora.runtime.Config.DS_MAX_DEPTH);
+        requireStackWithinLimit(organismId, "location stack",
+                state.getLocationStackCount(), org.evochora.runtime.Config.LOCATION_STACK_MAX_DEPTH);
+        requireStackWithinLimit(organismId, "call stack",
+                state.getCallStackCount(), org.evochora.runtime.Config.CALL_STACK_MAX_DEPTH);
+
         if (state.getDataStackCount() > 0) {
             Deque<Object> dataStack = new ArrayDeque<>();
+            int index = 0;
             for (RegisterValue rv : state.getDataStackList()) {
-                dataStack.addLast(convertRegisterValue(rv));
+                dataStack.addLast(convertRegisterValue(
+                        rv, organismId, RegisterOrigin.DATA_STACK, index++));
             }
             builder.dataStack(dataStack);
         }
@@ -574,7 +606,7 @@ public class SimulationRestorer {
         if (state.getCallStackCount() > 0) {
             Deque<Organism.ProcFrame> callStack = new ArrayDeque<>();
             for (ProcFrame pf : state.getCallStackList()) {
-                callStack.addLast(convertProcFrame(pf));
+                callStack.addLast(convertProcFrame(pf, organismId));
             }
             builder.callStack(callStack);
         }
@@ -585,12 +617,17 @@ public class SimulationRestorer {
             builder.deathTick(state.getDeathTick());
         }
         if (state.getInstructionFailed()) {
-            String reason = state.hasFailureReason() ? state.getFailureReason() : "Unknown";
-            builder.failed(true, reason);
+            // The domain sets flag and reason together, so a flag without a reason is a contradiction
+            // in the data — about an organism whose program can branch on that very flag via IFER/INER.
+            if (!state.hasFailureReason()) {
+                throw new ResumeException("Organism " + organismId
+                        + " is marked as failed but carries no failure reason");
+            }
+            builder.failed(true, state.getFailureReason());
             if (state.getFailureCallStackCount() > 0) {
                 Deque<Organism.ProcFrame> failureStack = new ArrayDeque<>();
                 for (org.evochora.datapipeline.api.contracts.ProcFrame protoFrame : state.getFailureCallStackList()) {
-                    failureStack.push(convertProcFrame(protoFrame));
+                    failureStack.push(convertProcFrame(protoFrame, organismId));
                 }
                 builder.failureCallStack(failureStack);
             }
@@ -603,11 +640,17 @@ public class SimulationRestorer {
         if (state.hasPersistentRegisterStore()) {
             Map<Integer, Object[]> persistentState = new HashMap<>();
             for (ProcedureRegisterSnapshot snapshot : state.getPersistentRegisterStore().getProcedureSnapshotsList()) {
-                Object[] regs = new Object[snapshot.getRegistersCount()];
-                for (int i = 0; i < snapshot.getRegistersCount(); i++) {
-                    regs[i] = convertRegisterValue(snapshot.getRegisters(i));
+                if (snapshot.getRegistersCount() != RegisterBank.PERSISTENT_SNAPSHOT_SIZE) {
+                    throw new ResumeException("Organism " + organismId + ": persistent snapshot for label "
+                            + snapshot.getLabelHash() + " holds " + snapshot.getRegistersCount()
+                            + " values, this build has " + RegisterBank.PERSISTENT_SNAPSHOT_SIZE);
                 }
-                persistentState.put(snapshot.getLabelHash(), regs);
+                Object[] procRegs = new Object[snapshot.getRegistersCount()];
+                for (int i = 0; i < snapshot.getRegistersCount(); i++) {
+                    procRegs[i] = convertRegisterValue(
+                            snapshot.getRegisters(i), organismId, RegisterOrigin.PERSISTENT_STORE, i);
+                }
+                persistentState.put(snapshot.getLabelHash(), procRegs);
             }
             builder.persistentRegisterState(persistentState);
         }
@@ -616,15 +659,56 @@ public class SimulationRestorer {
     }
 
     /**
-     * Converts a single RegisterValue proto to Object (Integer or int[]).
+     * Rejects a restored stack deeper than the instruction set allows. Such a depth describes a state
+     * no running organism can reach, because the instruction that would exceed the limit fails instead
+     * of pushing.
+     *
+     * @param organismId the organism the stack belongs to
+     * @param name the stack's name, for the message
+     * @param depth the depth found in the snapshot
+     * @param limit the maximum depth the instruction set enforces
+     * @throws ResumeException if the depth exceeds the limit
      */
-    private static Object convertRegisterValue(RegisterValue rv) {
+    private static void requireStackWithinLimit(int organismId, String name, int depth, int limit) {
+        if (depth > limit) {
+            throw new ResumeException("Organism " + organismId + ": " + name + " holds " + depth
+                    + " entries, above the limit of " + limit);
+        }
+    }
+
+    /** The structure a converted register value was read from, for diagnosable failure messages. */
+    private enum RegisterOrigin {
+        FLAT_REGISTER,
+        DATA_STACK,
+        PROC_FRAME_SAVED,
+        PERSISTENT_STORE
+    }
+
+    /**
+     * Converts a single RegisterValue proto to Object (Integer or int[]).
+     * <p>
+     * The message is a {@code oneof} over a scalar and a vector, and a third state exists: neither
+     * set. The write side cannot produce it — every branch there sets a case, and a scalar zero
+     * carries field presence — so it means corrupt data, a schema this reader does not know, or a
+     * future write-side defect. Substituting a value would restore a vector register as a scalar or
+     * a stored value as zero, indistinguishable from correctly stored data.
+     *
+     * @param rv the value to convert
+     * @param organismId the organism the value belongs to
+     * @param origin the structure the value was read from
+     * @param index the value's position within that structure
+     * @return the scalar as {@link Integer} or the vector as {@code int[]}
+     * @throws ResumeException if neither case of the oneof is set
+     */
+    private static Object convertRegisterValue(
+            RegisterValue rv, int organismId, RegisterOrigin origin, int index) {
         if (rv.hasScalar()) {
             return rv.getScalar();
         } else if (rv.hasVector()) {
             return toIntArray(rv.getVector());
         }
-        return 0; // Default for unset
+        throw new ResumeException("Organism " + organismId + ": register value at " + origin
+                + "[" + index + "] has neither scalar nor vector set");
     }
 
     /**
@@ -639,12 +723,19 @@ public class SimulationRestorer {
      * An empty array instead of {@code null} would make RET attempt a restore from a zero-length
      * snapshot, which the runtime rejects as a size mismatch.
      */
-    private static Organism.ProcFrame convertProcFrame(ProcFrame pf) {
+    private static Organism.ProcFrame convertProcFrame(ProcFrame pf, int organismId) {
         Object[] savedRegisters = null;
         if (pf.getSavedRegistersCount() > 0) {
+            if (pf.getSavedRegistersCount() != RegisterBank.STACK_SAVED_SNAPSHOT_SIZE) {
+                throw new ResumeException("Organism " + organismId + ": call frame for label "
+                        + pf.getLabelHash() + " holds " + pf.getSavedRegistersCount()
+                        + " saved registers, this build has " + RegisterBank.STACK_SAVED_SNAPSHOT_SIZE
+                        + " (an absent snapshot is expressed by holding none)");
+            }
             savedRegisters = new Object[pf.getSavedRegistersCount()];
             for (int i = 0; i < savedRegisters.length; i++) {
-                savedRegisters[i] = convertRegisterValue(pf.getSavedRegisters(i));
+                savedRegisters[i] = convertRegisterValue(
+                        pf.getSavedRegisters(i), organismId, RegisterOrigin.PROC_FRAME_SAVED, i);
             }
         }
 
@@ -685,11 +776,18 @@ public class SimulationRestorer {
             List<PluginState> savedStates,
             IRandomProvider randomProvider) {
 
-        // Build map of class -> saved state
+        // Build map of class -> saved state. A duplicate class is unrecoverable: the schema keys state
+        // by class name, so two instances of one class produce two entries that cannot be told apart.
         Map<String, byte[]> stateByClass = new HashMap<>();
         for (PluginState ps : savedStates) {
-            stateByClass.put(ps.getPluginClass(), ps.getStateBlob().toByteArray());
+            byte[] previous = stateByClass.put(ps.getPluginClass(), ps.getStateBlob().toByteArray());
+            if (previous != null) {
+                throw new ResumeException("Checkpoint holds more than one state for plugin "
+                        + ps.getPluginClass() + "; the states cannot be assigned to instances");
+            }
         }
+
+        Set<String> unusedStates = new HashSet<>(stateByClass.keySet());
 
         List<PluginWithConfig> tickPlugins = new ArrayList<>();
         List<InterceptorWithConfig> interceptors = new ArrayList<>();
@@ -709,10 +807,17 @@ public class SimulationRestorer {
                     .getConstructor(IRandomProvider.class, Config.class)
                     .newInstance(randomProvider, options);
 
-                // Restore saved state if available (ISimulationPlugin extends ISerializable)
+                // Restore saved state (ISimulationPlugin extends ISerializable). An empty blob is the
+                // legitimate value for a plugin that had not initialized itself when the snapshot was
+                // taken; a missing entry means the checkpoint does not describe this plugin at all.
                 if (plugin instanceof ISimulationPlugin simulationPlugin) {
                     byte[] savedState = stateByClass.get(className);
-                    if (savedState != null && savedState.length > 0) {
+                    if (savedState == null) {
+                        throw new ResumeException("Checkpoint holds no state for configured plugin "
+                                + className + "; it would resume with a fresh state");
+                    }
+                    unusedStates.remove(className);
+                    if (savedState.length > 0) {
                         simulationPlugin.loadState(savedState);
                         log.debug("Loaded state for plugin {} ({} bytes)", className, savedState.length);
                     }
@@ -740,6 +845,11 @@ public class SimulationRestorer {
             } catch (Exception e) {
                 throw new ResumeException("Failed to instantiate plugin: " + className, e);
             }
+        }
+
+        if (!unusedStates.isEmpty()) {
+            throw new ResumeException("Checkpoint holds state for plugins that are not configured: "
+                    + unusedStates);
         }
 
         return new RestoredPlugins(tickPlugins, interceptors, deathHandlers, birthHandlers);

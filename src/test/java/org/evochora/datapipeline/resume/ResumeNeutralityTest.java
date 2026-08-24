@@ -15,6 +15,7 @@ import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Molecule;
@@ -108,8 +109,12 @@ class ResumeNeutralityTest {
         organism.getDataStack().push(new Molecule(Config.TYPE_DATA, 5).toInt());
         organism.getDataStack().push(new int[]{1, 2});
         organism.getLocationStack().push(new int[]{3, 4});
+        // The snapshot has to hold one value per stack-saved slot, the way CALL takes it — a partial
+        // one describes a frame no procedure call could leave behind, and RET would reject it.
+        organism.writeOperand(RegisterBank.PDR.base, 7);
+        organism.writeOperand(RegisterBank.PLR.base, new int[]{8, 9});
         organism.getCallStack().push(new Organism.ProcFrame(123, new int[]{5, 5}, new int[]{6, 6},
-                new Object[]{7, new int[]{8, 9}}, java.util.Map.of(0, 1)));
+                organism.snapshotStackSavedRegisters(), java.util.Map.of(0, 1)));
         organism.setDp(1, new int[]{9, 9});
         organism.setActiveDpIndex(1);
         organism.addSr(17);
