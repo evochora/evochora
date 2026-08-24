@@ -3,6 +3,7 @@ package org.evochora.datapipeline.resume;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.google.protobuf.ByteString;
 import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.OrganismState;
@@ -108,6 +109,7 @@ class SimulationRestorerTest {
             .setCaptureTimeMs(System.currentTimeMillis())
             .setTotalOrganismsCreated(50)
             .setCellColumns(CellDataColumns.newBuilder().build())
+            .setRngState(validRngState())
             .addOrganisms(orgState)
             .build();
 
@@ -145,6 +147,9 @@ class SimulationRestorerTest {
             .setIp(createVector(0, 0))
             .setDv(createVector(1, 0))
             .setInitialPosition(createVector(0, 0))
+            .addAllRegisters(ProtoTestUtils.buildFlatRegisters(null, null, null, null))
+            .addDataPointers(createVector(0, 0))
+            .addDataPointers(createVector(0, 0))
             .setIsDead(true)
             .setDeathTick(999)
             .build();
@@ -155,6 +160,7 @@ class SimulationRestorerTest {
             .setCaptureTimeMs(System.currentTimeMillis())
             .setTotalOrganismsCreated(100)
             .setCellColumns(CellDataColumns.newBuilder().build())
+            .setRngState(validRngState())
             .addOrganisms(liveOrg)
             .addOrganisms(deadOrg)
             .build();
@@ -196,6 +202,7 @@ class SimulationRestorerTest {
             .setCaptureTimeMs(System.currentTimeMillis())
             .setTotalOrganismsCreated(50)
             .setCellColumns(cells)
+            .setRngState(validRngState())
             .build();
 
         ResumeCheckpoint checkpoint = new ResumeCheckpoint(metadata, snapshot);
@@ -225,6 +232,7 @@ class SimulationRestorerTest {
             .addAllGenomeHashesEverSeen(222L)
             .addAllGenomeHashesEverSeen(333L)
             .setCellColumns(CellDataColumns.newBuilder().build())
+            .setRngState(validRngState())
             .addOrganisms(createOrganismState(1, 500))
             .build();
 
@@ -259,6 +267,8 @@ class SimulationRestorerTest {
             .setFailureReason("Call stack overflow")
             .addFailureCallStack(protoFrame)
             .addAllRegisters(ProtoTestUtils.buildFlatRegisters(null, null, null, null))
+            .addDataPointers(createVector(10, 10))
+            .addDataPointers(createVector(10, 10))
             .setIsDead(false)
             .build();
 
@@ -268,6 +278,7 @@ class SimulationRestorerTest {
             .setCaptureTimeMs(System.currentTimeMillis())
             .setTotalOrganismsCreated(10)
             .setCellColumns(CellDataColumns.newBuilder().build())
+            .setRngState(validRngState())
             .addOrganisms(failedOrg)
             .build();
 
@@ -368,6 +379,8 @@ class SimulationRestorerTest {
             .setDv(createVector(1, 0))
             .setInitialPosition(createVector(0, 0))
             .addAllRegisters(ProtoTestUtils.buildFlatRegisters(null, null, null, null))
+            .addDataPointers(createVector(10, 10))
+            .addDataPointers(createVector(10, 10))
             .addCallStack(frame)
             .setIsDead(false)
             .build();
@@ -378,6 +391,7 @@ class SimulationRestorerTest {
             .setCaptureTimeMs(System.currentTimeMillis())
             .setTotalOrganismsCreated(10)
             .setCellColumns(CellDataColumns.newBuilder().build())
+            .setRngState(validRngState())
             .addOrganisms(organismState)
             .build();
 
@@ -447,6 +461,7 @@ class SimulationRestorerTest {
             .setCaptureTimeMs(System.currentTimeMillis())
             .setTotalOrganismsCreated(totalOrganisms)
             .setCellColumns(CellDataColumns.newBuilder().build())
+            .setRngState(validRngState())
             .addOrganisms(createOrganismState(1, 500))
             .build();
     }
@@ -459,6 +474,9 @@ class SimulationRestorerTest {
             .setIp(createVector(10, 10))
             .setDv(createVector(1, 0))
             .setInitialPosition(createVector(5, 5))
+            .addAllRegisters(ProtoTestUtils.buildFlatRegisters(null, null, null, null))
+            .addDataPointers(createVector(10, 10))
+            .addDataPointers(createVector(10, 10))
             .setIsDead(false)
             .build();
     }
@@ -469,6 +487,15 @@ class SimulationRestorerTest {
             builder.addComponents(c);
         }
         return builder.build();
+    }
+
+    /**
+     * The RNG state a snapshot carries. A snapshot written by a running simulation always holds one,
+     * because the engine serializes {@code randomProvider.saveState()} on every snapshot tick; without
+     * it the restored run could not continue the original random stream.
+     */
+    private static ByteString validRngState() {
+        return ByteString.copyFrom(new SeededRandomProvider(42L).saveState());
     }
 
 }

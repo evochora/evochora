@@ -5,6 +5,7 @@ import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.Molecule;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
 import org.junit.jupiter.api.BeforeEach;
@@ -13,6 +14,8 @@ import org.junit.jupiter.api.Test;
 
 import com.typesafe.config.ConfigFactory;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -65,8 +68,29 @@ class LabelRewritePluginTest {
                 .dv(new int[]{1, 0})
                 .initialPosition(new int[]{0, 0})
                 .energy(5000)
+                .registers(defaultRegisters())
+                .dataPointers(defaultDataPointers())
                 .build(simulation);
         simulation.addOrganism(child);
+    }
+
+    /** The register array every organism carries: one slot per bank register, at its type default. */
+    private static Object[] defaultRegisters() {
+        Object[] registers = new Object[RegisterBank.TOTAL_REGISTER_COUNT];
+        for (int slot = 0; slot < registers.length; slot++) {
+            RegisterBank bank = RegisterBank.SLOT_TO_BANK[slot];
+            registers[slot] = bank != null && bank.isLocation ? new int[]{0, 0} : 0;
+        }
+        return registers;
+    }
+
+    /** The data pointers every organism carries, all at the origin. */
+    private static List<int[]> defaultDataPointers() {
+        List<int[]> pointers = new ArrayList<>(Config.NUM_DATA_POINTERS);
+        for (int i = 0; i < Config.NUM_DATA_POINTERS; i++) {
+            pointers.add(new int[]{0, 0});
+        }
+        return pointers;
     }
 
     @Test
