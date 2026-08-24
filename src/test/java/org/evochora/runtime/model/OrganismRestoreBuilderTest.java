@@ -324,28 +324,143 @@ class OrganismRestoreBuilderTest {
         assertThat(org.getMaxEnergy()).isEqualTo(32767); // SimulationTestUtils default
     }
 
-    // ==================== Location Stack Clamping Tests ====================
+    // ==================== State Invariants ====================
+    //
+    // The builder reconstructs an organism from persisted state. Anything it silently repairs
+    // produces an organism that differs from the one the checkpoint described, which is exactly what
+    // a resume must not do. Values that are not set at all still receive defaults — completeness is
+    // enforced by the restorer, which knows the data came from a checkpoint.
 
+    /**
+     * A stack deeper than the ISA limit describes a state no running organism can reach: the
+     * instruction that would exceed the limit fails instead of pushing. Truncating such a stack would
+     * silently drop return targets and continue from a state the original run never had.
+     */
     @Test
     @Tag("unit")
-    void testRestoreBuilder_LocationStackClampedWhenOversized() {
+    void testRestoreBuilder_LocationStackBeyondLimit_ThrowsException() {
         Deque<int[]> oversizedStack = new ArrayDeque<>();
-        int totalEntries = Config.LOCATION_STACK_MAX_DEPTH + 50;
-        for (int i = 0; i < totalEntries; i++) {
+        for (int i = 0; i <= Config.LOCATION_STACK_MAX_DEPTH; i++) {
             oversizedStack.addLast(new int[]{i, i});
         }
 
-        Organism org = Organism.restore(1, 0L)
-            .ip(new int[]{0, 0})
-            .dv(new int[]{1, 0})
-            .initialPosition(new int[]{0, 0})
-            .locationStack(oversizedStack)
-            .build(simulation);
+        assertThatThrownBy(() ->
+            Organism.restore(1, 0L)
+                .ip(new int[]{0, 0})
+                .dv(new int[]{1, 0})
+                .initialPosition(new int[]{0, 0})
+                .locationStack(oversizedStack)
+                .build(simulation)
+        )
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining(String.valueOf(Config.LOCATION_STACK_MAX_DEPTH));
+    }
 
-        Deque<int[]> ls = org.getLocationStack();
-        assertThat(ls.size()).isEqualTo(Config.LOCATION_STACK_MAX_DEPTH);
-        // Top entries (most recent, added first via addLast = head of iteration) are kept
-        assertThat(ls.peek()).isEqualTo(new int[]{0, 0});
+    @Test
+    @Tag("unit")
+    void testRestoreBuilder_DataStackBeyondLimit_ThrowsException() {
+        Deque<Object> oversizedStack = new ArrayDeque<>();
+        for (int i = 0; i <= Config.DS_MAX_DEPTH; i++) {
+            oversizedStack.addLast(i);
+        }
+
+        assertThatThrownBy(() ->
+            Organism.restore(1, 0L)
+                .ip(new int[]{0, 0})
+                .dv(new int[]{1, 0})
+                .initialPosition(new int[]{0, 0})
+                .dataStack(oversizedStack)
+                .build(simulation)
+        )
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining(String.valueOf(Config.DS_MAX_DEPTH));
+    }
+
+    @Test
+    @Tag("unit")
+    void testRestoreBuilder_CallStackBeyondLimit_ThrowsException() {
+        Deque<Organism.ProcFrame> oversizedStack = new ArrayDeque<>();
+        for (int i = 0; i <= Config.CALL_STACK_MAX_DEPTH; i++) {
+            oversizedStack.addLast(new Organism.ProcFrame(
+                    i, new int[]{0, 0}, new int[]{0, 0}, null, Map.of()));
+        }
+
+        assertThatThrownBy(() ->
+            Organism.restore(1, 0L)
+                .ip(new int[]{0, 0})
+                .dv(new int[]{1, 0})
+                .initialPosition(new int[]{0, 0})
+                .callStack(oversizedStack)
+                .build(simulation)
+        )
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining(String.valueOf(Config.CALL_STACK_MAX_DEPTH));
+    }
+
+    /**
+     * A register array of the wrong length cannot be mapped onto the banks: padding it or cutting it
+     * short would put values into slots that belong to a different bank, or invent values that were
+     * never saved.
+     */
+    @Test
+    @Tag("unit")
+    void testRestoreBuilder_WrongRegisterCount_ThrowsException() {
+        assertThatThrownBy(() ->
+            Organism.restore(1, 0L)
+                .ip(new int[]{0, 0})
+                .dv(new int[]{1, 0})
+                .initialPosition(new int[]{0, 0})
+                .registers(new Object[RegisterBank.TOTAL_REGISTER_COUNT - 1])
+                .build(simulation)
+        )
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining(String.valueOf(RegisterBank.TOTAL_REGISTER_COUNT));
+    }
+
+    @Test
+    @Tag("unit")
+    void testRestoreBuilder_WrongDataPointerCount_ThrowsException() {
+        assertThatThrownBy(() ->
+            Organism.restore(1, 0L)
+                .ip(new int[]{0, 0})
+                .dv(new int[]{1, 0})
+                .initialPosition(new int[]{0, 0})
+                .dataPointers(List.of(new int[]{1, 1}))
+                .build(simulation)
+        )
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining(String.valueOf(Config.NUM_DATA_POINTERS));
+    }
+
+    @Test
+    @Tag("unit")
+    void testRestoreBuilder_DataPointerDimensionMismatch_ThrowsException() {
+        assertThatThrownBy(() ->
+            Organism.restore(1, 0L)
+                .ip(new int[]{0, 0})
+                .dv(new int[]{1, 0})
+                .initialPosition(new int[]{0, 0})
+                .dataPointers(List.of(new int[]{1, 1, 1}, new int[]{2, 2, 2}))
+                .build(simulation)
+        )
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("dimension");
+    }
+
+    @Test
+    @Tag("unit")
+    void testRestoreBuilder_ActiveDpIndexOutOfRange_ThrowsException() {
+        assertThatThrownBy(() ->
+            Organism.restore(1, 0L)
+                .ip(new int[]{0, 0})
+                .dv(new int[]{1, 0})
+                .initialPosition(new int[]{0, 0})
+                .dataPointers(List.of(new int[]{1, 1}, new int[]{2, 2}))
+                .activeDpIndex(Config.NUM_DATA_POINTERS)
+                .build(simulation)
+        )
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining(String.valueOf(Config.NUM_DATA_POINTERS));
     }
 
     @Test
