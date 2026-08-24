@@ -108,6 +108,18 @@ final class ResumeNeutralityHarness {
      * @return the resolved configuration as JSON
      */
     static String configJson(int size, double mutationRate) {
+        return configJson(size, pluginsJson(mutationRate));
+    }
+
+    /**
+     * The resolved configuration with an explicit plugin list, for scenarios that need to control
+     * exactly which plugins take part.
+     *
+     * @param size edge length of the square world
+     * @param pluginsJson the {@code plugins} array as JSON
+     * @return the resolved configuration as JSON
+     */
+    static String configJson(int size, String pluginsJson) {
         return """
             {
               "environment": { "shape": [%d, %d], "topology": "TORUS" },
@@ -132,7 +144,7 @@ final class ResumeNeutralityHarness {
                 }
               }
             }
-            """.formatted(size, size, pluginsJson(mutationRate));
+            """.formatted(size, size, pluginsJson);
     }
 
     /** A simulation built from a configuration, with its provider and its registered plugins. */
