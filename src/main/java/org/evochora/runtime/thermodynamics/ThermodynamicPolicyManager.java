@@ -1,7 +1,6 @@
 package org.evochora.runtime.thermodynamics;
 
 import java.lang.reflect.Constructor;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -21,16 +20,26 @@ public class ThermodynamicPolicyManager {
 
     private static final Logger LOG = LoggerFactory.getLogger(ThermodynamicPolicyManager.class);
 
-    // Initial array size (small to save memory)
-    private static final int INITIAL_ARRAY_SIZE = 256;
-    
     private IThermodynamicPolicy defaultPolicy;
     private final Map<String, IThermodynamicPolicy> instructionPolicies = new HashMap<>();
     private final Map<Class<? extends Instruction>, IThermodynamicPolicy> familyPolicies = new HashMap<>();
-    
-    // Non-volatile to avoid per-call overhead on ARM (~1-5ns × hundreds of millions of ticks).
-    // Concurrent first-tick population may cause redundant resolves, which is benign (idempotent).
-    private IThermodynamicPolicy[] policyByOpcodeId = new IThermodynamicPolicy[INITIAL_ARRAY_SIZE];
+
+    /**
+     * Policy per opcode id, sized once for the whole instruction set.
+     * <p>
+     * Instructions execute concurrently in the first wave of a tick, so this array is written from
+     * several threads. It is safe without synchronisation because of two properties, and only
+     * because of both: the field is final, so the reference is visible to every thread once the
+     * constructor completes; and a slot is only ever filled with a policy that already existed
+     * before this manager was published, since {@link #resolvePolicy} hands out instances created
+     * during construction rather than making new ones. Two threads filling the same slot therefore
+     * write the same reference to an object no thread can see half-built.
+     * <p>
+     * An array that grew on demand would break the first property: replacing the reference is not
+     * idempotent, and a thread could index the shorter array it read before another thread enlarged
+     * it.
+     */
+    private final IThermodynamicPolicy[] policyByOpcodeId;
 
     /**
      * Initializes the manager with the given configuration.
@@ -39,6 +48,21 @@ public class ThermodynamicPolicyManager {
      */
     public ThermodynamicPolicyManager(com.typesafe.config.Config config) {
         loadPolicies(config);
+        this.policyByOpcodeId = new IThermodynamicPolicy[highestOpcodeId() + 1];
+    }
+
+    /**
+     * The largest opcode id any instruction can carry into {@link #getPolicy}.
+     * <p>
+     * Taken from the registered instruction set rather than from a fixed bound, so the array matches
+     * what actually exists.
+     */
+    private static int highestOpcodeId() {
+        int highest = 0;
+        for (Instruction.InstructionInfo info : Instruction.getInstructionSetInfo()) {
+            highest = Math.max(highest, info.opcodeId());
+        }
+        return highest;
     }
 
     /**
@@ -60,35 +84,21 @@ public class ThermodynamicPolicyManager {
         // Extract opcode value from fullOpcodeId (remove TYPE_CODE bits)
         int opcodeId = instruction.getFullOpcodeId() & org.evochora.runtime.Config.VALUE_MASK;
 
-        // Local snapshot prevents JIT from reloading the field between length check and array access
-        IThermodynamicPolicy[] cache = policyByOpcodeId;
-
-        if (opcodeId >= cache.length) {
-            growArray(opcodeId + 1);
-            cache = policyByOpcodeId;
-        }
-
-        IThermodynamicPolicy cached = cache[opcodeId];
+        // No bounds check: an instruction only exists if its opcode is registered — the virtual
+        // machine rejects anything else before it gets this far — and the array covers every
+        // registered opcode.
+        IThermodynamicPolicy cached = policyByOpcodeId[opcodeId];
         if (cached != null) {
             return cached;
         }
 
         IThermodynamicPolicy policy = resolvePolicy(instruction);
-        cache[opcodeId] = policy;
+        policyByOpcodeId[opcodeId] = policy;
 
         return policy;
     }
-    
-    private void growArray(int minSize) {
-        // Grow to at least minSize, but double current size for efficiency
-        int newSize = Math.max(minSize, policyByOpcodeId.length * 2);
-        // Cap at VALUE_MASK + 1 to avoid unnecessary memory
-        newSize = Math.min(newSize, org.evochora.runtime.Config.VALUE_MASK + 1);
-        
-        policyByOpcodeId = Arrays.copyOf(policyByOpcodeId, newSize);
-        LOG.debug("Grew policy cache array to size {}", newSize);
-    }
-    
+
+
     private IThermodynamicPolicy resolvePolicy(Instruction instruction) {
         // 1. Check for instruction-specific policy
         IThermodynamicPolicy policy = instructionPolicies.get(instruction.getName());
