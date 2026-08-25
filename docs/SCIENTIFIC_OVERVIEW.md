@@ -165,7 +165,7 @@ The successful implementation of a viable, self-replicating primordial organism 
 
 A key insight from early development was the role of entropy in population stability. Without entropy constraints, corrupted organisms that had lost the ability to replicate could still survive indefinitely by harvesting energy — while continuing to damage their neighbors' code. This created a chain reaction leading to error catastrophe [(Eigen, 1971)](#ref-eigen-1971). The solution was thermodynamic: since replication involves writing molecules (POKE), it is the primary mechanism for reducing an organism's entropy. Organisms that stop replicating — whether by corruption or by choice — accumulate entropy and eventually die. This makes replication not just a reproductive strategy but a thermodynamic necessity, elegantly coupling survival to functional behavior without imposing artificial penalties.
 
-The current primordial is a defensive replicator that aborts copying when it encounters foreign code rather than overwriting it. In long-running simulations spanning hundreds of millions of ticks, it sustains stable populations with hundreds of thousands of organisms born across the simulation's lifetime. With mutation plugins enabled, the population exhibits dynamic behavior — periodic crashes and recoveries, genome diversification, and occasional structural variants.
+The current primordial is a defensive replicator that aborts copying when it encounters foreign code rather than overwriting it. In long-running simulations spanning billions of ticks, it sustains stable populations with millions of organisms born across the simulation's lifetime. With mutation plugins enabled, the population exhibits dynamic behavior — periodic crashes and recoveries, genome diversification, and heritable structural variants, one of which rose to fixation in a completed selective sweep (see Section 4).
 
 ## 3. From Simulation to Science
 
@@ -187,7 +187,7 @@ This design deliberately avoids building a monolithic analysis suite. The space 
 
 ## 4. Scientific Avenues: From Theory to Experiment
 
-The stability mechanisms described in Section 2 — thermodynamic coupling, fuzzy addressing, and defensive replication — have produced viable populations sustaining themselves over hundreds of millions of ticks. This provides a foundation for a range of evolutionary experiments — but also raises a fundamental question: is what the simulation produces genuine evolutionary dynamics, or merely random variation? Frameworks for classifying long-term evolutionary behavior [(Bedau et al., 2000)](#ref-bedau-2000) provide one lens for addressing this; the research directions below provide others. Some are already experimentally accessible with the current implementation; others require additional development. Each represents a testable hypothesis enabled by the platform's architecture.
+The stability mechanisms described in Section 2 — thermodynamic coupling, fuzzy addressing, and defensive replication — have produced viable populations sustaining themselves over billions of ticks. Whether a simulation produces genuine evolutionary dynamics or merely random variation has to be established case by case; for Evochora, a first documented instance exists — a completed selective sweep of a heritable variant, published as the platform's first experiment record [(Evochora Project, 2026)](#ref-evochora-2026). Frameworks for classifying long-term evolutionary behavior [(Bedau et al., 2000)](#ref-bedau-2000) provide a broader lens for this question; the research directions below provide others. Some are already experimentally accessible with the current implementation; others require additional development. Each represents a testable hypothesis enabled by the platform's architecture.
 
 ### 4.1 Replicator Ecology
 
@@ -338,7 +338,7 @@ Resume from any persisted state and delta compression for reducing data volume w
 
 Evochora is an open-source digital evolution platform designed to make the physics of a simulated world a first-class experimental variable. Its architecture — spatially distributed code in a configurable n-dimensional grid, a two-axis thermodynamic economy, fuzzy label matching for mutation-resilient genomes, and a modular plugin system for mutation, resource distribution, and death mechanics — provides researchers with a flexible testbed for a range of evolutionary experiments.
 
-The platform has demonstrated its viability through long-running simulations sustaining stable populations over hundreds of millions of ticks. Four configurable mutation operators, label namespace rewriting, a defensive primordial organism, and a fully deterministic, resumable data pipeline provide the foundation for reproducible research.
+The platform has demonstrated its viability through long-running simulations sustaining stable populations over billions of ticks. Four configurable mutation operators, label namespace rewriting, a defensive primordial organism, and a fully deterministic, resumable data pipeline provide the foundation for reproducible research.
 
 The research directions outlined in this document — from replicator ecology and environmental heterogeneity to digital eukaryogenesis, multicellularity, and reaction-based chemistry — represent a broad program of testable hypotheses. Some are immediately accessible with the current implementation; others require extensions that the architecture is designed to support. Researchers, students, and engineers are invited to use this platform, challenge its assumptions, and contribute to its development. The source code, documentation, and community channels are available at [https://github.com/evochora/evochora](https://github.com/evochora/evochora).
 
@@ -347,6 +347,7 @@ The research directions outlined in this document — from replicator ecology an
 Evochora is open source under the MIT License. Contributions of all kinds are welcome — from running experiments and reporting results to extending the plugin ecosystem or improving the data pipeline (see the [Contribution Guide](https://github.com/evochora/evochora/blob/main/CONTRIBUTING.md) for details). Anyone interested in using the platform, whether for research, exploration, or development, is encouraged to reach out — questions are answered promptly.
 
 - **Source code and documentation:** [GitHub Repository](https://github.com/evochora/evochora)
+- **Published experiment records:** [Published Experiments](PUBLISHED_EXPERIMENTS.md)
 - **Live demo and simulation video:** [http://evochora.org/](http://evochora.org/)
 - **Questions and discussion:** [GitHub Discussions](https://github.com/evochora/evochora/discussions)
 - **Community chat:** [Discord Server](https://discord.gg/t9yEJc4MKX)
@@ -363,6 +364,7 @@ _Full disclosure: AI tools were used to assist in the writing and editing of thi
 - <a id="ref-chan-2019"></a>Chan, B. W.-C. (2019). Lenia: Biology of Artificial Life. *Complex Systems*, 28(3), 251-286.
 - <a id="ref-dittrich-2001"></a>Dittrich, P., Ziegler, J., & Banzhaf, W. (2001). Artificial chemistries—a review. *Artificial Life*, 7(3), 225-275.
 - <a id="ref-eigen-1971"></a>Eigen, M. (1971). Selforganization of matter and the evolution of biological macromolecules. *Naturwissenschaften*, 58(10), 465-523.
+- <a id="ref-evochora-2026"></a>Evochora Project. (2026). A completed selective sweep in an Evochora run: the restrictive setting of a reproduction switch displaces the permissive one (Version 1) [Data set]. Zenodo. [https://doi.org/10.5281/zenodo.22081453](https://doi.org/10.5281/zenodo.22081453)
 - <a id="ref-gebhardt-2019"></a>Gebhardt, G. H., & Polani, D. (2019). The thermodynamic cost of interacting with the environment. In *Artificial Life Conference Proceedings* (pp. 535-542). MIT Press.
 - <a id="ref-hamilton-1964"></a>Hamilton, W. D. (1964). The genetical evolution of social behaviour. I. *Journal of Theoretical Biology*, 7(1), 1-16.
 - <a id="ref-lane-martin-2010"></a>Lane, N., & Martin, W. (2010). The energetics of genome complexity. *Nature*, 467(7318), 929–934.

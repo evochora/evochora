@@ -457,6 +457,7 @@ For the current roadmap, see the [GitHub Project Board](https://github.com/orgs/
 
 - Discord: [![Discord](https://img.shields.io/badge/Discord-Join%20Community-5865F2?style=flat-square&logo=discord)](https://discord.gg/t9yEJc4MKX)
 - Live Demo: [http://evochora.org/](http://evochora.org/)
+- Published Experiments: [docs/PUBLISHED_EXPERIMENTS.md](docs/PUBLISHED_EXPERIMENTS.md)
 - API Documentation: [http://evochora.org/api-docs/](http://evochora.org/api-docs/)
 - Key documentation:
     - [CLI Usage Guide](docs/CLI_USAGE.md)
