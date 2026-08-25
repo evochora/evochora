@@ -918,7 +918,7 @@ public class ServiceManager implements IMonitorable {
 
         // Log detailed worst-case breakdown at DEBUG level
         Map<MemoryEstimate.Category, Long> categoryTotals = new EnumMap<>(MemoryEstimate.Category.class);
-        log.debug("Memory estimation breakdown (WORST-CASE: 100%% environment, {} max organisms):", params.maxOrganisms());
+        log.debug("Memory estimation breakdown (WORST-CASE: 100% environment, {} max organisms):", params.maxOrganisms());
         for (MemoryEstimate estimate : worstCaseEstimates) {
             log.debug("  {} → {}: {}", estimate.componentName(), estimate.formattedBytes(), estimate.explanation());
             categoryTotals.merge(estimate.category(), estimate.estimatedBytes(), Long::sum);
@@ -932,7 +932,7 @@ public class ServiceManager implements IMonitorable {
         log.debug("  Node processes: {}", SimulationParameters.formatBytes(nodeProcessOverhead));
 
         // Always log expected peak at INFO level
-        log.info("Memory estimate: {} expected peak ({}%% occupancy), {} worst-case ceiling (100%%), heap: {} (-Xmx)",
+        log.info("Memory estimate: {} expected peak ({}% occupancy), {} worst-case ceiling (100%), heap: {} (-Xmx)",
             SimulationParameters.formatBytes(expectedTotal),
             (int) (SimulationParameters.DEFAULT_EXPECTED_CELL_OCCUPANCY * 100),
             SimulationParameters.formatBytes(worstCaseTotal),
