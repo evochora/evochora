@@ -115,7 +115,6 @@ public class ThermodynamicPolicyManager {
         return policy;
     }
 
-
     private IThermodynamicPolicy resolvePolicy(Instruction instruction) {
         // 1. Check for instruction-specific policy
         IThermodynamicPolicy policy = instructionPolicies.get(instruction.getName());

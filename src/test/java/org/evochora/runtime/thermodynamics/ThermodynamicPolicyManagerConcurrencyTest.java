@@ -82,13 +82,37 @@ class ThermodynamicPolicyManagerConcurrencyTest {
                 startTogether.countDown();
                 assertThat(finished.await(10, TimeUnit.SECONDS)).as("all lookups finished").isTrue();
             } finally {
-                pool.shutdownNow();
+                shutDownAndWait(pool);
             }
         }
 
         assertThat(failures)
                 .as("looking up a policy must never fail, whichever thread reaches the cache first")
                 .isEmpty();
+    }
+
+    /**
+     * Ends one attempt's pool and waits for its threads to be gone.
+     * <p>
+     * {@code shutdownNow} only interrupts the running tasks and returns, so without the wait an
+     * attempt whose lookups timed out would leave its threads behind while the next attempt starts
+     * its own. Threads from an earlier attempt still reaching the cache would blur what this test
+     * observes, and they would do so exactly when it has something to report.
+     *
+     * @param pool the pool of the attempt that just ended
+     */
+    private static void shutDownAndWait(ExecutorService pool) {
+        pool.shutdownNow();
+        try {
+            assertThat(pool.awaitTermination(10, TimeUnit.SECONDS))
+                    .as("the threads of one attempt must be gone before the next one starts")
+                    .isTrue();
+        } catch (InterruptedException e) {
+            // Passing the interruption on: swallowing it here would leave the test running while
+            // whoever interrupted it waits for it to stop.
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while waiting for the lookup threads", e);
+        }
     }
 
     /**
