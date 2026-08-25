@@ -385,7 +385,7 @@ tasks.named("build") {
 // Code that is written but never reached: the compiler accepts it and the tests pass over it, so
 // nothing else in this build would ever report it.
 pmd {
-    toolVersion = "7.0.0"
+    toolVersion = "7.26.0"
     isConsoleOutput = true
     ruleSetFiles = files("config/pmd/ruleset.xml")
     ruleSets = listOf()
