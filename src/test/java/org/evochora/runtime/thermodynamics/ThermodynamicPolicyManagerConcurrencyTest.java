@@ -14,29 +14,27 @@ import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.instructions.NopInstruction;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Disabled;
-import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 import com.typesafe.config.ConfigFactory;
 
 /**
- * The policy cache is indexed by opcode id and written from several threads, because instructions
- * execute concurrently in the first wave of a tick.
+ * Reaches the policy cache from many threads at once, across the whole opcode range.
  * <p>
- * It is safe only as long as the array itself never changes: a slot always receives the same policy
- * instance, but replacing the array is not idempotent. A cache that grew on demand let one thread
- * index the shorter array it had read before another thread enlarged it — an
- * {@code ArrayIndexOutOfBoundsException} in the middle of a tick, which the virtual machine turns
- * into an instruction failure and which therefore looked like a defect in the organism's program.
+ * The cache is indexed by opcode id and written from several threads, because instructions execute
+ * concurrently in the first wave of a tick. That is safe as long as the array itself never changes:
+ * a slot always receives the same policy instance, so filling it twice is harmless, but replacing
+ * the array would not be. A cache sized on demand would let one thread index the shorter array it
+ * had read before another thread enlarged it, which surfaces as an
+ * {@code ArrayIndexOutOfBoundsException} in the middle of a tick — the virtual machine turns that
+ * into an instruction failure, so it reads as a defect in the organism's program.
  * <p>
- * This test reaches across the whole opcode range from many threads at once. It cannot fail on the
- * current implementation; it fails again the moment the cache is made to grow.
+ * The test passes on a fixed-size cache and would fail on a growing one. It carries no tag because
+ * it fits neither the unit budget (under 0.2s) nor the integration one: three thousand attempts and
+ * roughly two seconds are what it takes to hit the interleaving reliably. Remove {@code @Disabled}
+ * to run it while working on this cache.
  */
-@Tag("slow")
-@Disabled("""
-        Kept for the next change to the policy cache, not for the suite: it needs three thousand \
-        attempts and about two seconds to catch the race reliably, and it only catches it at all if \
-        the cache is made to grow again. Remove this annotation to run it.""")
+@Disabled("Too slow for the suite; see the class comment for what it covers and when to run it.")
 class ThermodynamicPolicyManagerConcurrencyTest {
 
     private static final String THERMO_CONFIG = """
@@ -97,11 +95,11 @@ class ThermodynamicPolicyManagerConcurrencyTest {
      * Ten registered opcodes spread evenly from the lowest to the highest, and probed from the
      * largest downwards.
      * <p>
-     * The spread is what makes this test able to fail. A cache that grows on demand only loses work
-     * when threads enlarge it to different sizes at the same time: one asks for a high index and
-     * enlarges the array, another asks for a lower one, computes a smaller size from the length it
-     * read earlier, and replaces the larger array with its own. Ten opcodes clustered at the top
-     * would take the cache to its full size on the first lookup and never expose that.
+     * The spread is what gives this test its teeth. A cache sized on demand would only lose work when
+     * threads enlarge it to different sizes at once: one asks for a high index and enlarges the
+     * array, another asks for a lower one, computes a smaller size from the length it read earlier,
+     * and replaces the larger array with its own. Ten opcodes clustered at the top would reach the
+     * full size on the first lookup, and that interleaving could never arise.
      * <p>
      * Taken from the registry rather than written down, so the test keeps covering the range when
      * instructions are added — and cannot ask for an opcode that does not exist, which the virtual

@@ -85,6 +85,36 @@ class StatefulProgramTest {
 
         Organism organism = StatefulProgram.place(simulation, environment, new int[]{0, 0}, 1_000_000);
 
+        boolean sawSavedRegisters = false;
+        for (int pass = 1; pass <= 2; pass++) {
+            sawSavedRegisters |= assertCoverageDuringOnePass(simulation, organism, pass);
+        }
+        assertThat(sawSavedRegisters)
+                .as("a call frame carried a register snapshot")
+                .isTrue();
+
+        assertThat(environment.getOwnerId(StatefulProgram.SCRATCH_CELL))
+                .as("program wrote to the world")
+                .isEqualTo(organism.getId());
+    }
+
+    /**
+     * Runs one pass and requires every structure to hold content at some point within it.
+     * <p>
+     * Checked per pass rather than across both, because a structure the first pass fills and the
+     * second one does not would otherwise still satisfy the test — and that difference between
+     * passes is exactly what would show that the program leaves something behind.
+     * <p>
+     * The saved-register snapshot is the one exception, and is returned rather than asserted here:
+     * CALL only takes a snapshot when a stack-saved register has been written, so the first call of
+     * a run leaves the frame without one. It appears from the second call onwards.
+     *
+     * @param simulation the simulation to advance
+     * @param organism the organism running the program
+     * @param pass the pass number, for the failure message
+     * @return whether a call frame carried a register snapshot during this pass
+     */
+    private static boolean assertCoverageDuringOnePass(Simulation simulation, Organism organism, int pass) {
         boolean sawDataStack = false;
         boolean sawLocationStack = false;
         boolean sawCallStack = false;
@@ -94,7 +124,7 @@ class StatefulProgramTest {
         boolean sawMarker = false;
         boolean sawLocationRegister = false;
 
-        for (int tick = 0; tick < StatefulProgram.TICKS_PER_PASS * 2; tick++) {
+        for (int tick = 0; tick < StatefulProgram.TICKS_PER_PASS; tick++) {
             simulation.tick();
             sawDataStack |= !organism.getDataStack().isEmpty();
             sawLocationStack |= !organism.getLocationStack().isEmpty();
@@ -107,18 +137,14 @@ class StatefulProgramTest {
             sawLocationRegister |= isNonZeroVector(organism.readOperand(RegisterBank.LR.base));
         }
 
-        assertThat(sawDataStack).as("data stack was used").isTrue();
-        assertThat(sawLocationStack).as("location stack was used").isTrue();
-        assertThat(sawCallStack).as("call stack was used").isTrue();
-        assertThat(sawSavedRegisters).as("call frame carried a register snapshot").isTrue();
-        assertThat(sawPersistentState).as("persistent register store was filled").isTrue();
-        assertThat(sawActiveDpSwitch).as("active data pointer was switched").isTrue();
-        assertThat(sawMarker).as("molecule marker was set").isTrue();
-        assertThat(sawLocationRegister).as("location register was written").isTrue();
-
-        assertThat(environment.getOwnerId(StatefulProgram.SCRATCH_CELL))
-                .as("program wrote to the world")
-                .isEqualTo(organism.getId());
+        assertThat(sawDataStack).as("data stack was used in pass %d", pass).isTrue();
+        assertThat(sawLocationStack).as("location stack was used in pass %d", pass).isTrue();
+        assertThat(sawCallStack).as("call stack was used in pass %d", pass).isTrue();
+        assertThat(sawPersistentState).as("persistent register store was filled in pass %d", pass).isTrue();
+        assertThat(sawActiveDpSwitch).as("active data pointer was switched in pass %d", pass).isTrue();
+        assertThat(sawMarker).as("molecule marker was set in pass %d", pass).isTrue();
+        assertThat(sawLocationRegister).as("location register was written in pass %d", pass).isTrue();
+        return sawSavedRegisters;
     }
 
     private static boolean isNonZeroVector(Object value) {

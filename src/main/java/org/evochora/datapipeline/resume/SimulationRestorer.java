@@ -664,7 +664,13 @@ public class SimulationRestorer {
                     procRegs[i] = convertRegisterValue(
                             snapshot.getRegisters(i), organismId, RegisterOrigin.PERSISTENT_STORE, i);
                 }
-                persistentState.put(snapshot.getLabelHash(), procRegs);
+                if (persistentState.put(snapshot.getLabelHash(), procRegs) != null) {
+                    // Each procedure has one persistent register set; a second entry for the same
+                    // label offers two, and taking the later one would pick a state at random.
+                    throw new ResumeException("Organism " + organismId
+                            + ": persistent register state occurs more than once for label "
+                            + snapshot.getLabelHash());
+                }
             }
             builder.persistentRegisterState(persistentState);
         }
@@ -677,7 +683,7 @@ public class SimulationRestorer {
             // organism named. This covers the checks the restorer does not repeat — coordinate
             // dimensions among them — and any invariant added to the builder later.
             throw new ResumeException(
-                    "Organism " + state.getOrganismId() + " cannot be restored: " + e.getMessage(), e);
+                    "Organism " + organismId + " cannot be restored: " + e.getMessage(), e);
         }
     }
 

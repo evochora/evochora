@@ -2,6 +2,7 @@ package org.evochora.runtime.thermodynamics;
 
 import java.lang.reflect.Constructor;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.evochora.runtime.isa.Instruction;
@@ -66,8 +67,16 @@ public class ThermodynamicPolicyManager {
      * what actually exists.
      */
     private static int highestOpcodeId() {
+        List<Instruction.InstructionInfo> registered = Instruction.getInstructionSetInfo();
+        if (registered.isEmpty()) {
+            // Sizing the array against an empty registry would produce one too small for every
+            // instruction, and the mismatch would only show as a bare index error deep in a tick.
+            throw new IllegalStateException(
+                    "No instructions are registered; the instruction set must be initialised "
+                    + "before a ThermodynamicPolicyManager is built");
+        }
         int highest = 0;
-        for (Instruction.InstructionInfo info : Instruction.getInstructionSetInfo()) {
+        for (Instruction.InstructionInfo info : registered) {
             highest = Math.max(highest, info.opcodeId());
         }
         return highest;

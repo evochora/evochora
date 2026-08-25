@@ -591,6 +591,36 @@ class SimulationRestorerTest {
                 .hasMessageContaining("configured more than once");
     }
 
+    /**
+     * A procedure has one persistent register set. Two entries for the same label offer two, and
+     * keeping either would pick one of them without saying so.
+     */
+    @Test
+    void restore_DuplicatePersistentSnapshot_Rejected() {
+        OrganismState organism = wellFormedOrganism()
+            .setPersistentRegisterStore(org.evochora.datapipeline.api.contracts.PersistentRegisterStore.newBuilder()
+                .addProcedureSnapshots(persistentSnapshot(4711))
+                .addProcedureSnapshots(persistentSnapshot(4711))
+                .build())
+            .build();
+
+        assertThatThrownBy(() -> restoreOrganism(organism))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining("4711")
+                .hasMessageContaining("more than once");
+    }
+
+    /** A persistent register snapshot of the size this build expects, for the given procedure. */
+    private org.evochora.datapipeline.api.contracts.ProcedureRegisterSnapshot persistentSnapshot(int labelHash) {
+        org.evochora.datapipeline.api.contracts.ProcedureRegisterSnapshot.Builder snapshot =
+                org.evochora.datapipeline.api.contracts.ProcedureRegisterSnapshot.newBuilder()
+                    .setLabelHash(labelHash);
+        for (int i = 0; i < RegisterBank.PERSISTENT_SNAPSHOT_SIZE; i++) {
+            snapshot.addRegisters(scalar(0));
+        }
+        return snapshot.build();
+    }
+
     @Test
     void restore_TruncatedRngState_Rejected() {
         TickData snapshot = snapshotWith(createOrganismState(1, 500)).toBuilder()
