@@ -227,7 +227,15 @@ public class SimulationRestorer {
             throw new ResumeException("Checkpoint at tick " + checkpoint.getCheckpointTick()
                     + " carries no RNG state; the run cannot be continued deterministically");
         }
-        randomProvider.loadState(rngState.toByteArray());
+        try {
+            randomProvider.loadState(rngState.toByteArray());
+        } catch (RuntimeException e) {
+            // A truncated or otherwise malformed state fails inside the provider, which knows nothing
+            // about resuming; without this the failure would surface as a stack trace rather than as
+            // the checkpoint problem it is.
+            throw new ResumeException("Checkpoint at tick " + checkpoint.getCheckpointTick()
+                    + " carries an unreadable RNG state", e);
+        }
         log.debug("Loaded RNG state ({} bytes)", rngState.size());
         simulation.setRandomProvider(randomProvider);
 
@@ -661,7 +669,16 @@ public class SimulationRestorer {
             builder.persistentRegisterState(persistentState);
         }
 
-        return builder.build(simulation);
+        try {
+            return builder.build(simulation);
+        } catch (IllegalStateException e) {
+            // The builder defends the organism's invariants for any caller; here the caller is a
+            // checkpoint, so a violation is a data error and belongs in the resume path with the
+            // organism named. This covers the checks the restorer does not repeat — coordinate
+            // dimensions among them — and any invariant added to the builder later.
+            throw new ResumeException(
+                    "Organism " + state.getOrganismId() + " cannot be restored: " + e.getMessage(), e);
+        }
     }
 
     /**
@@ -794,6 +811,7 @@ public class SimulationRestorer {
         }
 
         Set<String> unusedStates = new HashSet<>(stateByClass.keySet());
+        Set<String> configuredClasses = new HashSet<>();
 
         List<PluginWithConfig> tickPlugins = new ArrayList<>();
         List<InterceptorWithConfig> interceptors = new ArrayList<>();
@@ -817,6 +835,13 @@ public class SimulationRestorer {
                 // legitimate value for a plugin that had not initialized itself when the snapshot was
                 // taken; a missing entry means the checkpoint does not describe this plugin at all.
                 if (plugin instanceof ISimulationPlugin simulationPlugin) {
+                    if (!configuredClasses.add(className)) {
+                        // State is keyed by class, so two instances of one class have no way to get
+                        // their own state back. Rejecting here names the configuration; the duplicate
+                        // check on the stored states would name the checkpoint instead.
+                        throw new ResumeException("Plugin " + className
+                                + " is configured more than once; their states cannot be told apart");
+                    }
                     byte[] savedState = stateByClass.get(className);
                     if (savedState == null) {
                         throw new ResumeException("Checkpoint holds no state for configured plugin "

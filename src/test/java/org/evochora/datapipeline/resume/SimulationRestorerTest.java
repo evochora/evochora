@@ -570,6 +570,56 @@ class SimulationRestorerTest {
                 .hasMessageContaining("holds no state");
     }
 
+    /**
+     * The other side of the same problem: state is keyed by plugin class, so configuring one class
+     * twice leaves the two instances with no way to get their own state back. Rejected where the
+     * configuration is read, so the message names the configuration rather than the checkpoint.
+     */
+    @Test
+    void restore_PluginConfiguredTwice_Rejected() {
+        String twice = "[{ \"className\": \"" + LabelRewritePlugin.class.getName() + "\", \"options\": {} },"
+                     + " { \"className\": \"" + LabelRewritePlugin.class.getName() + "\", \"options\": {} }]";
+        SimulationMetadata metadata = createMinimalMetadata(twice);
+        TickData snapshot = snapshotWith(createOrganismState(1, 500)).toBuilder()
+            .addPluginStates(pluginState(LabelRewritePlugin.class))
+            .build();
+
+        assertThatThrownBy(() -> SimulationRestorer.restore(
+                    new ResumeCheckpoint(metadata, snapshot), randomProvider, 1))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining(LabelRewritePlugin.class.getName())
+                .hasMessageContaining("configured more than once");
+    }
+
+    @Test
+    void restore_TruncatedRngState_Rejected() {
+        TickData snapshot = snapshotWith(createOrganismState(1, 500)).toBuilder()
+            .setRngState(validRngState().substring(0, 4))
+            .build();
+
+        assertThatThrownBy(() -> restoreSnapshot(snapshot))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining("RNG");
+    }
+
+    /**
+     * Coordinate dimensions are checked by the builder, not by the restorer. The failure still has to
+     * arrive as a resume failure naming the organism, or it reaches the service manager as an
+     * unexpected runtime exception and is logged as a stack trace.
+     */
+    @Test
+    void restore_DataPointerOfWrongDimension_Rejected() {
+        OrganismState organism = wellFormedOrganism()
+            .clearDataPointers()
+            .addDataPointers(createVector(1, 1, 1))
+            .addDataPointers(createVector(1, 1, 1))
+            .build();
+
+        assertThatThrownBy(() -> restoreOrganism(organism))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining("1");
+    }
+
     @Test
     void restore_DuplicatePluginState_Rejected() {
         TickData snapshot = snapshotWith(createOrganismState(1, 500)).toBuilder()

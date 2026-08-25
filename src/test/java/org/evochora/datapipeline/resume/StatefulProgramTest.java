@@ -70,13 +70,14 @@ class StatefulProgramTest {
     }
 
     /**
-     * Runs one pass and records which structures held content at least once. Each of them is a
-     * structure the restorer has to carry over, and each is checked at the tick where the program
-     * fills it — the state at the end of a pass says nothing, since the program tidies up after
-     * itself so that the loop can repeat.
+     * Runs two passes and records which structures held content at least once. Each of them is a
+     * structure the restorer has to carry over, and each is recorded at the tick where the program
+     * fills it — the state at the end says nothing, since the program tidies up after itself so that
+     * the loop can repeat. The second pass is what shows it can: a structure left behind by the first
+     * pass would make the second one behave differently.
      */
     @Test
-    void programFillsEveryStructureAtSomePointDuringOnePass() {
+    void programFillsEveryStructureAcrossTwoPasses() {
         Environment environment = new Environment(new int[]{SIZE, SIZE}, true);
         Simulation simulation = SimulationTestUtils.createSimulation(environment);
         simulations.add(simulation);
