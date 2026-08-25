@@ -715,7 +715,13 @@ public class SimulationRestorer {
         }
     }
 
-    /** The structure a converted register value was read from, for diagnosable failure messages. */
+    /**
+     * The structure a converted register value was read from, for diagnosable failure messages.
+     * <p>
+     * The constant names below are part of those messages: they reach whoever reads a rejected
+     * resume, and tests assert on them. Renaming one changes what an operator sees, so it is a
+     * change to the wording of a failure rather than to an internal identifier.
+     */
     private enum RegisterOrigin {
         FLAT_REGISTER,
         DATA_STACK,
