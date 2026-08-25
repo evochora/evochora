@@ -2,6 +2,7 @@ package org.evochora.datapipeline;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import org.evochora.datapipeline.resume.ResumeException;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.api.services.ServiceStatus;
@@ -156,6 +157,28 @@ public class ServiceManagerTest {
         sm.stopAll();
         await().atMost(1, TimeUnit.SECONDS).until(() -> (long) sm.getMetrics().get("services_stopped") == 2);
         assertTrue(sm.isHealthy());
+    }
+
+    /**
+     * A failure that was given a reason on the way out must still be recognised by that reason.
+     * <p>
+     * Startup failures arrive wrapped in whatever reflection put around them, so the handler looks
+     * along the chain of causes. Looking only at its far end finds the technical exception and misses
+     * the one that says what went wrong — and the more carefully a failure is explained, the more
+     * reliably it would be missed, because explaining it is what gives it a cause of its own.
+     */
+    @Test
+    void findInChain_FindsAnExplainedFailureRatherThanItsTechnicalCause() {
+        ResumeException explained = new ResumeException(
+                "Checkpoint carries an unreadable RNG state", new java.nio.BufferUnderflowException());
+        RuntimeException asThrownByReflection = new RuntimeException("Failed to create instance", explained);
+
+        assertSame(explained, ServiceManager.findInChain(asThrownByReflection, ResumeException.class),
+                "the failure that carries the reason");
+        assertNull(ServiceManager.findInChain(asThrownByReflection, IllegalStateException.class),
+                "a type that does not occur in the chain");
+        assertSame(explained, ServiceManager.findInChain(explained, ResumeException.class),
+                "a failure that is its own outermost link");
     }
 
     @Test

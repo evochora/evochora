@@ -272,6 +272,30 @@ public class ServiceManager implements IMonitorable {
         }
     }
 
+    /**
+     * The outermost failure of the given type along a chain of causes, or {@code null} if none is of
+     * that type.
+     * <p>
+     * A failure raised during startup reaches this class wrapped in whatever reflection put around
+     * it, so its type has to be sought rather than read off. Sought from the outside in, because a
+     * failure that was given a reason on its way out carries the technical exception it replaced as
+     * its own cause: taking the innermost link would find that technical exception again and lose
+     * the reason.
+     *
+     * @param <T> the type of failure looked for
+     * @param thrown the failure as it arrived
+     * @param type the type of failure looked for
+     * @return the outermost link of that type, or {@code null}
+     */
+    static <T extends Throwable> T findInChain(Throwable thrown, Class<T> type) {
+        for (Throwable link = thrown; link != null; link = link.getCause() == link ? null : link.getCause()) {
+            if (type.isInstance(link)) {
+                return type.cast(link);
+            }
+        }
+        return null;
+    }
+
     private ResourceContext parseResourceUri(String uri, String serviceName, String portName) {
         String[] mainParts = uri.split(":", 2);
 
@@ -553,6 +577,11 @@ public class ServiceManager implements IMonitorable {
                 cause = cause.getCause();
             }
 
+            // Sought along the chain rather than taken from its end: a resume failure explains what
+            // about the checkpoint is unusable, and explaining it is what gives it a cause of its
+            // own — which the unwrapping above would then run past.
+            ResumeException resumeFailure = findInChain(e, ResumeException.class);
+
             // Check if this is an OutOfMemoryError wrapped in RuntimeException (from reflection)
             if (cause instanceof OutOfMemoryError && name.equals("simulation-engine") && pipelineConfig.hasPath("services.simulation-engine.options.environment.shape")) {
                 try {
@@ -585,8 +614,8 @@ public class ServiceManager implements IMonitorable {
             }
 
             // ResumeException indicates invalid run-id or missing checkpoint data
-            if (cause instanceof ResumeException) {
-                String errorMsg = "Resume failed for service '" + name + "': " + cause.getMessage();
+            if (resumeFailure != null) {
+                String errorMsg = "Resume failed for service '" + name + "': " + resumeFailure.getMessage();
                 log.error(errorMsg);
                 // Don't throw - just log and return. Service remains in stopped state.
                 return;
