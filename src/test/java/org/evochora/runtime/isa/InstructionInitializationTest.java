@@ -24,7 +24,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 @Tag("unit")
 class InstructionInitializationTest {
 
-    /** The static array registries the virtual machine reads on its hot path. */
+    /** What registration builds once: the registries the virtual machine reads, and the
+     * description of the instruction set handed to callers. */
     private static final List<String> ARRAY_REGISTRY_FIELDS = List.of(
             "PLANNERS_ARRAY",
             "OPERAND_SOURCES_ARRAY",
@@ -32,7 +33,9 @@ class InstructionInitializationTest {
             "INSTRUCTION_LENGTHS_DIMS_MULTIPLIER",
             "PARALLEL_EXECUTE_SAFE",
             "NAMES_ARRAY",
-            "SIGNATURES_ARRAY");
+            "SIGNATURES_ARRAY",
+            // Built alongside them and handed out to callers, so it has to be the same object too.
+            "INSTRUCTION_INFO_CACHE");
 
     @Test
     void repeatedInit_LeavesTheArrayRegistriesUntouched() throws Exception {
@@ -49,6 +52,34 @@ class InstructionInitializationTest {
                     .as("%s must not be rebuilt", ARRAY_REGISTRY_FIELDS.get(i))
                     .isSameAs(afterFirst.get(i));
         }
+    }
+
+    /**
+     * Registration produces the description of the instruction set along with everything else.
+     * <p>
+     * Built on its own, next to registration rather than as part of it, it would be built by whoever
+     * asks for it first — and by two callers at once when two ask at once. Both would then walk the
+     * class hierarchy of every instruction to arrive at the same answer, and the field handing that
+     * answer out would be written outside the lock that guards the rest.
+     */
+    @Test
+    void init_ProducesTheInstructionSetDescriptionAsWell() throws Exception {
+        Instruction.init();
+
+        // Cleared first: another test in this JVM may have asked for the description already, which
+        // would fill the field whether or not registration does it.
+        Field cache = Instruction.class.getDeclaredField("INSTRUCTION_INFO_CACHE");
+        cache.setAccessible(true);
+        Field initialized = Instruction.class.getDeclaredField("initialized");
+        initialized.setAccessible(true);
+        cache.set(null, null);
+        initialized.set(null, false);
+
+        Instruction.init();
+
+        assertThat(cache.get(null))
+                .as("the description of the instruction set, built by registration")
+                .isNotNull();
     }
 
     /** The current array objects, to be compared by identity rather than by content. */

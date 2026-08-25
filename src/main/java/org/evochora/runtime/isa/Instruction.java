@@ -112,25 +112,34 @@ public abstract class Instruction {
      * @return An unmodifiable list of {@link InstructionInfo} records.
      */
     public static List<InstructionInfo> getInstructionSetInfo() {
-        if (INSTRUCTION_INFO_CACHE == null) { // Simple lazy initialization
-            init(); // Ensure instructions are registered
-            List<InstructionInfo> info = new ArrayList<>();
-            for (Integer opcodeId : REGISTERED_INSTRUCTIONS_BY_ID.keySet()) {
-                Class<? extends Instruction> implClass = REGISTERED_INSTRUCTIONS_BY_ID.get(opcodeId);
-                String name = ID_TO_NAME.get(opcodeId);
-                
-                // Find the base "family" class (e.g., ArithmeticInstruction) by traversing up the class hierarchy.
-                Class<? extends Instruction> family = implClass;
-                while (family.getSuperclass() != Instruction.class && family.getSuperclass() != null && Instruction.class.isAssignableFrom(family.getSuperclass())) {
-                    @SuppressWarnings("unchecked")
-                    Class<? extends Instruction> superClass = (Class<? extends Instruction>) family.getSuperclass();
-                    family = superClass;
-                }
-                info.add(new InstructionInfo(opcodeId, name, family));
-            }
-            INSTRUCTION_INFO_CACHE = Collections.unmodifiableList(info);
-        }
+        init();
         return INSTRUCTION_INFO_CACHE;
+    }
+
+    /**
+     * Describes every registered instruction, for callers that inspect the instruction set.
+     * <p>
+     * Called by {@link #init()} while it holds the lock, so the description is complete before any
+     * caller can reach it and is built once however many callers ask.
+     *
+     * @return an unmodifiable list describing the registered instructions
+     */
+    private static List<InstructionInfo> buildInstructionSetInfo() {
+        List<InstructionInfo> info = new ArrayList<>();
+        for (Integer opcodeId : REGISTERED_INSTRUCTIONS_BY_ID.keySet()) {
+            Class<? extends Instruction> implClass = REGISTERED_INSTRUCTIONS_BY_ID.get(opcodeId);
+            String name = ID_TO_NAME.get(opcodeId);
+            
+            // Find the base "family" class (e.g., ArithmeticInstruction) by traversing up the class hierarchy.
+            Class<? extends Instruction> family = implClass;
+            while (family.getSuperclass() != Instruction.class && family.getSuperclass() != null && Instruction.class.isAssignableFrom(family.getSuperclass())) {
+                @SuppressWarnings("unchecked")
+                Class<? extends Instruction> superClass = (Class<? extends Instruction>) family.getSuperclass();
+                family = superClass;
+            }
+            info.add(new InstructionInfo(opcodeId, name, family));
+        }
+        return Collections.unmodifiableList(info);
     }
 
     /**
@@ -420,6 +429,7 @@ public abstract class Instruction {
             VectorInstruction.register(VECTOR);
 
             buildArrayRegistries();
+            INSTRUCTION_INFO_CACHE = buildInstructionSetInfo();
 
             // Set last: the check above the lock reads this flag without holding it, so a thread
             // that sees it set must find every registry complete. Writing it earlier would offer
