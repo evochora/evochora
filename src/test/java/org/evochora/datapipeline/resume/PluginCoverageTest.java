@@ -11,6 +11,7 @@ import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 
 import org.evochora.runtime.spi.ISimulationPlugin;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -36,14 +37,25 @@ class PluginCoverageTest {
      */
     private static final List<String> EXCLUDED = List.of();
 
-    @Test
-    void everyPluginIsCoveredByTheNeutralityRun() {
-        JavaClasses productionClasses = new ClassFileImporter()
+    /**
+     * The production classes, read once for the whole class.
+     * <p>
+     * Reading them is what this test costs — the whole classpath goes through it — and reading them
+     * per test would pay that twice for the same answer.
+     */
+    private static JavaClasses productionClasses;
+
+    @BeforeAll
+    static void importProductionClasses() {
+        productionClasses = new ClassFileImporter()
                 .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
                 .withImportOption(location -> !location.contains("test-fixtures"))
                 .withImportOption(location -> !location.contains("-jmh"))
                 .importPackages("org.evochora");
+    }
 
+    @Test
+    void everyPluginIsCoveredByTheNeutralityRun() {
         List<String> uncovered = productionClasses.stream()
                 .filter(c -> c.isAssignableTo(ISimulationPlugin.class))
                 .filter(c -> !c.isInterface())
@@ -68,10 +80,6 @@ class PluginCoverageTest {
      */
     @Test
     void everyConfiguredPluginStillExists() {
-        JavaClasses productionClasses = new ClassFileImporter()
-                .withImportOption(ImportOption.Predefined.DO_NOT_INCLUDE_TESTS)
-                .importPackages("org.evochora");
-
         List<String> existing = productionClasses.stream()
                 .filter(c -> c.isAssignableTo(ISimulationPlugin.class))
                 .map(JavaClass::getFullName)

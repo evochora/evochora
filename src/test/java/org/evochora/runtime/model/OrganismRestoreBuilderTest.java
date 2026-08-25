@@ -492,6 +492,7 @@ class OrganismRestoreBuilderTest {
                 .build(simulation)
         )
             .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("Active data pointer index")
             .hasMessageContaining("1");
     }
 

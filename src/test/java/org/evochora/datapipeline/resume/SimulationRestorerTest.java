@@ -678,7 +678,10 @@ class SimulationRestorerTest {
 
         assertThatThrownBy(() -> restoreOrganism(organism))
                 .isInstanceOf(ResumeException.class)
-                .hasMessageContaining("1");
+                .hasMessageContaining("Data pointer dimension")
+                // Both numbers, because the bare digit of either would also match the organism id.
+                .hasMessageContaining("2")
+                .hasMessageContaining("got 3");
     }
 
     @Test
