@@ -96,6 +96,16 @@ public abstract class Instruction {
     private static InstructionSignature[] SIGNATURES_ARRAY = new InstructionSignature[0];
 
     /**
+     * Whether {@link #init()} has registered the instruction set.
+     * <p>
+     * Volatile so that repeated calls can see it without taking a lock. Registration happens once,
+     * while callers keep asking whether it already has — among them a database read path that asks
+     * twice per organism it decodes — so the answer has to be cheap and has to stay cheap as the
+     * number of asking threads grows.
+     */
+    private static volatile boolean initialized = false;
+
+    /**
      * Returns a list of public information records for all registered instructions.
      * This provides a stable, abstract way for external tools to inspect the instruction set.
      *
@@ -376,21 +386,46 @@ public abstract class Instruction {
     /**
      * Initializes the instruction set by registering all instruction families.
      * Each instruction class is responsible for registering its own opcodes.
+     * <p>
+     * Registration happens on the first call and every later call returns without touching the
+     * registries. That is what makes it safe to call from anywhere: {@link #buildArrayRegistries()}
+     * replaces the array registries the virtual machine reads on every instruction, assigning a new
+     * empty array and filling it afterwards, so repeating it while a simulation runs would let a
+     * running thread read an array that is momentarily empty and see a registered instruction as
+     * unregistered.
+     * <p>
+     * Callers must reach this method before starting any thread that executes instructions. Doing so
+     * establishes the happens-before edge that makes the filled registries visible to that thread,
+     * which is why the readers need no synchronization of their own.
      */
     public static void init() {
-        NopInstruction.register(SPECIAL);
-        ArithmeticInstruction.register(ARITHMETIC);
-        BitwiseInstruction.register(BITWISE);
-        DataInstruction.register(DATA);
-        StackInstruction.register(DATA);  // Stack operations are part of DATA family
-        ConditionalInstruction.register(CONDITIONAL);
-        ControlFlowInstruction.register(CONTROL);
-        EnvironmentInteractionInstruction.register(ENVIRONMENT);
-        StateInstruction.register(STATE);
-        LocationInstruction.register(LOCATION);
-        VectorInstruction.register(VECTOR);
+        if (initialized) {
+            return;
+        }
+        synchronized (Instruction.class) {
+            if (initialized) {
+                return;
+            }
 
-        buildArrayRegistries();
+            NopInstruction.register(SPECIAL);
+            ArithmeticInstruction.register(ARITHMETIC);
+            BitwiseInstruction.register(BITWISE);
+            DataInstruction.register(DATA);
+            StackInstruction.register(DATA);  // Stack operations are part of DATA family
+            ConditionalInstruction.register(CONDITIONAL);
+            ControlFlowInstruction.register(CONTROL);
+            EnvironmentInteractionInstruction.register(ENVIRONMENT);
+            StateInstruction.register(STATE);
+            LocationInstruction.register(LOCATION);
+            VectorInstruction.register(VECTOR);
+
+            buildArrayRegistries();
+
+            // Set last: the check above the lock reads this flag without holding it, so a thread
+            // that sees it set must find every registry complete. Writing it earlier would offer
+            // that thread a registry still being filled.
+            initialized = true;
+        }
     }
 
     /**

@@ -2,7 +2,6 @@ package org.evochora.node.processes.http.api.visualizer;
 
 import java.sql.SQLException;
 import java.time.Duration;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.evochora.datapipeline.api.contracts.CellHttpResponse;
 import org.evochora.datapipeline.api.contracts.EnvironmentHttpResponse;
@@ -75,11 +74,6 @@ import com.google.protobuf.ByteString;
 public class EnvironmentController extends VisualizerBaseController {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(EnvironmentController.class);
-    
-    /**
-     * Guard for one-time instruction set initialization.
-     */
-    private static final AtomicBoolean INSTRUCTION_INITIALIZED = new AtomicBoolean(false);
     
     /**
      * LRU cache for TickDataChunks.
@@ -281,8 +275,10 @@ public class EnvironmentController extends VisualizerBaseController {
             // --- Timing: Transform ---
             final long transformStartNs = System.nanoTime();
             
-            // Ensure instruction set is initialized before resolving opcode names
-            ensureInstructionSetInitialized();
+            // Opcode names come from the instruction registry, which this process may never have
+            // filled: it serves historical data without running a simulation. Registering the
+            // instruction set is idempotent.
+            Instruction.init();
 
             // Convert to Protobuf response format (using IDs instead of strings)
             final EnvironmentHttpResponse response = convertTickDataToProtobuf(
@@ -513,14 +509,6 @@ public class EnvironmentController extends VisualizerBaseController {
         );
     }
     
-    /**
-     * Ensures the instruction set is initialized (one-time, thread-safe).
-     */
-    private static void ensureInstructionSetInitialized() {
-        if (INSTRUCTION_INITIALIZED.compareAndSet(false, true)) {
-            Instruction.init();
-        }
-    }
     
     /**
      * Handles database exceptions with appropriate error mapping.
