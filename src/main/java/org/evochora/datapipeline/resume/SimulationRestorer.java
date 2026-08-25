@@ -691,6 +691,12 @@ public class SimulationRestorer {
      * Rejects a restored stack deeper than the instruction set allows. Such a depth describes a state
      * no running organism can reach, because the instruction that would exceed the limit fails instead
      * of pushing.
+     * <p>
+     * {@code Organism.RestoreBuilder} checks the same limits for every caller that builds an organism.
+     * The two are deliberately separate rather than sharing a helper: this one speaks for the
+     * checkpoint and names it in the message, and a shared helper would have to live in one of the two
+     * packages — in {@code runtime}, which depends on nothing, or in {@code datapipeline}, which
+     * {@code runtime} must not depend on.
      *
      * @param organismId the organism the stack belongs to
      * @param name the stack's name, for the message

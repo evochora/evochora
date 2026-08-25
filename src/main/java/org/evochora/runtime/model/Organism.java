@@ -546,6 +546,11 @@ public class Organism {
          * Rejects a stack deeper than the instruction set allows. Such a depth describes a state no
          * running organism can reach, because the instruction that would exceed the limit fails
          * instead of pushing.
+         * <p>
+         * A restorer reading a checkpoint checks the same limits before it gets here, so that its
+         * message can name the checkpoint. This one guards the organism itself and therefore holds
+         * for every caller. Sharing one helper between the two is not possible: it would have to live
+         * in a package this one may depend on, and this package depends on nothing.
          *
          * @param name  the stack's name, for the message
          * @param depth the restored depth
