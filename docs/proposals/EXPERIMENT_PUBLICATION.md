@@ -19,8 +19,9 @@ archived on the external SSD).
   stores everything else for download. Limits: 100 files and 50 GB per record. A corrected or
   extended package is published as a **new version** of the same record; old versions and DOIs
   stay valid.
-- **The repository** holds exactly one page, `docs/experiments/README.md`: title, one paragraph and
-  DOI per experiment. Nothing else about experiments lives in the repository (see *Migration*).
+- **The repository** holds exactly one page, `docs/PUBLISHED_EXPERIMENTS.md`: title, one paragraph
+  and DOI per experiment. `docs/SCIENTIFIC_OVERVIEW.md` and the root `README.md` link to it. Nothing
+  else about published experiments lives in the repository (see *Migration*).
 - **The demo server** is not involved: it shows the system, not the experiments. Showing an
   experiment on the node's start page is a separate topic and not part of this proposal.
 
@@ -29,7 +30,7 @@ archived on the external SSD).
 | File on Zenodo | Shown inline | Content |
 |---|---|---|
 | `analysis.ipynb` | yes | the **only document**: question, run setup, results with figures, interpretation, limitations, provenance, how to start the package (first section) |
-| `timelapse.mp4` | yes | one frame per 2.5 M-tick block over the whole run, rendered with `video lineage` from the complete raw data before sampling (807 frames, 30 fps, ≈27 s), H.264 |
+| `timelapse.mp4` | yes | one frame per 2.5 M-tick block over the whole run, rendered with `video lineage --clade` (variant A orange, variant B blue, unresolvable gray) from the complete raw data before sampling (807 frames, 30 fps, ≈27 s), H.264 |
 | `experiment-<runId>.tar` | download | the package (below) |
 
 The record's Zenodo description holds three sentences: what the run is, the requirement (Java 21),
@@ -104,20 +105,26 @@ All steps run on the demo server; nothing large passes through the user's machin
    `SHUTDOWN COMPACT` corrupted the file once), copy the selected raw batches and chunk files, keep
    the analytics. Originals stay untouched.
 2. Render `timelapse.mp4` from the **original** raw data, before the cut:
-   `video lineage --scale 0.5 --sampling-interval 2500000 --fps 30 --format mp4 --overlay info`.
+   `video lineage --scale 0.5 --sampling-interval 2500000 --fps 30 --format mp4 --overlay info`
+   with `--clade` seeds for the two variant clades (member genomes observed in the organism
+   snapshots; the packaged app carries the renderer extension as a bundle patch, merged into main).
 3. Write and execute `analysis.ipynb` against the package (the forensics section with the package
    started in a temporary container with 16 GB heap while the demo container is stopped, then
    restored).
 4. Build the tar, verify it unpacks and starts on a clean directory, upload notebook, video and tar
    with the Zenodo API, fill the description, publish, record the DOI in
-   `docs/experiments/README.md`.
+   `docs/PUBLISHED_EXPERIMENTS.md`.
 
 ## Migration
 
-After the first record exists, the session removes `docs/experiments/RUN_20260402_SELECTIVE_SWEEP.md`,
-`docs/experiments/DEMO_RUNS_PRE_WIPE_EVALUATION.md` and `docs/experiments/run-20260402-scripts/`
-from the repository: their content lives in the notebooks, their code in the packages'
-`analysis/` module. `docs/experiments/README.md` is the only remaining file there.
+Documents leave `docs/experiments/` when — and only when — their content lives in a published
+record. After the **first** record (demo run), `docs/experiments/DEMO_RUNS_PRE_WIPE_EVALUATION.md`
+is removed: its content lives in that record's notebook. `docs/experiments/RUN_20260402_SELECTIVE_SWEEP.md`
+and `docs/experiments/run-20260402-scripts/` stay until the **second** record (the SSD run) is
+published, because they are still the working material for it; they are removed with that record,
+their code then lives in the packages' `analysis/` modules. When the last document has migrated,
+the empty `docs/experiments/` directory is removed. The index `docs/PUBLISHED_EXPERIMENTS.md` is
+created with the first record and linked from `docs/SCIENTIFIC_OVERVIEW.md` and the root `README.md`.
 
 ## Prerequisites
 
