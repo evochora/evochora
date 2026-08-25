@@ -4,35 +4,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
-import org.evochora.datapipeline.api.contracts.OrganismState;
-import org.evochora.datapipeline.api.contracts.SimulationMetadata;
-import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.api.contracts.TickDataChunk;
-import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
-import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
-import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
-import org.evochora.runtime.spi.IBirthHandler;
-import org.evochora.runtime.spi.IDeathHandler;
-import org.evochora.runtime.spi.IInstructionInterceptor;
 import org.evochora.runtime.spi.ISimulationPlugin;
-import org.evochora.runtime.spi.ITickPlugin;
 import org.evochora.runtime.spi.IRandomProvider;
-import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import com.typesafe.config.ConfigFactory;
 
 /**
  * Resume neutrality through the real pipeline layer: a simulation is serialized with
@@ -43,7 +29,6 @@ import com.typesafe.config.ConfigFactory;
 @Tag("unit")
 class ResumeNeutralityTest {
 
-    private static final long SEED = 42L;
     private static final int SIZE = 64;
     private static final int JUMPERS = 16;
     private static final int LABEL_HASH = 0b1011_0110_0101_1001_1010 & Config.VALUE_MASK;

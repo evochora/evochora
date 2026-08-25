@@ -18,7 +18,6 @@ import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TickDelta;
-import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.resources.storage.FileSystemStorageResource;
 import org.evochora.junit.extensions.logging.AllowLog;
 import org.evochora.junit.extensions.logging.LogLevel;
@@ -356,13 +355,5 @@ class ResumeIntegrationTest {
         return ProtoTestUtils.wellFormedOrganism(id, energy, 10, 10)
             .setBirthTick(1)
             .build();
-    }
-
-    private Vector createVector(int... components) {
-        Vector.Builder builder = Vector.newBuilder();
-        for (int c : components) {
-            builder.addComponents(c);
-        }
-        return builder.build();
     }
 }

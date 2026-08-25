@@ -5,13 +5,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.ArrayList;
 import java.util.List;
 
-import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
 import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
-import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Organism;
 import org.evochora.test.utils.SimulationTestUtils;
 import org.junit.jupiter.api.AfterEach;
