@@ -184,6 +184,7 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
         if (estimatedBytesPerItem < 0) {
             throw new IllegalArgumentException("estimatedBytesPerItem cannot be negative for resource '" + name + "'.");
         }
+        requireEmbeddedBrokerIfInVm(name);
 
         this.throughputCounter = new SlidingWindowCounter(metricsWindowSeconds);
 
@@ -237,6 +238,30 @@ public class ArtemisQueueResource<T extends Message> extends AbstractResource
             }
             log.error("Failed to initialize ArtemisQueueResource '{}'", name);
             throw new RuntimeException("Failed to initialize ArtemisQueueResource: " + name, e);
+        }
+    }
+
+    /**
+     * Rejects an in-VM broker URL whose broker is not running.
+     * <p>
+     * For a {@code vm://N} URL there can be no external broker, so a missing one is always a
+     * misconfiguration or a wrong startup order — the broker process has to start before the
+     * pipeline. Without this check the resource comes up anyway and behaves as if it talked to an
+     * external broker: no address settings, so no byte limit and no backpressure; no purge, so
+     * messages from an earlier run are delivered into this one; and no metrics. None of that is
+     * reported above debug level.
+     * <p>
+     * External broker URLs are left alone here, where no embedded broker is expected in the first
+     * place.
+     *
+     * @param name the resource name, for the message
+     * @throws IllegalStateException if an in-VM broker is configured but not registered
+     */
+    private void requireEmbeddedBrokerIfInVm(String name) {
+        if (serverId >= 0 && EmbeddedBrokerRegistry.getServer(serverId) == null) {
+            throw new IllegalStateException("Resource '" + name + "' is configured for the embedded broker at '"
+                + brokerUrl + "', but no broker with serverId=" + serverId + " is running. "
+                + "The broker process must start before the pipeline.");
         }
     }
 

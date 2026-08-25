@@ -1,6 +1,8 @@
 package org.evochora.datapipeline.resources.broker;
 
 import java.io.File;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
@@ -120,21 +122,46 @@ public final class EmbeddedBrokerRegistry {
     /**
      * Parses the InVM server-ID from a broker URL.
      * <p>
-     * For {@code vm://0} returns 0, for {@code vm://1} returns 1, etc.
+     * For {@code vm://0} returns 0, for {@code vm://1} returns 1, etc. Transport parameters after
+     * the ID are permitted, as Artemis permits them: {@code vm://0?connectionsAllowed=2} is 0.
      * For external broker URLs (e.g. {@code tcp://...}) returns -1.
+     * <p>
+     * An InVM URL that carries no usable ID is rejected rather than answered with -1. That value
+     * means "not an InVM URL", so a typo would otherwise make a resource believe it talks to an
+     * external broker: it would skip its address settings, run without a byte limit, and leave
+     * messages from an earlier run in the queue — all without a word above debug level. Artemis does
+     * not catch the typo either; its connection factory accepts {@code vm://abc}. Note that
+     * {@code vm://-1} is rejected as well, since it would parse straight onto the sentinel.
+     * <p>
+     * The ID is read the way Artemis reads it, as the host component of the URI, so that the ID
+     * looked up in this registry cannot diverge from the one a connection is made with.
      *
      * @param brokerUrl the broker URL to parse
      * @return the InVM server-ID, or -1 if not an InVM URL
+     * @throws IllegalArgumentException if the URL is an InVM URL without a usable server-ID
      */
     public static int parseInVmServerId(String brokerUrl) {
-        if (brokerUrl != null && brokerUrl.startsWith("vm://")) {
-            try {
-                return Integer.parseInt(brokerUrl.substring(5));
-            } catch (NumberFormatException e) {
-                return -1;
-            }
+        if (brokerUrl == null || !brokerUrl.startsWith("vm://")) {
+            return -1;
         }
-        return -1;
+        String host;
+        try {
+            host = new URI(brokerUrl).getHost();
+        } catch (URISyntaxException e) {
+            throw new IllegalArgumentException("Broker URL '" + brokerUrl + "' is not a valid URI.", e);
+        }
+        int serverId;
+        try {
+            serverId = Integer.parseInt(host);
+        } catch (NumberFormatException | NullPointerException e) {
+            throw new IllegalArgumentException("Broker URL '" + brokerUrl
+                + "' names no InVM server-ID. Expected the form 'vm://<id>' with a non-negative id.");
+        }
+        if (serverId < 0) {
+            throw new IllegalArgumentException("Broker URL '" + brokerUrl
+                + "' names a negative InVM server-ID. Expected the form 'vm://<id>' with a non-negative id.");
+        }
+        return serverId;
     }
 
     /**

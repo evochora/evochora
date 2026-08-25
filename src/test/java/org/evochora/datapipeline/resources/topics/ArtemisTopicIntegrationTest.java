@@ -1,6 +1,7 @@
 package org.evochora.datapipeline.resources.topics;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.File;
 import java.util.HashSet;
@@ -110,6 +111,48 @@ class ArtemisTopicIntegrationTest {
         assertThat(this.topic.getResourceName()).isEqualTo("test-topic-artemis");
         assertThat(this.topic.getWriteUsageState()).isEqualTo(UsageState.ACTIVE);
         assertThat(this.topic.getReadUsageState()).isEqualTo(UsageState.ACTIVE);
+    }
+
+    /**
+     * A reader without a consumer group is rejected instead of quietly getting a nameless one.
+     * <p>
+     * The consumer group is the name a reader claims its messages under, and it goes into the
+     * subscription name. Were it absent, the literal text "null" would take its place there, so two
+     * readers that both lost it would share one subscription and take each other's messages — each
+     * processing part of the stream, both reporting healthy, and a run ending up partially indexed
+     * with nothing reported anywhere. The realistic way to lose it is copying: the configuration
+     * provides for paired indexer instances, and a copied block with the parameter line dropped
+     * parses cleanly.
+     * <p>
+     * {@code AbstractTopicDelegateReader} rejects it, and calls itself the only place where this is
+     * validated. That was untested, which is what this test is for: the guarantee is load-bearing for
+     * the integrity of an indexed run, so it should not rest on a comment alone.
+     */
+    @Test
+    @DisplayName("Should reject a reader that has no consumer group")
+    void shouldRejectReaderWithoutConsumerGroup() {
+        this.topic = new ArtemisTopicResource<>("no-group-topic", sharedConfig);
+
+        assertThatThrownBy(() -> this.topic.getWrappedResource(
+                new ResourceContext("environment-indexer-2", "topic", "topic-read", "no-group-topic", Map.of())))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("consumerGroup")
+            .hasMessageContaining("no-group-topic");
+    }
+
+    /**
+     * A consumer group of blank text is as unusable as none at all and is rejected the same way.
+     */
+    @Test
+    @DisplayName("Should reject a reader whose consumer group is blank")
+    void shouldRejectReaderWithBlankConsumerGroup() {
+        this.topic = new ArtemisTopicResource<>("blank-group-topic", sharedConfig);
+
+        assertThatThrownBy(() -> this.topic.getWrappedResource(
+                new ResourceContext("organism-indexer-1", "topic", "topic-read", "blank-group-topic",
+                        Map.of("consumerGroup", "   "))))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("consumerGroup");
     }
 
     @Test

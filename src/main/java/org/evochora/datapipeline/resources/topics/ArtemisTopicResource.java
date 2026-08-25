@@ -121,6 +121,17 @@ public class ArtemisTopicResource<T extends Message> extends AbstractTopicResour
         
         int maxPoolConnections = options.hasPath("maxPoolConnections") ? options.getInt("maxPoolConnections") : 1;
 
+        // For a vm://N URL there can be no external broker, so a missing one is always a
+        // misconfiguration or a wrong startup order — the broker process has to start before the
+        // pipeline. Left unchecked, the resource comes up and behaves as if it talked to an external
+        // broker: queue existence cannot be determined and retained messages cannot be replayed, so
+        // an indexer added later would silently receive only new messages instead of the history.
+        if (serverId >= 0 && EmbeddedBrokerRegistry.getServer(serverId) == null) {
+            throw new IllegalStateException("Resource '" + name + "' is configured for the embedded broker at '"
+                + brokerUrl + "', but no broker with serverId=" + serverId + " is running. "
+                + "The broker process must start before the pipeline.");
+        }
+
         // Create ConnectionFactory and writer pool
         try {
             this.connectionFactory = new ActiveMQConnectionFactory(brokerUrl);
