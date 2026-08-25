@@ -290,6 +290,24 @@ public class Organism {
      * This builder is used during simulation resume to reconstruct organisms
      * from persisted checkpoint data.
      */
+    /**
+     * Thrown when restored state does not describe an organism this build could have produced.
+     * <p>
+     * Kept apart from the plain {@link IllegalStateException} a wrongly called builder raises,
+     * because the two call for opposite responses: this one says the state is unusable, and a caller
+     * reading it from somewhere — a checkpoint, say — can report that and refuse to go on. The other
+     * says the calling code is wrong, and turning it into a statement about the data would send the
+     * search in the wrong direction.
+     */
+    public static class InvalidRestoreState extends IllegalStateException {
+        /**
+         * @param message what about the state does not fit this build
+         */
+        public InvalidRestoreState(String message) {
+            super(message);
+        }
+    }
+
     public static class RestoreBuilder {
         // Required fields (set in constructor)
         private final int id;
@@ -472,7 +490,9 @@ public class Organism {
          *
          * @param simulation The simulation this organism belongs to
          * @return Fully constructed Organism
-         * @throws IllegalStateException if required fields are missing or invalid
+         * @throws InvalidRestoreState if the state does not describe an organism this build
+         *         could have produced
+         * @throws IllegalStateException if no simulation is given
          */
         public Organism build(Simulation simulation) {
             // Validation
@@ -480,16 +500,16 @@ public class Organism {
                 throw new IllegalStateException("Simulation cannot be null");
             }
             if (ip == null || ip.length == 0) {
-                throw new IllegalStateException("IP must be set for restore");
+                throw new InvalidRestoreState("IP must be set for restore");
             }
             if (dv == null || dv.length == 0) {
-                throw new IllegalStateException("DV must be set for restore");
+                throw new InvalidRestoreState("DV must be set for restore");
             }
             if (ip.length != dv.length) {
-                throw new IllegalStateException("IP and DV must have same dimensions");
+                throw new InvalidRestoreState("IP and DV must have same dimensions");
             }
             if (initialPosition == null || initialPosition.length == 0) {
-                throw new IllegalStateException("Initial position must be set for restore");
+                throw new InvalidRestoreState("Initial position must be set for restore");
             }
             if (er < 0 && !isDead) {
                 LOG.warn("Organism {} restored with negative energy {} — will be killed on first tick",
@@ -511,22 +531,22 @@ public class Organism {
          * reshaping it would yield an organism different from the one the state described, and a
          * resumed run must equal an uninterrupted one.
          *
-         * @throws IllegalStateException if a set value contradicts this build's register banks,
+         * @throws InvalidRestoreState if a set value contradicts this build's register banks,
          *                               data pointer count, coordinate dimension or stack limits
          */
         private void validateStateInvariants() {
             if (flatRegisters != null && flatRegisters.length != RegisterBank.TOTAL_REGISTER_COUNT) {
-                throw new IllegalStateException("Register array must hold "
+                throw new InvalidRestoreState("Register array must hold "
                         + RegisterBank.TOTAL_REGISTER_COUNT + " values, got " + flatRegisters.length);
             }
             if (!dps.isEmpty()) {
                 if (dps.size() != Config.NUM_DATA_POINTERS) {
-                    throw new IllegalStateException("Data pointers must number "
+                    throw new InvalidRestoreState("Data pointers must number "
                             + Config.NUM_DATA_POINTERS + ", got " + dps.size());
                 }
                 for (int[] dp : dps) {
                     if (dp == null || dp.length != ip.length) {
-                        throw new IllegalStateException("Data pointer dimension must match the IP's "
+                        throw new InvalidRestoreState("Data pointer dimension must match the IP's "
                                 + ip.length + ", got " + (dp == null ? "null" : dp.length));
                     }
                 }
@@ -534,7 +554,7 @@ public class Organism {
             // Checked outside the block above as well: with no pointers supplied, any index other
             // than the untouched default cannot reference one.
             if (activeDpIndex < 0 || activeDpIndex >= Math.max(dps.size(), 1)) {
-                throw new IllegalStateException("Active data pointer index " + activeDpIndex
+                throw new InvalidRestoreState("Active data pointer index " + activeDpIndex
                         + " lies outside the " + dps.size() + " data pointers");
             }
             requireStackWithinLimit("Data stack", dataStack.size(), Config.DS_MAX_DEPTH);
@@ -555,11 +575,11 @@ public class Organism {
          * @param name  the stack's name, for the message
          * @param depth the restored depth
          * @param limit the maximum depth the instruction set enforces
-         * @throws IllegalStateException if the depth exceeds the limit
+         * @throws InvalidRestoreState if the depth exceeds the limit
          */
         private void requireStackWithinLimit(String name, int depth, int limit) {
             if (depth > limit) {
-                throw new IllegalStateException(
+                throw new InvalidRestoreState(
                         name + " depth " + depth + " exceeds the limit of " + limit);
             }
         }

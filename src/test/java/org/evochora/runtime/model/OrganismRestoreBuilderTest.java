@@ -175,6 +175,34 @@ class OrganismRestoreBuilderTest {
             .hasMessageContaining("Simulation cannot be null");
     }
 
+    /**
+     * A state the build cannot describe and a builder called wrongly are different failures, and a
+     * caller translating one of them must not catch the other. A restorer turns the first into a
+     * rejected checkpoint; doing that to the second would report a defect in the code as unusable
+     * data, and the search would start in the wrong place.
+     */
+    @Test
+    @Tag("unit")
+    void testRestoreBuilder_InvalidStateAndWrongCall_AreDistinguishable() {
+        assertThatThrownBy(() ->
+            Organism.restore(1, 0L)
+                .dv(new int[]{1, 0})
+                .build(simulation)
+        )
+            .as("a state this build cannot describe")
+            .isInstanceOf(Organism.InvalidRestoreState.class);
+
+        assertThatThrownBy(() ->
+            Organism.restore(1, 0L)
+                .ip(new int[]{0, 0})
+                .dv(new int[]{1, 0})
+                .build(null)
+        )
+            .as("a builder called without a simulation")
+            .isInstanceOf(IllegalStateException.class)
+            .isNotInstanceOf(Organism.InvalidRestoreState.class);
+    }
+
     @Test
     @Tag("unit")
     void testRestoreBuilder_MissingIp_ThrowsException() {

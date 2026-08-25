@@ -677,11 +677,15 @@ public class SimulationRestorer {
 
         try {
             return builder.build(simulation);
-        } catch (IllegalStateException e) {
+        } catch (Organism.InvalidRestoreState e) {
             // The builder defends the organism's invariants for any caller; here the caller is a
             // checkpoint, so a violation is a data error and belongs in the resume path with the
             // organism named. This covers the checks the restorer does not repeat — coordinate
             // dimensions among them — and any invariant added to the builder later.
+            //
+            // Only that one type: every other failure inside build() says the code is wrong, not the
+            // checkpoint, and reporting it as unusable data would send the search in the wrong
+            // direction.
             throw new ResumeException(
                     "Organism " + organismId + " cannot be restored: " + e.getMessage(), e);
         }
