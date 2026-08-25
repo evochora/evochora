@@ -273,6 +273,12 @@ public class ServiceManager implements IMonitorable {
     }
 
     /**
+     * How far a chain of causes is followed. Far beyond any chain this code produces — the bound is
+     * there so that a ring ends the walk, not to cut a real chain short.
+     */
+    private static final int MAX_CAUSE_DEPTH = 100;
+
+    /**
      * The outermost failure of the given type along a chain of causes, or {@code null} if none is of
      * that type.
      * <p>
@@ -282,13 +288,19 @@ public class ServiceManager implements IMonitorable {
      * its own cause: taking the innermost link would find that technical exception again and lose
      * the reason.
      *
+     * The walk is bounded. Java rejects a throwable given itself as its cause but not a ring of two,
+     * which the public API can build — and every startup failure passes through here, including ones
+     * raised inside libraries. A ring would not produce a wrong message but a node that neither
+     * starts nor stops.
+     *
      * @param <T> the type of failure looked for
      * @param thrown the failure as it arrived
      * @param type the type of failure looked for
      * @return the outermost link of that type, or {@code null}
      */
     static <T extends Throwable> T findInChain(Throwable thrown, Class<T> type) {
-        for (Throwable link = thrown; link != null; link = link.getCause() == link ? null : link.getCause()) {
+        Throwable link = thrown;
+        for (int depth = 0; link != null && depth < MAX_CAUSE_DEPTH; depth++, link = link.getCause()) {
             if (type.isInstance(link)) {
                 return type.cast(link);
             }
