@@ -131,10 +131,7 @@ class MetadataReaderWrapperTest {
         assertEquals(1, wrapper.getErrors().size());
         assertEquals("GET_METADATA_FAILED", wrapper.getErrors().get(0).errorType());
     }
-    
-    
-    
-    
+
     @Test
     void metrics_allO1Operations() throws Exception {
         // Given: Perform several operations

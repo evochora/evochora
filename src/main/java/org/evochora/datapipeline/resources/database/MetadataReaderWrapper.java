@@ -59,8 +59,7 @@ class MetadataReaderWrapper extends AbstractDatabaseWrapper implements IResource
             throw new RuntimeException("Failed to read metadata: " + simulationRunId, e);
         }
     }
-    
-    
+
     @Override
     public String getRunIdInCurrentSchema() throws MetadataNotFoundException {
         try {

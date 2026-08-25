@@ -31,10 +31,7 @@ public interface IMetadataReader extends AutoCloseable {
      * @throws MetadataNotFoundException if metadata doesn't exist for this run
      */
     SimulationMetadata getMetadata(String simulationRunId) throws MetadataNotFoundException;
-    
-    
-    
-    
+
     @Override
     void close();
 }
