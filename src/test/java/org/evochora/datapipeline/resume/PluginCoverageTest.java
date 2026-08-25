@@ -50,7 +50,9 @@ class PluginCoverageTest {
                 .filter(c -> !c.getModifiers().contains(JavaModifier.ABSTRACT))
                 .map(JavaClass::getFullName)
                 .filter(name -> !EXCLUDED.contains(name))
-                .filter(name -> !ResumeNeutralityHarness.pluginsJson(1.0).contains(name))
+                // Quoted: the configuration holds the name between quotes, and matching the bare
+                // name would let a longer one cover a shorter one it happens to start with.
+                .filter(name -> !ResumeNeutralityHarness.pluginsJson(1.0).contains("\"" + name + "\""))
                 .sorted()
                 .toList();
 
