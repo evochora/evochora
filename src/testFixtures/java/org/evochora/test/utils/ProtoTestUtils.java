@@ -1,7 +1,13 @@
 package org.evochora.test.utils;
 
+import com.google.protobuf.ByteString;
+
+import org.evochora.datapipeline.api.contracts.OrganismState;
+import org.evochora.datapipeline.api.contracts.ProcFrame;
 import org.evochora.datapipeline.api.contracts.RegisterValue;
 import org.evochora.datapipeline.api.contracts.Vector;
+import org.evochora.runtime.Config;
+import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.isa.RegisterBank;
 
 import java.util.ArrayList;
@@ -48,5 +54,85 @@ public final class ProtoTestUtils {
             }
         }
         return result;
+    }
+
+    /**
+     * Builds an organism state carrying everything a running simulation would have written: a full
+     * register set, the build's data pointers, and the coordinates the caller supplies.
+     * <p>
+     * Fixtures are derived from the runtime's own structure declarations rather than described by
+     * hand, so adding a register bank or changing the data pointer count keeps every test that builds
+     * on this correct. Tests that need a defective state start here and break exactly one part of it.
+     *
+     * @param id the organism id
+     * @param energy the organism's energy
+     * @param position the coordinate used for IP, initial position and both data pointers
+     * @return a builder holding a complete, well-formed organism state
+     */
+    public static OrganismState.Builder wellFormedOrganism(int id, int energy, int... position) {
+        Vector at = vector(position);
+        Vector direction = unitVector(position.length);
+
+        OrganismState.Builder builder = OrganismState.newBuilder()
+            .setOrganismId(id)
+            .setBirthTick(0)
+            .setEnergy(energy)
+            .setIp(at)
+            .setDv(direction)
+            .setInitialPosition(at)
+            .addAllRegisters(buildFlatRegisters(null, null, null, null))
+            .setIsDead(false);
+
+        for (int i = 0; i < Config.NUM_DATA_POINTERS; i++) {
+            builder.addDataPointers(at);
+        }
+        return builder;
+    }
+
+    /**
+     * Builds a call frame whose saved-register snapshot has the size the runtime expects.
+     * An absent snapshot is expressed by adding no saved registers at all, not by a partial one.
+     *
+     * @param labelHash the procedure's label hash
+     * @param position the coordinate used for both the return and the call address
+     * @return a builder holding a complete call frame
+     */
+    public static ProcFrame.Builder wellFormedCallFrame(int labelHash, int... position) {
+        Vector at = vector(position);
+        ProcFrame.Builder frame = ProcFrame.newBuilder()
+            .setLabelHash(labelHash)
+            .setAbsoluteReturnIp(at)
+            .setAbsoluteCallIp(at);
+
+        for (RegisterBank bank : RegisterBank.allSavedOnCall()) {
+            for (int i = 0; i < bank.count; i++) {
+                frame.addSavedRegisters(bank.isLocation
+                        ? RegisterValue.newBuilder().setVector(vector(new int[position.length])).build()
+                        : RegisterValue.newBuilder().setScalar(0).build());
+            }
+        }
+        return frame;
+    }
+
+    /** The RNG state a snapshot carries; without it a run cannot be continued deterministically. */
+    public static ByteString rngState(long seed) {
+        return ByteString.copyFrom(new SeededRandomProvider(seed).saveState());
+    }
+
+    private static Vector vector(int... components) {
+        Vector.Builder builder = Vector.newBuilder();
+        for (int c : components) {
+            builder.addComponents(c);
+        }
+        return builder.build();
+    }
+
+    /** A unit vector along the first axis, the direction a fresh organism starts with. */
+    private static Vector unitVector(int dimensions) {
+        int[] components = new int[dimensions];
+        if (dimensions > 0) {
+            components[0] = 1;
+        }
+        return vector(components);
     }
 }

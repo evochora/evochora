@@ -29,13 +29,11 @@ class MetadataReaderWrapper extends AbstractDatabaseWrapper implements IResource
     
     // Latency tracking (O(1) recording)
     private final SlidingWindowPercentiles getMetadataLatency;
-    private final SlidingWindowPercentiles hasMetadataLatency;
     
     MetadataReaderWrapper(AbstractDatabaseResource db, ResourceContext context) {
         super(db, context);  // Parent handles connection, error tracking, metrics window
         
         this.getMetadataLatency = new SlidingWindowPercentiles(metricsWindowSeconds);
-        this.hasMetadataLatency = new SlidingWindowPercentiles(metricsWindowSeconds);
     }
     
     @Override
@@ -55,31 +53,13 @@ class MetadataReaderWrapper extends AbstractDatabaseWrapper implements IResource
             
         } catch (Exception e) {
             readErrors.incrementAndGet();
-            log.warn("Failed to read metadata for run: {}", simulationRunId);
+            log.warn("Failed to read metadata for run: {}: {}", simulationRunId, e.getMessage());
             recordError("GET_METADATA_FAILED", "Failed to read metadata",
                        "RunId: " + simulationRunId + ", Error: " + e.getMessage());
             throw new RuntimeException("Failed to read metadata: " + simulationRunId, e);
         }
     }
-    
-    @Override
-    public boolean hasMetadata(String simulationRunId) {
-        long startNanos = System.nanoTime();
-        
-        try {
-            boolean exists = database.doHasMetadata(ensureConnection(), simulationRunId);
-            hasMetadataLatency.record(System.nanoTime() - startNanos);
-            return exists;
-            
-        } catch (Exception e) {
-            readErrors.incrementAndGet();
-            log.warn("Failed to check metadata existence for run: {}", simulationRunId);
-            recordError("HAS_METADATA_FAILED", "Failed to check metadata existence",
-                       "RunId: " + simulationRunId + ", Error: " + e.getMessage());
-            return false; // Assume not present on error
-        }
-    }
-    
+
     @Override
     public String getRunIdInCurrentSchema() throws MetadataNotFoundException {
         try {
@@ -91,7 +71,7 @@ class MetadataReaderWrapper extends AbstractDatabaseWrapper implements IResource
             
         } catch (Exception e) {
             readErrors.incrementAndGet();
-            log.warn("Failed to get run-id from current schema");
+            log.warn("Failed to get run-id from current schema: {}", e.getMessage());
             recordError("GET_RUNID_FAILED", "Failed to get run-id from schema",
                        "Error: " + e.getMessage());
             throw new RuntimeException("Failed to get run-id from current schema", e);
@@ -115,8 +95,6 @@ class MetadataReaderWrapper extends AbstractDatabaseWrapper implements IResource
         metrics.put("get_metadata_latency_p95_ms", getMetadataLatency.getPercentile(95) / 1_000_000.0);
         metrics.put("get_metadata_latency_p99_ms", getMetadataLatency.getPercentile(99) / 1_000_000.0);
         metrics.put("get_metadata_latency_avg_ms", getMetadataLatency.getAverage() / 1_000_000.0);
-        
-        metrics.put("has_metadata_latency_p95_ms", hasMetadataLatency.getPercentile(95) / 1_000_000.0);
     }
 }
 

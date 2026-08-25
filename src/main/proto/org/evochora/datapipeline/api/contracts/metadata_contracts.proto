@@ -369,8 +369,9 @@ message TokenInfo {
   string scope = 3;
 
   // Module-qualified name for artifact lookups (e.g., "ENERGY.HARVEST").
-  // Empty string if no qualification applies.
-  string qualified_name = 4;
+  // Absent when no qualification applies; the domain record distinguishes that from a name,
+  // so the field carries explicit presence rather than collapsing both into an empty string.
+  optional string qualified_name = 4;
 }
 
 // Top-level token lookup structure for a file.

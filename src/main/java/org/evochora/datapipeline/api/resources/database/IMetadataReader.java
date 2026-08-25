@@ -31,19 +31,7 @@ public interface IMetadataReader extends AutoCloseable {
      * @throws MetadataNotFoundException if metadata doesn't exist for this run
      */
     SimulationMetadata getMetadata(String simulationRunId) throws MetadataNotFoundException;
-    
-    /**
-     * Checks if metadata exists for the current schema.
-     * <p>
-     * Non-blocking check used for polling scenarios.
-     *
-     * @param simulationRunId The simulation run ID
-     * @return true if metadata exists, false otherwise
-     */
-    boolean hasMetadata(String simulationRunId);
-    
-    
-    
+
     @Override
     void close();
 }

@@ -2,6 +2,7 @@ package org.evochora.datapipeline;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import org.evochora.datapipeline.resume.ResumeException;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.services.IService;
 import org.evochora.datapipeline.api.services.ServiceStatus;
@@ -12,6 +13,7 @@ import org.evochora.junit.extensions.logging.LogLevel;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.extension.ExtendWith;
 
 import java.util.concurrent.ExecutorService;
@@ -156,6 +158,73 @@ public class ServiceManagerTest {
         sm.stopAll();
         await().atMost(1, TimeUnit.SECONDS).until(() -> (long) sm.getMetrics().get("services_stopped") == 2);
         assertTrue(sm.isHealthy());
+    }
+
+    /**
+     * A failure that was given a reason on the way out must still be recognised by that reason.
+     * <p>
+     * Startup failures arrive wrapped in whatever reflection put around them, so the handler looks
+     * along the chain of causes. Looking only at its far end finds the technical exception and misses
+     * the one that says what went wrong — and the more carefully a failure is explained, the more
+     * reliably it would be missed, because explaining it is what gives it a cause of its own.
+     */
+    @Test
+    void findInChain_FindsAnExplainedFailureRatherThanItsTechnicalCause() {
+        ResumeException explained = new ResumeException(
+                "Checkpoint carries an unreadable RNG state", new java.nio.BufferUnderflowException());
+        RuntimeException asThrownByReflection = new RuntimeException("Failed to create instance", explained);
+
+        assertSame(explained, ServiceManager.findInChain(asThrownByReflection, ResumeException.class),
+                "the failure that carries the reason");
+        assertNull(ServiceManager.findInChain(asThrownByReflection, IllegalStateException.class),
+                "a type that does not occur in the chain");
+        assertSame(explained, ServiceManager.findInChain(explained, ResumeException.class),
+                "a failure that is its own outermost link");
+    }
+
+    /**
+     * A checkpoint that cannot be read is not a configuration mistake, even when it says so at the
+     * bottom of its chain of causes.
+     * <p>
+     * A restorer reports the value it could not make sense of, which frequently leaves an
+     * {@link IllegalArgumentException} as the innermost cause. Deciding on that innermost cause would
+     * announce a configuration error and send whoever reads it to the configuration file, while the
+     * checkpoint stays unmentioned.
+     */
+    @Test
+    void findInChain_PrefersTheResumeFailureOverItsArgumentCause() {
+        ResumeException explained = new ResumeException(
+                "Unknown token type: 42", new IllegalArgumentException("No enum constant TokenType.42"));
+        RuntimeException asThrownByReflection = new RuntimeException("Failed to create instance", explained);
+
+        assertSame(explained, ServiceManager.findInChain(asThrownByReflection, ResumeException.class),
+                "the resume failure, not the argument it names");
+        assertNotNull(ServiceManager.findInChain(asThrownByReflection, IllegalArgumentException.class),
+                "the argument cause is present too — which is why the order of the checks decides");
+    }
+
+    /**
+     * A chain of causes that leads back into itself is walked to an end rather than forever.
+     * <p>
+     * Java rejects a throwable given itself as its cause, but not a ring of two: the second is
+     * constructed with the first as its cause, and the first is then given the second. Nothing in
+     * this code base builds one, and every startup failure passes through here — including ones
+     * raised inside libraries. Running into a ring would not produce a wrong message but a node that
+     * neither starts nor stops.
+     */
+    @Test
+    // In its own thread: a walk that does not end would otherwise hang the suite rather than fail it,
+    // because the default timeout is only read once the test returns.
+    @Timeout(value = 5, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void findInChain_ReturnsOnACauseThatLeadsBackIntoItself() {
+        Exception first = new Exception("A");
+        Exception second = new Exception("B", first);
+        first.initCause(second);
+
+        assertNull(ServiceManager.findInChain(first, ResumeException.class),
+                "a type that does not occur — the walk has to end on its own");
+        assertSame(first, ServiceManager.findInChain(first, Exception.class),
+                "a type that occurs is still found");
     }
 
     @Test

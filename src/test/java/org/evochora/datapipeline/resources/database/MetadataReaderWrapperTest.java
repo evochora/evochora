@@ -131,56 +131,7 @@ class MetadataReaderWrapperTest {
         assertEquals(1, wrapper.getErrors().size());
         assertEquals("GET_METADATA_FAILED", wrapper.getErrors().get(0).errorType());
     }
-    
-    @Test
-    void hasMetadata_returnsTrue() throws Exception {
-        // Given: Mock returns true
-        when(mockDatabase.doHasMetadata(any(), eq("existing-run")))
-            .thenReturn(true);
-        
-        // When: Check metadata existence
-        boolean result = wrapper.hasMetadata("existing-run");
-        
-        // Then: Correct result
-        assertTrue(result);
-        
-        // Verify metrics
-        Map<String, Number> metrics = wrapper.getMetrics();
-        assertTrue(metrics.get("has_metadata_latency_p95_ms").doubleValue() >= 0);
-    }
-    
-    @Test
-    void hasMetadata_returnsFalse() throws Exception {
-        // Given: Mock returns false
-        when(mockDatabase.doHasMetadata(any(), eq("missing-run")))
-            .thenReturn(false);
-        
-        // When: Check metadata existence
-        boolean result = wrapper.hasMetadata("missing-run");
-        
-        // Then: Correct result
-        assertFalse(result);
-    }
-    
-    @Test
-    @ExpectLog(level = LogLevel.WARN, messagePattern = "Failed to check metadata.*")
-    void hasMetadata_databaseError_returnsFalse() throws Exception {
-        // Given: Mock throws exception
-        when(mockDatabase.doHasMetadata(any(), eq("error-run")))
-            .thenThrow(new RuntimeException("Database error"));
-        
-        // When: Check metadata existence (exception handled gracefully)
-        boolean result = wrapper.hasMetadata("error-run");
-        
-        // Then: Returns false on error (safe assumption)
-        assertFalse(result);
-        
-        // Verify error recorded
-        assertEquals(1, wrapper.getErrors().size());
-        assertEquals("HAS_METADATA_FAILED", wrapper.getErrors().get(0).errorType());
-        assertEquals(1, wrapper.getMetrics().get("read_errors").intValue());
-    }
-    
+
     @Test
     void metrics_allO1Operations() throws Exception {
         // Given: Perform several operations
@@ -192,12 +143,10 @@ class MetadataReaderWrapperTest {
             .build();
         
         when(mockDatabase.doGetMetadata(any(), any())).thenReturn(testMetadata);
-        when(mockDatabase.doHasMetadata(any(), any())).thenReturn(true);
         
         // Perform 100 operations
         for (int i = 0; i < 100; i++) {
             wrapper.getMetadata("test-run-" + i);
-            wrapper.hasMetadata("test-run-" + i);
         }
         
         // When: Get metrics (should be O(1) regardless of operation count)
@@ -212,7 +161,6 @@ class MetadataReaderWrapperTest {
         assertTrue(metrics.containsKey("get_metadata_latency_p95_ms"));
         assertTrue(metrics.containsKey("get_metadata_latency_p99_ms"));
         assertTrue(metrics.containsKey("get_metadata_latency_avg_ms"));
-        assertTrue(metrics.containsKey("has_metadata_latency_p95_ms"));
         assertTrue(metrics.containsKey("error_count"));
         assertTrue(metrics.containsKey("connection_cached"));
         

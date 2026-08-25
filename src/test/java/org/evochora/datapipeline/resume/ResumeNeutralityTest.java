@@ -4,30 +4,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 
-import org.evochora.datapipeline.api.contracts.OrganismState;
-import org.evochora.datapipeline.api.contracts.SimulationMetadata;
-import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.api.contracts.TickDataChunk;
-import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.Simulation;
-import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.isa.Instruction;
+import org.evochora.runtime.isa.RegisterBank;
 import org.evochora.runtime.model.Environment;
-import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Molecule;
 import org.evochora.runtime.model.Organism;
+import org.evochora.runtime.spi.ISimulationPlugin;
 import org.evochora.runtime.spi.IRandomProvider;
-import org.evochora.runtime.thermodynamics.ThermodynamicPolicyManager;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import com.google.protobuf.ByteString;
-import com.typesafe.config.ConfigFactory;
 
 /**
  * Resume neutrality through the real pipeline layer: a simulation is serialized with
@@ -38,38 +29,17 @@ import com.typesafe.config.ConfigFactory;
 @Tag("unit")
 class ResumeNeutralityTest {
 
-    private static final long SEED = 42L;
     private static final int SIZE = 64;
     private static final int JUMPERS = 16;
     private static final int LABEL_HASH = 0b1011_0110_0101_1001_1010 & Config.VALUE_MASK;
     private static final String PROGRAM_ID = "resume-neutrality";
 
-    /** Resolved configuration both the reference simulation and the restorer are built from. */
-    private static final String CONFIG_JSON = """
-            {
-              "environment": { "shape": [%d, %d], "topology": "TORUS" },
-              "samplingInterval": 1,
-              "accumulatedDeltaInterval": 1,
-              "snapshotInterval": 1,
-              "chunkInterval": 1,
-              "plugins": [],
-              "organisms": [],
-              "runtime": {
-                "organism": { "max-energy": 32767, "max-entropy": 8191, "error-penalty-cost": 10 },
-                "thermodynamics": {
-                  "default": {
-                    "className": "org.evochora.runtime.thermodynamics.impl.UniversalThermodynamicPolicy",
-                    "options": { "base-energy": 1, "base-entropy": 1 }
-                  },
-                  "overrides": { "instructions": {}, "families": {} }
-                },
-                "label-matching": {
-                  "className": "org.evochora.runtime.label.PreExpandedHammingStrategy",
-                  "options": { "tolerance": 2, "hammingWeight": 50, "foreignPenalty": 100, "selectionSpread": 50 }
-                }
-              }
-            }
-            """.formatted(SIZE, SIZE);
+    /**
+     * The resolved configuration this scenario runs on. No reproduction happens here, so the birth
+     * handlers stay idle whatever their rate; they are configured all the same, because their state
+     * is carried across the resume like any other.
+     */
+    private static final String CONFIG_JSON = ResumeNeutralityHarness.configJson(SIZE, 0.025);
 
     private final List<Simulation> simulations = new ArrayList<>();
 
@@ -108,8 +78,17 @@ class ResumeNeutralityTest {
         organism.getDataStack().push(new Molecule(Config.TYPE_DATA, 5).toInt());
         organism.getDataStack().push(new int[]{1, 2});
         organism.getLocationStack().push(new int[]{3, 4});
+        // The snapshot has to hold one value per stack-saved slot, the way CALL takes it — a partial
+        // one describes a frame no procedure call could leave behind, and RET would reject it.
+        organism.writeOperand(RegisterBank.PDR.base, 7);
+        organism.writeOperand(RegisterBank.PLR.base, new int[]{8, 9});
+        // Two frames, as a procedure calling another procedure leaves behind. One frame would hide
+        // any ordering mistake in the round trip, because a single-element stack reads the same in
+        // both directions.
         organism.getCallStack().push(new Organism.ProcFrame(123, new int[]{5, 5}, new int[]{6, 6},
-                new Object[]{7, new int[]{8, 9}}, java.util.Map.of(0, 1)));
+                organism.snapshotStackSavedRegisters(), java.util.Map.of(0, 1)));
+        organism.getCallStack().push(new Organism.ProcFrame(456, new int[]{7, 7}, new int[]{8, 8},
+                organism.snapshotStackSavedRegisters(), java.util.Map.of(1, 2)));
         organism.setDp(1, new int[]{9, 9});
         organism.setActiveDpIndex(1);
         organism.addSr(17);
@@ -124,47 +103,8 @@ class ResumeNeutralityTest {
         Organism rebuilt = restored.getOrganisms().stream()
                 .filter(o -> o.getId() == organism.getId()).findFirst().orElseThrow();
 
-        assertSameState(rebuilt, organism);
-    }
-
-    /**
-     * Compares every piece of simulation state an organism carries, through the runtime's own
-     * accessors — independent of how the serializer represents it, so that a field the serializer
-     * forgets shows up as a difference here.
-     */
-    private static void assertSameState(Organism actual, Organism expected) {
-        assertThat(actual.getId()).isEqualTo(expected.getId());
-        assertThat(actual.getParentId()).isEqualTo(expected.getParentId());
-        assertThat(actual.getBirthTick()).isEqualTo(expected.getBirthTick());
-        assertThat(actual.getProgramId()).isEqualTo(expected.getProgramId());
-        assertThat(actual.getEr()).as("energy").isEqualTo(expected.getEr());
-        assertThat(actual.getSr()).as("entropy").isEqualTo(expected.getSr());
-        assertThat(actual.getMr()).as("marker").isEqualTo(expected.getMr());
-        assertThat(actual.getIp()).isEqualTo(expected.getIp());
-        assertThat(actual.getDv()).isEqualTo(expected.getDv());
-        assertThat(actual.getInitialPosition()).isEqualTo(expected.getInitialPosition());
-        assertThat(actual.getDps()).usingRecursiveComparison().isEqualTo(expected.getDps());
-        assertThat(actual.getActiveDpIndex()).as("active DP").isEqualTo(expected.getActiveDpIndex());
-        assertThat(actual.getRegisters()).usingRecursiveComparison().isEqualTo(expected.getRegisters());
-        assertThat(new ArrayList<>(actual.getDataStack())).usingRecursiveComparison()
-                .isEqualTo(new ArrayList<>(expected.getDataStack()));
-        assertThat(new ArrayList<>(actual.getLocationStack())).usingRecursiveComparison()
-                .isEqualTo(new ArrayList<>(expected.getLocationStack()));
-        assertThat(new ArrayList<>(actual.getCallStack())).usingRecursiveComparison()
-                .isEqualTo(new ArrayList<>(expected.getCallStack()));
-        assertThat(actual.isDead()).isEqualTo(expected.isDead());
-        assertThat(actual.getDeathTick()).isEqualTo(expected.getDeathTick());
-        assertThat(actual.isInstructionFailed()).isEqualTo(expected.isInstructionFailed());
-        assertThat(actual.getFailureReason()).isEqualTo(expected.getFailureReason());
-        assertThat(expected.getFailureCallStack()).as("scenario provides a failure call stack").isNotEmpty();
-        assertThat(new ArrayList<>(actual.getFailureCallStack())).usingRecursiveComparison()
-                .isEqualTo(new ArrayList<>(expected.getFailureCallStack()));
-        assertThat(actual.getGenomeHash()).isEqualTo(expected.getGenomeHash());
-        assertThat(actual.getCurrentProcLabelHash()).isEqualTo(expected.getCurrentProcLabelHash());
-        assertThat(actual.isStackSavedDirty()).isEqualTo(expected.isStackSavedDirty());
-        assertThat(actual.isPersistentDirty()).isEqualTo(expected.isPersistentDirty());
-        assertThat(actual.getPersistentRegisterState()).usingRecursiveComparison()
-                .isEqualTo(expected.getPersistentRegisterState());
+        assertThat(ResumeNeutralityHarness.describe(rebuilt))
+                .isEqualTo(ResumeNeutralityHarness.describe(organism));
     }
 
     // ===================================================================================
@@ -181,17 +121,16 @@ class ResumeNeutralityTest {
         final Environment env;
         final Simulation sim;
         final IRandomProvider provider;
+        final List<ISimulationPlugin> plugins;
 
         World(int parallelism) {
-            com.typesafe.config.Config config = ConfigFactory.parseString(CONFIG_JSON);
-            env = new Environment(new EnvironmentProperties(new int[]{SIZE, SIZE}, true),
-                    Environment.createLabelMatchingStrategy(config.getConfig("runtime.label-matching")));
-            sim = new Simulation(env,
-                    new ThermodynamicPolicyManager(config.getConfig("runtime.thermodynamics")),
-                    config.getConfig("runtime.organism"), parallelism);
+            ResumeNeutralityHarness.Fixture fixture =
+                    ResumeNeutralityHarness.newFixture(CONFIG_JSON, SIZE, parallelism);
+            env = fixture.env();
+            sim = fixture.sim();
+            provider = fixture.provider();
+            plugins = fixture.plugins();
             simulations.add(sim);
-            provider = new SeededRandomProvider(SEED);
-            sim.setRandomProvider(provider);
 
             for (int row = 0; row < JUMPERS; row++) {
                 Organism organism = Organism.create(sim, new int[]{0, row}, 10_000);
@@ -204,6 +143,11 @@ class ResumeNeutralityTest {
                 env.setMolecule(new Molecule(Config.TYPE_LABEL, LABEL_HASH), id, new int[]{44, row});
                 placeJump(id, 45, row);
             }
+            // An organism that exercises the structures the jumpers never touch: procedure calls with
+            // parameters, proc-local and static registers, both stacks, the data pointers and the
+            // molecule marker. Without it, neutrality would only be shown for registers and position.
+            StatefulProgram.place(sim, env, new int[]{0, JUMPERS + 1}, 1_000_000);
+
             Organism roller = Organism.create(sim, new int[]{0, JUMPERS}, 10_000);
             roller.setProgramId(PROGRAM_ID);
             sim.addOrganism(roller);
@@ -243,80 +187,26 @@ class ResumeNeutralityTest {
         int secondPause = 19;
 
         World reference = new World(parallelismBefore);
-        List<long[]> expected = tick(reference.sim, totalTicks);
+        List<List<String>> expected = ResumeNeutralityHarness.tick(reference.sim, reference.plugins, totalTicks, false);
 
         World interrupted = new World(parallelismBefore);
-        List<long[]> actual = new ArrayList<>(tick(interrupted.sim, firstPause));
+        List<List<String>> actual = new ArrayList<>(ResumeNeutralityHarness.tick(interrupted.sim, interrupted.plugins, firstPause, false));
         SimulationRestorer.RestoredState onceResumed = restore(interrupted, parallelismAfter);
         simulations.add(onceResumed.simulation());
-        actual.addAll(tick(onceResumed.simulation(), secondPause - firstPause));
-        SimulationRestorer.RestoredState twiceResumed = restore(onceResumed.simulation(), onceResumed.randomProvider(), parallelismAfter);
+        actual.addAll(ResumeNeutralityHarness.tick(onceResumed.simulation(),
+                ResumeNeutralityHarness.uniquePlugins(onceResumed), secondPause - firstPause, false));
+        SimulationRestorer.RestoredState twiceResumed = ResumeNeutralityHarness.restore(
+                onceResumed.simulation(), onceResumed.randomProvider(),
+                ResumeNeutralityHarness.uniquePlugins(onceResumed), CONFIG_JSON, parallelismAfter);
         simulations.add(twiceResumed.simulation());
-        actual.addAll(tick(twiceResumed.simulation(), totalTicks - secondPause));
+        actual.addAll(ResumeNeutralityHarness.tick(twiceResumed.simulation(),
+                ResumeNeutralityHarness.uniquePlugins(twiceResumed), totalTicks - secondPause, false));
 
-        assertThat(actual).as("tick count").hasSameSizeAs(expected);
-        for (int t = 0; t < expected.size(); t++) {
-            assertThat(actual.get(t))
-                    .as("state after tick %d differs (parallelism %d -> %d)", t + 1, parallelismBefore, parallelismAfter)
-                    .isEqualTo(expected.get(t));
-        }
+        ResumeNeutralityHarness.assertSameTrajectory(expected, actual, "parallelism %d -> %d".formatted(parallelismBefore, parallelismAfter));
     }
 
     private SimulationRestorer.RestoredState restore(World world, int parallelism) {
-        return restore(world.sim, world.provider, parallelism);
-    }
-
-    /**
-     * Serializes the live simulation the way the engine does (serializer for organisms, encoder
-     * for cells and counters), then rebuilds it with the restorer from that snapshot.
-     */
-    private SimulationRestorer.RestoredState restore(Simulation live, IRandomProvider liveProvider, int parallelism) {
-        OrganismStateSerializer serializer = new OrganismStateSerializer();
-        List<OrganismState> states = live.getOrganisms().stream().map(serializer::serialize).toList();
-
-        // The engine labels the state after simulation tick T with T, while the simulation's own
-        // counter already stands at T + 1 at that point; the snapshot must carry the engine's label.
-        long snapshotTick = live.getCurrentTick() - 1;
-        DeltaCodec.Encoder encoder = new DeltaCodec.Encoder("resume-test", (int) live.getEnvironment().getTotalCells(), 1, 1, 1);
-        Optional<TickDataChunk> chunk = encoder.captureTick(
-                snapshotTick, live.getEnvironment(), states,
-                live.getTotalOrganismsCreatedCount(), live.getTotalUniqueGenomesCount(), live.getAllGenomesEverSeen(),
-                ByteString.copyFrom(liveProvider.saveState()), List.of());
-        TickData snapshot = chunk.or(encoder::flushPartialChunk).orElseThrow().getSnapshot();
-
-        SimulationMetadata metadata = SimulationMetadata.newBuilder()
-                .setSimulationRunId("resume-test")
-                .setInitialSeed(SEED)
-                .setResolvedConfigJson(CONFIG_JSON)
-                .build();
-        return SimulationRestorer.restore(new ResumeCheckpoint(metadata, snapshot), new SeededRandomProvider(SEED), parallelism);
-    }
-
-    // ===================================================================================
-    // Trajectory
-    // ===================================================================================
-
-    /** Ticks and records, per tick, IP, DR0 and energy of every organism in index order. */
-    private static List<long[]> tick(Simulation sim, int n) {
-        List<long[]> trajectory = new ArrayList<>(n);
-        for (int i = 0; i < n; i++) {
-            sim.tick();
-            List<Organism> organisms = sim.getOrganisms();
-            for (Organism organism : organisms) {
-                assertThat(organism.isInstructionFailed())
-                        .as("organism %d failed at tick %d: %s", organism.getId(), sim.getCurrentTick(), organism.getFailureReason())
-                        .isFalse();
-            }
-            long[] state = new long[organisms.size() * 4];
-            for (int o = 0; o < organisms.size(); o++) {
-                Organism organism = organisms.get(o);
-                state[o * 4] = organism.getIp()[0];
-                state[o * 4 + 1] = organism.getIp()[1];
-                state[o * 4 + 2] = ((Integer) organism.readOperand(0));
-                state[o * 4 + 3] = organism.getEr();
-            }
-            trajectory.add(state);
-        }
-        return trajectory;
+        return ResumeNeutralityHarness.restore(
+                world.sim, world.provider, world.plugins, CONFIG_JSON, parallelism);
     }
 }

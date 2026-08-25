@@ -15,7 +15,6 @@ import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
-import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.queues.IOutputQueueResource;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
@@ -37,6 +36,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
+import org.evochora.test.utils.ProtoTestUtils;
 
 /**
  * Unit tests for SimulationEngine resume mode (config-driven).
@@ -199,6 +199,7 @@ class SimulationEngineResumeTest {
             .setTotalOrganismsCreated(100)
             .setCellColumns(CellDataColumns.newBuilder().build())
             .addOrganisms(createOrganismState(1, 500))
+            .setRngState(ProtoTestUtils.rngState(42))
             .build();
 
         return TickDataChunk.newBuilder()
@@ -211,15 +212,7 @@ class SimulationEngineResumeTest {
     }
 
     private OrganismState createOrganismState(int id, int energy) {
-        return OrganismState.newBuilder()
-            .setOrganismId(id)
-            .setBirthTick(0)
-            .setEnergy(energy)
-            .setIp(Vector.newBuilder().addComponents(10).addComponents(10).build())
-            .setDv(Vector.newBuilder().addComponents(1).addComponents(0).build())
-            .setInitialPosition(Vector.newBuilder().addComponents(5).addComponents(5).build())
-            .setIsDead(false)
-            .build();
+        return ProtoTestUtils.wellFormedOrganism(id, energy, 10, 10).build();
     }
 
     private Config createResumeOptions(String runId) {

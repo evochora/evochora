@@ -7,6 +7,25 @@ import org.slf4j.LoggerFactory;
 
 /**
  * Represents a molecule in the environment, with a type and a value.
+ * <p>
+ * <strong>{@code CODE:0} is the empty cell</strong> and carries two invariants that this record does
+ * not enforce itself: an empty cell has <em>no marker</em> and <em>no owner</em>. Both hold because
+ * every path that writes into the grid upholds them, not because construction is checked:
+ * <ul>
+ *   <li>The world-interaction instructions clear the marker when writing {@code CODE:0}, whatever the
+ *       organism's marker register holds.</li>
+ *   <li>Reading a molecule consumes it and clears the cell's ownership.</li>
+ *   <li>The death handlers may leave an organism's cells empty but owned; the simulation clears that
+ *       organism's ownership immediately afterwards, which is why handlers must not clear it
+ *       themselves.</li>
+ *   <li>{@link #fromInt(int)} repairs a marked {@code CODE:0} it finds in stored data and reports it,
+ *       since such a value can only come from outside these paths.</li>
+ * </ul>
+ * Anything that gains write access to the grid has to uphold them too. A marked or owned empty cell
+ * is not merely untidy: ownership decides what a newborn inherits and which cells the mutation
+ * operators may write into, and an empty cell that carries a marker survives in memory but not
+ * through serialization — a run would then continue differently after a resume than without one.
+ *
  * @param type The type of the molecule.
  * @param value The value of the molecule.
  * @param marker The marker of the molecule.

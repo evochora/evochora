@@ -96,31 +96,50 @@ public abstract class Instruction {
     private static InstructionSignature[] SIGNATURES_ARRAY = new InstructionSignature[0];
 
     /**
+     * Whether {@link #init()} has registered the instruction set.
+     * <p>
+     * Volatile so that repeated calls can see it without taking a lock. Registration happens once,
+     * while callers keep asking whether it already has — among them a database read path that asks
+     * twice per organism it decodes — so the answer has to be cheap and has to stay cheap as the
+     * number of asking threads grows.
+     */
+    private static volatile boolean initialized = false;
+
+    /**
      * Returns a list of public information records for all registered instructions.
      * This provides a stable, abstract way for external tools to inspect the instruction set.
      *
      * @return An unmodifiable list of {@link InstructionInfo} records.
      */
     public static List<InstructionInfo> getInstructionSetInfo() {
-        if (INSTRUCTION_INFO_CACHE == null) { // Simple lazy initialization
-            init(); // Ensure instructions are registered
-            List<InstructionInfo> info = new ArrayList<>();
-            for (Integer opcodeId : REGISTERED_INSTRUCTIONS_BY_ID.keySet()) {
-                Class<? extends Instruction> implClass = REGISTERED_INSTRUCTIONS_BY_ID.get(opcodeId);
-                String name = ID_TO_NAME.get(opcodeId);
-                
-                // Find the base "family" class (e.g., ArithmeticInstruction) by traversing up the class hierarchy.
-                Class<? extends Instruction> family = implClass;
-                while (family.getSuperclass() != Instruction.class && family.getSuperclass() != null && Instruction.class.isAssignableFrom(family.getSuperclass())) {
-                    @SuppressWarnings("unchecked")
-                    Class<? extends Instruction> superClass = (Class<? extends Instruction>) family.getSuperclass();
-                    family = superClass;
-                }
-                info.add(new InstructionInfo(opcodeId, name, family));
-            }
-            INSTRUCTION_INFO_CACHE = Collections.unmodifiableList(info);
-        }
+        init();
         return INSTRUCTION_INFO_CACHE;
+    }
+
+    /**
+     * Describes every registered instruction, for callers that inspect the instruction set.
+     * <p>
+     * Called by {@link #init()} while it holds the lock, so the description is complete before any
+     * caller can reach it and is built once however many callers ask.
+     *
+     * @return an unmodifiable list describing the registered instructions
+     */
+    private static List<InstructionInfo> buildInstructionSetInfo() {
+        List<InstructionInfo> info = new ArrayList<>();
+        for (Integer opcodeId : REGISTERED_INSTRUCTIONS_BY_ID.keySet()) {
+            Class<? extends Instruction> implClass = REGISTERED_INSTRUCTIONS_BY_ID.get(opcodeId);
+            String name = ID_TO_NAME.get(opcodeId);
+            
+            // Find the base "family" class (e.g., ArithmeticInstruction) by traversing up the class hierarchy.
+            Class<? extends Instruction> family = implClass;
+            while (family.getSuperclass() != Instruction.class && family.getSuperclass() != null && Instruction.class.isAssignableFrom(family.getSuperclass())) {
+                @SuppressWarnings("unchecked")
+                Class<? extends Instruction> superClass = (Class<? extends Instruction>) family.getSuperclass();
+                family = superClass;
+            }
+            info.add(new InstructionInfo(opcodeId, name, family));
+        }
+        return Collections.unmodifiableList(info);
     }
 
     /**
@@ -376,21 +395,47 @@ public abstract class Instruction {
     /**
      * Initializes the instruction set by registering all instruction families.
      * Each instruction class is responsible for registering its own opcodes.
+     * <p>
+     * Registration happens on the first call and every later call returns without touching the
+     * registries. That is what makes it safe to call from anywhere: {@link #buildArrayRegistries()}
+     * replaces the array registries the virtual machine reads on every instruction, assigning a new
+     * empty array and filling it afterwards, so repeating it while a simulation runs would let a
+     * running thread read an array that is momentarily empty and see a registered instruction as
+     * unregistered.
+     * <p>
+     * Callers must reach this method before starting any thread that executes instructions. Doing so
+     * establishes the happens-before edge that makes the filled registries visible to that thread,
+     * which is why the readers need no synchronization of their own.
      */
     public static void init() {
-        NopInstruction.register(SPECIAL);
-        ArithmeticInstruction.register(ARITHMETIC);
-        BitwiseInstruction.register(BITWISE);
-        DataInstruction.register(DATA);
-        StackInstruction.register(DATA);  // Stack operations are part of DATA family
-        ConditionalInstruction.register(CONDITIONAL);
-        ControlFlowInstruction.register(CONTROL);
-        EnvironmentInteractionInstruction.register(ENVIRONMENT);
-        StateInstruction.register(STATE);
-        LocationInstruction.register(LOCATION);
-        VectorInstruction.register(VECTOR);
+        if (initialized) {
+            return;
+        }
+        synchronized (Instruction.class) {
+            if (initialized) {
+                return;
+            }
 
-        buildArrayRegistries();
+            NopInstruction.register(SPECIAL);
+            ArithmeticInstruction.register(ARITHMETIC);
+            BitwiseInstruction.register(BITWISE);
+            DataInstruction.register(DATA);
+            StackInstruction.register(DATA);  // Stack operations are part of DATA family
+            ConditionalInstruction.register(CONDITIONAL);
+            ControlFlowInstruction.register(CONTROL);
+            EnvironmentInteractionInstruction.register(ENVIRONMENT);
+            StateInstruction.register(STATE);
+            LocationInstruction.register(LOCATION);
+            VectorInstruction.register(VECTOR);
+
+            buildArrayRegistries();
+            INSTRUCTION_INFO_CACHE = buildInstructionSetInfo();
+
+            // Set last: the check above the lock reads this flag without holding it, so a thread
+            // that sees it set must find every registry complete. Writing it earlier would offer
+            // that thread a registry still being filled.
+            initialized = true;
+        }
     }
 
     /**

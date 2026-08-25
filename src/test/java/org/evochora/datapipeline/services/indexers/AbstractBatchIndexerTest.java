@@ -128,7 +128,6 @@ class AbstractBatchIndexerTest {
         TopicMessage<BatchInfo, String> message = new TopicMessage<>(
             batchInfo, System.currentTimeMillis(), "msg-s01", "test-consumer", "ack-s01");
 
-        lenient().when(mockMetadataReader.hasMetadata(runId)).thenReturn(true);
         lenient().when(mockMetadataReader.getMetadata(runId)).thenReturn(metadata);
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(message)
@@ -158,7 +157,6 @@ class AbstractBatchIndexerTest {
         TopicMessage<BatchInfo, String> message = new TopicMessage<>(
             batchInfo, System.currentTimeMillis(), "msg-s02", "test-consumer", "ack-s02");
 
-        lenient().when(mockMetadataReader.hasMetadata(runId)).thenReturn(true);
         lenient().when(mockMetadataReader.getMetadata(runId)).thenReturn(metadata);
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(message)
@@ -198,7 +196,6 @@ class AbstractBatchIndexerTest {
         TopicMessage<BatchInfo, String> msg2 = new TopicMessage<>(
             batch2, System.currentTimeMillis(), "msg-s03b", "test-consumer", "ack-s03b");
 
-        lenient().when(mockMetadataReader.hasMetadata(runId)).thenReturn(true);
         lenient().when(mockMetadataReader.getMetadata(runId)).thenReturn(metadata);
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(msg1)
@@ -233,7 +230,6 @@ class AbstractBatchIndexerTest {
         TopicMessage<BatchInfo, String> message = new TopicMessage<>(
             batchInfo, System.currentTimeMillis(), "msg-s04", "test-consumer", "ack-s04");
 
-        lenient().when(mockMetadataReader.hasMetadata(runId)).thenReturn(true);
         lenient().when(mockMetadataReader.getMetadata(runId)).thenReturn(metadata);
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(message)
@@ -265,7 +261,6 @@ class AbstractBatchIndexerTest {
         TopicMessage<BatchInfo, String> message = new TopicMessage<>(
             batchInfo, System.currentTimeMillis(), "msg-s05", "test-consumer", "ack-s05");
 
-        lenient().when(mockMetadataReader.hasMetadata(runId)).thenReturn(true);
         lenient().when(mockMetadataReader.getMetadata(runId)).thenReturn(metadata);
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(message)
@@ -296,7 +291,6 @@ class AbstractBatchIndexerTest {
         TopicMessage<BatchInfo, String> message = new TopicMessage<>(
             batchInfo, System.currentTimeMillis(), "msg-s06", "test-consumer", "ack-s06");
 
-        lenient().when(mockMetadataReader.hasMetadata(runId)).thenReturn(true);
         lenient().when(mockMetadataReader.getMetadata(runId)).thenReturn(metadata);
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(message)
@@ -327,7 +321,6 @@ class AbstractBatchIndexerTest {
         TopicMessage<BatchInfo, String> message = new TopicMessage<>(
             batchInfo, System.currentTimeMillis(), "msg-s07", "test-consumer", "ack-s07");
 
-        lenient().when(mockMetadataReader.hasMetadata(runId)).thenReturn(true);
         lenient().when(mockMetadataReader.getMetadata(runId)).thenReturn(metadata);
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(message)
@@ -363,7 +356,6 @@ class AbstractBatchIndexerTest {
         TopicMessage<BatchInfo, String> msg2 = new TopicMessage<>(
             batch2, System.currentTimeMillis(), "msg-s08b", "test-consumer", "ack-s08b");
 
-        lenient().when(mockMetadataReader.hasMetadata(runId)).thenReturn(true);
         lenient().when(mockMetadataReader.getMetadata(runId)).thenReturn(metadata);
         when(mockTopic.poll(anyLong(), any(TimeUnit.class)))
             .thenReturn(msg1)

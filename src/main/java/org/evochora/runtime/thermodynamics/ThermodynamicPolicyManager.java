@@ -1,8 +1,8 @@
 package org.evochora.runtime.thermodynamics;
 
 import java.lang.reflect.Constructor;
-import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 import org.evochora.runtime.isa.Instruction;
@@ -21,24 +21,62 @@ public class ThermodynamicPolicyManager {
 
     private static final Logger LOG = LoggerFactory.getLogger(ThermodynamicPolicyManager.class);
 
-    // Initial array size (small to save memory)
-    private static final int INITIAL_ARRAY_SIZE = 256;
-    
-    private IThermodynamicPolicy defaultPolicy;
+    private final IThermodynamicPolicy defaultPolicy;
     private final Map<String, IThermodynamicPolicy> instructionPolicies = new HashMap<>();
     private final Map<Class<? extends Instruction>, IThermodynamicPolicy> familyPolicies = new HashMap<>();
-    
-    // Non-volatile to avoid per-call overhead on ARM (~1-5ns × hundreds of millions of ticks).
-    // Concurrent first-tick population may cause redundant resolves, which is benign (idempotent).
-    private IThermodynamicPolicy[] policyByOpcodeId = new IThermodynamicPolicy[INITIAL_ARRAY_SIZE];
+
+    /**
+     * Policy per opcode id, sized once for the whole instruction set.
+     * <p>
+     * Instructions execute concurrently in the first wave of a tick, so this array is written from
+     * several threads. Three properties make that safe without synchronisation, and all three are
+     * needed:
+     * <ul>
+     *   <li>The field is final, so the array reference is visible to every thread once the
+     *       constructor completes. An array that grew on demand would lose this: replacing the
+     *       reference is not idempotent, and a thread could index the shorter array it had read
+     *       before another thread enlarged it.</li>
+     *   <li>A slot only ever receives a policy that {@link #resolvePolicy} took from a final field
+     *       of this class — the two override maps or the default. Nothing is constructed on the
+     *       lookup path, so two threads filling the same slot write the same reference.</li>
+     *   <li>The manager itself is held in a final field by its owner, so the policies it hands out
+     *       are fully constructed for every thread that reaches them. Publishing a manager unsafely
+     *       would break that, whatever this field does.</li>
+     * </ul>
+     * <p>
+     * The array covers every opcode there is: the instruction set is registered in one go, and asking
+     * for it is what registers it.
+     */
+    private final IThermodynamicPolicy[] policyByOpcodeId;
 
     /**
      * Initializes the manager with the given configuration.
+     * <p>
+     * The policy array is sized to cover every registered opcode; asking for them registers the
+     * instruction set if that has not happened yet.
      *
      * @param config The "thermodynamics" configuration block.
      */
     public ThermodynamicPolicyManager(com.typesafe.config.Config config) {
-        loadPolicies(config);
+        this.defaultPolicy = loadPolicies(config);
+        this.policyByOpcodeId = new IThermodynamicPolicy[highestOpcodeId() + 1];
+    }
+
+    /**
+     * The largest opcode id any instruction can carry into {@link #getPolicy}.
+     * <p>
+     * Taken from the registered instruction set rather than from a fixed bound, so the array matches
+     * what actually exists.
+     */
+    private static int highestOpcodeId() {
+        // Asking registers the instruction set if that has not happened yet, so the answer describes
+        // every instruction there is.
+        List<Instruction.InstructionInfo> registered = Instruction.getInstructionSetInfo();
+        int highest = 0;
+        for (Instruction.InstructionInfo info : registered) {
+            highest = Math.max(highest, info.opcodeId());
+        }
+        return highest;
     }
 
     /**
@@ -60,35 +98,20 @@ public class ThermodynamicPolicyManager {
         // Extract opcode value from fullOpcodeId (remove TYPE_CODE bits)
         int opcodeId = instruction.getFullOpcodeId() & org.evochora.runtime.Config.VALUE_MASK;
 
-        // Local snapshot prevents JIT from reloading the field between length check and array access
-        IThermodynamicPolicy[] cache = policyByOpcodeId;
-
-        if (opcodeId >= cache.length) {
-            growArray(opcodeId + 1);
-            cache = policyByOpcodeId;
-        }
-
-        IThermodynamicPolicy cached = cache[opcodeId];
+        // No bounds check: an instruction only exists if its opcode is registered — the virtual
+        // machine rejects anything else before it gets this far — and the array covers every
+        // registered opcode.
+        IThermodynamicPolicy cached = policyByOpcodeId[opcodeId];
         if (cached != null) {
             return cached;
         }
 
         IThermodynamicPolicy policy = resolvePolicy(instruction);
-        cache[opcodeId] = policy;
+        policyByOpcodeId[opcodeId] = policy;
 
         return policy;
     }
-    
-    private void growArray(int minSize) {
-        // Grow to at least minSize, but double current size for efficiency
-        int newSize = Math.max(minSize, policyByOpcodeId.length * 2);
-        // Cap at VALUE_MASK + 1 to avoid unnecessary memory
-        newSize = Math.min(newSize, org.evochora.runtime.Config.VALUE_MASK + 1);
-        
-        policyByOpcodeId = Arrays.copyOf(policyByOpcodeId, newSize);
-        LOG.debug("Grew policy cache array to size {}", newSize);
-    }
-    
+
     private IThermodynamicPolicy resolvePolicy(Instruction instruction) {
         // 1. Check for instruction-specific policy
         IThermodynamicPolicy policy = instructionPolicies.get(instruction.getName());
@@ -113,14 +136,21 @@ public class ThermodynamicPolicyManager {
         return defaultPolicy;
     }
 
-    private void loadPolicies(com.typesafe.config.Config config) {
-        // Load default policy
-        if (config.hasPath("default")) {
-            this.defaultPolicy = createPolicy(config.getConfig("default"));
-            LOG.info("Loaded default thermodynamic policy: {}", this.defaultPolicy.getClass().getSimpleName());
-        } else {
+    /**
+     * Loads the configured policies into the override maps and returns the default one.
+     * <p>
+     * The default is returned rather than assigned here, so that the constructor can hold it in a
+     * final field — which is what lets threads read policies without synchronisation.
+     *
+     * @param config the "thermodynamics" configuration block
+     * @return the policy to use where no override applies
+     */
+    private IThermodynamicPolicy loadPolicies(com.typesafe.config.Config config) {
+        if (!config.hasPath("default")) {
             throw new IllegalStateException("Missing 'default' policy configuration in runtime.thermodynamics");
         }
+        IThermodynamicPolicy loadedDefault = createPolicy(config.getConfig("default"));
+        LOG.info("Loaded default thermodynamic policy: {}", loadedDefault.getClass().getSimpleName());
 
         if (config.hasPath("overrides")) {
             com.typesafe.config.Config overrides = config.getConfig("overrides");
@@ -162,6 +192,7 @@ public class ThermodynamicPolicyManager {
                 }
             }
         }
+        return loadedDefault;
     }
 
     private IThermodynamicPolicy createPolicy(com.typesafe.config.Config policyConfig) {

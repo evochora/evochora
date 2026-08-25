@@ -3,6 +3,7 @@ package org.evochora.datapipeline.resume;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.google.protobuf.ByteString;
 import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.OrganismState;
@@ -18,6 +19,7 @@ import org.evochora.runtime.internal.services.SeededRandomProvider;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.Organism;
 import org.evochora.runtime.isa.RegisterBank;
+import org.evochora.runtime.worldgen.LabelRewritePlugin;
 import org.evochora.test.utils.ProtoTestUtils;
 import org.evochora.runtime.spi.IRandomProvider;
 import org.junit.jupiter.api.BeforeAll;
@@ -25,6 +27,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Unit tests for {@link SimulationRestorer}.
@@ -108,6 +113,7 @@ class SimulationRestorerTest {
             .setCaptureTimeMs(System.currentTimeMillis())
             .setTotalOrganismsCreated(50)
             .setCellColumns(CellDataColumns.newBuilder().build())
+            .setRngState(validRngState())
             .addOrganisms(orgState)
             .build();
 
@@ -145,6 +151,9 @@ class SimulationRestorerTest {
             .setIp(createVector(0, 0))
             .setDv(createVector(1, 0))
             .setInitialPosition(createVector(0, 0))
+            .addAllRegisters(ProtoTestUtils.buildFlatRegisters(null, null, null, null))
+            .addDataPointers(createVector(0, 0))
+            .addDataPointers(createVector(0, 0))
             .setIsDead(true)
             .setDeathTick(999)
             .build();
@@ -155,6 +164,7 @@ class SimulationRestorerTest {
             .setCaptureTimeMs(System.currentTimeMillis())
             .setTotalOrganismsCreated(100)
             .setCellColumns(CellDataColumns.newBuilder().build())
+            .setRngState(validRngState())
             .addOrganisms(liveOrg)
             .addOrganisms(deadOrg)
             .build();
@@ -196,6 +206,7 @@ class SimulationRestorerTest {
             .setCaptureTimeMs(System.currentTimeMillis())
             .setTotalOrganismsCreated(50)
             .setCellColumns(cells)
+            .setRngState(validRngState())
             .build();
 
         ResumeCheckpoint checkpoint = new ResumeCheckpoint(metadata, snapshot);
@@ -225,6 +236,7 @@ class SimulationRestorerTest {
             .addAllGenomeHashesEverSeen(222L)
             .addAllGenomeHashesEverSeen(333L)
             .setCellColumns(CellDataColumns.newBuilder().build())
+            .setRngState(validRngState())
             .addOrganisms(createOrganismState(1, 500))
             .build();
 
@@ -259,6 +271,8 @@ class SimulationRestorerTest {
             .setFailureReason("Call stack overflow")
             .addFailureCallStack(protoFrame)
             .addAllRegisters(ProtoTestUtils.buildFlatRegisters(null, null, null, null))
+            .addDataPointers(createVector(10, 10))
+            .addDataPointers(createVector(10, 10))
             .setIsDead(false)
             .build();
 
@@ -268,6 +282,7 @@ class SimulationRestorerTest {
             .setCaptureTimeMs(System.currentTimeMillis())
             .setTotalOrganismsCreated(10)
             .setCellColumns(CellDataColumns.newBuilder().build())
+            .setRngState(validRngState())
             .addOrganisms(failedOrg)
             .build();
 
@@ -368,6 +383,8 @@ class SimulationRestorerTest {
             .setDv(createVector(1, 0))
             .setInitialPosition(createVector(0, 0))
             .addAllRegisters(ProtoTestUtils.buildFlatRegisters(null, null, null, null))
+            .addDataPointers(createVector(10, 10))
+            .addDataPointers(createVector(10, 10))
             .addCallStack(frame)
             .setIsDead(false)
             .build();
@@ -378,6 +395,7 @@ class SimulationRestorerTest {
             .setCaptureTimeMs(System.currentTimeMillis())
             .setTotalOrganismsCreated(10)
             .setCellColumns(CellDataColumns.newBuilder().build())
+            .setRngState(validRngState())
             .addOrganisms(organismState)
             .build();
 
@@ -388,9 +406,620 @@ class SimulationRestorerTest {
         return simulation.getOrganisms().get(0);
     }
 
+    // ==================== Rejection of unreadable checkpoint data ====================
+    //
+    // None of the states below can be produced by a running simulation: the writer always emits a
+    // complete organism, a complete snapshot and one plugin state per plugin. They arise from corrupt
+    // data, a foreign schema or a future write-side defect. Restoring them anyway would continue a run
+    // deterministically from state that is wrong, with nothing in the data or the log to show it.
+
+    @Test
+    void restore_SnapshotWithoutRngState_Rejected() {
+        TickData snapshot = TickData.newBuilder()
+            .setSimulationRunId(TEST_RUN_ID)
+            .setTickNumber(100)
+            .setCaptureTimeMs(System.currentTimeMillis())
+            .setTotalOrganismsCreated(10)
+            .setCellColumns(CellDataColumns.newBuilder().build())
+            .addOrganisms(createOrganismState(1, 500))
+            .build();
+
+        assertThatThrownBy(() -> restoreSnapshot(snapshot))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining("RNG")
+                .hasMessageContaining("100");
+    }
+
+    @Test
+    void restore_OrganismWithoutRegisters_Rejected() {
+        OrganismState organism = wellFormedOrganism().clearRegisters().build();
+
+        assertThatThrownBy(() -> restoreOrganism(organism))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining(String.valueOf(RegisterBank.TOTAL_REGISTER_COUNT));
+    }
+
+    @Test
+    void restore_OrganismWithTooFewRegisters_Rejected() {
+        OrganismState.Builder builder = wellFormedOrganism().clearRegisters();
+        List<org.evochora.datapipeline.api.contracts.RegisterValue> registers =
+                ProtoTestUtils.buildFlatRegisters(null, null, null, null);
+        builder.addAllRegisters(registers.subList(0, registers.size() - 1));
+
+        assertThatThrownBy(() -> restoreOrganism(builder.build()))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining(String.valueOf(RegisterBank.TOTAL_REGISTER_COUNT));
+    }
+
+    @Test
+    void restore_PersistentSnapshotWithWrongRegisterCount_Rejected() {
+        OrganismState organism = wellFormedOrganism()
+            .setPersistentRegisterStore(org.evochora.datapipeline.api.contracts.PersistentRegisterStore.newBuilder()
+                .addProcedureSnapshots(org.evochora.datapipeline.api.contracts.ProcedureRegisterSnapshot.newBuilder()
+                    .setLabelHash(4711)
+                    .addRegisters(scalar(0))
+                    .build())
+                .build())
+            .build();
+
+        assertThatThrownBy(() -> restoreOrganism(organism))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining(String.valueOf(RegisterBank.PERSISTENT_SNAPSHOT_SIZE));
+    }
+
+    /**
+     * A partial stack-saved snapshot is a defect, while an entirely absent one is not — absence means
+     * the caller had written no stack-saved register, and RET relies on the distinction. Only the
+     * partial case is rejected here; {@link #restore_CallFrameWithoutRegisterSnapshot_KeepsSnapshotAbsent()}
+     * pins the other side.
+     */
+    @Test
+    void restore_CallFrameWithPartialRegisterSnapshot_Rejected() {
+        org.evochora.datapipeline.api.contracts.ProcFrame frame =
+                org.evochora.datapipeline.api.contracts.ProcFrame.newBuilder()
+                    .setLabelHash(4714)
+                    .setAbsoluteReturnIp(createVector(5, 0))
+                    .setAbsoluteCallIp(createVector(3, 0))
+                    .addSavedRegisters(scalar(1))
+                    .build();
+
+        assertThatThrownBy(() -> restoreOrganism(wellFormedOrganism().addCallStack(frame).build()))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining(String.valueOf(RegisterBank.STACK_SAVED_SNAPSHOT_SIZE));
+    }
+
+    @Test
+    void restore_OrganismWithoutDataPointers_Rejected() {
+        OrganismState organism = wellFormedOrganism().clearDataPointers().build();
+
+        assertThatThrownBy(() -> restoreOrganism(organism))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining(String.valueOf(Config.NUM_DATA_POINTERS));
+    }
+
+    @Test
+    void restore_OrganismWithTooFewDataPointers_Rejected() {
+        OrganismState organism = wellFormedOrganism()
+            .clearDataPointers()
+            .addDataPointers(createVector(10, 10))
+            .build();
+
+        assertThatThrownBy(() -> restoreOrganism(organism))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining(String.valueOf(Config.NUM_DATA_POINTERS));
+    }
+
+    @Test
+    void restore_ActiveDpIndexOutOfRange_Rejected() {
+        OrganismState organism = wellFormedOrganism().setActiveDpIndex(5).build();
+
+        assertThatThrownBy(() -> restoreOrganism(organism))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining("active data pointer index")
+                .hasMessageContaining("5");
+    }
+
+    @Test
+    void restore_CellColumnsOfDifferentLength_Rejected() {
+        CellDataColumns cells = CellDataColumns.newBuilder()
+            .addFlatIndices(510)
+            .addFlatIndices(511)
+            .addMoleculeData(Config.TYPE_DATA | 42)
+            .addOwnerIds(7)
+            .build();
+
+        assertThatThrownBy(() -> restoreSnapshot(snapshotWithCells(cells)))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining("Cell columns disagree");
+    }
+
+    @Test
+    void restore_CellIndexBeyondWorld_Rejected() {
+        // The configured world is 100 x 100, so 10000 is the first index outside it.
+        CellDataColumns cells = CellDataColumns.newBuilder()
+            .addFlatIndices(10_000)
+            .addMoleculeData(Config.TYPE_DATA | 42)
+            .addOwnerIds(7)
+            .build();
+
+        assertThatThrownBy(() -> restoreSnapshot(snapshotWithCells(cells)))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining("10000");
+    }
+
+    @Test
+    void restore_NegativeCellIndex_Rejected() {
+        CellDataColumns cells = CellDataColumns.newBuilder()
+            .addFlatIndices(-1)
+            .addMoleculeData(Config.TYPE_DATA | 42)
+            .addOwnerIds(7)
+            .build();
+
+        assertThatThrownBy(() -> restoreSnapshot(snapshotWithCells(cells)))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining("-1");
+    }
+
+    @Test
+    void restore_ConfiguredPluginWithoutState_Rejected() {
+        TickData snapshot = snapshotWith(createOrganismState(1, 500));
+
+        assertThatThrownBy(() -> SimulationRestorer.restore(
+                    new ResumeCheckpoint(metadataWithLabelRewritePlugin(), snapshot), randomProvider, 1))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining(LabelRewritePlugin.class.getName())
+                .hasMessageContaining("holds no state");
+    }
+
+    /**
+     * The other side of the same problem: state is keyed by plugin class, so configuring one class
+     * twice leaves the two instances with no way to get their own state back. Rejected where the
+     * configuration is read, so the message names the configuration rather than the checkpoint.
+     */
+    @Test
+    void restore_PluginConfiguredTwice_Rejected() {
+        String twice = "[{ \"className\": \"" + LabelRewritePlugin.class.getName() + "\", \"options\": {} },"
+                     + " { \"className\": \"" + LabelRewritePlugin.class.getName() + "\", \"options\": {} }]";
+        SimulationMetadata metadata = createMinimalMetadata(twice);
+        TickData snapshot = snapshotWith(createOrganismState(1, 500)).toBuilder()
+            .addPluginStates(pluginState(LabelRewritePlugin.class))
+            .build();
+
+        assertThatThrownBy(() -> SimulationRestorer.restore(
+                    new ResumeCheckpoint(metadata, snapshot), randomProvider, 1))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining(LabelRewritePlugin.class.getName())
+                .hasMessageContaining("configured more than once");
+    }
+
+    /**
+     * A plugin whose stored state cannot be read is reported as that, and not as a plugin that could
+     * not be created.
+     * <p>
+     * The two failures call for different searches: one points at the checkpoint, the other at the
+     * configured class name. Reporting the first as the second sends whoever reads it to the
+     * configuration while the unreadable state stays unmentioned.
+     */
+    @Test
+    void restore_UnreadablePluginState_NamesTheStateNotTheClass() {
+        String geyser = org.evochora.runtime.worldgen.GeyserCreator.class.getName();
+        SimulationMetadata metadata = createMinimalMetadata(
+                "[{ \"className\": \"" + geyser + "\", \"options\": "
+                + "{ \"percentage\": 0.0001, \"interval\": 100, \"amount\": 10000, \"safetyRadius\": 3 } }]");
+        TickData snapshot = snapshotWith(createOrganismState(1, 500)).toBuilder()
+            .addPluginStates(org.evochora.datapipeline.api.contracts.PluginState.newBuilder()
+                .setPluginClass(geyser)
+                // Announces entries it does not carry: the reader runs off the end of the block.
+                .setStateBlob(ByteString.copyFrom(new byte[]{0, 0, 0, 5}))
+                .build())
+            .build();
+
+        assertThatThrownBy(() -> SimulationRestorer.restore(
+                    new ResumeCheckpoint(metadata, snapshot), randomProvider, 1))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining(geyser)
+                .hasMessageContaining("state")
+                .hasMessageNotContaining("instantiate");
+    }
+
+    /**
+     * A procedure has one persistent register set. Two entries for the same label offer two, and
+     * keeping either would pick one of them without saying so.
+     */
+    @Test
+    void restore_DuplicatePersistentSnapshot_Rejected() {
+        OrganismState organism = wellFormedOrganism()
+            .setPersistentRegisterStore(org.evochora.datapipeline.api.contracts.PersistentRegisterStore.newBuilder()
+                .addProcedureSnapshots(persistentSnapshot(4711))
+                .addProcedureSnapshots(persistentSnapshot(4711))
+                .build())
+            .build();
+
+        assertThatThrownBy(() -> restoreOrganism(organism))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining("4711")
+                .hasMessageContaining("more than once");
+    }
+
+    /** A persistent register snapshot of the size this build expects, for the given procedure. */
+    private org.evochora.datapipeline.api.contracts.ProcedureRegisterSnapshot persistentSnapshot(int labelHash) {
+        org.evochora.datapipeline.api.contracts.ProcedureRegisterSnapshot.Builder snapshot =
+                org.evochora.datapipeline.api.contracts.ProcedureRegisterSnapshot.newBuilder()
+                    .setLabelHash(labelHash);
+        for (int i = 0; i < RegisterBank.PERSISTENT_SNAPSHOT_SIZE; i++) {
+            snapshot.addRegisters(scalar(0));
+        }
+        return snapshot.build();
+    }
+
+    @Test
+    void restore_TruncatedRngState_Rejected() {
+        TickData snapshot = snapshotWith(createOrganismState(1, 500)).toBuilder()
+            .setRngState(validRngState().substring(0, 4))
+            .build();
+
+        assertThatThrownBy(() -> restoreSnapshot(snapshot))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining("RNG");
+    }
+
+    /**
+     * Coordinate dimensions are checked by the builder, not by the restorer. The failure still has to
+     * arrive as a resume failure naming the organism, or it reaches the service manager as an
+     * unexpected runtime exception and is logged as a stack trace.
+     */
+    @Test
+    void restore_DataPointerOfWrongDimension_Rejected() {
+        OrganismState organism = wellFormedOrganism()
+            .clearDataPointers()
+            .addDataPointers(createVector(1, 1, 1))
+            .addDataPointers(createVector(1, 1, 1))
+            .build();
+
+        assertThatThrownBy(() -> restoreOrganism(organism))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining("Data pointer dimension")
+                // Both numbers, because the bare digit of either would also match the organism id.
+                .hasMessageContaining("2")
+                .hasMessageContaining("got 3");
+    }
+
+    @Test
+    void restore_DuplicatePluginState_Rejected() {
+        TickData snapshot = snapshotWith(createOrganismState(1, 500)).toBuilder()
+            .addPluginStates(pluginState(LabelRewritePlugin.class))
+            .addPluginStates(pluginState(LabelRewritePlugin.class))
+            .build();
+
+        assertThatThrownBy(() -> SimulationRestorer.restore(
+                    new ResumeCheckpoint(metadataWithLabelRewritePlugin(), snapshot), randomProvider, 1))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining(LabelRewritePlugin.class.getName());
+    }
+
+    @Test
+    void restore_PluginStateWithoutConfiguredPlugin_Rejected() {
+        TickData snapshot = snapshotWith(createOrganismState(1, 500)).toBuilder()
+            .addPluginStates(pluginState(LabelRewritePlugin.class))
+            .build();
+
+        assertThatThrownBy(() -> restoreSnapshot(snapshot))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining(LabelRewritePlugin.class.getName());
+    }
+
+    @Test
+    void restore_UnsetRegisterValueInRegisterArray_Rejected() {
+        OrganismState.Builder builder = wellFormedOrganism().clearRegisters();
+        List<org.evochora.datapipeline.api.contracts.RegisterValue> registers =
+                new ArrayList<>(ProtoTestUtils.buildFlatRegisters(null, null, null, null));
+        registers.set(0, org.evochora.datapipeline.api.contracts.RegisterValue.getDefaultInstance());
+        builder.addAllRegisters(registers);
+
+        assertThatThrownBy(() -> restoreOrganism(builder.build()))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining("FLAT_REGISTER");
+    }
+
+    @Test
+    void restore_UnsetRegisterValueInDataStack_Rejected() {
+        OrganismState organism = wellFormedOrganism()
+            .addDataStack(org.evochora.datapipeline.api.contracts.RegisterValue.getDefaultInstance())
+            .build();
+
+        assertThatThrownBy(() -> restoreOrganism(organism))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining("DATA_STACK");
+    }
+
+    @Test
+    void restore_UnsetRegisterValueInCallFrame_Rejected() {
+        org.evochora.datapipeline.api.contracts.ProcFrame.Builder frame =
+                org.evochora.datapipeline.api.contracts.ProcFrame.newBuilder()
+                    .setLabelHash(4715)
+                    .setAbsoluteReturnIp(createVector(5, 0))
+                    .setAbsoluteCallIp(createVector(3, 0));
+        for (int i = 0; i < RegisterBank.STACK_SAVED_SNAPSHOT_SIZE; i++) {
+            frame.addSavedRegisters(org.evochora.datapipeline.api.contracts.RegisterValue.getDefaultInstance());
+        }
+
+        assertThatThrownBy(() -> restoreOrganism(wellFormedOrganism().addCallStack(frame.build()).build()))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining("PROC_FRAME_SAVED");
+    }
+
+    @Test
+    void restore_UnsetRegisterValueInPersistentStore_Rejected() {
+        org.evochora.datapipeline.api.contracts.ProcedureRegisterSnapshot.Builder snapshot =
+                org.evochora.datapipeline.api.contracts.ProcedureRegisterSnapshot.newBuilder()
+                    .setLabelHash(4716);
+        for (int i = 0; i < RegisterBank.PERSISTENT_SNAPSHOT_SIZE; i++) {
+            snapshot.addRegisters(org.evochora.datapipeline.api.contracts.RegisterValue.getDefaultInstance());
+        }
+
+        OrganismState organism = wellFormedOrganism()
+            .setPersistentRegisterStore(org.evochora.datapipeline.api.contracts.PersistentRegisterStore.newBuilder()
+                .addProcedureSnapshots(snapshot.build())
+                .build())
+            .build();
+
+        assertThatThrownBy(() -> restoreOrganism(organism))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining("PERSISTENT_STORE");
+    }
+
+    @Test
+    void restore_FailedOrganismWithoutReason_Rejected() {
+        OrganismState organism = wellFormedOrganism().setInstructionFailed(true).build();
+
+        assertThatThrownBy(() -> restoreOrganism(organism))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining("reason");
+    }
+
+    @Test
+    void restore_DataStackBeyondLimit_Rejected() {
+        OrganismState.Builder builder = wellFormedOrganism();
+        for (int i = 0; i <= Config.DS_MAX_DEPTH; i++) {
+            builder.addDataStack(scalar(i));
+        }
+
+        assertThatThrownBy(() -> restoreOrganism(builder.build()))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining(String.valueOf(Config.DS_MAX_DEPTH));
+    }
+
+    @Test
+    void restore_LocationStackBeyondLimit_Rejected() {
+        OrganismState.Builder builder = wellFormedOrganism();
+        for (int i = 0; i <= Config.LOCATION_STACK_MAX_DEPTH; i++) {
+            builder.addLocationStack(createVector(1, 1));
+        }
+
+        assertThatThrownBy(() -> restoreOrganism(builder.build()))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining(String.valueOf(Config.LOCATION_STACK_MAX_DEPTH));
+    }
+
+    @Test
+    void restore_CallStackBeyondLimit_Rejected() {
+        OrganismState.Builder builder = wellFormedOrganism();
+        for (int i = 0; i <= Config.CALL_STACK_MAX_DEPTH; i++) {
+            builder.addCallStack(org.evochora.datapipeline.api.contracts.ProcFrame.newBuilder()
+                .setLabelHash(i)
+                .setAbsoluteReturnIp(createVector(5, 0))
+                .setAbsoluteCallIp(createVector(3, 0))
+                .build());
+        }
+
+        assertThatThrownBy(() -> restoreOrganism(builder.build()))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining(String.valueOf(Config.CALL_STACK_MAX_DEPTH));
+    }
+
+    @Test
+    void restore_UnknownParamType_Rejected() {
+        org.evochora.datapipeline.api.contracts.ProgramArtifact program =
+                org.evochora.datapipeline.api.contracts.ProgramArtifact.newBuilder()
+                    .setProgramId("test-program")
+                    .putProcNameToParamNames("MOD.PROC", org.evochora.datapipeline.api.contracts.ParameterNames.newBuilder()
+                        .addParams(org.evochora.datapipeline.api.contracts.ParamInfo.newBuilder()
+                            .setName("A")
+                            .setTypeValue(99)
+                            .build())
+                        .build())
+                    .build();
+
+        SimulationMetadata metadata = createMinimalMetadata().toBuilder().addPrograms(program).build();
+        TickData snapshot = snapshotWith(createOrganismState(1, 500));
+
+        assertThatThrownBy(() -> SimulationRestorer.restore(
+                    new ResumeCheckpoint(metadata, snapshot), randomProvider, 1))
+                .isInstanceOf(ResumeException.class);
+    }
+
+    /**
+     * A failure call stack is a copy of the call stack, so its frames carry an order: the frame the
+     * organism was in when the instruction failed, then its callers. Restoring it reversed would
+     * report the failure as having happened in the outermost procedure.
+     */
+    @Test
+    void restore_FailureCallStack_KeepsFrameOrder() {
+        org.evochora.datapipeline.api.contracts.ProcFrame outer = frame(100);
+        org.evochora.datapipeline.api.contracts.ProcFrame inner = frame(200);
+
+        SimulationRestorer.RestoredState state = restoreOrganism(wellFormedOrganism()
+                .setInstructionFailed(true)
+                .setFailureReason("failed inside a nested call")
+                .addFailureCallStack(outer)
+                .addFailureCallStack(inner)
+                .build());
+
+        Organism organism = state.simulation().getOrganisms().get(0);
+        assertThat(organism.getFailureCallStack())
+                .extracting(Organism.ProcFrame::labelHash)
+                .as("frames must come back in the order they were written")
+                .containsExactly(100, 200);
+    }
+
+    @Test
+    void restore_UnknownTokenType_Rejected() {
+        SimulationMetadata metadata = metadataWithToken(
+                org.evochora.datapipeline.api.contracts.TokenInfo.newBuilder()
+                    .setTokenText("HARVEST")
+                    .setTokenType("NOT_A_TOKEN_KIND")
+                    .setScope("global")
+                    .build());
+
+        assertThatThrownBy(() -> SimulationRestorer.restore(
+                    new ResumeCheckpoint(metadata, snapshotWith(createOrganismState(1, 500))),
+                    randomProvider, 1))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining("NOT_A_TOKEN_KIND");
+    }
+
+    private org.evochora.datapipeline.api.contracts.ProcFrame frame(int labelHash) {
+        return org.evochora.datapipeline.api.contracts.ProcFrame.newBuilder()
+            .setLabelHash(labelHash)
+            .setAbsoluteReturnIp(createVector(5, 0))
+            .setAbsoluteCallIp(createVector(3, 0))
+            .build();
+    }
+
+    // ==================== Token metadata round trip ====================
+
+    @Test
+    void restore_TokenQualifiedName_Preserved() {
+        SimulationMetadata metadata = metadataWithToken(
+                org.evochora.datapipeline.api.contracts.TokenInfo.newBuilder()
+                    .setTokenText("HARVEST")
+                    .setTokenType("LABEL")
+                    .setScope("global")
+                    .setQualifiedName("ENERGY.HARVEST")
+                    .build());
+
+        SimulationRestorer.RestoredState state = SimulationRestorer.restore(
+                new ResumeCheckpoint(metadata, snapshotWith(createOrganismState(1, 500))), randomProvider, 1);
+
+        assertThat(restoredToken(state).qualifiedName()).isEqualTo("ENERGY.HARVEST");
+    }
+
+    /**
+     * A token without a qualified name must come back as {@code null}, not as an empty string: the
+     * record separates the two, and only {@code null} means "no qualification applies".
+     */
+    @Test
+    void restore_TokenWithoutQualifiedName_StaysNull() {
+        SimulationMetadata metadata = metadataWithToken(
+                org.evochora.datapipeline.api.contracts.TokenInfo.newBuilder()
+                    .setTokenText("%DR0")
+                    .setTokenType("REGISTER")
+                    .setScope("global")
+                    .build());
+
+        SimulationRestorer.RestoredState state = SimulationRestorer.restore(
+                new ResumeCheckpoint(metadata, snapshotWith(createOrganismState(1, 500))), randomProvider, 1);
+
+        assertThat(restoredToken(state).qualifiedName()).isNull();
+    }
+
     // ==================== Helper Methods ====================
 
+    /** A well-formed organism state; each rejection test breaks exactly one part of it. */
+    private OrganismState.Builder wellFormedOrganism() {
+        return OrganismState.newBuilder()
+            .setOrganismId(1)
+            .setBirthTick(0)
+            .setEnergy(500)
+            .setIp(createVector(10, 10))
+            .setDv(createVector(1, 0))
+            .setInitialPosition(createVector(5, 5))
+            .addAllRegisters(ProtoTestUtils.buildFlatRegisters(null, null, null, null))
+            .addDataPointers(createVector(10, 10))
+            .addDataPointers(createVector(10, 10))
+            .setIsDead(false);
+    }
+
+    private static org.evochora.datapipeline.api.contracts.RegisterValue scalar(int value) {
+        return org.evochora.datapipeline.api.contracts.RegisterValue.newBuilder().setScalar(value).build();
+    }
+
+    private TickData snapshotWith(OrganismState organism) {
+        return TickData.newBuilder()
+            .setSimulationRunId(TEST_RUN_ID)
+            .setTickNumber(100)
+            .setCaptureTimeMs(System.currentTimeMillis())
+            .setTotalOrganismsCreated(10)
+            .setCellColumns(CellDataColumns.newBuilder().build())
+            .setRngState(validRngState())
+            .addOrganisms(organism)
+            .build();
+    }
+
+    private TickData snapshotWithCells(CellDataColumns cells) {
+        return TickData.newBuilder()
+            .setSimulationRunId(TEST_RUN_ID)
+            .setTickNumber(100)
+            .setCaptureTimeMs(System.currentTimeMillis())
+            .setTotalOrganismsCreated(10)
+            .setCellColumns(cells)
+            .setRngState(validRngState())
+            .build();
+    }
+
+    private SimulationRestorer.RestoredState restoreOrganism(OrganismState organism) {
+        return restoreSnapshot(snapshotWith(organism));
+    }
+
+    private SimulationRestorer.RestoredState restoreSnapshot(TickData snapshot) {
+        return SimulationRestorer.restore(
+                new ResumeCheckpoint(createMinimalMetadata(), snapshot), randomProvider, 1);
+    }
+
+    private org.evochora.datapipeline.api.contracts.PluginState pluginState(Class<?> pluginClass) {
+        return org.evochora.datapipeline.api.contracts.PluginState.newBuilder()
+            .setPluginClass(pluginClass.getName())
+            .setStateBlob(ByteString.EMPTY)
+            .build();
+    }
+
+    /** Metadata configuring one plugin, so that plugin state reconciliation can be exercised. */
+    private SimulationMetadata metadataWithLabelRewritePlugin() {
+        return createMinimalMetadata(
+                "[{\"className\": \"" + LabelRewritePlugin.class.getName() + "\", \"options\": {}}]");
+    }
+
+    /** Metadata carrying one program whose token map holds exactly the given token. */
+    private SimulationMetadata metadataWithToken(org.evochora.datapipeline.api.contracts.TokenInfo token) {
+        org.evochora.datapipeline.api.contracts.ProgramArtifact program =
+                org.evochora.datapipeline.api.contracts.ProgramArtifact.newBuilder()
+                    .setProgramId("test-program")
+                    .addTokenMap(org.evochora.datapipeline.api.contracts.TokenMapEntry.newBuilder()
+                        .setSourceInfo(org.evochora.datapipeline.api.contracts.SourceInfo.newBuilder()
+                            .setFileName("main.evo")
+                            .setLineNumber(1)
+                            .setColumnNumber(1)
+                            .build())
+                        .setTokenInfo(token)
+                        .build())
+                    .build();
+
+        return createMinimalMetadata().toBuilder().addPrograms(program).build();
+    }
+
+    /** The single token of the single restored program artifact. */
+    private org.evochora.compiler.api.TokenInfo restoredToken(SimulationRestorer.RestoredState state) {
+        assertThat(state.programArtifacts()).hasSize(1);
+        var tokenMap = state.programArtifacts().get("test-program").tokenMap();
+        assertThat(tokenMap).hasSize(1);
+        return tokenMap.values().iterator().next();
+    }
+
     private SimulationMetadata createMinimalMetadata() {
+        return createMinimalMetadata("[]");
+    }
+
+    private SimulationMetadata createMinimalMetadata(String pluginsJson) {
         String configJson = """
             {
               "runtime": {
@@ -424,6 +1053,7 @@ class SimulationRestorerTest {
             .accumulatedDeltaInterval(5)
             .snapshotInterval(20)
             .chunkInterval(1)
+            .pluginsJson(pluginsJson)
             .build();
 
         // Parse and merge with runtime config
@@ -447,6 +1077,7 @@ class SimulationRestorerTest {
             .setCaptureTimeMs(System.currentTimeMillis())
             .setTotalOrganismsCreated(totalOrganisms)
             .setCellColumns(CellDataColumns.newBuilder().build())
+            .setRngState(validRngState())
             .addOrganisms(createOrganismState(1, 500))
             .build();
     }
@@ -459,6 +1090,9 @@ class SimulationRestorerTest {
             .setIp(createVector(10, 10))
             .setDv(createVector(1, 0))
             .setInitialPosition(createVector(5, 5))
+            .addAllRegisters(ProtoTestUtils.buildFlatRegisters(null, null, null, null))
+            .addDataPointers(createVector(10, 10))
+            .addDataPointers(createVector(10, 10))
             .setIsDead(false)
             .build();
     }
@@ -469,6 +1103,15 @@ class SimulationRestorerTest {
             builder.addComponents(c);
         }
         return builder.build();
+    }
+
+    /**
+     * The RNG state a snapshot carries. A snapshot written by a running simulation always holds one,
+     * because the engine serializes {@code randomProvider.saveState()} on every snapshot tick; without
+     * it the restored run could not continue the original random stream.
+     */
+    private static ByteString validRngState() {
+        return ByteString.copyFrom(new SeededRandomProvider(42L).saveState());
     }
 
 }

@@ -272,6 +272,42 @@ public class ServiceManager implements IMonitorable {
         }
     }
 
+    /**
+     * How far a chain of causes is followed. Far beyond any chain this code produces — the bound is
+     * there so that a ring ends the walk, not to cut a real chain short.
+     */
+    private static final int MAX_CAUSE_DEPTH = 100;
+
+    /**
+     * The outermost failure of the given type along a chain of causes, or {@code null} if none is of
+     * that type.
+     * <p>
+     * A failure raised during startup reaches this class wrapped in whatever reflection put around
+     * it, so its type has to be sought rather than read off. Sought from the outside in, because a
+     * failure that was given a reason on its way out carries the technical exception it replaced as
+     * its own cause: taking the innermost link would find that technical exception again and lose
+     * the reason.
+     *
+     * The walk is bounded. Java rejects a throwable given itself as its cause but not a ring of two,
+     * which the public API can build — and every startup failure passes through here, including ones
+     * raised inside libraries. A ring would not produce a wrong message but a node that neither
+     * starts nor stops.
+     *
+     * @param <T> the type of failure looked for
+     * @param thrown the failure as it arrived
+     * @param type the type of failure looked for
+     * @return the outermost link of that type, or {@code null}
+     */
+    static <T extends Throwable> T findInChain(Throwable thrown, Class<T> type) {
+        Throwable link = thrown;
+        for (int depth = 0; link != null && depth < MAX_CAUSE_DEPTH; depth++, link = link.getCause()) {
+            if (type.isInstance(link)) {
+                return type.cast(link);
+            }
+        }
+        return null;
+    }
+
     private ResourceContext parseResourceUri(String uri, String serviceName, String portName) {
         String[] mainParts = uri.split(":", 2);
 
@@ -553,6 +589,11 @@ public class ServiceManager implements IMonitorable {
                 cause = cause.getCause();
             }
 
+            // Sought along the chain rather than taken from its end: a resume failure explains what
+            // about the checkpoint is unusable, and explaining it is what gives it a cause of its
+            // own — which the unwrapping above would then run past.
+            ResumeException resumeFailure = findInChain(e, ResumeException.class);
+
             // Check if this is an OutOfMemoryError wrapped in RuntimeException (from reflection)
             if (cause instanceof OutOfMemoryError && name.equals("simulation-engine") && pipelineConfig.hasPath("services.simulation-engine.options.environment.shape")) {
                 try {
@@ -576,17 +617,21 @@ public class ServiceManager implements IMonitorable {
                 return;
             }
 
-            // Check if this is a configuration error (IllegalArgumentException, ConfigException, ResumeException, or NegativeArraySizeException)
-            if (cause instanceof IllegalArgumentException || cause instanceof com.typesafe.config.ConfigException) {
-                String errorMsg = "Configuration error for service '" + name + "': " + cause.getMessage();
+            // Before the configuration check below, and not by coincidence: a checkpoint that cannot
+            // be read reports the argument it could not make sense of, so its cause is often an
+            // IllegalArgumentException. Left in the other order, that cause would be read as a
+            // configuration error and send the operator to the configuration file.
+            if (resumeFailure != null) {
+                String errorMsg = "Resume failed for service '" + name + "': " + resumeFailure.getMessage();
                 log.error(errorMsg);
                 // Don't throw - just log and return. Service remains in stopped state.
                 return;
             }
 
-            // ResumeException indicates invalid run-id or missing checkpoint data
-            if (cause instanceof ResumeException) {
-                String errorMsg = "Resume failed for service '" + name + "': " + cause.getMessage();
+            // Check if this is a configuration error (IllegalArgumentException, ConfigException, or
+            // NegativeArraySizeException)
+            if (cause instanceof IllegalArgumentException || cause instanceof com.typesafe.config.ConfigException) {
+                String errorMsg = "Configuration error for service '" + name + "': " + cause.getMessage();
                 log.error(errorMsg);
                 // Don't throw - just log and return. Service remains in stopped state.
                 return;
