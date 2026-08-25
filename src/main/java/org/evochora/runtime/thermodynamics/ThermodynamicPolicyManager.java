@@ -20,7 +20,7 @@ public class ThermodynamicPolicyManager {
 
     private static final Logger LOG = LoggerFactory.getLogger(ThermodynamicPolicyManager.class);
 
-    private IThermodynamicPolicy defaultPolicy;
+    private final IThermodynamicPolicy defaultPolicy;
     private final Map<String, IThermodynamicPolicy> instructionPolicies = new HashMap<>();
     private final Map<Class<? extends Instruction>, IThermodynamicPolicy> familyPolicies = new HashMap<>();
 
@@ -28,16 +28,24 @@ public class ThermodynamicPolicyManager {
      * Policy per opcode id, sized once for the whole instruction set.
      * <p>
      * Instructions execute concurrently in the first wave of a tick, so this array is written from
-     * several threads. It is safe without synchronisation because of two properties, and only
-     * because of both: the field is final, so the reference is visible to every thread once the
-     * constructor completes; and a slot is only ever filled with a policy that already existed
-     * before this manager was published, since {@link #resolvePolicy} hands out instances created
-     * during construction rather than making new ones. Two threads filling the same slot therefore
-     * write the same reference to an object no thread can see half-built.
+     * several threads. Three properties make that safe without synchronisation, and all three are
+     * needed:
+     * <ul>
+     *   <li>The field is final, so the array reference is visible to every thread once the
+     *       constructor completes. An array that grew on demand would lose this: replacing the
+     *       reference is not idempotent, and a thread could index the shorter array it had read
+     *       before another thread enlarged it.</li>
+     *   <li>A slot only ever receives a policy that {@link #resolvePolicy} took from a final field
+     *       of this class — the two override maps or the default. Nothing is constructed on the
+     *       lookup path, so two threads filling the same slot write the same reference.</li>
+     *   <li>The manager itself is held in a final field by its owner, so the policies it hands out
+     *       are fully constructed for every thread that reaches them. Publishing a manager unsafely
+     *       would break that, whatever this field does.</li>
+     * </ul>
      * <p>
-     * An array that grew on demand would break the first property: replacing the reference is not
-     * idempotent, and a thread could index the shorter array it read before another thread enlarged
-     * it.
+     * The array covers every opcode registered when the manager is constructed. Registering further
+     * instructions afterwards would leave it too small — the instruction set is expected to be
+     * complete before any simulation is built.
      */
     private final IThermodynamicPolicy[] policyByOpcodeId;
 
@@ -47,7 +55,7 @@ public class ThermodynamicPolicyManager {
      * @param config The "thermodynamics" configuration block.
      */
     public ThermodynamicPolicyManager(com.typesafe.config.Config config) {
-        loadPolicies(config);
+        this.defaultPolicy = loadPolicies(config);
         this.policyByOpcodeId = new IThermodynamicPolicy[highestOpcodeId() + 1];
     }
 
@@ -123,14 +131,21 @@ public class ThermodynamicPolicyManager {
         return defaultPolicy;
     }
 
-    private void loadPolicies(com.typesafe.config.Config config) {
-        // Load default policy
-        if (config.hasPath("default")) {
-            this.defaultPolicy = createPolicy(config.getConfig("default"));
-            LOG.info("Loaded default thermodynamic policy: {}", this.defaultPolicy.getClass().getSimpleName());
-        } else {
+    /**
+     * Loads the configured policies into the override maps and returns the default one.
+     * <p>
+     * The default is returned rather than assigned here, so that the constructor can hold it in a
+     * final field — which is what lets threads read policies without synchronisation.
+     *
+     * @param config the "thermodynamics" configuration block
+     * @return the policy to use where no override applies
+     */
+    private IThermodynamicPolicy loadPolicies(com.typesafe.config.Config config) {
+        if (!config.hasPath("default")) {
             throw new IllegalStateException("Missing 'default' policy configuration in runtime.thermodynamics");
         }
+        IThermodynamicPolicy loadedDefault = createPolicy(config.getConfig("default"));
+        LOG.info("Loaded default thermodynamic policy: {}", loadedDefault.getClass().getSimpleName());
 
         if (config.hasPath("overrides")) {
             com.typesafe.config.Config overrides = config.getConfig("overrides");
@@ -172,6 +187,7 @@ public class ThermodynamicPolicyManager {
                 }
             }
         }
+        return loadedDefault;
     }
 
     private IThermodynamicPolicy createPolicy(com.typesafe.config.Config policyConfig) {

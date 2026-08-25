@@ -32,7 +32,7 @@ import com.typesafe.config.ConfigFactory;
  * This test reaches across the whole opcode range from many threads at once. It cannot fail on the
  * current implementation; it fails again the moment the cache is made to grow.
  */
-@Tag("unit")
+@Tag("slow")
 @Disabled("""
         Kept for the next change to the policy cache, not for the suite: it needs three thousand \
         attempts and about two seconds to catch the race reliably, and it only catches it at all if \
