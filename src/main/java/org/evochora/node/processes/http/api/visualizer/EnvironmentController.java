@@ -509,7 +509,6 @@ public class EnvironmentController extends VisualizerBaseController {
         );
     }
     
-    
     /**
      * Handles database exceptions with appropriate error mapping.
      */

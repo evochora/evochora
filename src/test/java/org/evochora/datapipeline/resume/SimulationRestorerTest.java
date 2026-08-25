@@ -515,6 +515,7 @@ class SimulationRestorerTest {
 
         assertThatThrownBy(() -> restoreOrganism(organism))
                 .isInstanceOf(ResumeException.class)
+                .hasMessageContaining("active data pointer index")
                 .hasMessageContaining("5");
     }
 

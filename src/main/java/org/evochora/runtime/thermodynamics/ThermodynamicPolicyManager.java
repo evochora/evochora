@@ -52,8 +52,12 @@ public class ThermodynamicPolicyManager {
 
     /**
      * Initializes the manager with the given configuration.
+     * <p>
+     * The instruction set must be registered before a manager is built, because the policy array is
+     * sized to cover every registered opcode.
      *
      * @param config The "thermodynamics" configuration block.
+     * @throws IllegalStateException if no instruction is registered yet
      */
     public ThermodynamicPolicyManager(com.typesafe.config.Config config) {
         this.defaultPolicy = loadPolicies(config);

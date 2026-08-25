@@ -3,10 +3,6 @@ package org.evochora.datapipeline.resume;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.ArrayList;
-import java.util.TreeMap;
-import java.util.Map;
-import java.util.Deque;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
