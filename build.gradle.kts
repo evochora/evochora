@@ -17,6 +17,7 @@ plugins {
     `java-test-fixtures`
     id("com.google.protobuf") version "0.9.6"
     id("me.champeau.jmh") version "0.7.3"
+    id("pmd")
 }
 
 java {
@@ -378,4 +379,20 @@ val registerNotebookFilter = tasks.register("registerNotebookFilter") {
 
 tasks.named("build") {
     dependsOn(registerNotebookFilter)
+}
+
+
+// Code that is written but never reached: the compiler accepts it and the tests pass over it, so
+// nothing else in this build would ever report it.
+pmd {
+    toolVersion = "7.0.0"
+    isConsoleOutput = true
+    ruleSetFiles = files("config/pmd/ruleset.xml")
+    ruleSets = listOf()
+    isIgnoreFailures = false
+}
+
+tasks.withType<Pmd>().configureEach {
+    // Generated protobuf sources: nobody edits them, and the generator will not follow these rules.
+    exclude("**/org/evochora/datapipeline/api/contracts/**")
 }
