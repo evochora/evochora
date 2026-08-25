@@ -204,10 +204,10 @@ runtime      →  (nothing)
 
 **Error Handling & Logging**:
 - **Transient Errors** (service/resource continues): `log.warn("msg", args)` + `recordError(code, msg, details)` - throw only if the caller must handle the failed operation
-- **Fatal Errors** (service/resource cannot serve any caller): `log.error("msg", args)` - NO exception parameter - `recordError(code, msg, details)` + THROW exception. Recording is required: a resource does not stop itself, so its state is invisible unless it is recorded
+- **Fatal Errors** (service/resource cannot serve any caller): `log.error("msg", args)` - `recordError(code, msg, details)` + THROW exception. Recording is required: a resource does not stop itself, so its state is invisible unless it is recorded
 - **Normal Shutdown** (InterruptedException): `log.debug("msg", args)` - re-throw exception - NO recordError()
 - **Retry Logic**: Use `log.debug()` during retries, then follow transient/fatal rules after exhaustion
-- **Stack Traces**: NEVER use `log.error(..., exception)` - stack traces logged at DEBUG level by framework
+- **Stack Traces**: pass the exception ONLY for bugs and system faults (see below) - never for expected errors
 - **Health Status**: Services/Resources are unhealthy if `errors.isEmpty() == false` or state == ERROR
 - **No Fallbacks**: Never hide problematic states or errors with fallback behavior — always fail early!
 
@@ -333,10 +333,13 @@ See `.agents/architecture-guidelines.md` for full review criteria.
 **Stack Traces:**
 - **Expected errors** (configuration, user input, known failure modes): NO stack trace
   - `log.warn("msg", args)` or `log.error("msg", args)` without exception parameter
-  - Stack trace available at DEBUG level if needed for support
-- **Unexpected errors / Bugs** (invariant violations, should-never-happen conditions): WITH stack trace
+  - A stack trace adds nothing: the message already states the cause
+- **Bugs** (invariant violations, should-never-happen conditions): WITH stack trace
   - `log.error("msg", args, new IllegalStateException("Invariant violation"))`
   - These indicate bugs that need immediate attention and debugging
+- **System faults** (cause lies outside the application: pool cannot create connections, storage gone, broker unreachable): WITH stack trace
+  - `log.error("msg", args, exception)` - the chained causes carry the diagnosis, and no message can replace them
+  - At ERROR, not DEBUG: production runs at INFO, and a cause that is only visible at DEBUG is not visible when it matters
 - For transient errors: `log.warn("msg", args)` without exception parameter
 - For fatal errors: `log.error("msg", args)` then throw exception
 - For interruption/shutdown: `log.debug("msg", args)` then re-throw

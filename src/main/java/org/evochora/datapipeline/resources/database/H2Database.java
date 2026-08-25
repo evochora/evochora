@@ -792,21 +792,6 @@ public class H2Database extends AbstractDatabaseResource
         metrics.put("jvm_daemon_thread_count", threads.getDaemonThreadCount());
         metrics.put("jvm_peak_thread_count", threads.getPeakThreadCount());
         
-        if (dataSource != null && !dataSource.isClosed()) {
-            // H2 cache size (fast query in INFORMATION_SCHEMA, acceptable during metrics read)
-            try (Connection conn = dataSource.getConnection();
-                 Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery(
-                     "SELECT VALUE FROM INFORMATION_SCHEMA.SETTINGS WHERE NAME = 'info.CACHE_SIZE'")) {
-                
-                if (rs.next()) {
-                    metrics.put("h2_cache_size_bytes", rs.getLong("VALUE"));
-                }
-            } catch (SQLException e) {
-                // Log but don't fail metrics collection
-                log.debug("Failed to query H2 cache size: {}", e.getMessage());
-            }
-        }
     }
 
     /**
@@ -919,6 +904,10 @@ public class H2Database extends AbstractDatabaseResource
      * Recording the failure is what turns that into a visible
      * {@link org.evochora.datapipeline.api.resources.IResource.UsageState#FAILED} state;
      * the exception itself only informs the caller of the current operation.
+     * <p>
+     * The exception is logged with its stack trace because this is a system fault: HikariCP
+     * chains the underlying failure that prevented connection creation, and that chain is the
+     * only place where the actual cause appears.
      *
      * @param context Description of the operation requesting the connection, for error details.
      * @return A pooled connection that the caller must close.
@@ -929,7 +918,7 @@ public class H2Database extends AbstractDatabaseResource
             return dataSource.getConnection();
         } catch (SQLException e) {
             log.error("H2 database '{}' cannot acquire a connection for {}: {}",
-                getResourceName(), context, e.getMessage());
+                getResourceName(), context, e.getMessage(), e);
             recordError("CONNECTION_ACQUIRE_FAILED", "Cannot acquire a database connection",
                 "Database: " + getResourceName() + ", Context: " + context + ", Error: " + e.getMessage());
             throw e;

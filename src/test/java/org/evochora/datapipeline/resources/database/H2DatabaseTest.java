@@ -163,19 +163,6 @@ class H2DatabaseTest {
     }
 
     @Test
-    void testMetrics_CacheSizeAvailable() {
-        // Verify H2 cache size metric is queryable
-        Map<String, Number> metrics = database.getMetrics();
-        
-        // Cache size might not be available in all H2 configurations, but method should not throw
-        // If available, it should be a non-negative number
-        Number cacheSize = metrics.get("h2_cache_size_bytes");
-        if (cacheSize != null) {
-            assertTrue(cacheSize.longValue() >= 0, "Cache size should be non-negative");
-        }
-    }
-
-    @Test
     @ExpectLog(level = LogLevel.ERROR, messagePattern = "H2 database 'test-db' cannot acquire a connection for .*")
     void testFailedConnectionAcquisition_MarksResourceFailed() {
         assertTrue(database.isHealthy(), "Fresh database should be healthy");

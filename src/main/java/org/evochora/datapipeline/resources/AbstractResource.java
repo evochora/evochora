@@ -117,8 +117,10 @@ public abstract class AbstractResource implements IResource, IMonitorable {
      *   <li>Example: {@code catch(IOException e) { log.debug("Retry {}/{}", attempt, max); }}</li>
      * </ul>
      * 
-     * <strong>Stack Traces:</strong> Exception stack traces should be logged at DEBUG level
-     * separately if needed. Resources should never log exceptions with {@code log.error(..., e)}.
+     * <strong>Stack Traces:</strong> Pass the exception to {@code log.error(..., e)} only for bugs
+     * and for system faults whose cause lies outside the application, where the chained causes are
+     * the diagnosis. For expected errors the message already states the cause, and the stack trace
+     * is omitted.
      *
      * @param code    Error code for categorization (e.g., "CONNECTION_FAILED", "READ_ERROR")
      * @param message Human-readable error message
