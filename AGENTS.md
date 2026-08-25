@@ -203,8 +203,8 @@ runtime      →  (nothing)
 - **Atomic Artifacts**: All created artifacts must be created atomically to ensure resume functionality can always start from final artifacts
 
 **Error Handling & Logging**:
-- **Transient Errors** (service/resource continues): `log.warn("msg", args)` + `recordError(code, msg, details)` - NO exception thrown
-- **Fatal Errors** (service/resource must stop): `log.error("msg", args)` - NO exception parameter - THROW exception
+- **Transient Errors** (service/resource continues): `log.warn("msg", args)` + `recordError(code, msg, details)` - throw only if the caller must handle the failed operation
+- **Fatal Errors** (service/resource cannot serve any caller): `log.error("msg", args)` - NO exception parameter - `recordError(code, msg, details)` + THROW exception. Recording is required: a resource does not stop itself, so its state is invisible unless it is recorded
 - **Normal Shutdown** (InterruptedException): `log.debug("msg", args)` - re-throw exception - NO recordError()
 - **Retry Logic**: Use `log.debug()` during retries, then follow transient/fatal rules after exhaustion
 - **Stack Traces**: NEVER use `log.error(..., exception)` - stack traces logged at DEBUG level by framework
@@ -321,7 +321,7 @@ See `.agents/architecture-guidelines.md` for full review criteria.
 **Resources (DEBUG-only operations, WARN/ERROR for problems):**
 - `INFO`: NEVER log at INFO level (all orchestration goes through ServiceManager)
 - `WARN`: Transient operational errors (query failed, parse error, rollback failed, claim conflict reassignment, sampler errors) - always with `recordError()`
-- `ERROR`: Fatal initialization errors (connection pool failed, delegate creation failed, schema setup failed)
+- `ERROR`: Fatal errors (connection pool failed, delegate creation failed, schema setup failed, connection acquisition failed) - always with `recordError()`
 - `DEBUG`: All operations (connection pool started/closed, schema setup, delegate creation, message claim/ack, wrapper close, compression setup, sampling)
 
 **Format:**

@@ -339,7 +339,7 @@ public class H2Database extends AbstractDatabaseResource
 
     @Override
     protected Object acquireDedicatedConnection() throws Exception {
-        Connection conn = dataSource.getConnection();
+        Connection conn = acquireConnection("dedicated wrapper connection");
         conn.setAutoCommit(false);
         return conn;
     }
@@ -913,6 +913,30 @@ public class H2Database extends AbstractDatabaseResource
     }
     
     /**
+     * Acquires a pooled connection and reports a failed acquisition as a resource error.
+     * <p>
+     * A pool that cannot hand out a connection makes the database unusable for every caller.
+     * Recording the failure is what turns that into a visible
+     * {@link org.evochora.datapipeline.api.resources.IResource.UsageState#FAILED} state;
+     * the exception itself only informs the caller of the current operation.
+     *
+     * @param context Description of the operation requesting the connection, for error details.
+     * @return A pooled connection that the caller must close.
+     * @throws SQLException if no connection can be acquired.
+     */
+    private Connection acquireConnection(String context) throws SQLException {
+        try {
+            return dataSource.getConnection();
+        } catch (SQLException e) {
+            log.error("H2 database '{}' cannot acquire a connection for {}: {}",
+                getResourceName(), context, e.getMessage());
+            recordError("CONNECTION_ACQUIRE_FAILED", "Cannot acquire a database connection",
+                "Database: " + getResourceName() + ", Context: " + context + ", Error: " + e.getMessage());
+            throw e;
+        }
+    }
+
+    /**
      * Creates a new {@link IDatabaseReader} bound to the given run ID's schema.
      * <p>
      * Acquires a pooled connection from HikariCP, sets the H2 schema to the run ID
@@ -940,7 +964,7 @@ public class H2Database extends AbstractDatabaseResource
         // Check for stale reader connections before acquiring a new one
         warnStaleReaderConnections();
 
-        Connection conn = dataSource.getConnection();
+        Connection conn = acquireConnection("createReader(" + runId + ")");
         boolean success = false;
         try {
             H2SchemaUtil.setSchema(conn, runId);
@@ -1006,7 +1030,7 @@ public class H2Database extends AbstractDatabaseResource
 
     @Override
     public String findLatestRunId() throws SQLException {
-        try (Connection conn = dataSource.getConnection()) {
+        try (Connection conn = acquireConnection("findLatestRunId")) {
             // Step 1: Find latest simulation schema
             String latestSchema;
             try (Statement stmt = conn.createStatement();

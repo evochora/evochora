@@ -71,11 +71,13 @@ public abstract class AbstractResource implements IResource, IMonitorable {
     /**
      * Records an operational error for tracking and monitoring.
      * <p>
-     * <strong>IMPORTANT:</strong> Use this method ONLY for transient errors where the resource
-     * continues functioning. For fatal errors that prevent operation, log and throw an exception instead.
+     * <strong>IMPORTANT:</strong> Whether an error is recorded is independent of whether it is
+     * thrown. Recording reflects the state of the resource; throwing reports the outcome of a
+     * single operation to its caller. A resource that must tell its caller about a failure still
+     * records that failure.
      * <p>
-     * Use this method to track transient errors that don't prevent the resource from functioning
-     * but may indicate problems. These errors affect the resource's health status ({@link #isHealthy()}).
+     * Use this method to track errors that indicate problems with the resource, whether or not it
+     * keeps functioning. These errors affect the resource's health status ({@link #isHealthy()}).
      * <p>
      * The error collection is bounded by {@link #getMaxErrors()} to prevent unbounded
      * memory growth. When the limit is exceeded, the oldest errors are automatically removed.
@@ -90,11 +92,13 @@ public abstract class AbstractResource implements IResource, IMonitorable {
      *   <li>Example: SQL constraint violation, dropped DLQ message, temporary connection issue</li>
      * </ul>
      * 
-     * <strong>2. Fatal Errors</strong> (resource cannot continue):
+     * <strong>2. Fatal Errors</strong> (resource cannot serve any caller):
      * <ul>
      *   <li>Use: {@code log.error("message with context", args)} - NO exception parameter</li>
-     *   <li>Do NOT use recordError() - resource is broken anyway</li>
-     *   <li>Throw exception - caller handles it</li>
+     *   <li>Use: {@link #recordError(String, String, String)} - a resource does not stop itself,
+     *       so an unusable resource reports {@link org.evochora.datapipeline.api.resources.IResource.UsageState#FAILED}
+     *       only if the error is recorded</li>
+     *   <li>Throw exception - caller handles the failed operation</li>
      *   <li>Example: Cannot initialize connection pool, schema creation failed, storage not accessible</li>
      * </ul>
      * 
