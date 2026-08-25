@@ -44,20 +44,18 @@ public class ThermodynamicPolicyManager {
      *       would break that, whatever this field does.</li>
      * </ul>
      * <p>
-     * The array covers every opcode registered when the manager is constructed. Registering further
-     * instructions afterwards would leave it too small — the instruction set is expected to be
-     * complete before any simulation is built.
+     * The array covers every opcode there is: the instruction set is registered in one go, and asking
+     * for it is what registers it.
      */
     private final IThermodynamicPolicy[] policyByOpcodeId;
 
     /**
      * Initializes the manager with the given configuration.
      * <p>
-     * The instruction set must be registered before a manager is built, because the policy array is
-     * sized to cover every registered opcode.
+     * The policy array is sized to cover every registered opcode; asking for them registers the
+     * instruction set if that has not happened yet.
      *
      * @param config The "thermodynamics" configuration block.
-     * @throws IllegalStateException if no instruction is registered yet
      */
     public ThermodynamicPolicyManager(com.typesafe.config.Config config) {
         this.defaultPolicy = loadPolicies(config);
@@ -71,14 +69,9 @@ public class ThermodynamicPolicyManager {
      * what actually exists.
      */
     private static int highestOpcodeId() {
+        // Asking registers the instruction set if that has not happened yet, so the answer describes
+        // every instruction there is.
         List<Instruction.InstructionInfo> registered = Instruction.getInstructionSetInfo();
-        if (registered.isEmpty()) {
-            // Sizing the array against an empty registry would produce one too small for every
-            // instruction, and the mismatch would only show as a bare index error deep in a tick.
-            throw new IllegalStateException(
-                    "No instructions are registered; the instruction set must be initialised "
-                    + "before a ThermodynamicPolicyManager is built");
-        }
         int highest = 0;
         for (Instruction.InstructionInfo info : registered) {
             highest = Math.max(highest, info.opcodeId());

@@ -77,9 +77,12 @@ class InstructionInitializationTest {
 
         Instruction.init();
 
-        assertThat(cache.get(null))
+        assertThat((java.util.List<?>) cache.get(null))
                 .as("the description of the instruction set, built by registration")
-                .isNotNull();
+                .isNotNull()
+                // Not merely present: a caller sizes an array to the highest opcode it names, and an
+                // empty description would size that array for no instruction at all.
+                .isNotEmpty();
     }
 
     /** The current array objects, to be compared by identity rather than by content. */
