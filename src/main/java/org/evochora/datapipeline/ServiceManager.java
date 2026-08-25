@@ -605,17 +605,21 @@ public class ServiceManager implements IMonitorable {
                 return;
             }
 
-            // Check if this is a configuration error (IllegalArgumentException, ConfigException, ResumeException, or NegativeArraySizeException)
-            if (cause instanceof IllegalArgumentException || cause instanceof com.typesafe.config.ConfigException) {
-                String errorMsg = "Configuration error for service '" + name + "': " + cause.getMessage();
+            // Before the configuration check below, and not by coincidence: a checkpoint that cannot
+            // be read reports the argument it could not make sense of, so its cause is often an
+            // IllegalArgumentException. Left in the other order, that cause would be read as a
+            // configuration error and send the operator to the configuration file.
+            if (resumeFailure != null) {
+                String errorMsg = "Resume failed for service '" + name + "': " + resumeFailure.getMessage();
                 log.error(errorMsg);
                 // Don't throw - just log and return. Service remains in stopped state.
                 return;
             }
 
-            // ResumeException indicates invalid run-id or missing checkpoint data
-            if (resumeFailure != null) {
-                String errorMsg = "Resume failed for service '" + name + "': " + resumeFailure.getMessage();
+            // Check if this is a configuration error (IllegalArgumentException, ConfigException, or
+            // NegativeArraySizeException)
+            if (cause instanceof IllegalArgumentException || cause instanceof com.typesafe.config.ConfigException) {
+                String errorMsg = "Configuration error for service '" + name + "': " + cause.getMessage();
                 log.error(errorMsg);
                 // Don't throw - just log and return. Service remains in stopped state.
                 return;

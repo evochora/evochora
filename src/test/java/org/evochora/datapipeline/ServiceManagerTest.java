@@ -181,6 +181,27 @@ public class ServiceManagerTest {
                 "a failure that is its own outermost link");
     }
 
+    /**
+     * A checkpoint that cannot be read is not a configuration mistake, even when it says so at the
+     * bottom of its chain of causes.
+     * <p>
+     * A restorer reports the value it could not make sense of, which frequently leaves an
+     * {@link IllegalArgumentException} as the innermost cause. Deciding on that innermost cause would
+     * announce a configuration error and send whoever reads it to the configuration file, while the
+     * checkpoint stays unmentioned.
+     */
+    @Test
+    void findInChain_PrefersTheResumeFailureOverItsArgumentCause() {
+        ResumeException explained = new ResumeException(
+                "Unknown token type: 42", new IllegalArgumentException("No enum constant TokenType.42"));
+        RuntimeException asThrownByReflection = new RuntimeException("Failed to create instance", explained);
+
+        assertSame(explained, ServiceManager.findInChain(asThrownByReflection, ResumeException.class),
+                "the resume failure, not the argument it names");
+        assertNotNull(ServiceManager.findInChain(asThrownByReflection, IllegalArgumentException.class),
+                "the argument cause is present too — which is why the order of the checks decides");
+    }
+
     @Test
     @AllowLog(level = LogLevel.ERROR, messagePattern = "Failed to instantiate service '.*': .* Skipping this service\\.")
     void testErrorHandling() {

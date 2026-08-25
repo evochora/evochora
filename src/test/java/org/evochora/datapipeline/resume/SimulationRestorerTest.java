@@ -593,6 +593,36 @@ class SimulationRestorerTest {
     }
 
     /**
+     * A plugin whose stored state cannot be read is reported as that, and not as a plugin that could
+     * not be created.
+     * <p>
+     * The two failures call for different searches: one points at the checkpoint, the other at the
+     * configured class name. Reporting the first as the second sends whoever reads it to the
+     * configuration while the unreadable state stays unmentioned.
+     */
+    @Test
+    void restore_UnreadablePluginState_NamesTheStateNotTheClass() {
+        String geyser = org.evochora.runtime.worldgen.GeyserCreator.class.getName();
+        SimulationMetadata metadata = createMinimalMetadata(
+                "[{ \"className\": \"" + geyser + "\", \"options\": "
+                + "{ \"percentage\": 0.0001, \"interval\": 100, \"amount\": 10000, \"safetyRadius\": 3 } }]");
+        TickData snapshot = snapshotWith(createOrganismState(1, 500)).toBuilder()
+            .addPluginStates(org.evochora.datapipeline.api.contracts.PluginState.newBuilder()
+                .setPluginClass(geyser)
+                // Announces entries it does not carry: the reader runs off the end of the block.
+                .setStateBlob(ByteString.copyFrom(new byte[]{0, 0, 0, 5}))
+                .build())
+            .build();
+
+        assertThatThrownBy(() -> SimulationRestorer.restore(
+                    new ResumeCheckpoint(metadata, snapshot), randomProvider, 1))
+                .isInstanceOf(ResumeException.class)
+                .hasMessageContaining(geyser)
+                .hasMessageContaining("state")
+                .hasMessageNotContaining("instantiate");
+    }
+
+    /**
      * A procedure has one persistent register set. Two entries for the same label offer two, and
      * keeping either would pick one of them without saying so.
      */

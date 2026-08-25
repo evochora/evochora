@@ -865,7 +865,16 @@ public class SimulationRestorer {
                     }
                     unusedStates.remove(className);
                     if (savedState.length > 0) {
-                        simulationPlugin.loadState(savedState);
+                        try {
+                            simulationPlugin.loadState(savedState);
+                        } catch (RuntimeException e) {
+                            // Separate from the failure below: the plugin exists and was built, and
+                            // what cannot be read is the state stored for it. Saying "failed to
+                            // instantiate" here would point at the configured class name while the
+                            // checkpoint is what needs looking at.
+                            throw new ResumeException("Checkpoint holds unreadable state for plugin "
+                                    + className + " (" + savedState.length + " bytes)", e);
+                        }
                         log.debug("Loaded state for plugin {} ({} bytes)", className, savedState.length);
                     }
                 }
