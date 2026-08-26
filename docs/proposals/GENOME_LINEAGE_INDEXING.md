@@ -347,10 +347,11 @@ present in both carries the same parent and adding cannot contradict what is alr
 genome being its own parent, so a two-node cycle would overflow the stack. That defect predates this
 change and cannot be triggered by the data, but the function is being touched.
 
-Four defensive coercions for fields the new contract guarantees are removed, so a missing field shows
-rather than being replaced by a plausible substitute: `data.totalOrganismCount || 0` and
-`data.genomeLineageTree || {}` in `OrganismApi`, `this.state.totalOrganismCount || organisms.length`
-in `AppController`, and the `if (!tree) return;` guard in `_applyGenomeLineageTree`.
+Five defensive coercions for fields the new contract guarantees are removed, so a missing field shows
+rather than being replaced by a plausible substitute: `Array.isArray(data.organisms) ? … : []`,
+`data.totalOrganismCount || 0` and `data.genomeLineageTree || {}` in `OrganismApi`,
+`this.state.totalOrganismCount || organisms.length` in `AppController`, and the `if (!tree) return;`
+guard in `_applyGenomeLineageTree`.
 
 ### Runs indexed by older builds
 

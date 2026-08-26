@@ -193,8 +193,10 @@ public class H2DatabaseReader implements IDatabaseReader {
                 try (ResultSet rs = stmt.executeQuery()) {
                     occurs = rs.next();
                     if (occurs) {
+                        // A parent carrying genome 0 passes the query's filter and becomes a
+                        // root here; a parent carrying the same genome is already excluded there.
                         long parent = rs.getLong("parent_genome_hash");
-                        if (!rs.wasNull() && parent != 0L && parent != genomeHash) {
+                        if (!rs.wasNull() && parent != 0L) {
                             parentGenomeHash = parent;
                         }
                     }

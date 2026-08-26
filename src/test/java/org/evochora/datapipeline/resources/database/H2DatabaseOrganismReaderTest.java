@@ -178,6 +178,35 @@ class H2DatabaseOrganismReaderTest {
     }
 
     @Test
+    void readTotalOrganismsCreated_failsRatherThanTruncatingAnOversizedTotal() throws Exception {
+        // The API returns int because organism ids are INT, so a run cannot exceed that range
+        // without overflowing the ids themselves. Should a stored total ever exceed it anyway,
+        // the contract promises a failure rather than a wrong number.
+        TickData tick = TickData.newBuilder()
+                .setTickNumber(1L)
+                .addOrganisms(buildOrganismState(1))
+                .setTotalOrganismsCreated(1L)
+                .build();
+
+        try (Connection conn = getConnectionWithSchema("run-total-overflow")) {
+            database.doCreateOrganismTables(conn);
+            database.doWriteOrganismTick(conn, tick);
+            database.doCommitOrganismWrites(conn);
+
+            try (Statement stmt = conn.createStatement()) {
+                stmt.execute("UPDATE organism_tick_stats SET total_organisms_created = "
+                        + (Integer.MAX_VALUE + 1L) + " WHERE tick_number = 1");
+            }
+            conn.commit();
+        }
+
+        try (IDatabaseReader reader = database.createReader("run-total-overflow")) {
+            assertThatThrownBy(() -> reader.readTotalOrganismsCreated(1L))
+                    .isInstanceOf(SQLException.class);
+        }
+    }
+
+    @Test
     void readTotalOrganismsCreated_throwsForATickThatWasNeverIndexed() throws Exception {
         TickData tick = TickData.newBuilder()
                 .setTickNumber(1L)
