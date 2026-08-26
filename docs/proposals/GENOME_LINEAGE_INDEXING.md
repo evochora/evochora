@@ -332,11 +332,16 @@ endpoint is disabled by default.
 
 ### Frontend
 
-`AppController` **replaces** `_genomeParent` and the colour caches per response, as it does today.
-Merging and keeping them was considered and dropped: on a run that is still being indexed a closure
-can transiently record a genome as a root, and today that error disappears at the next tick change.
-Keeping the caches would make it last the whole session. Recomputing 719 colours costs milliseconds;
-a session-long wrong picture is not worth that saving.
+`AppController` clears `_genomeParent` and the colour caches **on every tick change** and adds to
+them within one tick. Keeping them across tick changes was considered and dropped: on a run that is
+still being indexed a closure can transiently record a genome as a root, and today that error
+disappears at the next tick change. Keeping the caches would make it last the whole session.
+Recomputing 719 colours costs milliseconds; a session-long wrong picture is not worth that saving.
+
+Adding within one tick is required because a view is served by two responses — the organisms of the
+tick and, when one is selected, its ancestry chain, whose ancestors need not appear at that tick.
+Their closures overlap but neither contains the other. Both come from the same relation, so a genome
+present in both carries the same parent and adding cannot contradict what is already there.
 
 `_computeLineageColor` gains a visited set across its recursion. It currently guards only against a
 genome being its own parent, so a two-node cycle would overflow the stack. That defect predates this
@@ -411,8 +416,20 @@ coercions removed.
 The repository has no test infrastructure for the visualizer's JavaScript, so step 6 carries no
 automated tests. It is verified by hand in step 8, as frontend changes are today.
 
-**Step 8 — Verification on real data.** A copy of the production database is prepared by hand so that
-it looks like one written by the current build — index created, per-tick totals filled in; no backfill
-logic enters the repository — and a throwaway container serves the visualizer from that copy so the
-result can be inspected in the browser. The demo node may be stopped for the duration; it must be
-running unchanged afterwards.
+**Step 8 — Verification in the browser.** On a run produced by the current build.
+
+The published run cannot serve this purpose, and the reason is worth recording. Its organism blobs
+were written in February 2026, before commit `8919f646` renumbered the fields of `OrganismState`;
+a current build fails to parse them with *"Protocol message had invalid UTF-8"*, which is the exact
+consequence [PERSISTED_FORMAT_VERSIONING](PERSISTED_FORMAT_VERSIONING.md) records as evidence. The
+demo node serves that run only because its image predates the renumbering. This is independent of
+this change and blocks any browser check against existing data.
+
+The read paths this change touches were therefore verified against the production data directly,
+which needs no blob parsing:
+
+- the static fields of 4 604 organisms across seven ticks spanning the whole run agree between blob
+  and table without exception;
+- the stored organism total agrees with the derived one at six ticks across six orders of magnitude;
+- and the ancestor relation, seeded with **all 150 525 genomes of the run**, agrees with the old
+  full-tree query entry for entry, in both directions — in 5.8 s against the old query's 10.7 s.
