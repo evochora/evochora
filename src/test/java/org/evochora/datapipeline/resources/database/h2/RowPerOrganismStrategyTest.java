@@ -97,16 +97,16 @@ class RowPerOrganismStrategyTest {
         // When: Create tables
         strategy.createTables(mockConnection);
 
-        // Then: Should execute CREATE TABLE for organisms, organism_states, the index
-        //       and organism_tick_stats
-        verify(mockStatement, times(4)).execute(anyString());
+        // Then: Should execute DDL for organisms, organism_states, the per-organism index,
+        //       organism_tick_stats and the genome index
+        verify(mockStatement, times(5)).execute(anyString());
 
         // Verify SQL strings
         ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
-        verify(mockStatement, times(4)).execute(sqlCaptor.capture());
+        verify(mockStatement, times(5)).execute(sqlCaptor.capture());
 
         List<String> executedSql = sqlCaptor.getAllValues();
-        assertThat(executedSql).hasSize(4);
+        assertThat(executedSql).hasSize(5);
 
         // First call: CREATE TABLE organisms
         assertThat(executedSql.get(0))
@@ -138,6 +138,11 @@ class RowPerOrganismStrategyTest {
                 .contains("CREATE TABLE IF NOT EXISTS organism_tick_stats")
                 .contains("tick_number BIGINT PRIMARY KEY")
                 .contains("total_organisms_created BIGINT NOT NULL");
+
+        // Fifth call: CREATE INDEX on the static organism data
+        assertThat(executedSql.get(4))
+                .contains("CREATE INDEX IF NOT EXISTS idx_organisms_genome")
+                .contains("organisms (genome_hash, organism_id)");
     }
 
     @Test

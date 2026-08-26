@@ -99,15 +99,16 @@ class SingleBlobOrgStrategyTest {
         // When: Create tables
         strategy.createTables(mockConnection);
         
-        // Then: Should execute CREATE TABLE for organisms, organism_ticks and organism_tick_stats
-        verify(mockStatement, times(3)).execute(anyString());
+        // Then: Should execute DDL for organisms, organism_ticks, organism_tick_stats
+        //       and the genome index
+        verify(mockStatement, times(4)).execute(anyString());
         
         // Verify SQL strings
         ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
-        verify(mockStatement, times(3)).execute(sqlCaptor.capture());
+        verify(mockStatement, times(4)).execute(sqlCaptor.capture());
         
         List<String> executedSql = sqlCaptor.getAllValues();
-        assertThat(executedSql).hasSize(3);
+        assertThat(executedSql).hasSize(4);
         
         // First call: CREATE TABLE organisms
         assertThat(executedSql.get(0))
@@ -125,6 +126,11 @@ class SingleBlobOrgStrategyTest {
             .contains("CREATE TABLE IF NOT EXISTS organism_tick_stats")
             .contains("tick_number BIGINT PRIMARY KEY")
             .contains("total_organisms_created BIGINT NOT NULL");
+
+        // Fourth call: CREATE INDEX on the static organism data
+        assertThat(executedSql.get(3))
+            .contains("CREATE INDEX IF NOT EXISTS idx_organisms_genome")
+            .contains("organisms (genome_hash, organism_id)");
     }
     
     @Test

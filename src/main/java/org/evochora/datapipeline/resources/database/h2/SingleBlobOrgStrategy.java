@@ -96,6 +96,7 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
             );
 
             createTickStatsTable(stmt);
+            createGenomeIndex(stmt);
         }
 
         markTablesCreated();

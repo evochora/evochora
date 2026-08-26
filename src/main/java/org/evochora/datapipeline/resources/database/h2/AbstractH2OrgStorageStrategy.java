@@ -218,6 +218,28 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
     }
 
     /**
+     * Creates the index that makes an ancestor walk over the static organism data affordable.
+     * <p>
+     * Resolving one genome's parent genome selects the lowest-id carrier of that genome. Without
+     * this index every step of the walk is a full table scan; with it, a step is a seek. The index
+     * is offered here rather than imposed: a strategy that lays out the static organism data
+     * differently does not call this and provides its own answer.
+     * <p>
+     * On an already populated table the build is a one-off blocking operation. It is instant for a
+     * new run, where the table is still empty when the strategy creates its schema.
+     *
+     * @param stmt Statement on a connection with the run schema already set
+     * @throws SQLException if the DDL fails for a reason other than the object already existing
+     */
+    protected void createGenomeIndex(Statement stmt) throws SQLException {
+        H2SchemaUtil.executeDdlIfNotExists(
+            stmt,
+            "CREATE INDEX IF NOT EXISTS idx_organisms_genome ON organisms (genome_hash, organism_id)",
+            "idx_organisms_genome"
+        );
+    }
+
+    /**
      * Adds the per-tick statistics of one tick to the batch.
      * <p>
      * Called once per tick, including ticks whose organism list is empty: an extinction tick is
