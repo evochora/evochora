@@ -387,7 +387,7 @@ tasks.named("build") {
 pmd {
     toolVersion = "7.26.0"
     isConsoleOutput = true
-    ruleSetFiles = files("config/pmd/ruleset.xml")
+    ruleSetFiles = files("gradle/pmd/ruleset.xml")
     ruleSets = listOf()
     isIgnoreFailures = false
 }

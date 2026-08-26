@@ -22,6 +22,7 @@ Evochora is an artificial life simulator for research into digital evolution. It
 - `config/` – User-facing configuration (evochora.conf, local.conf)
 - `build.gradle.kts` – Gradle build configuration
 - `gradlew`, `gradlew.bat`, `gradle/wrapper/` – Gradle wrapper
+- `gradle/pmd/ruleset.xml` – PMD rules for the static dead-code check
 
 ## Build & Run (Java/Gradle)
 
