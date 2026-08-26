@@ -299,7 +299,7 @@ class H2DatabaseReaderTest {
         }
     }
 
-    // --- readGenomeLineageTree tests ---
+    // --- readGenomeAncestors tests ---
 
     /**
      * Inserts a row into the organisms table with minimal required fields.
@@ -313,7 +313,7 @@ class H2DatabaseReaderTest {
     }
 
     /**
-     * Creates schema and organism tables for lineage tree tests.
+     * Creates schema and organism tables for ancestor tests.
      */
     private Connection setupOrganismSchema() throws Exception {
         Connection conn = (Connection) database.acquireDedicatedConnection();
@@ -325,7 +325,7 @@ class H2DatabaseReaderTest {
     }
 
     @Test
-    void readGenomeLineageTree_basicParentChildRelationships() throws Exception {
+    void readGenomeAncestors_walksTheChainOfTheRequestedGenome() throws Exception {
         try (Connection conn = setupOrganismSchema()) {
             insertOrganism(conn, 1, null, 0, 1000L);  // root
             insertOrganism(conn, 2, 1, 10, 2000L);    // child of 1, new genome
@@ -334,122 +334,194 @@ class H2DatabaseReaderTest {
         }
 
         try (IDatabaseReader reader = provider.createReader(runId)) {
-            Map<Long, Long> tree = reader.readGenomeLineageTree(100);
+            Map<Long, Long> ancestors = reader.readGenomeAncestors(List.of(3000L));
 
-            assertThat(tree).hasSize(3);
-            assertThat(tree.get(1000L)).isNull();          // root → null
-            assertThat(tree.get(2000L)).isEqualTo(1000L);  // child → parent genome
-            assertThat(tree.get(3000L)).isEqualTo(2000L);  // grandchild → parent genome
+            assertThat(ancestors).hasSize(3);
+            assertThat(ancestors.get(3000L)).isEqualTo(2000L);
+            assertThat(ancestors.get(2000L)).isEqualTo(1000L);
+            assertThat(ancestors.get(1000L)).isNull();
         }
     }
 
     @Test
-    void readGenomeLineageTree_rootGenomesMapToNull() throws Exception {
+    void readGenomeAncestors_carrierWithoutParentIsARoot() throws Exception {
         try (Connection conn = setupOrganismSchema()) {
-            insertOrganism(conn, 1, null, 0, 1000L);  // primordial, no parent
-            insertOrganism(conn, 2, null, 0, 2000L);  // primordial, no parent
+            insertOrganism(conn, 1, null, 0, 1000L);
+            insertOrganism(conn, 2, null, 0, 2000L);
             conn.commit();
         }
 
         try (IDatabaseReader reader = provider.createReader(runId)) {
-            Map<Long, Long> tree = reader.readGenomeLineageTree(100);
+            Map<Long, Long> ancestors = reader.readGenomeAncestors(List.of(1000L, 2000L));
 
-            assertThat(tree).hasSize(2);
-            assertThat(tree.get(1000L)).isNull();
-            assertThat(tree.get(2000L)).isNull();
+            assertThat(ancestors).hasSize(2);
+            assertThat(ancestors).containsKey(1000L).containsKey(2000L);
+            assertThat(ancestors.get(1000L)).isNull();
+            assertThat(ancestors.get(2000L)).isNull();
         }
     }
 
     @Test
-    void readGenomeLineageTree_excludesGenomeHashZero() throws Exception {
+    void readGenomeAncestors_parentCarryingGenomeZeroIsARoot() throws Exception {
         try (Connection conn = setupOrganismSchema()) {
-            insertOrganism(conn, 1, null, 0, 0L);     // genome=0, should be excluded
-            insertOrganism(conn, 2, null, 0, 1000L);   // normal genome
+            insertOrganism(conn, 1, null, 0, 0L);      // parent without a genome
+            insertOrganism(conn, 2, 1, 10, 2000L);
             conn.commit();
         }
 
         try (IDatabaseReader reader = provider.createReader(runId)) {
-            Map<Long, Long> tree = reader.readGenomeLineageTree(100);
+            Map<Long, Long> ancestors = reader.readGenomeAncestors(List.of(2000L));
 
-            assertThat(tree).hasSize(1);
-            assertThat(tree).containsKey(1000L);
-            assertThat(tree).doesNotContainKey(0L);
+            assertThat(ancestors).hasSize(1);
+            assertThat(ancestors.get(2000L)).isNull();
         }
     }
 
     @Test
-    void readGenomeLineageTree_filtersSelfReferencingGenomes() throws Exception {
-        // Org 2 inherits same genome as parent (no mutation) — should not create a self-referencing entry
+    void readGenomeAncestors_missingParentRowIsARoot() throws Exception {
+        // While a run is still being indexed the parent's row can be absent
         try (Connection conn = setupOrganismSchema()) {
-            insertOrganism(conn, 1, null, 0, 1000L);   // root
-            insertOrganism(conn, 2, 1, 10, 1000L);     // same genome as parent (no mutation)
-            insertOrganism(conn, 3, 2, 20, 2000L);     // new genome, parent is org 2 (genome 1000)
+            insertOrganism(conn, 2, 1, 10, 2000L);     // parent 1 is not indexed
             conn.commit();
         }
 
         try (IDatabaseReader reader = provider.createReader(runId)) {
-            Map<Long, Long> tree = reader.readGenomeLineageTree(100);
+            Map<Long, Long> ancestors = reader.readGenomeAncestors(List.of(2000L));
 
-            assertThat(tree).hasSize(2);
-            assertThat(tree.get(1000L)).isNull();          // root (org 1 provides this)
-            assertThat(tree.get(2000L)).isEqualTo(1000L);  // derived from genome 1000
+            assertThat(ancestors).hasSize(1);
+            assertThat(ancestors.get(2000L)).isNull();
         }
     }
 
     @Test
-    void readGenomeLineageTree_firstOccurrenceWinsForDuplicateGenomes() throws Exception {
-        // Two organisms independently mutate to the same genome hash (collision).
-        // The first by organism_id should determine the parent.
+    void readGenomeAncestors_ignoresGenomeHashZero() throws Exception {
         try (Connection conn = setupOrganismSchema()) {
-            insertOrganism(conn, 1, null, 0, 1000L);   // root A
-            insertOrganism(conn, 2, null, 0, 2000L);   // root B
-            insertOrganism(conn, 3, 1, 10, 3000L);     // derived from A
-            insertOrganism(conn, 4, 2, 10, 3000L);     // same genome 3000, but from B
+            insertOrganism(conn, 1, null, 0, 0L);
+            insertOrganism(conn, 2, null, 0, 1000L);
             conn.commit();
         }
 
         try (IDatabaseReader reader = provider.createReader(runId)) {
-            Map<Long, Long> tree = reader.readGenomeLineageTree(100);
+            Map<Long, Long> ancestors = reader.readGenomeAncestors(List.of(0L, 1000L));
 
-            assertThat(tree.get(3000L)).isEqualTo(1000L);  // org 3 (lower ID) wins → parent is 1000
+            assertThat(ancestors).hasSize(1);
+            assertThat(ancestors).containsKey(1000L).doesNotContainKey(0L);
         }
     }
 
     @Test
-    void readGenomeLineageTree_respectsBirthTickFilter() throws Exception {
+    void readGenomeAncestors_omitsGenomesThatDoNotOccur() throws Exception {
         try (Connection conn = setupOrganismSchema()) {
-            insertOrganism(conn, 1, null, 0, 1000L);    // born at tick 0
-            insertOrganism(conn, 2, 1, 50, 2000L);      // born at tick 50
-            insertOrganism(conn, 3, 2, 100, 3000L);     // born at tick 100
+            insertOrganism(conn, 1, null, 0, 1000L);
             conn.commit();
         }
 
         try (IDatabaseReader reader = provider.createReader(runId)) {
-            // Query at tick 60 — should only include organisms born ≤ 60
-            Map<Long, Long> tree = reader.readGenomeLineageTree(60);
+            Map<Long, Long> ancestors = reader.readGenomeAncestors(List.of(1000L, 9999L));
 
-            assertThat(tree).hasSize(2);
-            assertThat(tree).containsKey(1000L);
-            assertThat(tree).containsKey(2000L);
-            assertThat(tree).doesNotContainKey(3000L);
+            assertThat(ancestors).hasSize(1);
+            assertThat(ancestors).containsKey(1000L).doesNotContainKey(9999L);
         }
     }
 
     @Test
-    void readGenomeLineageTree_parentWithGenomeZeroMapsToNull() throws Exception {
-        // Parent exists but has genome_hash=0 — child should be treated as root
+    void readGenomeAncestors_skipsCarriersThatInheritedTheirGenomeUnchanged() throws Exception {
+        // Filtering precedes ordering: organism 2 carries genome 1000 unchanged and must not be
+        // chosen as its first carrier, which would make genome 1000 its own ancestor.
         try (Connection conn = setupOrganismSchema()) {
-            insertOrganism(conn, 1, null, 0, 0L);      // parent with genome=0
-            insertOrganism(conn, 2, 1, 10, 2000L);     // child — parent genome is 0
+            insertOrganism(conn, 1, null, 0, 1000L);
+            insertOrganism(conn, 2, 1, 10, 1000L);     // same genome as its parent
+            insertOrganism(conn, 3, 2, 20, 2000L);
             conn.commit();
         }
 
         try (IDatabaseReader reader = provider.createReader(runId)) {
-            Map<Long, Long> tree = reader.readGenomeLineageTree(100);
+            Map<Long, Long> ancestors = reader.readGenomeAncestors(List.of(2000L));
 
-            assertThat(tree).hasSize(1);
-            assertThat(tree.get(2000L)).isNull();  // treated as root (parent genome=0)
+            assertThat(ancestors).hasSize(2);
+            assertThat(ancestors.get(2000L)).isEqualTo(1000L);
+            assertThat(ancestors.get(1000L)).isNull();
+        }
+    }
+
+    @Test
+    void readGenomeAncestors_firstCarrierWinsWhenAGenomeAppearsTwice() throws Exception {
+        // Two organisms independently arrive at the same genome hash from different parents.
+        try (Connection conn = setupOrganismSchema()) {
+            insertOrganism(conn, 1, null, 0, 1000L);
+            insertOrganism(conn, 2, null, 0, 2000L);
+            insertOrganism(conn, 3, 1, 10, 3000L);     // from genome 1000
+            insertOrganism(conn, 4, 2, 10, 3000L);     // same genome, from genome 2000
+            conn.commit();
+        }
+
+        try (IDatabaseReader reader = provider.createReader(runId)) {
+            Map<Long, Long> ancestors = reader.readGenomeAncestors(List.of(3000L));
+
+            assertThat(ancestors.get(3000L)).isEqualTo(1000L);
+        }
+    }
+
+    @Test
+    void readGenomeAncestors_doesNotDependOnTheTickRequested() throws Exception {
+        // The first carrier of a visible genome was born no later than the tick it is visible at,
+        // so the answer is the same whether later organisms exist or not.
+        try (Connection conn = setupOrganismSchema()) {
+            insertOrganism(conn, 1, null, 0, 1000L);
+            insertOrganism(conn, 2, 1, 50, 2000L);
+            conn.commit();
+        }
+
+        Map<Long, Long> before;
+        try (IDatabaseReader reader = provider.createReader(runId)) {
+            before = reader.readGenomeAncestors(List.of(2000L));
+        }
+
+        try (Connection conn = setupOrganismSchema()) {
+            insertOrganism(conn, 3, 2, 100, 3000L);    // a later genome joins the run
+            conn.commit();
+        }
+
+        try (IDatabaseReader reader = provider.createReader(runId)) {
+            assertThat(reader.readGenomeAncestors(List.of(2000L))).isEqualTo(before);
+        }
+    }
+
+    @Test
+    void readGenomeAncestors_sharedAncestorsAppearOnceEach() throws Exception {
+        try (Connection conn = setupOrganismSchema()) {
+            insertOrganism(conn, 1, null, 0, 1000L);
+            insertOrganism(conn, 2, 1, 10, 2000L);     // both descend from genome 1000
+            insertOrganism(conn, 3, 1, 10, 3000L);
+            conn.commit();
+        }
+
+        try (IDatabaseReader reader = provider.createReader(runId)) {
+            Map<Long, Long> ancestors = reader.readGenomeAncestors(List.of(2000L, 3000L, 2000L));
+
+            assertThat(ancestors).hasSize(3);
+            assertThat(ancestors.get(2000L)).isEqualTo(1000L);
+            assertThat(ancestors.get(3000L)).isEqualTo(1000L);
+            assertThat(ancestors.get(1000L)).isNull();
+        }
+    }
+
+    @Test
+    void readGenomeAncestors_terminatesOnCyclicData() throws Exception {
+        // Organism ids make a cycle impossible in data the pipeline writes, because a parent is
+        // always created before its child. The walk must terminate even if that does not hold.
+        try (Connection conn = setupOrganismSchema()) {
+            insertOrganism(conn, 1, 2, 0, 1000L);
+            insertOrganism(conn, 2, 1, 0, 2000L);
+            conn.commit();
+        }
+
+        try (IDatabaseReader reader = provider.createReader(runId)) {
+            Map<Long, Long> ancestors = reader.readGenomeAncestors(List.of(1000L));
+
+            assertThat(ancestors).hasSize(2);
+            assertThat(ancestors.get(1000L)).isEqualTo(2000L);
+            assertThat(ancestors.get(2000L)).isEqualTo(1000L);
         }
     }
 }
-

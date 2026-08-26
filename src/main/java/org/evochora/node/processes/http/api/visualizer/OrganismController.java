@@ -16,9 +16,11 @@ import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 import org.evochora.datapipeline.api.resources.database.dto.TickRange;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.evochora.node.processes.http.api.pipeline.dto.ErrorResponseDto;
+import org.evochora.node.processes.http.api.visualizer.dto.OrganismDetailsResponseDto;
 import org.evochora.node.processes.http.api.visualizer.dto.OrganismsResponseDto;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -136,13 +138,11 @@ public class OrganismController extends VisualizerBaseController {
 
             final List<OrganismTickSummary> organisms = reader.readOrganismsAtTick(tickNumber);
             final int totalOrganismCount = reader.readTotalOrganismsCreated(tickNumber);
-            final Map<Long, Long> genomeTree = reader.readGenomeLineageTree(tickNumber);
 
-            // Convert Long keys/values to String to preserve 64-bit precision in JSON
-            final Map<String, String> stringTree = new LinkedHashMap<>(genomeTree.size());
-            genomeTree.forEach((k, v) -> stringTree.put(String.valueOf(k), v != null ? String.valueOf(v) : null));
+            final List<Long> genomes = organisms.stream().map(o -> o.genomeHash).toList();
+            final Map<String, String> genomeAncestors = toStringMap(reader.readGenomeAncestors(genomes));
 
-            ctx.status(HttpStatus.OK).json(new OrganismsResponseDto(organisms, totalOrganismCount, stringTree));
+            ctx.status(HttpStatus.OK).json(new OrganismsResponseDto(organisms, totalOrganismCount, genomeAncestors));
         } catch (RuntimeException e) {
             handleDatabaseException(e, runId, "organisms");
         } catch (SQLException e) {
@@ -216,8 +216,14 @@ public class OrganismController extends VisualizerBaseController {
 
             final OrganismTickDetails details = reader.readOrganismDetails(tickNumber, organismId);
 
-            // Return DTO directly (contains all fields including state.instructions)
-            ctx.status(HttpStatus.OK).json(details);
+            // The ancestry chain is coloured by genome, so the response carries the closure of the
+            // genomes it names rather than relying on what the tick response happened to deliver.
+            final List<Long> genomes = new ArrayList<>();
+            details.staticInfo.lineage.forEach(entry -> genomes.add(entry.genomeHash()));
+            final Map<String, String> genomeAncestors = toStringMap(reader.readGenomeAncestors(genomes));
+
+            ctx.status(HttpStatus.OK).json(new OrganismDetailsResponseDto(
+                details.organismId, details.tick, details.staticInfo, details.state, genomeAncestors));
         } catch (OrganismNotFoundException e) {
             throw e;
         } catch (RuntimeException e) {
@@ -228,6 +234,23 @@ public class OrganismController extends VisualizerBaseController {
             }
             throw e;
         }
+    }
+
+
+    /**
+     * Converts a genome ancestor map to string keys and values.
+     * <p>
+     * Genome hashes are 64-bit and lose precision as JSON numbers, so they travel as strings.
+     * A null value marks a root genome and is preserved as null.
+     *
+     * @param ancestors Genome hash to parent genome hash, null value for roots
+     * @return The same mapping with string keys and values
+     */
+    private static Map<String, String> toStringMap(final Map<Long, Long> ancestors) {
+        final Map<String, String> result = new LinkedHashMap<>(ancestors.size());
+        ancestors.forEach((genome, parent) ->
+            result.put(String.valueOf(genome), parent != null ? String.valueOf(parent) : null));
+        return result;
     }
 
     /**
