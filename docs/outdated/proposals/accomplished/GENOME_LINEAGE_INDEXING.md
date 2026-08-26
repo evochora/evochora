@@ -1,6 +1,12 @@
 # Organism Snapshot Cost: Ancestor Closures and Stored Tick Statistics
 
-**Status: TO BE REVIEWED — agreed approach for [#114](https://github.com/evochora/evochora/issues/114).**
+**Status: ACCOMPLISHED — implemented on branch `fix/113-record-connection-failures` (PR #118), 2026-08-26.**
+
+The read paths were verified against a copy of the production database: the static fields of 4 604
+organisms across seven ticks, the stored organism total at six ticks over six orders of magnitude,
+and the ancestor relation seeded with all 150 525 genomes of the run, which agrees with the old
+full-tree query entry for entry in both directions. The browser check ran on short runs produced by
+the current build; the published run could not serve it, for the reason recorded under step 8.
 
 ## Problem
 
@@ -358,7 +364,7 @@ guard in `_applyGenomeLineageTree`.
 Out of scope. No detection, no migration, no fallback — a database written before this change lacks
 the stored per-tick total, and the organisms endpoint fails for it the way any schema change fails
 today. Making format mismatches explicit is the subject of
-[PERSISTED_FORMAT_VERSIONING](PERSISTED_FORMAT_VERSIONING.md).
+[PERSISTED_FORMAT_VERSIONING](../../../proposals/PERSISTED_FORMAT_VERSIONING.md).
 
 ### Points checked and deliberately not changed
 
@@ -422,7 +428,7 @@ automated tests. It is verified by hand in step 8, as frontend changes are today
 The published run cannot serve this purpose, and the reason is worth recording. Its organism blobs
 were written in February 2026, before commit `8919f646` renumbered the fields of `OrganismState`;
 a current build fails to parse them with *"Protocol message had invalid UTF-8"*, which is the exact
-consequence [PERSISTED_FORMAT_VERSIONING](PERSISTED_FORMAT_VERSIONING.md) records as evidence. The
+consequence [PERSISTED_FORMAT_VERSIONING](../../../proposals/PERSISTED_FORMAT_VERSIONING.md) records as evidence. The
 demo node serves that run only because its image predates the renumbering. This is independent of
 this change and blocks any browser check against existing data.
 
