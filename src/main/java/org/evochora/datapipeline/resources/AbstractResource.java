@@ -25,8 +25,8 @@ public abstract class AbstractResource implements IResource, IMonitorable {
     
     /**
      * Collection of operational errors that occurred during resource operations.
-     * These are transient errors that don't prevent the resource from functioning
-     * but may indicate problems.
+     * These are transient errors the resource kept working through, and fatal ones that leave it
+     * unable to serve any caller - a resource does not stop itself, so both belong here.
      * <p>
      * Private to enforce use of {@link #recordError(String, String, String)} method.
      * Subclasses must not access this directly - use protected methods like
@@ -94,7 +94,9 @@ public abstract class AbstractResource implements IResource, IMonitorable {
      * 
      * <strong>2. Fatal Errors</strong> (resource cannot serve any caller):
      * <ul>
-     *   <li>Use: {@code log.error("message with context", args)} - NO exception parameter</li>
+     *   <li>Use: {@code log.error("message with context", args)} - without the exception for an
+     *       expected failure, with it when the cause lies outside the application and the chained
+     *       causes are the diagnosis (see <strong>Stack Traces</strong> below)</li>
      *   <li>Use: {@link #recordError(String, String, String)} - a resource does not stop itself,
      *       so an unusable resource reports {@link org.evochora.datapipeline.api.resources.IResource.UsageState#FAILED}
      *       only if the error is recorded</li>

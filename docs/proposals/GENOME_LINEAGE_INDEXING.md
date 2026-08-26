@@ -307,8 +307,8 @@ Each response is self-contained: no view depends on what another view happened t
 
 Bundling costs 719 entries — roughly 32 kB against 6.6 MB today — and saves a request, a second
 pooled connection per view, a second read and decompression of the same BLOB, and the entire
-"what do I not know yet" logic in the client. The second connection matters: pool exhaustion is what
-#113 was about.
+"what do I not know yet" logic in the client. The second connection matters: pool exhaustion is
+what #113 was about.
 
 Both closures are composed **in the controller**, which already holds the reader, the organisms and
 the ancestry chain, and calls `readGenomeAncestors` with the genome hashes it has. Putting the closure

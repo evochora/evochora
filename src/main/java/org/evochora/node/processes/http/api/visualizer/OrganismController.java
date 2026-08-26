@@ -188,7 +188,7 @@ public class OrganismController extends VisualizerBaseController {
             @OpenApiParam(name = "runId", description = "Optional simulation run ID (defaults to latest run)", required = false)
         },
         responses = {
-            @OpenApiResponse(status = "200", description = "OK", content = @OpenApiContent(from = OrganismTickDetails.class)),
+            @OpenApiResponse(status = "200", description = "OK", content = @OpenApiContent(from = OrganismDetailsResponseDto.class)),
             @OpenApiResponse(status = "304", description = "Not Modified (cached response, ETag matches)"),
             @OpenApiResponse(status = "400", description = "Bad request (invalid tick or organismId)", content = @OpenApiContent(from = ErrorResponseDto.class)),
             @OpenApiResponse(status = "404", description = "Not found (organism, tick, or run ID not found)", content = @OpenApiContent(from = ErrorResponseDto.class)),
