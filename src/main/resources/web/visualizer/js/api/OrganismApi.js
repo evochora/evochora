@@ -43,11 +43,11 @@ export class OrganismApi {
 
         const data = await apiClient.fetch(url, fetchOptions);
 
-        // API response shape: { organisms: [...], totalOrganismCount: N }
+        // API response shape: { organisms: [...], totalOrganismCount: N, genomeAncestors: {...} }
         return {
-            organisms: Array.isArray(data.organisms) ? data.organisms : [],
-            totalOrganismCount: data.totalOrganismCount || 0,
-            genomeLineageTree: data.genomeLineageTree || {}
+            organisms: data.organisms,
+            totalOrganismCount: data.totalOrganismCount,
+            genomeAncestors: data.genomeAncestors
         };
     }
 
