@@ -166,19 +166,15 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
             return new ArrayList<>();
         }
         
-        // 2. Read static info from organisms table (for parent_id, birth_tick)
-        java.util.Map<Integer, StaticInfo> staticInfoMap = readAllStaticInfo(conn);
-        
-        // 3. Convert to DTOs
+        // 2. Convert to DTOs. parent_id, birth_tick and genome_hash are immutable per organism
+        //    and are carried by the serialized state itself, so the organisms table is not read.
         List<OrganismTickSummary> result = new ArrayList<>(organisms.size());
         for (OrganismState org : organisms) {
             int organismId = org.getOrganismId();
-            StaticInfo staticInfo = staticInfoMap.get(organismId);
-            
-            Integer parentId = staticInfo != null ? staticInfo.parentId :
-                    (org.hasParentId() ? org.getParentId() : null);
-            long birthTick = staticInfo != null ? staticInfo.birthTick : org.getBirthTick();
-            long genomeHash = staticInfo != null ? staticInfo.genomeHash : org.getGenomeHash();
+
+            Integer parentId = org.hasParentId() ? org.getParentId() : null;
+            long birthTick = org.getBirthTick();
+            long genomeHash = org.getGenomeHash();
 
             result.add(new OrganismTickSummary(
                 organismId,
@@ -278,35 +274,6 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
         }
     }
     
-    /**
-     * Reads static organism info (parent_id, birth_tick, genome_hash) for all organisms.
-     */
-    private java.util.Map<Integer, StaticInfo> readAllStaticInfo(Connection conn) throws SQLException {
-        String sql = "SELECT organism_id, parent_id, birth_tick, genome_hash FROM organisms";
-
-        java.util.Map<Integer, StaticInfo> result = new java.util.HashMap<>();
-
-        try (PreparedStatement stmt = conn.prepareStatement(sql);
-             ResultSet rs = stmt.executeQuery()) {
-
-            while (rs.next()) {
-                int organismId = rs.getInt("organism_id");
-                int parentIdRaw = rs.getInt("parent_id");
-                Integer parentId = rs.wasNull() ? null : parentIdRaw;
-                long birthTick = rs.getLong("birth_tick");
-                long genomeHash = rs.getLong("genome_hash");
-
-                result.put(organismId, new StaticInfo(parentId, birthTick, genomeHash));
-            }
-        }
-
-        return result;
-    }
-    
-    /**
-     * Helper record for static organism info.
-     */
-    private record StaticInfo(Integer parentId, long birthTick, long genomeHash) {}
     
     /**
      * Converts a Protobuf Vector to int[].

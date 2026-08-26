@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.List;
 
 import org.evochora.datapipeline.TestMetadataHelper;
@@ -111,6 +112,46 @@ class H2DatabaseOrganismReaderTest {
         try (IDatabaseReader reader = database.createReader("run-reader-2")) {
             List<OrganismTickSummary> organisms = reader.readOrganismsAtTick(2L);
             assertThat(organisms).isEmpty();
+        }
+    }
+
+    @Test
+    void readOrganismsAtTick_takesStaticFieldsFromTheStoredState() throws Exception {
+        OrganismState child = buildOrganismState(2).toBuilder()
+                .setParentId(1)
+                .setBirthTick(17L)
+                .setGenomeHash(-4242L)
+                .build();
+        TickData tick = TickData.newBuilder()
+                .setTickNumber(1L)
+                .addOrganisms(buildOrganismState(1))
+                .addOrganisms(child)
+                .build();
+
+        try (Connection conn = getConnectionWithSchema("run-reader-static")) {
+            database.doCreateOrganismTables(conn);
+            database.doWriteOrganismTick(conn, tick);
+            database.doCommitOrganismWrites(conn);
+
+            // The summary must be answerable from the stored state alone. Emptying the static
+            // table makes any remaining dependency on it fail rather than pass unnoticed.
+            try (Statement stmt = conn.createStatement()) {
+                stmt.execute("DELETE FROM organisms");
+            }
+            conn.commit();
+        }
+
+        try (IDatabaseReader reader = database.createReader("run-reader-static")) {
+            List<OrganismTickSummary> organisms = reader.readOrganismsAtTick(1L);
+
+            assertThat(organisms).hasSize(2);
+            OrganismTickSummary root = organisms.get(0);
+            assertThat(root.parentId).isNull();
+
+            OrganismTickSummary offspring = organisms.get(1);
+            assertThat(offspring.parentId).isEqualTo(1);
+            assertThat(offspring.birthTick).isEqualTo(17L);
+            assertThat(offspring.genomeHash).isEqualTo(-4242L);
         }
     }
 
