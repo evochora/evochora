@@ -86,9 +86,9 @@ public class OrganismController extends VisualizerBaseController {
      * Response format:
      * <pre>
      * {
-     *   "runId": "string",
-     *   "tick": 1234,
-     *   "organisms": [ OrganismTickSummary... ]
+     *   "organisms": [ OrganismTickSummary... ],
+     *   "totalOrganismCount": 4711,
+     *   "genomeAncestors": { "genomeHash": "parentGenomeHash or null", ... }
      * }
      * </pre>
      *
@@ -161,11 +161,11 @@ public class OrganismController extends VisualizerBaseController {
      * Response format:
      * <pre>
      * {
-     *   "runId": "string",
-     *   "tick": 1234,
      *   "organismId": 1,
-     *   "static": { ... },
-     *   "state": { ... }
+     *   "tick": 1234,
+     *   "staticInfo": { ... },
+     *   "state": { ... },
+     *   "genomeAncestors": { "genomeHash": "parentGenomeHash or null", ... }
      * }
      * </pre>
      *

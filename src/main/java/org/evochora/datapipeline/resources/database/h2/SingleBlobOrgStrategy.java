@@ -277,8 +277,7 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
             }
         }
     }
-    
-    
+
     /**
      * Converts a Protobuf Vector to int[].
      */
