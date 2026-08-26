@@ -1,11 +1,13 @@
 package org.evochora.datapipeline.resources.database;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.List;
 
 import org.evochora.datapipeline.TestMetadataHelper;
@@ -17,6 +19,7 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.OrganismNotFoundException;
+import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismRuntimeView;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
@@ -111,6 +114,156 @@ class H2DatabaseOrganismReaderTest {
         try (IDatabaseReader reader = database.createReader("run-reader-2")) {
             List<OrganismTickSummary> organisms = reader.readOrganismsAtTick(2L);
             assertThat(organisms).isEmpty();
+        }
+    }
+
+    @Test
+    void readTotalOrganismsCreated_returnsTheValueTheTickReported() throws Exception {
+        TickData tick = TickData.newBuilder()
+                .setTickNumber(1L)
+                .addOrganisms(buildOrganismState(1))
+                .setTotalOrganismsCreated(4711L)
+                .build();
+
+        try (Connection conn = getConnectionWithSchema("run-total-1")) {
+            database.doCreateOrganismTables(conn);
+            database.doWriteOrganismTick(conn, tick);
+            database.doCommitOrganismWrites(conn);
+        }
+
+        try (IDatabaseReader reader = database.createReader("run-total-1")) {
+            assertThat(reader.readTotalOrganismsCreated(1L)).isEqualTo(4711);
+        }
+    }
+
+    @Test
+    void readTotalOrganismsCreated_storesATotalForATickWithoutOrganisms() throws Exception {
+        TickData extinction = TickData.newBuilder()
+                .setTickNumber(2L)
+                .setTotalOrganismsCreated(1234L)
+                .build();
+
+        try (Connection conn = getConnectionWithSchema("run-total-2")) {
+            database.doCreateOrganismTables(conn);
+            database.doWriteOrganismTick(conn, extinction);
+            database.doCommitOrganismWrites(conn);
+        }
+
+        try (IDatabaseReader reader = database.createReader("run-total-2")) {
+            assertThat(reader.readOrganismsAtTick(2L)).isEmpty();
+            assertThat(reader.readTotalOrganismsCreated(2L)).isEqualTo(1234);
+        }
+    }
+
+    @Test
+    void readTotalOrganismsCreated_survivesAReprocessedTick() throws Exception {
+        TickData tick = TickData.newBuilder()
+                .setTickNumber(3L)
+                .addOrganisms(buildOrganismState(1))
+                .setTotalOrganismsCreated(99L)
+                .build();
+
+        try (Connection conn = getConnectionWithSchema("run-total-3")) {
+            database.doCreateOrganismTables(conn);
+            database.doWriteOrganismTick(conn, tick);
+            database.doCommitOrganismWrites(conn);
+            // At-least-once delivery: the same chunk can arrive again
+            database.doWriteOrganismTick(conn, tick);
+            database.doCommitOrganismWrites(conn);
+        }
+
+        try (IDatabaseReader reader = database.createReader("run-total-3")) {
+            assertThat(reader.readTotalOrganismsCreated(3L)).isEqualTo(99);
+        }
+    }
+
+    @Test
+    void readTotalOrganismsCreated_failsRatherThanTruncatingAnOversizedTotal() throws Exception {
+        // The API returns int because organism ids are INT, so a run cannot exceed that range
+        // without overflowing the ids themselves. Should a stored total ever exceed it anyway,
+        // the contract promises a failure rather than a wrong number.
+        TickData tick = TickData.newBuilder()
+                .setTickNumber(1L)
+                .addOrganisms(buildOrganismState(1))
+                .setTotalOrganismsCreated(1L)
+                .build();
+
+        try (Connection conn = getConnectionWithSchema("run-total-overflow")) {
+            database.doCreateOrganismTables(conn);
+            database.doWriteOrganismTick(conn, tick);
+            database.doCommitOrganismWrites(conn);
+
+            try (Statement stmt = conn.createStatement()) {
+                stmt.execute("UPDATE organism_tick_stats SET total_organisms_created = "
+                        + (Integer.MAX_VALUE + 1L) + " WHERE tick_number = 1");
+            }
+            conn.commit();
+        }
+
+        try (IDatabaseReader reader = database.createReader("run-total-overflow")) {
+            assertThatThrownBy(() -> reader.readTotalOrganismsCreated(1L))
+                    .isInstanceOf(SQLException.class);
+        }
+    }
+
+    @Test
+    void readTotalOrganismsCreated_throwsForATickThatWasNeverIndexed() throws Exception {
+        TickData tick = TickData.newBuilder()
+                .setTickNumber(1L)
+                .addOrganisms(buildOrganismState(1))
+                .setTotalOrganismsCreated(7L)
+                .build();
+
+        try (Connection conn = getConnectionWithSchema("run-total-4")) {
+            database.doCreateOrganismTables(conn);
+            database.doWriteOrganismTick(conn, tick);
+            database.doCommitOrganismWrites(conn);
+        }
+
+        try (IDatabaseReader reader = database.createReader("run-total-4")) {
+            assertThatThrownBy(() -> reader.readTotalOrganismsCreated(2L))
+                    .isInstanceOf(TickNotFoundException.class)
+                    .hasMessageContaining("2");
+        }
+    }
+
+    @Test
+    void readOrganismsAtTick_takesStaticFieldsFromTheStoredState() throws Exception {
+        OrganismState child = buildOrganismState(2).toBuilder()
+                .setParentId(1)
+                .setBirthTick(17L)
+                .setGenomeHash(-4242L)
+                .build();
+        TickData tick = TickData.newBuilder()
+                .setTickNumber(1L)
+                .addOrganisms(buildOrganismState(1))
+                .addOrganisms(child)
+                .build();
+
+        try (Connection conn = getConnectionWithSchema("run-reader-static")) {
+            database.doCreateOrganismTables(conn);
+            database.doWriteOrganismTick(conn, tick);
+            database.doCommitOrganismWrites(conn);
+
+            // The summary must be answerable from the stored state alone. Emptying the static
+            // table makes any remaining dependency on it fail rather than pass unnoticed.
+            try (Statement stmt = conn.createStatement()) {
+                stmt.execute("DELETE FROM organisms");
+            }
+            conn.commit();
+        }
+
+        try (IDatabaseReader reader = database.createReader("run-reader-static")) {
+            List<OrganismTickSummary> organisms = reader.readOrganismsAtTick(1L);
+
+            assertThat(organisms).hasSize(2);
+            OrganismTickSummary root = organisms.get(0);
+            assertThat(root.parentId).isNull();
+
+            OrganismTickSummary offspring = organisms.get(1);
+            assertThat(offspring.parentId).isEqualTo(1);
+            assertThat(offspring.birthTick).isEqualTo(17L);
+            assertThat(offspring.genomeHash).isEqualTo(-4242L);
         }
     }
 

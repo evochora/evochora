@@ -25,8 +25,8 @@ public abstract class AbstractResource implements IResource, IMonitorable {
     
     /**
      * Collection of operational errors that occurred during resource operations.
-     * These are transient errors that don't prevent the resource from functioning
-     * but may indicate problems.
+     * These are transient errors the resource kept working through, and fatal ones that leave it
+     * unable to serve any caller - a resource does not stop itself, so both belong here.
      * <p>
      * Private to enforce use of {@link #recordError(String, String, String)} method.
      * Subclasses must not access this directly - use protected methods like
@@ -71,11 +71,13 @@ public abstract class AbstractResource implements IResource, IMonitorable {
     /**
      * Records an operational error for tracking and monitoring.
      * <p>
-     * <strong>IMPORTANT:</strong> Use this method ONLY for transient errors where the resource
-     * continues functioning. For fatal errors that prevent operation, log and throw an exception instead.
+     * <strong>IMPORTANT:</strong> Whether an error is recorded is independent of whether it is
+     * thrown. Recording reflects the state of the resource; throwing reports the outcome of a
+     * single operation to its caller. A resource that must tell its caller about a failure still
+     * records that failure.
      * <p>
-     * Use this method to track transient errors that don't prevent the resource from functioning
-     * but may indicate problems. These errors affect the resource's health status ({@link #isHealthy()}).
+     * Use this method to track errors that indicate problems with the resource, whether or not it
+     * keeps functioning. These errors affect the resource's health status ({@link #isHealthy()}).
      * <p>
      * The error collection is bounded by {@link #getMaxErrors()} to prevent unbounded
      * memory growth. When the limit is exceeded, the oldest errors are automatically removed.
@@ -90,11 +92,15 @@ public abstract class AbstractResource implements IResource, IMonitorable {
      *   <li>Example: SQL constraint violation, dropped DLQ message, temporary connection issue</li>
      * </ul>
      * 
-     * <strong>2. Fatal Errors</strong> (resource cannot continue):
+     * <strong>2. Fatal Errors</strong> (resource cannot serve any caller):
      * <ul>
-     *   <li>Use: {@code log.error("message with context", args)} - NO exception parameter</li>
-     *   <li>Do NOT use recordError() - resource is broken anyway</li>
-     *   <li>Throw exception - caller handles it</li>
+     *   <li>Use: {@code log.error("message with context", args)} - without the exception for an
+     *       expected failure, with it when the cause lies outside the application and the chained
+     *       causes are the diagnosis (see <strong>Stack Traces</strong> below)</li>
+     *   <li>Use: {@link #recordError(String, String, String)} - a resource does not stop itself,
+     *       so an unusable resource reports {@link org.evochora.datapipeline.api.resources.IResource.UsageState#FAILED}
+     *       only if the error is recorded</li>
+     *   <li>Throw exception - caller handles the failed operation</li>
      *   <li>Example: Cannot initialize connection pool, schema creation failed, storage not accessible</li>
      * </ul>
      * 
@@ -113,8 +119,10 @@ public abstract class AbstractResource implements IResource, IMonitorable {
      *   <li>Example: {@code catch(IOException e) { log.debug("Retry {}/{}", attempt, max); }}</li>
      * </ul>
      * 
-     * <strong>Stack Traces:</strong> Exception stack traces should be logged at DEBUG level
-     * separately if needed. Resources should never log exceptions with {@code log.error(..., e)}.
+     * <strong>Stack Traces:</strong> Pass the exception to {@code log.error(..., e)} only for bugs
+     * and for system faults whose cause lies outside the application, where the chained causes are
+     * the diagnosis. For expected errors the message already states the cause, and the stack trace
+     * is omitted.
      *
      * @param code    Error code for categorization (e.g., "CONNECTION_FAILED", "READ_ERROR")
      * @param message Human-readable error message

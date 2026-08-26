@@ -10,17 +10,19 @@ import java.util.Map;
  * <p>
  * Contains the list of organisms at a specific tick (alive and recently dead),
  * the cumulative count of all organisms ever created up to that tick,
- * and the genome lineage tree for lineage-based color computation.
+ * and the ancestor closure of the genomes occurring in that list, which is what
+ * lineage-based colour computation needs.
  * <p>
  * Genome hashes are serialized as strings to preserve 64-bit precision in JSON
  * (JavaScript numbers lose precision beyond 2^53).
  *
  * @param organisms List of organism summaries at the specified tick
- * @param totalOrganismCount Total organisms created up to this tick (sequential IDs from 1)
- * @param genomeLineageTree Mapping of genomeHash → parentGenomeHash as strings (null for root genomes)
+ * @param totalOrganismCount Total organisms created up to this tick
+ * @param genomeAncestors Mapping of genomeHash → parentGenomeHash as strings, null for root genomes,
+ *                        covering every genome in the list and all of their ancestors
  */
 public record OrganismsResponseDto(
     List<OrganismTickSummary> organisms,
     int totalOrganismCount,
-    Map<String, String> genomeLineageTree
+    Map<String, String> genomeAncestors
 ) {}

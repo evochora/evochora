@@ -5,16 +5,21 @@
 package org.evochora.datapipeline.resources.database;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.SQLException;
 import java.util.Comparator;
 import java.util.Map;
 import java.util.UUID;
 
+import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.junit.extensions.logging.ExpectLog;
+import org.evochora.junit.extensions.logging.LogLevel;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -158,16 +163,24 @@ class H2DatabaseTest {
     }
 
     @Test
-    void testMetrics_CacheSizeAvailable() {
-        // Verify H2 cache size metric is queryable
-        Map<String, Number> metrics = database.getMetrics();
-        
-        // Cache size might not be available in all H2 configurations, but method should not throw
-        // If available, it should be a non-negative number
-        Number cacheSize = metrics.get("h2_cache_size_bytes");
-        if (cacheSize != null) {
-            assertTrue(cacheSize.longValue() >= 0, "Cache size should be non-negative");
-        }
+    @ExpectLog(level = LogLevel.ERROR, messagePattern = "H2 database 'test-db' cannot acquire a connection for .*")
+    void testFailedConnectionAcquisition_MarksResourceFailed() {
+        assertTrue(database.isHealthy(), "Fresh database should be healthy");
+        assertEquals(IResource.UsageState.ACTIVE, database.getUsageState("reader"));
+
+        // A closed pool can no longer hand out connections, which makes the database
+        // unusable for every caller - the same observable condition as a dead H2 store.
+        H2Database closed = database;
+        database = null;
+        closed.close();
+
+        assertThrows(SQLException.class, () -> closed.createReader("SIM_TEST"));
+
+        assertFalse(closed.isHealthy(), "Database that cannot hand out connections is not healthy");
+        assertEquals(IResource.UsageState.FAILED, closed.getUsageState("reader"));
+        assertTrue(closed.getErrors().stream()
+                .anyMatch(error -> "CONNECTION_ACQUIRE_FAILED".equals(error.errorType())),
+            "Failed acquisition must be recorded so the resource state is visible");
     }
 }
 

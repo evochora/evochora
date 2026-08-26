@@ -2,6 +2,7 @@ package org.evochora.datapipeline.resources.database.h2;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
@@ -98,15 +99,16 @@ class SingleBlobOrgStrategyTest {
         // When: Create tables
         strategy.createTables(mockConnection);
         
-        // Then: Should execute CREATE TABLE for both organisms and organism_ticks
-        verify(mockStatement, times(2)).execute(anyString());
+        // Then: Should execute DDL for organisms, organism_ticks, organism_tick_stats
+        //       and the genome index
+        verify(mockStatement, times(4)).execute(anyString());
         
         // Verify SQL strings
         ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
-        verify(mockStatement, times(2)).execute(sqlCaptor.capture());
+        verify(mockStatement, times(4)).execute(sqlCaptor.capture());
         
         List<String> executedSql = sqlCaptor.getAllValues();
-        assertThat(executedSql).hasSize(2);
+        assertThat(executedSql).hasSize(4);
         
         // First call: CREATE TABLE organisms
         assertThat(executedSql.get(0))
@@ -118,6 +120,17 @@ class SingleBlobOrgStrategyTest {
             .contains("CREATE TABLE IF NOT EXISTS organism_ticks")
             .contains("tick_number BIGINT PRIMARY KEY")
             .contains("organisms_blob BYTEA NOT NULL");
+
+        // Third call: CREATE TABLE organism_tick_stats
+        assertThat(executedSql.get(2))
+            .contains("CREATE TABLE IF NOT EXISTS organism_tick_stats")
+            .contains("tick_number BIGINT PRIMARY KEY")
+            .contains("total_organisms_created BIGINT NOT NULL");
+
+        // Fourth call: CREATE INDEX on the static organism data
+        assertThat(executedSql.get(3))
+            .contains("CREATE INDEX IF NOT EXISTS idx_organisms_genome")
+            .contains("organisms (genome_hash, organism_id)");
     }
     
     @Test
@@ -132,10 +145,10 @@ class SingleBlobOrgStrategyTest {
         strategy.addOrganismTick(mockConnection, tick);
         strategy.commitOrganismWrites(mockConnection);
 
-        // Then: addBatch called for 3 organism metadata + 1 state blob = 4
-        verify(mockPreparedStatement, times(4)).addBatch();
-        // executeBatch called for organisms batch + states batch
-        verify(mockPreparedStatement, times(2)).executeBatch();
+        // Then: addBatch called for 3 organism metadata + 1 tick statistics + 1 state blob = 5
+        verify(mockPreparedStatement, times(5)).addBatch();
+        // executeBatch called for organisms, states and tick statistics batches
+        verify(mockPreparedStatement, times(3)).executeBatch();
     }
 
     @Test
@@ -154,9 +167,10 @@ class SingleBlobOrgStrategyTest {
         strategy.addOrganismTick(mockConnection, tick3);
         strategy.commitOrganismWrites(mockConnection);
 
-        // Then: addBatch for 3 unique organism metadata (deduped) + 3 state blobs = 6
-        verify(mockPreparedStatement, times(6)).addBatch();
-        verify(mockPreparedStatement, times(2)).executeBatch();
+        // Then: addBatch for 3 unique organism metadata (deduped) + 3 tick statistics
+        //       + 3 state blobs = 9
+        verify(mockPreparedStatement, times(9)).addBatch();
+        verify(mockPreparedStatement, times(3)).executeBatch();
     }
 
     @Test
@@ -234,9 +248,11 @@ class SingleBlobOrgStrategyTest {
         strategy.addOrganismTick(mockConnection, emptyTick);
         strategy.commitOrganismWrites(mockConnection);
 
-        // Then: No organism metadata and no state blob (only executeBatch for states)
-        verify(mockPreparedStatement, never()).addBatch();
-        verify(mockPreparedStatement).executeBatch();
+        // Then: no organism metadata and no state blob, but the tick statistics are still
+        //       recorded - a tick without organisms is data, not absence of data
+        verify(mockPreparedStatement, times(1)).addBatch();
+        verify(mockPreparedStatement, never()).setBytes(anyInt(), any());
+        verify(mockPreparedStatement, times(2)).executeBatch();
     }
 
     @Test
@@ -271,8 +287,9 @@ class SingleBlobOrgStrategyTest {
         strategy.addOrganismTick(mockConnection, tick2);
         strategy.commitOrganismWrites(mockConnection);
 
-        // Then: addBatch called 1 (organism metadata, deduped) + 2 (state blobs) = 3
-        verify(mockPreparedStatement, times(3)).addBatch();
+        // Then: addBatch called 1 (organism metadata, deduped) + 2 (tick statistics)
+        //       + 2 (state blobs) = 5
+        verify(mockPreparedStatement, times(5)).addBatch();
     }
     
     @Test

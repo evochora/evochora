@@ -453,6 +453,11 @@ export class AppController {
             // API returns "static" not "staticInfo"
             const staticInfo = details.static || details.staticInfo;
             const state = details.state;
+
+            // The ancestry chain is coloured by genome, and its ancestors need not appear at the
+            // current tick, so their parent links arrive with this response and are added before
+            // anything is drawn.
+            this._mergeGenomeAncestors(details.genomeAncestors);
             
             if (details && staticInfo) {
                 // Resolve the program artifact once and give every view its context before any of
@@ -901,7 +906,7 @@ export class AppController {
             const organismResult = await organismPromise;
             const organisms = organismResult.organisms;
             this.state.totalOrganismCount = organismResult.totalOrganismCount;
-            this._applyGenomeLineageTree(organismResult.genomeLineageTree);
+            this._applyGenomeAncestors(organismResult.genomeAncestors);
             this.updateOrganismPanel(organisms, isForwardStep);
             this.minimapView?.setOwnershipColorResolver(this._minimapOwnershipColorResolver(organisms));
             this.minimapView?.updateOrganisms(
@@ -1012,7 +1017,7 @@ export class AppController {
         
         // Calculate organism counts (exclude dead organisms from alive count)
         const aliveCount = organisms.filter(o => !o.isDead).length;
-        const totalCount = this.state.totalOrganismCount || organisms.length;
+        const totalCount = this.state.totalOrganismCount;
         
         // Update panel info (alive/total display)
         this.organismPanelManager?.updateInfo(aliveCount, totalCount);
@@ -1066,17 +1071,36 @@ export class AppController {
     }
 
     /**
-     * Applies the genome lineage tree from the backend API response.
+     * Applies the genome ancestor closure from a backend API response.
      * Replaces the genome→parentGenome map and clears derived color caches.
-     * @param {Object} tree - Map of genomeHash → parentGenomeHash (null for roots), from API response.
+     * <p>
+     * The map is replaced rather than merged: while a run is still being indexed, a genome whose
+     * parent organism has not been written yet reads as a root, and that answer corrects itself
+     * once the missing rows arrive. Keeping earlier answers would make such a colour last for the
+     * whole session.
+     * @param {Object} ancestors - Map of genomeHash → parentGenomeHash (null for roots), covering
+     *                             every genome the response displays and all of their ancestors.
      * @private
      */
-    _applyGenomeLineageTree(tree) {
-        if (!tree) return;
+    _applyGenomeAncestors(ancestors) {
         this._genomeParent.clear();
         this._genomeColorCache.clear();
         this._genomeHslCache.clear();
-        for (const [genomeHash, parentGenomeHash] of Object.entries(tree)) {
+        this._mergeGenomeAncestors(ancestors);
+    }
+
+    /**
+     * Adds a genome ancestor closure to the current one without discarding it.
+     * <p>
+     * A view is served by more than one response: the organisms of a tick and, when one is
+     * selected, its ancestry chain. Their closures overlap but neither contains the other, and
+     * both come from the same relation, so a genome present in both carries the same parent.
+     * Adding is therefore safe, while replacing would drop what the other response delivered.
+     * @param {Object} ancestors - Map of genomeHash → parentGenomeHash (null for roots).
+     * @private
+     */
+    _mergeGenomeAncestors(ancestors) {
+        for (const [genomeHash, parentGenomeHash] of Object.entries(ancestors)) {
             this._genomeParent.set(String(genomeHash), parentGenomeHash ? String(parentGenomeHash) : null);
         }
     }
@@ -1114,17 +1138,19 @@ export class AppController {
      * If the genome has a known parent, the color is derived by shifting the parent's hue.
      * Otherwise, a new root color is assigned via the golden-ratio sequence.
      * @param {string} genomeKey - String representation of the genome hash.
+     * @param {Set<string>} [visited] - Genomes already on the current path, guarding the recursion.
      * @private
      */
-    _computeLineageColor(genomeKey) {
+    _computeLineageColor(genomeKey, visited = new Set()) {
         if (this._genomeColorCache.has(genomeKey)) return;
 
         const parentGenomeKey = this._genomeParent.get(genomeKey);
+        visited.add(genomeKey);
 
-        if (parentGenomeKey && parentGenomeKey !== '0' && parentGenomeKey !== genomeKey) {
+        if (parentGenomeKey && parentGenomeKey !== '0' && !visited.has(parentGenomeKey)) {
             // Ensure parent color is computed first (recursive)
             if (!this._genomeColorCache.has(parentGenomeKey)) {
-                this._computeLineageColor(parentGenomeKey);
+                this._computeLineageColor(parentGenomeKey, visited);
             }
 
             const parentHsl = this._genomeHslCache.get(parentGenomeKey);

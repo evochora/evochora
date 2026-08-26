@@ -105,11 +105,13 @@ public class OrganismIndexer<ACK> extends AbstractBatchIndexer<ACK> implements I
         // Snapshot tick
         database.writeOrganismTick(chunk.getSnapshot());
 
-        // Delta ticks (converted to TickData — database only needs tickNumber + organisms)
+        // Delta ticks (converted to TickData — the database needs the tick number, the organisms
+        // and the running organism total, which it stores per tick rather than deriving it)
         for (TickDelta delta : chunk.getDeltasList()) {
             TickData deltaAsTick = TickData.newBuilder()
                 .setTickNumber(delta.getTickNumber())
                 .addAllOrganisms(delta.getOrganismsList())
+                .setTotalOrganismsCreated(delta.getTotalOrganismsCreated())
                 .build();
             database.writeOrganismTick(deltaAsTick);
         }

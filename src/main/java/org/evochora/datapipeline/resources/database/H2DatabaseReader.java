@@ -4,7 +4,10 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Deque;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -139,7 +142,7 @@ public class H2DatabaseReader implements IDatabaseReader {
     }
 
     @Override
-    public int readTotalOrganismsCreated(long tickNumber) throws SQLException {
+    public int readTotalOrganismsCreated(long tickNumber) throws SQLException, TickNotFoundException {
         ensureNotClosed();
         return orgStrategy.readTotalOrganismsCreated(connection, tickNumber);
     }
@@ -147,40 +150,66 @@ public class H2DatabaseReader implements IDatabaseReader {
     /**
      * {@inheritDoc}
      * <p>
-     * Queries the {@code organisms} static table directly (strategy-independent).
-     * Self-referencing rows (child genome equals parent genome, i.e. no mutation) are excluded
-     * by the SQL filter. When multiple organisms share the same genome hash, the first by
-     * {@code organism_id} determines the parent mapping.
+     * Queries the {@code organisms} static table directly, one step of the walk per statement.
+     * The step selects the lowest-id carrier of a genome whose parent carries a different genome,
+     * which the {@code (genome_hash, organism_id)} index turns into a seek.
+     * <p>
+     * The walk is driven by the result map itself: a genome already present is not visited again,
+     * so it terminates on any input.
      * <p>
      * Not thread-safe — each {@link H2DatabaseReader} instance holds a dedicated connection
      * and must not be shared across threads.
      */
     @Override
-    public Map<Long, Long> readGenomeLineageTree(long tickNumber) throws SQLException {
+    public Map<Long, Long> readGenomeAncestors(Collection<Long> genomeHashes) throws SQLException {
         ensureNotClosed();
 
         String sql = """
-            SELECT c.genome_hash, p.genome_hash AS parent_genome_hash
+            SELECT p.genome_hash AS parent_genome_hash
             FROM organisms c
             LEFT JOIN organisms p ON c.parent_id = p.organism_id
-            WHERE c.birth_tick <= ? AND c.genome_hash != 0
-              AND (p.genome_hash IS NULL OR c.genome_hash != p.genome_hash)
+            WHERE c.genome_hash = ? AND c.genome_hash != 0
+              AND (p.genome_hash IS NULL OR p.genome_hash != c.genome_hash)
             ORDER BY c.organism_id
+            LIMIT 1
             """;
 
-        Map<Long, Long> tree = new LinkedHashMap<>();
+        Map<Long, Long> ancestors = new LinkedHashMap<>();
+        Deque<Long> pending = new ArrayDeque<>();
+        for (Long genomeHash : genomeHashes) {
+            if (genomeHash != null && genomeHash != 0L) {
+                pending.add(genomeHash);
+            }
+        }
+
         try (PreparedStatement stmt = connection.prepareStatement(sql)) {
-            stmt.setLong(1, tickNumber);
-            try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    long genomeHash = rs.getLong("genome_hash");
-                    if (tree.containsKey(genomeHash)) continue;
-                    long parentGenomeHash = rs.getLong("parent_genome_hash");
-                    tree.put(genomeHash, (rs.wasNull() || parentGenomeHash == 0) ? null : parentGenomeHash);
+            while (!pending.isEmpty()) {
+                long genomeHash = pending.poll();
+                if (ancestors.containsKey(genomeHash)) continue;
+
+                stmt.setLong(1, genomeHash);
+                Long parentGenomeHash = null;
+                boolean occurs;
+                try (ResultSet rs = stmt.executeQuery()) {
+                    occurs = rs.next();
+                    if (occurs) {
+                        // A parent carrying genome 0 passes the query's filter and becomes a
+                        // root here; a parent carrying the same genome is already excluded there.
+                        long parent = rs.getLong("parent_genome_hash");
+                        if (!rs.wasNull() && parent != 0L) {
+                            parentGenomeHash = parent;
+                        }
+                    }
+                }
+                if (!occurs) continue;   // genome does not occur in this run: no entry
+
+                ancestors.put(genomeHash, parentGenomeHash);
+                if (parentGenomeHash != null && !ancestors.containsKey(parentGenomeHash)) {
+                    pending.add(parentGenomeHash);
                 }
             }
         }
-        return tree;
+        return ancestors;
     }
 
     @Override
