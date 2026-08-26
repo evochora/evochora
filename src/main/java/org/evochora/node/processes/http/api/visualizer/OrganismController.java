@@ -12,6 +12,7 @@ import io.javalin.openapi.OpenApiResponse;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.OrganismNotFoundException;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
+import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 import org.evochora.datapipeline.api.resources.database.dto.TickRange;
 
@@ -115,7 +116,7 @@ public class OrganismController extends VisualizerBaseController {
             @OpenApiResponse(status = "500", description = "Internal server error (database error)", content = @OpenApiContent(from = ErrorResponseDto.class))
         }
     )
-    void getOrganismsAtTick(final Context ctx) throws SQLException {
+    void getOrganismsAtTick(final Context ctx) throws SQLException, TickNotFoundException {
         final long tickNumber = parseTickNumber(ctx.pathParam("tick"));
         final String runId = resolveRunId(ctx);
 

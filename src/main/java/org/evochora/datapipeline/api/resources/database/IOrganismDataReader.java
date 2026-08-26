@@ -35,12 +35,21 @@ public interface IOrganismDataReader {
 
     /**
      * Reads the total number of organisms created up to (and including) the given tick.
+     * <p>
+     * This is the value the simulation reported for that tick, not a value derived from organism
+     * ids. A tick for which no data was indexed has no such value.
+     * <p>
+     * The result is an {@code int} because the model is bounded at its root: organism ids are
+     * {@code INT}, so a run cannot exceed that many organisms without overflowing the ids
+     * themselves. An implementation must fail rather than truncate if the stored value exceeds
+     * that range.
      *
-     * @param tickNumber Tick number (inclusive upper bound).
-     * @return Total organisms created by this tick, or 0 if none exist.
+     * @param tickNumber Tick number.
+     * @return Total organisms created by this tick.
      * @throws SQLException if database read fails.
+     * @throws TickNotFoundException if no data is indexed for the given tick.
      */
-    int readTotalOrganismsCreated(long tickNumber) throws SQLException;
+    int readTotalOrganismsCreated(long tickNumber) throws SQLException, TickNotFoundException;
 
     /**
      * Reads the genome lineage tree: a mapping of each genome hash to its parent genome hash.

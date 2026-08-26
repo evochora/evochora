@@ -1,6 +1,7 @@
 package org.evochora.datapipeline.resources.database;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.nio.file.Path;
@@ -18,6 +19,7 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.OrganismNotFoundException;
+import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismRuntimeView;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickDetails;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
@@ -112,6 +114,87 @@ class H2DatabaseOrganismReaderTest {
         try (IDatabaseReader reader = database.createReader("run-reader-2")) {
             List<OrganismTickSummary> organisms = reader.readOrganismsAtTick(2L);
             assertThat(organisms).isEmpty();
+        }
+    }
+
+    @Test
+    void readTotalOrganismsCreated_returnsTheValueTheTickReported() throws Exception {
+        TickData tick = TickData.newBuilder()
+                .setTickNumber(1L)
+                .addOrganisms(buildOrganismState(1))
+                .setTotalOrganismsCreated(4711L)
+                .build();
+
+        try (Connection conn = getConnectionWithSchema("run-total-1")) {
+            database.doCreateOrganismTables(conn);
+            database.doWriteOrganismTick(conn, tick);
+            database.doCommitOrganismWrites(conn);
+        }
+
+        try (IDatabaseReader reader = database.createReader("run-total-1")) {
+            assertThat(reader.readTotalOrganismsCreated(1L)).isEqualTo(4711);
+        }
+    }
+
+    @Test
+    void readTotalOrganismsCreated_storesATotalForATickWithoutOrganisms() throws Exception {
+        TickData extinction = TickData.newBuilder()
+                .setTickNumber(2L)
+                .setTotalOrganismsCreated(1234L)
+                .build();
+
+        try (Connection conn = getConnectionWithSchema("run-total-2")) {
+            database.doCreateOrganismTables(conn);
+            database.doWriteOrganismTick(conn, extinction);
+            database.doCommitOrganismWrites(conn);
+        }
+
+        try (IDatabaseReader reader = database.createReader("run-total-2")) {
+            assertThat(reader.readOrganismsAtTick(2L)).isEmpty();
+            assertThat(reader.readTotalOrganismsCreated(2L)).isEqualTo(1234);
+        }
+    }
+
+    @Test
+    void readTotalOrganismsCreated_survivesAReprocessedTick() throws Exception {
+        TickData tick = TickData.newBuilder()
+                .setTickNumber(3L)
+                .addOrganisms(buildOrganismState(1))
+                .setTotalOrganismsCreated(99L)
+                .build();
+
+        try (Connection conn = getConnectionWithSchema("run-total-3")) {
+            database.doCreateOrganismTables(conn);
+            database.doWriteOrganismTick(conn, tick);
+            database.doCommitOrganismWrites(conn);
+            // At-least-once delivery: the same chunk can arrive again
+            database.doWriteOrganismTick(conn, tick);
+            database.doCommitOrganismWrites(conn);
+        }
+
+        try (IDatabaseReader reader = database.createReader("run-total-3")) {
+            assertThat(reader.readTotalOrganismsCreated(3L)).isEqualTo(99);
+        }
+    }
+
+    @Test
+    void readTotalOrganismsCreated_throwsForATickThatWasNeverIndexed() throws Exception {
+        TickData tick = TickData.newBuilder()
+                .setTickNumber(1L)
+                .addOrganisms(buildOrganismState(1))
+                .setTotalOrganismsCreated(7L)
+                .build();
+
+        try (Connection conn = getConnectionWithSchema("run-total-4")) {
+            database.doCreateOrganismTables(conn);
+            database.doWriteOrganismTick(conn, tick);
+            database.doCommitOrganismWrites(conn);
+        }
+
+        try (IDatabaseReader reader = database.createReader("run-total-4")) {
+            assertThatThrownBy(() -> reader.readTotalOrganismsCreated(2L))
+                    .isInstanceOf(TickNotFoundException.class)
+                    .hasMessageContaining("2");
         }
     }
 

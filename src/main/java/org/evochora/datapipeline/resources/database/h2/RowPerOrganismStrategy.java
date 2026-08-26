@@ -132,6 +132,8 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
                     "CREATE INDEX IF NOT EXISTS idx_organism_states_org ON organism_states (organism_id)",
                     "idx_organism_states_org"
             );
+
+            createTickStatsTable(stmt);
         }
 
         conn.commit();
@@ -164,6 +166,7 @@ public class RowPerOrganismStrategy extends AbstractH2OrgStorageStrategy {
     public void addOrganismTick(Connection conn, TickData tick) throws SQLException {
         StreamingSession session = ensureStreamingSession(conn);
         addOrganismMetadataBatch(session, tick);
+        addTickStatsBatch(session, tick);
 
         // Per-tick organism states (one row per organism)
         PreparedStatement statesStmt = session.statesStmt();

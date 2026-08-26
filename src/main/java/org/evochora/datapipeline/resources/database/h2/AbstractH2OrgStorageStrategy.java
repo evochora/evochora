@@ -4,6 +4,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
@@ -11,6 +12,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
+import org.evochora.datapipeline.utils.H2SchemaUtil;
 import org.evochora.datapipeline.utils.compression.CompressionCodecFactory;
 import org.evochora.datapipeline.utils.compression.ICompressionCodec;
 import org.slf4j.Logger;
@@ -89,8 +92,14 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
     protected record StreamingSession(
             PreparedStatement organismsStmt,
             PreparedStatement statesStmt,
+            PreparedStatement tickStatsStmt,
             Set<Integer> seenOrganisms
     ) {}
+
+    /** SQL for the per-tick statistics shared by all organism storage strategies. */
+    private static final String TICK_STATS_MERGE_SQL =
+            "MERGE INTO organism_tick_stats (tick_number, total_organisms_created) "
+            + "KEY (tick_number) VALUES (?, ?)";
 
     /** Per-connection sessions (thread-safe for competing consumers sharing this strategy instance). */
     private final ConcurrentHashMap<Connection, StreamingSession> sessions = new ConcurrentHashMap<>();
@@ -135,6 +144,7 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
                     return new StreamingSession(
                             c.prepareStatement(getStreamOrganismsMergeSql()),
                             c.prepareStatement(getStreamStatesMergeSql()),
+                            c.prepareStatement(TICK_STATS_MERGE_SQL),
                             new HashSet<>()
                     );
                 } catch (SQLException e) {
@@ -187,10 +197,48 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
     }
 
     /**
+     * Creates the per-tick statistics table shared by all organism storage strategies.
+     * <p>
+     * Holds the running organism total the simulation reports with every tick. Strategies call
+     * this from their own {@link #createTables(Connection)}; a strategy that does not use the
+     * shared static organism data does not call it and does not get the table.
+     *
+     * @param stmt Statement on a connection with the run schema already set
+     * @throws SQLException if the DDL fails for a reason other than the object already existing
+     */
+    protected void createTickStatsTable(Statement stmt) throws SQLException {
+        H2SchemaUtil.executeDdlIfNotExists(
+            stmt,
+            "CREATE TABLE IF NOT EXISTS organism_tick_stats (" +
+            "  tick_number BIGINT PRIMARY KEY," +
+            "  total_organisms_created BIGINT NOT NULL" +
+            ")",
+            "organism_tick_stats"
+        );
+    }
+
+    /**
+     * Adds the per-tick statistics of one tick to the batch.
+     * <p>
+     * Called once per tick, including ticks whose organism list is empty: an extinction tick is
+     * the one tick where the number of organisms ever created is the only surviving information.
+     *
+     * @param session The streaming session for the current connection
+     * @param tick Tick data carrying the tick number and the running organism total
+     * @throws SQLException if parameter setting or addBatch fails
+     */
+    protected void addTickStatsBatch(StreamingSession session, TickData tick) throws SQLException {
+        PreparedStatement stmt = session.tickStatsStmt();
+        stmt.setLong(1, tick.getTickNumber());
+        stmt.setLong(2, tick.getTotalOrganismsCreated());
+        stmt.addBatch();
+    }
+
+    /**
      * {@inheritDoc}
      * <p>
-     * Executes organism metadata and state batches, then clears the deduplication set.
-     * Statements remain open for reuse in the next commit window.
+     * Executes organism metadata, state and per-tick statistics batches, then clears the
+     * deduplication set. Statements remain open for reuse in the next commit window.
      */
     @Override
     public void commitOrganismWrites(Connection conn) throws SQLException {
@@ -203,6 +251,7 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
             session.organismsStmt().executeBatch();
         }
         session.statesStmt().executeBatch();
+        session.tickStatsStmt().executeBatch();
 
         // Reset per-commit state; statements stay open for reuse
         session.seenOrganisms().clear();
@@ -221,6 +270,7 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
         if (session != null) {
             closeQuietly(session.organismsStmt());
             closeQuietly(session.statesStmt());
+            closeQuietly(session.tickStatsStmt());
         }
     }
 
@@ -242,11 +292,13 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
                 if (c.isClosed()) {
                     closeQuietly(entry.getValue().organismsStmt());
                     closeQuietly(entry.getValue().statesStmt());
+                    closeQuietly(entry.getValue().tickStatsStmt());
                     return true;
                 }
             } catch (SQLException e) {
                 closeQuietly(entry.getValue().organismsStmt());
                 closeQuietly(entry.getValue().statesStmt());
+                closeQuietly(entry.getValue().tickStatsStmt());
                 return true;
             }
             return false;
@@ -270,12 +322,16 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
     }
 
     @Override
-    public int readTotalOrganismsCreated(Connection conn, long tickNumber) throws SQLException {
-        String sql = "SELECT MAX(organism_id) FROM organisms WHERE birth_tick <= ?";
+    public int readTotalOrganismsCreated(Connection conn, long tickNumber)
+            throws SQLException, TickNotFoundException {
+        String sql = "SELECT total_organisms_created FROM organism_tick_stats WHERE tick_number = ?";
         try (PreparedStatement stmt = conn.prepareStatement(sql)) {
             stmt.setLong(1, tickNumber);
             try (ResultSet rs = stmt.executeQuery()) {
-                return rs.next() ? rs.getInt(1) : 0;
+                if (!rs.next()) {
+                    throw new TickNotFoundException("No organism tick statistics for tick " + tickNumber);
+                }
+                return rs.getInt(1);
             }
         }
     }

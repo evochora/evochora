@@ -97,15 +97,16 @@ class RowPerOrganismStrategyTest {
         // When: Create tables
         strategy.createTables(mockConnection);
 
-        // Then: Should execute CREATE TABLE for organisms, organism_states, and index
-        verify(mockStatement, times(3)).execute(anyString());
+        // Then: Should execute CREATE TABLE for organisms, organism_states, the index
+        //       and organism_tick_stats
+        verify(mockStatement, times(4)).execute(anyString());
 
         // Verify SQL strings
         ArgumentCaptor<String> sqlCaptor = ArgumentCaptor.forClass(String.class);
-        verify(mockStatement, times(3)).execute(sqlCaptor.capture());
+        verify(mockStatement, times(4)).execute(sqlCaptor.capture());
 
         List<String> executedSql = sqlCaptor.getAllValues();
-        assertThat(executedSql).hasSize(3);
+        assertThat(executedSql).hasSize(4);
 
         // First call: CREATE TABLE organisms
         assertThat(executedSql.get(0))
@@ -131,6 +132,12 @@ class RowPerOrganismStrategyTest {
         assertThat(executedSql.get(2))
                 .contains("CREATE INDEX IF NOT EXISTS idx_organism_states_org")
                 .contains("organism_states (organism_id)");
+
+        // Fourth call: CREATE TABLE organism_tick_stats
+        assertThat(executedSql.get(3))
+                .contains("CREATE TABLE IF NOT EXISTS organism_tick_stats")
+                .contains("tick_number BIGINT PRIMARY KEY")
+                .contains("total_organisms_created BIGINT NOT NULL");
     }
 
     @Test
@@ -145,9 +152,9 @@ class RowPerOrganismStrategyTest {
         strategy.addOrganismTick(mockConnection, tick);
         strategy.commitOrganismWrites(mockConnection);
 
-        // Then: addBatch for 3 organism metadata + 3 state rows = 6
-        verify(mockPreparedStatement, times(6)).addBatch();
-        verify(mockPreparedStatement, times(2)).executeBatch();
+        // Then: addBatch for 3 organism metadata + 1 tick statistics + 3 state rows = 7
+        verify(mockPreparedStatement, times(7)).addBatch();
+        verify(mockPreparedStatement, times(3)).executeBatch();
     }
 
     @Test
@@ -166,9 +173,10 @@ class RowPerOrganismStrategyTest {
         strategy.addOrganismTick(mockConnection, tick3);
         strategy.commitOrganismWrites(mockConnection);
 
-        // Then: addBatch for 3 unique organism metadata (deduped) + 6 state rows = 9
-        verify(mockPreparedStatement, times(9)).addBatch();
-        verify(mockPreparedStatement, times(2)).executeBatch();
+        // Then: addBatch for 3 unique organism metadata (deduped) + 3 tick statistics
+        //       + 6 state rows = 12
+        verify(mockPreparedStatement, times(12)).addBatch();
+        verify(mockPreparedStatement, times(3)).executeBatch();
     }
 
     @Test
@@ -203,8 +211,9 @@ class RowPerOrganismStrategyTest {
         strategy.addOrganismTick(mockConnection, tick2);
         strategy.commitOrganismWrites(mockConnection);
 
-        // Then: addBatch 1 (organism metadata, deduped) + 2 (state rows) = 3
-        verify(mockPreparedStatement, times(3)).addBatch();
+        // Then: addBatch 1 (organism metadata, deduped) + 2 (tick statistics)
+        //       + 2 (state rows) = 5
+        verify(mockPreparedStatement, times(5)).addBatch();
     }
 
     @Test
@@ -227,8 +236,9 @@ class RowPerOrganismStrategyTest {
         strategy.addOrganismTick(mockConnection, tick2);
         strategy.commitOrganismWrites(mockConnection);
 
-        // Then: 3 unique organism metadata + 4 state rows (2+2) = 7 addBatch calls
-        verify(mockPreparedStatement, times(7)).addBatch();
+        // Then: 3 unique organism metadata + 2 tick statistics + 4 state rows (2+2)
+        //       = 9 addBatch calls
+        verify(mockPreparedStatement, times(9)).addBatch();
     }
 
     @Test

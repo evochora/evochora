@@ -94,6 +94,8 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
                 ")",
                 "organism_ticks"
             );
+
+            createTickStatsTable(stmt);
         }
 
         markTablesCreated();
@@ -125,6 +127,7 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
     public void addOrganismTick(Connection conn, TickData tick) throws SQLException {
         StreamingSession session = ensureStreamingSession(conn);
         addOrganismMetadataBatch(session, tick);
+        addTickStatsBatch(session, tick);
 
         // Per-tick BLOB (all organisms serialized + compressed)
         if (!tick.getOrganismsList().isEmpty()) {

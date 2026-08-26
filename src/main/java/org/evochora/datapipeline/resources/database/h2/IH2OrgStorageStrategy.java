@@ -5,6 +5,7 @@ import java.sql.SQLException;
 import java.util.List;
 
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 import org.evochora.datapipeline.api.resources.database.dto.OrganismTickSummary;
 import org.evochora.datapipeline.api.resources.database.dto.TickRange;
 
@@ -126,15 +127,18 @@ public interface IH2OrgStorageStrategy {
     /**
      * Reads the total number of organisms created up to (and including) the given tick.
      * <p>
-     * Uses the sequential nature of organism IDs: MAX(organism_id) WHERE birth_tick &lt;= tickNumber
-     * equals the total count of organisms ever created by that tick.
+     * Returns the value the simulation reported for that tick, stored when the tick was indexed.
+     * A tick that was never sampled has no such value; reporting zero for it would be
+     * indistinguishable from a run that produced no organisms at all.
      *
      * @param conn Database connection (schema already set)
-     * @param tickNumber Tick number (inclusive upper bound for birth_tick)
-     * @return Total organisms created, or 0 if no organisms exist
+     * @param tickNumber Tick number
+     * @return Total organisms created by that tick
      * @throws SQLException if database read fails
+     * @throws TickNotFoundException if no statistics are stored for the given tick
      */
-    int readTotalOrganismsCreated(Connection conn, long tickNumber) throws SQLException;
+    int readTotalOrganismsCreated(Connection conn, long tickNumber)
+            throws SQLException, TickNotFoundException;
 
     /**
      * Reads a single organism's state at the given tick.
