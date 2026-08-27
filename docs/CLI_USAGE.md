@@ -217,6 +217,7 @@ bin/evochora video lineage --help
 - `--start-tick` / `--end-tick`: Restrict the rendered tick range (inclusive)
 - `--format`: Output video format: mkv/mp4/avi/mov/webm (default: mkv)
 - `--preset`: ffmpeg encoding preset: ultrafast/fast/medium/slow (default: fast)
+- `--crf`: H.264 constant rate factor for mkv/mp4/avi/mov output, 0 = lossless to 51 = worst (default: 18)
 - `--threads`: Number of threads for parallel chunk rendering (default: 1)
 - `--overlay`: Overlays to apply, comma-separated; currently `info`
 - `--storage`: Storage resource name (default: tick-storage)

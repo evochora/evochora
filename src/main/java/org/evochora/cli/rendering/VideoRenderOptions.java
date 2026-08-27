@@ -46,6 +46,11 @@ public class VideoRenderOptions {
     @Option(names = "--format", description = "Output video format: mkv/mp4/avi/mov/webm. Default: mkv", defaultValue = "mkv")
     public String format;
 
+    @Option(names = "--crf", description = "H.264 constant rate factor for mkv/mp4/avi/mov output "
+            + "(0 = lossless, 51 = worst; default: ${DEFAULT-VALUE}). WebM uses its own fixed quality.",
+            defaultValue = "18")
+    public int crf;
+
     @Option(names = "--threads", description = "Number of threads for parallel chunk rendering. Default: 1", defaultValue = "1")
     public int threadCount;
 

@@ -769,7 +769,7 @@ public class VideoRenderEngine {
             case "mp4":
                 args.add("-c:v"); args.add("libx264");
                 args.add("-preset"); args.add(options.preset);
-                args.add("-crf"); args.add("18");
+                args.add("-crf"); args.add(String.valueOf(options.crf));
                 args.add("-movflags"); args.add("+frag_keyframe+empty_moov");
                 break;
             case "webm":
@@ -780,6 +780,7 @@ public class VideoRenderEngine {
             default:
                 args.add("-c:v"); args.add("libx264");
                 args.add("-preset"); args.add(options.preset);
+                args.add("-crf"); args.add(String.valueOf(options.crf));
                 break;
         }
         args.add("-pix_fmt"); args.add("yuv420p");
