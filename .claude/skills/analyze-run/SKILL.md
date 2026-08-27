@@ -84,6 +84,13 @@ Clade membership is a proxy; the mutation is molecules in the world. Via the nod
   insertion in the padding therefore makes the `JMPI` unconditional (energy route always open); a
   substitution that breaks the `GTI` comparison closes the route permanently. This one switch has
   been retuned independently in three runs — check it in every analysis.
+- **Execution heatmap (statistical):** every sampled tick carries each organism's IP. Aggregating
+  IP positions relative to the body anchor across many organisms of a clade yields a coverage
+  heatmap good enough to separate hot code (main loop, harvest) from code that never runs at
+  relevant frequency. **Blind spot:** code executed once per rare event (once per reproduction
+  cycle, say) has hit probability ~1e-6 per sample and is systematically invisible — sampled data
+  cannot decide "is this block ever executed". For that, exact in-runtime coverage counting is
+  needed (feature request: see the execution-coverage issue on GitHub).
 - **Founder mutations** of a clade: full-body diff against organism 1 at tick 0 (box
   x0−2…x0+112, y0−2…y0+87). Exclude DATA molecules (operand noise) and LABEL/LABELREF *values*
   (XOR-masked per organism); compare several clade members — only shared differences are the
