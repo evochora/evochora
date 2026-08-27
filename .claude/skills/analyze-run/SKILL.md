@@ -26,9 +26,11 @@ as its items land, the scripts shrink and finally disappear.
 Use `scripts/analytics.py` (needs `duckdb`, `pandas` — a venv with them exists or is quickly made).
 `load_population(analytics_dir, lod)` returns population plus the two derived series that matter:
 
-- **bodied** = sum of `genome.genome_data` counts = living organisms with genome hash ≠ 0.
-  `alive_count − bodied` is the hash-0 cohort — on pre-2026-08 builds a large gap means
-  futile-forker or frozen-loser artifacts, not biology.
+- **bodied** = `population.bodied_count` = living organisms with genome hash ≠ 0. The gap to
+  `alive_count` is the hash-0 cohort and is visible directly in the population chart as two
+  diverging lines; a large gap means futile-forker or frozen-loser artifacts, not biology.
+  Runs whose analytics predate the column have no `bodied_count`; `load_population` then falls
+  back to summing `genome.genome_data`.
 - **births** = diff of `vital_stats.total_born`.
 
 Scan for: population phases and crashes; birth-rate steps (a sudden persistent step is often ONE

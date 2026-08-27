@@ -41,6 +41,9 @@ class PopulationMetricsPluginTest {
     /** Max entropy from TestMetadataHelper defaults. */
     private static final int MAX_ENTROPY = 8191;
 
+    /** Arbitrary non-zero genome hash marking an organism as carrying a genome. */
+    private static final long GENOME_HASH = 0x1234ABCDL;
+
     private PopulationMetricsPlugin plugin;
 
     @BeforeEach
@@ -56,7 +59,7 @@ class PopulationMetricsPluginTest {
         ParquetSchema schema = plugin.getSchema();
 
         assertThat(schema).isNotNull();
-        assertThat(schema.getColumnCount()).isEqualTo(4);
+        assertThat(schema.getColumnCount()).isEqualTo(5);
 
         List<ParquetSchema.Column> columns = schema.getColumns();
         assertThat(columns.get(0).name()).isEqualTo("tick");
@@ -65,11 +68,14 @@ class PopulationMetricsPluginTest {
         assertThat(columns.get(1).name()).isEqualTo("alive_count");
         assertThat(columns.get(1).type()).isEqualTo(ColumnType.INTEGER);
 
-        assertThat(columns.get(2).name()).isEqualTo("avg_energy");
-        assertThat(columns.get(2).type()).isEqualTo(ColumnType.DOUBLE);
+        assertThat(columns.get(2).name()).isEqualTo("bodied_count");
+        assertThat(columns.get(2).type()).isEqualTo(ColumnType.INTEGER);
 
-        assertThat(columns.get(3).name()).isEqualTo("avg_entropy");
+        assertThat(columns.get(3).name()).isEqualTo("avg_energy");
         assertThat(columns.get(3).type()).isEqualTo(ColumnType.DOUBLE);
+
+        assertThat(columns.get(4).name()).isEqualTo("avg_entropy");
+        assertThat(columns.get(4).type()).isEqualTo(ColumnType.DOUBLE);
     }
 
     @Test
@@ -84,14 +90,15 @@ class PopulationMetricsPluginTest {
 
         assertThat(row[0]).isEqualTo(100L);  // tick
         assertThat(row[1]).isEqualTo(2);     // alive_count
+        assertThat(row[2]).isEqualTo(2);     // bodied_count (all test organisms carry a genome)
 
         // avg_energy_pct: avg=500, 500/32767*100 ≈ 1.526%
         double expectedEnergyPct = 500.0 / MAX_ENERGY * 100.0;
-        assertThat((double) row[2]).isCloseTo(expectedEnergyPct, within(0.001));
+        assertThat((double) row[3]).isCloseTo(expectedEnergyPct, within(0.001));
 
         // avg_entropy_pct: avg=100, 100/8191*100 ≈ 1.221%
         double expectedEntropyPct = 100.0 / MAX_ENTROPY * 100.0;
-        assertThat((double) row[3]).isCloseTo(expectedEntropyPct, within(0.001));
+        assertThat((double) row[4]).isCloseTo(expectedEntropyPct, within(0.001));
     }
 
     @Test
@@ -106,8 +113,9 @@ class PopulationMetricsPluginTest {
 
         assertThat(row[0]).isEqualTo(50L);  // tick
         assertThat(row[1]).isEqualTo(0);    // alive_count
-        assertThat(row[2]).isEqualTo(0.0);  // avg_energy_pct (no organisms)
-        assertThat(row[3]).isEqualTo(0.0);  // avg_entropy_pct (no organisms)
+        assertThat(row[2]).isEqualTo(0);    // bodied_count
+        assertThat(row[3]).isEqualTo(0.0);  // avg_energy_pct (no organisms)
+        assertThat(row[4]).isEqualTo(0.0);  // avg_entropy_pct (no organisms)
     }
 
     @Test
@@ -128,11 +136,11 @@ class PopulationMetricsPluginTest {
 
         // avg_energy_pct: 200/32767*100
         double expectedEnergyPct = 200.0 / MAX_ENERGY * 100.0;
-        assertThat((double) rows.get(0)[2]).isCloseTo(expectedEnergyPct, within(0.001));
+        assertThat((double) rows.get(0)[3]).isCloseTo(expectedEnergyPct, within(0.001));
 
         // avg_entropy_pct: 20/8191*100
         double expectedEntropyPct = 20.0 / MAX_ENTROPY * 100.0;
-        assertThat((double) rows.get(0)[3]).isCloseTo(expectedEntropyPct, within(0.001));
+        assertThat((double) rows.get(0)[4]).isCloseTo(expectedEntropyPct, within(0.001));
     }
 
     @Test
@@ -143,8 +151,59 @@ class PopulationMetricsPluginTest {
         List<Object[]> rows = plugin.extractRows(tick);
 
         assertThat(rows).hasSize(1);
-        assertThat((double) rows.get(0)[2]).isCloseTo(100.0, within(0.001));
         assertThat((double) rows.get(0)[3]).isCloseTo(100.0, within(0.001));
+        assertThat((double) rows.get(0)[4]).isCloseTo(100.0, within(0.001));
+    }
+
+    @Test
+    void testExtractRows_OrganismsWithoutGenome_CountAsAliveButNotAsBodied() {
+        // Three living organisms, none of them carrying genome molecules
+        TickData.Builder builder = TickData.newBuilder()
+            .setTickNumber(7)
+            .setTotalOrganismsCreated(3);
+        for (int i = 0; i < 3; i++) {
+            builder.addOrganisms(OrganismState.newBuilder().setOrganismId(i).setGenomeHash(0L).build());
+        }
+
+        Object[] row = plugin.extractRows(builder.build()).get(0);
+
+        assertThat(row[1]).isEqualTo(3);  // alive_count
+        assertThat(row[2]).isEqualTo(0);  // bodied_count
+    }
+
+    @Test
+    void testExtractRows_DeadOrganismWithGenome_CountsNeitherAliveNorBodied() {
+        TickData tick = TickData.newBuilder()
+            .setTickNumber(8)
+            .setTotalOrganismsCreated(2)
+            .addOrganisms(OrganismState.newBuilder().setOrganismId(1).setGenomeHash(GENOME_HASH).build())
+            .addOrganisms(OrganismState.newBuilder().setOrganismId(2).setGenomeHash(GENOME_HASH).setIsDead(true).build())
+            .build();
+
+        Object[] row = plugin.extractRows(tick).get(0);
+
+        assertThat(row[1]).isEqualTo(1);  // alive_count
+        assertThat(row[2]).isEqualTo(1);  // bodied_count
+    }
+
+    @Test
+    void testExtractRows_MixedPopulation_GapIsOrganismsWithoutGenome() {
+        // Five living organisms, two of them without genome molecules
+        TickData.Builder builder = TickData.newBuilder()
+            .setTickNumber(9)
+            .setTotalOrganismsCreated(5);
+        for (int i = 0; i < 3; i++) {
+            builder.addOrganisms(OrganismState.newBuilder().setOrganismId(i).setGenomeHash(GENOME_HASH + i).build());
+        }
+        for (int i = 3; i < 5; i++) {
+            builder.addOrganisms(OrganismState.newBuilder().setOrganismId(i).setGenomeHash(0L).build());
+        }
+
+        Object[] row = plugin.extractRows(builder.build()).get(0);
+
+        assertThat(row[1]).isEqualTo(5);  // alive_count
+        assertThat(row[2]).isEqualTo(3);  // bodied_count
+        assertThat((int) row[1] - (int) row[2]).isEqualTo(2);
     }
 
     @Test
@@ -166,7 +225,7 @@ class PopulationMetricsPluginTest {
         // Suppress warning: a well-defined manifest will always have a List<String> here.
         @SuppressWarnings("unchecked")
         List<String> yAxis = (List<String>) entry.visualization.config.get("y");
-        assertThat(yAxis).containsExactly("alive_count");
+        assertThat(yAxis).containsExactly("alive_count", "bodied_count");
 
         @SuppressWarnings("unchecked")
         List<String> y2Axis = (List<String>) entry.visualization.config.get("y2");
@@ -230,6 +289,7 @@ class PopulationMetricsPluginTest {
                 .setOrganismId(i)
                 .setEnergy(energyPerOrganism)
                 .setEntropyRegister(entropyPerOrganism)
+                .setGenomeHash(GENOME_HASH)
                 .build());
         }
         return builder.build();

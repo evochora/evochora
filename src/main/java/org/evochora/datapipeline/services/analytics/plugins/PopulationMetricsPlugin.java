@@ -17,15 +17,21 @@ import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import com.typesafe.config.Config;
 
 /**
- * Generates population metrics (alive count, avg energy %, avg entropy %) in Parquet format.
+ * Generates population metrics (alive count, bodied count, avg energy %, avg entropy %) in Parquet format.
  * <p>
  * <strong>Metrics:</strong>
  * <ul>
  *   <li>{@code tick} - Simulation tick number</li>
  *   <li>{@code alive_count} - Number of living organisms</li>
+ *   <li>{@code bodied_count} - Number of living organisms carrying a genome (genome hash != 0)</li>
  *   <li>{@code avg_energy} - Average energy as % of maxEnergy (0-100)</li>
  *   <li>{@code avg_entropy} - Average entropy as % of maxEntropy (0-100)</li>
  * </ul>
+ * <p>
+ * The difference {@code alive_count - bodied_count} is the number of living organisms whose body
+ * contains no genome molecules. Such organisms are counted as alive but carry no heritable code,
+ * so they contribute to population and birth counts without contributing to any genome-based
+ * metric.
  * <p>
  * Maximum values for normalization are read from simulation metadata
  * ({@code runtime.organism.max-energy} and {@code runtime.organism.max-entropy}).
@@ -36,6 +42,7 @@ public class PopulationMetricsPlugin extends AbstractAnalyticsPlugin {
     private static final ParquetSchema SCHEMA = ParquetSchema.builder()
         .column("tick", ColumnType.BIGINT)
         .column("alive_count", ColumnType.INTEGER)
+        .column("bodied_count", ColumnType.INTEGER)
         .column("avg_energy", ColumnType.DOUBLE)
         .column("avg_entropy", ColumnType.DOUBLE)
         .build();
@@ -65,12 +72,14 @@ public class PopulationMetricsPlugin extends AbstractAnalyticsPlugin {
     public List<Object[]> extractRows(TickData tick) {
         // Count alive organisms and sum energy/entropy
         int alive = 0;
+        int bodied = 0;
         long totalEnergy = 0;
         long totalEntropy = 0;
 
         for (OrganismState org : tick.getOrganismsList()) {
             if (org.getIsDead()) continue;
             alive++;
+            if (org.getGenomeHash() != 0L) bodied++;
             totalEnergy += org.getEnergy();
             totalEntropy += org.getEntropyRegister();
         }
@@ -83,6 +92,7 @@ public class PopulationMetricsPlugin extends AbstractAnalyticsPlugin {
         return Collections.singletonList(new Object[] {
             tick.getTickNumber(),   // tick (BIGINT)
             alive,                   // alive_count (INTEGER)
+            bodied,                  // bodied_count (INTEGER)
             avgEnergyPct,            // avg_energy (DOUBLE, 0-100%)
             avgEntropyPct            // avg_entropy (DOUBLE, 0-100%)
         });
@@ -93,7 +103,7 @@ public class PopulationMetricsPlugin extends AbstractAnalyticsPlugin {
         ManifestEntry entry = new ManifestEntry();
         entry.id = metricId;
         entry.name = "Population Overview";
-        entry.description = "Overview of alive organisms, average energy %, and average entropy % over time.";
+        entry.description = "Overview of alive organisms, organisms carrying a genome, average energy %, and average entropy % over time.";
 
         // Generate dataSources for all configured LOD levels
         entry.dataSources = new HashMap<>();
@@ -106,7 +116,7 @@ public class PopulationMetricsPlugin extends AbstractAnalyticsPlugin {
         entry.visualization.type = "line-chart";
         entry.visualization.config = new HashMap<>();
         entry.visualization.config.put("x", "tick");
-        entry.visualization.config.put("y", List.of("alive_count"));
+        entry.visualization.config.put("y", List.of("alive_count", "bodied_count"));
         entry.visualization.config.put("yFormat", "integer");
         entry.visualization.config.put("y2", List.of("avg_energy", "avg_entropy"));
         entry.visualization.config.put("y2Format", "percent");
