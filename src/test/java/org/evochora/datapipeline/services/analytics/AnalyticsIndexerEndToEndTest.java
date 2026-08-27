@@ -386,7 +386,114 @@ class AnalyticsIndexerEndToEndTest {
             "Should have processed 20 ticks");
     }
 
+    @Test
+    void testBatchWithoutRelevantTicks_IsSkippedWithoutReading() throws Exception {
+        // Given: a run recording every tick, and a metric taking every 100th recording
+        String runId = "20251201-160000-" + UUID.randomUUID();
+        indexMetadata(runId, createTestMetadata(runId, 1));
+
+        // Ticks 1..10 contain no multiple of 100, so no metric row can come from this batch
+        List<TickData> batch = createTestTicksWithOrganisms(runId, 1, 10);
+        StoragePath key = writeChunkBatch(runId, batch, 1, 10);
+
+        indexer = createAnalyticsIndexerWithSamplingInterval("test-indexer", runId, 100);
+        indexer.start();
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
+
+        // When: the batch is announced
+        sendBatchInfoToTopic(runId, key.asString(), 1, 10);
+
+        // Then: it is acknowledged without being read
+        await().atMost(10, TimeUnit.SECONDS)
+            .until(() -> indexer.getMetrics().get("batches_skipped").intValue() == 1);
+
+        Map<String, Number> metrics = indexer.getMetrics();
+        assertEquals(1, metrics.get("batches_processed").intValue(),
+            "Skipped batch still counts as processed (it is acknowledged)");
+        assertEquals(0, metrics.get("ticks_processed").intValue(),
+            "No tick may be read from a skipped batch");
+        assertTrue(findParquetFiles(runId, "population").isEmpty(),
+            "A skipped batch must not produce Parquet output");
+    }
+
+    @Test
+    void testBatchWithRelevantTick_IsProcessedWithSameConfiguration() throws Exception {
+        // Given: the same metric interval, but a batch containing tick 0
+        String runId = "20251201-161000-" + UUID.randomUUID();
+        indexMetadata(runId, createTestMetadata(runId, 1));
+
+        List<TickData> batch = createTestTicksWithOrganisms(runId, 0, 10);
+        StoragePath key = writeChunkBatch(runId, batch, 0, 9);
+
+        indexer = createAnalyticsIndexerWithSamplingInterval("test-indexer", runId, 100);
+        indexer.start();
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
+
+        // When: the batch is announced
+        sendBatchInfoToTopic(runId, key.asString(), 0, 9);
+
+        // Then: it is read and produces output
+        await().atMost(10, TimeUnit.SECONDS)
+            .until(() -> findParquetFiles(runId, "population").size() >= 1);
+
+        assertEquals(0, indexer.getMetrics().get("batches_skipped").intValue(),
+            "A batch containing a relevant tick must not be skipped");
+    }
+
     // ========== Helper Methods ==========
+
+    private AnalyticsIndexer<?> createAnalyticsIndexerWithSamplingInterval(
+            String name, String runId, int samplingInterval) {
+        Config config = ConfigFactory.parseString("""
+            runId = "%s"
+            metadataPollIntervalMs = 100
+            metadataMaxPollDurationMs = 10000
+            insertBatchSize = 1
+            flushTimeoutMs = 500
+            tempDirectory = "%s"
+            folderStructure {
+                levels = [100000000, 100000]
+            }
+            plugins = [
+                {
+                    className = "org.evochora.datapipeline.services.analytics.plugins.PopulationMetricsPlugin"
+                    options {
+                        metricId = "population"
+                        samplingInterval = %d
+                        lodFactor = 10
+                        lodLevels = 1
+                    }
+                }
+            ]
+            """.formatted(runId, tempAnalyticsDir.toAbsolutePath().toString().replace("\\", "/"),
+                samplingInterval));
+
+        // Same resource wiring as createAnalyticsIndexer
+        ResourceContext dbContext = new ResourceContext(
+            name, "metadata", "db-meta-read", "test-db", Collections.emptyMap());
+        IResource wrappedDatabase = testDatabase.getWrappedResource(dbContext);
+
+        ResourceContext topicContext = new ResourceContext(
+            name, "topic", "topic-read", "batch-topic",
+            Map.of("consumerGroup", "test-analytics-" + UUID.randomUUID()));
+        IResource wrappedTopic = testBatchTopic.getWrappedResource(topicContext);
+
+        ResourceContext analyticsContext = new ResourceContext(
+            name, "analyticsOutput", "analytics-write", "test-storage", Collections.emptyMap());
+        IResource wrappedAnalyticsStorage = testStorage.getWrappedResource(analyticsContext);
+
+        Map<String, List<IResource>> resources = Map.of(
+            "storage", List.of(testStorage),
+            "metadata", List.of(wrappedDatabase),
+            "topic", List.of(wrappedTopic),
+            "analyticsOutput", List.of(wrappedAnalyticsStorage)
+        );
+
+        return new AnalyticsIndexer<>(name, config, resources);
+    }
+
 
     private AnalyticsIndexer<?> createAnalyticsIndexer(String name, String runId) {
         Config config = ConfigFactory.parseString("""

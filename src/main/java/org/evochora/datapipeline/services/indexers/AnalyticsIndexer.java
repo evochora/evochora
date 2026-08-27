@@ -236,6 +236,28 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
         log.debug("AnalyticsIndexer prepared for run: {}", runId);
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * A batch is relevant when at least one configured plugin produces a row for a tick inside the
+     * range. Only each plugin's finest level is examined: a coarser level's interval is a multiple
+     * of it, so a tick matching a coarser level always matches the finest one too.
+     * <p>
+     * With no plugins configured nothing is relevant, which matches {@link #processChunk} returning
+     * immediately in that case.
+     */
+    @Override
+    protected boolean batchRequiresProcessing(long tickStart, long tickEnd) {
+        for (IAnalyticsPlugin plugin : plugins) {
+            long interval = plugin.getEffectiveSamplingInterval(0);
+            // Largest multiple of interval not beyond tickEnd; inside the range iff >= tickStart
+            if (tickEnd / interval * interval >= tickStart) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @Override
     protected void onShutdown() throws Exception {
         // 1. Release DuckDB session if still open (e.g., shutdown before final commit)
