@@ -718,6 +718,9 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
     protected void addCustomMetrics(Map<String, Number> metrics) {
         super.addCustomMetrics(metrics);
 
+        // batches_processed counts every acknowledged batch, including those never read: the ones
+        // recognised as duplicates and the ones holding no relevant tick. batches_skipped is that
+        // second group, so the two must not be added up.
         metrics.put("batches_processed", batchesProcessed.get());
         metrics.put("ticks_processed", ticksProcessed.get());
         metrics.put("batches_moved_to_dlq", batchesMovedToDlq.get());

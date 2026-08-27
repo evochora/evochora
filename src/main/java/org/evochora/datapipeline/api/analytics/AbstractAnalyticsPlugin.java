@@ -95,17 +95,37 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
         this.config = config;
         this.metricId = config.getString("metricId");
         if (config.hasPath("samplingInterval")) {
-            this.samplingInterval = config.getInt("samplingInterval");
+            this.samplingInterval = requireAtLeastOne(config.getInt("samplingInterval"), "samplingInterval");
         }
         if (config.hasPath("lodFactor")) {
-            this.lodFactor = config.getInt("lodFactor");
+            this.lodFactor = requireAtLeastOne(config.getInt("lodFactor"), "lodFactor");
         }
         if (config.hasPath("lodLevels")) {
-            this.lodLevels = config.getInt("lodLevels");
+            this.lodLevels = requireAtLeastOne(config.getInt("lodLevels"), "lodLevels");
         }
         if (config.hasPath("maxDataPoints")) {
             this.maxDataPoints = config.getInt("maxDataPoints");
         }
+    }
+
+    /**
+     * Rejects a configured interval below one.
+     * <p>
+     * All three interval options are used as divisors or as loop bounds, where a zero turns into
+     * an arithmetic failure per batch or into a metric that produces nothing at all. Rejecting the
+     * value where it is read names the metric and the option; failing later names neither.
+     *
+     * @param value  The configured value
+     * @param option The option name, for the error message
+     * @return The value, if it is at least one
+     * @throws IllegalArgumentException if the value is below one
+     */
+    private int requireAtLeastOne(int value, String option) {
+        if (value < 1) {
+            throw new IllegalArgumentException(
+                "Metric '" + metricId + "': " + option + " must be at least 1, but is " + value + ".");
+        }
+        return value;
     }
 
     /**
@@ -117,8 +137,11 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
     @Override
     public void initialize(IAnalyticsContext context) {
         this.context = context;
-        if (context != null && context.getMetadata() != null
-                && !context.getMetadata().getResolvedConfigJson().isEmpty()) {
+        // A context without metadata is a caller that does not use the tick grid at all - unit
+        // tests exercising extractRows. A context WITH metadata must carry the recording interval:
+        // deferring that failure would surface it inside the indexer's per-plugin bulkhead, where
+        // it would be logged and the metric dropped for the whole run.
+        if (context != null) {
             this.effectiveSamplingIntervals = computeEffectiveSamplingIntervals(
                 readRecordingInterval(context));
         }
@@ -130,10 +153,16 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
      *
      * @param context The analytics context carrying the metadata
      * @return The recording interval in ticks
-     * @throws IllegalStateException if the metadata does not state a recording interval, since
-     *         every tick grid derived from it would then be a guess
+     * @throws IllegalStateException if the context carries no metadata, or the metadata does not
+     *         state a recording interval, since every tick grid derived from it would then be a
+     *         guess
      */
     private int readRecordingInterval(IAnalyticsContext context) {
+        if (context.getMetadata() == null || context.getMetadata().getResolvedConfigJson().isEmpty()) {
+            throw new IllegalStateException(
+                "Metric '" + metricId + "': the analytics context carries no run configuration. "
+                + "The recording interval is required to place metric rows on the run's tick grid.");
+        }
         Config resolvedConfig = MetadataConfigHelper.getResolvedConfig(context.getMetadata());
         if (!resolvedConfig.hasPath("samplingInterval")) {
             throw new IllegalStateException(
@@ -237,7 +266,7 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
         if (effectiveSamplingIntervals == null) {
             throw new IllegalStateException(
                 "Metric '" + metricId + "': sampling intervals are unavailable because the plugin "
-                + "was initialized without simulation metadata.");
+                + "was initialized without an analytics context.");
         }
         if (level < 0 || level >= effectiveSamplingIntervals.length) {
             throw new IllegalArgumentException(

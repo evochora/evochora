@@ -80,14 +80,44 @@ class AbstractAnalyticsPluginSamplingIntervalTest {
     }
 
     @Test
-    void effectiveInterval_failsWhenPluginWasInitializedWithoutMetadata() {
+    void effectiveInterval_failsWhenPluginWasInitializedWithoutContext() {
         TestPlugin plugin = new TestPlugin();
         plugin.configure(ConfigFactory.parseMap(Map.of("metricId", "test")));
         plugin.initialize(null);
 
         assertThatThrownBy(() -> plugin.getEffectiveSamplingInterval(0))
             .isInstanceOf(IllegalStateException.class)
-            .hasMessageContaining("without simulation metadata");
+            .hasMessageContaining("without an analytics context");
+    }
+
+    @Test
+    void initialize_failsWhenContextCarriesNoRunConfiguration() {
+        // A context whose metadata exists but states nothing would otherwise leave the intervals
+        // unset, and the failure would surface inside the indexer's per-plugin bulkhead
+        TestPlugin plugin = new TestPlugin();
+        plugin.configure(ConfigFactory.parseMap(Map.of("metricId", "test")));
+
+        assertThatThrownBy(() -> plugin.initialize(contextWithConfig("")))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("carries no run configuration");
+    }
+
+    @Test
+    void configure_rejectsIntervalsBelowOne() {
+        assertThatThrownBy(() -> new TestPlugin().configure(ConfigFactory.parseMap(
+                Map.of("metricId", "test", "samplingInterval", 0))))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("samplingInterval must be at least 1");
+
+        assertThatThrownBy(() -> new TestPlugin().configure(ConfigFactory.parseMap(
+                Map.of("metricId", "test", "lodFactor", 0))))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("lodFactor must be at least 1");
+
+        assertThatThrownBy(() -> new TestPlugin().configure(ConfigFactory.parseMap(
+                Map.of("metricId", "test", "lodLevels", 0))))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("lodLevels must be at least 1");
     }
 
     @Test
