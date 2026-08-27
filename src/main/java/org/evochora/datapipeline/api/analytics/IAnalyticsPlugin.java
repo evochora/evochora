@@ -48,7 +48,7 @@ public interface IAnalyticsPlugin extends IMemoryEstimatable {
      * Standard options read by AbstractAnalyticsPlugin:
      * <ul>
      *   <li>{@code metricId} - Unique identifier for the metric (required)</li>
-     *   <li>{@code samplingInterval} - Process every Nth tick (default: 1)</li>
+     *   <li>{@code samplingInterval} - Process every Nth recorded tick (default: 1)</li>
      * </ul>
      *
      * @param config The plugin-specific configuration object
@@ -156,13 +156,39 @@ public interface IAnalyticsPlugin extends IMemoryEstimatable {
     String getMetricId();
     
     /**
-     * Returns the configured sampling interval.
+     * Returns the configured sampling interval, counted in recorded ticks.
      * <p>
-     * The indexer uses this to skip ticks: only process every Nth tick.
+     * A run does not record every simulation tick: the simulation engine writes every
+     * {@code recordingInterval}-th tick to storage, and those recorded ticks are all an analytics
+     * plugin can ever see. This value selects among them - 1 means every recorded tick, 10 means
+     * every tenth recorded tick. The resulting distance in simulation ticks is therefore
+     * {@code recordingInterval * samplingInterval}, which is what
+     * {@link #getEffectiveSamplingInterval(int)} returns.
+     * <p>
+     * Counting recorded ticks rather than simulation ticks keeps the configured value meaningful
+     * across runs of differing recording density: it always means "one row per N recordings",
+     * never "a value that silently has no effect because the run records less often than it asks
+     * for".
      *
-     * @return Sampling interval (1 = every tick, 10 = every 10th tick)
+     * @return Sampling interval in recorded ticks (1 = every recorded tick)
      */
     int getSamplingInterval();
+
+    /**
+     * Returns the absolute tick interval at which this plugin produces rows for a LOD level.
+     * <p>
+     * This is the value the indexer matches tick numbers against: a tick is processed for a level
+     * when {@code tickNumber % getEffectiveSamplingInterval(level) == 0}. Being a function of the
+     * tick number alone, it is independent of the order in which chunks arrive and of how many
+     * indexer instances share the work.
+     *
+     * @param level LOD level (0 = finest)
+     * @return Absolute tick interval for this level
+     * @throws IllegalStateException if the plugin was initialized without simulation metadata, so
+     *         that the run's recording interval is unknown
+     * @throws IllegalArgumentException if the level is outside the configured range
+     */
+    int getEffectiveSamplingInterval(int level);
     
     /**
      * Returns the LOD (Level of Detail) factor.
@@ -170,9 +196,9 @@ public interface IAnalyticsPlugin extends IMemoryEstimatable {
      * Each higher LOD level samples at {@code lodFactor^level} times the base interval.
      * Example with lodFactor=10 and samplingInterval=1:
      * <ul>
-     *   <li>lod0: every tick (interval=1)</li>
-     *   <li>lod1: every 10th tick (interval=10)</li>
-     *   <li>lod2: every 100th tick (interval=100)</li>
+     *   <li>lod0: every recorded tick</li>
+     *   <li>lod1: every 10th recorded tick</li>
+     *   <li>lod2: every 100th recorded tick</li>
      * </ul>
      *
      * @return LOD factor (default: 10)
@@ -184,7 +210,7 @@ public interface IAnalyticsPlugin extends IMemoryEstimatable {
      * <p>
      * The indexer generates separate Parquet files for each LOD level:
      * <ul>
-     *   <li>lodLevels=1: only lod0 (full resolution)</li>
+     *   <li>lodLevels=1: only lod0 (finest configured resolution)</li>
      *   <li>lodLevels=2: lod0 + lod1 (10x downsampled)</li>
      *   <li>lodLevels=3: lod0 + lod1 + lod2 (100x downsampled)</li>
      * </ul>

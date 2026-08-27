@@ -1,5 +1,7 @@
 package org.evochora.datapipeline.api.analytics;
 
+import org.evochora.datapipeline.utils.MetadataConfigHelper;
+
 import com.typesafe.config.Config;
 
 /**
@@ -54,7 +56,7 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
     /** Unique metric identifier (from config). */
     protected String metricId;
     
-    /** Sampling interval: process every Nth tick. Default is 1 (every tick). */
+    /** Sampling interval: process every Nth recorded tick. Default is 1 (every recorded tick). */
     protected int samplingInterval = 1;
     
     /** LOD factor: each higher level samples lodFactor^level times. Default is 10. */
@@ -65,6 +67,15 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
 
     /** Maximum data points the frontend should load at once. Null means frontend default. */
     protected Integer maxDataPoints = null;
+
+    /**
+     * Effective sampling interval per LOD level, in absolute ticks.
+     * <p>
+     * Computed in {@link #initialize(IAnalyticsContext)} from the run's recording interval and
+     * this plugin's configuration. {@code null} until a context carrying simulation metadata has
+     * been supplied.
+     */
+    private int[] effectiveSamplingIntervals;
     
     /**
      * {@inheritDoc}
@@ -72,7 +83,7 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
      * Reads standard configuration:
      * <ul>
      *   <li>{@code metricId} - Required unique identifier</li>
-     *   <li>{@code samplingInterval} - Optional, default 1</li>
+     *   <li>{@code samplingInterval} - Optional, default 1 (every recorded tick)</li>
      *   <li>{@code lodFactor} - Optional, default 10</li>
      *   <li>{@code lodLevels} - Optional, default 1</li>
      *   <li>{@code maxDataPoints} - Optional, default null (frontend decides)</li>
@@ -106,6 +117,67 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
     @Override
     public void initialize(IAnalyticsContext context) {
         this.context = context;
+        if (context != null && context.getMetadata() != null
+                && !context.getMetadata().getResolvedConfigJson().isEmpty()) {
+            this.effectiveSamplingIntervals = computeEffectiveSamplingIntervals(
+                readRecordingInterval(context));
+        }
+    }
+
+    /**
+     * Reads the run's recording interval - the number of simulation ticks between two ticks
+     * written to storage - from the simulation metadata.
+     *
+     * @param context The analytics context carrying the metadata
+     * @return The recording interval in ticks
+     * @throws IllegalStateException if the metadata does not state a recording interval, since
+     *         every tick grid derived from it would then be a guess
+     */
+    private int readRecordingInterval(IAnalyticsContext context) {
+        Config resolvedConfig = MetadataConfigHelper.getResolvedConfig(context.getMetadata());
+        if (!resolvedConfig.hasPath("samplingInterval")) {
+            throw new IllegalStateException(
+                "Metric '" + metricId + "': run metadata states no samplingInterval. "
+                + "The recording interval is required to place metric rows on the run's tick grid.");
+        }
+        int recordingInterval = resolvedConfig.getInt("samplingInterval");
+        if (recordingInterval < 1) {
+            throw new IllegalStateException(
+                "Metric '" + metricId + "': run metadata states samplingInterval=" + recordingInterval
+                + ", which is not a valid recording interval.");
+        }
+        return recordingInterval;
+    }
+
+    /**
+     * Computes the absolute tick interval for every LOD level.
+     * <p>
+     * Formula: {@code recordingInterval * samplingInterval * lodFactor^level}. The recording
+     * interval turns the configured value into a count of recorded ticks rather than of
+     * simulation ticks, so the same configuration yields the same number of rows per recording
+     * regardless of how densely the run was recorded.
+     *
+     * @param recordingInterval Ticks between two recorded ticks
+     * @return Absolute tick interval per LOD level
+     * @throws IllegalStateException if an interval exceeds the range of {@code int}
+     */
+    private int[] computeEffectiveSamplingIntervals(int recordingInterval) {
+        int[] intervals = new int[lodLevels];
+        for (int level = 0; level < lodLevels; level++) {
+            long interval = (long) recordingInterval * samplingInterval;
+            for (int i = 0; i < level; i++) {
+                interval *= lodFactor;
+                if (interval > Integer.MAX_VALUE) break;
+            }
+            if (interval > Integer.MAX_VALUE) {
+                throw new IllegalStateException(
+                    "Metric '" + metricId + "': effective sampling interval for lod" + level
+                    + " exceeds the supported range (recordingInterval=" + recordingInterval
+                    + ", samplingInterval=" + samplingInterval + ", lodFactor=" + lodFactor + ").");
+            }
+            intervals[level] = (int) interval;
+        }
+        return intervals;
     }
 
     /**
@@ -151,22 +223,28 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
     }
     
     /**
-     * Calculates the effective sampling interval for a specific LOD level.
+     * {@inheritDoc}
      * <p>
-     * Formula: {@code baseSamplingInterval * lodFactor^level}
-     * <p>
-     * Example with samplingInterval=1, lodFactor=10:
+     * Example for a run recording every 100th tick, with samplingInterval=10 and lodFactor=10:
      * <ul>
-     *   <li>lod0: 1 * 10^0 = 1</li>
-     *   <li>lod1: 1 * 10^1 = 10</li>
-     *   <li>lod2: 1 * 10^2 = 100</li>
+     *   <li>lod0: every 10th recorded tick = every 1000th tick</li>
+     *   <li>lod1: every 100th recorded tick = every 10000th tick</li>
+     *   <li>lod2: every 1000th recorded tick = every 100000th tick</li>
      * </ul>
-     *
-     * @param level LOD level (0, 1, 2, ...)
-     * @return Effective sampling interval for this level
      */
+    @Override
     public int getEffectiveSamplingInterval(int level) {
-        return samplingInterval * (int) Math.pow(lodFactor, level);
+        if (effectiveSamplingIntervals == null) {
+            throw new IllegalStateException(
+                "Metric '" + metricId + "': sampling intervals are unavailable because the plugin "
+                + "was initialized without simulation metadata.");
+        }
+        if (level < 0 || level >= effectiveSamplingIntervals.length) {
+            throw new IllegalArgumentException(
+                "Metric '" + metricId + "': LOD level " + level + " is outside the configured range 0.."
+                + (effectiveSamplingIntervals.length - 1) + ".");
+        }
+        return effectiveSamplingIntervals[level];
     }
     
     /**

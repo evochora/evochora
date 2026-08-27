@@ -372,13 +372,11 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
 
         for (IAnalyticsPlugin plugin : plugins) {
             try {
-                int baseSamplingInterval = plugin.getSamplingInterval();
                 boolean needsEnv = plugin.needsEnvironmentData();
 
                 for (int level = 0; level < plugin.getLodLevels(); level++) {
                     String lodLevel = "lod" + level;
-                    int effectiveSamplingInterval = baseSamplingInterval
-                        * (int) Math.pow(plugin.getLodFactor(), level);
+                    int effectiveSamplingInterval = plugin.getEffectiveSamplingInterval(level);
 
                     ParquetSchema schema = plugin.getSchema();
                     String tableName = plugin.getMetricId() + "_" + lodLevel;
@@ -744,12 +742,15 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
         int totalTasks = 0;
 
         for (IAnalyticsPlugin plugin : plugins) {
-            int baseSamplingInterval = plugin.getSamplingInterval();
+            // The configured interval counts recorded ticks, so the absolute tick interval is the
+            // product with the run's recording interval. Taken from the parameters rather than
+            // from the plugin, because estimation runs before any run metadata is available.
+            long baseSamplingInterval = (long) params.samplingInterval() * plugin.getSamplingInterval();
             long bytesPerRow = estimateRowBytes(plugin.getSchema());
 
             for (int level = 0; level < plugin.getLodLevels(); level++) {
-                int effectiveInterval = baseSamplingInterval
-                    * (int) Math.pow(plugin.getLodFactor(), level);
+                long effectiveInterval = baseSamplingInterval
+                    * (long) Math.pow(plugin.getLodFactor(), level);
                 // Matching ticks per chunk: upper bound (not all simulation ticks are data samples)
                 long matchingTicksPerChunk = Math.min(
                     Math.max(1, simulationTicksPerChunk / effectiveInterval),
