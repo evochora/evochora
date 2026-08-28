@@ -147,7 +147,7 @@ public class Environment implements IEnvironmentReader {
         }
 
         // Initialize sparse cell tracking if enabled (using primitive int indices for performance)
-        this.occupiedIndices = Config.ENABLE_SPARSE_CELL_TRACKING ? new BitSet(totalCells) : null;
+        this.occupiedIndices = new BitSet(totalCells);
 
         // Initialize ownership index
         this.cellsByOwner = new Int2ObjectOpenHashMap<>();
@@ -229,9 +229,7 @@ public class Environment implements IEnvironmentReader {
             labelIndex.onMoleculeSet(index, oldMoleculeInt, newMoleculeInt, owner);
 
             // Update sparse cell tracking if enabled
-            if (Config.ENABLE_SPARSE_CELL_TRACKING && occupiedIndices != null) {
-                updateOccupiedIndices(index);
-            }
+            updateOccupiedIndices(index);
         }
     }
 
@@ -263,9 +261,7 @@ public class Environment implements IEnvironmentReader {
             labelIndex.onMoleculeSet(index, oldMoleculeInt, newMoleculeInt, ownerId);
 
             // Update sparse cell tracking if enabled
-            if (Config.ENABLE_SPARSE_CELL_TRACKING && occupiedIndices != null) {
-                updateOccupiedIndices(index);
-            }
+            updateOccupiedIndices(index);
         }
     }
 
@@ -306,9 +302,7 @@ public class Environment implements IEnvironmentReader {
             this.ownerGrid[index] = ownerId;
 
             // Update sparse cell tracking if enabled
-            if (Config.ENABLE_SPARSE_CELL_TRACKING && occupiedIndices != null) {
-                updateOccupiedIndices(index);
-            }
+            updateOccupiedIndices(index);
         }
     }
 
@@ -449,7 +443,6 @@ public class Environment implements IEnvironmentReader {
      * @param consumer Callback invoked with the flat index of each occupied cell
      */
     public void forEachOccupiedIndex(IntConsumer consumer) {
-        if (occupiedIndices == null) return;
         for (int i = occupiedIndices.nextSetBit(0); i >= 0; i = occupiedIndices.nextSetBit(i + 1)) {
             consumer.accept(i);
         }
@@ -571,9 +564,7 @@ public class Environment implements IEnvironmentReader {
         labelIndex.onMoleculeSet(flatIndex, oldMoleculeInt, newMoleculeInt, owner);
 
         // Update sparse cell tracking if enabled
-        if (Config.ENABLE_SPARSE_CELL_TRACKING && occupiedIndices != null) {
-            updateOccupiedIndices(flatIndex);
-        }
+        updateOccupiedIndices(flatIndex);
     }
 
     /**
@@ -627,9 +618,7 @@ public class Environment implements IEnvironmentReader {
             labelIndex.onOwnerChange(flatIndex, moleculeInt, toOwnerId);
             labelIndex.onMarkerChange(flatIndex, moleculeInt);
             // An empty cell handed to "nobody" leaves the occupied set
-            if (Config.ENABLE_SPARSE_CELL_TRACKING && occupiedIndices != null) {
-                updateOccupiedIndices(flatIndex);
-            }
+            updateOccupiedIndices(flatIndex);
         }
         
         // Clean up empty set
@@ -668,9 +657,7 @@ public class Environment implements IEnvironmentReader {
             labelIndex.onMarkerChange(flatIndex, moleculeInt);
             // A cell that is now empty and unowned leaves the occupied set; otherwise every dead
             // organism's footprint would stay in it (and in every snapshot) forever
-            if (Config.ENABLE_SPARSE_CELL_TRACKING && occupiedIndices != null) {
-                updateOccupiedIndices(flatIndex);
-            }
+            updateOccupiedIndices(flatIndex);
         });
 
         return count;
@@ -721,9 +708,7 @@ public class Environment implements IEnvironmentReader {
             // Update label index: molecule removed
             labelIndex.onMoleculeSet(flatIndex, oldMoleculeInt, 0, 0);
             // Update sparse cell tracking if enabled
-            if (Config.ENABLE_SPARSE_CELL_TRACKING && occupiedIndices != null) {
-                occupiedIndices.clear(flatIndex);
-            }
+            occupiedIndices.clear(flatIndex);
         }
 
         // Clean up empty set
