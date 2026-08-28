@@ -339,7 +339,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
         // their files, so one broken metric does not cost the others their data. The batch is
         // failed afterwards all the same, which leaves it unacknowledged for redelivery.
         Exception firstFailure = null;
-        List<String> failedTasks = new ArrayList<>();
+        int failureCount = 0;
         int taskCount = sessionTasks.size();
 
         try {
@@ -383,7 +383,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
                     if (firstFailure == null) {
                         firstFailure = e;
                     }
-                    failedTasks.add(task.metricId() + "/" + task.lodLevel());
+                    failureCount++;
                 } finally {
                     task.statement().close();
                     if (tempFile != null) Files.deleteIfExists(tempFile);
@@ -393,10 +393,9 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
             resetSession();
         }
 
-        if (firstFailure != null) {
-            throw new IOException("Analytics export failed for " + failedTasks.size() + " of "
-                    + taskCount + " plugin/LOD tasks (" + String.join(", ", failedTasks)
-                    + "); batch stays unacknowledged for redelivery", firstFailure);
+        if (failureCount > 0) {
+            throw new IOException("Analytics export failed for " + failureCount + " of "
+                    + taskCount + " plugin/LOD tasks", firstFailure);
         }
     }
 

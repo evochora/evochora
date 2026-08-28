@@ -776,7 +776,7 @@ class AnalyticsIndexerEndToEndTest {
     @Test
     @AllowLog(level = LogLevel.WARN, messagePattern = ".*storage refuses analytics writes.*")
     @AllowLog(level = LogLevel.WARN, messagePattern = ".*Failed to (open analytics output stream|write metadata|export plugin).*")
-    @AllowLog(level = LogLevel.WARN, messagePattern = ".*batch stays unacknowledged for redelivery.*")
+    @AllowLog(level = LogLevel.WARN, messagePattern = ".*Analytics export failed for.*")
     void aFailedAnalyticsWriteLeavesTheBatchUnacknowledged() throws Exception {
         String runId = "20251201-170000-" + UUID.randomUUID();
         indexMetadata(runId, createTestMetadata(runId, 10));
@@ -798,6 +798,10 @@ class AnalyticsIndexerEndToEndTest {
             "an unwritten batch must not count as processed - acknowledging it would drop its ticks");
         assertEquals(IService.State.RUNNING, indexer.getCurrentState(),
             "a write failure must not stop the indexer; the topic redelivers the batch");
+        assertTrue(indexer.getErrors().stream().anyMatch(e -> e.errorType().equals("ANALYTICS_IO_ERROR")),
+            "the failing write must be reported: " + indexer.getErrors());
+        assertTrue(indexer.getErrors().stream().anyMatch(e -> e.errorType().equals("BATCH_PROCESSING_FAILED")),
+            "the failing batch must be reported: " + indexer.getErrors());
     }
 
     /** Wires an indexer whose analytics storage refuses every write. */
