@@ -1,6 +1,8 @@
 package org.evochora.datapipeline.api.analytics;
 
 import java.util.Collections;
+import org.evochora.datapipeline.api.delta.ICellStateSource;
+
 import java.util.List;
 
 import org.evochora.datapipeline.api.contracts.TickData;
@@ -107,6 +109,25 @@ public interface IAnalyticsPlugin extends IMemoryEstimatable {
      * @return List of rows (each row is Object[] matching schema), or empty list
      */
     List<Object[]> extractRows(TickData tick);
+
+    /**
+     * Extracts rows for a tick whose environment is available as a state rather than as cell
+     * columns on the {@link TickData}.
+     * <p>
+     * Called instead of {@link #extractRows(TickData)} for plugins that declare
+     * {@link #needsEnvironmentData()}. The default ignores the state and delegates, which is
+     * correct for every plugin that reads no cells.
+     * <p>
+     * The state belongs to the caller and is reused for the next tick, so a plugin must read what
+     * it needs during the call and must not keep a reference.
+     *
+     * @param tick  the tick's data; its cell columns are empty
+     * @param cells the tick's environment
+     * @return List of rows (each row is Object[] matching schema), or empty list
+     */
+    default List<Object[]> extractRows(TickData tick, ICellStateSource cells) {
+        return extractRows(tick);
+    }
 
     /**
      * Called when indexer shuts down or finishes a run.
@@ -267,10 +288,14 @@ public interface IAnalyticsPlugin extends IMemoryEstimatable {
      * <p>
      * <strong>When to return true:</strong>
      * <ul>
-     *   <li>Plugin calls {@code tick.getCellColumns()} or similar</li>
+     *   <li>Plugin reads cells through {@link #extractRows(TickData, ICellStateSource)}</li>
      *   <li>Plugin analyzes spatial distribution of molecules</li>
      *   <li>Plugin counts cell types (CODE, DATA, ENERGY, STRUCTURE)</li>
      * </ul>
+     * <p>
+     * A plugin that returns {@code true} is called through
+     * {@link #extractRows(TickData, ICellStateSource)} and receives the reconstructed cells there;
+     * the {@link TickData} it gets carries no cell columns.
      *
      * @return {@code true} if this plugin needs environment data, {@code false} otherwise
      */

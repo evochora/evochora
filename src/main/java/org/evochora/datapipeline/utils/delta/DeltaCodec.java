@@ -9,6 +9,7 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.delta.ChunkCorruptedException;
+import org.evochora.datapipeline.api.delta.ICellStateSource;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
 
@@ -486,7 +487,41 @@ public final class DeltaCodec {
          * @return the fully reconstructed TickData for the target tick
          * @throws ChunkCorruptedException if the chunk is corrupt or target tick not found
          */
-        public TickData decompressTick(TickDataChunk chunk, long targetTick) 
+        /**
+         * Reconstructs a tick but leaves its cells in the decoder's state instead of packing them
+         * into the returned {@link TickData}, whose cell columns stay empty.
+         * <p>
+         * For consumers that only read the cells: building the columns walks the whole grid and
+         * allocates a message holding every occupied cell, which is wasted work when the result is
+         * read once and discarded. Reach the cells through {@link #getCellState()} afterwards; they
+         * stay valid until the next call on this decoder.
+         *
+         * @param chunk      the chunk holding the tick
+         * @param targetTick the tick to reconstruct
+         * @return the tick's data without cell columns
+         * @throws ChunkCorruptedException if the chunk is corrupt or does not hold the tick
+         */
+        public TickData decompressTickCellsInState(TickDataChunk chunk, long targetTick)
+                throws ChunkCorruptedException {
+            return decompressTick(chunk, targetTick, false);
+        }
+
+        /**
+         * The cells of the tick reconstructed last, for use with
+         * {@link #decompressTickCellsInState(TickDataChunk, long)}.
+         *
+         * @return the decoder's cell state
+         */
+        public ICellStateSource getCellState() {
+            return state;
+        }
+
+        public TickData decompressTick(TickDataChunk chunk, long targetTick)
+                throws ChunkCorruptedException {
+            return decompressTick(chunk, targetTick, true);
+        }
+
+        private TickData decompressTick(TickDataChunk chunk, long targetTick, boolean includeCells)
                 throws ChunkCorruptedException {
             validateChunk(chunk);
             
@@ -533,17 +568,19 @@ public final class DeltaCodec {
             
             currentTick = targetTick;
             
-            return TickData.newBuilder()
+            TickData.Builder builder = TickData.newBuilder()
                     .setSimulationRunId(chunk.getSimulationRunId())
                     .setTickNumber(targetDelta.getTickNumber())
                     .setCaptureTimeMs(targetDelta.getCaptureTimeMs())
-                    .setCellColumns(state.toCellDataColumns())
                     .addAllOrganisms(targetDelta.getOrganismsList())
                     .setTotalOrganismsCreated(targetDelta.getTotalOrganismsCreated())
                     .setTotalUniqueGenomes(targetDelta.getTotalUniqueGenomes())
                     .setRngState(targetDelta.getRngState())
-                    .addAllPluginStates(targetDelta.getPluginStatesList())
-                    .build();
+                    .addAllPluginStates(targetDelta.getPluginStatesList());
+            if (includeCells) {
+                builder.setCellColumns(state.toCellDataColumns());
+            }
+            return builder.build();
         }
         
         /**

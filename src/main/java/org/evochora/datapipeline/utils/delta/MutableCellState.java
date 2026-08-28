@@ -1,6 +1,7 @@
 package org.evochora.datapipeline.utils.delta;
 
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
+import org.evochora.datapipeline.api.delta.ICellStateSource;
 
 /**
  * Mutable container for incremental environment reconstruction from deltas.
@@ -39,7 +40,7 @@ import org.evochora.datapipeline.api.contracts.CellDataColumns;
  *
  * @see DeltaCodec
  */
-public class MutableCellState {
+public class MutableCellState implements ICellStateSource {
     
     private final int totalCells;
     private final int[] moleculeData;
@@ -192,6 +193,24 @@ public class MutableCellState {
      *
      * @return a new CellDataColumns containing all occupied cells
      */
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Walks the whole grid once and reports the cells that are occupied. Callers that only read
+     * the cells should prefer this over {@link #toCellDataColumns()}, which walks the same grid
+     * but also builds a protobuf message out of it.
+     */
+    @Override
+    public void forEachOccupiedCell(CellVisitor visitor) {
+        for (int i = 0; i < totalCells; i++) {
+            int molecule = moleculeData[i];
+            int owner = ownerIds[i];
+            if (molecule != 0 || owner != 0) {
+                visitor.visit(i, molecule, owner);
+            }
+        }
+    }
+
     public CellDataColumns toCellDataColumns() {
         CellDataColumns.Builder builder = CellDataColumns.newBuilder();
         for (int i = 0; i < totalCells; i++) {

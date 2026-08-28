@@ -28,6 +28,7 @@ import org.evochora.datapipeline.api.analytics.ManifestEntry;
 import org.evochora.datapipeline.api.analytics.ParquetSchema;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.delta.ICellStateSource;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.delta.ChunkCorruptedException;
@@ -470,9 +471,16 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
         
         String runId = chunk.getSimulationRunId();
         
-        // Process snapshot first (always has full environment data)
+        // Process snapshot first (always has full environment data). Routing it through the
+        // decoder loads its cells into the decoder's state, which is where plugins read them -
+        // and is what the deltas that follow build upon anyway.
         TickData snapshot = chunk.getSnapshot();
-        processTickForPlugins(snapshot, tasksByPlugin, rowsWrittenPerTask);
+        if (decoder != null) {
+            TickData snapshotTick = decoder.decompressTickCellsInState(chunk, snapshot.getTickNumber());
+            processTickForPlugins(snapshotTick, decoder.getCellState(), tasksByPlugin, rowsWrittenPerTask);
+        } else {
+            processTickForPlugins(snapshot, null, tasksByPlugin, rowsWrittenPerTask);
+        }
         
         // Process deltas
         for (TickDelta delta : chunk.getDeltasList()) {
@@ -500,13 +508,14 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
             }
             
             if (needsEnvironmentForThisTick && decoder != null) {
-                // Decompress to get full environment data (uses stateful decoder)
-                TickData fullTick = decoder.decompressTick(chunk, tickNumber);
-                processTickForPlugins(fullTick, tasksByPlugin, rowsWrittenPerTask);
+                // Reconstruct the environment, but leave the cells in the decoder's state: the
+                // plugins that read them do so once, so packing them into the message is waste.
+                TickData fullTick = decoder.decompressTickCellsInState(chunk, tickNumber);
+                processTickForPlugins(fullTick, decoder.getCellState(), tasksByPlugin, rowsWrittenPerTask);
             } else {
                 // Create lightweight TickData with only organism data (no environment reconstruction)
                 TickData lightTick = createLightweightTickData(runId, delta);
-                processTickForPlugins(lightTick, tasksByPlugin, rowsWrittenPerTask);
+                processTickForPlugins(lightTick, null, tasksByPlugin, rowsWrittenPerTask);
             }
 
             // Yield after each delta to prevent system freezing during heavy chunk processing
@@ -538,6 +547,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
      */
     private void processTickForPlugins(
             TickData tick,
+            ICellStateSource cells,
             Map<IAnalyticsPlugin, List<PluginLodTask>> tasksByPlugin,
             Map<PluginLodTask, Integer> rowsWrittenPerTask) {
         
@@ -562,7 +572,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
             
             // Extract rows ONCE from the plugin
             try {
-                List<Object[]> rows = plugin.extractRows(tick);
+                List<Object[]> rows = plugin.extractRows(tick, cells);
                 
                 // Distribute the same rows to ALL matching LOD levels
                 for (PluginLodTask task : pluginTasks) {

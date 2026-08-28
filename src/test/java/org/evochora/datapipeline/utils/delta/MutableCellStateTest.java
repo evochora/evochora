@@ -4,6 +4,8 @@ import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
+import java.util.Random;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -197,5 +199,119 @@ class MutableCellStateTest {
             }
         }
         return false;
+    }
+
+    /**
+     * The occupancy set must agree with the cell contents after any sequence of writes.
+     * <p>
+     * Verified against a scan of {@link MutableCellState#isOccupied(int)}, which reads the arrays
+     * directly - had the export been asked instead, the check would only compare the set to itself.
+     */
+    @Test
+    void occupancyStaysConsistentAcrossSnapshotsAndDeltas() {
+        int totalCells = 5000;
+        MutableCellState state = new MutableCellState(totalCells);
+        Random random = new Random(4242);
+
+        for (int round = 0; round < 20; round++) {
+            if (round % 5 == 0) {
+                state.applySnapshot(randomColumns(random, totalCells, 400, true));
+            } else {
+                state.applyDelta(randomColumns(random, totalCells, 200, false));
+            }
+
+            int expected = 0;
+            for (int i = 0; i < totalCells; i++) {
+                if (state.isOccupied(i)) {
+                    expected++;
+                }
+            }
+            assertEquals(expected, state.countOccupied(),
+                    "occupied count after round " + round);
+
+            CellDataColumns exported = state.toCellDataColumns();
+            assertEquals(expected, exported.getFlatIndicesCount(),
+                    "exported cell count after round " + round);
+            int previous = -1;
+            for (int i = 0; i < exported.getFlatIndicesCount(); i++) {
+                int flatIndex = exported.getFlatIndices(i);
+                assertTrue(flatIndex > previous, "export is ordered by index");
+                previous = flatIndex;
+                assertTrue(state.isOccupied(flatIndex), "exported cell " + flatIndex + " is occupied");
+                assertEquals(state.getMoleculeData(flatIndex), exported.getMoleculeData(i));
+                assertEquals(state.getOwnerId(flatIndex), exported.getOwnerIds(i));
+            }
+        }
+    }
+
+    @Test
+    void resetClearsOccupancy() {
+        MutableCellState state = new MutableCellState(100);
+        state.applySnapshot(CellDataColumns.newBuilder()
+                .addFlatIndices(7).addMoleculeData(5).addOwnerIds(1)
+                .build());
+        assertEquals(1, state.countOccupied());
+
+        state.reset();
+
+        assertEquals(0, state.countOccupied());
+        assertEquals(0, state.toCellDataColumns().getFlatIndicesCount());
+    }
+
+    /**
+     * Builds a column set of distinct indices. Deltas may empty a cell, so a share of the entries
+     * carries zero molecule data and zero owner.
+     */
+    private CellDataColumns randomColumns(Random random, int totalCells, int count, boolean occupiedOnly) {
+        CellDataColumns.Builder builder = CellDataColumns.newBuilder();
+        java.util.SortedSet<Integer> indices = new java.util.TreeSet<>();
+        while (indices.size() < count) {
+            indices.add(random.nextInt(totalCells));
+        }
+        for (int flatIndex : indices) {
+            boolean empty = !occupiedOnly && random.nextInt(3) == 0;
+            builder.addFlatIndices(flatIndex);
+            builder.addMoleculeData(empty ? 0 : 1 + random.nextInt(9));
+            builder.addOwnerIds(empty ? 0 : random.nextInt(5));
+        }
+        return builder.build();
+    }
+
+    /**
+     * The iteration and the export describe the same cells, so a consumer may use either. Both are
+     * compared against {@link MutableCellState#isOccupied(int)}, which reads the arrays directly.
+     */
+    @Test
+    void forEachOccupiedCellAgreesWithTheExport() {
+        int totalCells = 5000;
+        MutableCellState state = new MutableCellState(totalCells);
+        Random random = new Random(99);
+        state.applySnapshot(randomColumns(random, totalCells, 300, true));
+        state.applyDelta(randomColumns(random, totalCells, 150, false));
+
+        CellDataColumns exported = state.toCellDataColumns();
+        java.util.List<int[]> visited = new java.util.ArrayList<>();
+        state.forEachOccupiedCell((flatIndex, moleculeData, ownerId) ->
+                visited.add(new int[]{flatIndex, moleculeData, ownerId}));
+
+        assertEquals(exported.getFlatIndicesCount(), visited.size(), "same number of cells");
+        int previous = -1;
+        for (int i = 0; i < visited.size(); i++) {
+            int[] cell = visited.get(i);
+            assertTrue(cell[0] > previous, "iteration is ordered by index");
+            previous = cell[0];
+            assertTrue(state.isOccupied(cell[0]), "visited cell " + cell[0] + " is occupied");
+            assertEquals(exported.getFlatIndices(i), cell[0]);
+            assertEquals(exported.getMoleculeData(i), cell[1]);
+            assertEquals(exported.getOwnerIds(i), cell[2]);
+        }
+    }
+
+    @Test
+    void forEachOccupiedCellVisitsNothingWhenEmpty() {
+        MutableCellState state = new MutableCellState(100);
+        int[] visits = {0};
+        state.forEachOccupiedCell((flatIndex, moleculeData, ownerId) -> visits[0]++);
+        assertEquals(0, visits[0]);
     }
 }

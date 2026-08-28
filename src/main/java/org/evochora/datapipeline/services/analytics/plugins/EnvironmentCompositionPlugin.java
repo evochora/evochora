@@ -9,11 +9,10 @@ import org.evochora.datapipeline.api.analytics.ColumnType;
 import org.evochora.datapipeline.api.analytics.ManifestEntry;
 import org.evochora.datapipeline.api.analytics.ParquetSchema;
 import org.evochora.datapipeline.api.analytics.VisualizationHint;
-import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.delta.ICellStateSource;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
-import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Molecule;
 
@@ -32,11 +31,8 @@ import org.evochora.runtime.model.Molecule;
  *   <li>{@code empty_cells} - Count of empty cells</li>
  * </ul>
  * <p>
- * This plugin can operate in two modes, configured by {@code monteCarloSamples}:
- * <ul>
- *   <li><b>Exact Mode (default):</b> Iterates all non-empty cells from TickData and calculates empty cells by subtracting from total world size. Accurate but can be slow on dense, large worlds.</li>
- *   <li><b>Sampling Mode:</b> Takes a random sample of N cells from TickData to estimate the distribution. Much faster for very large, dense worlds at the cost of precision.</li>
- * </ul>
+ * Counts every occupied cell of the tick, walking the environment state directly. Empty cells
+ * are the remainder of the world size, which also covers CODE:0 cells held by an organism.
  */
 public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
 
@@ -53,16 +49,6 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
         .column("empty_cells", ColumnType.BIGINT)
         .build();
 
-    private int monteCarloSamples = 0;
-
-    @Override
-    public void configure(com.typesafe.config.Config config) {
-        super.configure(config);
-        if (config.hasPath("monteCarloSamples")) {
-            this.monteCarloSamples = config.getInt("monteCarloSamples");
-        }
-    }
-    
     @Override
     public ParquetSchema getSchema() {
         return SCHEMA;
@@ -84,77 +70,38 @@ public class EnvironmentCompositionPlugin extends AbstractAnalyticsPlugin {
 
     @Override
     public List<Object[]> extractRows(TickData tick) {
-        long codeCells = 0;
-        long dataCells = 0;
-        long energyCells = 0;
-        long structureCells = 0;
-        long labelCells = 0;
-        long labelrefCells = 0;
-        long registerCells = 0;
-        long unknownCells = 0;
-        long totalCells = 0;
+        throw new IllegalStateException("Metric '" + getMetricId() + "' reads the environment and "
+                + "must be given one: call extractRows(TickData, ICellStateSource).");
+    }
 
-        if (context != null && context.getMetadata() != null && !context.getMetadata().getResolvedConfigJson().isEmpty()) {
-            totalCells = 1;
-            for (int dim : MetadataConfigHelper.getEnvironmentShape(context.getMetadata())) {
-                totalCells *= dim;
-            }
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Walks the occupied cells once and sorts each into its molecule category. Reading the state
+     * directly avoids building a cell-column message that would be discarded right after.
+     */
+    @Override
+    public List<Object[]> extractRows(TickData tick, ICellStateSource cells) {
+        long[] counts = new long[8];
+        cells.forEachOccupiedCell((flatIndex, moleculeData, ownerId) -> countCell(moleculeData, counts));
+
+        long categorized = 0;
+        for (long count : counts) {
+            categorized += count;
         }
-
-        // Direct access to the underlying list - NO COPYING to ArrayList
-        CellDataColumns columns = tick.getCellColumns();
-        int cellsAvailable = columns.getFlatIndicesCount();
-
-        if (monteCarloSamples > 0 && cellsAvailable > monteCarloSamples) {
-            // Sampling mode: Random sample without copying
-            java.util.concurrent.ThreadLocalRandom random = java.util.concurrent.ThreadLocalRandom.current();
-            long[] counts = new long[8]; // code, data, energy, structure, label, labelref, register, unknown
-
-            for (int i = 0; i < monteCarloSamples; i++) {
-                int index = random.nextInt(cellsAvailable);
-                countCell(columns.getMoleculeData(index), counts);
-            }
-
-            // Extrapolate from sample to full cellsAvailable
-            double factor = (double) cellsAvailable / monteCarloSamples;
-            codeCells = (long) (counts[0] * factor);
-            dataCells = (long) (counts[1] * factor);
-            energyCells = (long) (counts[2] * factor);
-            structureCells = (long) (counts[3] * factor);
-            labelCells = (long) (counts[4] * factor);
-            labelrefCells = (long) (counts[5] * factor);
-            registerCells = (long) (counts[6] * factor);
-            unknownCells = (long) (counts[7] * factor);
-        } else {
-            // Exact mode: count all non-empty cells
-            long[] counts = new long[8];
-            for (int i = 0; i < cellsAvailable; i++) {
-                countCell(columns.getMoleculeData(i), counts);
-            }
-            codeCells = counts[0];
-            dataCells = counts[1];
-            energyCells = counts[2];
-            structureCells = counts[3];
-            labelCells = counts[4];
-            labelrefCells = counts[5];
-            registerCells = counts[6];
-            unknownCells = counts[7];
-        }
-
-        // Empty = total world size - all categorized cells
-        // This includes: truly empty cells (not in TickData) + CODE:0 cells
-        long emptyCells = Math.max(0, totalCells - codeCells - dataCells - energyCells - structureCells - labelCells - labelrefCells - registerCells - unknownCells);
+        // Empty covers both never-filled cells and CODE:0 cells an organism owns
+        long emptyCells = Math.max(0, cells.getTotalCells() - categorized);
 
         return Collections.singletonList(new Object[]{
             tick.getTickNumber(),
-            codeCells,
-            dataCells,
-            energyCells,
-            structureCells,
-            labelCells,
-            labelrefCells,
-            registerCells,
-            unknownCells,
+            counts[0],
+            counts[1],
+            counts[2],
+            counts[3],
+            counts[4],
+            counts[5],
+            counts[6],
+            counts[7],
             emptyCells
         });
     }
