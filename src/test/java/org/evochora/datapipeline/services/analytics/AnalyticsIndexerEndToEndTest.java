@@ -40,6 +40,8 @@ import org.evochora.junit.extensions.logging.LogWatchExtension;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
+import org.evochora.junit.extensions.logging.AllowLog;
+import org.evochora.junit.extensions.logging.LogLevel;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 
@@ -766,5 +768,93 @@ class AnalyticsIndexerEndToEndTest {
             }
         }
     }
-}
 
+    /**
+     * A batch whose analytics cannot be written must not count as processed: acknowledging it
+     * would drop its ticks for good, since the topic never hands it out again.
+     */
+    @Test
+    @AllowLog(level = LogLevel.WARN, messagePattern = ".*storage refuses analytics writes.*")
+    @AllowLog(level = LogLevel.WARN, messagePattern = ".*Failed to (open analytics output stream|write metadata|export plugin).*")
+    @AllowLog(level = LogLevel.WARN, messagePattern = ".*batch stays unacknowledged for redelivery.*")
+    void aFailedAnalyticsWriteLeavesTheBatchUnacknowledged() throws Exception {
+        String runId = "20251201-170000-" + UUID.randomUUID();
+        indexMetadata(runId, createTestMetadata(runId, 10));
+        StoragePath key = writeChunkBatch(runId, createTestTicksWithOrganisms(runId, 0, 10), 0, 9);
+
+        indexer = createIndexerWithFailingAnalyticsWrites("failing-indexer", runId);
+        indexer.start();
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
+
+        sendBatchInfoToTopic(runId, key.asString(), 0, 9);
+
+        // Give the indexer time to take the batch, fail on it, and carry on
+        await().pollDelay(java.time.Duration.ofSeconds(3))
+            .atMost(10, TimeUnit.SECONDS)
+            .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
+
+        assertEquals(0, indexer.getMetrics().get("batches_processed").intValue(),
+            "an unwritten batch must not count as processed - acknowledging it would drop its ticks");
+        assertEquals(IService.State.RUNNING, indexer.getCurrentState(),
+            "a write failure must not stop the indexer; the topic redelivers the batch");
+    }
+
+    /** Wires an indexer whose analytics storage refuses every write. */
+    private AnalyticsIndexer<?> createIndexerWithFailingAnalyticsWrites(String name, String runId) {
+        Config config = ConfigFactory.parseString("""
+            runId = "%s"
+            metadataPollIntervalMs = 100
+            metadataMaxPollDurationMs = 10000
+            insertBatchSize = 1
+            flushTimeoutMs = 500
+            tempDirectory = "%s"
+            folderStructure {
+                levels = [100000000, 100000]
+            }
+            plugins = [
+                {
+                    className = "org.evochora.datapipeline.services.analytics.plugins.PopulationMetricsPlugin"
+                    options {
+                        metricId = "population"
+                        samplingInterval = 1
+                        lodFactor = 10
+                        lodLevels = 1
+                    }
+                }
+            ]
+            """.formatted(runId, tempAnalyticsDir.toAbsolutePath().toString().replace("\\", "/")));
+
+        ResourceContext dbContext = new ResourceContext(
+            name, "metadata", "db-meta-read", "test-db", Collections.emptyMap());
+        IResource wrappedDatabase = testDatabase.getWrappedResource(dbContext);
+
+        ResourceContext topicContext = new ResourceContext(
+            name, "topic", "topic-read", "batch-topic",
+            Map.of("consumerGroup", "test-analytics-" + UUID.randomUUID()));
+        IResource wrappedTopic = testBatchTopic.getWrappedResource(topicContext);
+
+        Config storageConfig = ConfigFactory.parseString(
+            "rootDirectory = \"" + tempStorageDir.toAbsolutePath().toString().replace("\\", "/") + "\"");
+        FileSystemStorageResource refusingStorage =
+            new FileSystemStorageResource("refusing-storage", storageConfig) {
+                @Override
+                public java.io.OutputStream openAnalyticsOutputStream(String runId, String metricId,
+                        String lodLevel, String subPath, String filename) throws IOException {
+                    throw new IOException("storage refuses analytics writes in this test");
+                }
+            };
+
+        ResourceContext analyticsContext = new ResourceContext(
+            name, "analyticsOutput", "analytics-write", "refusing-storage", Collections.emptyMap());
+
+        Map<String, List<IResource>> resources = Map.of(
+            "storage", List.of(testStorage),
+            "metadata", List.of(wrappedDatabase),
+            "topic", List.of(wrappedTopic),
+            "analyticsOutput", List.of(refusingStorage.getWrappedResource(analyticsContext))
+        );
+
+        return new AnalyticsIndexer<>(name, config, resources);
+    }
+}

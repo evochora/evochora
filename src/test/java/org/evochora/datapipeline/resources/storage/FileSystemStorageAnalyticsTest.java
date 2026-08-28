@@ -124,4 +124,58 @@ class FileSystemStorageAnalyticsTest {
             storage.openAnalyticsInputStream(runId, "../secret.txt");
         });
     }
+
+    /**
+     * A write that is abandoned without closing must leave nothing under the final name: half a
+     * Parquet file passes a size check and then breaks every directory-wide read.
+     */
+    @Test
+    void abandonedWriteLeavesNoFileUnderTheFinalName() throws IOException {
+        String runId = "run-abandoned";
+        OutputStream out = storage.openAnalyticsOutputStream(runId, "population", "lod0", "000", "batch.parquet");
+        out.write("half a file".getBytes(StandardCharsets.UTF_8));
+        out.flush();
+        // deliberately not closed - as if the process died here
+
+        List<String> listed = storage.listAnalyticsFiles(runId, "");
+        assertTrue(listed.stream().noneMatch(f -> f.endsWith("batch.parquet")),
+                "destination must not appear before the write completes: " + listed);
+        assertTrue(listed.stream().noneMatch(f -> f.endsWith(".tmp")),
+                "temp files must stay out of listings: " + listed);
+    }
+
+    @Test
+    void closingPublishesTheFileUnderItsFinalName() throws IOException {
+        String runId = "run-published";
+        try (OutputStream out = storage.openAnalyticsOutputStream(runId, "population", "lod0", "000", "batch.parquet")) {
+            out.write("complete".getBytes(StandardCharsets.UTF_8));
+        }
+
+        List<String> listed = storage.listAnalyticsFiles(runId, "");
+        assertEquals(1, listed.size(), "exactly the published file: " + listed);
+        assertTrue(listed.get(0).endsWith("batch.parquet"), listed.get(0));
+
+        try (InputStream in = storage.openAnalyticsInputStream(runId, listed.get(0))) {
+            assertEquals("complete", new String(in.readAllBytes(), StandardCharsets.UTF_8));
+        }
+    }
+
+    /**
+     * Rewriting a file must replace it, since a redelivered batch writes the same names again.
+     */
+    @Test
+    void writingTheSameFileTwiceReplacesIt() throws IOException {
+        String runId = "run-replaced";
+        for (String content : List.of("first", "second")) {
+            try (OutputStream out = storage.openAnalyticsOutputStream(runId, "population", "lod0", "000", "batch.parquet")) {
+                out.write(content.getBytes(StandardCharsets.UTF_8));
+            }
+        }
+
+        List<String> listed = storage.listAnalyticsFiles(runId, "");
+        assertEquals(1, listed.size(), "no leftovers: " + listed);
+        try (InputStream in = storage.openAnalyticsInputStream(runId, listed.get(0))) {
+            assertEquals("second", new String(in.readAllBytes(), StandardCharsets.UTF_8));
+        }
+    }
 }

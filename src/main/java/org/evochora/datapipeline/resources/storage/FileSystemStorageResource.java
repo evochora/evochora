@@ -421,8 +421,69 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
                 throw new IOException("Failed to create directories for: " + file.getAbsolutePath());
             }
         }
-        
-        return Files.newOutputStream(file.toPath());
+
+        // Atomic write, as on the raw path: the caller writes into a temp file next to the
+        // destination, and closing moves it into place. An abandoned write leaves the temp file,
+        // which the listings filter out - never a half-written file under the final name.
+        // Suffix rather than prefix, so that filtering by ".tmp" catches it.
+        File tempFile = new File(parentDir, file.getName() + "." + java.util.UUID.randomUUID() + ".tmp");
+        OutputStream out = Files.newOutputStream(tempFile.toPath());
+        return new AtomicMoveOnCloseStream(out, tempFile.toPath(), file.toPath());
+    }
+
+    /**
+     * Writes through to a temp file and moves it onto the destination when closed.
+     * <p>
+     * Closing twice moves once. If the move fails the temp file is removed, so a failed write
+     * leaves nothing behind but reports the failure.
+     */
+    private static final class AtomicMoveOnCloseStream extends OutputStream {
+        private final OutputStream delegate;
+        private final java.nio.file.Path tempFile;
+        private final java.nio.file.Path destination;
+        private boolean closed;
+
+        AtomicMoveOnCloseStream(OutputStream delegate, java.nio.file.Path tempFile,
+                                java.nio.file.Path destination) {
+            this.delegate = delegate;
+            this.tempFile = tempFile;
+            this.destination = destination;
+        }
+
+        @Override
+        public void write(int b) throws IOException {
+            delegate.write(b);
+        }
+
+        @Override
+        public void write(byte[] b, int off, int len) throws IOException {
+            delegate.write(b, off, len);
+        }
+
+        @Override
+        public void flush() throws IOException {
+            delegate.flush();
+        }
+
+        @Override
+        public void close() throws IOException {
+            if (closed) {
+                return;
+            }
+            closed = true;
+            delegate.close();
+            try {
+                Files.move(tempFile, destination,
+                    StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException e) {
+                try {
+                    Files.deleteIfExists(tempFile);
+                } catch (IOException cleanupEx) {
+                    log.warn("Failed to clean up temp file after move failure: {}", tempFile, cleanupEx);
+                }
+                throw e;
+            }
+        }
     }
 
     // ========================================================================

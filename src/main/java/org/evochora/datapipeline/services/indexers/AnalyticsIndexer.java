@@ -68,8 +68,11 @@ import com.typesafe.config.ConfigObject;
  *       storage, and the DuckDB session is closed and reset for the next window.</li>
  * </ol>
  * <p>
- * <strong>Error Handling:</strong> Uses bulkhead pattern — plugin failures don't affect
- * other plugins. IOException from storage causes batch retry.
+ * <strong>Error Handling:</strong> A failing plugin does not stop the others from writing their
+ * files, but the commit fails once they are done. The batch is then left unacknowledged and the
+ * topic redelivers it; a failure that persists moves it to the dead letter queue after the
+ * configured number of retries. Files already written are replaced on the retry, since the
+ * storage publishes them atomically.
  */
 public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements IMemoryEstimatable {
 
@@ -332,6 +335,13 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
         String subPath = calculateFolderPath(sessionStartTick);
         String filename = String.format("batch_%020d_%020d.parquet", sessionStartTick, sessionEndTick);
 
+        // Failures are collected rather than thrown at once: the remaining plugins still write
+        // their files, so one broken metric does not cost the others their data. The batch is
+        // failed afterwards all the same, which leaves it unacknowledged for redelivery.
+        Exception firstFailure = null;
+        List<String> failedTasks = new ArrayList<>();
+        int taskCount = sessionTasks.size();
+
         try {
             for (PluginLodTask task : sessionTasks) {
                 Path tempFile = null;
@@ -370,6 +380,10 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
                     log.debug("Plugin export error details:", e);
                     recordError("ANALYTICS_IO_ERROR", "Failed to write analytics data",
                         String.format("Plugin: %s, LOD: %s", task.metricId(), task.lodLevel()));
+                    if (firstFailure == null) {
+                        firstFailure = e;
+                    }
+                    failedTasks.add(task.metricId() + "/" + task.lodLevel());
                 } finally {
                     task.statement().close();
                     if (tempFile != null) Files.deleteIfExists(tempFile);
@@ -377,6 +391,12 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
             }
         } finally {
             resetSession();
+        }
+
+        if (firstFailure != null) {
+            throw new IOException("Analytics export failed for " + failedTasks.size() + " of "
+                    + taskCount + " plugin/LOD tasks (" + String.join(", ", failedTasks)
+                    + "); batch stays unacknowledged for redelivery", firstFailure);
         }
     }
 
