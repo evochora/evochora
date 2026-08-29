@@ -110,12 +110,21 @@ EVOCHORA_OPTS="-Xmx12g" build/install/evochora/bin/evochora -c serve.conf node r
 
 Clade membership is a proxy; the mutation is molecules in the world. Via the node:
 
-- Organism detail (`/visualizer/api/organisms/{tick}/{id}`) → `staticInfo.initialPosition`.
-- Environment strip (`/visualizer/api/environment/{tick}?region=x1,x2,y1,y2`) answers in protobuf:
-  decode with `protoc --decode=org.evochora.datapipeline.api.contracts.EnvironmentHttpResponse
-  -I src/main/proto src/main/proto/org/evochora/datapipeline/api/contracts/http_api_contracts.proto`.
-  Parse cell blocks tolerantly (fields with default values are omitted; `molecule_type` may arrive
-  shifted as `id << 20` on some builds — normalize).
+- **Body of one organism** (`/visualizer/api/environment/{tick}/organism/{id}`) answers JSON with
+  every cell the organism owns — no bounding box to guess, no neighbours to sort out afterwards.
+  Coordinates are relative to the organism's initial position, so bodies of different organisms
+  compare directly; `initialPosition` and `worldShape` travel in the response, and absolute
+  coordinates are `(initial + relative + size) % size`.
+  `moleculeType` carries the `Config` type constant, i.e. the type bits at their position in the
+  packed molecule (ENERGY is `2 << 20` = 2097152). The `moleculeTypes` map of
+  `/visualizer/api/simulations/{runId}/metadata` is keyed by exactly these values — look the type
+  up there, never normalize it by hand. A CODE cell's `moleculeValue` is its opcode; the same
+  metadata response carries the `opcodes` map.
+  Molecules with `marker` ≠ 0 are staged for handover to a child at the next reproduction and are
+  not part of the finished body — drop them when reading a genome.
+- Organism detail (`/visualizer/api/organisms/{tick}/{id}`) → `staticInfo.initialPosition` and the
+  runtime state; the body endpoint above already carries the anchor, so this is only needed for the
+  state itself.
 - **The reproduction switch lives in `MAIN_LOOP` row 4** (y0+4, x0−2…x0+45 covers it): primordial
   layout is `NRG %DR0 … GTI %DR0 D100000 [NOP padding 16–19] JMPI MAIN_REPRODUCE … GTI %SR D5000 …`.
   Conditional skip semantics: a failed test skips the next REAL instruction, walking over NOPs. An
@@ -129,10 +138,26 @@ Clade membership is a proxy; the mutation is molecules in the world. Via the nod
   cycle, say) has hit probability ~1e-6 per sample and is systematically invisible — sampled data
   cannot decide "is this block ever executed". For that, exact in-runtime coverage counting is
   needed (feature request: see the execution-coverage issue on GitHub).
-- **Founder mutations** of a clade: full-body diff against organism 1 at tick 0 (box
-  x0−2…x0+112, y0−2…y0+87). Exclude DATA molecules (operand noise) and LABEL/LABELREF *values*
-  (XOR-masked per organism); compare several clade members — only shared differences are the
-  inherited founder mutation, the rest is ongoing per-individual mutation.
+- **Founder mutations** of a clade: full-body diff against organism 1 at tick 0. Both bodies come
+  from the body endpoint in the same relative coordinates, so the diff is a set operation without
+  shifting. Exclude DATA molecules (operand noise) and LABEL/LABELREF *values* (XOR-masked per
+  organism); compare several clade members — only shared differences are the inherited founder
+  mutation, the rest is ongoing per-individual mutation.
+
+### Older runs: the environment strip and protoc
+
+Runs recorded before the chunk format gained its delta directory cannot be read by a current
+build at all — they need a build of their own epoch, which has neither the body endpoint nor a
+JSON format. For those runs body forensics goes the old way:
+
+- Organism detail → `staticInfo.initialPosition`, then an environment strip around it
+  (`/visualizer/api/environment/{tick}?region=x1,x2,y1,y2`; the primordial body fits
+  x0−2…x0+112, y0−2…y0+87). The strip contains the neighbours' cells too — filter by `ownerId`.
+- That endpoint answers protobuf only. Decode with
+  `protoc --decode=org.evochora.datapipeline.api.contracts.EnvironmentHttpResponse
+  -I src/main/proto src/main/proto/org/evochora/datapipeline/api/contracts/http_api_contracts.proto`
+  and parse cell blocks tolerantly: protobuf omits fields holding their default value, so a cell
+  with `owner_id` 0 carries no `owner_id` line at all.
 
 ## 4 · Interpretation discipline
 

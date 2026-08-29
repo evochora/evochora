@@ -120,6 +120,51 @@ class EnvironmentPropertiesTest {
             }
         }
     }
+
+    @Test
+    void relativeVectorIsTheInverseOfApplyingIt() {
+        EnvironmentProperties props = new EnvironmentProperties(new int[]{100, 50}, true);
+        int[] from = new int[]{10, 20};
+
+        for (int x = 0; x < 100; x++) {
+            for (int y = 0; y < 50; y++) {
+                int[] to = new int[]{x, y};
+                int[] relative = props.getRelativeVector(from, to);
+                assertArrayEquals(to, props.getTargetCoordinate(from, relative),
+                        "Applying the relative vector must reach the original position");
+            }
+        }
+    }
+
+    @Test
+    void relativeVectorCrossesTheWrapOnTheShortWay() {
+        // A cell two columns before the origin is two columns away, not almost a world away
+        EnvironmentProperties props = new EnvironmentProperties(new int[]{100, 50}, true);
+
+        int[] relative = props.getRelativeVector(new int[]{1, 0}, new int[]{99, 49});
+
+        assertArrayEquals(new int[]{-2, -1}, relative);
+    }
+
+    @Test
+    void relativeVectorStaysWithinHalfTheWorld() {
+        EnvironmentProperties props = new EnvironmentProperties(new int[]{100, 51}, true);
+
+        for (int x = 0; x < 100; x++) {
+            for (int y = 0; y < 51; y++) {
+                int[] relative = props.getRelativeVector(new int[]{0, 0}, new int[]{x, y});
+                assertTrue(relative[0] >= -50 && relative[0] < 50, "x out of range: " + relative[0]);
+                assertTrue(relative[1] >= -25 && relative[1] <= 25, "y out of range: " + relative[1]);
+            }
+        }
+    }
+
+    @Test
+    void relativeVectorOnAFlatWorldIsPlainSubtraction() {
+        // Without wrapping, a position before the origin stays negative and far stays far
+        EnvironmentProperties props = new EnvironmentProperties(new int[]{100, 50}, false);
+
+        assertArrayEquals(new int[]{-9, -19}, props.getRelativeVector(new int[]{10, 20}, new int[]{1, 1}));
+        assertArrayEquals(new int[]{89, 29}, props.getRelativeVector(new int[]{10, 20}, new int[]{99, 49}));
+    }
 }
-
-

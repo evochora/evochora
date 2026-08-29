@@ -197,7 +197,10 @@ public class SimulationController extends VisualizerBaseController {
      * This method enriches the protobuf-serialized metadata for client consumption:
      * <ul>
      *   <li>Extracts environment, samplingInterval from resolvedConfigJson to top-level</li>
-     *   <li>moleculeTypes: {0: "CODE", 1: "DATA", 2: "ENERGY", 3: "STRUCTURE"}</li>
+     *   <li>moleculeTypes: the molecule type constants of {@code Config} to their names. The keys
+     *       carry the type bits at their position within a packed molecule and are therefore
+     *       multiples of {@code 1 << Config.TYPE_SHIFT}: {1048576: "DATA", 2097152: "ENERGY", ...},
+     *       with CODE at 0. Cell responses report {@code moleculeType} on the same scale.</li>
      *   <li>opcodes: {0x00: "NOP", 0x10: "ADD", ...}</li>
      * </ul>
      *
