@@ -57,10 +57,41 @@ ones, and do not read small categories out of them at all.
 
 **A selective sweep is invisible in every aggregate curve.** Do not stop here.
 
-## 2 · Genome layer (read-only node)
+## 2 · Genome layer (Parquet, no node needed)
 
-**Before starting anything, check what is already running** — two nodes on the same data
-directory collide on the H2 file lock:
+The lineage comes from the `genome_lineage` metric: one row per genome, with the genome it arose
+from and the tick of its first carrier's birth. No node, no organism snapshots.
+
+```sql
+SELECT genome_hash,
+       min(first_birth_tick) AS first_seen_tick,
+       list(DISTINCT parent_genome_hash) AS parents
+FROM read_parquet('<analytics>/genome_lineage/lod0/**/*.parquet')
+GROUP BY genome_hash
+```
+
+Reading the three states of `parent_genome_hash` correctly matters:
+
+- `NULL` - a founding organism. These are the roots of the tree.
+- `0` - the parent carried no genome at all, which a broken replication can produce. Also a root,
+  but a different one: the genome did not descend from another genome.
+- otherwise - the parent genome. A genome can have several parents when the same mutation arose
+  more than once; the table keeps every edge and leaves the choice to the analysis.
+
+**Sweep detection:** take the primordial genome, list its direct children, and compute each child
+clade's share of the bodied population per tick by joining the clade membership against the
+per-genome counts in `genome.genome_data`. A clade rising monotonically toward 100 % is a sweep
+candidate. Repeat one level deeper inside a winning clade — sweeps stack, a second mutation can fix
+within the first.
+
+**Fallback for runs without the metric.** Older runs need the node: fetch organism snapshots
+(`/visualizer/api/organisms/{tick}`) on a grid of 10–15 sampled ticks, cache them as JSON, and
+merge the `genomeAncestors` field (`genomeLineageTree` on pre-#103 builds) into one tree
+(`scripts/sweep.py: build_tree` handles both names). Query strictly serially; a snapshot can cost
+~30 s on a multi-million-organism index.
+
+**Before starting a node, check what is already running** — two nodes on the same data directory
+collide on the H2 file lock:
 
 1. `curl localhost:8081/analyzer/api/runs` — if a node already serves the target run, use it and
    do not start a second one (and do not stop it afterwards; it is not yours).
@@ -74,16 +105,6 @@ directory collide on the H2 file lock:
 # serve.conf:  include "<the run's conf>"  +  pipeline.autoStart = false
 EVOCHORA_OPTS="-Xmx12g" build/install/evochora/bin/evochora -c serve.conf node run
 ```
-
-Query strictly serially. Fetch organism snapshots (`/visualizer/api/organisms/{tick}`) on a grid
-of 10–15 sampled ticks; cache them as JSON. The lineage field is `genomeAncestors` on current
-builds and `genomeLineageTree` on pre-#103 builds — same child→parent mapping, merge across all
-snapshots into one tree (`scripts/sweep.py: build_tree` handles both names).
-
-**Sweep detection:** take the primordial genome (tree root), list its direct children, and compute
-each child clade's share of the bodied population per snapshot (`sweep.in_clade`, memoized). A
-clade rising monotonically toward 100 % is a sweep candidate. Repeat one level deeper inside a
-winning clade — sweeps stack (a second mutation can fix within the first clade).
 
 ## 3 · Body forensics (the genotype, not the bookkeeping)
 

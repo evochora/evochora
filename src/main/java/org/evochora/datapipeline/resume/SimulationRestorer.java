@@ -552,7 +552,6 @@ public class SimulationRestorer {
             .marker(state.getMoleculeMarkerRegister())
             .genomeHash(state.getGenomeHash())
             .generation(state.getGeneration())
-            .parentGenomeHash(state.getParentGenomeHash())
             .initialPosition(toIntArray(state.getInitialPosition()));
 
         // Parent ID (optional)
@@ -631,6 +630,9 @@ public class SimulationRestorer {
         builder.dead(state.getIsDead());
         if (state.hasDeathTick()) {
             builder.deathTick(state.getDeathTick());
+        }
+        if (state.hasParentGenomeHash()) {
+            builder.parentGenomeHash(state.getParentGenomeHash());
         }
         if (state.getInstructionFailed()) {
             // The domain sets flag and reason together, so a flag without a reason is a contradiction

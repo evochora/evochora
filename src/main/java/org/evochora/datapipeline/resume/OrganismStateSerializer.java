@@ -145,9 +145,13 @@ public final class OrganismStateSerializer {
             organismStateBuilder.setDeathTick(o.getDeathTick());
         }
 
-        // Ancestry facts recorded at birth: neither can be derived once the parent is gone
+        // Ancestry facts recorded at birth: neither can be derived once the parent is gone.
+        // The parent's genome is written only when there was a parent, so that a founding
+        // organism stays distinguishable from a child whose parent carried no genome.
         organismStateBuilder.setGeneration(o.getGeneration());
-        organismStateBuilder.setParentGenomeHash(o.getParentGenomeHash());
+        if (o.getParentId() != null) {
+            organismStateBuilder.setParentGenomeHash(o.getParentGenomeHash());
+        }
 
         // Persistent register state + dirty flags
         organismStateBuilder.setCurrentProcLabelHash(o.getCurrentProcLabelHash());

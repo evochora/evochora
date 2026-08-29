@@ -282,11 +282,17 @@ message OrganismState {
   // Source: Organism.getGeneration()
   int32 generation = 37;
 
-  // Genome hash of the parent at the time this organism was created, 0 for a founding organism.
-  // Recorded at birth for the same reason: the parent's genome is not observable later, and
-  // reconstructing lineage from parent_id fails as soon as the parent has been pruned.
-  // Source: Organism.getParentGenomeHash()
-  int64 parent_genome_hash = 38;
+  // Genome hash of the parent at the time this organism was created.
+  // Recorded at birth because the parent's genome is not observable later: reconstructing
+  // lineage from parent_id fails as soon as the parent has been pruned.
+  //
+  // Three states, and they mean different things:
+  //   absent     - the organism has no parent at all: it is one of the founding organisms
+  //   0          - the parent existed but carried no genome molecules, which a broken
+  //                replication can produce; such a parent is no node of a lineage
+  //   otherwise  - the parent's genome
+  // Source: Organism.getParentGenomeHash(), written only when Organism.getParentId() is set
+  optional int64 parent_genome_hash = 38;
 }
 
 // Aggregated runtime state for organism indexing.

@@ -168,8 +168,8 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
      * Adds static organism metadata to the batch, deduplicating by organism ID.
      * <p>
      * Organisms already seen within the current commit window are skipped.
-     * Sets 6 parameters: organism_id, parent_id, birth_tick, program_id,
-     * initial_position, genome_hash.
+     * Sets 8 parameters: organism_id, parent_id, birth_tick, program_id,
+     * initial_position, genome_hash, generation, parent_genome_hash.
      *
      * @param session The streaming session for the current connection
      * @param tick Tick data containing organism states
@@ -191,6 +191,14 @@ public abstract class AbstractH2OrgStorageStrategy implements IH2OrgStorageStrat
                 stmt.setString(4, org.getProgramId());
                 stmt.setBytes(5, org.getInitialPosition().toByteArray());
                 stmt.setLong(6, org.getGenomeHash());
+                stmt.setInt(7, org.getGeneration());
+                // NULL rather than 0 for an organism without a parent: a parent that carried no
+                // genome writes a 0 here, and the two must stay distinguishable
+                if (org.hasParentGenomeHash()) {
+                    stmt.setLong(8, org.getParentGenomeHash());
+                } else {
+                    stmt.setNull(8, java.sql.Types.BIGINT);
+                }
                 stmt.addBatch();
             }
         }

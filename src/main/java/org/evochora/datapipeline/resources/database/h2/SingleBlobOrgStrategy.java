@@ -53,8 +53,9 @@ import com.typesafe.config.Config;
 public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
 
     private static final String ORGANISMS_MERGE_SQL = "MERGE INTO organisms (" +
-            "organism_id, parent_id, birth_tick, program_id, initial_position, genome_hash" +
-            ") KEY (organism_id) VALUES (?, ?, ?, ?, ?, ?)";
+            "organism_id, parent_id, birth_tick, program_id, initial_position, genome_hash, " +
+            "generation, parent_genome_hash" +
+            ") KEY (organism_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
 
     private static final String STATES_MERGE_SQL = "MERGE INTO organism_ticks (tick_number, organisms_blob) " +
             "KEY (tick_number) VALUES (?, ?)";
@@ -80,7 +81,9 @@ public class SingleBlobOrgStrategy extends AbstractH2OrgStorageStrategy {
                 "  birth_tick BIGINT NOT NULL," +
                 "  program_id TEXT NOT NULL," +
                 "  initial_position BYTEA NOT NULL," +
-                "  genome_hash BIGINT DEFAULT 0" +
+                "  genome_hash BIGINT DEFAULT 0," +
+                "  generation INT DEFAULT 0," +
+                "  parent_genome_hash BIGINT NULL" +
                 ")",
                 "organisms"
             );
