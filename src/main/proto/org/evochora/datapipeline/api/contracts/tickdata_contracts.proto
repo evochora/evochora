@@ -275,6 +275,18 @@ message OrganismState {
 
   // Whether any PERSISTENT register has been written during this organism's lifetime.
   bool persistent_dirty = 36;
+
+  // Number of replications between the founding organisms and this one: a founder is 0, its
+  // child 1, and so on. Recorded at birth from the parent, because a consumer cannot derive it:
+  // the parent may be long gone by the time the child is observed.
+  // Source: Organism.getGeneration()
+  int32 generation = 37;
+
+  // Genome hash of the parent at the time this organism was created, 0 for a founding organism.
+  // Recorded at birth for the same reason: the parent's genome is not observable later, and
+  // reconstructing lineage from parent_id fails as soon as the parent has been pruned.
+  // Source: Organism.getParentGenomeHash()
+  int64 parent_genome_hash = 38;
 }
 
 // Aggregated runtime state for organism indexing.

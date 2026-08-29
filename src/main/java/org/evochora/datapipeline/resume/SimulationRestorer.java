@@ -551,6 +551,8 @@ public class SimulationRestorer {
             .entropy(state.getEntropyRegister())
             .marker(state.getMoleculeMarkerRegister())
             .genomeHash(state.getGenomeHash())
+            .generation(state.getGeneration())
+            .parentGenomeHash(state.getParentGenomeHash())
             .initialPosition(toIntArray(state.getInitialPosition()));
 
         // Parent ID (optional)

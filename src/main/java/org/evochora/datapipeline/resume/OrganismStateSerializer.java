@@ -145,6 +145,10 @@ public final class OrganismStateSerializer {
             organismStateBuilder.setDeathTick(o.getDeathTick());
         }
 
+        // Ancestry facts recorded at birth: neither can be derived once the parent is gone
+        organismStateBuilder.setGeneration(o.getGeneration());
+        organismStateBuilder.setParentGenomeHash(o.getParentGenomeHash());
+
         // Persistent register state + dirty flags
         organismStateBuilder.setCurrentProcLabelHash(o.getCurrentProcLabelHash());
         organismStateBuilder.setStackSavedDirty(o.isStackSavedDirty());

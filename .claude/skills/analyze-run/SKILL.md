@@ -42,9 +42,18 @@ the simulation recorded, not the tick at which the corpse was observed. Runs who
 the metric need the fallback below.
 
 Scan for: population phases and crashes; birth-rate steps (see above); `genome_diversity.shannon_index` and `dominant_share` trends;
-`environment_composition.energy_cells` (rising = population cannot consume the input, falling =
-world being eaten empty); `age_distribution.p50` (turnover); `instruction_usage` failure rates.
-`generation_depth` drops to near zero are indexer-restart artifacts (#112), never biology.
+`environment_composition` (see below); `age_distribution.p50` (turnover); `instruction_usage`
+failure rates. `generation_depth` is read from each organism and is therefore correct across
+indexer restarts; a drop to near zero in an older run is the restart artifact of #112, not biology.
+
+**Environment composition counts every cell**, so all ten columns are exact — including the small
+ones. `energy_cells` rising means the population cannot consume the input, falling means the world
+is being eaten empty. `structure_cells`, `label_cells` and `register_cells` are small fractions of
+a large world and are usable in absolute numbers: a step in them marks a change in what the
+organisms build, not sampling noise. Runs indexed before the counting was made exact carry
+Monte-Carlo estimates instead (1000 cells sampled and scaled), where anything below roughly a
+percent of the world was indistinguishable from zero — do not compare those numbers with exact
+ones, and do not read small categories out of them at all.
 
 **A selective sweep is invisible in every aggregate curve.** Do not stop here.
 
