@@ -33,9 +33,15 @@ Use `scripts/analytics.py` (needs `duckdb`, `pandas` — a venv with them exists
   back to summing `genome.genome_data`.
 - **births** = diff of `vital_stats.total_born`.
 
-Scan for: population phases and crashes; birth-rate steps (a sudden persistent step is often ONE
-damaged organism futile-forking — check per-capita rate and hash-0 gap before calling it
-biology); `genome_diversity.shannon_index` and `dominant_share` trends;
+**Futile forkers first.** A sudden persistent step in the birth rate is more often ONE damaged
+organism forking non-viable children than anything biological. The `death_lifetimes` metric decides
+it in one look: `death_lifetime_p10`, `p50` and `p90` collapsing onto a single constant value means
+many organisms dying at exactly the same age, which nothing biological does. `death_count` says how
+many deaths are behind the percentiles. The lifetimes are exact — the metric reads the death tick
+the simulation recorded, not the tick at which the corpse was observed. Runs whose analytics predate
+the metric need the fallback below.
+
+Scan for: population phases and crashes; birth-rate steps (see above); `genome_diversity.shannon_index` and `dominant_share` trends;
 `environment_composition.energy_cells` (rising = population cannot consume the input, falling =
 world being eaten empty); `age_distribution.p50` (turnover); `instruction_usage` failure rates.
 `generation_depth` drops to near zero are indexer-restart artifacts (#112), never biology.
@@ -117,3 +123,11 @@ Clade membership is a proxy; the mutation is molecules in the world. Via the nod
 - Old runs (pre-#103 proto renumbering) are unreadable by current builds — serve them with the
   build that wrote them.
 - One organism per parent when sampling bodies (siblings bias the sample).
+
+## Fallbacks for runs without the newer metrics
+
+- No `death_lifetimes`: fetch organism snapshots for a few ticks in the suspect window and build the
+  lifetime histogram by hand from `deathTick − birthTick` of the entries marked dead. Expensive and
+  it only sees the deaths of the sampled ticks, which is exactly why the metric exists.
+- No `population.bodied_count`: sum the per-genome counts in `genome.genome_data`; `load_population`
+  does this automatically when the column is missing.
