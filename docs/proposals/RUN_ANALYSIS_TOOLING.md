@@ -1,6 +1,43 @@
 # Run Analysis Tooling
 
-**Status: TO BE REVIEWED**
+**Status: ACCOMPLISHED — implemented on branch `analytics-stateless-exports`, 2026-08-30.**
+
+The acceptance criteria below name three runs recorded in the old chunk format, which a build of
+this branch refuses to read: the delta directory moved the deltas to another field. They were
+therefore not replayed, and the exports were verified against hand-built scenarios in the test
+suites instead. A run of the current build is what will show the charts on real data.
+
+## What was built, and where it differs from the plan
+
+The four items that landed as written are 1 (lineage export), 3 (`bodied_count`), 4 (death
+lifetimes) and 6 (the generation-depth reset). Three decisions departed from the text, each agreed
+before it was built:
+
+- **Item 4 became its own metric** `death_lifetimes` rather than columns of `vital_stats`. A tick
+  without deaths has no lifetimes, and writing zeros into the vital statistics would have read as
+  organisms dying at age zero. The metric carries `death_count` alongside the percentiles, so the
+  sample size behind them is visible. It reads every recorded tick: the dead appear exactly once,
+  in the recording after their death, and a skipped recording loses them for good.
+- **Item 2 has no automatic re-rooting.** The rule in the text — re-root when a clade holds 99 % for
+  ten samples — needs a memory across ticks, which no analytics plugin can have: several indexers
+  share the work and see different parts of it. Instead the clade view is opened by hand: clicking
+  a band replaces it with its child clades and leaves its siblings alone, so a cascade of sweeps is
+  followed one level at a time and the reader sees each step. The data behind it — one row per
+  living genome per recording, read next to the lineage — is also everything a Muller plot needs,
+  should the nested drawing be wanted later.
+- **Item 5 was replaced by a body endpoint**, the entry listed below under *Deferred*.
+  `/visualizer/api/environment/{tick}/organism/{id}` answers the cells one organism owns, as JSON,
+  in coordinates relative to its initial position. That removes the reason for the JSON format on
+  the environment endpoint: body forensics no longer reads a strip of the world and sorts the
+  neighbours out afterwards, and the guessed bounding box is gone with it. The environment endpoint
+  still answers protobuf only.
+
+Two findings from the implementation were folded in as well: the genome ranking of the old
+population chart was the last state any analytics plugin held, and it disappears with the clade
+view rather than being rebuilt ([#112](https://github.com/evochora/evochora/issues/112) is
+therefore closed by this branch); and the documented molecule type scale was wrong in three places
+— the value sent is the `Config` constant, with the type bits at their position in the packed
+molecule.
 
 ## Purpose
 

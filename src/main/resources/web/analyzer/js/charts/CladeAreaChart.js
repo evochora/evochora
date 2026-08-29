@@ -190,23 +190,37 @@ function foldIntoBands(data, bandOf, labels) {
     return folded;
 }
 
+/** Digits of the six-character genome label, as the rest of the project writes it. */
+const BASE62 = '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
 /**
- * Shortens a genome hash for display.
+ * Shortens a genome hash to the label used everywhere a genome is named.
  *
- * The full hash identifies the genome; six base-36 digits are enough to tell the bands of one
- * chart apart, and short enough to read in a legend.
+ * The full hash identifies the genome; six base-62 digits of its unsigned value are enough to tell
+ * the bands of one chart apart. The same six characters name a genome in the analysis scripts, so
+ * a band and a number in a notebook are recognisably the same thing.
  *
- * @param {string} genome - Genome hash as text
- * @returns {string} A short label
+ * @param {string} genome - Genome hash as text, signed as it comes out of a 64-bit column
+ * @returns {string} A six-character label
  */
 function shortLabel(genome) {
+    let value;
     try {
-        let value = BigInt(genome);
-        if (value < 0n) value = -value;
-        return value.toString(36).slice(-6).padStart(6, '0');
+        value = BigInt(genome);
     } catch (e) {
         return String(genome).slice(-6);
     }
+
+    if (value < 0n) {
+        value += 1n << 64n;
+    }
+
+    let label = '';
+    for (let i = 0; i < 6; i++) {
+        label = BASE62[Number(value % 62n)] + label;
+        value /= 62n;
+    }
+    return label;
 }
 
 /**
