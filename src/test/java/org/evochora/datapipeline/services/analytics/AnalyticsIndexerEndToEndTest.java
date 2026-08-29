@@ -789,19 +789,23 @@ class AnalyticsIndexerEndToEndTest {
 
         sendBatchInfoToTopic(runId, key.asString(), 0, 9);
 
-        // Give the indexer time to take the batch, fail on it, and carry on
-        await().pollDelay(java.time.Duration.ofSeconds(3))
-            .atMost(10, TimeUnit.SECONDS)
-            .until(() -> indexer.getCurrentState() == IService.State.RUNNING);
+        // Both errors are the mark that the indexer took the batch and failed on it
+        await().atMost(10, TimeUnit.SECONDS).until(() ->
+            hasError("ANALYTICS_IO_ERROR") && hasError("BATCH_PROCESSING_FAILED"));
 
         assertEquals(0, indexer.getMetrics().get("batches_processed").intValue(),
             "an unwritten batch must not count as processed - acknowledging it would drop its ticks");
         assertEquals(IService.State.RUNNING, indexer.getCurrentState(),
             "a write failure must not stop the indexer; the topic redelivers the batch");
-        assertTrue(indexer.getErrors().stream().anyMatch(e -> e.errorType().equals("ANALYTICS_IO_ERROR")),
+        assertTrue(hasError("ANALYTICS_IO_ERROR"),
             "the failing write must be reported: " + indexer.getErrors());
-        assertTrue(indexer.getErrors().stream().anyMatch(e -> e.errorType().equals("BATCH_PROCESSING_FAILED")),
+        assertTrue(hasError("BATCH_PROCESSING_FAILED"),
             "the failing batch must be reported: " + indexer.getErrors());
+    }
+
+    /** Whether the indexer has reported an error of the given type. */
+    private boolean hasError(String errorType) {
+        return indexer.getErrors().stream().anyMatch(e -> e.errorType().equals(errorType));
     }
 
     /** Wires an indexer whose analytics storage refuses every write. */

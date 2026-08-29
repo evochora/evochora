@@ -40,7 +40,7 @@ import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
  * <strong>Performance:</strong> One row per tick, one pass over the organisms, and a counting map
  * reused across ticks.
  */
-public class GenomeAnalyticsPlugin extends AbstractAnalyticsPlugin {
+public class GenomeDiversityPlugin extends AbstractAnalyticsPlugin {
 
     private static final ParquetSchema SCHEMA = ParquetSchema.builder()
         .column("tick", ColumnType.BIGINT)

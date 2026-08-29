@@ -19,19 +19,19 @@ import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 
 /**
- * Unit tests for {@link GenomeAnalyticsPlugin}.
+ * Unit tests for {@link GenomeDiversityPlugin}.
  * <p>
  * The four numbers describe the spread of the living population at one moment, so the tests pin
  * them against populations whose diversity is known by construction.
  */
 @Tag("unit")
-class GenomeAnalyticsPluginTest {
+class GenomeDiversityPluginTest {
 
-    private GenomeAnalyticsPlugin plugin;
+    private GenomeDiversityPlugin plugin;
 
     @BeforeEach
     void setUp() {
-        plugin = new GenomeAnalyticsPlugin();
+        plugin = new GenomeDiversityPlugin();
         Config config = ConfigFactory.parseMap(Map.of("metricId", "genome"));
         plugin.configure(config);
         plugin.initialize(null);

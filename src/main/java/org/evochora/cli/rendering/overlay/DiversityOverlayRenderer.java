@@ -69,7 +69,7 @@ public class DiversityOverlayRenderer implements IOverlayRenderer {
 
     /**
      * Computes diversity metrics from the organism list.
-     * Pattern follows {@code GenomeAnalyticsPlugin}: single pass to build
+     * Pattern follows {@code GenomeDiversityPlugin}: single pass to build
      * genome counts, then Shannon index and Pielou's evenness.
      *
      * @param organisms List of organisms (alive and dead).
