@@ -2,6 +2,7 @@ package org.evochora.datapipeline.services.analytics.plugins;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
 
 import org.evochora.datapipeline.api.analytics.AbstractAnalyticsPlugin;
@@ -9,10 +10,13 @@ import org.evochora.datapipeline.api.analytics.ColumnType;
 import org.evochora.datapipeline.api.analytics.IAnalyticsContext;
 import org.evochora.datapipeline.api.analytics.ManifestEntry;
 import org.evochora.datapipeline.api.analytics.ParquetSchema;
+import org.evochora.datapipeline.api.analytics.VisualizationHint;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
+
+import com.typesafe.config.Config;
 
 import it.unimi.dsi.fastutil.longs.Long2IntMap;
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
@@ -53,6 +57,17 @@ public class GenomePopulationPlugin extends AbstractAnalyticsPlugin {
 
     /** Reused across ticks; holds the carriers per genome of the current recording. */
     private Long2IntOpenHashMap genomeCounts;
+
+    /** Metric holding the lineage the clade view reads alongside these counts. */
+    private String lineageMetricId = "genome_lineage";
+
+    @Override
+    public void configure(Config config) {
+        super.configure(config);
+        if (config.hasPath("lineageMetricId")) {
+            this.lineageMetricId = config.getString("lineageMetricId");
+        }
+    }
 
     @Override
     public void initialize(IAnalyticsContext context) {
@@ -101,13 +116,48 @@ public class GenomePopulationPlugin extends AbstractAnalyticsPlugin {
     /**
      * {@inheritDoc}
      * <p>
-     * The table is not read as a time series of its own - a row names a genome, and a genome only
-     * means something next to the tree it descends in. It is charted by the clade view, which
-     * reads it together with the lineage.
+     * The chart groups the genomes into clades - the descendants of one branch of the lineage -
+     * and stacks their shares. Which branch a band stands for is chosen while looking at it: a
+     * clade that has taken over the population is opened into its children, which is how a
+     * cascade of sweeps stays visible where a fixed grouping would show one full band.
+     * <p>
+     * Genome hashes travel as text. They are 64 bit, and a JavaScript number keeps 53 of them -
+     * two genomes would silently become one, and the tree would join branches that never met.
      */
     @Override
     public ManifestEntry getManifestEntry() {
-        return null;
+        ManifestEntry entry = new ManifestEntry();
+        entry.id = "genome_clades";
+        entry.storageMetricId = metricId;
+        entry.name = "Clade Shares";
+        entry.description = "How the living population divides between the branches of the genome "
+            + "lineage. Click a band to open it into its child clades.";
+
+        entry.dataSources = new HashMap<>();
+        for (int level = 0; level < lodLevels; level++) {
+            String lodName = lodLevelName(level);
+            entry.dataSources.put(lodName, metricId + "/" + lodName + "/**/*.parquet");
+        }
+
+        entry.generatedQuery = "SELECT tick, genome_hash::VARCHAR AS genome_hash, count "
+            + "FROM {table} ORDER BY tick";
+        entry.outputColumns = List.of("tick", "genome_hash", "count");
+
+        entry.companionMetricId = lineageMetricId;
+        entry.companionQuery = "SELECT genome_hash::VARCHAR AS genome_hash, "
+            + "parent_genome_hash::VARCHAR AS parent_genome_hash, min(first_birth_tick) AS first_birth_tick "
+            + "FROM {table} GROUP BY genome_hash, parent_genome_hash";
+
+        entry.visualization = new VisualizationHint();
+        entry.visualization.type = "clade-area-chart";
+        entry.visualization.config = new HashMap<>();
+        entry.visualization.config.put("x", "tick");
+        entry.visualization.config.put("groupBy", "genome_hash");
+        entry.visualization.config.put("y", "count");
+        entry.visualization.config.put("yFormat", "integer");
+        entry.visualization.config.put("yAxisMode", "percent");
+
+        return entry;
     }
 
     /**

@@ -132,11 +132,20 @@ export function getAllCards() {
 
 /**
  * Renders a chart inside a metric card.
- * 
+ *
+ * The context carries what a chart needs beyond its own rows. A chart that shows one fixed thing
+ * ignores it; one that lets the reader choose what it shows reads its choice from
+ * {@code viewState} and asks for a new one through {@code onViewStateChange}, which redraws from
+ * the rows already loaded.
+ *
  * @param {Object} card - Card instance
  * @param {Array<Object>} data - Data for the chart
+ * @param {Object} [context] - Optional render context
+ * @param {Array<Object>|null} [context.companion] - Rows of the metric's companion table, if it has one
+ * @param {Object|null} [context.viewState] - The view state this chart last asked for
+ * @param {Function} [context.onViewStateChange] - Called with a new view state to redraw
  */
-export function renderChart(card, data) {
+export function renderChart(card, data, context = {}) {
     if (!card) return;
 
     const canvas = card.element.querySelector('canvas');
@@ -161,7 +170,7 @@ export function renderChart(card, data) {
 
     const chartModule = ChartRegistry.getChart(chartType);
     if (chartModule && chartModule.render) {
-        card.chart = chartModule.render(canvas, data, chartConfig);
+        card.chart = chartModule.render(canvas, data, chartConfig, context);
 
         // Restore hidden state for matching labels
         if (hiddenLabels.size > 0 && card.chart?.data?.datasets) {

@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.evochora.datapipeline.api.analytics.ColumnType;
+import org.evochora.datapipeline.api.analytics.ManifestEntry;
 import org.evochora.datapipeline.api.analytics.ParquetSchema;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
@@ -132,10 +133,35 @@ class GenomePopulationPluginTest {
     }
 
     @Test
-    void theChartLivesWithTheCladeView() {
-        // The rows are read next to the lineage, not as a time series of their own
-        assertThat(plugin.getManifestEntry()).isNull();
-        assertThat(plugin.getManifestEntries()).isEmpty();
+    void theChartReadsTheLineageAlongsideTheCounts() {
+        ManifestEntry entry = plugin.getManifestEntry();
+
+        assertThat(entry.id).isEqualTo("genome_clades");
+        assertThat(entry.storageMetricId).isEqualTo("genome_population");
+        assertThat(entry.visualization.type).isEqualTo("clade-area-chart");
+        assertThat(entry.companionMetricId).isEqualTo("genome_lineage");
+        assertThat(entry.companionQuery).contains("parent_genome_hash");
+    }
+
+    @Test
+    void genomeHashesLeaveAsTextInBothQueries() {
+        // 64 bits do not survive a JavaScript number: two genomes would silently become one
+        ManifestEntry entry = plugin.getManifestEntry();
+
+        assertThat(entry.generatedQuery).contains("genome_hash::VARCHAR");
+        assertThat(entry.companionQuery)
+            .contains("genome_hash::VARCHAR")
+            .contains("parent_genome_hash::VARCHAR");
+    }
+
+    @Test
+    void theLineageMetricCanBeNamedInConfiguration() {
+        GenomePopulationPlugin configured = new GenomePopulationPlugin();
+        configured.configure(ConfigFactory.parseMap(Map.of(
+            "metricId", "genome_population",
+            "lineageMetricId", "other_lineage")));
+
+        assertThat(configured.getManifestEntry().companionMetricId).isEqualTo("other_lineage");
     }
 
     @Test

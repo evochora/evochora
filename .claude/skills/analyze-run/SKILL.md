@@ -79,12 +79,17 @@ Reading the three states of `parent_genome_hash` correctly matters:
 - otherwise - the parent genome. A genome can have several parents when the same mutation arose
   more than once; the table keeps every edge and leaves the choice to the analysis.
 
-**Sweep detection:** take the primordial genome, list its direct children, and compute each child
-clade's share of the bodied population per tick by joining the clade membership against
-`genome_population`, which holds one row per living genome per recording — every genome, not a
-ranking, so a clade's share is the complete sum of its members. A clade rising monotonically toward
-100 % is a sweep candidate. Repeat one level deeper inside a winning clade — sweeps stack, a second
-mutation can fix within the first.
+**Sweep detection:** the Analyzer's *Clade Shares* chart does this by itself — it reads
+`genome_population` next to `genome_lineage` and stacks each branch's share of the population.
+Click a band to open it into its child clades; a band rising monotonically toward 100 % is a sweep
+candidate, and opening it shows whether a second mutation is fixing inside the first. Sweeps stack,
+so keep opening the winner.
+
+Off the Analyzer the same thing is a join: take a genome, collect its descendants from
+`genome_lineage`, and sum their `genome_population.count` per tick. Every living genome has a row
+there — no ranking — so a clade's share is the complete sum of its members. A genome can carry more
+than one parent edge; take the one with the smallest `first_birth_tick`, which is what the chart
+does.
 
 **Fallback for runs without the metric.** Older runs need the node: fetch organism snapshots
 (`/visualizer/api/organisms/{tick}`) on a grid of 10–15 sampled ticks, cache them as JSON, and

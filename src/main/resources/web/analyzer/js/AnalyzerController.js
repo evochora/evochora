@@ -22,9 +22,12 @@ import * as MetricCardView from './ui/MetricCardView.js';
         'vital_stats',          // 2. Birth & Death Rates
         'generation_depth',     // 3. Generation Depth
         'age_distribution',     // 4. Age Distribution
-        'genome_diversity',     // 5. Genome Diversity
-        'instruction_usage',    // 6. Instruction Usage
-        'environment_composition' // 7. Environment Composition
+        'death_lifetimes',      // 5. Death Lifetimes
+        'genome_clades',        // 6. Clade Shares
+        'genome_diversity',     // 7. Genome Diversity
+        'genome_lineage',       // 8. New Genomes
+        'instruction_usage',    // 9. Instruction Usage
+        'environment_composition' // 10. Environment Composition
     ];
     
     // State
@@ -33,6 +36,27 @@ import * as MetricCardView from './ui/MetricCardView.js';
     let isLoading = false;
     /** @type {Object<string, AbortController>} Active abort controllers per metric ID */
     const abortControllers = {};
+
+    /**
+     * Companion tables already loaded, keyed by "runId:metricId".
+     *
+     * A companion carries structure rather than a time series - the lineage a clade view reads its
+     * tree from - so it is the same for every window and every level of detail of the metric that
+     * names it, and is fetched once per run.
+     */
+    const companionCache = {};
+
+    /**
+     * Per-metric view state a chart asked for, keyed by metric ID.
+     *
+     * A chart that lets the reader choose what it shows - which clade is opened, say - stores that
+     * choice here and gets it back on every render, so it survives a redraw and a change of level
+     * of detail. Charts that show one fixed thing never touch it.
+     */
+    const viewStates = {};
+
+    /** Rows last loaded per metric ID, so a view change redraws without fetching again. */
+    const loadedData = {};
 
     /** Hard cap on data points loaded per chart */
     const HARD_CAP = 5000;
@@ -385,7 +409,9 @@ export async function loadDashboard(runId) {
                 return;
             }
 
-            MetricCardView.renderChart(card, data);
+            const companion = await loadCompanionData(metric, controller.signal);
+            loadedData[metricId] = { data, companion };
+            renderWithViewState(card);
 
         } catch (error) {
             if (error.name === 'AbortError') {
@@ -402,6 +428,60 @@ export async function loadDashboard(runId) {
                 delete abortControllers[metricId];
             }
         }
+    }
+
+    /**
+     * Loads the companion table of a metric, or returns null when it has none.
+     *
+     * The companion is read at its finest level of detail: it carries structure, and a thinned-out
+     * structure is not a coarser view of it but a wrong one - a lineage missing edges turns
+     * descendants into roots. It is cached per run, so opening a clade costs no request.
+     *
+     * @param {Object} metric - Manifest entry of the metric being loaded
+     * @param {AbortSignal} signal - Signal aborting the fetch
+     * @returns {Promise<Array<Object>|null>} Companion rows, or null if the metric has none
+     */
+    async function loadCompanionData(metric, signal) {
+        if (!metric.companionMetricId || !metric.companionQuery) {
+            return null;
+        }
+
+        const cacheKey = `${currentRunId}:${metric.companionMetricId}`;
+        if (companionCache[cacheKey]) {
+            return companionCache[cacheKey];
+        }
+
+        const { blob } = await AnalyticsApi.fetchParquetBlob(
+            metric.companionMetricId, currentRunId, 'lod0', signal
+        );
+        await DuckDBClient.registerParquetBlob(cacheKey, blob);
+        const rows = await DuckDBClient.queryRegisteredBlob(cacheKey, metric.companionQuery);
+
+        companionCache[cacheKey] = rows;
+        return rows;
+    }
+
+    /**
+     * Draws a card from the rows already loaded, in the view state it currently holds.
+     *
+     * Charts ask for a new view state through the callback; the redraw uses the same rows, so
+     * changing what a chart shows never costs a request.
+     *
+     * @param {Object} card - Card instance
+     */
+    function renderWithViewState(card) {
+        const metricId = card.metric.id;
+        const loaded = loadedData[metricId];
+        if (!loaded) return;
+
+        MetricCardView.renderChart(card, loaded.data, {
+            companion: loaded.companion,
+            viewState: viewStates[metricId] || null,
+            onViewStateChange: (next) => {
+                viewStates[metricId] = next;
+                renderWithViewState(card);
+            }
+        });
     }
 
     /**
@@ -459,7 +539,9 @@ export async function loadDashboard(runId) {
                 return;
             }
 
-            MetricCardView.renderChart(card, data);
+            const companion = await loadCompanionData(card.metric, controller.signal);
+            loadedData[metricId] = { data, companion };
+            renderWithViewState(card);
 
         } catch (error) {
             if (error.name === 'AbortError') return;

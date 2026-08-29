@@ -99,4 +99,27 @@ public class ManifestEntry {
      * Relative to the plugin's resource directory.
      */
     public String customVisualizerPath;
+
+    /**
+     * Storage metric identifier of a second table this chart reads alongside its own (optional).
+     * <p>
+     * A metric whose rows only mean something next to another table names it here: the frontend
+     * loads both, runs {@link #generatedQuery} on this entry's data and {@link #companionQuery}
+     * on the companion, and hands the chart both results. The clade view uses it to read the
+     * population of each genome next to the lineage it descends in.
+     * <p>
+     * The companion is loaded at its own finest level of detail, not at the level chosen for this
+     * metric: a table that carries structure rather than a time series loses its meaning when
+     * thinned out.
+     * <p>
+     * If {@code null}, the chart reads only its own data, which is the common case.
+     */
+    public String companionMetricId;
+
+    /**
+     * SQL query for the companion table, with the same {@code {table}} placeholder (optional).
+     * <p>
+     * Required when {@link #companionMetricId} is set.
+     */
+    public String companionQuery;
 }
