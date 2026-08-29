@@ -370,9 +370,29 @@ public final class DeltaCodec {
     public static final class Decoder {
         
         private final MutableCellState state;
-        
-        // State tracking for incremental decompression
+
+        /**
+         * The chunk {@link #state} was built from, compared by identity, or {@code null} before
+         * anything has been decompressed.
+         * <p>
+         * <strong>Invariant:</strong> while this is set, {@link #state} holds exactly the
+         * environment at {@link #currentTick}, reconstructed from this chunk's snapshot. The
+         * reconstruction relies on it - it advances the state it has rather than rebuilding, and
+         * applies an accumulated delta on top of it. Every place that touches the state updates
+         * both fields in the same step, and {@link #reset()} clears all three together; a change
+         * that separates them would make reconstructions silently wrong rather than fail.
+         * <p>
+         * <strong>Rests on a chunk holding one snapshot.</strong> An accumulated delta accumulates
+         * since the last snapshot, so applying it to a state from earlier in the chunk is only
+         * correct while no snapshot lies in between. A chunk cannot express one today - it has a
+         * single snapshot field and the delta types are incremental and accumulated - and giving it
+         * several would not compile against the calls to {@code getSnapshot()} here. Whoever makes
+         * that change has to give this shortcut a second condition: reuse the state only when no
+         * snapshot lies between where it stands and the target.
+         */
         private TickDataChunk currentChunk;
+
+        /** The tick {@link #state} holds, or -1 before anything has been decompressed. */
         private long currentTick;
 
         /**
@@ -552,7 +572,6 @@ public final class DeltaCodec {
             if (snapshot.getTickNumber() == targetTick) {
                 // Update state tracking even for snapshot returns
                 if (currentChunk != chunk) {
-                    state.reset();
                     state.applySnapshot(snapshot.getCellColumns());
                     currentChunk = chunk;
                     currentTick = targetTick;
@@ -577,7 +596,7 @@ public final class DeltaCodec {
                 rebuildStateForTick(chunk, snapshot, deltas, targetTick);
             } else if (currentTick < targetTick) {
                 // Same chunk, forward jump - check if accumulated delta shortcut is better
-                advanceStateToTick(chunk, snapshot, deltas, targetTick);
+                advanceStateToTick(deltas, targetTick);
             }
             // else: currentTick == targetTick, state is already correct
             
@@ -611,7 +630,7 @@ public final class DeltaCodec {
          */
         private void rebuildStateForTick(TickDataChunk chunk, TickData snapshot,
                                           List<TickDelta> deltas, long targetTick) throws ChunkCorruptedException {
-            state.reset();
+            // No reset here: applySnapshot below clears both arrays before it writes
             currentChunk = chunk;
             
             // Find best starting point (closest accumulated delta before target)
@@ -660,11 +679,15 @@ public final class DeltaCodec {
         }
         
         /**
-         * Advances state from current position to target tick.
-         * Checks if an accumulated delta shortcut is more efficient.
+         * Advances the state from where it stands to the target tick.
+         * <p>
+         * Only called while the state belongs to this chunk and lies at or before the target, so it
+         * builds on what is there instead of starting over. An accumulated delta in between is
+         * taken as a shortcut: it carries everything that changed since the snapshot, so applying
+         * it skips the incremental deltas it spans.
          */
-        private void advanceStateToTick(TickDataChunk chunk, TickData snapshot,
-                                         List<TickDelta> deltas, long targetTick) throws ChunkCorruptedException {
+        private void advanceStateToTick(List<TickDelta> deltas, long targetTick)
+                throws ChunkCorruptedException {
             // Find if there's an accumulated delta between currentTick and targetTick
             TickDelta bestAcc = null;
             int bestAccIndex = -1;
@@ -684,10 +707,11 @@ public final class DeltaCodec {
             }
             
             if (bestAcc != null) {
-                // Accumulated delta found - reset and use it as shortcut
-                // (accumulated contains all changes since snapshot, more efficient than incremental chain)
-                state.reset();
-                state.applySnapshot(snapshot.getCellColumns());
+                // An accumulated delta carries every cell that changed since the snapshot, with the
+                // values it has at that point. Applied to a state that already stands on an earlier
+                // recording of this chunk, it overwrites exactly those cells and leaves the rest -
+                // which never changed since the snapshot - as they are. The result is the state at
+                // the accumulated delta, so the snapshot does not have to be laid down again.
                 applyDeltaCells(bestAcc);
                 currentTick = bestAcc.getTickNumber();
                 
