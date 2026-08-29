@@ -345,6 +345,31 @@ public interface IBatchStorageRead extends IResource {
     }
 
     /**
+     * Iterates chunks, skipping both whole field categories and the payloads of ticks the reader
+     * does not consume.
+     * <p>
+     * The field filter answers "which categories does this reader never look at", the relevance
+     * answers "which ticks does it look at at all". A reader sampling every tenth recording leaves
+     * nine out of ten organism lists unread; with a relevance those are never turned into objects.
+     *
+     * @param path      The physical storage path (includes compression extension)
+     * @param filter    Controls which fields to skip during parsing
+     * @param relevance Decides per tick whether organisms and cells are materialized
+     * @param consumer  Callback invoked once per chunk with the filtered chunk
+     * @throws Exception If reading, parsing, or the consumer callback fails
+     * @throws UnsupportedOperationException If a narrowing relevance is passed and this method is
+     *         not overridden - answering it silently would hand out chunks with missing payloads
+     */
+    default void forEachChunk(StoragePath path, ChunkFieldFilter filter, ITickRelevance relevance,
+                              CheckedConsumer<TickDataChunk> consumer) throws Exception {
+        if (relevance != ITickRelevance.EVERYTHING) {
+            throw new UnsupportedOperationException(
+                "Per-tick relevance requires an override of forEachChunk with wire-level filtering");
+        }
+        forEachChunk(path, filter, consumer);
+    }
+
+    /**
      * Convenience overload: streams all parsed chunks without field filtering.
      * <p>
      * Delegates to {@link #forEachChunk(StoragePath, ChunkFieldFilter, CheckedConsumer)}

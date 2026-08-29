@@ -5,7 +5,10 @@ import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
 import org.evochora.datapipeline.api.resources.storage.StreamingWriteResult;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.CellDataColumns;
+import org.evochora.datapipeline.api.contracts.DeltaType;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
+import org.evochora.datapipeline.api.contracts.TickDelta;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -99,13 +102,26 @@ public class DummyWriterService extends AbstractService {
             .setCaptureTimeMs(System.currentTimeMillis())
             .build();
         
-        return TickDataChunk.newBuilder()
+        TickDataChunk.Builder chunk = TickDataChunk.newBuilder()
             .setSimulationRunId(keyPrefix + "_run")
             .setFirstTick(startTick)
             .setLastTick(startTick + tickCount - 1)
             .setTickCount(tickCount)
-            .setSnapshot(snapshot)
-            .build();
+            .setSnapshot(snapshot);
+
+        // A chunk holds one snapshot and one delta per further tick. Announcing more ticks than
+        // that in the header makes the chunk inconsistent, and readers reject it.
+        for (long tick = startTick + 1; tick <= startTick + tickCount - 1; tick++) {
+            chunk.addDeltaTicks(tick);
+            chunk.addDeltaTypes(DeltaType.INCREMENTAL);
+            chunk.addDeltas(TickDelta.newBuilder()
+                .setTickNumber(tick)
+                .setCaptureTimeMs(System.currentTimeMillis())
+                .setDeltaType(DeltaType.INCREMENTAL)
+                .setChangedCells(CellDataColumns.getDefaultInstance())
+                .build());
+        }
+        return chunk.build();
     }
 
     @Override

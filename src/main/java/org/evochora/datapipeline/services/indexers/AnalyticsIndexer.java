@@ -38,6 +38,8 @@ import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.storage.IAnalyticsStorageWrite;
+import org.evochora.datapipeline.api.resources.storage.ITickRelevance;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -236,7 +238,10 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
                 throw new RuntimeException("Failed to initialize plugin: " + plugin.getMetricId(), e);
             }
         }
-        
+
+        // 3. Decide what the chunks of this run have to be read with
+        tickRelevance = buildTickRelevance();
+
         log.debug("AnalyticsIndexer prepared for run: {}", runId);
     }
 
@@ -719,6 +724,54 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
      *
      * @return a new Decoder, or a Decoder with size 1 if metadata is unavailable
      */
+    /**
+     * The relevance the chunks of this run are read with, or {@link ITickRelevance#EVERYTHING} when
+     * the run's layout cannot be vouched for.
+     * <p>
+     * Built once per run, since it depends only on the run's recording layout and the configured
+     * plugins.
+     */
+    private ITickRelevance tickRelevance = ITickRelevance.EVERYTHING;
+
+    /**
+     * Builds the relevance for this run from the configured plugins.
+     * <p>
+     * Without plugins there is nothing to narrow down, so everything is read.
+     *
+     * @return the relevance to read this run's chunks with
+     */
+    private ITickRelevance buildTickRelevance() {
+        if (plugins.isEmpty()) {
+            return ITickRelevance.EVERYTHING;
+        }
+
+        List<Long> organismIntervals = new ArrayList<>();
+        List<Long> cellIntervals = new ArrayList<>();
+        for (IAnalyticsPlugin plugin : plugins) {
+            long finest = plugin.getEffectiveSamplingInterval(0);
+            if (plugin.needsEnvironmentData()) {
+                cellIntervals.add(finest);
+            } else {
+                organismIntervals.add(finest);
+            }
+        }
+        return new AnalyticsTickRelevance(organismIntervals, cellIntervals);
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Reads with the run's relevance, so the payload of recordings no plugin consumes is never
+     * turned into objects.
+     */
+    @Override
+    protected void readAndProcessChunks(StoragePath path, String batchId) throws Exception {
+        storage.forEachChunk(path, getChunkFieldFilter(), tickRelevance, chunk -> {
+            processChunk(chunk);
+            onChunkStreamed(batchId, chunk.getTickCount());
+        });
+    }
+
     private DeltaCodec.Decoder createDecoder() {
         SimulationMetadata metadata = getMetadata();
         if (metadata == null || metadata.getResolvedConfigJson().isEmpty()) {

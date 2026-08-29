@@ -25,7 +25,7 @@ public enum ChunkFieldFilter {
      * Skip organism data in both snapshots and deltas.
      * <p>
      * Use this for indexers that only need environment cell data (e.g., EnvironmentIndexer).
-     * Skips {@code TickData.organisms} (field 4) and {@code TickDelta.organisms} (field 5).
+     * Skips the organism list of the snapshot and of every delta.
      */
     SKIP_ORGANISMS,
 
@@ -33,7 +33,7 @@ public enum ChunkFieldFilter {
      * Skip cell/environment data in both snapshots and deltas.
      * <p>
      * Use this for indexers that only need organism data (e.g., OrganismIndexer).
-     * Skips {@code TickData.cell_columns} (field 5) and {@code TickDelta.changed_cells} (field 4).
+     * Skips the cell data of the snapshot and of every delta.
      */
     SKIP_CELLS,
 
@@ -41,8 +41,8 @@ public enum ChunkFieldFilter {
      * Skip all delta messages entirely. Only chunk metadata and the snapshot are parsed.
      * <p>
      * Use this for resume operations that only need the final snapshot from a batch.
-     * Skips {@code TickDataChunk.deltas} (field 3) at the wire level — delta bytes are
-     * discarded without deserialization.
+     * Skips {@code TickDataChunk.deltas} at the wire level — delta bytes are discarded without
+     * deserialization.
      */
     SNAPSHOT_ONLY
 }

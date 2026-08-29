@@ -533,7 +533,23 @@ message TickDataChunk {
   // Complete state at first_tick (self-contained, enables any tick reconstruction)
   TickData snapshot = 5;
 
+  // === Delta directory ===
+  //
+  // Tick number and type of every delta, in the same order as the deltas themselves.
+  // Redundant with the deltas, and deliberately so: a reader that needs only some of the
+  // ticks has to know which deltas an environment reconstruction walks through before it
+  // decides whether to build a delta's payload. Protobuf writes fields in ascending field
+  // number, so the directory carries lower numbers than the deltas and therefore arrives
+  // first. That is also why `deltas` no longer sits at 6.
+  //
+  // A reader that keeps a delta's payload must verify the directory against what the delta
+  // itself states - the directory is a promise, not an authority.
+  reserved 6;   // was: repeated TickDelta deltas
+
+  repeated int64 delta_ticks = 7 [packed = true];
+  repeated DeltaType delta_types = 8 [packed = true];
+
   // Deltas for subsequent ticks (tick_count - 1 entries)
   // Ordered by tick_number ascending.
-  repeated TickDelta deltas = 6;
+  repeated TickDelta deltas = 10;
 }

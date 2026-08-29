@@ -29,7 +29,12 @@ import org.evochora.datapipeline.api.resources.IContextualResource;
 import org.evochora.datapipeline.api.resources.IWrappedResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
+import java.util.BitSet;
+
+import org.evochora.datapipeline.api.contracts.DeltaType;
+import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.datapipeline.api.resources.storage.ChunkFieldFilter;
+import org.evochora.datapipeline.api.resources.storage.ITickRelevance;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.RawChunk;
 import org.evochora.datapipeline.api.resources.storage.IBatchStorageWrite;
@@ -303,6 +308,21 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
     @Override
     public void forEachChunk(StoragePath path, ChunkFieldFilter filter,
                              CheckedConsumer<TickDataChunk> consumer) throws Exception {
+        forEachChunk(path, filter, ITickRelevance.EVERYTHING, consumer);
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * A narrowing relevance forces the wire-level path even for {@link ChunkFieldFilter#ALL},
+     * because the per-tick decision can only be made while the fields are being read.
+     */
+    @Override
+    public void forEachChunk(StoragePath path, ChunkFieldFilter filter, ITickRelevance relevance,
+                             CheckedConsumer<TickDataChunk> consumer) throws Exception {
+        if (relevance == null) {
+            throw new IllegalArgumentException("relevance cannot be null");
+        }
         if (path == null) {
             throw new IllegalArgumentException("path cannot be null");
         }
@@ -323,10 +343,11 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
              CountingInputStream countingStream = new CountingInputStream(rawStream);
              InputStream decompressedStream = detectedCodec.wrapInputStream(countingStream)) {
 
-            if (filter == ChunkFieldFilter.ALL) {
+            if (filter == ChunkFieldFilter.ALL && relevance == ITickRelevance.EVERYTHING) {
                 while (true) {
                     TickDataChunk chunk = TickDataChunk.parseDelimitedFrom(decompressedStream);
                     if (chunk == null) break;
+                    verifyChunkIsComplete(chunk, path);
                     consumer.accept(chunk);
                 }
             } else {
@@ -336,7 +357,10 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
                 while (!cis.isAtEnd()) {
                     int messageSize = cis.readRawVarint32();
                     int limit = cis.pushLimit(messageSize);
-                    TickDataChunk chunk = parseChunkWithFilter(cis, filter);
+                    TickDataChunk chunk = parseChunkWithFilter(cis, filter, relevance);
+                    if (filter != ChunkFieldFilter.SNAPSHOT_ONLY) {
+                        verifyChunkIsComplete(chunk, path);
+                    }
                     consumer.accept(chunk);
                     cis.skipRawBytes(cis.getBytesUntilLimit());
                     cis.popLimit(limit);
@@ -361,8 +385,12 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      * @return Parsed TickDataChunk with filtered fields omitted
      * @throws IOException if parsing fails
      */
-    private static TickDataChunk parseChunkWithFilter(CodedInputStream input, ChunkFieldFilter filter) throws IOException {
+    private static TickDataChunk parseChunkWithFilter(CodedInputStream input, ChunkFieldFilter filter,
+                                                      ITickRelevance relevance) throws IOException {
         TickDataChunk.Builder builder = TickDataChunk.newBuilder();
+        // Derived from the directory once the first delta arrives; null while everything is kept
+        BitSet cellsNeeded = null;
+        int deltaPosition = 0;
 
         while (true) {
             int tag = input.readTag();
@@ -384,7 +412,7 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
                 case TickDataChunk.SNAPSHOT_FIELD_NUMBER: {
                     int length = input.readRawVarint32();
                     int oldLimit = input.pushLimit(length);
-                    builder.setSnapshot(parseTickDataWithFilter(input, filter));
+                    builder.setSnapshot(parseTickDataWithFilter(input, filter, relevance));
                     input.skipRawBytes(input.getBytesUntilLimit());
                     input.popLimit(oldLimit);
                     break;
@@ -394,9 +422,14 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
                         input.skipField(tag);
                         break;
                     }
+                    if (cellsNeeded == null) {
+                        cellsNeeded = deltasCarryingCells(builder, relevance);
+                    }
                     int length = input.readRawVarint32();
                     int oldLimit = input.pushLimit(length);
-                    builder.addDeltas(parseTickDeltaWithFilter(input, filter));
+                    builder.addDeltas(parseTickDeltaWithFilter(input, filter, relevance,
+                        cellsNeeded.get(deltaPosition), builder, deltaPosition));
+                    deltaPosition++;
                     input.skipRawBytes(input.getBytesUntilLimit());
                     input.popLimit(oldLimit);
                     break;
@@ -408,6 +441,84 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         }
 
         return builder.build();
+    }
+
+    /**
+     * Rejects a chunk whose content contradicts its own header.
+     * <p>
+     * A chunk states how many ticks it holds, and it holds one snapshot and one delta per further
+     * tick. If fewer deltas arrive than the header announces, part of the chunk did not reach the
+     * reader - and reconstructing from what did would yield the state at the chunk's first tick
+     * for every tick in it, a plausible picture and a wrong one. Why they are missing is not
+     * knowable here, so the message states what was found rather than a cause.
+     * <p>
+     * The delta directory is not checked here but where it is used: a delta beyond its end, or one
+     * that contradicts it, fails the parse.
+     *
+     * @param chunk the parsed chunk
+     * @param path  the path it came from, for the error message
+     * @throws IOException if the chunk carries fewer deltas than it announces
+     */
+    private static void verifyChunkIsComplete(TickDataChunk chunk, StoragePath path) throws IOException {
+        int expectedDeltas = chunk.getTickCount() - 1;
+        if (chunk.getDeltasCount() != expectedDeltas) {
+            throw new IOException("Chunk " + path.asString() + " announces " + chunk.getTickCount()
+                + " ticks but carries " + chunk.getDeltasCount() + " deltas");
+        }
+    }
+
+    /**
+     * Checks a delta against what the chunk's directory announced for its position.
+     * <p>
+     * The directory decides which payloads are built, so a directory that does not describe the
+     * deltas would silently produce a wrong environment. Comparing both makes that a parse failure
+     * instead. One of the two values is passed per call, whichever has just been read.
+     *
+     * @param chunk    the chunk parsed so far, holding the directory
+     * @param position the delta's position in the chunk
+     * @param tick     the delta's tick number, or {@code null} if not the value being checked
+     * @param type     the delta's type, or {@code null} if not the value being checked
+     * @throws IOException if the delta contradicts the directory
+     */
+    private static void verifyAgainstDirectory(TickDataChunk.Builder chunk, int position,
+                                               Long tick, DeltaType type) throws IOException {
+        if (position >= chunk.getDeltaTicksCount()) {
+            throw new IOException("Chunk holds more deltas than its directory announces: position "
+                + position + ", directory has " + chunk.getDeltaTicksCount());
+        }
+        if (tick != null && chunk.getDeltaTicks(position) != tick) {
+            throw new IOException("Delta at position " + position + " states tick " + tick
+                + ", directory states " + chunk.getDeltaTicks(position));
+        }
+        if (type != null && chunk.getDeltaTypes(position) != type) {
+            throw new IOException("Delta at position " + position + " states type " + type
+                + ", directory states " + chunk.getDeltaTypes(position));
+        }
+    }
+
+    /**
+     * Works out which deltas of a chunk carry cells a reader will use.
+     * <p>
+     * The chunk's directory states tick and type of every delta before the deltas themselves
+     * arrive, which is what makes the decision possible in a single pass. Which of them an
+     * environment reconstruction walks through is decided by the codec, so this class does not
+     * carry a second copy of that rule.
+     *
+     * @param builder   the chunk parsed so far, holding the directory
+     * @param relevance what the reader looks at
+     * @return positions of the deltas whose cells must be materialized
+     */
+    private static BitSet deltasCarryingCells(TickDataChunk.Builder builder, ITickRelevance relevance) {
+        if (relevance == ITickRelevance.EVERYTHING) {
+            BitSet all = new BitSet();
+            all.set(0, Math.max(1, builder.getDeltaTicksCount()));
+            return all;
+        }
+        return DeltaCodec.cellsNeededFor(
+            builder.getDeltaTicksList(),
+            builder.getDeltaTypesList(),
+            builder.getSnapshot().getTickNumber(),
+            relevance::readsCellsAt);
     }
 
     /**
@@ -424,8 +535,12 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      * @return Parsed TickData with filtered fields omitted
      * @throws IOException if parsing fails
      */
-    private static TickData parseTickDataWithFilter(CodedInputStream input, ChunkFieldFilter filter) throws IOException {
+    private static TickData parseTickDataWithFilter(CodedInputStream input, ChunkFieldFilter filter,
+                                                    ITickRelevance relevance) throws IOException {
         TickData.Builder builder = TickData.newBuilder();
+        // tick_number is field 2 of TickData and arrives before organisms; until it has been read,
+        // no per-tick decision is possible and everything is materialized
+        boolean tickKnown = false;
 
         while (true) {
             int tag = input.readTag();
@@ -443,6 +558,13 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
                 input.skipField(tag);
                 continue;
             }
+            // Nobody reads this tick's organisms. The snapshot's cells are never skipped this way:
+            // every reconstruction in the chunk starts from them.
+            if (fieldNumber == TickData.ORGANISMS_FIELD_NUMBER
+                    && tickKnown && !relevance.readsOrganismsAt(builder.getTickNumber())) {
+                input.skipField(tag);
+                continue;
+            }
 
             switch (fieldNumber) {
                 case TickData.SIMULATION_RUN_ID_FIELD_NUMBER:
@@ -450,6 +572,7 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
                     break;
                 case TickData.TICK_NUMBER_FIELD_NUMBER:
                     builder.setTickNumber(input.readInt64());
+                    tickKnown = true;
                     break;
                 case TickData.CAPTURE_TIME_MS_FIELD_NUMBER:
                     builder.setCaptureTimeMs(input.readInt64());
@@ -521,8 +644,14 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      * @return Parsed TickDelta with filtered fields omitted
      * @throws IOException if parsing fails
      */
-    private static TickDelta parseTickDeltaWithFilter(CodedInputStream input, ChunkFieldFilter filter) throws IOException {
+    private static TickDelta parseTickDeltaWithFilter(CodedInputStream input, ChunkFieldFilter filter,
+                                                      ITickRelevance relevance, boolean cellsNeeded,
+                                                      TickDataChunk.Builder chunk, int position)
+            throws IOException {
         TickDelta.Builder builder = TickDelta.newBuilder();
+        // tick_number is field 1 and arrives before changed_cells and organisms; until it has been
+        // read, no per-tick decision is possible and everything is materialized
+        boolean tickKnown = false;
 
         while (true) {
             int tag = input.readTag();
@@ -540,16 +669,30 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
                 input.skipField(tag);
                 continue;
             }
+            // Nobody reads this tick's organisms
+            if (fieldNumber == TickDelta.ORGANISMS_FIELD_NUMBER
+                    && tickKnown && !relevance.readsOrganismsAt(builder.getTickNumber())) {
+                input.skipField(tag);
+                continue;
+            }
+            // No reconstruction walks through this delta's cells
+            if (fieldNumber == TickDelta.CHANGED_CELLS_FIELD_NUMBER && !cellsNeeded) {
+                input.skipField(tag);
+                continue;
+            }
 
             switch (fieldNumber) {
                 case TickDelta.TICK_NUMBER_FIELD_NUMBER:
                     builder.setTickNumber(input.readInt64());
-                    break;
-                case TickDelta.CAPTURE_TIME_MS_FIELD_NUMBER:
-                    builder.setCaptureTimeMs(input.readInt64());
+                    tickKnown = true;
+                    verifyAgainstDirectory(chunk, position, builder.getTickNumber(), null);
                     break;
                 case TickDelta.DELTA_TYPE_FIELD_NUMBER:
                     builder.setDeltaTypeValue(input.readEnum());
+                    verifyAgainstDirectory(chunk, position, null, builder.getDeltaType());
+                    break;
+                case TickDelta.CAPTURE_TIME_MS_FIELD_NUMBER:
+                    builder.setCaptureTimeMs(input.readInt64());
                     break;
                 case TickDelta.CHANGED_CELLS_FIELD_NUMBER: {
                     int length = input.readRawVarint32();

@@ -70,34 +70,37 @@ import com.typesafe.config.Config;
  */
 public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
 
-    // Proto field numbers for partial parsing (from tickdata_contracts.proto)
-    private static final int CHUNK_SIMULATION_RUN_ID = 1;
-    private static final int CHUNK_FIRST_TICK = 2;
-    private static final int CHUNK_LAST_TICK = 3;
-    private static final int CHUNK_TICK_COUNT = 4;
-    private static final int CHUNK_SNAPSHOT = 5;
-    private static final int CHUNK_DELTAS = 6;
+    // Proto field numbers for partial parsing, taken from the generated messages so that a change
+    // to tickdata_contracts.proto reaches this parser instead of silently passing it by
+    private static final int CHUNK_SIMULATION_RUN_ID = TickDataChunk.SIMULATION_RUN_ID_FIELD_NUMBER;
+    private static final int CHUNK_FIRST_TICK = TickDataChunk.FIRST_TICK_FIELD_NUMBER;
+    private static final int CHUNK_LAST_TICK = TickDataChunk.LAST_TICK_FIELD_NUMBER;
+    private static final int CHUNK_TICK_COUNT = TickDataChunk.TICK_COUNT_FIELD_NUMBER;
+    private static final int CHUNK_SNAPSHOT = TickDataChunk.SNAPSHOT_FIELD_NUMBER;
+    private static final int CHUNK_DELTA_TICKS = TickDataChunk.DELTA_TICKS_FIELD_NUMBER;
+    private static final int CHUNK_DELTA_TYPES = TickDataChunk.DELTA_TYPES_FIELD_NUMBER;
+    private static final int CHUNK_DELTAS = TickDataChunk.DELTAS_FIELD_NUMBER;
 
-    private static final int TICKDATA_SIMULATION_RUN_ID = 1;
-    private static final int TICKDATA_TICK_NUMBER = 2;
-    private static final int TICKDATA_CAPTURE_TIME_MS = 3;
-    private static final int TICKDATA_ORGANISMS = 4;
-    private static final int TICKDATA_CELL_COLUMNS = 5;
-    private static final int TICKDATA_RNG_STATE = 6;
-    private static final int TICKDATA_PLUGIN_STATES = 7;
-    private static final int TICKDATA_TOTAL_ORGANISMS_CREATED = 8;
-    private static final int TICKDATA_TOTAL_UNIQUE_GENOMES = 9;
-    private static final int TICKDATA_GENOME_HASHES = 10;
+    private static final int TICKDATA_SIMULATION_RUN_ID = TickData.SIMULATION_RUN_ID_FIELD_NUMBER;
+    private static final int TICKDATA_TICK_NUMBER = TickData.TICK_NUMBER_FIELD_NUMBER;
+    private static final int TICKDATA_CAPTURE_TIME_MS = TickData.CAPTURE_TIME_MS_FIELD_NUMBER;
+    private static final int TICKDATA_ORGANISMS = TickData.ORGANISMS_FIELD_NUMBER;
+    private static final int TICKDATA_CELL_COLUMNS = TickData.CELL_COLUMNS_FIELD_NUMBER;
+    private static final int TICKDATA_RNG_STATE = TickData.RNG_STATE_FIELD_NUMBER;
+    private static final int TICKDATA_PLUGIN_STATES = TickData.PLUGIN_STATES_FIELD_NUMBER;
+    private static final int TICKDATA_TOTAL_ORGANISMS_CREATED = TickData.TOTAL_ORGANISMS_CREATED_FIELD_NUMBER;
+    private static final int TICKDATA_TOTAL_UNIQUE_GENOMES = TickData.TOTAL_UNIQUE_GENOMES_FIELD_NUMBER;
+    private static final int TICKDATA_GENOME_HASHES = TickData.ALL_GENOME_HASHES_EVER_SEEN_FIELD_NUMBER;
 
-    private static final int DELTA_TICK_NUMBER = 1;
-    private static final int DELTA_CAPTURE_TIME_MS = 2;
-    private static final int DELTA_DELTA_TYPE = 3;
-    private static final int DELTA_CHANGED_CELLS = 4;
-    private static final int DELTA_ORGANISMS = 5;
-    private static final int DELTA_TOTAL_ORGANISMS_CREATED = 6;
-    private static final int DELTA_RNG_STATE = 7;
-    private static final int DELTA_PLUGIN_STATES = 8;
-    private static final int DELTA_TOTAL_UNIQUE_GENOMES = 9;
+    private static final int DELTA_TICK_NUMBER = TickDelta.TICK_NUMBER_FIELD_NUMBER;
+    private static final int DELTA_CAPTURE_TIME_MS = TickDelta.CAPTURE_TIME_MS_FIELD_NUMBER;
+    private static final int DELTA_DELTA_TYPE = TickDelta.DELTA_TYPE_FIELD_NUMBER;
+    private static final int DELTA_CHANGED_CELLS = TickDelta.CHANGED_CELLS_FIELD_NUMBER;
+    private static final int DELTA_ORGANISMS = TickDelta.ORGANISMS_FIELD_NUMBER;
+    private static final int DELTA_TOTAL_ORGANISMS_CREATED = TickDelta.TOTAL_ORGANISMS_CREATED_FIELD_NUMBER;
+    private static final int DELTA_RNG_STATE = TickDelta.RNG_STATE_FIELD_NUMBER;
+    private static final int DELTA_PLUGIN_STATES = TickDelta.PLUGIN_STATES_FIELD_NUMBER;
+    private static final int DELTA_TOTAL_UNIQUE_GENOMES = TickDelta.TOTAL_UNIQUE_GENOMES_FIELD_NUMBER;
 
     private static final String CHUNK_META_FILENAME = ".chunk_meta";
     private static final String META_KEY_TICKS_PER_SUBDIR = "ticksPerSubdirectory";
@@ -700,6 +703,22 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
                     int length = cis.readRawVarint32();
                     int oldLimit = cis.pushLimit(length);
                     builder.setSnapshot(parseTickData(cis));
+                    cis.popLimit(oldLimit);
+                }
+                case CHUNK_DELTA_TICKS -> {
+                    int length = cis.readRawVarint32();
+                    int oldLimit = cis.pushLimit(length);
+                    while (cis.getBytesUntilLimit() > 0) {
+                        builder.addDeltaTicks(cis.readInt64());
+                    }
+                    cis.popLimit(oldLimit);
+                }
+                case CHUNK_DELTA_TYPES -> {
+                    int length = cis.readRawVarint32();
+                    int oldLimit = cis.pushLimit(length);
+                    while (cis.getBytesUntilLimit() > 0) {
+                        builder.addDeltaTypesValue(cis.readEnum());
+                    }
                     cis.popLimit(oldLimit);
                 }
                 case CHUNK_DELTAS -> {
