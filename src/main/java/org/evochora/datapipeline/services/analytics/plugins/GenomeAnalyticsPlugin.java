@@ -1,6 +1,5 @@
 package org.evochora.datapipeline.services.analytics.plugins;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -16,24 +15,10 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 
-import com.typesafe.config.Config;
-
 import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
-import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap;
-import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
-import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 
 /**
- * Unified genome analytics plugin tracking both diversity metrics and population distribution.
- * <p>
- * Iterates the organism list <strong>once per tick</strong> to compute all genome-related metrics,
- * then produces two frontend charts via {@link #getManifestEntries()}:
- * <ol>
- *   <li><strong>Genome Diversity</strong> (line-chart): Shannon index, total/active genome counts,
- *       and dominant genome share over time.</li>
- *   <li><strong>Genome Population</strong> (stacked-area-chart): Population distribution across the
- *       top N genomes, with remaining genomes aggregated as "other".</li>
- * </ol>
+ * Measures how varied the living population is, in four numbers per recording.
  * <p>
  * <strong>Schema:</strong>
  * <ul>
@@ -42,19 +27,18 @@ import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
  *   <li>{@code total_genomes} - Cumulative count of unique genomes ever observed (from pipeline)</li>
  *   <li>{@code active_genomes} - Count of genomes with at least one living organism</li>
  *   <li>{@code dominant_share} - Population share of the most common genome (0.0-1.0)</li>
- *   <li>{@code genome_data} - JSON map of genome label to count (e.g., {@code {"a3Bf2k":42,"other":5}})</li>
  * </ul>
  * <p>
- * <strong>Configuration:</strong>
- * <ul>
- *   <li>{@code topN} - Number of top genomes to track individually (default: 10)</li>
- * </ul>
+ * <strong>What these numbers can and cannot show.</strong> They describe the spread of the
+ * population at one moment, and they do it without knowing which genome descends from which.
+ * That makes them blind to displacement: where mutation creates new genomes faster than selection
+ * removes them, a branch can take over the population while {@code dominant_share} stays low and
+ * {@code shannon_index} keeps rising, because every carrier of the winning branch carries a
+ * slightly different genome. Displacement is visible in the genome population next to the lineage,
+ * not here.
  * <p>
- * <strong>Performance:</strong> This plugin outputs exactly 1 row per tick. All working collections
- * are pre-allocated and reused for zero allocation during steady-state operation.
- * <p>
- * This plugin is stateful: it tracks cumulative genome populations for top-N ranking.
- * The total unique genome count is provided by the pipeline via {@code TickData.totalUniqueGenomes}.
+ * <strong>Performance:</strong> One row per tick, one pass over the organisms, and a counting map
+ * reused across ticks.
  */
 public class GenomeAnalyticsPlugin extends AbstractAnalyticsPlugin {
 
@@ -64,44 +48,13 @@ public class GenomeAnalyticsPlugin extends AbstractAnalyticsPlugin {
         .column("total_genomes", ColumnType.INTEGER)
         .column("active_genomes", ColumnType.INTEGER)
         .column("dominant_share", ColumnType.DOUBLE)
-        .column("genome_data", ColumnType.VARCHAR)
         .build();
 
-    /** Base62 characters for genome label encoding. */
-    private static final String BASE62_CHARS = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
-
-    /** Bytes per entry in Long2LongOpenHashMap (key + value + overhead). */
-    private static final int BYTES_PER_CUMULATIVE_ENTRY = 24;
-
-    /** Bytes per entry in Long2ObjectOpenHashMap for label cache (key + String ref + String object). */
-    private static final int BYTES_PER_LABEL_CACHE_ENTRY = 80;
-
-    /** Number of top genomes to track individually. */
-    private int topN = 10;
-
-    // ========================================================================
-    // Stateful Data (persists across ticks)
-    // ========================================================================
-
-    /** Cumulative population per genome (for consistent ranking). */
-    private Long2LongOpenHashMap cumulativePopulation;
-
-    /** Current set of tracked genome hashes (for O(1) lookup). */
-    private LongOpenHashSet trackedGenomeSet;
-
-    /** Cache for Base62 labels (hash -> label). Uses primitive map to avoid boxing. */
-    private Long2ObjectOpenHashMap<String> labelCache;
-
-
-    // ========================================================================
-    // Reusable Working Memory (zero allocation per tick)
-    // ========================================================================
+    /** Bytes per entry of the counting map: key, value and open-addressing overhead. */
+    private static final int BYTES_PER_COUNT_ENTRY = 12;
 
     /** Reusable genome hash to count map, cleared and rebuilt each tick. */
     private Long2IntOpenHashMap genomeCounts;
-
-    /** Reusable buffer for sorting entries during rebuildTopN. */
-    private ArrayList<long[]> sortBuffer;
 
     /** Reusable result row. Updated in place each tick. */
     private Object[] resultRow;
@@ -109,34 +62,14 @@ public class GenomeAnalyticsPlugin extends AbstractAnalyticsPlugin {
     /** Reusable singleton list wrapping resultRow. */
     private List<Object[]> resultList;
 
-    /** Reusable StringBuilder for JSON serialization. */
-    private StringBuilder jsonBuilder;
-
-    @Override
-    public void configure(Config config) {
-        super.configure(config);
-        if (config.hasPath("topN")) {
-            this.topN = config.getInt("topN");
-        }
-    }
-
     @Override
     public void initialize(IAnalyticsContext context) {
         super.initialize(context);
 
-        // Stateful data
-        this.cumulativePopulation = new Long2LongOpenHashMap();
-        this.cumulativePopulation.defaultReturnValue(0L);
-        this.trackedGenomeSet = new LongOpenHashSet(topN);
-        this.labelCache = new Long2ObjectOpenHashMap<>();
-
-        // Reusable working memory
         this.genomeCounts = new Long2IntOpenHashMap();
         this.genomeCounts.defaultReturnValue(0);
-        this.sortBuffer = new ArrayList<>();
-        this.resultRow = new Object[6];
+        this.resultRow = new Object[5];
         this.resultList = Collections.singletonList(resultRow);
-        this.jsonBuilder = new StringBuilder(256);
     }
 
     @Override
@@ -146,7 +79,6 @@ public class GenomeAnalyticsPlugin extends AbstractAnalyticsPlugin {
 
     @Override
     public List<Object[]> extractRows(TickData tick) {
-        // ---- Phase 1: Build genome counts (single organism iteration) ----
         genomeCounts.clear();
         int totalOrganisms = 0;
 
@@ -160,12 +92,6 @@ public class GenomeAnalyticsPlugin extends AbstractAnalyticsPlugin {
             totalOrganisms++;
         }
 
-        // ---- Phase 2: Diversity metrics ----
-
-        int activeGenomes = genomeCounts.size();
-        int totalGenomes = (int) tick.getTotalUniqueGenomes();
-
-        // Shannon index and dominant share
         double shannonIndex = 0.0;
         double dominantShare = 0.0;
         int maxCount = 0;
@@ -181,165 +107,17 @@ public class GenomeAnalyticsPlugin extends AbstractAnalyticsPlugin {
             dominantShare = (double) maxCount / totalOrganisms;
         }
 
-        // ---- Phase 3: Population JSON ----
-
-        String genomeData;
-        if (genomeCounts.isEmpty()) {
-            genomeData = "{}";
-        } else {
-            // Update cumulative population
-            for (var it = genomeCounts.long2IntEntrySet().fastIterator(); it.hasNext(); ) {
-                var entry = it.next();
-                cumulativePopulation.addTo(entry.getLongKey(), entry.getIntValue());
-            }
-
-            rebuildTopN();
-
-            // Build JSON: {"label1":count1,"label2":count2,...,"other":countN}
-            jsonBuilder.setLength(0);
-            jsonBuilder.append('{');
-            int otherCount = 0;
-            boolean first = true;
-
-            for (var it = genomeCounts.long2IntEntrySet().fastIterator(); it.hasNext(); ) {
-                var entry = it.next();
-                long hash = entry.getLongKey();
-                int count = entry.getIntValue();
-                if (trackedGenomeSet.contains(hash)) {
-                    if (!first) jsonBuilder.append(',');
-                    jsonBuilder.append('"').append(getCachedLabel(hash)).append("\":").append(count);
-                    first = false;
-                } else {
-                    otherCount += count;
-                }
-            }
-
-            if (otherCount > 0) {
-                if (!first) jsonBuilder.append(',');
-                jsonBuilder.append("\"other\":").append(otherCount);
-            }
-
-            jsonBuilder.append('}');
-            genomeData = jsonBuilder.toString();
-        }
-
-        // ---- Phase 4: Assemble result row ----
         resultRow[0] = tick.getTickNumber();
         resultRow[1] = shannonIndex;
-        resultRow[2] = totalGenomes;
-        resultRow[3] = activeGenomes;
+        resultRow[2] = (int) tick.getTotalUniqueGenomes();
+        resultRow[3] = genomeCounts.size();
         resultRow[4] = dominantShare;
-        resultRow[5] = genomeData;
 
         return resultList;
     }
 
-    /**
-     * Rebuilds the top N genome set from currently active genomes.
-     * <p>
-     * Only genomes present in {@link #genomeCounts} (alive this tick) are candidates.
-     * Ranking uses cumulative population for chart stability across ticks.
-     * Reuses sortBuffer to minimize allocations.
-     */
-    private void rebuildTopN() {
-        sortBuffer.clear();
-        sortBuffer.ensureCapacity(genomeCounts.size());
-
-        for (var it = genomeCounts.long2IntEntrySet().fastIterator(); it.hasNext(); ) {
-            var entry = it.next();
-            long hash = entry.getLongKey();
-            long cumulative = cumulativePopulation.get(hash);
-            sortBuffer.add(new long[] { hash, cumulative });
-        }
-
-        sortBuffer.sort((a, b) -> Long.compare(b[1], a[1]));
-
-        trackedGenomeSet.clear();
-        int count = 0;
-        for (long[] entry : sortBuffer) {
-            if (count >= topN) break;
-            trackedGenomeSet.add(entry[0]);
-            count++;
-        }
-    }
-
-    /**
-     * Gets cached Base62 label for a genome hash.
-     * Uses primitive Long2ObjectOpenHashMap to avoid boxing.
-     */
-    private String getCachedLabel(long hash) {
-        String label = labelCache.get(hash);
-        if (label == null) {
-            label = formatGenomeHash(hash);
-            labelCache.put(hash, label);
-        }
-        return label;
-    }
-
-    /**
-     * Formats a genome hash as 6-character Base62 string.
-     * Uses unsigned interpretation of the 64-bit hash value.
-     *
-     * @param hash The genome hash to format
-     * @return A 6-character Base62 string representation, or "------" for hash 0
-     */
-    static String formatGenomeHash(long hash) {
-        if (hash == 0L) {
-            return "------";
-        }
-
-        char[] result = new char[6];
-        long n = hash;
-
-        for (int i = 5; i >= 0; i--) {
-            if (n >= 0) {
-                result[i] = BASE62_CHARS.charAt((int) (n % 62));
-                n = n / 62;
-            } else {
-                result[i] = BASE62_CHARS.charAt((int) Long.remainderUnsigned(n, 62));
-                n = Long.divideUnsigned(n, 62);
-            }
-        }
-
-        return new String(result);
-    }
-
-    /**
-     * Returns {@code null} since this plugin uses {@link #getManifestEntries()} instead.
-     *
-     * @return Always {@code null}
-     */
     @Override
     public ManifestEntry getManifestEntry() {
-        return null;
-    }
-
-    /**
-     * Returns two manifest entries for the two charts produced by this plugin.
-     * <p>
-     * Both charts share the same underlying Parquet data but select different columns:
-     * <ul>
-     *   <li><strong>genome_diversity</strong>: Line chart showing Shannon index, genome counts,
-     *       and dominant genome share.</li>
-     *   <li><strong>genome_population</strong>: Stacked area chart showing population distribution
-     *       across top N genomes.</li>
-     * </ul>
-     *
-     * @return Two manifest entries (genome_diversity and genome_population)
-     */
-    @Override
-    public List<ManifestEntry> getManifestEntries() {
-        ManifestEntry diversity = buildDiversityManifest();
-        ManifestEntry population = buildPopulationManifest();
-        applyCommonConfig(diversity);
-        applyCommonConfig(population);
-        return List.of(diversity, population);
-    }
-
-    /**
-     * Builds the manifest entry for the genome diversity line chart.
-     */
-    private ManifestEntry buildDiversityManifest() {
         ManifestEntry entry = new ManifestEntry();
         entry.id = "genome_diversity";
         entry.storageMetricId = metricId;
@@ -365,56 +143,19 @@ public class GenomeAnalyticsPlugin extends AbstractAnalyticsPlugin {
     }
 
     /**
-     * Builds the manifest entry for the genome population stacked area chart.
+     * {@inheritDoc}
+     * <p>
+     * Every organism could carry a genome of its own, so the counting map is bounded by the
+     * organism limit.
      */
-    private ManifestEntry buildPopulationManifest() {
-        ManifestEntry entry = new ManifestEntry();
-        entry.id = "genome_population";
-        entry.storageMetricId = metricId;
-        entry.name = "Genome Population";
-        entry.description = "Population distribution across top " + topN + " genomes over time.";
-
-        entry.dataSources = new HashMap<>();
-        for (int level = 0; level < lodLevels; level++) {
-            String lodName = lodLevelName(level);
-            entry.dataSources.put(lodName, metricId + "/" + lodName + "/**/*.parquet");
-        }
-
-        entry.visualization = new VisualizationHint();
-        entry.visualization.type = "stacked-area-chart";
-        entry.visualization.config = new HashMap<>();
-        entry.visualization.config.put("x", "tick");
-        entry.visualization.config.put("jsonColumn", "genome_data");
-        entry.visualization.config.put("maxGroups", topN);
-        entry.visualization.config.put("yFormat", "integer");
-
-        return entry;
-    }
-
     @Override
     public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
-        long estimatedUniqueGenomes = (long) (params.maxOrganisms() * 0.5);
-
-        long cumulativeBytes = estimatedUniqueGenomes * BYTES_PER_CUMULATIVE_ENTRY;
-        long labelCacheBytes = estimatedUniqueGenomes * BYTES_PER_LABEL_CACHE_ENTRY;
-        long sortBufferBytes = estimatedUniqueGenomes * 16L;
-        long genomeCountsBytes = estimatedUniqueGenomes * 12L;
-
-        long totalBytes = cumulativeBytes + labelCacheBytes + sortBufferBytes + genomeCountsBytes;
-
-        String explanation = String.format(
-            "~%d unique genomes: cumulativePopulation=%s, labelCache=%s, sortBuffer=%s, genomeCounts=%s",
-            estimatedUniqueGenomes,
-            SimulationParameters.formatBytes(cumulativeBytes),
-            SimulationParameters.formatBytes(labelCacheBytes),
-            SimulationParameters.formatBytes(sortBufferBytes),
-            SimulationParameters.formatBytes(genomeCountsBytes)
-        );
-
+        long countBytes = params.maxOrganisms() * (long) BYTES_PER_COUNT_ENTRY;
         return Collections.singletonList(new MemoryEstimate(
             "Plugin: " + metricId,
-            totalBytes,
-            explanation,
+            countBytes,
+            String.format("%d max organisms × %d bytes/genome count",
+                params.maxOrganisms(), BYTES_PER_COUNT_ENTRY),
             MemoryEstimate.Category.SERVICE_BATCH
         ));
     }

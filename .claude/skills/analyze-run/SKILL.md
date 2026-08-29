@@ -30,7 +30,8 @@ Use `scripts/analytics.py` (needs `duckdb`, `pandas` — a venv with them exists
   `alive_count` is the hash-0 cohort and is visible directly in the population chart as two
   diverging lines; a large gap means futile-forker or frozen-loser artifacts, not biology.
   Runs whose analytics predate the column have no `bodied_count`; `load_population` then falls
-  back to summing `genome.genome_data`.
+  back to summing the per-genome counts in their `genome.genome_data`, a column only those older
+  runs carry.
 - **births** = diff of `vital_stats.total_born`.
 
 **Futile forkers first.** A sudden persistent step in the birth rate is more often ONE damaged
@@ -79,10 +80,11 @@ Reading the three states of `parent_genome_hash` correctly matters:
   more than once; the table keeps every edge and leaves the choice to the analysis.
 
 **Sweep detection:** take the primordial genome, list its direct children, and compute each child
-clade's share of the bodied population per tick by joining the clade membership against the
-per-genome counts in `genome.genome_data`. A clade rising monotonically toward 100 % is a sweep
-candidate. Repeat one level deeper inside a winning clade — sweeps stack, a second mutation can fix
-within the first.
+clade's share of the bodied population per tick by joining the clade membership against
+`genome_population`, which holds one row per living genome per recording — every genome, not a
+ranking, so a clade's share is the complete sum of its members. A clade rising monotonically toward
+100 % is a sweep candidate. Repeat one level deeper inside a winning clade — sweeps stack, a second
+mutation can fix within the first.
 
 **Fallback for runs without the metric.** Older runs need the node: fetch organism snapshots
 (`/visualizer/api/organisms/{tick}`) on a grid of 10–15 sampled ticks, cache them as JSON, and
@@ -184,5 +186,6 @@ JSON format. For those runs body forensics goes the old way:
 - No `death_lifetimes`: fetch organism snapshots for a few ticks in the suspect window and build the
   lifetime histogram by hand from `deathTick − birthTick` of the entries marked dead. Expensive and
   it only sees the deaths of the sampled ticks, which is exactly why the metric exists.
-- No `population.bodied_count`: sum the per-genome counts in `genome.genome_data`; `load_population`
-  does this automatically when the column is missing.
+- No `population.bodied_count`: sum the per-genome counts in `genome.genome_data`, the column older
+  runs carry instead of the `genome_population` table; `load_population` does this automatically
+  when the column is missing.

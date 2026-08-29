@@ -15,16 +15,14 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigFactory;
 
 /**
  * Unit tests for {@link GenomeAnalyticsPlugin}.
  * <p>
- * Tests both diversity metrics (Shannon index, genome counts, dominant share) and
- * population distribution (topN tracking, JSON output, Base62 labels).
+ * The four numbers describe the spread of the living population at one moment, so the tests pin
+ * them against populations whose diversity is known by construction.
  */
 @Tag("unit")
 class GenomeAnalyticsPluginTest {
@@ -34,10 +32,7 @@ class GenomeAnalyticsPluginTest {
     @BeforeEach
     void setUp() {
         plugin = new GenomeAnalyticsPlugin();
-        Config config = ConfigFactory.parseMap(Map.of(
-            "metricId", "genome",
-            "topN", 3
-        ));
+        Config config = ConfigFactory.parseMap(Map.of("metricId", "genome"));
         plugin.configure(config);
         plugin.initialize(null);
     }
@@ -51,7 +46,7 @@ class GenomeAnalyticsPluginTest {
         ParquetSchema schema = plugin.getSchema();
 
         assertThat(schema).isNotNull();
-        assertThat(schema.getColumnCount()).isEqualTo(6);
+        assertThat(schema.getColumnCount()).isEqualTo(5);
 
         List<ParquetSchema.Column> columns = schema.getColumns();
         assertThat(columns.get(0).name()).isEqualTo("tick");
@@ -68,9 +63,6 @@ class GenomeAnalyticsPluginTest {
 
         assertThat(columns.get(4).name()).isEqualTo("dominant_share");
         assertThat(columns.get(4).type()).isEqualTo(ColumnType.DOUBLE);
-
-        assertThat(columns.get(5).name()).isEqualTo("genome_data");
-        assertThat(columns.get(5).type()).isEqualTo(ColumnType.VARCHAR);
     }
 
     // ========================================================================
@@ -140,7 +132,7 @@ class GenomeAnalyticsPluginTest {
     }
 
     @Test
-    void testExtractRows_NoOrganisms_ReturnsZerosAndEmptyJson() {
+    void testExtractRows_NoOrganisms_ReturnsZeros() {
         TickData tick = TickData.newBuilder()
             .setTickNumber(50)
             .build();
@@ -155,7 +147,6 @@ class GenomeAnalyticsPluginTest {
         assertThat(row[2]).isEqualTo(0);
         assertThat(row[3]).isEqualTo(0);
         assertThat(row[4]).isEqualTo(0.0);
-        assertThat(row[5]).isEqualTo("{}");
     }
 
     @Test
@@ -172,15 +163,29 @@ class GenomeAnalyticsPluginTest {
 
         assertThat(row[2]).isEqualTo(1); // total_genomes
         assertThat(row[3]).isEqualTo(1); // active_genomes
+        assertThat((Double) row[4]).isCloseTo(1.0, within(0.001)); // the one genome holds all of it
+    }
 
-        JsonObject json = JsonParser.parseString((String) row[5]).getAsJsonObject();
-        int total = json.entrySet().stream().mapToInt(e -> e.getValue().getAsInt()).sum();
-        assertThat(total).isEqualTo(1);
+    @Test
+    void testExtractRows_DeadOrganisms_Ignored() {
+        // The dead appear once in the recording after their death and are no longer population
+        TickData tick = TickData.newBuilder()
+            .setTickNumber(100)
+            .setTotalUniqueGenomes(2)
+            .addOrganisms(OrganismState.newBuilder().setOrganismId(1).setGenomeHash(111L).build())
+            .addOrganisms(OrganismState.newBuilder().setOrganismId(2).setGenomeHash(222L)
+                .setIsDead(true).build())
+            .build();
+
+        Object[] row = plugin.extractRows(tick).get(0);
+
+        assertThat(row[3]).isEqualTo(1);
+        assertThat((Double) row[4]).isCloseTo(1.0, within(0.001));
     }
 
     @Test
     void testExtractRows_TotalGenomes_ReadsFromTickData() {
-        // totalUniqueGenomes is now provided by the pipeline (tracked in Simulation),
+        // totalUniqueGenomes is provided by the pipeline (tracked in Simulation),
         // not computed cumulatively by the plugin.
         TickData tick = TickData.newBuilder()
             .setTickNumber(100)
@@ -199,161 +204,12 @@ class GenomeAnalyticsPluginTest {
     }
 
     // ========================================================================
-    // Population JSON Tests
-    // ========================================================================
-
-    @Test
-    void testExtractRows_SingleGenome_OneRowWithJson() {
-        TickData tick = createTickWithGenomes(100, 123456L, 123456L, 123456L);
-
-        List<Object[]> rows = plugin.extractRows(tick);
-
-        assertThat(rows).hasSize(1);
-        JsonObject json = JsonParser.parseString((String) rows.get(0)[5]).getAsJsonObject();
-        assertThat(json.entrySet()).hasSize(1);
-
-        int count = json.entrySet().iterator().next().getValue().getAsInt();
-        assertThat(count).isEqualTo(3);
-    }
-
-    @Test
-    void testExtractRows_MultipleGenomes_AllInOneJsonRow() {
-        TickData tick = createTickWithGenomes(100,
-            111L, 111L, 111L, 111L, 111L,
-            222L, 222L, 222L,
-            333L);
-
-        List<Object[]> rows = plugin.extractRows(tick);
-
-        assertThat(rows).hasSize(1);
-        JsonObject json = JsonParser.parseString((String) rows.get(0)[5]).getAsJsonObject();
-        assertThat(json.entrySet()).hasSize(3);
-
-        int total = json.entrySet().stream().mapToInt(e -> e.getValue().getAsInt()).sum();
-        assertThat(total).isEqualTo(9);
-    }
-
-    @Test
-    void testExtractRows_MoreThanTopN_CreatesOtherCategory() {
-        TickData tick = createTickWithGenomes(100,
-            111L, 111L, 111L, 111L, 111L,
-            222L, 222L, 222L, 222L,
-            333L, 333L, 333L,
-            444L, 444L,
-            555L);
-
-        List<Object[]> rows = plugin.extractRows(tick);
-
-        assertThat(rows).hasSize(1);
-        JsonObject json = JsonParser.parseString((String) rows.get(0)[5]).getAsJsonObject();
-
-        assertThat(json.entrySet()).hasSize(4); // 3 tracked + "other"
-        assertThat(json.has("other")).isTrue();
-        assertThat(json.get("other").getAsInt()).isEqualTo(3); // D(2) + E(1) = 3
-    }
-
-    @Test
-    void testExtractRows_ExactlyTopN_NoOtherCategory() {
-        TickData tick = createTickWithGenomes(100, 111L, 222L, 333L);
-
-        List<Object[]> rows = plugin.extractRows(tick);
-
-        assertThat(rows).hasSize(1);
-        JsonObject json = JsonParser.parseString((String) rows.get(0)[5]).getAsJsonObject();
-
-        assertThat(json.entrySet()).hasSize(3);
-        assertThat(json.has("other")).isFalse();
-    }
-
-    @Test
-    void testExtractRows_GenomeLabel_Base62Format() {
-        TickData tick = createTickWithGenomes(100, 123456789L);
-
-        List<Object[]> rows = plugin.extractRows(tick);
-
-        assertThat(rows).hasSize(1);
-        JsonObject json = JsonParser.parseString((String) rows.get(0)[5]).getAsJsonObject();
-
-        String label = json.keySet().iterator().next();
-        assertThat(label).hasSize(6);
-        assertThat(label).matches("[0-9a-zA-Z]{6}");
-    }
-
-    @Test
-    void testExtractRows_GenomeTurnover_TracksActiveGenomes() {
-        // Tick 1: genomes A(5), B(3), C(2) - all fit in topN=3
-        TickData tick1 = createTickWithGenomes(100,
-            111L, 111L, 111L, 111L, 111L,
-            222L, 222L, 222L,
-            333L, 333L);
-
-        List<Object[]> rows1 = plugin.extractRows(tick1);
-        JsonObject json1 = JsonParser.parseString((String) rows1.get(0)[5]).getAsJsonObject();
-        assertThat(json1.has("other")).isFalse();
-
-        // Simulate many ticks to build up large cumulative counts for A/B/C
-        for (int i = 0; i < 100; i++) {
-            plugin.extractRows(createTickWithGenomes(200 + i,
-                111L, 111L, 111L, 111L, 111L,
-                222L, 222L, 222L,
-                333L, 333L));
-        }
-
-        // Tick N: genomes D(5), E(3), F(2) - complete turnover, A/B/C extinct
-        TickData tickN = createTickWithGenomes(1000,
-            444L, 444L, 444L, 444L, 444L,
-            555L, 555L, 555L,
-            666L, 666L);
-
-        List<Object[]> rows2 = plugin.extractRows(tickN);
-        JsonObject json2 = JsonParser.parseString((String) rows2.get(0)[5]).getAsJsonObject();
-
-        // All 3 new genomes must be tracked, nothing in "other"
-        assertThat(json2.has("other")).as("extinct genomes must not occupy top N slots").isFalse();
-        assertThat(json2.entrySet()).hasSize(3);
-
-        int total = json2.entrySet().stream().mapToInt(e -> e.getValue().getAsInt()).sum();
-        assertThat(total).isEqualTo(10);
-    }
-
-    @Test
-    void testExtractRows_ConsistentLabelsAcrossTicks() {
-        TickData tick1 = createTickWithGenomes(100,
-            111L, 111L, 111L, 111L, 111L);
-
-        List<Object[]> rows1 = plugin.extractRows(tick1);
-        JsonObject json1 = JsonParser.parseString((String) rows1.get(0)[5]).getAsJsonObject();
-        String labelA = json1.keySet().iterator().next();
-
-        TickData tick2 = createTickWithGenomes(200, 111L, 111L);
-
-        List<Object[]> rows2 = plugin.extractRows(tick2);
-        JsonObject json2 = JsonParser.parseString((String) rows2.get(0)[5]).getAsJsonObject();
-        String labelA2 = json2.keySet().iterator().next();
-
-        assertThat(labelA).isEqualTo(labelA2);
-    }
-
-    // ========================================================================
     // Manifest Tests
     // ========================================================================
 
     @Test
-    void testGetManifestEntry_ReturnsNull() {
-        assertThat(plugin.getManifestEntry()).isNull();
-    }
-
-    @Test
-    void testGetManifestEntries_ReturnsTwoEntries() {
-        List<ManifestEntry> entries = plugin.getManifestEntries();
-
-        assertThat(entries).hasSize(2);
-    }
-
-    @Test
-    void testGetManifestEntries_DiversityEntry() {
-        List<ManifestEntry> entries = plugin.getManifestEntries();
-        ManifestEntry diversity = entries.get(0);
+    void testGetManifestEntry_DescribesTheDiversityChart() {
+        ManifestEntry diversity = plugin.getManifestEntry();
 
         assertThat(diversity.id).isEqualTo("genome_diversity");
         assertThat(diversity.storageMetricId).isEqualTo("genome");
@@ -370,32 +226,8 @@ class GenomeAnalyticsPluginTest {
     }
 
     @Test
-    void testGetManifestEntries_PopulationEntry() {
-        List<ManifestEntry> entries = plugin.getManifestEntries();
-        ManifestEntry population = entries.get(1);
-
-        assertThat(population.id).isEqualTo("genome_population");
-        assertThat(population.storageMetricId).isEqualTo("genome");
-        assertThat(population.name).isEqualTo("Genome Population");
-        assertThat(population.description).contains("top 3");
-
-        assertThat(population.dataSources).containsKey("lod0");
-        assertThat(population.visualization.type).isEqualTo("stacked-area-chart");
-        assertThat(population.visualization.config.get("x")).isEqualTo("tick");
-        assertThat(population.visualization.config.get("jsonColumn")).isEqualTo("genome_data");
-        assertThat(population.visualization.config.get("maxGroups")).isEqualTo(3);
-        assertThat(population.visualization.config.get("yFormat")).isEqualTo("integer");
-    }
-
-    @Test
-    void testConfigure_DefaultTopN() {
-        GenomeAnalyticsPlugin defaultPlugin = new GenomeAnalyticsPlugin();
-        Config config = ConfigFactory.parseMap(Map.of("metricId", "test"));
-        defaultPlugin.configure(config);
-
-        List<ManifestEntry> entries = defaultPlugin.getManifestEntries();
-        ManifestEntry population = entries.get(1);
-        assertThat(population.description).contains("top 10");
+    void testGetManifestEntries_HoldsTheOneChart() {
+        assertThat(plugin.getManifestEntries()).hasSize(1);
     }
 
     // ========================================================================
