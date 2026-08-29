@@ -1,7 +1,11 @@
 # Experiment Publication
 
-**Status: AGREED — ready for implementation. All decisions below are final; the implementing
-session refines wording and details, not the decisions.**
+**Status: ACCOMPLISHED — both records are published (demo run 20260226-03114337:
+[10.5281/zenodo.22081452](https://doi.org/10.5281/zenodo.22081452), 2026-08-25; run 20260402:
+[10.5281/zenodo.22155607](https://doi.org/10.5281/zenodo.22155607), 2026-08-29), the working
+documents under `docs/experiments/` have migrated into the records, and the index
+[docs/PUBLISHED_EXPERIMENTS.md](../../../PUBLISHED_EXPERIMENTS.md) is linked from the README and the
+scientific overview.**
 
 ## Purpose
 

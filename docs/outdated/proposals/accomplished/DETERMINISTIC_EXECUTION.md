@@ -72,9 +72,8 @@ Consequences that follow from the contract (constraints, not design choices):
   organism ID alone and restarts the draw index at every tick boundary, so the format stayed
   unchanged.
 - Old runs are not migrated. They were produced under the current behaviour and remain what they
-  are; the experiment record for run 20260402
-  ([docs/experiments/RUN_20260402_SELECTIVE_SWEEP.md](../../../experiments/RUN_20260402_SELECTIVE_SWEEP.md))
-  documents this explicitly.
+  are; the published record for run 20260402 (see
+  [docs/PUBLISHED_EXPERIMENTS.md](../../../PUBLISHED_EXPERIMENTS.md)) documents this explicitly.
 
 ## Acceptance tests
 
