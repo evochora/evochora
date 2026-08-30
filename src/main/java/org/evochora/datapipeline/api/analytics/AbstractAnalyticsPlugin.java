@@ -86,6 +86,11 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
      *   <li>{@code samplingInterval} - Optional, default 1 (every recorded tick)</li>
      *   <li>{@code lodFactor} - Optional, default 10</li>
      *   <li>{@code lodLevels} - Optional, default 1</li>
+     * </ul>
+     * A plugin for which only one value of an option is right states it through
+     * {@link #fixedSamplingInterval()} or {@link #fixedLodLevels()}; configuring such an option is
+     * then refused rather than obeyed or ignored.
+     * <ul>
      *   <li>{@code maxDataPoints} - Optional, default null (frontend decides)</li>
      * </ul>
      * Subclasses can override to read additional config, but must call {@code super.configure(config)}.
@@ -94,18 +99,75 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
     public void configure(Config config) {
         this.config = config;
         this.metricId = config.getString("metricId");
-        if (config.hasPath("samplingInterval")) {
-            this.samplingInterval = requireAtLeastOne(config.getInt("samplingInterval"), "samplingInterval");
-        }
+        this.samplingInterval = settle(config, "samplingInterval", fixedSamplingInterval(), samplingInterval);
+        this.lodLevels = settle(config, "lodLevels", fixedLodLevels(), lodLevels);
         if (config.hasPath("lodFactor")) {
             this.lodFactor = requireAtLeastOne(config.getInt("lodFactor"), "lodFactor");
-        }
-        if (config.hasPath("lodLevels")) {
-            this.lodLevels = requireAtLeastOne(config.getInt("lodLevels"), "lodLevels");
         }
         if (config.hasPath("maxDataPoints")) {
             this.maxDataPoints = config.getInt("maxDataPoints");
         }
+    }
+
+    /**
+     * A value a plugin sets itself, with the reason it cannot be configured.
+     *
+     * @param value  the value that holds for this metric
+     * @param reason what about the metric makes any other value wrong, phrased to follow
+     *               "cannot be configured, because ..."
+     */
+    public record Fixed(int value, String reason) { }
+
+    /**
+     * The sampling interval this metric requires, or {@code null} if it may be configured.
+     * <p>
+     * A metric reporting what happened since the previous recording cannot skip one: what fell
+     * into the gap is not reported late, it is not reported at all. Such a metric states its
+     * interval here instead of trusting a configuration file to carry it.
+     *
+     * @return the interval this metric requires, or {@code null}
+     */
+    protected Fixed fixedSamplingInterval() {
+        return null;
+    }
+
+    /**
+     * The number of levels of detail this metric requires, or {@code null} if it may be configured.
+     * <p>
+     * A level of detail selects rows, which is a coarser picture of a quantity but a broken one of
+     * a structure. A metric carrying structure states its single level here.
+     *
+     * @return the number of levels this metric requires, or {@code null}
+     */
+    protected Fixed fixedLodLevels() {
+        return null;
+    }
+
+    /**
+     * Determines an option's value from what the plugin fixes and what the configuration says.
+     * <p>
+     * A configured value is refused wherever the plugin fixes one - including a value that agrees.
+     * Two places stating the same number are two places that can come to differ, and the one in
+     * the configuration file would then win silently over the one the code needs.
+     *
+     * @param config   the plugin's configuration
+     * @param option   the option's name
+     * @param fixed    what the plugin fixes, or {@code null}
+     * @param fallback the value to keep when neither fixes nor configures it
+     * @return the value to use
+     * @throws IllegalArgumentException if the option is configured although the plugin fixes it,
+     *         or if a configured value is below one
+     */
+    private int settle(Config config, String option, Fixed fixed, int fallback) {
+        if (fixed == null) {
+            return config.hasPath(option) ? requireAtLeastOne(config.getInt(option), option) : fallback;
+        }
+        if (config.hasPath(option)) {
+            throw new IllegalArgumentException("Metric '" + metricId + "': " + option
+                + " is " + fixed.value() + " for this metric and cannot be configured, because "
+                + fixed.reason() + ". Remove it from the configuration.");
+        }
+        return fixed.value();
     }
 
     /**

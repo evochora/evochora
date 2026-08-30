@@ -47,6 +47,10 @@ import org.evochora.datapipeline.api.contracts.TickData;
  * ancestor. Rows therefore appear where a genome is new, which is what a tree of descent is made
  * of.
  * <p>
+ * <strong>One level of detail, every recorded tick.</strong> Both follow from the same thing: a
+ * lineage is a structure, not a quantity. Leaving rows out does not coarsen it, it removes edges
+ * and turns descendants into roots. Neither value is therefore configurable; the plugin sets them.
+ * <p>
  * Organisms without genome molecules are not genomes and get no row. They can still be a parent:
  * their children are written with a parent genome of 0, which the reconstruction has to treat as a
  * root rather than as a founder.
@@ -65,6 +69,19 @@ public class GenomeLineagePlugin extends AbstractAnalyticsPlugin {
 
     /** Reused across ticks; holds the earliest birth per edge seen in the current recording. */
     private final Map<Edge, Long> edgesInTick = new LinkedHashMap<>();
+
+    @Override
+    protected Fixed fixedSamplingInterval() {
+        return new Fixed(1, "it reports the organisms born since the previous recording, so a "
+            + "skipped recording drops a whole birth window and the genomes born in it are missing "
+            + "from the tree rather than late");
+    }
+
+    @Override
+    protected Fixed fixedLodLevels() {
+        return new Fixed(1, "a level of detail selects rows, and a selection from a lineage is a "
+            + "tree with edges missing, in which descendants look like roots");
+    }
 
     @Override
     public ParquetSchema getSchema() {

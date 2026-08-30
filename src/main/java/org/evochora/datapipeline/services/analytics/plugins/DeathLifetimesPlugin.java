@@ -66,6 +66,13 @@ public class DeathLifetimesPlugin extends AbstractAnalyticsPlugin {
     private long[] lifetimes = new long[64];
 
     @Override
+    protected Fixed fixedSamplingInterval() {
+        return new Fixed(1, "a dead organism is reported in exactly one recording and removed "
+            + "afterwards, so a skipped recording loses its deaths for good - deaths are events, "
+            + "not a state that can be sampled");
+    }
+
+    @Override
     public ParquetSchema getSchema() {
         return SCHEMA;
     }

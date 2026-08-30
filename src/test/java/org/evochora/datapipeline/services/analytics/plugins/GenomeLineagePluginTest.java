@@ -1,6 +1,7 @@
 package org.evochora.datapipeline.services.analytics.plugins;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -248,4 +249,15 @@ class GenomeLineagePluginTest {
             @Override public Path getTempDirectory() { throw new UnsupportedOperationException(); }
         };
     }
+    @Test
+    void lodLevelsCannotBeConfigured() {
+        // The value follows from what the metric is, so a configuration file stating it would be
+        // a second place to hold it - and the place that wins when the two disagree
+        assertThatThrownBy(() -> new GenomeLineagePlugin().configure(ConfigFactory.parseMap(
+                Map.of("metricId", "m", "lodLevels", 3)))
+            ).isInstanceOf(IllegalArgumentException.class)
+             .hasMessageContaining("lodLevels")
+             .hasMessageContaining("descendants look like roots");
+    }
+
 }

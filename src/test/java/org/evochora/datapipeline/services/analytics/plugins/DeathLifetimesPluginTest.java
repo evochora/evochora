@@ -236,4 +236,15 @@ class DeathLifetimesPluginTest {
             .setBirthTick(birthTick)
             .build();
     }
+    @Test
+    void samplingIntervalCannotBeConfigured() {
+        // The value follows from what the metric is, so a configuration file stating it would be
+        // a second place to hold it - and the place that wins when the two disagree
+        assertThatThrownBy(() -> new DeathLifetimesPlugin().configure(ConfigFactory.parseMap(
+                Map.of("metricId", "m", "samplingInterval", 10)))
+            ).isInstanceOf(IllegalArgumentException.class)
+             .hasMessageContaining("samplingInterval")
+             .hasMessageContaining("loses its deaths for good");
+    }
+
 }

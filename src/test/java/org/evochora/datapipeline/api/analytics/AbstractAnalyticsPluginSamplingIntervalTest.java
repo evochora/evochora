@@ -182,6 +182,43 @@ class AbstractAnalyticsPluginSamplingIntervalTest {
         };
     }
 
+    @Test
+    void fixedOption_isTakenWithoutBeingConfigured() {
+        FixedIntervalPlugin plugin = new FixedIntervalPlugin();
+
+        plugin.configure(ConfigFactory.parseMap(Map.of("metricId", "test")));
+
+        assertThat(plugin.getSamplingInterval()).isEqualTo(1);
+    }
+
+    @Test
+    void fixedOption_refusesToBeConfigured() {
+        assertThatThrownBy(() -> new FixedIntervalPlugin().configure(ConfigFactory.parseMap(
+                Map.of("metricId", "test", "samplingInterval", 5))))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("samplingInterval")
+            .hasMessageContaining("cannot be configured")
+            .hasMessageContaining("every recording carries what happened since the previous one");
+    }
+
+    @Test
+    void fixedOption_refusesEvenAConfiguredValueThatAgrees() {
+        // Two places holding the same number are two places that can drift apart, and the
+        // configuration would then quietly win over the plugin that needs the value
+        assertThatThrownBy(() -> new FixedIntervalPlugin().configure(ConfigFactory.parseMap(
+                Map.of("metricId", "test", "samplingInterval", 1))))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("cannot be configured");
+    }
+
+    /** A plugin for which only one sampling interval is right. */
+    private static class FixedIntervalPlugin extends TestPlugin {
+        @Override
+        protected Fixed fixedSamplingInterval() {
+            return new Fixed(1, "every recording carries what happened since the previous one");
+        }
+    }
+
     /** Minimal concrete plugin for testing AbstractAnalyticsPlugin. */
     private static class TestPlugin extends AbstractAnalyticsPlugin {
         @Override
