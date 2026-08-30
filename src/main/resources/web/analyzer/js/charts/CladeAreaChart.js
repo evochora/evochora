@@ -108,6 +108,12 @@ function bandsFor(parents, children, openPath) {
  * its own carriers. A genome whose ancestry leaves the opened branch belongs to no band and is
  * left out of the picture - it is still population, and still counts towards the shares.
  *
+ * An ancestry is a walk upwards and ends at a root, unless the edges lead in a circle. Nothing
+ * upstream rules that out: a plugin writing one edge at a time cannot see a circle spanning
+ * several, so the walk carries the genomes it has passed and stops when it meets one again. Such a
+ * genome has no root and joins those outside the branch - counted, not drawn - and the circle is
+ * reported, because a lineage containing one is broken rather than merely unusual.
+ *
  * @param {Iterable<string>} genomes - Genomes to map
  * @param {Map<string, string|null>} parents - Genome to its parent
  * @param {{clades: Set<string>, selves: Set<string>}} bands - Bands to map into
@@ -120,6 +126,7 @@ function mapToBands(genomes, parents, bands) {
         if (bandOf.has(genome)) continue;
 
         const walked = [];
+        const onPath = new Set();
         let node = genome;
         let band = null;
 
@@ -136,10 +143,16 @@ function mapToBands(genomes, parents, bands) {
                 band = bandOf.get(node);
                 break;
             }
+            if (onPath.has(node)) {
+                console.warn(`[Analytics] The lineage leads in a circle at genome ${node}, so the `
+                    + `ancestry of ${genome} has no root. It is drawn in no band and still counts `
+                    + `towards the shares.`);
+                band = null;
+                break;
+            }
             walked.push(node);
-            const next = parents.get(node);
-            if (next === node) break;
-            node = next === undefined ? null : next;
+            onPath.add(node);
+            node = parents.get(node) ?? null;
         }
 
         bandOf.set(genome, band);
