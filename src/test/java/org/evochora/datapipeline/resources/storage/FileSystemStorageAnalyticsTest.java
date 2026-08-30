@@ -10,11 +10,13 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.io.InputStream;
 
 import org.evochora.datapipeline.api.resources.storage.PublishedOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.nio.file.Files;
 import java.util.List;
 import java.util.Map;
 
@@ -150,6 +152,32 @@ class FileSystemStorageAnalyticsTest {
             // Releasing the handle is the test cleaning up after itself, not part of what it shows
             out.close();
         }
+    }
+
+    /**
+     * A write whose stream cannot even be closed must not leave its temp file behind: nothing
+     * reaches it afterwards, because a stream that failed to close counts as closed.
+     */
+    @Test
+    void aStreamThatFailsToCloseStillRemovesItsTempFile() throws IOException {
+        Path temp = tempDir.resolve("batch.parquet.abc.tmp");
+        Files.writeString(temp, "half a file");
+        OutputStream refusesToClose = new OutputStream() {
+            @Override public void write(int b) { }
+            @Override public void close() throws IOException {
+                throw new IOException("the disk went away");
+            }
+        };
+
+        PublishedOutputStream out = new FileSystemStorageResource.AtomicMoveOnPublishStream(
+                refusesToClose, temp, tempDir.resolve("batch.parquet"));
+        out.publish();
+
+        assertThrows(IOException.class, out::close);
+
+        assertFalse(Files.exists(temp), "temp file of a write that could not be closed");
+        assertFalse(Files.exists(tempDir.resolve("batch.parquet")),
+                "a write that could not be closed must not appear under the final name");
     }
 
     /**

@@ -438,8 +438,10 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
      * Closing without publishing removes the temp file: a write that ended in an exception never
      * reaches its publish call, and what it managed to write must not appear under a name that
      * promises a complete file. Closing twice moves once.
+     * <p>
+     * Visible to its package so a test can hand it a delegate that fails to close.
      */
-    private static final class AtomicMoveOnPublishStream extends PublishedOutputStream {
+    static final class AtomicMoveOnPublishStream extends PublishedOutputStream {
         private final OutputStream delegate;
         private final java.nio.file.Path tempFile;
         private final java.nio.file.Path destination;
@@ -479,7 +481,15 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
                 return;
             }
             closed = true;
-            delegate.close();
+            try {
+                delegate.close();
+            } catch (IOException e) {
+                // Marked closed above, so nothing reaches the temp file after this - it has to go
+                // now or never. On object storage this is the abort that stops the parts being
+                // billed
+                discard();
+                throw e;
+            }
 
             if (!published) {
                 discard();
