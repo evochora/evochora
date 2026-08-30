@@ -6,12 +6,12 @@ description: Analyze an Evochora simulation run scientifically — population dy
 # Analyzing an Evochora run
 
 Work in three layers, cheapest first. Report observations separately from interpretations, and
-never claim selection without the checks in step 4. The helper modules in `scripts/` are proven on
-three runs; use them instead of re-deriving the recipes — but treat them as **temporary tooling**:
-they sit on volatile interfaces (endpoint JSON shapes, analytics column layouts) and may need
-adaptation when those change (the lineage field rename already broke them once). The proposal
-`docs/proposals/RUN_ANALYSIS_TOOLING.md` moves their responsibilities into tested system exports;
-as its items land, the scripts shrink and finally disappear.
+never claim selection without the checks in step 4.
+
+A current run needs nothing but the exports and the queries in this text. `scripts/sweep.py` is
+**temporary tooling for older runs only** — it reconstructs from organism snapshots what those runs
+have no export for, it sits on the snapshot JSON shape, which has changed before, and it is not
+part of the tested system. It disappears when those runs are no longer analyzed.
 
 ## 0 · Orientation (always first)
 
@@ -23,16 +23,25 @@ as its items land, the scripts shrink and finally disappear.
 
 ## 1 · Analytics layer (Parquet, no node needed)
 
-Use `scripts/analytics.py` (needs `duckdb`, `pandas` — a venv with them exists or is quickly made).
-`load_population(analytics_dir, lod)` returns population plus the two derived series that matter:
+Read the Parquet directly with DuckDB — no node, no helper module. One metric at one level of
+detail, coarsest first:
+
+```sql
+SELECT * FROM read_parquet('<analytics>/<metric>/lod4/**/*.parquet', union_by_name=true)
+ORDER BY tick
+```
+
+`union_by_name=true` keeps a run readable whose files were written by different builds: a column
+missing from older files arrives as NULL instead of raising a schema mismatch. LOD 4 is the
+coarsest and the place to start; drop to a finer one once a window is worth a closer look.
+
+The two series that matter throughout:
 
 - **bodied** = `population.bodied_count` = living organisms with genome hash ≠ 0. The gap to
   `alive_count` is the hash-0 cohort and is visible directly in the population chart as two
   diverging lines; a large gap means futile-forker or frozen-loser artifacts, not biology.
-  Runs whose analytics predate the column have no `bodied_count`; `load_population` then falls
-  back to summing the per-genome counts in their `genome.genome_data`, a column only those older
-  runs carry.
-- **births** = diff of `vital_stats.total_born`.
+- **births** = the first difference of `vital_stats.total_born`, e.g.
+  `total_born - lag(total_born) OVER (ORDER BY tick)`.
 
 **Futile forkers first.** A sudden persistent step in the birth rate is more often ONE damaged
 organism forking non-viable children than anything biological. The `death_lifetimes` metric decides
@@ -90,6 +99,10 @@ Off the Analyzer the same thing is a join: take a genome, collect its descendant
 there — no ranking — so a clade's share is the complete sum of its members. A genome can carry more
 than one parent edge; take the one with the smallest `first_birth_tick`, which is what the chart
 does.
+
+**Naming a genome:** everything in this project names a genome by six base-62 digits
+(`0-9a-zA-Z`) of its *unsigned* 64-bit hash — the chart legends, the analysis scripts. Compute it
+the same way and a band in the Analyzer and a row in a notebook are recognisably the same genome.
 
 **Fallback for runs without the metric.** Older runs need the node: fetch organism snapshots
 (`/visualizer/api/organisms/{tick}`) on a grid of 10–15 sampled ticks, cache them as JSON, and
@@ -171,6 +184,11 @@ JSON format. For those runs body forensics goes the old way:
 - Validate clade→genotype on several directly read bodies before using clade shares as genotype.
 - Early shares in tiny populations are founder/drift effects — call selection only for a sustained
   logistic rise across many generations, and phrase it as "consistent with selection".
+- **Measuring that rise:** fit a straight line through `logit(share) = ln(share / (1 - share))`
+  over ticks; the slope is the selection coefficient per tick, and multiplying by the generation
+  time gives it per generation. Fit **only the polymorphic phase**, shares strictly between 0.01
+  and 0.99: below and above, the logit is undefined or dominated by relict individuals, and the
+  near-fixation tail flattens the slope without carrying information about selection.
 - Generation time = median parent-birth→child-birth distance over sampled newborns; use it to
   express fixation speed in generations, not ticks.
 - Per-capita rates (births per organism per Mtick), never raw counts, when comparing clades.
@@ -191,6 +209,7 @@ JSON format. For those runs body forensics goes the old way:
 - No `death_lifetimes`: fetch organism snapshots for a few ticks in the suspect window and build the
   lifetime histogram by hand from `deathTick − birthTick` of the entries marked dead. Expensive and
   it only sees the deaths of the sampled ticks, which is exactly why the metric exists.
-- No `population.bodied_count`: sum the per-genome counts in `genome.genome_data`, the column older
-  runs carry instead of the `genome_population` table; `load_population` does this automatically
-  when the column is missing.
+- No `population.bodied_count`: sum the per-genome counts in `genome.genome_data`, the JSON column
+  older runs carry instead of the `genome_population` table. It holds the top genomes plus an
+  `other` bucket, and the plugin that wrote it skipped hash-0 organisms, so the sum is the same
+  quantity.

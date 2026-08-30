@@ -145,3 +145,14 @@ The skill's `scripts/` directory is temporary tooling on volatile interfaces and
 the repository only for the duration of this proposal: items 1–5 replace its responsibilities one
 by one, and the final item to land **deletes the directory entirely** — the skill then consists of
 the method text plus queries against the stable exports.
+
+**What that came to (2026-08-30).** For a current run the skill needs no script at all: the loaders
+became two DuckDB queries in the method text, and the clade computation became the clade view.
+What did not follow from an export moved into the text as method rather than code — how a selection
+coefficient is fitted, and which shares may enter the fit. `analytics.py` is gone.
+
+`sweep.py` remains, and only for runs recorded before these exports existed: it rebuilds their
+lineage from organism snapshots, which is the one thing no export of theirs can supply. It carries
+no responsibility for current runs and is therefore held to the same standard as before — temporary
+tooling on a volatile interface, to be deleted once those runs are no longer analyzed, not code the
+system depends on.
