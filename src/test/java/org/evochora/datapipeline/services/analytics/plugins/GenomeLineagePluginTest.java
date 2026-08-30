@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
+import org.evochora.datapipeline.api.resources.storage.PublishedOutputStream;
 import org.evochora.datapipeline.api.analytics.IAnalyticsContext;
 import org.evochora.datapipeline.api.analytics.ParquetSchema;
 import org.evochora.datapipeline.api.contracts.OrganismState;
@@ -242,7 +243,7 @@ class GenomeLineagePluginTest {
         return new IAnalyticsContext() {
             @Override public SimulationMetadata getMetadata() { return metadata; }
             @Override public String getRunId() { return "test-run"; }
-            @Override public OutputStream openArtifactStream(String m, String l, String f) throws IOException {
+            @Override public PublishedOutputStream openArtifactStream(String m, String l, String f) throws IOException {
                 throw new UnsupportedOperationException();
             }
             @Override public Path getTempDirectory() { throw new UnsupportedOperationException(); }

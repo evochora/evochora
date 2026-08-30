@@ -21,6 +21,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
+import org.evochora.datapipeline.api.resources.storage.PublishedOutputStream;
 import org.evochora.datapipeline.api.resources.storage.IAnalyticsStorageRead;
 import org.evochora.datapipeline.api.resources.storage.IAnalyticsStorageWrite;
 import org.evochora.datapipeline.utils.compression.ICompressionCodec;
@@ -411,7 +412,7 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
     // ========================================================================
 
     @Override
-    public OutputStream openAnalyticsOutputStream(String runId, String metricId, String lodLevel, String subPath, String filename) throws IOException {
+    public PublishedOutputStream openAnalyticsOutputStream(String runId, String metricId, String lodLevel, String subPath, String filename) throws IOException {
         File file = getAnalyticsFile(runId, metricId, lodLevel, subPath, filename);
         
         // Ensure parent directories exist
@@ -423,28 +424,30 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
         }
 
         // Atomic write, as on the raw path: the caller writes into a temp file next to the
-        // destination, and closing moves it into place. An abandoned write leaves the temp file,
-        // which the listings filter out - never a half-written file under the final name.
-        // Suffix rather than prefix, so that filtering by ".tmp" catches it.
+        // destination, and a published write moves it into place. An abandoned one leaves the
+        // temp file, which the listings filter out - never a half-written file under the final
+        // name. Suffix rather than prefix, so that filtering by ".tmp" catches it.
         File tempFile = new File(parentDir, file.getName() + "." + java.util.UUID.randomUUID() + ".tmp");
         OutputStream out = Files.newOutputStream(tempFile.toPath());
-        return new AtomicMoveOnCloseStream(out, tempFile.toPath(), file.toPath());
+        return new AtomicMoveOnPublishStream(out, tempFile.toPath(), file.toPath());
     }
 
     /**
-     * Writes through to a temp file and moves it onto the destination when closed.
+     * Writes through to a temp file and moves it onto the destination when the write is published.
      * <p>
-     * Closing twice moves once. If the move fails the temp file is removed, so a failed write
-     * leaves nothing behind but reports the failure.
+     * Closing without publishing removes the temp file: a write that ended in an exception never
+     * reaches its publish call, and what it managed to write must not appear under a name that
+     * promises a complete file. Closing twice moves once.
      */
-    private static final class AtomicMoveOnCloseStream extends OutputStream {
+    private static final class AtomicMoveOnPublishStream extends PublishedOutputStream {
         private final OutputStream delegate;
         private final java.nio.file.Path tempFile;
         private final java.nio.file.Path destination;
         private boolean closed;
+        private boolean published;
 
-        AtomicMoveOnCloseStream(OutputStream delegate, java.nio.file.Path tempFile,
-                                java.nio.file.Path destination) {
+        AtomicMoveOnPublishStream(OutputStream delegate, java.nio.file.Path tempFile,
+                                  java.nio.file.Path destination) {
             this.delegate = delegate;
             this.tempFile = tempFile;
             this.destination = destination;
@@ -466,22 +469,38 @@ public class FileSystemStorageResource extends AbstractBatchStorageResource
         }
 
         @Override
+        public void publish() {
+            published = true;
+        }
+
+        @Override
         public void close() throws IOException {
             if (closed) {
                 return;
             }
             closed = true;
             delegate.close();
+
+            if (!published) {
+                discard();
+                return;
+            }
+
             try {
                 Files.move(tempFile, destination,
                     StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
             } catch (IOException e) {
-                try {
-                    Files.deleteIfExists(tempFile);
-                } catch (IOException cleanupEx) {
-                    log.warn("Failed to clean up temp file after move failure: {}", tempFile, cleanupEx);
-                }
+                discard();
                 throw e;
+            }
+        }
+
+        /** Removes the temp file, reporting a failure to do so without masking the original one. */
+        private void discard() {
+            try {
+                Files.deleteIfExists(tempFile);
+            } catch (IOException cleanupEx) {
+                log.warn("Failed to clean up temp file: {}", tempFile, cleanupEx);
             }
         }
     }

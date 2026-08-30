@@ -847,7 +847,8 @@ class AnalyticsIndexerEndToEndTest {
         FileSystemStorageResource refusingStorage =
             new FileSystemStorageResource("refusing-storage", storageConfig) {
                 @Override
-                public java.io.OutputStream openAnalyticsOutputStream(String runId, String metricId,
+                public org.evochora.datapipeline.api.resources.storage.PublishedOutputStream
+                        openAnalyticsOutputStream(String runId, String metricId,
                         String lodLevel, String subPath, String filename) throws IOException {
                     throw new IOException("storage refuses analytics writes in this test");
                 }

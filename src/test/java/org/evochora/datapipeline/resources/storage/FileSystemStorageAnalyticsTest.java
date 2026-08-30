@@ -12,6 +12,8 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+
+import org.evochora.datapipeline.api.resources.storage.PublishedOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.List;
@@ -49,8 +51,9 @@ class FileSystemStorageAnalyticsTest {
         String content = "tick,count\n1,100\n2,105";
 
         // 1. Write (structured)
-        try (OutputStream out = storage.openAnalyticsOutputStream(runId, metricId, lod, filename)) {
+        try (PublishedOutputStream out = storage.openAnalyticsOutputStream(runId, metricId, lod, filename)) {
             out.write(content.getBytes(StandardCharsets.UTF_8));
+            out.publish();
         }
 
         // 2. Read (path relative to analytics root)
@@ -132,7 +135,7 @@ class FileSystemStorageAnalyticsTest {
     @Test
     void abandonedWriteLeavesNoFileUnderTheFinalName() throws IOException {
         String runId = "run-abandoned";
-        OutputStream out = storage.openAnalyticsOutputStream(runId, "population", "lod0", "000", "batch.parquet");
+        PublishedOutputStream out = storage.openAnalyticsOutputStream(runId, "population", "lod0", "000", "batch.parquet");
         out.write("half a file".getBytes(StandardCharsets.UTF_8));
         out.flush();
         // deliberately not closed - as if the process died here
@@ -144,11 +147,33 @@ class FileSystemStorageAnalyticsTest {
                 "temp files must stay out of listings: " + listed);
     }
 
+    /**
+     * A write that failed part way through and was then closed properly must leave nothing under
+     * the final name either. Closing is what a try-with-resources block does on the way out of an
+     * exception, so it cannot be the signal that the content is complete.
+     */
+    @Test
+    void aWriteThatFailedAndWasClosedLeavesNoFileUnderTheFinalName() throws IOException {
+        String runId = "run-failed";
+
+        try (PublishedOutputStream out = storage.openAnalyticsOutputStream(
+                runId, "population", "lod0", "000", "batch.parquet")) {
+            out.write("half a file".getBytes(StandardCharsets.UTF_8));
+            // as if the transfer threw here: the block is left without publishing
+        }
+
+        List<String> listed = storage.listAnalyticsFiles(runId, "");
+        assertTrue(listed.stream().noneMatch(f -> f.endsWith("batch.parquet")),
+                "an unpublished write must not appear under the final name: " + listed);
+        assertTrue(listed.isEmpty(), "and must leave nothing behind at all: " + listed);
+    }
+
     @Test
     void closingPublishesTheFileUnderItsFinalName() throws IOException {
         String runId = "run-published";
-        try (OutputStream out = storage.openAnalyticsOutputStream(runId, "population", "lod0", "000", "batch.parquet")) {
+        try (PublishedOutputStream out = storage.openAnalyticsOutputStream(runId, "population", "lod0", "000", "batch.parquet")) {
             out.write("complete".getBytes(StandardCharsets.UTF_8));
+            out.publish();
         }
 
         List<String> listed = storage.listAnalyticsFiles(runId, "");
@@ -167,8 +192,9 @@ class FileSystemStorageAnalyticsTest {
     void writingTheSameFileTwiceReplacesIt() throws IOException {
         String runId = "run-replaced";
         for (String content : List.of("first", "second")) {
-            try (OutputStream out = storage.openAnalyticsOutputStream(runId, "population", "lod0", "000", "batch.parquet")) {
+            try (PublishedOutputStream out = storage.openAnalyticsOutputStream(runId, "population", "lod0", "000", "batch.parquet")) {
                 out.write(content.getBytes(StandardCharsets.UTF_8));
+                out.publish();
             }
         }
 

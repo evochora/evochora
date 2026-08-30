@@ -5,6 +5,7 @@ import java.io.OutputStream;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.evochora.datapipeline.api.resources.storage.PublishedOutputStream;
 import org.evochora.datapipeline.api.resources.IWrappedResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.storage.IAnalyticsStorageWrite;
@@ -48,15 +49,15 @@ public class MonitoredAnalyticsStorageWriter extends AbstractResource implements
     }
 
     @Override
-    public OutputStream openAnalyticsOutputStream(String runId, String metricId, String lodLevel, String subPath, String filename) throws IOException {
+    public PublishedOutputStream openAnalyticsOutputStream(String runId, String metricId, String lodLevel, String subPath, String filename) throws IOException {
         long start = System.nanoTime();
         try {
-            OutputStream raw = delegate.openAnalyticsOutputStream(runId, metricId, lodLevel, subPath, filename);
-            
+            PublishedOutputStream raw = delegate.openAnalyticsOutputStream(runId, metricId, lodLevel, subPath, filename);
+
             // Return a wrapper stream to count bytes on close
-            return new OutputStream() {
+            return new PublishedOutputStream() {
                 private long bytes = 0;
-                
+
                 @Override
                 public void write(int b) throws IOException {
                     raw.write(b);
@@ -67,6 +68,11 @@ public class MonitoredAnalyticsStorageWriter extends AbstractResource implements
                 public void write(byte[] b, int off, int len) throws IOException {
                     raw.write(b, off, len);
                     bytes += len;
+                }
+
+                @Override
+                public void publish() throws IOException {
+                    raw.publish();
                 }
 
                 @Override

@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
+import org.evochora.datapipeline.api.resources.storage.PublishedOutputStream;
 import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.analytics.ColumnType;
 import org.evochora.datapipeline.api.analytics.IAnalyticsContext;
@@ -268,7 +269,7 @@ class PopulationMetricsPluginTest {
             }
 
             @Override
-            public OutputStream openArtifactStream(String metricId, String lodLevel, String filename) throws IOException {
+            public PublishedOutputStream openArtifactStream(String metricId, String lodLevel, String filename) throws IOException {
                 throw new UnsupportedOperationException();
             }
 

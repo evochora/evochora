@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
+import org.evochora.datapipeline.api.resources.storage.PublishedOutputStream;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
@@ -170,7 +171,7 @@ class AbstractAnalyticsPluginSamplingIntervalTest {
             }
 
             @Override
-            public OutputStream openArtifactStream(String metricId, String lodLevel, String filename)
+            public PublishedOutputStream openArtifactStream(String metricId, String lodLevel, String filename)
                     throws IOException {
                 throw new UnsupportedOperationException();
             }

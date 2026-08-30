@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.util.List;
 import java.util.Map;
 
+import org.evochora.datapipeline.api.resources.storage.PublishedOutputStream;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.junit.extensions.logging.LogWatchExtension;
@@ -103,7 +104,7 @@ class AbstractAnalyticsPluginMaxDataPointsTest {
         return new IAnalyticsContext() {
             @Override public SimulationMetadata getMetadata() { return metadata; }
             @Override public String getRunId() { return "test-run"; }
-            @Override public java.io.OutputStream openArtifactStream(String m, String l, String f) {
+            @Override public PublishedOutputStream openArtifactStream(String m, String l, String f) {
                 throw new UnsupportedOperationException();
             }
             @Override public java.nio.file.Path getTempDirectory() {

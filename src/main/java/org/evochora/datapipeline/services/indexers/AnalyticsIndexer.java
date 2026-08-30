@@ -37,6 +37,7 @@ import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.api.resources.storage.PublishedOutputStream;
 import org.evochora.datapipeline.api.resources.storage.IAnalyticsStorageWrite;
 import org.evochora.datapipeline.api.resources.storage.ITickRelevance;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
@@ -368,9 +369,12 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
                     }
 
                     try (InputStream in = Files.newInputStream(tempFile);
-                         OutputStream out = analyticsOutput.openAnalyticsOutputStream(
+                         PublishedOutputStream out = analyticsOutput.openAnalyticsOutputStream(
                              runId, task.metricId(), task.lodLevel(), subPath, filename)) {
                         in.transferTo(out);
+                        // Only a transfer that ran to its end may become visible: half a Parquet
+                        // file passes a size check and then breaks every read over its directory
+                        out.publish();
                     }
 
                     log.debug("Plugin {} wrote {} rows for {} batch {}-{} to {}/{}",
@@ -812,7 +816,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
         }
 
         @Override
-        public OutputStream openArtifactStream(String metricId, String lodLevel, String filename) throws IOException {
+        public PublishedOutputStream openArtifactStream(String metricId, String lodLevel, String filename) throws IOException {
             return analyticsOutput.openAnalyticsOutputStream(runId, metricId, lodLevel, filename);
         }
 
