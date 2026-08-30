@@ -61,11 +61,23 @@ public class GenomePopulationPlugin extends AbstractAnalyticsPlugin {
     /** Metric holding the lineage the clade view reads alongside these counts. */
     private String lineageMetricId = "genome_lineage";
 
+    /**
+     * {@inheritDoc}
+     *
+     * @throws IllegalArgumentException if {@code lineageMetricId} is configured empty, which would
+     *         leave the chart looking for a table under no name and showing nothing
+     */
     @Override
     public void configure(Config config) {
         super.configure(config);
         if (config.hasPath("lineageMetricId")) {
-            this.lineageMetricId = config.getString("lineageMetricId");
+            String configured = config.getString("lineageMetricId").trim();
+            if (configured.isEmpty()) {
+                throw new IllegalArgumentException("Metric '" + metricId
+                    + "': lineageMetricId names the metric holding the lineage this chart is read"
+                    + " next to, and cannot be empty.");
+            }
+            this.lineageMetricId = configured;
         }
     }
 

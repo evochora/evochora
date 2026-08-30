@@ -125,8 +125,15 @@ public class EnvironmentProperties {
      * @param from The starting coordinate
      * @param to The coordinate to reach
      * @return The vector from {@code from} to {@code to}, shortest across the wrap on a torus
+     * @throws IllegalArgumentException if a coordinate does not have one component per dimension
      */
     public int[] getRelativeVector(int[] from, int[] to) {
+        if (from.length != worldShape.length || to.length != worldShape.length) {
+            throw new IllegalArgumentException("A position in a " + worldShape.length
+                + "-dimensional world has " + worldShape.length + " coordinates, but got "
+                + from.length + " and " + to.length);
+        }
+
         int[] relative = new int[from.length];
         for (int i = 0; i < from.length; i++) {
             int delta = to[i] - from[i];

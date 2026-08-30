@@ -160,6 +160,18 @@ class EnvironmentPropertiesTest {
     }
 
     @Test
+    void relativeVectorRefusesACoordinateOfTheWrongLength() {
+        // Silently reading fewer components would give a vector that looks plausible and points
+        // somewhere else
+        EnvironmentProperties props = new EnvironmentProperties(new int[]{100, 50}, true);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> props.getRelativeVector(new int[]{1}, new int[]{2, 3}));
+        assertThrows(IllegalArgumentException.class,
+                () -> props.getRelativeVector(new int[]{1, 2}, new int[]{2, 3, 4}));
+    }
+
+    @Test
     void relativeVectorOnAFlatWorldIsPlainSubtraction() {
         // Without wrapping, a position before the origin stays negative and far stays far
         EnvironmentProperties props = new EnvironmentProperties(new int[]{100, 50}, false);

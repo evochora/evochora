@@ -23,10 +23,34 @@ final class AnalyticsTickRelevance implements ITickRelevance {
     /**
      * @param organismIntervals absolute tick intervals of the plugins reading organisms
      * @param cellIntervals     absolute tick intervals of the plugins reading the environment
+     * @throws IllegalArgumentException if an interval is not positive
      */
     AnalyticsTickRelevance(List<Long> organismIntervals, List<Long> cellIntervals) {
-        this.organismIntervals = organismIntervals.stream().mapToLong(Long::longValue).toArray();
-        this.cellIntervals = cellIntervals.stream().mapToLong(Long::longValue).toArray();
+        this.organismIntervals = checkedIntervals(organismIntervals, "organisms");
+        this.cellIntervals = checkedIntervals(cellIntervals, "the environment");
+    }
+
+    /**
+     * Converts the intervals, refusing any that cannot be a divisor.
+     * <p>
+     * A zero would reach the divisibility test as a division by zero, and a negative interval
+     * would pass it with a meaning nobody intended - both far from here, in the middle of parsing
+     * a chunk, where a configuration mistake is the last thing a reader would suspect.
+     *
+     * @param intervals the intervals to convert
+     * @param readers   what the plugins behind them read, for the message
+     * @return the intervals
+     * @throws IllegalArgumentException if one of them is not positive
+     */
+    private static long[] checkedIntervals(List<Long> intervals, String readers) {
+        return intervals.stream().mapToLong(interval -> {
+            if (interval == null || interval < 1) {
+                throw new IllegalArgumentException(
+                    "A plugin reading " + readers + " states a sampling interval of " + interval
+                    + " ticks. An interval is how many ticks lie between two rows and is at least 1.");
+            }
+            return interval;
+        }).toArray();
     }
 
     @Override

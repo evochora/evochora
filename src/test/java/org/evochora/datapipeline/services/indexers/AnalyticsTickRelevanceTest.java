@@ -1,6 +1,7 @@
 package org.evochora.datapipeline.services.indexers;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 
@@ -40,6 +41,24 @@ class AnalyticsTickRelevanceTest {
         assertThat(relevance.readsCellsAt(1000)).isTrue();
         assertThat(relevance.readsCellsAt(100)).isFalse();
         assertThat(relevance.readsOrganismsAt(100)).isTrue();
+    }
+
+    @Test
+    void anIntervalOfZeroIsRefusedWhereItIsStated() {
+        // Left to the divisibility test it would surface as a division by zero in the middle of
+        // parsing a chunk, where nobody looks for a configuration mistake
+        assertThatThrownBy(() -> new AnalyticsTickRelevance(List.of(0L), List.of()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("organisms")
+            .hasMessageContaining("at least 1");
+    }
+
+    @Test
+    void aNegativeIntervalIsRefusedToo() {
+        // It would pass the divisibility test with a meaning nobody intended
+        assertThatThrownBy(() -> new AnalyticsTickRelevance(List.of(), List.of(-100L)))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("the environment");
     }
 
     @Test
