@@ -105,8 +105,17 @@ public interface IAnalyticsPlugin extends IMemoryEstimatable {
      * <strong>No Data:</strong> Return empty list if this tick should be skipped
      * (beyond normal sampling).
      *
+     * <p>
+     * <strong>Not every plugin can answer this.</strong> One that declares
+     * {@link #needsEnvironmentData()} is handed its cells through
+     * {@link #extractRows(TickData, ICellStateSource)} and has nothing to read here - the tick's
+     * cell columns are empty by then. Such a plugin implements that overload instead and throws
+     * from this one rather than returning a composition counted over no cells.
+     *
      * @param tick The tick data to process
      * @return List of rows (each row is Object[] matching schema), or empty list
+     * @throws IllegalStateException if the plugin reads the environment and therefore cannot work
+     *         from the tick alone
      */
     List<Object[]> extractRows(TickData tick);
 
@@ -114,9 +123,10 @@ public interface IAnalyticsPlugin extends IMemoryEstimatable {
      * Extracts rows for a tick whose environment is available as a state rather than as cell
      * columns on the {@link TickData}.
      * <p>
-     * Called instead of {@link #extractRows(TickData)} for plugins that declare
-     * {@link #needsEnvironmentData()}. The default ignores the state and delegates, which is
-     * correct for every plugin that reads no cells.
+     * <strong>This is the one entry point a caller needs.</strong> It is right for every plugin:
+     * one that reads cells implements it, and for the others the default below ignores the state
+     * and delegates to {@link #extractRows(TickData)}. Calling that one directly instead means
+     * choosing per plugin whether it may be called at all, and getting it wrong throws.
      * <p>
      * The state belongs to the caller and is reused for the next tick, so a plugin must read what
      * it needs during the call and must not keep a reference.
