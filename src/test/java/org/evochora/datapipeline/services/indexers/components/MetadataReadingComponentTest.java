@@ -14,6 +14,7 @@ import org.mockito.MockitoAnnotations;
 
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
@@ -132,7 +133,13 @@ class MetadataReadingComponentTest {
                 component.loadMetadata("test-run")
             );
         });
-        
+
+        // What the thread asserts fails inside the thread, where no test can see it. Ending on a
+        // failed assertion also ends the thread, so the liveness check below would pass on it -
+        // the failure has to be carried out to the test thread to be a failure at all.
+        AtomicReference<Throwable> failedInThread = new AtomicReference<>();
+        loadThread.setUncaughtExceptionHandler((thread, thrown) -> failedInThread.set(thrown));
+
         loadThread.start();
 
         // Interrupt only once the thread is actually waiting between polls; interrupting it
@@ -151,6 +158,10 @@ class MetadataReadingComponentTest {
         }
         
         assertFalse(loadThread.isAlive(), "Thread should have terminated after interruption");
+        if (failedInThread.get() != null) {
+            throw new AssertionError("the interrupted load did not end as it should",
+                failedInThread.get());
+        }
     }
     
     @Test
