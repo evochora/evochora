@@ -574,6 +574,8 @@ message TickDataChunk {
   repeated int64 delta_ticks = 7 [packed = true];
   repeated DeltaType delta_types = 8 [packed = true];
 
+  // 9 is left free for the directory to grow into, below the deltas.
+
   // Deltas for subsequent ticks (tick_count - 1 entries)
   // Ordered by tick_number ascending.
   repeated TickDelta deltas = 10;
