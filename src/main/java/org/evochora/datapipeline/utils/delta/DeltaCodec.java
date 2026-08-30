@@ -529,7 +529,9 @@ public final class DeltaCodec {
          */
         /**
          * Reconstructs a tick but leaves its cells in the decoder's state instead of packing them
-         * into the returned {@link TickData}, whose cell columns stay empty.
+         * into the returned {@link TickData}, whose cell columns stay empty. The chunk's snapshot
+         * is the exception: it already carries its cells and is handed back as it stands, with the
+         * state holding the same cells.
          * <p>
          * For consumers that only read the cells: building the columns walks the whole grid and
          * allocates a message holding every occupied cell, which is wasted work when the result is
@@ -568,8 +570,10 @@ public final class DeltaCodec {
             // Check if target is the snapshot
             TickData snapshot = chunk.getSnapshot();
             if (snapshot.getTickNumber() == targetTick) {
-                // Update state tracking even for snapshot returns
-                if (currentChunk != chunk) {
+                // The state has to describe the tick that is returned. Standing anywhere else in
+                // this chunk means standing on a later tick, whose deltas are only undone by
+                // laying the snapshot down again.
+                if (currentChunk != chunk || currentTick != targetTick) {
                     state.applySnapshot(snapshot.getCellColumns());
                     currentChunk = chunk;
                     currentTick = targetTick;

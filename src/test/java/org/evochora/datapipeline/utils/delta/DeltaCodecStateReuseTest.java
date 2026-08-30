@@ -10,6 +10,7 @@ import org.evochora.datapipeline.api.contracts.DeltaType;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TickDelta;
+import org.evochora.datapipeline.api.delta.ICellStateSource;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
@@ -193,6 +194,66 @@ class DeltaCodecStateReuseTest {
         assertThat(valueAt(backInA, 0)).isEqualTo(11);
         assertThat(valueAt(backInA, 1)).isEqualTo(20);
         assertThat(valueAt(backInA, 2)).isEqualTo(30);
+    }
+
+    @Test
+    void theCellsLeftInTheStateAreTheCellsOfTheReconstructedTick() throws Exception {
+        // Reconstructing into the state exists so a caller can read the cells from there instead
+        // of from the returned message. Both have to describe the same tick, on every way the
+        // decoder can reach it.
+        TickDataChunk chunk = buildChunk();
+        DeltaCodec.Decoder intoState = new DeltaCodec.Decoder(TOTAL_CELLS);
+
+        for (int position = 0; position < RECORDINGS; position++) {
+            long tick = position * TICK_STEP;
+            CellDataColumns packed = new DeltaCodec.Decoder(TOTAL_CELLS)
+                .decompressTick(chunk, tick).getCellColumns();
+
+            intoState.decompressTickCellsInState(chunk, tick);
+
+            assertThat(valuesOf(intoState.getCellState()))
+                .as("environment at tick %d (recording %d)", tick, position)
+                .isEqualTo(valuesOf(packed, TOTAL_CELLS));
+        }
+    }
+
+    @Test
+    void askingForTheSnapshotAfterALaterTickPutsTheSnapshotBackIntoTheState() throws Exception {
+        // A tick already reconstructed does not make the request for an earlier one cheaper: the
+        // state still holds the later tick and has to be wound back. Returning the snapshot while
+        // leaving the later cells standing would hand the caller two different ticks at once,
+        // without anything saying so.
+        //
+        //   snapshot at tick 0:    cells 0..3 = 10, 20, 30, 40
+        //   tick 100 INCREMENTAL:  cell 0 -> 11
+        //   tick 200 ACCUMULATED:  cell 0 -> 11
+        TickDataChunk chunk = twoDeltaChunk(0, new int[]{10, 20, 30, 40}, 0, 11);
+        DeltaCodec.Decoder decoder = new DeltaCodec.Decoder(4);
+
+        decoder.decompressTickCellsInState(chunk, 200);
+        assertThat(valuesOf(decoder.getCellState())).isEqualTo(new int[]{11, 20, 30, 40});
+
+        decoder.decompressTickCellsInState(chunk, 0);
+
+        assertThat(valuesOf(decoder.getCellState()))
+            .as("the snapshot's cells, not the ones of the tick reconstructed before")
+            .isEqualTo(new int[]{10, 20, 30, 40});
+    }
+
+    /** Molecule data of every cell of a reconstructed state, by flat index. */
+    private int[] valuesOf(ICellStateSource state) {
+        int[] values = new int[state.getTotalCells()];
+        state.forEachOccupiedCell((flatIndex, moleculeData, ownerId) -> values[flatIndex] = moleculeData);
+        return values;
+    }
+
+    /** The same, for an environment packed into columns. */
+    private int[] valuesOf(CellDataColumns cells, int totalCells) {
+        int[] values = new int[totalCells];
+        for (int i = 0; i < cells.getFlatIndicesCount(); i++) {
+            values[cells.getFlatIndices(i)] = cells.getMoleculeData(i);
+        }
+        return values;
     }
 
     /**
