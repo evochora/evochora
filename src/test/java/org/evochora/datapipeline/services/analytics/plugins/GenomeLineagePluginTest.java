@@ -9,7 +9,6 @@ import java.util.List;
 import java.util.Map;
 
 import org.evochora.datapipeline.api.analytics.IAnalyticsContext;
-import org.evochora.datapipeline.api.analytics.ManifestEntry;
 import org.evochora.datapipeline.api.analytics.ParquetSchema;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
@@ -64,6 +63,35 @@ class GenomeLineagePluginTest {
         assertThat(row[1]).isEqualTo(0xBBBBL);
         assertThat(row[2]).isEqualTo(0xAAAAL);
         assertThat(row[3]).isEqualTo(950L);
+    }
+
+    @Test
+    void inheritingAGenomeUnchangedIsNoEdge() {
+        // The common case by far: a child carries its parent's genome. That is the same genome,
+        // not a descent between two - and written as an edge it would make the genome its own
+        // ancestor, so it could never be a root of the tree.
+        TickData tick = TickData.newBuilder()
+            .setTickNumber(1000)
+            .addOrganisms(child(1, 950, 0xAAAA, 0xAAAA))
+            .build();
+
+        assertThat(plugin.extractRows(tick)).isEmpty();
+    }
+
+    @Test
+    void aMutatedChildIsAnEdgeNextToItsUnchangedSiblings() {
+        TickData tick = TickData.newBuilder()
+            .setTickNumber(1000)
+            .addOrganisms(child(1, 950, 0xAAAA, 0xAAAA))
+            .addOrganisms(child(2, 960, 0xBBBB, 0xAAAA))
+            .addOrganisms(child(3, 970, 0xAAAA, 0xAAAA))
+            .build();
+
+        List<Object[]> rows = plugin.extractRows(tick);
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0)[1]).isEqualTo(0xBBBBL);
+        assertThat(rows.get(0)[2]).isEqualTo(0xAAAAL);
     }
 
     @Test
@@ -181,12 +209,11 @@ class GenomeLineagePluginTest {
     }
 
     @Test
-    void manifestCountsTheGenomesPerRecording() {
-        ManifestEntry entry = plugin.getManifestEntry();
-
-        assertThat(entry.id).isEqualTo("genome_lineage");
-        assertThat(entry.generatedQuery).contains("count(*)").contains("GROUP BY tick");
-        assertThat(entry.outputColumns).containsExactly("tick", "new_genomes");
+    void theTableHasNoChartOfItsOwn() {
+        // How many genomes are new per recording is the genome diversity chart's running total;
+        // what this table is for is being read whole, as the tree the clade view groups by
+        assertThat(plugin.getManifestEntry()).isNull();
+        assertThat(plugin.getManifestEntries()).isEmpty();
     }
 
     private OrganismState founder(int id, long birthTick, long genomeHash) {

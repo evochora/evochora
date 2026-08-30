@@ -2,8 +2,6 @@ package org.evochora.datapipeline.services;
 
 import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
 import java.util.concurrent.TimeUnit;
 import java.util.Collections;
 import java.util.HashMap;

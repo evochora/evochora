@@ -1,5 +1,5 @@
 import * as ChartRegistry from './ChartRegistry.js';
-import { formatTickValue } from './ChartUtils.js';
+import { formatTickValue, axisTicks } from './ChartUtils.js';
 
 /**
  * Band Chart Implementation
@@ -10,13 +10,27 @@ import { formatTickValue } from './ChartUtils.js';
  * @module BandChart
  */
     
-    // Custom palette for bands (darker to lighter) and median
+    // Bands get more opaque towards the middle, so the innermost is the most present
+    const BAND_ALPHA = ['20', '40', '60', '80'];
+    const BAND_BASE = '#4a9eff';
+
     const PALETTE = {
-        outerBand: '#4a9eff20',   // p0-p100 (min/max)
-        middleBand: '#4a9eff40',  // p10-p90
-        innerBand: '#4a9eff60',   // p25-p75 (IQR)
-        medianLine: '#a0e0a0',    // p50 (median)
+        medianLine: '#a0e0a0',
     };
+
+    const SECOND_AXIS_COLORS = ['#ffb366', '#dda0dd'];
+
+    /**
+     * Colour of the nth band counted from the outside.
+     *
+     * @param {number} index - 0 for the outermost band
+     * @param {number} total - How many bands there are
+     * @returns {string} An rgba-style hex colour
+     */
+    function bandColor(index, total) {
+        const step = Math.max(0, BAND_ALPHA.length - total);
+        return BAND_BASE + BAND_ALPHA[Math.min(BAND_ALPHA.length - 1, index + step)];
+    }
     
     function toNumber(value) {
         if (typeof value === 'bigint') {
@@ -69,30 +83,32 @@ export function render(canvas, data, config) {
         const ctx = canvas.getContext('2d');
         
         const xKey = config.x || 'tick';
-        // yKeys should be in order: [p0, p10, p25, p50, p75, p90, p100]
-        const yKeys = config.y || []; 
-        
+        // Percentiles in ascending order, an odd number of them: outermost pair first, the
+        // middle one last. Three, five and seven all work; the outermost pair becomes the
+        // faintest band, each pair inside it a stronger one, and the middle one a line.
+        const yKeys = config.y || [];
+        const y2Keys = config.y2 || [];
+
         const labels = data.map(row => toNumber(row[xKey]));
-        
+
         const datasets = [];
-        
+
         // --- Create datasets for bands ---
         // Each band needs TWO datasets: lower boundary + upper boundary with fill
-        
-        if (yKeys.length >= 7) {
-            // Outer band: p0 to p100 (min/max)
-            addBandDatasets(datasets, data, yKeys[0], yKeys[6], 'Min/Max', PALETTE.outerBand);
-            // Middle band: p10 to p90
-            addBandDatasets(datasets, data, yKeys[1], yKeys[5], 'p10-p90', PALETTE.middleBand);
-            // Inner band: p25 to p75 (IQR)
-            addBandDatasets(datasets, data, yKeys[2], yKeys[4], 'IQR (p25-p75)', PALETTE.innerBand);
+        const bandCount = Math.floor(yKeys.length / 2);
+        for (let i = 0; i < bandCount; i++) {
+            const lower = yKeys[i];
+            const upper = yKeys[yKeys.length - 1 - i];
+            addBandDatasets(datasets, data, lower, upper,
+                `${formatLabel(lower)}-${formatLabel(upper)}`, bandColor(i, bandCount));
         }
-        
+
         // Median line (on top)
-        if (yKeys.length >= 4) {
-             datasets.push({
-                label: 'Median Age',
-                data: data.map(row => toNumber(row[yKeys[3]])),
+        if (yKeys.length % 2 === 1) {
+            const middle = yKeys[(yKeys.length - 1) / 2];
+            datasets.push({
+                label: formatLabel(middle),
+                data: data.map(row => toNumber(row[middle])),
                 borderColor: PALETTE.medianLine,
                 borderWidth: 2,
                 pointRadius: 0,
@@ -100,6 +116,23 @@ export function render(canvas, data, config) {
                 tension: 0.4 // Smooth curves
             });
         }
+
+        // Series on a second axis, for a quantity of a different kind - how many measurements
+        // are behind the percentiles, say, which a band of three says something else than one
+        // of three hundred
+        y2Keys.forEach((key, index) => {
+            datasets.push({
+                label: formatLabel(key),
+                data: data.map(row => toNumber(row[key])),
+                borderColor: SECOND_AXIS_COLORS[index % SECOND_AXIS_COLORS.length],
+                borderWidth: 1,
+                borderDash: [4, 3],
+                pointRadius: 0,
+                fill: false,
+                tension: 0.2,
+                yAxisID: 'y2'
+            });
+        });
        
         const chartConfig = {
             type: 'line',
@@ -153,10 +186,27 @@ export function render(canvas, data, config) {
                         grid: { color: '#333', drawBorder: false }
                     },
                     y: {
-                        title: { display: true, text: 'Age', color: '#888' },
-                        ticks: { color: '#888' },
+                        title: {
+                            display: true,
+                            text: config.yLabel || yKeys.map(formatLabel).join(', '),
+                            color: '#888'
+                        },
+                        ticks: { color: '#888', ...axisTicks(config.yFormat) },
                         grid: { color: '#333', drawBorder: false }
-                    }
+                    },
+                    ...(y2Keys.length > 0 ? {
+                        y2: {
+                            type: 'linear',
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: config.y2Label || y2Keys.map(formatLabel).join(', '),
+                                color: '#888'
+                            },
+                            ticks: { color: '#888', ...axisTicks(config.y2Format) },
+                            grid: { drawOnChartArea: false }
+                        }
+                    } : {})
                 }
             }
         };

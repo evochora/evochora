@@ -268,20 +268,14 @@ main.container {
 }
 
 /* --- Clade Path --- */
-/* Sits over the chart's top left corner, where the centred legend leaves room, so the chart
-   keeps the full height of its container. */
+/* Its own row under the chart: laid over the canvas it would cover the axis labels. */
 .clade-path {
-    position: absolute;
-    top: 8px;
-    left: 12px;
-    z-index: 2;
     display: flex;
     align-items: center;
+    margin-top: 6px;
+    padding-left: 4px;
     font-size: 0.7em;
     color: var(--text-muted);
-    background-color: var(--bg-card);
-    padding: 2px 4px;
-    border-radius: 3px;
 }
 
 .clade-path-step {

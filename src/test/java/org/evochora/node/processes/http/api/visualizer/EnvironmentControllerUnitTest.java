@@ -122,11 +122,11 @@ class EnvironmentControllerUnitTest {
             ServiceRegistry serviceRegistry = new ServiceRegistry();
             IDatabaseReaderProvider mockDatabase = mock(IDatabaseReaderProvider.class);
             serviceRegistry.register(IDatabaseReaderProvider.class, mockDatabase);
-            
+
             Config config = ConfigFactory.parseString("runId = \"test_run\"");
-            
+
             EnvironmentController testController = new EnvironmentController(serviceRegistry, config);
-            
+
             assertThat(testController).isNotNull();
         }
 
@@ -136,11 +136,10 @@ class EnvironmentControllerUnitTest {
             ServiceRegistry serviceRegistry = new ServiceRegistry();
             IDatabaseReaderProvider mockDatabase = mock(IDatabaseReaderProvider.class);
             serviceRegistry.register(IDatabaseReaderProvider.class, mockDatabase);
-            
-            Config config = ConfigFactory.empty();
-            
-            EnvironmentController controllerWithDefault = new EnvironmentController(serviceRegistry, config);
-            
+
+            EnvironmentController controllerWithDefault =
+                new EnvironmentController(serviceRegistry, ConfigFactory.empty());
+
             assertThat(controllerWithDefault).isNotNull();
         }
     }

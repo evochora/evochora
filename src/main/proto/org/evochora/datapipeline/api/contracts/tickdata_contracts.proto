@@ -110,9 +110,10 @@ message OrganismState {
 
   // ===== Instruction Pointer and Movement =====
 
-  // Current instruction pointer (relative coordinates in program space)
-  // Source: Organism.getIp()
-  // This is where the organism is currently executing in its program
+  // Current instruction pointer, in absolute world coordinates.
+  // Source: Organism.getIp(), which is set from initial_position at birth and from
+  // absolute_return_ip on return, and moved by whole world steps in between.
+  // Subtract initial_position to get the position within the organism's own program.
   Vector ip = 6;
 
   // Position where the organism started executing
@@ -419,10 +420,16 @@ message CellState {
   // Flat index representing the cell's position in the environment grid.
   // This is an OPAQUE identifier that requires Environment properties to interpret.
   //
-  // Conversion formula (2D): flatIndex = y * width + x
-  // Reverse conversion: x = flatIndex % width, y = flatIndex / width
+  // The index is the row-major linearization of the coordinates, with the LAST dimension
+  // varying fastest - the reverse of what a "width first" reading suggests.
   //
-  // For 3D environments: flatIndex = z * (width * height) + y * width + x
+  // Conversion formula (2D, shape [width, height]): flatIndex = x * height + y
+  // Reverse conversion: x = flatIndex / height, y = flatIndex % height
+  //
+  // For 3D (shape [width, height, depth]): flatIndex = x * (height * depth) + y * depth + z
+  //
+  // EnvironmentProperties.toFlatIndex and flatIndexToCoordinates are the implementation
+  // and hold for any number of dimensions.
   //
   // Source: Environment.forEachOccupiedIndex() callback parameter
   // Required metadata: Environment.shape from TickData.metadata

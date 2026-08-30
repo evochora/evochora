@@ -80,10 +80,10 @@ public class EnvironmentController extends VisualizerBaseController {
     private static final Logger LOGGER = LoggerFactory.getLogger(EnvironmentController.class);
     
     /**
-     * LRU cache for TickDataChunks.
+     * Cache holding the one chunk most recently read.
      * <p>
      * Key format: "runId:firstTick" where firstTick is the snapshot tick number.
-     * Value: The raw TickDataChunk (compressed form).
+     * Value: The parsed TickDataChunk.
      */
     private final Cache<String, TickDataChunk> chunkCache;
     
@@ -104,28 +104,28 @@ public class EnvironmentController extends VisualizerBaseController {
      * <p>
      * Cache configuration is read from options:
      * <ul>
-     *   <li>{@code chunk-cache.maximum-size} - Maximum number of chunks to cache (default: 100)</li>
      *   <li>{@code chunk-cache.expire-after-access} - Expiration time in seconds (default: 300)</li>
      * </ul>
+     * <p>
+     * The cache holds exactly one chunk, and its size is not configurable. Stepping through
+     * consecutive ticks reads the ticks of one chunk, so one is what that costs; jumping lands in
+     * another chunk, where any number of held ones would miss just the same. What a second one
+     * would buy is jumping back and forth between a few chunks, which nobody does - and it would
+     * cost another chunk of heap, which is one of the largest objects this process handles.
      *
      * @param registry The central service registry for accessing shared services.
      * @param options  The HOCON configuration specific to this controller instance.
      */
     public EnvironmentController(final org.evochora.node.spi.ServiceRegistry registry, final Config options) {
         super(registry, options);
-        
-        // Read chunk cache configuration (server-side Caffeine cache)
-        int maxSize = options.hasPath("chunk-cache.maximum-size") 
-            ? options.getInt("chunk-cache.maximum-size") 
-            : 100;
+
         int expireAfterAccessSeconds = options.hasPath("chunk-cache.expire-after-access") 
             ? options.getInt("chunk-cache.expire-after-access") 
             : 300;
-        
-        // Build chunk cache. Statistics are not recorded: nothing reads them, and Caffeine keeps
-        // counters per access for them.
+
+        // Statistics are not recorded: nothing reads them, and Caffeine keeps counters for them.
         this.chunkCache = Caffeine.newBuilder()
-            .maximumSize(maxSize)
+            .maximumSize(1)
             .expireAfterAccess(Duration.ofSeconds(expireAfterAccessSeconds))
             .build();
         
@@ -142,8 +142,8 @@ public class EnvironmentController extends VisualizerBaseController {
         // Minimap aggregator is stateless and thread-safe
         this.minimapAggregator = new MinimapAggregator();
 
-        LOGGER.info("EnvironmentController chunk cache initialized: maxSize={}, expireAfterAccess={}s",
-            maxSize, expireAfterAccessSeconds);
+        LOGGER.info("EnvironmentController chunk cache initialized: one chunk, expireAfterAccess={}s",
+            expireAfterAccessSeconds);
     }
 
     @Override

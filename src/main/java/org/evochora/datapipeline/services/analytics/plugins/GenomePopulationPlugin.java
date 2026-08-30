@@ -117,9 +117,10 @@ public class GenomePopulationPlugin extends AbstractAnalyticsPlugin {
      * {@inheritDoc}
      * <p>
      * The chart groups the genomes into clades - the descendants of one branch of the lineage -
-     * and stacks their shares. Which branch a band stands for is chosen while looking at it: a
-     * clade that has taken over the population is opened into its children, which is how a
-     * cascade of sweeps stays visible where a fixed grouping would show one full band.
+     * and stacks their shares of the whole population. Which branch is shown is chosen while
+     * looking: clicking a clade enters it and shows what it is made of, so a cascade of sweeps is
+     * followed one level at a time. Shares stay shares of the population, so entering a small
+     * clade shows a small band, not a full one.
      * <p>
      * Genome hashes travel as text. They are 64 bit, and a JavaScript number keeps 53 of them -
      * two genomes would silently become one, and the tree would join branches that never met.
@@ -144,9 +145,14 @@ public class GenomePopulationPlugin extends AbstractAnalyticsPlugin {
         entry.outputColumns = List.of("tick", "genome_hash", "count");
 
         entry.companionMetricId = lineageMetricId;
+        // The lineage arrives as written, one row per genome and recording it appeared in. It is
+        // not condensed here: which of several edges of a genome counts is a question the chart
+        // answers anyway - the earliest one - and grouping by genome hash is a hash aggregation
+        // over an unsorted column, which the browser's DuckDB build does not survive beyond a
+        // few thousand rows. Every query that works today groups by tick, along which the files
+        // are ordered.
         entry.companionQuery = "SELECT genome_hash::VARCHAR AS genome_hash, "
-            + "parent_genome_hash::VARCHAR AS parent_genome_hash, min(first_birth_tick) AS first_birth_tick "
-            + "FROM {table} GROUP BY genome_hash, parent_genome_hash";
+            + "parent_genome_hash::VARCHAR AS parent_genome_hash, first_birth_tick FROM {table}";
 
         entry.visualization = new VisualizationHint();
         entry.visualization.type = "clade-area-chart";
@@ -154,8 +160,7 @@ public class GenomePopulationPlugin extends AbstractAnalyticsPlugin {
         entry.visualization.config.put("x", "tick");
         entry.visualization.config.put("groupBy", "genome_hash");
         entry.visualization.config.put("y", "count");
-        entry.visualization.config.put("yFormat", "integer");
-        entry.visualization.config.put("yAxisMode", "percent");
+        entry.visualization.config.put("yFormat", "percent");
 
         return entry;
     }

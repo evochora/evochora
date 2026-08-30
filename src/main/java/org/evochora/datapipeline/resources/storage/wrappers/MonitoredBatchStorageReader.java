@@ -16,6 +16,7 @@ import org.evochora.datapipeline.api.resources.OperationalError;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.storage.BatchFileListResult;
 import org.evochora.datapipeline.api.resources.storage.ChunkFieldFilter;
+import org.evochora.datapipeline.api.resources.storage.ITickRelevance;
 import org.evochora.datapipeline.api.resources.storage.IResourceBatchStorageRead;
 import org.evochora.datapipeline.api.resources.storage.RawChunk;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
@@ -123,6 +124,37 @@ public class MonitoredBatchStorageReader implements IResourceBatchStorageRead, I
         try {
             AtomicLong chunkBytes = new AtomicLong(0);
             delegate.forEachChunk(path, filter, chunk -> {
+                chunkBytes.addAndGet(chunk.getSerializedSize());
+                consumer.accept(chunk);
+            });
+
+            batchesRead.incrementAndGet();
+            long totalBytes = chunkBytes.get();
+            bytesRead.addAndGet(totalBytes);
+            long latencyNanos = System.nanoTime() - startNanos;
+            recordRead(totalBytes, latencyNanos);
+        } catch (Exception e) {
+            readErrors.incrementAndGet();
+            throw e;
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Passes the relevance on to the underlying storage. Without this the interface default would
+     * apply, which refuses a narrowing relevance rather than answering it with unfiltered chunks -
+     * so a reader asking for one would fail against every wrapped resource.
+     * <p>
+     * <strong>Thread Safety:</strong> Thread-safe. Metrics use atomic counters; delegates to thread-safe storage.
+     */
+    @Override
+    public void forEachChunk(StoragePath path, ChunkFieldFilter filter, ITickRelevance relevance,
+                             CheckedConsumer<TickDataChunk> consumer) throws Exception {
+        long startNanos = System.nanoTime();
+        try {
+            AtomicLong chunkBytes = new AtomicLong(0);
+            delegate.forEachChunk(path, filter, relevance, chunk -> {
                 chunkBytes.addAndGet(chunk.getSerializedSize());
                 consumer.accept(chunk);
             });

@@ -144,6 +144,16 @@ class GenomePopulationPluginTest {
     }
 
     @Test
+    void theLineageIsNotCondensedByTheQuery() {
+        // Grouping by genome hash is a hash aggregation over an unsorted column, which the
+        // browser's DuckDB build fails at beyond a few thousand rows. The chart picks the
+        // earliest edge of a genome itself, so the query has nothing to condense.
+        assertThat(plugin.getManifestEntry().companionQuery)
+            .doesNotContainIgnoringCase("group by")
+            .doesNotContainIgnoringCase("min(");
+    }
+
+    @Test
     void genomeHashesLeaveAsTextInBothQueries() {
         // 64 bits do not survive a JavaScript number: two genomes would silently become one
         ManifestEntry entry = plugin.getManifestEntry();

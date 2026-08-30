@@ -2,7 +2,6 @@ package org.evochora.datapipeline.services.analytics.plugins;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -11,7 +10,6 @@ import org.evochora.datapipeline.api.analytics.AbstractAnalyticsPlugin;
 import org.evochora.datapipeline.api.analytics.ColumnType;
 import org.evochora.datapipeline.api.analytics.ManifestEntry;
 import org.evochora.datapipeline.api.analytics.ParquetSchema;
-import org.evochora.datapipeline.api.analytics.VisualizationHint;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
 
@@ -43,6 +41,11 @@ import org.evochora.datapipeline.api.contracts.TickData;
  * profile - a skipped recording would drop a whole birth window, and the genomes born in it would
  * be missing from the tree, not merely late. Dead organisms are read as well: a genome whose
  * carriers all died within one window would otherwise never be recorded.
+ * <p>
+ * A child carrying its parent's genome unchanged produces no row: that is one genome appearing
+ * again, not a descent between two, and an edge from a genome to itself would make it its own
+ * ancestor. Rows therefore appear where a genome is new, which is what a tree of descent is made
+ * of.
  * <p>
  * Organisms without genome molecules are not genomes and get no row. They can still be a parent:
  * their children are written with a parent genome of 0, which the reconstruction has to treat as a
@@ -83,6 +86,12 @@ public class GenomeLineagePlugin extends AbstractAnalyticsPlugin {
             if (org.getGenomeHash() == 0L || org.getBirthTick() <= bornAfter) {
                 continue;
             }
+            // A child that carries its parent's genome unchanged - the common case - is the same
+            // genome, not a descent between two. Written as an edge it would make the genome its
+            // own ancestor and it could never be a root of the tree.
+            if (org.hasParentGenomeHash() && org.getParentGenomeHash() == org.getGenomeHash()) {
+                continue;
+            }
             Edge edge = new Edge(org.getGenomeHash(),
                 org.hasParentGenomeHash() ? org.getParentGenomeHash() : null);
             edgesInTick.merge(edge, org.getBirthTick(), Math::min);
@@ -107,37 +116,13 @@ public class GenomeLineagePlugin extends AbstractAnalyticsPlugin {
     /**
      * {@inheritDoc}
      * <p>
-     * The chart counts the rows per recording, which is the number of genomes the run produced in
-     * that window. The table itself is not a time series - it is read as a whole to build the
-     * tree - which is also why this metric keeps a single level of detail: a coarser one would
-     * hold a subset of the edges, and a tree missing edges is worse than no tree, because
-     * descendants silently turn into roots.
+     * The table has no chart of its own. Counting its rows per recording would show how many
+     * genomes appeared for the first time, which the genome diversity chart already carries as the
+     * running total of genomes ever seen. What the table is for is being read as a whole: it is
+     * the tree the clade view groups the population by.
      */
     @Override
     public ManifestEntry getManifestEntry() {
-        ManifestEntry entry = new ManifestEntry();
-        entry.id = metricId;
-        entry.name = "New Genomes";
-        entry.description = "How many genomes appeared for the first time in each recording. The "
-            + "underlying table holds one row per genome with the genome it arose from.";
-
-        entry.dataSources = new HashMap<>();
-        for (int level = 0; level < lodLevels; level++) {
-            String lodName = lodLevelName(level);
-            entry.dataSources.put(lodName, metricId + "/" + lodName + "/**/*.parquet");
-        }
-
-        entry.generatedQuery = "SELECT tick, count(*)::BIGINT AS new_genomes FROM {table} "
-            + "GROUP BY tick ORDER BY tick";
-        entry.outputColumns = List.of("tick", "new_genomes");
-
-        entry.visualization = new VisualizationHint();
-        entry.visualization.type = "line-chart";
-        entry.visualization.config = new HashMap<>();
-        entry.visualization.config.put("x", "tick");
-        entry.visualization.config.put("y", List.of("new_genomes"));
-        entry.visualization.config.put("yFormat", "integer");
-
-        return entry;
+        return null;
     }
 }

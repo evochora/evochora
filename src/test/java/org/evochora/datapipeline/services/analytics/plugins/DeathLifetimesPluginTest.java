@@ -36,18 +36,22 @@ class DeathLifetimesPluginTest {
     }
 
     @Test
-    void schemaCarriesCountAndThreePercentiles() {
+    void schemaCarriesCountAndFivePercentiles() {
         ParquetSchema schema = plugin.getSchema();
 
-        assertThat(schema.getColumnCount()).isEqualTo(5);
+        assertThat(schema.getColumnCount()).isEqualTo(8);
         List<ParquetSchema.Column> columns = schema.getColumns();
         assertThat(columns.get(0).name()).isEqualTo("tick");
         assertThat(columns.get(0).type()).isEqualTo(ColumnType.BIGINT);
         assertThat(columns.get(1).name()).isEqualTo("death_count");
         assertThat(columns.get(1).type()).isEqualTo(ColumnType.INTEGER);
-        assertThat(columns.get(2).name()).isEqualTo("death_lifetime_p10");
-        assertThat(columns.get(3).name()).isEqualTo("death_lifetime_p50");
-        assertThat(columns.get(4).name()).isEqualTo("death_lifetime_p90");
+        assertThat(columns.get(2).name()).isEqualTo("deaths_total");
+        assertThat(columns.get(2).type()).isEqualTo(ColumnType.BIGINT);
+        assertThat(columns.get(3).name()).isEqualTo("death_lifetime_p10");
+        assertThat(columns.get(4).name()).isEqualTo("death_lifetime_p25");
+        assertThat(columns.get(5).name()).isEqualTo("death_lifetime_p50");
+        assertThat(columns.get(6).name()).isEqualTo("death_lifetime_p75");
+        assertThat(columns.get(7).name()).isEqualTo("death_lifetime_p90");
     }
 
     @Test
@@ -63,7 +67,7 @@ class DeathLifetimesPluginTest {
 
         assertThat(row[0]).isEqualTo(10_000L);
         assertThat(row[1]).isEqualTo(1);
-        assertThat(row[3]).isEqualTo(248L);
+        assertThat(row[5]).isEqualTo(248L);
     }
 
     @Test
@@ -77,9 +81,11 @@ class DeathLifetimesPluginTest {
         Object[] row = plugin.extractRows(builder.build()).get(0);
 
         assertThat(row[1]).isEqualTo(40);
-        assertThat(row[2]).isEqualTo(248L);
         assertThat(row[3]).isEqualTo(248L);
         assertThat(row[4]).isEqualTo(248L);
+        assertThat(row[5]).isEqualTo(248L);
+        assertThat(row[6]).isEqualTo(248L);
+        assertThat(row[7]).isEqualTo(248L);
     }
 
     @Test
@@ -93,13 +99,15 @@ class DeathLifetimesPluginTest {
         Object[] row = plugin.extractRows(builder.build()).get(0);
 
         assertThat(row[1]).isEqualTo(10);
-        assertThat(row[2]).isEqualTo(10L);    // nearest rank: ceil(10 * 0.1) = 1st value
-        assertThat(row[3]).isEqualTo(50L);    // ceil(10 * 0.5) = 5th value
-        assertThat(row[4]).isEqualTo(90L);    // ceil(10 * 0.9) = 9th value
+        assertThat(row[3]).isEqualTo(10L);    // nearest rank: ceil(10 * 0.1) = 1st value
+        assertThat(row[4]).isEqualTo(30L);    // ceil(10 * 0.25) = 3rd value
+        assertThat(row[5]).isEqualTo(50L);    // ceil(10 * 0.5) = 5th value
+        assertThat(row[6]).isEqualTo(80L);    // ceil(10 * 0.75) = 8th value
+        assertThat(row[7]).isEqualTo(90L);    // ceil(10 * 0.9) = 9th value
     }
 
     @Test
-    void aSingleDeathIsReportedByAllThreePercentiles() {
+    void aSingleDeathIsReportedByEveryPercentile() {
         TickData tick = TickData.newBuilder()
             .setTickNumber(500)
             .addOrganisms(dead(1, 100, 400))
@@ -108,9 +116,25 @@ class DeathLifetimesPluginTest {
         Object[] row = plugin.extractRows(tick).get(0);
 
         assertThat(row[1]).isEqualTo(1);
-        assertThat(row[2]).isEqualTo(300L);
         assertThat(row[3]).isEqualTo(300L);
-        assertThat(row[4]).isEqualTo(300L);
+        assertThat(row[5]).isEqualTo(300L);
+        assertThat(row[7]).isEqualTo(300L);
+    }
+
+    @Test
+    void theRunningTotalIsEveryOrganismEverCreatedMinusTheLiving() {
+        TickData tick = TickData.newBuilder()
+            .setTickNumber(500)
+            .setTotalOrganismsCreated(100)
+            .addOrganisms(alive(1, 100))
+            .addOrganisms(alive(2, 200))
+            .addOrganisms(dead(3, 100, 400))
+            .build();
+
+        Object[] row = plugin.extractRows(tick).get(0);
+
+        assertThat(row[1]).as("sample behind the percentiles").isEqualTo(1);
+        assertThat(row[2]).as("100 created, 2 still alive").isEqualTo(98L);
     }
 
     @Test
@@ -125,7 +149,7 @@ class DeathLifetimesPluginTest {
         Object[] row = plugin.extractRows(tick).get(0);
 
         assertThat(row[1]).isEqualTo(1);
-        assertThat(row[3]).isEqualTo(300L);
+        assertThat(row[5]).isEqualTo(300L);
     }
 
     @Test
@@ -161,7 +185,7 @@ class DeathLifetimesPluginTest {
         Object[] row = plugin.extractRows(builder.build()).get(0);
 
         assertThat(row[1]).isEqualTo(500);
-        assertThat(row[3]).isEqualTo(10L);
+        assertThat(row[5]).isEqualTo(10L);
     }
 
     @Test
@@ -169,16 +193,32 @@ class DeathLifetimesPluginTest {
         ManifestEntry entry = plugin.getManifestEntry();
 
         assertThat(entry.id).isEqualTo("death_lifetimes");
-        assertThat(entry.visualization.type).isEqualTo("line-chart");
+        // A band between p10 and p90 with the median as a line: a futile-forking episode is the
+        // band collapsing onto its own line, which no line chart of three curves shows as clearly
+        assertThat(entry.visualization.type).isEqualTo("band-chart");
 
         @SuppressWarnings("unchecked")
         List<String> yAxis = (List<String>) entry.visualization.config.get("y");
         assertThat(yAxis).containsExactly(
-            "death_lifetime_p10", "death_lifetime_p50", "death_lifetime_p90");
+            "death_lifetime_p10", "death_lifetime_p25", "death_lifetime_p50",
+            "death_lifetime_p75", "death_lifetime_p90");
 
         @SuppressWarnings("unchecked")
         List<String> y2Axis = (List<String>) entry.visualization.config.get("y2");
-        assertThat(y2Axis).containsExactly("death_count");
+        assertThat(y2Axis).containsExactly("deaths", "death_count");
+    }
+
+    @Test
+    void theNumberOfDeathsSurvivesACoarseLevelOfDetail() {
+        // A coarse level keeps every tenth recording, so a row stands for ten of them. Counting
+        // the deaths of its own tick would drop nine tenths; the difference of a running total
+        // spans the whole gap.
+        ManifestEntry entry = plugin.getManifestEntry();
+
+        assertThat(entry.generatedQuery)
+            .contains("deaths_total - LAG(deaths_total)")
+            .contains("AS deaths");
+        assertThat(entry.outputColumns).contains("deaths", "death_count");
     }
 
     private OrganismState dead(int id, long birthTick, long deathTick) {

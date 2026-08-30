@@ -25,9 +25,8 @@ import * as MetricCardView from './ui/MetricCardView.js';
         'death_lifetimes',      // 5. Death Lifetimes
         'genome_clades',        // 6. Clade Shares
         'genome_diversity',     // 7. Genome Diversity
-        'genome_lineage',       // 8. New Genomes
-        'instruction_usage',    // 9. Instruction Usage
-        'environment_composition' // 10. Environment Composition
+        'instruction_usage',    // 8. Instruction Usage
+        'environment_composition' // 9. Environment Composition
     ];
     
     // State
@@ -36,15 +35,6 @@ import * as MetricCardView from './ui/MetricCardView.js';
     let isLoading = false;
     /** @type {Object<string, AbortController>} Active abort controllers per metric ID */
     const abortControllers = {};
-
-    /**
-     * Companion tables already loaded, keyed by "runId:metricId".
-     *
-     * A companion carries structure rather than a time series - the lineage a clade view reads its
-     * tree from - so it is the same for every window and every level of detail of the metric that
-     * names it, and is fetched once per run.
-     */
-    const companionCache = {};
 
     /**
      * Per-metric view state a chart asked for, keyed by metric ID.
@@ -496,7 +486,9 @@ export async function loadDashboard(runId) {
      *
      * The companion is read at its finest level of detail: it carries structure, and a thinned-out
      * structure is not a coarser view of it but a wrong one - a lineage missing edges turns
-     * descendants into roots. It is cached per run, so opening a clade costs no request.
+     * descendants into roots. It is read again whenever the metric is, because a running
+     * simulation keeps adding to it, and a tree that stops growing loses every genome born after
+     * it was read. Opening a clade redraws from what is already loaded and costs no request.
      *
      * @param {Object} metric - Manifest entry of the metric being loaded
      * @param {AbortSignal} signal - Signal aborting the fetch
@@ -507,19 +499,12 @@ export async function loadDashboard(runId) {
             return null;
         }
 
-        const cacheKey = `${currentRunId}:${metric.companionMetricId}`;
-        if (companionCache[cacheKey]) {
-            return companionCache[cacheKey];
-        }
-
+        const blobKey = `companion_${metric.id}`;
         const { blob } = await AnalyticsApi.fetchParquetBlob(
             metric.companionMetricId, currentRunId, 'lod0', signal
         );
-        await DuckDBClient.registerParquetBlob(cacheKey, blob);
-        const rows = await DuckDBClient.queryRegisteredBlob(cacheKey, metric.companionQuery);
-
-        companionCache[cacheKey] = rows;
-        return rows;
+        await DuckDBClient.registerParquetBlob(blobKey, blob);
+        return DuckDBClient.queryRegisteredBlob(blobKey, metric.companionQuery);
     }
 
     /**

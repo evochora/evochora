@@ -417,6 +417,33 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
                     input.popLimit(oldLimit);
                     break;
                 }
+                case TickDataChunk.DELTA_TICKS_FIELD_NUMBER: {
+                    // Packed on the wire, but a writer may emit either form
+                    if (WireFormat.getTagWireType(tag) == WireFormat.WIRETYPE_LENGTH_DELIMITED) {
+                        int length = input.readRawVarint32();
+                        int oldLimit = input.pushLimit(length);
+                        while (input.getBytesUntilLimit() > 0) {
+                            builder.addDeltaTicks(input.readInt64());
+                        }
+                        input.popLimit(oldLimit);
+                    } else {
+                        builder.addDeltaTicks(input.readInt64());
+                    }
+                    break;
+                }
+                case TickDataChunk.DELTA_TYPES_FIELD_NUMBER: {
+                    if (WireFormat.getTagWireType(tag) == WireFormat.WIRETYPE_LENGTH_DELIMITED) {
+                        int length = input.readRawVarint32();
+                        int oldLimit = input.pushLimit(length);
+                        while (input.getBytesUntilLimit() > 0) {
+                            builder.addDeltaTypes(DeltaType.forNumber(input.readEnum()));
+                        }
+                        input.popLimit(oldLimit);
+                    } else {
+                        builder.addDeltaTypes(DeltaType.forNumber(input.readEnum()));
+                    }
+                    break;
+                }
                 case TickDataChunk.DELTAS_FIELD_NUMBER: {
                     if (filter == ChunkFieldFilter.SNAPSHOT_ONLY) {
                         input.skipField(tag);
@@ -538,8 +565,10 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
     private static TickData parseTickDataWithFilter(CodedInputStream input, ChunkFieldFilter filter,
                                                     ITickRelevance relevance) throws IOException {
         TickData.Builder builder = TickData.newBuilder();
-        // tick_number is field 2 of TickData and arrives before organisms; until it has been read,
-        // no per-tick decision is possible and everything is materialized
+        // Protobuf writes fields in ascending field number, so once a field beyond tick_number
+        // (field 2) has arrived, the tick number is settled: either it was read, or it was left
+        // out for holding its default of zero, which is what the builder reports either way.
+        // Until then no per-tick decision is possible and everything is materialized.
         boolean tickKnown = false;
 
         while (true) {
@@ -547,6 +576,9 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
             if (tag == 0) break;
 
             int fieldNumber = WireFormat.getTagFieldNumber(tag);
+            if (fieldNumber > TickData.TICK_NUMBER_FIELD_NUMBER) {
+                tickKnown = true;
+            }
 
             // Skip organisms when filter is SKIP_ORGANISMS
             if (filter == ChunkFieldFilter.SKIP_ORGANISMS && fieldNumber == TickData.ORGANISMS_FIELD_NUMBER) {
@@ -649,8 +681,8 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
                                                       TickDataChunk.Builder chunk, int position)
             throws IOException {
         TickDelta.Builder builder = TickDelta.newBuilder();
-        // tick_number is field 1 and arrives before changed_cells and organisms; until it has been
-        // read, no per-tick decision is possible and everything is materialized
+        // As in the snapshot: once a field beyond tick_number (field 1) has arrived, the tick
+        // number is settled, whether it was written or left out for being zero.
         boolean tickKnown = false;
 
         while (true) {
@@ -658,6 +690,9 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
             if (tag == 0) break;
 
             int fieldNumber = WireFormat.getTagFieldNumber(tag);
+            if (fieldNumber > TickDelta.TICK_NUMBER_FIELD_NUMBER) {
+                tickKnown = true;
+            }
 
             // Skip organisms when filter is SKIP_ORGANISMS
             if (filter == ChunkFieldFilter.SKIP_ORGANISMS && fieldNumber == TickDelta.ORGANISMS_FIELD_NUMBER) {

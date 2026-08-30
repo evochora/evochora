@@ -21,8 +21,11 @@ import org.evochora.datapipeline.api.memory.SimulationParameters;
  * <strong>Metrics:</strong>
  * <ul>
  *   <li>{@code tick} - Simulation tick number</li>
- *   <li>{@code death_count} - Organisms in this recording that had died</li>
- *   <li>{@code death_lifetime_p10}, {@code death_lifetime_p50}, {@code death_lifetime_p90} -
+ *   <li>{@code death_count} - Organisms in this recording that had died; the sample the
+ *       percentiles rest on</li>
+ *   <li>{@code deaths_total} - Deaths since the run began, a running total the chart differences
+ *       so the number of deaths stays right on a coarse level of detail</li>
+ *   <li>{@code death_lifetime_p10}, {@code p25}, {@code p50}, {@code p75}, {@code p90} -
  *       percentiles of their lifetimes, in ticks</li>
  * </ul>
  * <p>
@@ -33,7 +36,7 @@ import org.evochora.datapipeline.api.memory.SimulationParameters;
  * <strong>What it is for.</strong> An organism damaged in the right place can fork children that
  * are not viable and die after a fixed number of ticks. Such an episode dominates the birth and
  * death counts while the population barely moves, and it is invisible in every aggregate curve.
- * It shows here as the three percentiles collapsing onto one constant value: many deaths, all of
+ * It shows here as the percentiles collapsing onto one constant value: many deaths, all of
  * exactly the same age. A population dying of ordinary causes spreads them apart.
  * <p>
  * <strong>Why this plugin must see every recording.</strong> The simulation removes a dead
@@ -51,8 +54,11 @@ public class DeathLifetimesPlugin extends AbstractAnalyticsPlugin {
     private static final ParquetSchema SCHEMA = ParquetSchema.builder()
         .column("tick", ColumnType.BIGINT)
         .column("death_count", ColumnType.INTEGER)
+        .column("deaths_total", ColumnType.BIGINT)
         .column("death_lifetime_p10", ColumnType.BIGINT)
+        .column("death_lifetime_p25", ColumnType.BIGINT)
         .column("death_lifetime_p50", ColumnType.BIGINT)
+        .column("death_lifetime_p75", ColumnType.BIGINT)
         .column("death_lifetime_p90", ColumnType.BIGINT)
         .build();
 
@@ -68,7 +74,7 @@ public class DeathLifetimesPlugin extends AbstractAnalyticsPlugin {
      * {@inheritDoc}
      * <p>
      * Collects the lifetimes of the organisms this recording reports as dead and reduces them to
-     * three percentiles. Returns no row when nobody died.
+     * five percentiles. Returns no row when nobody died.
      *
      * @throws IllegalStateException if an organism is reported dead without a time of death, since
      *         a lifetime cannot be derived from it and leaving it out would understate the count
@@ -76,8 +82,10 @@ public class DeathLifetimesPlugin extends AbstractAnalyticsPlugin {
     @Override
     public List<Object[]> extractRows(TickData tick) {
         int count = 0;
+        int alive = 0;
         for (OrganismState org : tick.getOrganismsList()) {
             if (!org.getIsDead()) {
+                alive++;
                 continue;
             }
             if (!org.hasDeathTick()) {
@@ -99,8 +107,11 @@ public class DeathLifetimesPlugin extends AbstractAnalyticsPlugin {
         return Collections.singletonList(new Object[] {
             tick.getTickNumber(),
             count,
+            tick.getTotalOrganismsCreated() - alive,
             percentile(count, 10),
+            percentile(count, 25),
             percentile(count, 50),
+            percentile(count, 75),
             percentile(count, 90)
         });
     }
@@ -136,14 +147,34 @@ public class DeathLifetimesPlugin extends AbstractAnalyticsPlugin {
         }
 
         entry.visualization = new VisualizationHint();
-        entry.visualization.type = "line-chart";
+        entry.visualization.type = "band-chart";
         entry.visualization.config = new HashMap<>();
         entry.visualization.config.put("x", "tick");
-        entry.visualization.config.put("y",
-            List.of("death_lifetime_p10", "death_lifetime_p50", "death_lifetime_p90"));
+        entry.visualization.config.put("y", List.of(
+            "death_lifetime_p10", "death_lifetime_p25", "death_lifetime_p50",
+            "death_lifetime_p75", "death_lifetime_p90"));
+        entry.visualization.config.put("yLabel", "Lifetime at death");
         entry.visualization.config.put("yFormat", "integer");
-        entry.visualization.config.put("y2", List.of("death_count"));
+        entry.visualization.config.put("y2", List.of("deaths", "death_count"));
+        entry.visualization.config.put("y2Label", "Deaths");
         entry.visualization.config.put("y2Format", "integer");
+
+        // Deaths of the window a row stands for, from the difference of a running total, so the
+        // number holds on every level of detail: on a coarse one a row stands for many recordings
+        // and the difference spans all of them. Percentiles cannot be summed that way - they stay
+        // the distribution of the deaths of this one recording, and death_count says how many
+        // those were.
+        entry.generatedQuery = """
+            SELECT tick, death_count,
+                   COALESCE(deaths_total - LAG(deaths_total) OVER (ORDER BY tick), death_count)::BIGINT AS deaths,
+                   death_lifetime_p10, death_lifetime_p25, death_lifetime_p50,
+                   death_lifetime_p75, death_lifetime_p90
+            FROM {table}
+            ORDER BY tick
+            """;
+        entry.outputColumns = List.of("tick", "death_count", "deaths",
+            "death_lifetime_p10", "death_lifetime_p25", "death_lifetime_p50",
+            "death_lifetime_p75", "death_lifetime_p90");
 
         return entry;
     }
