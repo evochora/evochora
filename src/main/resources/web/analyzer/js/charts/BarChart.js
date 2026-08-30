@@ -1,5 +1,5 @@
 import * as ChartRegistry from './ChartRegistry.js';
-import { formatTickValue } from './ChartUtils.js';
+import { formatTickValue, axisTicks } from './ChartUtils.js';
 
 /**
  * Bar Chart Implementation
@@ -90,15 +90,9 @@ export function render(canvas, data, config) {
                         grid: { color: '#333' }
                     },
                     y: {
-                        ticks: { 
+                        ticks: {
                             color: '#888',
-                            // Only show integer ticks
-                            callback: function(value) {
-                                if (Number.isInteger(value)) {
-                                    return value;
-                                }
-                                return null;
-                            }
+                            ...axisTicks('integer')
                         },
                         grid: { 
                             // Highlight zero line in white, others in dark gray

@@ -293,8 +293,62 @@ export async function loadDashboard(runId) {
         return Math.min(HARD_CAP, Math.max(100, Math.floor(chartWidth / 2)));
     }
 
-    /** Assumed average rows per Parquet file for estimation. */
-    const ROWS_PER_FILE_ESTIMATE = 10;
+    /**
+     * How many points a level of detail holds over a tick range.
+     *
+     * The manifest names the tick distance between two rows of each level, so this is a count and
+     * not an estimate. Metrics writing several rows per tick - one per genome, say - still hold as
+     * many points as the chart draws: what is counted is moments in time.
+     *
+     * @param {Object} metric - Manifest entry
+     * @param {string} lod - Level of detail, e.g. "lod2"
+     * @param {number} tickMin - First tick of the metric
+     * @param {number} tickMax - Last tick of the metric
+     * @returns {number} The number of points
+     * @throws {Error} If the manifest names no interval for that level
+     */
+    function pointCount(metric, lod, tickMin, tickMax) {
+        const interval = metric.tickIntervals?.[lod];
+        if (!interval) {
+            throw new Error(
+                `Metric ${metric.id} names no tick interval for ${lod}; its manifest was written ` +
+                `by a build that did not record one, and this build cannot read its data either.`);
+        }
+        return Math.floor((tickMax - tickMin) / interval) + 1;
+    }
+
+    /**
+     * The coarsest level of detail a metric offers - its overview.
+     *
+     * @param {Object} metric - Manifest entry
+     * @returns {string|null} The coarsest level, or null if the metric names none
+     */
+    function coarsestLod(metric) {
+        const levels = metric.dataSources ? Object.keys(metric.dataSources).sort() : [];
+        return levels.length > 0 ? levels[levels.length - 1] : null;
+    }
+
+    /**
+     * Keeps every nth row so that at most `limit` ticks remain, and returns the rest unchanged.
+     *
+     * The overview must show the whole run; when it holds more moments than the chart can draw,
+     * they are thinned evenly rather than cut off at one end. Rows sharing a tick stay together,
+     * so a metric with several rows per moment keeps its moments whole.
+     *
+     * @param {Array<Object>} rows - Rows ordered by tick
+     * @param {number} limit - Greatest number of ticks to keep
+     * @returns {Array<Object>} The thinned rows
+     */
+    function thinToLimit(rows, limit) {
+        const ticks = [...new Set(rows.map(row => Number(row.tick)))];
+        if (ticks.length <= limit) {
+            return rows;
+        }
+
+        const step = Math.ceil(ticks.length / limit);
+        const kept = new Set(ticks.filter((_, index) => index % step === 0));
+        return rows.filter(row => kept.has(Number(row.tick)));
+    }
 
     /**
      * Loads data for a single metric card with windowed tick-range support.
@@ -335,15 +389,19 @@ export async function loadDashboard(runId) {
             const tickMin = rangeInfo.tickMin;
             const tickMax = rangeInfo.tickMax;
             const resolvedLod = rangeInfo.lod || selectedLod;
-            const estimatedRows = rangeInfo.fileCount * ROWS_PER_FILE_ESTIMATE;
-            const needsWindowing = estimatedRows > effectiveLimit && tickMin != null && tickMax != null;
+            // The overview is never windowed: it answers what the whole run looks like, and a
+            // window would answer something else. Too many points there are thinned after loading.
+            const isOverview = resolvedLod === coarsestLod(metric);
+            const hasRange = tickMin != null && tickMax != null;
+            const points = hasRange ? pointCount(metric, resolvedLod, tickMin, tickMax) : 0;
+            const needsWindowing = !isOverview && hasRange && points > effectiveLimit;
 
             // Calculate view window if windowing is needed
             let viewFrom = null;
             let viewTo = null;
             if (needsWindowing) {
                 const totalRange = tickMax - tickMin;
-                const viewRange = Math.max(1, Math.round(totalRange * (effectiveLimit / estimatedRows)));
+                const viewRange = Math.max(1, Math.round(totalRange * (effectiveLimit / points)));
 
                 if (keepPosition && prevState && prevState.viewFrom != null) {
                     viewFrom = Math.max(tickMin, Math.min(prevState.viewFrom, tickMax - viewRange));
@@ -372,7 +430,7 @@ export async function loadDashboard(runId) {
                 if (needsWindowing) {
                     windowState[metricId] = {
                         tickMin, tickMax, viewFrom, viewTo, effectiveLimit,
-                        isParquet: true, blobKey, estimatedRows
+                        isParquet: true, blobKey, points
                     };
                     MetricCardView.showScrollbar(card, windowState[metricId]);
                 } else {
@@ -390,7 +448,7 @@ export async function loadDashboard(runId) {
                 if (needsWindowing) {
                     windowState[metricId] = {
                         tickMin, tickMax, viewFrom, viewTo, effectiveLimit,
-                        isParquet: false
+                        isParquet: false, points
                     };
                     MetricCardView.showScrollbar(card, windowState[metricId]);
                 } else {
@@ -410,7 +468,10 @@ export async function loadDashboard(runId) {
             }
 
             const companion = await loadCompanionData(metric, controller.signal);
-            loadedData[metricId] = { data, companion };
+            loadedData[metricId] = {
+                data: isOverview ? thinToLimit(data, effectiveLimit) : data,
+                companion
+            };
             renderWithViewState(card);
 
         } catch (error) {

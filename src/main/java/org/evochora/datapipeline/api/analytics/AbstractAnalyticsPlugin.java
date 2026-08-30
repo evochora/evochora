@@ -304,12 +304,21 @@ public abstract class AbstractAnalyticsPlugin implements IAnalyticsPlugin {
 
     /**
      * Applies common configuration fields to a manifest entry.
+     * <p>
+     * The tick interval of every level is filled in here rather than by each plugin: it follows
+     * from the sampling the plugin was configured with, and a reader needs it to know how many
+     * points a level holds without opening a single file.
      *
      * @param entry The manifest entry to configure
      */
     protected void applyCommonConfig(ManifestEntry entry) {
         if (maxDataPoints != null) {
             entry.maxDataPoints = maxDataPoints;
+        }
+
+        entry.tickIntervals = new java.util.LinkedHashMap<>();
+        for (int level = 0; level < lodLevels; level++) {
+            entry.tickIntervals.put(lodLevelName(level), getEffectiveSamplingInterval(level));
         }
     }
 

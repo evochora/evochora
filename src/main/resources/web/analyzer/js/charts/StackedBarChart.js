@@ -1,5 +1,5 @@
 import * as ChartRegistry from './ChartRegistry.js';
-import { formatTickValue } from './ChartUtils.js';
+import { formatTickValue, axisTicks } from './ChartUtils.js';
 
 /**
  * Stacked Bar Chart Implementation
@@ -294,12 +294,7 @@ export function render(canvas, data, config) {
                         title: { display: false },
                         ticks: {
                             color: '#888',
-                            callback: function(value) {
-                                // Use decimals when Y-axis max is small (< 10)
-                                const max = this.max || 100;
-                                const decimals = max < 10 ? 1 : 0;
-                                return value.toFixed(decimals) + (isPercentage ? '%' : '');
-                            }
+                            ...axisTicks(isPercentage ? 'percent' : null)
                         },
                         grid: { color: '#333', drawBorder: false }
                     },
@@ -316,11 +311,7 @@ export function render(canvas, data, config) {
                             },
                             ticks: {
                                 color: '#888',
-                                callback: function(value) {
-                                    // Show decimals for small scales
-                                    const decimals = this.max < 1 ? 2 : (this.max < 10 ? 1 : 0);
-                                    return value.toFixed(decimals) + '%';
-                                }
+                                ...axisTicks('percent')
                             },
                             grid: {
                                 drawOnChartArea: false  // Don't draw grid lines over bars

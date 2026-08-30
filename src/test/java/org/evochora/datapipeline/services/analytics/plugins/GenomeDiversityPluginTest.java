@@ -7,9 +7,11 @@ import java.util.List;
 import java.util.Map;
 
 import org.evochora.datapipeline.api.analytics.ColumnType;
+import org.evochora.datapipeline.api.analytics.IAnalyticsContext;
 import org.evochora.datapipeline.api.analytics.ManifestEntry;
 import org.evochora.datapipeline.api.analytics.ParquetSchema;
 import org.evochora.datapipeline.api.contracts.OrganismState;
+import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
@@ -34,7 +36,7 @@ class GenomeDiversityPluginTest {
         plugin = new GenomeDiversityPlugin();
         Config config = ConfigFactory.parseMap(Map.of("metricId", "genome"));
         plugin.configure(config);
-        plugin.initialize(null);
+        plugin.initialize(runRecordingEvery(100));
     }
 
     // ========================================================================
@@ -233,6 +235,24 @@ class GenomeDiversityPluginTest {
     // ========================================================================
     // Helpers
     // ========================================================================
+
+    /** A context for a run that records every {@code interval} ticks. */
+    private IAnalyticsContext runRecordingEvery(int interval) {
+        SimulationMetadata metadata = SimulationMetadata.newBuilder()
+            .setSimulationRunId("test-run")
+            .setResolvedConfigJson("{ \"samplingInterval\": " + interval + " }")
+            .build();
+        return new IAnalyticsContext() {
+            @Override public SimulationMetadata getMetadata() { return metadata; }
+            @Override public String getRunId() { return "test-run"; }
+            @Override public java.io.OutputStream openArtifactStream(String m, String l, String f) {
+                throw new UnsupportedOperationException();
+            }
+            @Override public java.nio.file.Path getTempDirectory() {
+                throw new UnsupportedOperationException();
+            }
+        };
+    }
 
     private TickData createTickWithGenomes(long tickNum, Long... genomeHashes) {
         TickData.Builder builder = TickData.newBuilder()

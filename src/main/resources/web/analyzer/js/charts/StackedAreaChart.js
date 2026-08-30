@@ -1,5 +1,5 @@
 import * as ChartRegistry from './ChartRegistry.js';
-import { formatTickValue } from './ChartUtils.js';
+import { formatTickValue, axisTicks } from './ChartUtils.js';
 
 /**
  * Stacked Area Chart Implementation
@@ -329,17 +329,7 @@ export function render(canvas, data, config) {
                         title: { display: false },
                         ticks: {
                             color: '#888',
-                            ...(isPercentage ? {
-                                callback: function(value) {
-                                    const max = this.max || 100;
-                                    const decimals = max < 10 ? 1 : 0;
-                                    return value.toFixed(decimals) + '%';
-                                }
-                            } : yFormat === 'integer' ? {
-                                callback: function(value) {
-                                    return Number.isInteger(value) ? value : null;
-                                }
-                            } : {})
+                            ...axisTicks(isPercentage ? 'percent' : yFormat)
                         },
                         grid: { color: '#333', drawBorder: false }
                     }

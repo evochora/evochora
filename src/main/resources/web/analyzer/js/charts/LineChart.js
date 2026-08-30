@@ -1,5 +1,5 @@
 import * as ChartRegistry from './ChartRegistry.js';
-import { formatTickValue } from './ChartUtils.js';
+import { formatTickValue, axisTicks } from './ChartUtils.js';
 
 /**
  * Line Chart Implementation
@@ -203,15 +203,7 @@ export function render(canvas, data, config) {
                         },
                         ticks: {
                             color: '#888',
-                            ...(yFormat === 'integer' ? {
-                                callback: function(value) {
-                                    return Number.isInteger(value) ? value : null;
-                                }
-                            } : yFormat === 'decimal' ? {
-                                callback: function(value) {
-                                    return value.toFixed(2);
-                                }
-                            } : {})
+                            ...axisTicks(yFormat)
                         },
                         grid: {
                             color: '#333',
@@ -229,19 +221,7 @@ export function render(canvas, data, config) {
                         },
                         ticks: {
                             color: '#888',
-                            ...(y2Format === 'integer' ? {
-                                callback: function(value) {
-                                    return Number.isInteger(value) ? value : null;
-                                }
-                            } : y2Format === 'decimal' ? {
-                                callback: function(value) {
-                                    return value.toFixed(2);
-                                }
-                            } : y2Format === 'percent' ? {
-                                callback: function(value) {
-                                    return Number.isInteger(value) ? value + '%' : null;
-                                }
-                            } : {})
+                            ...axisTicks(y2Format)
                         },
                         grid: {
                             drawOnChartArea: false

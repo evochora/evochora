@@ -101,6 +101,19 @@ public class ManifestEntry {
     public String customVisualizerPath;
 
     /**
+     * Ticks between two rows, per LOD level.
+     * <p>
+     * Key: "lod0", "lod1", ... Value: the tick distance between consecutive rows of that level.
+     * <p>
+     * With the tick range of a metric this gives the exact number of points a level holds, which
+     * decides whether a chart can show the whole run at once or has to show a window of it. The
+     * frontend would otherwise have to guess that number from how many files were written, and a
+     * guess is wrong in the direction that matters: coarse levels write no fewer files, only
+     * shorter ones.
+     */
+    public Map<String, Integer> tickIntervals;
+
+    /**
      * Storage metric identifier of a second table this chart reads alongside its own (optional).
      * <p>
      * A metric whose rows only mean something next to another table names it here: the frontend
