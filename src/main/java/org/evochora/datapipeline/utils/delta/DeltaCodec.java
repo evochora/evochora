@@ -472,13 +472,11 @@ public final class DeltaCodec {
          */
         public List<TickData> decompressChunk(TickDataChunk chunk) throws ChunkCorruptedException {
             validateChunk(chunk);
-            
-            // Reset state for full chunk decompression
-            reset();
-            
+
             List<TickData> result = new ArrayList<>(chunk.getTickCount());
-            
-            // First tick is the snapshot
+
+            // No reset here: applySnapshot clears both arrays before it writes, and the chunk
+            // identity is overwritten a line below
             TickData snapshot = chunk.getSnapshot();
             state.applySnapshot(snapshot.getCellColumns());
             result.add(snapshot);

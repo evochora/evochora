@@ -1,5 +1,6 @@
 package org.evochora.datapipeline.resources.queues;
 
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -16,6 +17,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
@@ -111,7 +113,14 @@ public class InMemoryBlockingQueueTest {
         for (int i = 0; i < 10; i++) {
             producer.offer("message" + i);
         }
-        ExecutorService executor = Executors.newSingleThreadExecutor();
+        // The offering thread is kept so the test can see it waiting; freeing space before it
+        // blocks would leave the waiting path untested
+        AtomicReference<Thread> offering = new AtomicReference<>();
+        ExecutorService executor = Executors.newSingleThreadExecutor(runnable -> {
+            Thread thread = new Thread(runnable);
+            offering.set(thread);
+            return thread;
+        });
         AtomicBoolean offerSuccess = new AtomicBoolean(false);
         CountDownLatch latch = new CountDownLatch(1);
 
@@ -124,7 +133,9 @@ public class InMemoryBlockingQueueTest {
             }
         });
 
-        Thread.sleep(100);
+        await().atMost(5, TimeUnit.SECONDS).until(() ->
+            offering.get() != null && offering.get().getState() == Thread.State.TIMED_WAITING);
+
         // Consume one item to free space
         try (StreamingBatch<String> batch = consumer.receiveBatch(1, 0, TimeUnit.MILLISECONDS)) {
             assertEquals(1, batch.size());
@@ -257,7 +268,9 @@ public class InMemoryBlockingQueueTest {
         executor.shutdown();
         assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
 
-        Thread.sleep(100);
+        await().atMost(5, TimeUnit.SECONDS).until(() ->
+            ((MonitoredQueueProducer<String>) producer).getMetrics().get("messages_sent").longValue() == 5L
+                && ((MonitoredQueueConsumer<String>) consumer).getMetrics().get("messages_consumed").longValue() == 5L);
 
         Map<String, Number> producerMetrics = ((MonitoredQueueProducer<String>) producer).getMetrics();
         assertEquals(5L, producerMetrics.get("messages_sent"));

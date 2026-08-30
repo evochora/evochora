@@ -15,6 +15,7 @@ import org.mockito.MockitoAnnotations;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -133,15 +134,13 @@ class MetadataReadingComponentTest {
         });
         
         loadThread.start();
-        
-        // Wait a bit to ensure polling has started
-        try {
-            Thread.sleep(100);
-        } catch (InterruptedException e) {
-            // Ignore
-        }
-        
-        // Interrupt the thread
+
+        // Interrupt only once the thread is actually waiting between polls; interrupting it
+        // earlier would test a different thing than the one this is about
+        await().atMost(5, java.util.concurrent.TimeUnit.SECONDS).until(() ->
+            loadThread.getState() == Thread.State.TIMED_WAITING
+                || loadThread.getState() == Thread.State.WAITING);
+
         loadThread.interrupt();
         
         // Wait for thread to complete

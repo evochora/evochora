@@ -440,9 +440,8 @@ class MetadataPersistenceServiceTest {
         when(mockInputQueue.receiveBatch(anyInt(), anyLong(), any(TimeUnit.class))).thenReturn(emptyBatch());
 
         service.start();
-
-        // Wait a bit to ensure service is running and polling
-        Thread.sleep(100);
+        await().atMost(5, java.util.concurrent.TimeUnit.SECONDS)
+            .until(() -> service.getCurrentState() == State.RUNNING);
 
         // Stop service while it's waiting (graceful shutdown via isStopRequested)
         service.stop();

@@ -94,16 +94,42 @@ public abstract class VisualizerBaseController extends AbstractController {
                 ctx.status(HttpStatus.NOT_FOUND).json(createErrorBody(HttpStatus.NOT_FOUND, 
                     "Requested data not available. The simulation may have been created with a different schema version."));
             } else {
-                LOGGER.error("Database error for request {}: {}", ctx.path(), e.getMessage());
+                LOGGER.error("Database error for request {}: {}", ctx.path(), describeCauses(e));
                 LOGGER.debug("Database error stack trace", e);
                 ctx.status(HttpStatus.INTERNAL_SERVER_ERROR).json(createErrorBody(HttpStatus.INTERNAL_SERVER_ERROR, "Database error occurred"));
             }
         });
         app.exception(Exception.class, (e, ctx) -> {
-            LOGGER.error("Unhandled exception for request {}: {}", ctx.path(), e.getMessage());
+            LOGGER.error("Unhandled exception for request {}: {}", ctx.path(), describeCauses(e));
             LOGGER.debug("Unhandled exception stack trace", e);
             ctx.status(HttpStatus.INTERNAL_SERVER_ERROR).json(createErrorBody(HttpStatus.INTERNAL_SERVER_ERROR, "An internal server error occurred"));
         });
+    }
+
+    /**
+     * Describes a failure by its whole chain of causes, innermost message included.
+     * <p>
+     * The client is told only that something went wrong, so the log is the one place where the
+     * reason survives. A controller that wraps every failure in one sentence of its own would
+     * otherwise leave nothing but that sentence at ERROR level, and the actual cause only in a
+     * stack trace that production logging does not keep.
+     *
+     * @param throwable The failure to describe
+     * @return The messages of the failure and its causes, outermost first
+     */
+    protected static String describeCauses(final Throwable throwable) {
+        final StringBuilder description = new StringBuilder();
+        final java.util.Set<Throwable> seen = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+
+        for (Throwable current = throwable; current != null && seen.add(current); current = current.getCause()) {
+            if (description.length() > 0) {
+                description.append(" <- ");
+            }
+            description.append(current.getClass().getSimpleName())
+                .append(": ")
+                .append(current.getMessage());
+        }
+        return description.toString();
     }
 
     /**

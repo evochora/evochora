@@ -122,11 +122,11 @@ public class EnvironmentController extends VisualizerBaseController {
             ? options.getInt("chunk-cache.expire-after-access") 
             : 300;
         
-        // Build chunk cache
+        // Build chunk cache. Statistics are not recorded: nothing reads them, and Caffeine keeps
+        // counters per access for them.
         this.chunkCache = Caffeine.newBuilder()
             .maximumSize(maxSize)
             .expireAfterAccess(Duration.ofSeconds(expireAfterAccessSeconds))
-            .recordStats()  // Enable stats for monitoring
             .build();
         
         // Build environment properties cache (small, long TTL)

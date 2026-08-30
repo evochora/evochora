@@ -1,8 +1,10 @@
 package org.evochora.datapipeline.services;
 
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.concurrent.TimeUnit;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -48,10 +50,9 @@ public class EndToEndServiceTest {
         consumer.start();
         producer.start();
 
-        long deadline = System.currentTimeMillis() + 2000;
-        while ((producer.getCurrentState() != IService.State.STOPPED || consumer.getCurrentState() != IService.State.STOPPED) && System.currentTimeMillis() < deadline) {
-            Thread.sleep(10);
-        }
+        await().atMost(2, TimeUnit.SECONDS).until(() ->
+            producer.getCurrentState() == IService.State.STOPPED
+                && consumer.getCurrentState() == IService.State.STOPPED);
 
         assertEquals(IService.State.STOPPED, producer.getCurrentState(), "Producer should have stopped on its own.");
         assertEquals(IService.State.STOPPED, consumer.getCurrentState(), "Consumer should have stopped on its own.");
@@ -86,16 +87,21 @@ public class EndToEndServiceTest {
         consumer.start();
         producer.start();
 
-        Thread.sleep(50); // Let some messages flow
+        await().atMost(5, TimeUnit.SECONDS).until(() ->
+            ((Number) consumer.getMetrics().get("messages_received")).longValue() > 0);
 
         producer.pause();
         consumer.pause();
 
-        Thread.sleep(50);
+        await().atMost(5, TimeUnit.SECONDS).until(() ->
+            producer.getCurrentState() == IService.State.PAUSED
+                && consumer.getCurrentState() == IService.State.PAUSED);
 
         long messagesSentWhilePaused = ((Number) producer.getMetrics().get("messages_sent")).longValue();
         long messagesReceivedWhilePaused = ((Number) consumer.getMetrics().get("messages_received")).longValue();
 
+        // The claim is that nothing happens, and only time can show that. A paused service that
+        // kept working would raise its counters within a fraction of this.
         Thread.sleep(100);
 
         assertEquals(messagesSentWhilePaused, ((Number) producer.getMetrics().get("messages_sent")).longValue());
@@ -104,10 +110,9 @@ public class EndToEndServiceTest {
         producer.resume();
         consumer.resume();
 
-        Thread.sleep(100);
-
-        assertTrue(((Number) producer.getMetrics().get("messages_sent")).longValue() > messagesSentWhilePaused);
-        assertTrue(((Number) consumer.getMetrics().get("messages_received")).longValue() > messagesReceivedWhilePaused);
+        await().atMost(5, TimeUnit.SECONDS).until(() ->
+            ((Number) producer.getMetrics().get("messages_sent")).longValue() > messagesSentWhilePaused
+                && ((Number) consumer.getMetrics().get("messages_received")).longValue() > messagesReceivedWhilePaused);
 
         producer.stop();
         consumer.stop();

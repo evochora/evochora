@@ -252,9 +252,8 @@ public class AbstractServiceTest {
         service.start();
         assertTrue(service.runningLatch.await(2, TimeUnit.SECONDS), "Service should be running");
 
-        // Small delay to ensure service has entered PROCESSING phase
-        Thread.sleep(50);
-        assertEquals(IService.ShutdownPhase.PROCESSING, service.getShutdownPhase());
+        await().atMost(2, TimeUnit.SECONDS)
+            .until(() -> service.getShutdownPhase() == IService.ShutdownPhase.PROCESSING);
 
         service.stop();
 
