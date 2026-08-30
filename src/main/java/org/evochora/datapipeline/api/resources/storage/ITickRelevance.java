@@ -12,6 +12,11 @@ package org.evochora.datapipeline.api.resources.storage;
  * order and are distributed across competing consumers, so an answer derived from a counter or
  * from a previously seen chunk would differ between instances and between runs.
  * <p>
+ * <strong>The other axis.</strong> Which category of payload a reader ever looks at - organisms
+ * or cells - is stated once for the whole chunk by {@link ChunkFieldFilter}. Relevance narrows
+ * within what that lets through, tick by tick, so a reader wanting different categories at
+ * different ticks states {@link ChunkFieldFilter#ALL} here and lets the ticks do the saving.
+ * <p>
  * <strong>Only intent, no format knowledge.</strong> A reader states which ticks it looks at.
  * That the environment at one tick is reconstructed from a snapshot and a chain of deltas - and
  * that those deltas therefore have to be materialized too - is derived by whoever reads the chunk,

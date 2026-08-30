@@ -12,7 +12,15 @@ package org.evochora.datapipeline.api.resources.storage;
  * objects. For a 4000x3000 environment with ~580 organisms, skipping organisms saves ~730 MB
  * per chunk and skipping cells saves ~550 MB per snapshot.
  *
- * @see IBatchStorageRead#forEachChunk(StoragePath, ChunkFieldFilter, CheckedConsumer)
+ * <p>
+ * <strong>The other axis.</strong> A filter speaks for a whole chunk and only about categories:
+ * organisms or cells, never both. Which of the recorded ticks are worth materializing at all is a
+ * separate question, answered per tick by {@link ITickRelevance} within whatever the filter lets
+ * through. A reader that needs organisms at some ticks and cells at others therefore passes
+ * {@link #ALL} together with a relevance - there its saving comes from the ticks, not from the
+ * category.
+ *
+ * @see IBatchStorageRead#forEachChunk(StoragePath, ChunkFieldFilter, ITickRelevance, CheckedConsumer)
  */
 public enum ChunkFieldFilter {
 
