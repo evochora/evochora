@@ -26,7 +26,7 @@ import com.typesafe.config.ConfigFactory;
 public class EndToEndServiceTest {
 
     @Test
-    void testProducerToConsumerFlow() throws InterruptedException {
+    void testProducerToConsumerFlow() {
         Config producerConfig = ConfigFactory.parseString("maxMessages=20, intervalMs=10, messagePrefix=\"E2E\"");
         Config consumerConfig = ConfigFactory.parseString("maxMessages=20, processingDelayMs=5");
 
@@ -63,7 +63,7 @@ public class EndToEndServiceTest {
     }
 
     @Test
-    void testPauseAndResume() throws InterruptedException {
+    void testPauseAndResume() {
         Config producerConfig = ConfigFactory.parseString("intervalMs=10, messagePrefix=\"PauseTest\"");
         Config consumerConfig = ConfigFactory.empty();
 
@@ -98,12 +98,18 @@ public class EndToEndServiceTest {
         long messagesSentWhilePaused = ((Number) producer.getMetrics().get("messages_sent")).longValue();
         long messagesReceivedWhilePaused = ((Number) consumer.getMetrics().get("messages_received")).longValue();
 
-        // The claim is that nothing happens, and only time can show that. A paused service that
-        // kept working would raise its counters within a fraction of this.
-        Thread.sleep(100);
-
-        assertEquals(messagesSentWhilePaused, ((Number) producer.getMetrics().get("messages_sent")).longValue());
-        assertEquals(messagesReceivedWhilePaused, ((Number) consumer.getMetrics().get("messages_received")).longValue());
+        // The claim is that nothing happens, and only time can show that. The counters have to hold
+        // still for a stretch rather than merely match at its end, so they are read throughout it:
+        // a paused service that kept working would raise them within a fraction of it.
+        await().pollInterval(10, TimeUnit.MILLISECONDS)
+            .during(100, TimeUnit.MILLISECONDS)
+            .atMost(1, TimeUnit.SECONDS)
+            .untilAsserted(() -> {
+                assertEquals(messagesSentWhilePaused,
+                    ((Number) producer.getMetrics().get("messages_sent")).longValue());
+                assertEquals(messagesReceivedWhilePaused,
+                    ((Number) consumer.getMetrics().get("messages_received")).longValue());
+            });
 
         producer.resume();
         consumer.resume();
