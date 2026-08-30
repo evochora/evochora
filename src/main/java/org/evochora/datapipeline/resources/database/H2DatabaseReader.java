@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
-import org.evochora.datapipeline.api.contracts.TickDataChunk;
+import org.evochora.datapipeline.api.resources.database.PendingChunkRead;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.OrganismNotFoundException;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
@@ -62,14 +62,14 @@ public class H2DatabaseReader implements IDatabaseReader {
     }
     
     @Override
-    public TickDataChunk readChunkContaining(long tickNumber) throws SQLException, TickNotFoundException {
+    public PendingChunkRead prepareChunkRead(long tickNumber) throws SQLException, TickNotFoundException {
         ensureNotClosed();
         if (envStrategy == null) {
             throw new IllegalStateException(
                 "Environment storage strategy not configured. " +
                 "Add h2EnvironmentStrategy to database configuration.");
         }
-        return envStrategy.readChunkContaining(connection, tickNumber);
+        return envStrategy.prepareChunkRead(connection, tickNumber);
     }
     
     private EnvironmentProperties extractEnvironmentProperties(SimulationMetadata metadata) {

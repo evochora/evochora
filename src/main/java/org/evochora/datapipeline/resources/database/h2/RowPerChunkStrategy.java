@@ -21,6 +21,7 @@ import org.evochora.datapipeline.api.contracts.DeltaType;
 import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TickDelta;
+import org.evochora.datapipeline.api.resources.database.PendingChunkRead;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 import org.evochora.datapipeline.utils.H2SchemaUtil;
 import org.evochora.datapipeline.utils.compression.CompressionCodecFactory;
@@ -239,11 +240,11 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
      * not a BLOB), then the chunk file is read directly from disk.
      */
     @Override
-    public TickDataChunk readChunkContaining(Connection conn, long tickNumber)
+    public PendingChunkRead prepareChunkRead(Connection conn, long tickNumber)
             throws SQLException, TickNotFoundException {
         long firstTick = queryFirstTick(conn, tickNumber);
-        byte[] chunkData = readChunkFile(conn, firstTick);
-        return parseChunkForEnvironment(chunkData);
+        Path chunkFile = locateChunkFile(conn, firstTick);
+        return () -> parseChunkForEnvironment(readChunkFile(chunkFile));
     }
 
     /**
@@ -274,17 +275,18 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
     }
 
     /**
-     * Reads the compressed chunk file from the filesystem.
+     * Works out where the chunk file lies, using the persisted {@code .chunk_meta} to determine
+     * the subdirectory.
      * <p>
-     * Uses the persisted {@code .chunk_meta} to determine the correct subdirectory.
+     * This is everything the connection is needed for; reading and parsing follow without it.
      *
      * @param conn Database connection (used to resolve schema directory)
      * @param firstTick First tick of the chunk
-     * @return The compressed chunk bytes
-     * @throws SQLException if file I/O fails
+     * @return The path of the chunk file
+     * @throws SQLException if the schema directory cannot be resolved
      * @throws TickNotFoundException if the chunk file does not exist
      */
-    private byte[] readChunkFile(Connection conn, long firstTick)
+    private Path locateChunkFile(Connection conn, long firstTick)
             throws SQLException, TickNotFoundException {
         Path schemaDir = resolveSchemaDirectory(conn);
         long ticksPerSubdir = loadChunkMetadata(schemaDir);
@@ -295,7 +297,17 @@ public class RowPerChunkStrategy extends AbstractH2EnvStorageStrategy {
             throw new TickNotFoundException(
                     "Chunk file not found for tick " + firstTick + ": " + chunkFile);
         }
+        return chunkFile;
+    }
 
+    /**
+     * Reads the compressed chunk file. Needs no database connection.
+     *
+     * @param chunkFile The file, as located while the connection was held
+     * @return The compressed chunk bytes
+     * @throws SQLException if file I/O fails
+     */
+    private static byte[] readChunkFile(Path chunkFile) throws SQLException {
         try {
             return Files.readAllBytes(chunkFile);
         } catch (IOException e) {

@@ -191,6 +191,12 @@ public class SimulationRestorer {
         // 5. Populate Environment cells from snapshot
         populateCells(environment, snapshot.getCellColumns());
 
+        // What was laid down is the state as it was, not a change to it. Left marked as changed,
+        // every restored cell would enter the first delta after the resume and, through the
+        // accumulated deltas, every delta until the next snapshot - a far larger chunk carrying
+        // the same state as an uninterrupted run.
+        environment.resetChangeTracking();
+
         // 6. Extract state from snapshot (always complete since we resume from chunk start)
         // A snapshot labelled T holds the state after simulation tick T, at which point the
         // simulation's own counter already stands at T + 1; the restored simulation continues with

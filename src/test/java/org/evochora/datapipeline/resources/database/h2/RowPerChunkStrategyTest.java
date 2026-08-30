@@ -26,6 +26,7 @@ import java.util.Optional;
 
 import com.github.luben.zstd.ZstdOutputStream;
 import com.google.protobuf.ByteString;
+import org.evochora.datapipeline.api.resources.database.PendingChunkRead;
 import org.evochora.datapipeline.CellStateTestHelper;
 import org.evochora.datapipeline.api.contracts.CellDataColumns;
 import org.evochora.datapipeline.api.contracts.CellState;
@@ -163,7 +164,7 @@ class RowPerChunkStrategyTest {
     }
 
     // ========================================================================
-    // readChunkContaining tests
+    // chunk read tests
     // ========================================================================
 
     @Test
@@ -171,7 +172,7 @@ class RowPerChunkStrategyTest {
         strategy = new RowPerChunkStrategy(configWithChunkDir());
         when(mockResultSet.next()).thenReturn(false);
 
-        assertThatThrownBy(() -> strategy.readChunkContaining(mockConnection, 500L))
+        assertThatThrownBy(() -> strategy.prepareChunkRead(mockConnection, 500L).read())
             .isInstanceOf(TickNotFoundException.class)
             .hasMessageContaining("No chunk found containing tick 500");
     }
@@ -192,7 +193,7 @@ class RowPerChunkStrategyTest {
         when(mockResultSet.next()).thenReturn(true);
         when(mockResultSet.getLong("first_tick")).thenReturn(1000L);
 
-        assertThatThrownBy(() -> strategy.readChunkContaining(mockConnection, 1000L))
+        assertThatThrownBy(() -> strategy.prepareChunkRead(mockConnection, 1000L).read())
             .isInstanceOf(TickNotFoundException.class)
             .hasMessageContaining("Chunk file not found");
     }
@@ -272,6 +273,34 @@ class RowPerChunkStrategyTest {
     }
 
     @Test
+    void prepareChunkRead_takesEverythingFromTheConnectionBeforeReading() throws Exception {
+        // The connection is needed to find the chunk, not to read it. A read carried out after the
+        // connection is gone proves the second part no longer holds it - which is what keeps a
+        // slow disk from starving the pool.
+        strategy = new RowPerChunkStrategy(configWithChunkDirAndZstd());
+        strategy.createTables(mockConnection, 2);
+
+        TickDataChunk chunk = buildChunkWithOrganisms();
+        strategy.writeRawChunk(mockConnection, chunk.getFirstTick(), chunk.getLastTick(),
+                chunk.getTickCount(), chunk.toByteArray());
+
+        when(mockResultSet.next()).thenReturn(true);
+        when(mockResultSet.getLong("first_tick")).thenReturn(chunk.getFirstTick());
+
+        PendingChunkRead pending = strategy.prepareChunkRead(mockConnection, chunk.getFirstTick());
+
+        // Every further use of the connection now fails, as a closed one would
+        when(mockConnection.prepareStatement(anyString()))
+                .thenThrow(new SQLException("connection is gone"));
+        when(mockConnection.getSchema()).thenThrow(new SQLException("connection is gone"));
+
+        TickDataChunk readback = pending.read();
+
+        assertEquals(chunk.getFirstTick(), readback.getFirstTick());
+        assertEquals(chunk.getTickCount(), readback.getTickCount());
+    }
+
+    @Test
     void testWriteRawChunk_RoundTrip_DataMatchesAfterReadback() throws Exception {
         strategy = new RowPerChunkStrategy(configWithChunkDirAndZstd());
         strategy.createTables(mockConnection, 2);
@@ -285,11 +314,11 @@ class RowPerChunkStrategyTest {
 
         strategy.writeRawChunk(mockConnection, firstTick, lastTick, tickCount, rawBytes);
 
-        // Read back via readChunkContaining (uses mock H2 query + real filesystem)
+        // Read back through a prepared read (uses mock H2 query + real filesystem)
         when(mockResultSet.next()).thenReturn(true);
         when(mockResultSet.getLong("first_tick")).thenReturn(firstTick);
 
-        TickDataChunk readback = strategy.readChunkContaining(mockConnection, firstTick);
+        TickDataChunk readback = strategy.prepareChunkRead(mockConnection, firstTick).read();
 
         // Verify metadata matches
         assertEquals(originalChunk.getSimulationRunId(), readback.getSimulationRunId());
@@ -297,7 +326,7 @@ class RowPerChunkStrategyTest {
         assertEquals(originalChunk.getLastTick(), readback.getLastTick());
         assertEquals(originalChunk.getTickCount(), readback.getTickCount());
 
-        // Verify cell data preserved (organisms stripped by readChunkContaining is expected)
+        // Verify cell data preserved (organisms are stripped on this path, as expected)
         assertCellColumnsEqual(
             originalChunk.getSnapshot().getCellColumns(),
             readback.getSnapshot().getCellColumns());
@@ -315,12 +344,12 @@ class RowPerChunkStrategyTest {
     // ========================================================================
 
     @Test
-    void readChunkContaining_preservesCellDataColumns() throws SQLException, TickNotFoundException, IOException {
+    void chunkRead_preservesCellDataColumns() throws SQLException, TickNotFoundException, IOException {
         strategy = new RowPerChunkStrategy(configWithChunkDir());
         TickDataChunk fullChunk = buildChunkWithOrganisms();
         prepareChunkFile(fullChunk.getSnapshot().getTickNumber(), compressWithZstd(fullChunk));
 
-        TickDataChunk result = strategy.readChunkContaining(mockConnection, 0);
+        TickDataChunk result = strategy.prepareChunkRead(mockConnection, 0).read();
 
         assertCellColumnsEqual(
                 fullChunk.getSnapshot().getCellColumns(),
@@ -335,7 +364,7 @@ class RowPerChunkStrategyTest {
     }
 
     @Test
-    void readChunkContaining_stripsOrganismsAndRngAndPlugins() throws SQLException, TickNotFoundException, IOException {
+    void chunkRead_stripsOrganismsAndRngAndPlugins() throws SQLException, TickNotFoundException, IOException {
         strategy = new RowPerChunkStrategy(configWithChunkDir());
         TickDataChunk fullChunk = buildChunkWithOrganisms();
 
@@ -346,7 +375,7 @@ class RowPerChunkStrategyTest {
 
         prepareChunkFile(fullChunk.getSnapshot().getTickNumber(), compressWithZstd(fullChunk));
 
-        TickDataChunk result = strategy.readChunkContaining(mockConnection, 0);
+        TickDataChunk result = strategy.prepareChunkRead(mockConnection, 0).read();
 
         assertEquals(0, result.getSnapshot().getOrganismsCount());
         assertEquals(0, result.getSnapshot().getRngState().size());
@@ -359,12 +388,12 @@ class RowPerChunkStrategyTest {
     }
 
     @Test
-    void readChunkContaining_preservesMetadata() throws SQLException, TickNotFoundException, IOException {
+    void chunkRead_preservesMetadata() throws SQLException, TickNotFoundException, IOException {
         strategy = new RowPerChunkStrategy(configWithChunkDir());
         TickDataChunk fullChunk = buildChunkWithOrganisms();
         prepareChunkFile(fullChunk.getSnapshot().getTickNumber(), compressWithZstd(fullChunk));
 
-        TickDataChunk result = strategy.readChunkContaining(mockConnection, 0);
+        TickDataChunk result = strategy.prepareChunkRead(mockConnection, 0).read();
 
         assertEquals(fullChunk.getSimulationRunId(), result.getSimulationRunId());
         assertEquals(fullChunk.getFirstTick(), result.getFirstTick());
@@ -373,13 +402,13 @@ class RowPerChunkStrategyTest {
     }
 
     @Test
-    void readChunkContaining_compatibleWithDeltaCodecDecoder()
+    void chunkRead_compatibleWithDeltaCodecDecoder()
             throws SQLException, TickNotFoundException, IOException, ChunkCorruptedException {
         strategy = new RowPerChunkStrategy(configWithChunkDir());
         TickDataChunk fullChunk = buildChunkWithOrganisms();
         prepareChunkFile(fullChunk.getSnapshot().getTickNumber(), compressWithZstd(fullChunk));
 
-        TickDataChunk result = strategy.readChunkContaining(mockConnection, 0);
+        TickDataChunk result = strategy.prepareChunkRead(mockConnection, 0).read();
 
         DeltaCodec.Decoder decoder = new DeltaCodec.Decoder(100);
 

@@ -69,20 +69,20 @@ class StrategyErrorHandlingTest {
     }
     
     @Test
-    void readChunkContaining_throwsOnInvalidTick() throws SQLException {
+    void chunkRead_throwsOnInvalidTick() throws SQLException {
         try (IDatabaseReader reader = database.createReader(testRunId)) {
             // Ensure table exists with a chunk, otherwise we get a SQLSyntaxErrorException
             insertChunk(testRunId, 0L, 99L);
 
             // When/Then: Query non-existent tick should throw specific exception
             assertThrows(TickNotFoundException.class, () -> 
-                reader.readChunkContaining(999999)
+                reader.prepareChunkRead(999999).read()
             );
         }
     }
     
     @Test
-    void readChunkContaining_handlesCorruptedBlob() throws SQLException {
+    void chunkRead_handlesCorruptedBlob() throws SQLException {
         // Given: Corrupted BLOB data in database
         insertCorruptedChunk(testRunId, 100L);
         
@@ -91,7 +91,7 @@ class StrategyErrorHandlingTest {
             // The exact exception depends on how protobuf handles invalid data
             assertDoesNotThrow(() -> {
                 try {
-                    TickDataChunk chunk = reader.readChunkContaining(100);
+                    TickDataChunk chunk = reader.prepareChunkRead(100).read();
                     // If we get here, the chunk was somehow parseable
                     // but may have invalid data - that's also acceptable
                     assertNotNull(chunk);
@@ -107,13 +107,13 @@ class StrategyErrorHandlingTest {
     }
     
     @Test
-    void readChunkContaining_handlesEmptySnapshot() throws SQLException, TickNotFoundException {
+    void chunkRead_handlesEmptySnapshot() throws SQLException, TickNotFoundException {
         // Given: Empty BLOB (no cells in snapshot)
         insertEmptyChunk(testRunId, 100L);
         
         try (IDatabaseReader reader = database.createReader(testRunId)) {
             // When: Query tick with empty snapshot
-            TickDataChunk chunk = reader.readChunkContaining(100);
+            TickDataChunk chunk = reader.prepareChunkRead(100).read();
             
             // Then: Should return valid chunk with empty cell columns
             assertNotNull(chunk);
@@ -127,13 +127,13 @@ class StrategyErrorHandlingTest {
     }
     
     @Test
-    void readChunkContaining_returnsValidChunk() throws SQLException, TickNotFoundException {
+    void chunkRead_returnsValidChunk() throws SQLException, TickNotFoundException {
         // Given: Valid chunk with data
         insertChunkWithCells(testRunId, 100L);
         
         try (IDatabaseReader reader = database.createReader(testRunId)) {
             // When: Query valid tick
-            TickDataChunk chunk = reader.readChunkContaining(100);
+            TickDataChunk chunk = reader.prepareChunkRead(100).read();
             
             // Then: Should return chunk with cells
             assertNotNull(chunk);

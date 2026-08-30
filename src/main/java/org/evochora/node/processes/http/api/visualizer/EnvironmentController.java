@@ -14,6 +14,7 @@ import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.delta.ChunkCorruptedException;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.MetadataNotFoundException;
+import org.evochora.datapipeline.api.resources.database.PendingChunkRead;
 import org.evochora.datapipeline.api.resources.database.OrganismNotFoundException;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
@@ -527,14 +528,23 @@ public class EnvironmentController extends VisualizerBaseController {
         // Cache miss - load from database
         LOGGER.debug("Chunk cache miss: runId={}, tick={}", runId, tickNumber);
         
-        try (final IDatabaseReader reader = databaseProvider.createReader(runId)) {
-            final TickDataChunk chunk = reader.readChunkContaining(tickNumber);
-            
+        try {
+            // The connection is held only while the database is asked where the chunk lies. The
+            // read that follows is hundreds of megabytes from disk and as much through the parser;
+            // holding a pooled connection across it starves the pool for as long as the storage
+            // takes, which is how one reader can exhaust it.
+            final PendingChunkRead pending;
+            try (final IDatabaseReader reader = databaseProvider.createReader(runId)) {
+                pending = reader.prepareChunkRead(tickNumber);
+            }
+
+            final TickDataChunk chunk = pending.read();
+
             // Cache with key "runId:firstTick"
             final long firstTick = chunk.getSnapshot().getTickNumber();
             final String cacheKey = runId + ":" + firstTick;
             chunkCache.put(cacheKey, chunk);
-            
+
             return chunk;
         } catch (RuntimeException e) {
             if (e.getCause() instanceof SQLException sqlEx) {
