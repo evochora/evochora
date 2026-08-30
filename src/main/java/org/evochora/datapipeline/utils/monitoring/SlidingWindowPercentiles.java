@@ -258,7 +258,17 @@ public class SlidingWindowPercentiles {
      */
     private void cleanupIfNeeded(long currentSecond) {
         if (buckets.size() > maxBuckets) {
-            long cutoffSecond = currentSecond - windowSeconds - 1;
+            // The window ends at the newest bucket, not at the second just recorded. A caller
+            // supplying its own timestamps may hand in one that lies before what is already here,
+            // and measuring from that would put the cutoff below every bucket held - nothing
+            // would be dropped, and the map would grow with every recording.
+            long newestSecond = currentSecond;
+            for (long second : buckets.keySet()) {
+                if (second > newestSecond) {
+                    newestSecond = second;
+                }
+            }
+            long cutoffSecond = newestSecond - windowSeconds - 1;
             buckets.keySet().removeIf(second -> second < cutoffSecond);
         }
     }

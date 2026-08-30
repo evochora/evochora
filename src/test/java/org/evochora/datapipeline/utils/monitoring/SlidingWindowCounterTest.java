@@ -99,6 +99,23 @@ class SlidingWindowCounterTest {
     }
 
     @Test
+    void testCleanup_BackwardTimestampsDoNotPileUpBuckets() {
+        // Cleanup measures the window from the newest bucket the counter holds. Measuring it from
+        // the second just recorded instead puts the cutoff below every bucket already there, so
+        // nothing is ever dropped again and the map grows with every recording.
+        SlidingWindowCounter counter = new SlidingWindowCounter(5);
+        long newest = 1_000_000L;
+
+        for (int step = 0; step < 100; step++) {
+            counter.recordCount(newest - step);
+        }
+
+        // maxBuckets is windowSeconds + 5, and cleanup runs on the recording that pushes past it
+        assertTrue(counter.getBucketCount() <= 11,
+                "Buckets should stay at the window size, got: " + counter.getBucketCount());
+    }
+
+    @Test
     void testRate_DecaysOverTime() {
         SlidingWindowCounter counter = new SlidingWindowCounter(1);  // 1-second window
         long second = java.time.Instant.now().getEpochSecond();

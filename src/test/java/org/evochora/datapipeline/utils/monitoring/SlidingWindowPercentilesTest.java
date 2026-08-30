@@ -161,6 +161,23 @@ class SlidingWindowPercentilesTest {
     }
 
     @Test
+    void testCleanup_BackwardTimestampsDoNotPileUpBuckets() {
+        // Cleanup measures the window from the newest bucket the tracker holds. Measuring it from
+        // the second just recorded instead puts the cutoff below every bucket already there, so
+        // nothing is ever dropped again and the map grows with every recording.
+        SlidingWindowPercentiles percentiles = new SlidingWindowPercentiles(5);
+        long newest = 1_000_000L;
+
+        for (int step = 0; step < 100; step++) {
+            percentiles.record(1_000_000L, newest - step);
+        }
+
+        // maxBuckets is windowSeconds + 5, and cleanup runs on the recording that pushes past it
+        assertTrue(percentiles.getSecondBucketCount() <= 11,
+                "Buckets should stay at the window size, got: " + percentiles.getSecondBucketCount());
+    }
+
+    @Test
     void testConcurrentRecording() throws InterruptedException {
         SlidingWindowPercentiles percentiles = new SlidingWindowPercentiles(5);
         int threadCount = 10;
