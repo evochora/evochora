@@ -94,16 +94,34 @@ public abstract class VisualizerBaseController extends AbstractController {
                 ctx.status(HttpStatus.NOT_FOUND).json(createErrorBody(HttpStatus.NOT_FOUND, 
                     "Requested data not available. The simulation may have been created with a different schema version."));
             } else {
-                LOGGER.error("Database error for request {}: {}", ctx.path(), describeCauses(e));
+                final String reference = newErrorReference();
+                LOGGER.error("Database error for request {} [{}]: {}", ctx.path(), reference, describeCauses(e));
                 LOGGER.debug("Database error stack trace", e);
-                ctx.status(HttpStatus.INTERNAL_SERVER_ERROR).json(createErrorBody(HttpStatus.INTERNAL_SERVER_ERROR, "Database error occurred"));
+                ctx.status(HttpStatus.INTERNAL_SERVER_ERROR).json(createErrorBody(
+                    HttpStatus.INTERNAL_SERVER_ERROR, "Database error occurred", reference));
             }
         });
         app.exception(Exception.class, (e, ctx) -> {
-            LOGGER.error("Unhandled exception for request {}: {}", ctx.path(), describeCauses(e));
+            final String reference = newErrorReference();
+            LOGGER.error("Unhandled exception for request {} [{}]: {}", ctx.path(), reference, describeCauses(e));
             LOGGER.debug("Unhandled exception stack trace", e);
-            ctx.status(HttpStatus.INTERNAL_SERVER_ERROR).json(createErrorBody(HttpStatus.INTERNAL_SERVER_ERROR, "An internal server error occurred"));
+            ctx.status(HttpStatus.INTERNAL_SERVER_ERROR).json(createErrorBody(
+                HttpStatus.INTERNAL_SERVER_ERROR, "An internal server error occurred", reference));
         });
+    }
+
+    /**
+     * A short reference tying one answer to one line in the log.
+     * <p>
+     * A failure the server cannot explain to the client - the message would say more about the
+     * inside of the process than a client should learn - leaves the caller with nothing to report
+     * beyond "it broke". The reference is the missing half: it travels in the answer and stands in
+     * the log line next to the cause, so a report of it leads to the failure it came from.
+     *
+     * @return An eight-character reference, unique enough to find one failure among a day's logs
+     */
+    private static String newErrorReference() {
+        return java.util.UUID.randomUUID().toString().substring(0, 8);
     }
 
     /**
@@ -174,11 +192,28 @@ public abstract class VisualizerBaseController extends AbstractController {
      * @return Map containing error details
      */
     protected Map<String, Object> createErrorBody(final HttpStatus status, final String message) {
+        return createErrorBody(status, message, null);
+    }
+
+    /**
+     * Builds the error body, naming the log line that holds the cause.
+     *
+     * @param status The HTTP status of the answer
+     * @param message What the client is told
+     * @param reference The reference of the matching log line, or null when the message already
+     *                  says what happened - a malformed parameter needs no lookup
+     * @return The body to serialize
+     */
+    protected Map<String, Object> createErrorBody(final HttpStatus status, final String message,
+                                                  final String reference) {
         final Map<String, Object> errorBody = new HashMap<>();
         errorBody.put("timestamp", java.time.Instant.now().toString());
         errorBody.put("status", status.getCode());
         errorBody.put("error", status.getMessage());
         errorBody.put("message", message);
+        if (reference != null) {
+            errorBody.put("reference", reference);
+        }
         return errorBody;
     }
 

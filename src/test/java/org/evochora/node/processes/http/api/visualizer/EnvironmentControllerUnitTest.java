@@ -8,6 +8,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
+import java.util.Map;
+import io.javalin.http.HttpStatus;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
 import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
 import org.evochora.node.spi.ServiceRegistry;
@@ -141,6 +143,41 @@ class EnvironmentControllerUnitTest {
                 new EnvironmentController(serviceRegistry, ConfigFactory.empty());
 
             assertThat(controllerWithDefault).isNotNull();
+        }
+    }
+
+    @Nested
+    @DisplayName("Error Bodies")
+    class ErrorBodies {
+
+        @Test
+        @DisplayName("Should name the log line when the client is told nothing else")
+        void carriesTheReferenceOfTheLogLine() {
+            EnvironmentController controller = controllerWithMockedDatabase();
+
+            Map<String, Object> body = controller.createErrorBody(
+                HttpStatus.INTERNAL_SERVER_ERROR, "An internal server error occurred", "a1b2c3d4");
+
+            assertThat(body).containsEntry("reference", "a1b2c3d4");
+            assertThat(body).containsEntry("status", 500);
+        }
+
+        @Test
+        @DisplayName("Should leave out the reference where the message already says what happened")
+        void omitsTheReferenceWhenThereIsNothingToLookUp() {
+            EnvironmentController controller = controllerWithMockedDatabase();
+
+            Map<String, Object> body = controller.createErrorBody(
+                HttpStatus.BAD_REQUEST, "Invalid tick number: abc");
+
+            assertThat(body).doesNotContainKey("reference");
+            assertThat(body).containsEntry("message", "Invalid tick number: abc");
+        }
+
+        private EnvironmentController controllerWithMockedDatabase() {
+            ServiceRegistry serviceRegistry = new ServiceRegistry();
+            serviceRegistry.register(IDatabaseReaderProvider.class, mock(IDatabaseReaderProvider.class));
+            return new EnvironmentController(serviceRegistry, ConfigFactory.empty());
         }
     }
 
