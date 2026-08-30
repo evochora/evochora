@@ -85,40 +85,34 @@ class SlidingWindowCounterTest {
     }
 
     @Test
-    void testCleanup_OldBucketsRemoved() throws InterruptedException {
+    void testCleanup_OldBucketsRemoved() {
         SlidingWindowCounter counter = new SlidingWindowCounter(1);  // 1-second window
-        
-        counter.recordCount();
+        long second = java.time.Instant.now().getEpochSecond();
+
+        counter.recordCount(second);
         assertEquals(1, counter.getBucketCount());
-        
-        // Wait for window to expire
-        Thread.sleep(1200);
-        
-        // Recording new event should trigger cleanup
-        counter.recordCount();
-        
-        // Old buckets should be cleaned up
+
+        // Recording well past the window triggers the cleanup of what fell out of it
+        counter.recordCount(second + 20);
+
         assertTrue(counter.getBucketCount() <= 6, "Should have at most windowSeconds + 5 buckets");
     }
 
     @Test
-    void testRate_DecaysOverTime() throws InterruptedException {
-        SlidingWindowCounter counter = new SlidingWindowCounter(1);  // 1-second window for faster test
-        
-        // Record 10 events
+    void testRate_DecaysOverTime() {
+        SlidingWindowCounter counter = new SlidingWindowCounter(1);  // 1-second window
+        long second = java.time.Instant.now().getEpochSecond();
+
         for (int i = 0; i < 10; i++) {
-            counter.recordCount();
+            counter.recordCount(second);
         }
-        
-        double initialRate = counter.getRate();
-        assertTrue(initialRate > 0, "Should have positive rate");
-        
-        // Wait for window to fully expire
-        Thread.sleep(1200);
-        
-        double laterRate = counter.getRate();
-        // Rate should be 0 or much lower as old buckets fall out of window
-        assertTrue(laterRate <= initialRate, "Rate should not increase over time");
+
+        assertEquals(10.0, counter.getRate(second), 0.001,
+                "ten events in the one second the window covers");
+
+        // Two seconds on, the events lie outside a one-second window - not merely fewer, none
+        assertEquals(0.0, counter.getRate(second + 2), 0.001,
+                "nothing of the window is left");
     }
 
     @Test

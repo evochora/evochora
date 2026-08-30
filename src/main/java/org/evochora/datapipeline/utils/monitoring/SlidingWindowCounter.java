@@ -122,6 +122,19 @@ public class SlidingWindowCounter {
     }
 
     /**
+     * Records a single event in the bucket of the given second.
+     * <p>
+     * The reading methods already take the moment to read at; this is its counterpart on the
+     * writing side. With both, a caller can describe a course of events over time without waiting
+     * for it - which is what a test of a sliding window has to do to say anything exact about it.
+     *
+     * @param nowSeconds The second the event falls into, as epoch seconds
+     */
+    public void recordCount(long nowSeconds) {
+        recordSum(1, nowSeconds);
+    }
+
+    /**
      * Records a value (count or sum) in the current second bucket.
      * <p>
      * This is an O(1) operation using ConcurrentHashMap.computeIfAbsent() and AtomicLong.addAndGet().
@@ -136,9 +149,18 @@ public class SlidingWindowCounter {
      * @param value The value to add to the current second's bucket
      */
     public void recordSum(long value) {
-        long currentSecond = Instant.now().getEpochSecond();
-        buckets.computeIfAbsent(currentSecond, k -> new BucketStats()).addSum(value);
-        cleanupIfNeeded(currentSecond);
+        recordSum(value, Instant.now().getEpochSecond());
+    }
+
+    /**
+     * Adds a value to the bucket of the given second.
+     *
+     * @param value The value to add
+     * @param nowSeconds The second the value falls into, as epoch seconds
+     */
+    public void recordSum(long value, long nowSeconds) {
+        buckets.computeIfAbsent(nowSeconds, k -> new BucketStats()).addSum(value);
+        cleanupIfNeeded(nowSeconds);
     }
 
     /**
@@ -155,9 +177,18 @@ public class SlidingWindowCounter {
      * @param value The value to record (e.g., current heap MB, latency ms)
      */
     public void recordValue(double value) {
-        long currentSecond = Instant.now().getEpochSecond();
-        buckets.computeIfAbsent(currentSecond, k -> new BucketStats()).recordValue(value);
-        cleanupIfNeeded(currentSecond);
+        recordValue(value, Instant.now().getEpochSecond());
+    }
+
+    /**
+     * Records an individual value in the bucket of the given second.
+     *
+     * @param value The value to record
+     * @param nowSeconds The second the value falls into, as epoch seconds
+     */
+    public void recordValue(double value, long nowSeconds) {
+        buckets.computeIfAbsent(nowSeconds, k -> new BucketStats()).recordValue(value);
+        cleanupIfNeeded(nowSeconds);
     }
 
     /**
