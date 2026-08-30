@@ -258,6 +258,8 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
     @Override
     protected boolean batchRequiresProcessing(long tickStart, long tickEnd) {
         for (IAnalyticsPlugin plugin : plugins) {
+            // Coarser levels are multiples of the finest, so a batch holding nothing for the
+            // finest holds nothing for any of them
             long interval = plugin.getEffectiveSamplingInterval(0);
             // Largest multiple of interval not beyond tickEnd; inside the range iff >= tickStart
             if (tickEnd / interval * interval >= tickStart) {
@@ -743,6 +745,8 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
         List<Long> organismIntervals = new ArrayList<>();
         List<Long> cellIntervals = new ArrayList<>();
         for (IAnalyticsPlugin plugin : plugins) {
+            // The finest level speaks for all of them: the coarser ones are its multiples, so a
+            // recording it does not want is wanted by none
             long finest = plugin.getEffectiveSamplingInterval(0);
             if (plugin.needsEnvironmentData()) {
                 cellIntervals.add(finest);

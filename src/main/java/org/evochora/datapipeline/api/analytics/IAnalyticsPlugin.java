@@ -202,6 +202,13 @@ public interface IAnalyticsPlugin extends IMemoryEstimatable {
      * when {@code tickNumber % getEffectiveSamplingInterval(level) == 0}. Being a function of the
      * tick number alone, it is independent of the order in which chunks arrive and of how many
      * indexer instances share the work.
+     * <p>
+     * <strong>Every level is an integer multiple of the finest one.</strong> A tick that level 0
+     * does not divide therefore divides no level at all, which is what lets a reader decide from
+     * level 0 alone whether a tick is of any interest - as the indexer does when it skips whole
+     * batches and when it states which recordings it materializes. An implementation whose levels
+     * do not stand in that relation would make it drop ticks a coarser level needed, and nothing
+     * would report the missing rows.
      *
      * @param level LOD level (0 = finest)
      * @return Absolute tick interval for this level
