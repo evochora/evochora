@@ -144,6 +144,9 @@ export function getAllCards() {
  * @param {Array<Object>|null} [context.companion] - Rows of the metric's companion table, if it has one
  * @param {Object|null} [context.viewState] - The view state this chart last asked for
  * @param {Function} [context.onViewStateChange] - Called with a new view state to redraw
+ *
+ * A chart module that cannot draw from what it was given returns nothing, and the card says so
+ * instead of showing an empty plot.
  */
 export function renderChart(card, data, context = {}) {
     if (!card) return;
@@ -171,6 +174,13 @@ export function renderChart(card, data, context = {}) {
     const chartModule = ChartRegistry.getChart(chartType);
     if (chartModule && chartModule.render) {
         card.chart = chartModule.render(canvas, data, chartConfig, context);
+        if (!card.chart) {
+            // A chart returns nothing when what it was given is not enough to draw from - a chart
+            // grouped by a companion table, without that table. Clearing the message here would
+            // leave an empty plot that reads as one still loading.
+            showNoData(card);
+            return;
+        }
 
         // Restore hidden state for matching labels
         if (hiddenLabels.size > 0 && card.chart?.data?.datasets) {
