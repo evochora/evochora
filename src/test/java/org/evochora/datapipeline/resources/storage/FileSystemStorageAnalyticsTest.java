@@ -135,15 +135,21 @@ class FileSystemStorageAnalyticsTest {
     void abandonedWriteLeavesNoFileUnderTheFinalName() throws IOException {
         String runId = "run-abandoned";
         PublishedOutputStream out = storage.openAnalyticsOutputStream(runId, "population", "lod0", "000", "batch.parquet");
-        out.write("half a file".getBytes(StandardCharsets.UTF_8));
-        out.flush();
-        // deliberately not closed - as if the process died here
+        try {
+            out.write("half a file".getBytes(StandardCharsets.UTF_8));
+            out.flush();
+            // Not closed at this point - the process is meant to have died here, and everything
+            // below is asserted about that moment
 
-        List<String> listed = storage.listAnalyticsFiles(runId, "");
-        assertTrue(listed.stream().noneMatch(f -> f.endsWith("batch.parquet")),
-                "destination must not appear before the write completes: " + listed);
-        assertTrue(listed.stream().noneMatch(f -> f.endsWith(".tmp")),
-                "temp files must stay out of listings: " + listed);
+            List<String> listed = storage.listAnalyticsFiles(runId, "");
+            assertTrue(listed.stream().noneMatch(f -> f.endsWith("batch.parquet")),
+                    "destination must not appear before the write completes: " + listed);
+            assertTrue(listed.stream().noneMatch(f -> f.endsWith(".tmp")),
+                    "temp files must stay out of listings: " + listed);
+        } finally {
+            // Releasing the handle is the test cleaning up after itself, not part of what it shows
+            out.close();
+        }
     }
 
     /**
