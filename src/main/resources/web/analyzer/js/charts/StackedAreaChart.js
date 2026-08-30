@@ -193,7 +193,9 @@ function expandJsonColumn(data, xKey, jsonKey, maxGroups) {
      *
      * @param {HTMLCanvasElement} canvas - Canvas element
      * @param {Array<Object>} data - Data rows (array of objects)
-     * @param {Object} config - Visualization config with x, y, and optional groupBy
+     * @param {Object} config - Visualization config with x, y, and optional groupBy. {@code yMax}
+     *        fixes the top of the axis; without it the axis follows the data and rounds up, which
+     *        leaves a scale reaching past the largest value a series can take.
      * @returns {Chart} Chart.js instance
      */
 export function render(canvas, data, config) {
@@ -325,7 +327,7 @@ export function render(canvas, data, config) {
                     y: {
                         stacked: true,
                         min: 0, // Always start at 0
-                        max: (isPercentage && !hasExternalBase) ? 100 : undefined,
+                        max: (isPercentage && !hasExternalBase) ? 100 : config.yMax,
                         title: { display: false },
                         ticks: {
                             color: '#888',

@@ -381,12 +381,15 @@ export function render(canvas, data, config, context = {}) {
 
     // Shares are computed here against the whole population, so the axis is a plain scale that
     // ends where the opened branch ends - not a percentage of what happens to be shown, which
-    // would make every clade fill the plot as soon as it is entered
+    // would make every clade fill the plot as soon as it is entered. It still runs to 100, the
+    // share the whole population stands for: an axis fitted to the bands would hide how much of
+    // the population the opened branch actually is.
     const chart = StackedAreaChart.render(canvas, folded, {
         ...config,
         groupBy: 'clade',
         y: 'share',
         yAxisMode: undefined,
+        yMax: 100,
         yFormat: 'percent'
     });
 
