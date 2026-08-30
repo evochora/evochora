@@ -486,9 +486,14 @@ export async function loadDashboard(runId) {
      *
      * The companion is read at its finest level of detail: it carries structure, and a thinned-out
      * structure is not a coarser view of it but a wrong one - a lineage missing edges turns
-     * descendants into roots. It is read again whenever the metric is, because a running
+     * descendants into roots. It is read again whenever the metric is loaded, because a running
      * simulation keeps adding to it, and a tree that stops growing loses every genome born after
-     * it was read. Opening a clade redraws from what is already loaded and costs no request.
+     * it was read.
+     *
+     * Scrolling is not such a moment. It moves the window inside the tick range that was known
+     * when the metric was loaded, and the copy read then already covers that whole range, so the
+     * scroll path carries it along instead of asking for it again. Opening a clade likewise
+     * redraws from what is already loaded and costs no request.
      *
      * @param {Object} metric - Manifest entry of the metric being loaded
      * @param {AbortSignal} signal - Signal aborting the fetch
@@ -585,7 +590,12 @@ export async function loadDashboard(runId) {
                 return;
             }
 
-            const companion = await loadCompanionData(card.metric, controller.signal);
+            // The companion is not windowed, and the scrollbar cannot leave the tick range that
+            // was known when the metric was loaded - so the copy from then covers every tick
+            // reachable by scrolling. It is fetched here only when the metric was loaded without
+            // rows and the scroll is what first reaches some.
+            const companion = loadedData[metricId]?.companion
+                ?? await loadCompanionData(card.metric, controller.signal);
             loadedData[metricId] = { data, companion };
             renderWithViewState(card);
 
