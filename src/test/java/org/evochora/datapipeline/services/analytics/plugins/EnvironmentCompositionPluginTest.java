@@ -59,8 +59,8 @@ class EnvironmentCompositionPluginTest {
     }
 
     /**
-     * The world size comes from the state, so the empty count no longer depends on run metadata
-     * being present - unlike the previous path, which read it from the context.
+     * Empty cells are what is left of the world beyond the occupied ones, so their count follows
+     * from the size of the state alone and needs nothing else to be known about the run.
      */
     @Test
     void emptyCellsAreTheRestOfTheWorld() {

@@ -274,9 +274,9 @@ class RowPerChunkStrategyTest {
 
     @Test
     void prepareChunkRead_takesEverythingFromTheConnectionBeforeReading() throws Exception {
-        // The connection is needed to find the chunk, not to read it. A read carried out after the
-        // connection is gone proves the second part no longer holds it - which is what keeps a
-        // slow disk from starving the pool.
+        // The connection is needed to find the chunk, not to read it. Carrying the read out once
+        // the connection is gone proves the read needs none - which is what keeps a slow disk from
+        // starving the pool.
         strategy = new RowPerChunkStrategy(configWithChunkDirAndZstd());
         strategy.createTables(mockConnection, 2);
 

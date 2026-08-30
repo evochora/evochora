@@ -28,8 +28,8 @@ import org.evochora.datapipeline.api.contracts.TickData;
  * <p>
  * <strong>What it is for.</strong> A selective sweep is one genome's descendants displacing
  * everything else. Seeing it requires knowing who descends from whom - which no aggregate curve
- * shows, and which was previously reconstructed from organism snapshots at the cost of dozens of
- * serial requests against a running node.
+ * shows, and which no population count carries: with no edge written down, the only way back to
+ * it is following organisms one at a time.
  * <p>
  * <strong>Why a row per birth window rather than per living organism.</strong> Writing every
  * living genome at every recording would repeat the same edge thousands of times. Instead only
