@@ -27,7 +27,8 @@ seamlessly, with silently wrong values:
   default 0) and the depth grows again from there. Verified in run `20260402-…`: `max_depth`
   collapses from three-digit values to single digits at ticks ≈70 M, ≈110 M and ≈175 M — exactly
   the indexer restarts — and climbs falsely afterwards
-  ([RUN_20260402_SELECTIVE_SWEEP §2.1](../../../experiments/RUN_20260402_SELECTIVE_SWEEP.md)).
+  (documented in the published record of that run, see
+  [docs/PUBLISHED_EXPERIMENTS.md](../../../PUBLISHED_EXPERIMENTS.md)).
 - `GenomeAnalyticsPlugin` restarts its cumulative ranking from zero; how visibly this distorts the
   top-N selection depends on the population at restart time and has not been quantified.
 

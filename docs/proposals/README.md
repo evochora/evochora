@@ -15,7 +15,6 @@ table carries the whole order.
 |---|---|---|
 | [PERSISTED_FORMAT_VERSIONING](PERSISTED_FORMAT_VERSIONING.md) | TO BE REVIEWED | Storage batches, run database and run metadata carry no format version, so data written by an incompatible build is read silently or fails without naming the cause; one version constant plus fail-fast reads |
 | [DEPENDENCY_UPDATE](DEPENDENCY_UPDATE.md) | TO BE REVIEWED | 24 of 32 dependencies behind, six by a major version; removal of the unused JLine pair, three build hygiene fixes, and a staged update procedure derived from what the test suite can and cannot verify |
-| [EXPERIMENT_PUBLICATION](EXPERIMENT_PUBLICATION.md) | AGREED | Publish runs with a scientific finding as self-contained Zenodo records (one tar + executed analysis notebook + timelapse video, uniform block sampling under 50 GB, Java-21 start only); first record: demo run 20260226-03114337 (GDVR sweep), then run 20260402 |
 
 The two dependency documents are related: DEPENDENCY_UPDATE establishes which formats a compatibility fixture may
 legitimately cover, and delegates the formats this codebase owns to PERSISTED_FORMAT_VERSIONING.
