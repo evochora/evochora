@@ -1,7 +1,6 @@
 package org.evochora.datapipeline.api.resources.storage;
 
 import java.io.IOException;
-import java.io.OutputStream;
 
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;

@@ -3,7 +3,6 @@ package org.evochora.datapipeline.services.analytics.plugins;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.io.IOException;
-import java.io.OutputStream;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
