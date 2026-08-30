@@ -302,9 +302,6 @@ class H2DatabaseReaderTest {
     // --- readGenomeAncestors tests ---
 
     /**
-     * Inserts a row into the organisms table with minimal required fields.
-     */
-    /**
      * Inserts an organism, taking the parent's genome from the parent's row the way the indexer
      * takes it from the parent at birth. Without a parent the column stays NULL.
      */

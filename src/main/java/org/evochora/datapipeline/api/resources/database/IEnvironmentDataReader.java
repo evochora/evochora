@@ -14,26 +14,6 @@ import java.sql.SQLException;
 public interface IEnvironmentDataReader {
     
     /**
-     * Reads the raw chunk containing the specified tick.
-     * <p>
-     * This method returns the compressed chunk as-is without decompression.
-     * The caller is responsible for:
-     * <ol>
-     *   <li>Caching the chunk (optional, for sequential tick access)</li>
-     *   <li>Decompressing using {@code DeltaCodec.Decoder.decompressTick(chunk, tickNumber)}</li>
-     *   <li>Filtering by region</li>
-     *   <li>Converting cell data as needed</li>
-     * </ol>
-     * <p>
-     * <strong>Use Case:</strong> EnvironmentController uses this with an LRU cache
-     * to avoid re-loading chunks when scrubbing through ticks.
-     * 
-     * @param tickNumber Tick number to find (chunk containing this tick will be returned)
-     * @return The TickDataChunk containing the requested tick
-     * @throws SQLException if database read fails
-     * @throws TickNotFoundException if no chunk contains the requested tick
-     */
-    /**
      * Asks the database where the chunk containing a tick lies, so it can be read without it.
      * <p>
      * The question costs a query over two numbers; the read that follows costs hundreds of

@@ -115,27 +115,6 @@ public interface IH2EnvStorageStrategy {
     void resetStreamingState(Connection conn);
 
     /**
-     * Reads the chunk containing the specified tick number.
-     * <p>
-     * This method returns the raw TickDataChunk without decompression. The caller
-     * (typically EnvironmentController) is responsible for:
-     * <ol>
-     *   <li>Caching the chunk (optional, for sequential access optimization)</li>
-     *   <li>Decompressing using {@code DeltaCodec.Decoder.decompressTick(chunk, tickNumber)}</li>
-     *   <li>Filtering by region</li>
-     *   <li>Converting to response format (JSON/MessagePack)</li>
-     * </ol>
-     * <p>
-     * <strong>Query Strategy:</strong> Uses {@code first_tick <= ? AND last_tick >= ?} to find
-     * the chunk containing the requested tick.
-     *
-     * @param conn Database connection (schema already set)
-     * @param tickNumber Tick number to find (chunk containing this tick will be returned)
-     * @return The TickDataChunk containing the requested tick
-     * @throws SQLException if database read fails
-     * @throws TickNotFoundException if no chunk contains the requested tick
-     */
-    /**
      * Takes from the connection whatever locating the chunk requires, and hands back a read that
      * needs none.
      * <p>

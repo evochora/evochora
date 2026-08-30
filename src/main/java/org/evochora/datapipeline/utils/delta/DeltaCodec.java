@@ -511,23 +511,6 @@ public final class DeltaCodec {
         }
         
         /**
-         * Decompresses a single tick from a chunk to a full TickData.
-         * <p>
-         * <strong>Stateful Optimization:</strong> The decoder tracks its current position.
-         * For sequential forward access (e.g., tick 100 → 101 → 102), only the new deltas
-         * are applied. For backward jumps or chunk changes, the state is rebuilt from
-         * the best starting point (snapshot or accumulated delta).
-         * <p>
-         * <strong>Accumulated Delta Optimization:</strong> For larger forward jumps,
-         * the decoder finds the closest accumulated delta and uses it as a shortcut,
-         * skipping all incremental deltas before it.
-         *
-         * @param chunk the chunk containing the target tick
-         * @param targetTick the tick number to decompress
-         * @return the fully reconstructed TickData for the target tick
-         * @throws ChunkCorruptedException if the chunk is corrupt or target tick not found
-         */
-        /**
          * Reconstructs a tick but leaves its cells in the decoder's state instead of packing them
          * into the returned {@link TickData}, whose cell columns stay empty. The chunk's snapshot
          * is the exception: it already carries its cells and is handed back as it stands, with the
@@ -806,14 +789,6 @@ public final class DeltaCodec {
                 .build();
     }
     
-    /**
-     * Creates a TickDataChunk from a snapshot and list of deltas.
-     *
-     * @param simulationRunId the simulation run identifier
-     * @param snapshot the full TickData snapshot
-     * @param deltas list of DeltaCapture objects for subsequent ticks
-     * @return the constructed TickDataChunk protobuf message
-     */
     /**
      * Determines which deltas of a chunk an environment reconstruction walks through.
      * <p>

@@ -187,13 +187,6 @@ public class MutableCellState implements ICellStateSource {
     }
     
     /**
-     * Exports the current state to a CellDataColumns builder.
-     * <p>
-     * Only occupied cells are included (sparse representation).
-     *
-     * @return a new CellDataColumns containing all occupied cells
-     */
-    /**
      * {@inheritDoc}
      * <p>
      * Walks the whole grid once and reports the cells that are occupied. Callers that only read

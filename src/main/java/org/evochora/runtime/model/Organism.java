@@ -288,13 +288,6 @@ public class Organism {
     }
 
     /**
-     * Builder for restoring organism state from serialized data.
-     * <p>
-     * Use {@link Organism#restore(int, long)} to obtain an instance.
-     * This builder is used during simulation resume to reconstruct organisms
-     * from persisted checkpoint data.
-     */
-    /**
      * Thrown when restored state does not describe an organism this build could have produced.
      * <p>
      * Kept apart from the plain {@link IllegalStateException} a wrongly called builder raises,

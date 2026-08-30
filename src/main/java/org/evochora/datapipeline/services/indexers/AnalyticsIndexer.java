@@ -720,14 +720,6 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
     }
 
     /**
-     * Creates a Decoder for decompressing chunks.
-     * <p>
-     * The Decoder's MutableCellState is reused across multiple decompressChunk calls
-     * within a single batch, avoiding allocation overhead.
-     *
-     * @return a new Decoder, or a Decoder with size 1 if metadata is unavailable
-     */
-    /**
      * The relevance the chunks of this run are read with, or {@link ITickRelevance#EVERYTHING} when
      * the run's layout cannot be vouched for.
      * <p>
