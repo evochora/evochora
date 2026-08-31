@@ -209,7 +209,9 @@ public class Simulation {
      * to capture and disable it otherwise.
      * <p>
      * Must be called between ticks, never while a tick runs: the flag is read from
-     * every thread of the parallel wave.
+     * every thread of the parallel wave. It is deliberately not volatile — visibility
+     * comes from the happens-before edge of handing the tick's work to the worker pool,
+     * the same pattern the class's other plain mutable fields rely on.
      *
      * @param capture whether execution records carry pre-execution register values
      */
