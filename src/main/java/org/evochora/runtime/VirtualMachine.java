@@ -123,8 +123,8 @@ public class VirtualMachine {
             int[] rawArgs = null;
             Map<Integer, Object> registerValuesBefore = null;
             if (!lostConflict) {
-                // The argument cells were read when the operands were resolved; the record
-                // reuses that array instead of walking the same cells again.
+                // Shares the array resolveOperands filled: an instruction's argument
+                // cells are read once, and every consumer works from that one read.
                 rawArgs = instruction.getRawArguments();
                 // Collect register values BEFORE execution (for annotation display)
                 registerValuesBefore = collectRegisterValues(organism, instruction.getFullOpcodeId(), rawArgs);

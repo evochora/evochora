@@ -216,9 +216,9 @@ public abstract class Instruction {
             return this.cachedOperands;
         }
 
-        // Every argument cell is fetched from the environment exactly once, here. Operand
-        // resolution below and the execution record both work from this array, so no consumer
-        // has to walk the same cells a second time.
+        // The argument cells are fetched here, once per instruction. Operand resolution
+        // below and the execution record both work from this array; nothing else reads the
+        // code stream on their behalf.
         this.rawArguments = organism.getRawArgumentsFromEnvironment(getLength(environment), environment);
 
         List<Operand> resolved = new ArrayList<>(sources.size());
