@@ -29,8 +29,8 @@ import com.google.protobuf.Parser;
 /**
  * Monitored wrapper for batch storage read operations.
  * <p>
- * Tracks per-service read metrics: batches queried, batches read, bytes read, query errors.
- * Used by services that read batches (e.g., future indexer services).
+ * Tracks per-service read metrics: batches and messages read, bytes read, read errors, the
+ * rates of reads and bytes, and the average read latency.
  */
 public class MonitoredBatchStorageReader implements IResourceBatchStorageRead, IWrappedResource, IMonitorable {
 

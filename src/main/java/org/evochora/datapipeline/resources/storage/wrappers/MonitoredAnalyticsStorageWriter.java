@@ -140,7 +140,6 @@ public class MonitoredAnalyticsStorageWriter extends AbstractResource implements
         return resource.getUsageState(usageType);
     }
     
-    // Removed getContext() as it is not part of IWrappedResource interface
     
     @Override
     protected void addCustomMetrics(Map<String, Number> metrics) {

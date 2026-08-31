@@ -1497,17 +1497,17 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
     /**
      * Records a write operation for performance tracking.
      * This is an O(1) operation using unified monitoring utils.
-     * Updates both legacy counters (writeOperations) and new sliding window metrics.
+     * Updates the cumulative write counters and the sliding-window metrics.
      *
      * @param bytes Number of bytes written
      * @param latencyNanos Write latency in nanoseconds
      */
     private void recordWrite(long bytes, long latencyNanos) {
-        // Legacy counters (for backward compatibility)
+        // Cumulative counters
         writeOperations.incrementAndGet();
         bytesWritten.addAndGet(bytes);
         
-        // New sliding window metrics
+        // Sliding-window metrics
         writeOpsCounter.recordCount();
         writeBytesCounter.recordSum(bytes);
         writeLatencyTracker.record(latencyNanos);
@@ -1516,17 +1516,17 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
     /**
      * Records a read operation for performance tracking.
      * This is an O(1) operation using unified monitoring utils.
-     * Updates both legacy counters (readOperations) and new sliding window metrics.
+     * Updates the cumulative read counters and the sliding-window metrics.
      *
      * @param bytes Number of bytes read
      * @param latencyNanos Read latency in nanoseconds
      */
     private void recordRead(long bytes, long latencyNanos) {
-        // Legacy counters (for backward compatibility)
+        // Cumulative counters
         readOperations.incrementAndGet();
         bytesRead.addAndGet(bytes);
         
-        // New sliding window metrics
+        // Sliding-window metrics
         readOpsCounter.recordCount();
         readBytesCounter.recordSum(bytes);
         readLatencyTracker.record(latencyNanos);

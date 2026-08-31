@@ -80,9 +80,9 @@ public abstract class AbstractTopicResource<T extends Message, ACK> extends Abst
     protected final AtomicLong messagesReceived = new AtomicLong(0);
     /** Messages acknowledged across all reader delegates, reported as the {@code messages_acknowledged} metric. */
     protected final AtomicLong messagesAcknowledged = new AtomicLong(0);
-    /** Sliding-window count of publications behind the {@code write_throughput_per_sec} metric; the window is {@code metricsWindowSeconds} seconds, default 60. */
+    /** Sliding-window counter of publications; the {@code write_throughput_per_sec} metric reports its rate. The window is {@code metricsWindowSeconds} seconds, default 30. */
     protected final SlidingWindowCounter writeThroughput;
-    /** Sliding-window count of claims behind the {@code read_throughput_per_sec} metric; the window is {@code metricsWindowSeconds} seconds, default 60. */
+    /** Sliding-window counter of claims; the {@code read_throughput_per_sec} metric reports its rate. The window is {@code metricsWindowSeconds} seconds, default 30. */
     protected final SlidingWindowCounter readThroughput;
     
     /**
