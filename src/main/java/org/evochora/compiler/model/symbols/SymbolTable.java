@@ -224,7 +224,7 @@ public class SymbolTable {
      * Associates an AST node with its scope. Called by ProcedureSymbolCollector as it walks
      * the AST and discovers the procedures that open a scope.
      *
-     * @param node the AST node that opens the scope, used as the lookup key
+     * @param node the AST node that opens the scope, used as the lookup key by identity
      * @param scope the scope traversal should enter when it reaches that node
      */
     public void registerNodeScope(AstNode node, Scope scope) {
@@ -234,6 +234,9 @@ public class SymbolTable {
 
     /**
      * Returns the scope associated with the given AST node, or null if none.
+     * <p>
+     * Nodes are matched by identity, so this has to be the very instance that was registered.
+     * A node rebuilt from the same values, as tree rewriting produces, does not find it.
      *
      * @param node the AST node to look up
      * @return the scope registered for the node, or {@code null} if it opens none
