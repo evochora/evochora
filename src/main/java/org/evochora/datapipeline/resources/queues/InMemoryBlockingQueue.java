@@ -65,7 +65,7 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
      * @param options The TypeSafe Config object containing queue options:
      *                <ul>
      *                  <li>{@code capacity} - Maximum queue size (default: 10)</li>
-     *                  <li>{@code metricsWindowSeconds} - Throughput calculation window (default: 5)</li>
+     *                  <li>{@code metricsWindowSeconds} - Throughput calculation window (default: 30)</li>
      *                  <li>{@code coalescingDelayMs} - Delay for batch coalescing (default: 0)</li>
      *                  <li>{@code disableTimestamps} - Disable timestamp tracking (default: false)</li>
      *                  <li>{@code estimatedBytesPerItem} - Override memory estimation per item in bytes.
@@ -79,7 +79,7 @@ public class InMemoryBlockingQueue<T> extends AbstractResource implements IConte
         super(name, options);
         Config defaults = ConfigFactory.parseMap(Map.of(
                 "capacity", 10,  // Default: 10 (memory-optimized for large environments)
-                "metricsWindowSeconds", 5,
+                "metricsWindowSeconds", 30,
                 "coalescingDelayMs", 0  // Default: no coalescing
         ));
         Config finalConfig = options.withFallback(defaults);

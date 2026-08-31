@@ -65,7 +65,7 @@ public abstract class AbstractDatabaseWrapper extends org.evochora.datapipeline.
             ? Integer.parseInt(context.parameters().get("metricsWindowSeconds"))
             : (db.getOptions().hasPath("metricsWindowSeconds")
                 ? db.getOptions().getInt("metricsWindowSeconds")
-                : 60);
+                : 30);
     }
     
     /**

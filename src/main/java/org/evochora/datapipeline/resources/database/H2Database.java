@@ -125,10 +125,10 @@ public class H2Database extends AbstractDatabaseResource
             throw new RuntimeException(errorMsg, e);
         }
         
-        // Configuration: metricsWindowSeconds (default: 5)
+        // Configuration: metricsWindowSeconds (default: 30)
         int metricsWindowSeconds = options.hasPath("metricsWindowSeconds")
             ? options.getInt("metricsWindowSeconds")
-            : 5;
+            : 30;
         
         this.diskWritesCounter = new SlidingWindowCounter(metricsWindowSeconds);
 

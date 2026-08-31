@@ -48,7 +48,7 @@ public class MonitoredBatchStorageWriter implements IBatchStorageWrite, IWrapped
         this.context = context;
         
         // Configuration hierarchy: Context parameter > Resource option > Default (5)
-        int windowSeconds = Integer.parseInt(context.parameters().getOrDefault("metricsWindowSeconds", "5"));
+        int windowSeconds = Integer.parseInt(context.parameters().getOrDefault("metricsWindowSeconds", "30"));
         
         this.batchesCounter = new SlidingWindowCounter(windowSeconds);
         this.bytesCounter = new SlidingWindowCounter(windowSeconds);

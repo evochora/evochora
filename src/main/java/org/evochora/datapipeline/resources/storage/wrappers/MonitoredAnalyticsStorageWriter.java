@@ -41,7 +41,7 @@ public class MonitoredAnalyticsStorageWriter extends AbstractResource implements
         this.context = context;
         
         int windowSeconds = resource.getOptions().hasPath("metricsWindowSeconds") 
-            ? resource.getOptions().getInt("metricsWindowSeconds") : 60;
+            ? resource.getOptions().getInt("metricsWindowSeconds") : 30;
             
         this.writeThroughput = new SlidingWindowCounter(windowSeconds);
         this.writeLatency = new SlidingWindowPercentiles(windowSeconds);

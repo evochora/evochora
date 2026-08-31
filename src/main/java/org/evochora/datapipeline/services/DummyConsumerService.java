@@ -29,7 +29,7 @@ import com.typesafe.config.Config;
  *   <li><b>processingDelayMs</b>: Artificial delay per message in milliseconds (default: 0).</li>
  *   <li><b>logReceivedMessages</b>: Whether to log received messages at DEBUG level (default: false).</li>
  *   <li><b>maxMessages</b>: Maximum messages to process, -1 for unlimited (default: -1).</li>
- *   <li><b>metricsWindowSeconds</b>: Time window in seconds for throughput calculation (default: 5).</li>
+ *   <li><b>metricsWindowSeconds</b>: Time window in seconds for throughput calculation (default: 30).</li>
  *   <li><b>maxRetries</b>: Maximum processing attempts before sending to DLQ (default: 3).</li>
  * </ul>
  *
@@ -67,7 +67,7 @@ public class DummyConsumerService<T> extends AbstractService {
         this.processingDelayMs = options.hasPath("processingDelayMs") ? options.getLong("processingDelayMs") : 0L;
         this.logReceivedMessages = options.hasPath("logReceivedMessages") && options.getBoolean("logReceivedMessages");
         this.maxMessages = options.hasPath("maxMessages") ? options.getLong("maxMessages") : -1L;
-        this.metricsWindowSeconds = options.hasPath("metricsWindowSeconds") ? options.getInt("metricsWindowSeconds") : 5;
+        this.metricsWindowSeconds = options.hasPath("metricsWindowSeconds") ? options.getInt("metricsWindowSeconds") : 30;
         this.maxRetries = options.hasPath("maxRetries") ? options.getInt("maxRetries") : 3;
         this.throughputCounter = new SlidingWindowCounter(metricsWindowSeconds);
 
