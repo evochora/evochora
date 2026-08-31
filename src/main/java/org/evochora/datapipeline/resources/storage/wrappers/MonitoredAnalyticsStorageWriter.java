@@ -53,9 +53,13 @@ public class MonitoredAnalyticsStorageWriter extends AbstractResource implements
         try {
             PublishedOutputStream raw = delegate.openAnalyticsOutputStream(runId, metricId, lodLevel, subPath, filename);
 
-            // Return a wrapper stream to count bytes on close
+            // Count a file once, and only once it is a file: a write closed without being
+            // published is discarded by the storage below, so counting it here would report
+            // bytes nobody can read
             return new PublishedOutputStream() {
                 private long bytes = 0;
+                private boolean published;
+                private boolean counted;
 
                 @Override
                 public void write(int b) throws IOException {
@@ -72,18 +76,27 @@ public class MonitoredAnalyticsStorageWriter extends AbstractResource implements
                 @Override
                 public void publish() throws IOException {
                     raw.publish();
+                    published = true;
                 }
 
                 @Override
                 public void close() throws IOException {
                     try {
                         raw.close();
-                        recordSuccess(bytes, System.nanoTime() - start);
                     } catch (IOException e) {
                         log.warn("Failed to close analytics output stream for runId={}, metricId={}, file={}/{}/{}",
                             runId, metricId, lodLevel, subPath, filename);
-                        recordFailure();
+                        if (!counted) {
+                            counted = true;
+                            recordFailure();
+                        }
                         throw e;
+                    }
+                    // An unpublished write left nothing behind to count. Closing twice moves the
+                    // file once, and counts it once
+                    if (published && !counted) {
+                        counted = true;
+                        recordSuccess(bytes, System.nanoTime() - start);
                     }
                 }
             };
