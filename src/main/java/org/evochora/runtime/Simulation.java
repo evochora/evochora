@@ -64,11 +64,13 @@ public class Simulation {
     private int organismsSinceYield = 0;
 
     /**
-     * When set, the virtual machine records each executed instruction's raw arguments and
-     * pre-execution register values on the organism. This capture exists solely for
-     * observers of sampled ticks (state serialization reads it, nothing else does); on
-     * every other tick it would cost a map of boxed register values per instruction for
-     * nothing. Defaults to on, so callers that never sample keep the full record.
+     * When set, the virtual machine collects each executed instruction's pre-execution
+     * register values into its execution record. Only this map hangs on the flag — the
+     * record itself (opcode, raw arguments, energy cost, entropy delta) is kept on every
+     * tick. The map exists solely for observers of sampled ticks (state serialization
+     * reads it, nothing else does); on every other tick it would cost a map of boxed
+     * register values per instruction for nothing. Defaults to on, so callers that never
+     * sample keep the full annotation.
      */
     private boolean captureExecutionDetails = true;
     private final LongOpenHashSet allGenomesEverSeen = new LongOpenHashSet();
@@ -201,23 +203,24 @@ public class Simulation {
     }
 
     /**
-     * Chooses whether the next ticks record per-instruction execution details (raw
-     * arguments and pre-execution register values) on the organisms. Samplers enable
-     * this for the tick they are about to capture and disable it otherwise.
+     * Chooses whether the next ticks collect each instruction's pre-execution register
+     * values into its execution record. The record itself (opcode, raw arguments, costs)
+     * is kept regardless of this flag. Samplers enable this for the tick they are about
+     * to capture and disable it otherwise.
      * <p>
      * Must be called between ticks, never while a tick runs: the flag is read from
      * every thread of the parallel wave.
      *
-     * @param capture whether executed instructions leave an execution record
+     * @param capture whether execution records carry pre-execution register values
      */
     public void setCaptureExecutionDetails(boolean capture) {
         this.captureExecutionDetails = capture;
     }
 
     /**
-     * Reports whether executed instructions currently leave an execution record.
+     * Reports whether execution records currently carry pre-execution register values.
      *
-     * @return {@code true} when execution details are recorded
+     * @return {@code true} when register values are collected
      */
     public boolean isCaptureExecutionDetails() {
         return this.captureExecutionDetails;
