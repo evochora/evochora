@@ -10,11 +10,19 @@ import java.io.IOException;
  */
 public interface IAnalyticsContext {
     /**
+     * Returns the metadata of the run being processed. It is loaded once before plugins run and
+     * does not change over the lifetime of this context, so plugins may cache anything derived
+     * from it.
+     *
      * @return The simulation metadata for the current run
      */
     SimulationMetadata getMetadata();
 
     /**
+     * Returns the run this context was created for. It is fixed for the lifetime of the context
+     * and determines where {@link #openArtifactStream(String, String, String)} places its output,
+     * so plugins do not need to prefix artifact paths with it themselves.
+     *
      * @return The run ID of the current simulation
      */
     String getRunId();

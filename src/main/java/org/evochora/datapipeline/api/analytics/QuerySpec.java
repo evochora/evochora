@@ -270,18 +270,42 @@ public class QuerySpec {
             return new ComputedColumn(name, this.type, this.sourceColumn, this.expression);
         }
 
+        /**
+         * Returns the alias this column is selected under. The factory methods leave it unset;
+         * the builder assigns it when the column is added to a spec.
+         *
+         * @return Output column name, or {@code null} while the column is not yet part of a spec
+         */
         public String getName() {
             return name;
         }
 
+        /**
+         * Returns which of the three computation forms this column uses, and thereby which of
+         * {@link #getSourceColumn()} and {@link #getExpression()} carries its input.
+         *
+         * @return The computation type, never {@code null}
+         */
         public Type getType() {
             return type;
         }
 
+        /**
+         * Returns the column the window function reads from.
+         *
+         * @return Source column name for {@link Type#DELTA} and {@link Type#LAG},
+         *         {@code null} for {@link Type#EXPRESSION}
+         */
         public String getSourceColumn() {
             return sourceColumn;
         }
 
+        /**
+         * Returns the raw SQL this column is built from. It is inserted into the generated query
+         * unchanged, so it is only ever as trustworthy as the plugin that supplied it.
+         *
+         * @return SQL expression for {@link Type#EXPRESSION}, {@code null} for the other types
+         */
         public String getExpression() {
             return expression;
         }

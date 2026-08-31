@@ -74,6 +74,12 @@ public record MemoryEstimate(
             this.displayName = displayName;
         }
         
+        /**
+         * Returns the label used for this category in memory reports, which is the plural noun
+         * a reader expects over a group of estimates rather than the constant name.
+         *
+         * @return The category's report label, for example "Service Batches".
+         */
         public String getDisplayName() {
             return displayName;
         }
