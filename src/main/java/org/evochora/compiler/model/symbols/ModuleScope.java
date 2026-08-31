@@ -9,9 +9,10 @@ import java.util.Map;
  * Each module has its own symbol namespace, import aliases, require declarations,
  * and USING bindings. Modules are identified by their alias chain (e.g., "PRED.MATH").
  *
- * <p>Supports a freeze protocol: before freeze, all map getters return the mutable
- * backing maps for Phase 4 setup. After {@link #freeze()}, they return unmodifiable
- * views, enforcing immutability for all subsequent phases.</p>
+ * <p>Supports a freeze protocol: while the symbol table is still being built, all map
+ * getters return the mutable backing maps so that analysis can fill them in. After
+ * {@link #freeze()}, they return unmodifiable views, so that everything downstream of
+ * the analysis reads a table that can no longer change.</p>
  */
 public final class ModuleScope {
 

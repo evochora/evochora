@@ -6,7 +6,8 @@ import java.util.Objects;
 /**
  * Synthetic AST node carrying a parameter's compile-time register binding.
  * Created by ProcedureSymbolCollector and stored on the Symbol's node field.
- * Not part of the parsed AST — exists solely as a data carrier for Phase 6 resolution.
+ * Not part of the parsed AST — exists solely as a data carrier for the post-processing pass
+ * that rewrites parameter references to their formal registers.
  *
  * @param targetRegister The target formal register (e.g., "%FDR0", "%FLR1").
  */

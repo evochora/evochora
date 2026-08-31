@@ -59,7 +59,8 @@ import java.util.Map;
  * @param machineCodeLayout Map from linearized coordinates to molecule values.
  * @param initialWorldObjects Map from linearized coordinates to placed molecules.
  * @param sourceMap Map from linear address to serializable source info.
- * @param callSiteBindings Map from linear address of CALL to target coordinates.
+ * @param callSiteBindings Map from the address recorded for a CALL instruction to that call's
+ *                         parameter bindings: formal register id to caller register.
  * @param relativeCoordToLinearAddress Map from relative coordinate string to linear address.
  * @param linearAddressToCoord Map from linear address to relative coordinate array.
  * @param registerAliasMap Map from register alias names to physical register indices.

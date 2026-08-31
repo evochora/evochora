@@ -5,7 +5,7 @@ import org.evochora.compiler.model.symbols.SymbolTable;
 
 /**
  * Tracks SymbolTable scope during AST traversal using node-to-scope mappings
- * registered in Phase 4 by ProcedureSymbolCollector.
+ * registered by ProcedureSymbolCollector during semantic analysis.
  *
  * <p>When visiting an AST node that has a registered scope (e.g., ProcedureNode),
  * the scope is entered before processing children and restored afterwards.

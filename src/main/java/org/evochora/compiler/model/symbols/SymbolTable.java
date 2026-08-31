@@ -20,8 +20,8 @@ import java.util.Optional;
  * by file path, allowing the same physical file to appear as distinct placements with
  * independent symbol namespaces.</p>
  *
- * <p>For single-file compilations, the table operates with a default module and behaves
- * identically to the pre-module-system version.</p>
+ * <p>For single-file compilations, the table operates with a single default module, so a
+ * caller that never imports anything need not name a module at all.</p>
  */
 public class SymbolTable {
 
@@ -87,8 +87,12 @@ public class SymbolTable {
 
     /**
      * Freezes the symbol table, preventing structural modifications (define, registerModule,
-     * enterScope, registerNodeScope). Cursor operations (setCurrentModule, setCurrentScope,
-     * leaveScope, resetScope) and all reads remain allowed.
+     * enterScope, registerNodeScope). Cursor operations (setCurrentScope, leaveScope,
+     * resetScope) and all reads remain allowed.
+     * <p>
+     * {@link #setCurrentModule(String)} remains allowed only for modules that are already
+     * registered. Switching to an unknown alias chain has to create a scope for it and
+     * therefore fails on a frozen table.
      */
     public void freeze() {
         this.frozen = true;
@@ -116,6 +120,10 @@ public class SymbolTable {
     /**
      * Sets the current module context. All subsequent define/resolve operations
      * operate within this module.
+     * <p>
+     * An alias chain that is not registered yet is registered on the spot, with the alias
+     * chain itself standing in for the source path. Since symbols are keyed by that source
+     * path, such a module keys its symbols by alias chain rather than by file.
      * @param aliasChain The alias chain of the module to set as current.
      */
     public void setCurrentModule(String aliasChain) {
@@ -213,7 +221,8 @@ public class SymbolTable {
     }
 
     /**
-     * Associates an AST node with its scope. Called by ProcedureSymbolCollector during pass 1.
+     * Associates an AST node with its scope. Called by ProcedureSymbolCollector as it walks
+     * the AST and discovers the procedures that open a scope.
      *
      * @param node the AST node that opens the scope, used as the lookup key
      * @param scope the scope traversal should enter when it reaches that node

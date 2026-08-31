@@ -17,7 +17,9 @@ import java.util.Map;
  * @param machineCodeLayout A map from relative coordinates to the integer representation of a molecule.
  * @param initialWorldObjects A map from relative coordinates to molecules that should be placed in the world initially.
  * @param sourceMap A map from linear address to source information, for debugging.
- * @param callSiteBindings A map from linear address of a CALL instruction to its target coordinates.
+ * @param callSiteBindings A map from the address recorded for a CALL instruction to that call's
+ *                         parameter bindings: each formal register id (FDR/FLR bank) to the
+ *                         caller register bound to it.
  * @param relativeCoordToLinearAddress A map from relative coordinate string to linear address.
  * @param linearAddressToCoord A map from linear address to relative coordinates.
  * @param registerAliasMap A map from register alias names (e.g., "%MY_REG") to their physical register index.

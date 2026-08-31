@@ -18,8 +18,8 @@ import java.util.Deque;
  * When entering a context with null alias chain (.SOURCE), the parent context
  * is preserved. When leaving (pop boundary), the previous context is restored.</p>
  *
- * <p>Used by SemanticAnalyzer (Phase 4), AstPostProcessor (Phase 6), and TokenMapGenerator (Phase 5)
- * to ensure symbol operations happen in the correct module context.</p>
+ * <p>Used by SemanticAnalyzer, AstPostProcessor and TokenMapGenerator, each of which walks
+ * the AST and needs symbol operations to happen in the module the node belongs to.</p>
  */
 public class ModuleContextTracker {
 
