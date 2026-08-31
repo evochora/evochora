@@ -1,5 +1,6 @@
 package org.evochora.datapipeline.services;
 
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -75,11 +76,8 @@ public class DummyConsumerServiceTest {
 
         service.start();
 
-        long deadline = System.currentTimeMillis() + 1000;
-        while (service.getCurrentState() != IService.State.STOPPED && System.currentTimeMillis() < deadline) {
-            Thread.sleep(10);
-        }
-        assertEquals(IService.State.STOPPED, service.getCurrentState());
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> service.getCurrentState() == IService.State.STOPPED);
 
         verify(mockInputQueue, times(2)).receiveBatch(anyInt(), anyLong(), any(TimeUnit.class));
         Map<String, Number> metrics = service.getMetrics();
@@ -97,16 +95,15 @@ public class DummyConsumerServiceTest {
 
         assertEquals(IService.State.STOPPED, service.getCurrentState());
         service.start();
-        // Give the service thread time to start and enter the run loop
-        Thread.sleep(100);
-        assertEquals(IService.State.RUNNING, service.getCurrentState());
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> service.getCurrentState() == IService.State.RUNNING);
         service.pause();
         assertEquals(IService.State.PAUSED, service.getCurrentState());
         service.resume();
         assertEquals(IService.State.RUNNING, service.getCurrentState());
         service.stop(); // This will set stopRequested and service exits gracefully
-        Thread.sleep(100);
-        assertEquals(IService.State.STOPPED, service.getCurrentState());
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> service.getCurrentState() == IService.State.STOPPED);
     }
 
     @Test
@@ -122,11 +119,8 @@ public class DummyConsumerServiceTest {
 
         service.start();
 
-        long deadline = System.currentTimeMillis() + 1000;
-        while (service.getCurrentState() != IService.State.STOPPED && System.currentTimeMillis() < deadline) {
-            Thread.sleep(10);
-        }
-        assertEquals(IService.State.STOPPED, service.getCurrentState());
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> service.getCurrentState() == IService.State.STOPPED);
 
         Map<String, Number> metrics = service.getMetrics();
         assertEquals(3L, metrics.get("messages_received").longValue());
@@ -145,9 +139,9 @@ public class DummyConsumerServiceTest {
                 .thenReturn(batchOf(DummyMessage.newBuilder().setId(20).build()))
                 .thenReturn(batchOf(DummyMessage.newBuilder().setId(21).build()));
         service.start();
-        Thread.sleep(100); // Let service run and stop itself
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> service.getCurrentState() == IService.State.STOPPED);
         verify(mockInputQueue, times(2)).receiveBatch(anyInt(), anyLong(), any(TimeUnit.class));
-        assertEquals(IService.State.STOPPED, service.getCurrentState());
     }
 
     @Test
@@ -164,10 +158,8 @@ public class DummyConsumerServiceTest {
 
         service.start();
 
-        long deadline = System.currentTimeMillis() + 1000;
-        while (service.getCurrentState() != IService.State.STOPPED && System.currentTimeMillis() < deadline) {
-            Thread.sleep(10);
-        }
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> service.getCurrentState() == IService.State.STOPPED);
 
         Map<String, Number> metrics = service.getMetrics();
         assertEquals(4L, metrics.get("messages_received").longValue()); // All 4 received from queue

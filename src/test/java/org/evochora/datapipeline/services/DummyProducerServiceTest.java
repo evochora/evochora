@@ -10,11 +10,13 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.util.concurrent.TimeUnit;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -48,11 +50,8 @@ public class DummyProducerServiceTest {
 
         service.start();
 
-        long deadline = System.currentTimeMillis() + 1000;
-        while (service.getCurrentState() != IService.State.STOPPED && System.currentTimeMillis() < deadline) {
-            Thread.sleep(10);
-        }
-        assertEquals(IService.State.STOPPED, service.getCurrentState());
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> service.getCurrentState() == IService.State.STOPPED);
 
         ArgumentCaptor<DummyMessage> captor = ArgumentCaptor.forClass(DummyMessage.class);
         verify(mockOutputQueue, times(3)).put(captor.capture());
@@ -77,9 +76,8 @@ public class DummyProducerServiceTest {
         service.resume();
         assertEquals(IService.State.RUNNING, service.getCurrentState());
         service.stop();
-        // Give the service thread time to terminate
-        Thread.sleep(100);
-        assertEquals(IService.State.STOPPED, service.getCurrentState());
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> service.getCurrentState() == IService.State.STOPPED);
     }
 
     @Test
@@ -89,11 +87,8 @@ public class DummyProducerServiceTest {
 
         service.start();
 
-        long deadline = System.currentTimeMillis() + 1000;
-        while (service.getCurrentState() != IService.State.STOPPED && System.currentTimeMillis() < deadline) {
-            Thread.sleep(10);
-        }
-        assertEquals(IService.State.STOPPED, service.getCurrentState());
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> service.getCurrentState() == IService.State.STOPPED);
 
         Map<String, Number> metrics = service.getMetrics();
         assertEquals(5L, metrics.get("messages_sent").longValue());
@@ -105,8 +100,8 @@ public class DummyProducerServiceTest {
         Config config = ConfigFactory.parseString("maxMessages=2, intervalMs=1");
         DummyProducerService service = new DummyProducerService("test-producer", config, resources);
         service.start();
-        Thread.sleep(100); // Let service run and stop itself
+        await().atMost(5, TimeUnit.SECONDS)
+            .until(() -> service.getCurrentState() == IService.State.STOPPED);
         verify(mockOutputQueue, times(2)).put(any(DummyMessage.class));
-        assertEquals(IService.State.STOPPED, service.getCurrentState());
     }
 }

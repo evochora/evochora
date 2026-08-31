@@ -3,7 +3,6 @@ package org.evochora.datapipeline.services.indexers;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,6 +27,7 @@ import org.evochora.datapipeline.api.analytics.ManifestEntry;
 import org.evochora.datapipeline.api.analytics.ParquetSchema;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.delta.ICellStateSource;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.delta.ChunkCorruptedException;
@@ -36,7 +36,10 @@ import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.datapipeline.api.memory.MemoryEstimate;
 import org.evochora.datapipeline.api.memory.SimulationParameters;
 import org.evochora.datapipeline.api.resources.IResource;
+import org.evochora.datapipeline.api.resources.storage.PublishedOutputStream;
 import org.evochora.datapipeline.api.resources.storage.IAnalyticsStorageWrite;
+import org.evochora.datapipeline.api.resources.storage.ITickRelevance;
+import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -67,8 +70,11 @@ import com.typesafe.config.ConfigObject;
  *       storage, and the DuckDB session is closed and reset for the next window.</li>
  * </ol>
  * <p>
- * <strong>Error Handling:</strong> Uses bulkhead pattern — plugin failures don't affect
- * other plugins. IOException from storage causes batch retry.
+ * <strong>Error Handling:</strong> A failing plugin does not stop the others from writing their
+ * files, but the commit fails once they are done. The batch is then left unacknowledged and the
+ * topic redelivers it; a failure that persists moves it to the dead letter queue after the
+ * configured number of retries. Files already written are replaced on the retry, since the
+ * storage publishes them atomically.
  */
 public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements IMemoryEstimatable {
 
@@ -232,8 +238,35 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
                 throw new RuntimeException("Failed to initialize plugin: " + plugin.getMetricId(), e);
             }
         }
-        
+
+        // 3. Decide what the chunks of this run have to be read with
+        tickRelevance = buildTickRelevance();
+
         log.debug("AnalyticsIndexer prepared for run: {}", runId);
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * A batch is relevant when at least one configured plugin produces a row for a tick inside the
+     * range. Only each plugin's finest level is examined: a coarser level's interval is a multiple
+     * of it, so a tick matching a coarser level always matches the finest one too.
+     * <p>
+     * With no plugins configured nothing is relevant, which matches {@link #processChunk} returning
+     * immediately in that case.
+     */
+    @Override
+    protected boolean batchRequiresProcessing(long tickStart, long tickEnd) {
+        for (IAnalyticsPlugin plugin : plugins) {
+            // Coarser levels are multiples of the finest, so a batch holding nothing for the
+            // finest holds nothing for any of them
+            long interval = plugin.getEffectiveSamplingInterval(0);
+            // Largest multiple of interval not beyond tickEnd; inside the range iff >= tickStart
+            if (tickEnd / interval * interval >= tickStart) {
+                return true;
+            }
+        }
+        return false;
     }
 
     @Override
@@ -309,6 +342,13 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
         String subPath = calculateFolderPath(sessionStartTick);
         String filename = String.format("batch_%020d_%020d.parquet", sessionStartTick, sessionEndTick);
 
+        // Failures are collected rather than thrown at once: the remaining plugins still write
+        // their files, so one broken metric does not cost the others their data. The batch is
+        // failed afterwards all the same, which leaves it unacknowledged for redelivery.
+        Exception firstFailure = null;
+        int failureCount = 0;
+        int taskCount = sessionTasks.size();
+
         try {
             for (PluginLodTask task : sessionTasks) {
                 Path tempFile = null;
@@ -330,9 +370,12 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
                     }
 
                     try (InputStream in = Files.newInputStream(tempFile);
-                         OutputStream out = analyticsOutput.openAnalyticsOutputStream(
+                         PublishedOutputStream out = analyticsOutput.openAnalyticsOutputStream(
                              runId, task.metricId(), task.lodLevel(), subPath, filename)) {
                         in.transferTo(out);
+                        // Only a transfer that ran to its end may become visible: half a Parquet
+                        // file passes a size check and then breaks every read over its directory
+                        out.publish();
                     }
 
                     log.debug("Plugin {} wrote {} rows for {} batch {}-{} to {}/{}",
@@ -347,6 +390,10 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
                     log.debug("Plugin export error details:", e);
                     recordError("ANALYTICS_IO_ERROR", "Failed to write analytics data",
                         String.format("Plugin: %s, LOD: %s", task.metricId(), task.lodLevel()));
+                    if (firstFailure == null) {
+                        firstFailure = e;
+                    }
+                    failureCount++;
                 } finally {
                     task.statement().close();
                     if (tempFile != null) Files.deleteIfExists(tempFile);
@@ -354,6 +401,11 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
             }
         } finally {
             resetSession();
+        }
+
+        if (failureCount > 0) {
+            throw new IOException("Analytics export failed for " + failureCount + " of "
+                    + taskCount + " plugin/LOD tasks", firstFailure);
         }
     }
 
@@ -372,13 +424,11 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
 
         for (IAnalyticsPlugin plugin : plugins) {
             try {
-                int baseSamplingInterval = plugin.getSamplingInterval();
                 boolean needsEnv = plugin.needsEnvironmentData();
 
                 for (int level = 0; level < plugin.getLodLevels(); level++) {
                     String lodLevel = "lod" + level;
-                    int effectiveSamplingInterval = baseSamplingInterval
-                        * (int) Math.pow(plugin.getLodFactor(), level);
+                    int effectiveSamplingInterval = plugin.getEffectiveSamplingInterval(level);
 
                     ParquetSchema schema = plugin.getSchema();
                     String tableName = plugin.getMetricId() + "_" + lodLevel;
@@ -450,9 +500,16 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
         
         String runId = chunk.getSimulationRunId();
         
-        // Process snapshot first (always has full environment data)
+        // Process snapshot first (always has full environment data). Routing it through the
+        // decoder loads its cells into the decoder's state, which is where plugins read them -
+        // and is what the deltas that follow build upon anyway.
         TickData snapshot = chunk.getSnapshot();
-        processTickForPlugins(snapshot, tasksByPlugin, rowsWrittenPerTask);
+        if (decoder != null) {
+            TickData snapshotTick = decoder.decompressTickCellsInState(chunk, snapshot.getTickNumber());
+            processTickForPlugins(snapshotTick, decoder.getCellState(), tasksByPlugin, rowsWrittenPerTask);
+        } else {
+            processTickForPlugins(snapshot, null, tasksByPlugin, rowsWrittenPerTask);
+        }
         
         // Process deltas
         for (TickDelta delta : chunk.getDeltasList()) {
@@ -480,13 +537,14 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
             }
             
             if (needsEnvironmentForThisTick && decoder != null) {
-                // Decompress to get full environment data (uses stateful decoder)
-                TickData fullTick = decoder.decompressTick(chunk, tickNumber);
-                processTickForPlugins(fullTick, tasksByPlugin, rowsWrittenPerTask);
+                // Reconstruct the environment, but leave the cells in the decoder's state: the
+                // plugins that read them do so once, so packing them into the message is waste.
+                TickData fullTick = decoder.decompressTickCellsInState(chunk, tickNumber);
+                processTickForPlugins(fullTick, decoder.getCellState(), tasksByPlugin, rowsWrittenPerTask);
             } else {
                 // Create lightweight TickData with only organism data (no environment reconstruction)
                 TickData lightTick = createLightweightTickData(runId, delta);
-                processTickForPlugins(lightTick, tasksByPlugin, rowsWrittenPerTask);
+                processTickForPlugins(lightTick, null, tasksByPlugin, rowsWrittenPerTask);
             }
 
             // Yield after each delta to prevent system freezing during heavy chunk processing
@@ -518,6 +576,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
      */
     private void processTickForPlugins(
             TickData tick,
+            ICellStateSource cells,
             Map<IAnalyticsPlugin, List<PluginLodTask>> tasksByPlugin,
             Map<PluginLodTask, Integer> rowsWrittenPerTask) {
         
@@ -542,7 +601,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
             
             // Extract rows ONCE from the plugin
             try {
-                List<Object[]> rows = plugin.extractRows(tick);
+                List<Object[]> rows = plugin.extractRows(tick, cells);
                 
                 // Distribute the same rows to ALL matching LOD levels
                 for (PluginLodTask task : pluginTasks) {
@@ -663,13 +722,55 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
     }
 
     /**
-     * Creates a Decoder for decompressing chunks.
+     * The relevance the chunks of this run are read with, or {@link ITickRelevance#EVERYTHING} when
+     * the run's layout cannot be vouched for.
      * <p>
-     * The Decoder's MutableCellState is reused across multiple decompressChunk calls
-     * within a single batch, avoiding allocation overhead.
-     *
-     * @return a new Decoder, or a Decoder with size 1 if metadata is unavailable
+     * Built once per run, since it depends only on the run's recording layout and the configured
+     * plugins.
      */
+    private ITickRelevance tickRelevance = ITickRelevance.EVERYTHING;
+
+    /**
+     * Builds the relevance for this run from the configured plugins.
+     * <p>
+     * Without plugins there is nothing to narrow down, so everything is read.
+     *
+     * @return the relevance to read this run's chunks with
+     */
+    private ITickRelevance buildTickRelevance() {
+        if (plugins.isEmpty()) {
+            return ITickRelevance.EVERYTHING;
+        }
+
+        List<Long> organismIntervals = new ArrayList<>();
+        List<Long> cellIntervals = new ArrayList<>();
+        for (IAnalyticsPlugin plugin : plugins) {
+            // The finest level speaks for all of them: the coarser ones are its multiples, so a
+            // recording it does not want is wanted by none
+            long finest = plugin.getEffectiveSamplingInterval(0);
+            if (plugin.needsEnvironmentData()) {
+                cellIntervals.add(finest);
+            } else {
+                organismIntervals.add(finest);
+            }
+        }
+        return new AnalyticsTickRelevance(organismIntervals, cellIntervals);
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Reads with the run's relevance, so the payload of recordings no plugin consumes is never
+     * turned into objects.
+     */
+    @Override
+    protected void readAndProcessChunks(StoragePath path, String batchId) throws Exception {
+        storage.forEachChunk(path, getChunkFieldFilter(), tickRelevance, chunk -> {
+            processChunk(chunk);
+            onChunkStreamed(batchId, chunk.getTickCount());
+        });
+    }
+
     private DeltaCodec.Decoder createDecoder() {
         SimulationMetadata metadata = getMetadata();
         if (metadata == null || metadata.getResolvedConfigJson().isEmpty()) {
@@ -710,7 +811,7 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
         }
 
         @Override
-        public OutputStream openArtifactStream(String metricId, String lodLevel, String filename) throws IOException {
+        public PublishedOutputStream openArtifactStream(String metricId, String lodLevel, String filename) throws IOException {
             return analyticsOutput.openAnalyticsOutputStream(runId, metricId, lodLevel, filename);
         }
 
@@ -744,12 +845,15 @@ public class AnalyticsIndexer<ACK> extends AbstractBatchIndexer<ACK> implements 
         int totalTasks = 0;
 
         for (IAnalyticsPlugin plugin : plugins) {
-            int baseSamplingInterval = plugin.getSamplingInterval();
+            // The configured interval counts recorded ticks, so the absolute tick interval is the
+            // product with the run's recording interval. Taken from the parameters rather than
+            // from the plugin, because estimation runs before any run metadata is available.
+            long baseSamplingInterval = (long) params.samplingInterval() * plugin.getSamplingInterval();
             long bytesPerRow = estimateRowBytes(plugin.getSchema());
 
             for (int level = 0; level < plugin.getLodLevels(); level++) {
-                int effectiveInterval = baseSamplingInterval
-                    * (int) Math.pow(plugin.getLodFactor(), level);
+                long effectiveInterval = baseSamplingInterval
+                    * (long) Math.pow(plugin.getLodFactor(), level);
                 // Matching ticks per chunk: upper bound (not all simulation ticks are data samples)
                 long matchingTicksPerChunk = Math.min(
                     Math.max(1, simulationTicksPerChunk / effectiveInterval),

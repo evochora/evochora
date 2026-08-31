@@ -133,39 +133,48 @@ class SlidingWindowPercentilesTest {
     void testSlidingWindow_DecaysOverTime() throws InterruptedException {
         SlidingWindowPercentiles percentiles = new SlidingWindowPercentiles(2);  // 2-second window
         
-        // Record 10 values
+        long second = java.time.Instant.now().getEpochSecond();
         for (int i = 0; i < 10; i++) {
-            percentiles.record(5_000_000L);
+            percentiles.record(5_000_000L, second);
         }
-        
-        long initialCount = percentiles.getCount();
-        assertEquals(10, initialCount);
-        
-        // Wait for window to expire
-        Thread.sleep(2200);
-        
-        long laterCount = percentiles.getCount();
-        // Old values should have fallen out of window
-        assertTrue(laterCount < initialCount || laterCount == 0, 
-                "Count should decay as old buckets fall out of window");
+
+        assertEquals(10, percentiles.getCount(second));
+
+        // Past the window the values are not merely fewer, they are gone
+        assertEquals(0, percentiles.getCount(second + 3),
+                "nothing of the window is left");
     }
 
     @Test
-    void testCleanup_OldBucketsRemoved() throws InterruptedException {
+    void testCleanup_OldBucketsRemoved() {
         SlidingWindowPercentiles percentiles = new SlidingWindowPercentiles(1);  // 1-second window
-        
-        percentiles.record(1_000_000L);
+        long second = java.time.Instant.now().getEpochSecond();
+
+        percentiles.record(1_000_000L, second);
         assertEquals(1, percentiles.getSecondBucketCount());
-        
-        // Wait for window to expire
-        Thread.sleep(1200);
-        
-        // Recording new value should trigger cleanup
-        percentiles.record(2_000_000L);
-        
-        // Should have cleaned up old buckets
-        assertTrue(percentiles.getSecondBucketCount() <= 6, 
+
+        // Recording well past the window triggers the cleanup of what fell out of it
+        percentiles.record(2_000_000L, second + 20);
+
+        assertTrue(percentiles.getSecondBucketCount() <= 6,
                 "Should have at most windowSeconds + 5 buckets");
+    }
+
+    @Test
+    void testCleanup_BackwardTimestampsDoNotPileUpBuckets() {
+        // Cleanup measures the window from the newest bucket the tracker holds. Measuring it from
+        // the second just recorded instead puts the cutoff below every bucket already there, so
+        // nothing is ever dropped again and the map grows with every recording.
+        SlidingWindowPercentiles percentiles = new SlidingWindowPercentiles(5);
+        long newest = 1_000_000L;
+
+        for (int step = 0; step < 100; step++) {
+            percentiles.record(1_000_000L, newest - step);
+        }
+
+        // maxBuckets is windowSeconds + 5, and cleanup runs on the recording that pushes past it
+        assertTrue(percentiles.getSecondBucketCount() <= 11,
+                "Buckets should stay at the window size, got: " + percentiles.getSecondBucketCount());
     }
 
     @Test

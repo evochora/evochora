@@ -22,10 +22,11 @@ import * as MetricCardView from './ui/MetricCardView.js';
         'vital_stats',          // 2. Birth & Death Rates
         'generation_depth',     // 3. Generation Depth
         'age_distribution',     // 4. Age Distribution
-        'genome_population',    // 5. Genome Population
-        'genome_diversity',     // 6. Genome Diversity
-        'instruction_usage',    // 7. Instruction Usage
-        'environment_composition' // 8. Environment Composition
+        'death_lifetimes',      // 5. Death Lifetimes
+        'genome_clades',        // 6. Clade Shares
+        'genome_diversity',     // 7. Genome Diversity
+        'instruction_usage',    // 8. Instruction Usage
+        'environment_composition' // 9. Environment Composition
     ];
     
     // State
@@ -34,6 +35,18 @@ import * as MetricCardView from './ui/MetricCardView.js';
     let isLoading = false;
     /** @type {Object<string, AbortController>} Active abort controllers per metric ID */
     const abortControllers = {};
+
+    /**
+     * Per-metric view state a chart asked for, keyed by metric ID.
+     *
+     * A chart that lets the reader choose what it shows - which clade is opened, say - stores that
+     * choice here and gets it back on every render, so it survives a redraw and a change of level
+     * of detail. Charts that show one fixed thing never touch it.
+     */
+    const viewStates = {};
+
+    /** Rows last loaded per metric ID, so a view change redraws without fetching again. */
+    const loadedData = {};
 
     /** Hard cap on data points loaded per chart */
     const HARD_CAP = 5000;
@@ -270,8 +283,62 @@ export async function loadDashboard(runId) {
         return Math.min(HARD_CAP, Math.max(100, Math.floor(chartWidth / 2)));
     }
 
-    /** Assumed average rows per Parquet file for estimation. */
-    const ROWS_PER_FILE_ESTIMATE = 10;
+    /**
+     * How many points a level of detail holds over a tick range.
+     *
+     * The manifest names the tick distance between two rows of each level, so this is a count and
+     * not an estimate. Metrics writing several rows per tick - one per genome, say - still hold as
+     * many points as the chart draws: what is counted is moments in time.
+     *
+     * @param {Object} metric - Manifest entry
+     * @param {string} lod - Level of detail, e.g. "lod2"
+     * @param {number} tickMin - First tick of the metric
+     * @param {number} tickMax - Last tick of the metric
+     * @returns {number} The number of points
+     * @throws {Error} If the manifest names no interval for that level
+     */
+    function pointCount(metric, lod, tickMin, tickMax) {
+        const interval = metric.tickIntervals?.[lod];
+        if (!interval) {
+            throw new Error(
+                `Metric ${metric.id} names no tick interval for ${lod}; its manifest was written ` +
+                `by a build that did not record one, and this build cannot read its data either.`);
+        }
+        return Math.floor((tickMax - tickMin) / interval) + 1;
+    }
+
+    /**
+     * The coarsest level of detail a metric offers - its overview.
+     *
+     * @param {Object} metric - Manifest entry
+     * @returns {string|null} The coarsest level, or null if the metric names none
+     */
+    function coarsestLod(metric) {
+        const levels = metric.dataSources ? Object.keys(metric.dataSources).sort() : [];
+        return levels.length > 0 ? levels[levels.length - 1] : null;
+    }
+
+    /**
+     * Keeps every nth row so that at most `limit` ticks remain, and returns the rest unchanged.
+     *
+     * The overview must show the whole run; when it holds more moments than the chart can draw,
+     * they are thinned evenly rather than cut off at one end. Rows sharing a tick stay together,
+     * so a metric with several rows per moment keeps its moments whole.
+     *
+     * @param {Array<Object>} rows - Rows ordered by tick
+     * @param {number} limit - Greatest number of ticks to keep
+     * @returns {Array<Object>} The thinned rows
+     */
+    function thinToLimit(rows, limit) {
+        const ticks = [...new Set(rows.map(row => Number(row.tick)))];
+        if (ticks.length <= limit) {
+            return rows;
+        }
+
+        const step = Math.ceil(ticks.length / limit);
+        const kept = new Set(ticks.filter((_, index) => index % step === 0));
+        return rows.filter(row => kept.has(Number(row.tick)));
+    }
 
     /**
      * Loads data for a single metric card with windowed tick-range support.
@@ -312,15 +379,19 @@ export async function loadDashboard(runId) {
             const tickMin = rangeInfo.tickMin;
             const tickMax = rangeInfo.tickMax;
             const resolvedLod = rangeInfo.lod || selectedLod;
-            const estimatedRows = rangeInfo.fileCount * ROWS_PER_FILE_ESTIMATE;
-            const needsWindowing = estimatedRows > effectiveLimit && tickMin != null && tickMax != null;
+            // The overview is never windowed: it answers what the whole run looks like, and a
+            // window would answer something else. Too many points there are thinned after loading.
+            const isOverview = resolvedLod === coarsestLod(metric);
+            const hasRange = tickMin != null && tickMax != null;
+            const points = hasRange ? pointCount(metric, resolvedLod, tickMin, tickMax) : 0;
+            const needsWindowing = !isOverview && hasRange && points > effectiveLimit;
 
             // Calculate view window if windowing is needed
             let viewFrom = null;
             let viewTo = null;
             if (needsWindowing) {
                 const totalRange = tickMax - tickMin;
-                const viewRange = Math.max(1, Math.round(totalRange * (effectiveLimit / estimatedRows)));
+                const viewRange = Math.max(1, Math.round(totalRange * (effectiveLimit / points)));
 
                 if (keepPosition && prevState && prevState.viewFrom != null) {
                     viewFrom = Math.max(tickMin, Math.min(prevState.viewFrom, tickMax - viewRange));
@@ -349,7 +420,7 @@ export async function loadDashboard(runId) {
                 if (needsWindowing) {
                     windowState[metricId] = {
                         tickMin, tickMax, viewFrom, viewTo, effectiveLimit,
-                        isParquet: true, blobKey, estimatedRows
+                        isParquet: true, blobKey, points
                     };
                     MetricCardView.showScrollbar(card, windowState[metricId]);
                 } else {
@@ -367,7 +438,7 @@ export async function loadDashboard(runId) {
                 if (needsWindowing) {
                     windowState[metricId] = {
                         tickMin, tickMax, viewFrom, viewTo, effectiveLimit,
-                        isParquet: false
+                        isParquet: false, points
                     };
                     MetricCardView.showScrollbar(card, windowState[metricId]);
                 } else {
@@ -386,7 +457,12 @@ export async function loadDashboard(runId) {
                 return;
             }
 
-            MetricCardView.renderChart(card, data);
+            const companion = await loadCompanionData(metric, controller.signal);
+            loadedData[metricId] = {
+                data: isOverview ? thinToLimit(data, effectiveLimit) : data,
+                companion
+            };
+            renderWithViewState(card);
 
         } catch (error) {
             if (error.name === 'AbortError') {
@@ -403,6 +479,60 @@ export async function loadDashboard(runId) {
                 delete abortControllers[metricId];
             }
         }
+    }
+
+    /**
+     * Loads the companion table of a metric, or returns null when it has none.
+     *
+     * The companion is read at its finest level of detail: it carries structure, and a thinned-out
+     * structure is not a coarser view of it but a wrong one - a lineage missing edges turns
+     * descendants into roots. It is read again whenever the metric is loaded, because a running
+     * simulation keeps adding to it, and a tree that stops growing loses every genome born after
+     * it was read.
+     *
+     * Scrolling is not such a moment. It moves the window inside the tick range that was known
+     * when the metric was loaded, and the copy read then already covers that whole range, so the
+     * scroll path carries it along instead of asking for it again. Opening a clade likewise
+     * redraws from what is already loaded and costs no request.
+     *
+     * @param {Object} metric - Manifest entry of the metric being loaded
+     * @param {AbortSignal} signal - Signal aborting the fetch
+     * @returns {Promise<Array<Object>|null>} Companion rows, or null if the metric has none
+     */
+    async function loadCompanionData(metric, signal) {
+        if (!metric.companionMetricId || !metric.companionQuery) {
+            return null;
+        }
+
+        const blobKey = `companion_${metric.id}`;
+        const { blob } = await AnalyticsApi.fetchParquetBlob(
+            metric.companionMetricId, currentRunId, 'lod0', signal
+        );
+        await DuckDBClient.registerParquetBlob(blobKey, blob);
+        return DuckDBClient.queryRegisteredBlob(blobKey, metric.companionQuery);
+    }
+
+    /**
+     * Draws a card from the rows already loaded, in the view state it currently holds.
+     *
+     * Charts ask for a new view state through the callback; the redraw uses the same rows, so
+     * changing what a chart shows never costs a request.
+     *
+     * @param {Object} card - Card instance
+     */
+    function renderWithViewState(card) {
+        const metricId = card.metric.id;
+        const loaded = loadedData[metricId];
+        if (!loaded) return;
+
+        MetricCardView.renderChart(card, loaded.data, {
+            companion: loaded.companion,
+            viewState: viewStates[metricId] || null,
+            onViewStateChange: (next) => {
+                viewStates[metricId] = next;
+                renderWithViewState(card);
+            }
+        });
     }
 
     /**
@@ -460,7 +590,14 @@ export async function loadDashboard(runId) {
                 return;
             }
 
-            MetricCardView.renderChart(card, data);
+            // The companion is not windowed, and the scrollbar cannot leave the tick range that
+            // was known when the metric was loaded - so the copy from then covers every tick
+            // reachable by scrolling. It is fetched here only when the metric was loaded without
+            // rows and the scroll is what first reaches some.
+            const companion = loadedData[metricId]?.companion
+                ?? await loadCompanionData(card.metric, controller.signal);
+            loadedData[metricId] = { data, companion };
+            renderWithViewState(card);
 
         } catch (error) {
             if (error.name === 'AbortError') return;

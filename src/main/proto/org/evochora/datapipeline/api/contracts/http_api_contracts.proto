@@ -52,7 +52,10 @@ message MinimapData {
   int32 height = 2;
 
   // Cell types as raw bytes, one byte per pixel (row-major order).
-  // Values: 0=CODE, 1=DATA, 2=ENERGY, 3=STRUCTURE, 4=LABEL, 0=EMPTY
+  // Values are the type bits shifted down to a small id: 0=CODE, 1=DATA, 2=ENERGY,
+  // 3=STRUCTURE, 4=LABEL, 5=LABELREF, 6=REGISTER, plus 7=EMPTY for a pixel holding no
+  // molecule. This is the minimap's own compact encoding and differs from molecule_type
+  // in CellHttpResponse, which carries the unshifted Config constant.
   // Client maps these to colors using the same palette as the main grid.
   bytes cell_types = 3;
 
@@ -67,7 +70,9 @@ message CellHttpResponse {
   // N-dimensional coordinates (e.g., [x, y] for 2D, [x, y, z] for 3D)
   repeated int32 coordinates = 1 [packed=true];
   
-  // Molecule type ID (0=EMPTY, 1=CODE, 2=DATA, 3=ENERGY, 4=STRUCTURE)
+  // Molecule type as defined in Config: the type bits at their position within the packed
+  // molecule, not shifted down (Config.TYPE_ENERGY is 0x02 << 20, and that is the value sent).
+  // The moleculeTypes map of the metadata endpoint is keyed by the same values.
   int32 molecule_type = 2;
   
   // Molecule value (signed, interpretation depends on type)

@@ -74,6 +74,8 @@ public class Organism {
     private int mr; // Molecule Marker Register
     private long genomeHash = 0L; // Genome hash computed at birth
     private long deathTick = -1L; // Tick when organism died (-1 if alive)
+    private int generation = 0; // Replications between a founding organism and this one
+    private long parentGenomeHash = 0L; // Genome of the parent at this organism's birth
     private final Object[] registers;
     private final Deque<Object> dataStack;
     private final Deque<int[]> locationStack;
@@ -215,6 +217,8 @@ public class Organism {
         this.sr = b.sr;
         this.mr = b.mr;
         this.genomeHash = b.genomeHash;
+        this.generation = b.generation;
+        this.parentGenomeHash = b.parentGenomeHash;
         this.deathTick = b.deathTick;
 
         // Deep copy data pointers
@@ -284,13 +288,6 @@ public class Organism {
     }
 
     /**
-     * Builder for restoring organism state from serialized data.
-     * <p>
-     * Use {@link Organism#restore(int, long)} to obtain an instance.
-     * This builder is used during simulation resume to reconstruct organisms
-     * from persisted checkpoint data.
-     */
-    /**
      * Thrown when restored state does not describe an organism this build could have produced.
      * <p>
      * Kept apart from the plain {@link IllegalStateException} a wrongly called builder raises,
@@ -322,6 +319,8 @@ public class Organism {
         private int sr = 0;
         private int mr = 0;
         private long genomeHash = 0L;
+        private int generation = 0;
+        private long parentGenomeHash = 0L;
         private long deathTick = -1L;
         private List<int[]> dps = new ArrayList<>();
         private int activeDpIndex = 0;
@@ -401,6 +400,18 @@ public class Organism {
         /** Sets the tick when the organism died (-1 if alive). */
         public RestoreBuilder deathTick(long deathTick) {
             this.deathTick = deathTick;
+            return this;
+        }
+
+        /** Sets the number of replications between a founding organism and this one. */
+        public RestoreBuilder generation(int generation) {
+            this.generation = generation;
+            return this;
+        }
+
+        /** Sets the genome hash the parent had when this organism was created. */
+        public RestoreBuilder parentGenomeHash(long parentGenomeHash) {
+            this.parentGenomeHash = parentGenomeHash;
             return this;
         }
 
@@ -1180,6 +1191,37 @@ public class Organism {
 
     /** @return The tick when this organism died, or -1L if still alive. */
     public long getDeathTick() { return deathTick; }
+
+    /**
+     * Number of replications between a founding organism and this one.
+     * <p>
+     * Set once at birth from the parent. A consumer cannot derive it later: the parent may have
+     * been removed from the simulation long before this organism is observed.
+     *
+     * @return the generation, 0 for a founding organism
+     */
+    public int getGeneration() { return generation; }
+
+    /**
+     * Genome hash the parent had when this organism was created.
+     * <p>
+     * Set once at birth, and 0 for a founding organism. Recorded rather than derived for the same
+     * reason as the generation: the parent's genome is not observable once the parent is gone.
+     *
+     * @return the parent's genome hash at this organism's birth, 0 if there was no parent
+     */
+    public long getParentGenomeHash() { return parentGenomeHash; }
+
+    /**
+     * Records the ancestry facts a child inherits from its parent at the moment of replication.
+     *
+     * @param parent the organism this one was forked from
+     */
+    public void inheritFrom(Organism parent) {
+        this.parentId = parent.getId();
+        this.generation = parent.getGeneration() + 1;
+        this.parentGenomeHash = parent.getGenomeHash();
+    }
 
     /** @return A copy of the flat register array in RegisterBank slot order. */
     public Object[] getRegisters() { return Arrays.copyOf(registers, registers.length); }

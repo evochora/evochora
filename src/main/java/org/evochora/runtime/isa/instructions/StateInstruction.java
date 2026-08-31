@@ -273,7 +273,7 @@ public class StateInstruction extends Instruction {
             organism.takeEr(energy); // Deduct the energy given to the child
             Organism child = Organism.create(simulation, childIp, energy);
             child.setDv(childDv);
-            child.setParentId(organism.getId());
+            child.inheritFrom(organism);
             child.setBirthTick(simulation.getCurrentTick());
             child.setProgramId(organism.getProgramId());
             simulation.addNewOrganism(child);
@@ -437,7 +437,7 @@ public class StateInstruction extends Instruction {
                 organism.takeEr(energy); // Deduct the energy given to the child
                 Organism child = Organism.create(simulation, childIp, energy);
                 child.setDv(childDv);
-                child.setParentId(organism.getId());
+                child.inheritFrom(organism);
                 child.setBirthTick(simulation.getCurrentTick());
                 child.setProgramId(organism.getProgramId());
                 simulation.addNewOrganism(child);
@@ -469,7 +469,7 @@ public class StateInstruction extends Instruction {
                 organism.takeEr(energy); // Deduct the energy given to the child
                 Organism child = Organism.create(simulation, childIp, energy);
                 child.setDv(childDv);
-                child.setParentId(organism.getId());
+                child.inheritFrom(organism);
                 child.setBirthTick(simulation.getCurrentTick());
                 child.setProgramId(organism.getProgramId());
                 simulation.addNewOrganism(child);

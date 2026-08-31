@@ -110,9 +110,10 @@ message OrganismState {
 
   // ===== Instruction Pointer and Movement =====
 
-  // Current instruction pointer (relative coordinates in program space)
-  // Source: Organism.getIp()
-  // This is where the organism is currently executing in its program
+  // Current instruction pointer, in absolute world coordinates.
+  // Source: Organism.getIp(), which is set from initial_position at birth and from
+  // absolute_return_ip on return, and moved by whole world steps in between.
+  // Subtract initial_position to get the position within the organism's own program.
   Vector ip = 6;
 
   // Position where the organism started executing
@@ -275,6 +276,24 @@ message OrganismState {
 
   // Whether any PERSISTENT register has been written during this organism's lifetime.
   bool persistent_dirty = 36;
+
+  // Number of replications between the founding organisms and this one: a founder is 0, its
+  // child 1, and so on. Recorded at birth from the parent, because a consumer cannot derive it:
+  // the parent may be long gone by the time the child is observed.
+  // Source: Organism.getGeneration()
+  int32 generation = 37;
+
+  // Genome hash of the parent at the time this organism was created.
+  // Recorded at birth because the parent's genome is not observable later: reconstructing
+  // lineage from parent_id fails as soon as the parent has been pruned.
+  //
+  // Three states, and they mean different things:
+  //   absent     - the organism has no parent at all: it is one of the founding organisms
+  //   0          - the parent existed but carried no genome molecules, which a broken
+  //                replication can produce; such a parent is no node of a lineage
+  //   otherwise  - the parent's genome
+  // Source: Organism.getParentGenomeHash(), written only when Organism.getParentId() is set
+  optional int64 parent_genome_hash = 38;
 }
 
 // Aggregated runtime state for organism indexing.
@@ -401,10 +420,16 @@ message CellState {
   // Flat index representing the cell's position in the environment grid.
   // This is an OPAQUE identifier that requires Environment properties to interpret.
   //
-  // Conversion formula (2D): flatIndex = y * width + x
-  // Reverse conversion: x = flatIndex % width, y = flatIndex / width
+  // The index is the row-major linearization of the coordinates, with the LAST dimension
+  // varying fastest - the reverse of what a "width first" reading suggests.
   //
-  // For 3D environments: flatIndex = z * (width * height) + y * width + x
+  // Conversion formula (2D, shape [width, height]): flatIndex = x * height + y
+  // Reverse conversion: x = flatIndex / height, y = flatIndex % height
+  //
+  // For 3D (shape [width, height, depth]): flatIndex = x * (height * depth) + y * depth + z
+  //
+  // EnvironmentProperties.toFlatIndex and flatIndexToCoordinates are the implementation
+  // and hold for any number of dimensions.
   //
   // Source: Environment.forEachOccupiedIndex() callback parameter
   // Required metadata: Environment.shape from TickData.metadata
@@ -533,7 +558,25 @@ message TickDataChunk {
   // Complete state at first_tick (self-contained, enables any tick reconstruction)
   TickData snapshot = 5;
 
+  // === Delta directory ===
+  //
+  // Tick number and type of every delta, in the same order as the deltas themselves.
+  // Redundant with the deltas, and deliberately so: a reader that needs only some of the
+  // ticks has to know which deltas an environment reconstruction walks through before it
+  // decides whether to build a delta's payload. Protobuf writes fields in ascending field
+  // number, so the directory carries lower numbers than the deltas and therefore arrives
+  // first. That is also why `deltas` no longer sits at 6.
+  //
+  // A reader that keeps a delta's payload must verify the directory against what the delta
+  // itself states - the directory is a promise, not an authority.
+  reserved 6;   // was: repeated TickDelta deltas
+
+  repeated int64 delta_ticks = 7 [packed = true];
+  repeated DeltaType delta_types = 8 [packed = true];
+
+  // 9 is left free for the directory to grow into, below the deltas.
+
   // Deltas for subsequent ticks (tick_count - 1 entries)
   // Ordered by tick_number ascending.
-  repeated TickDelta deltas = 6;
+  repeated TickDelta deltas = 10;
 }

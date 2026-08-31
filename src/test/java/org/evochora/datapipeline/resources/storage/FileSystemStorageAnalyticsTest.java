@@ -10,10 +10,13 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.InputStream;
+
+import org.evochora.datapipeline.api.resources.storage.PublishedOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
+import java.nio.file.Files;
 import java.util.List;
 import java.util.Map;
 
@@ -49,8 +52,9 @@ class FileSystemStorageAnalyticsTest {
         String content = "tick,count\n1,100\n2,105";
 
         // 1. Write (structured)
-        try (OutputStream out = storage.openAnalyticsOutputStream(runId, metricId, lod, filename)) {
+        try (PublishedOutputStream out = storage.openAnalyticsOutputStream(runId, metricId, lod, filename)) {
             out.write(content.getBytes(StandardCharsets.UTF_8));
+            out.publish();
         }
 
         // 2. Read (path relative to analytics root)
@@ -123,5 +127,114 @@ class FileSystemStorageAnalyticsTest {
         assertThrows(IOException.class, () -> {
             storage.openAnalyticsInputStream(runId, "../secret.txt");
         });
+    }
+
+    /**
+     * A write that is abandoned without closing must leave nothing under the final name: half a
+     * Parquet file passes a size check and then breaks every directory-wide read.
+     */
+    @Test
+    void abandonedWriteLeavesNoFileUnderTheFinalName() throws IOException {
+        String runId = "run-abandoned";
+        PublishedOutputStream out = storage.openAnalyticsOutputStream(runId, "population", "lod0", "000", "batch.parquet");
+        try {
+            out.write("half a file".getBytes(StandardCharsets.UTF_8));
+            out.flush();
+            // Not closed at this point - the process is meant to have died here, and everything
+            // below is asserted about that moment
+
+            List<String> listed = storage.listAnalyticsFiles(runId, "");
+            assertTrue(listed.stream().noneMatch(f -> f.endsWith("batch.parquet")),
+                    "destination must not appear before the write completes: " + listed);
+            assertTrue(listed.stream().noneMatch(f -> f.endsWith(".tmp")),
+                    "temp files must stay out of listings: " + listed);
+        } finally {
+            // Releasing the handle is the test cleaning up after itself, not part of what it shows
+            out.close();
+        }
+    }
+
+    /**
+     * A write whose stream cannot even be closed must not leave its temp file behind: nothing
+     * reaches it afterwards, because a stream that failed to close counts as closed.
+     */
+    @Test
+    void aStreamThatFailsToCloseStillRemovesItsTempFile() throws IOException {
+        Path temp = tempDir.resolve("batch.parquet.abc.tmp");
+        Files.writeString(temp, "half a file");
+        OutputStream refusesToClose = new OutputStream() {
+            @Override public void write(int b) { }
+            @Override public void close() throws IOException {
+                throw new IOException("the disk went away");
+            }
+        };
+
+        PublishedOutputStream out = new FileSystemStorageResource.AtomicMoveOnPublishStream(
+                refusesToClose, temp, tempDir.resolve("batch.parquet"));
+        out.publish();
+
+        assertThrows(IOException.class, out::close);
+
+        assertFalse(Files.exists(temp), "temp file of a write that could not be closed");
+        assertFalse(Files.exists(tempDir.resolve("batch.parquet")),
+                "a write that could not be closed must not appear under the final name");
+    }
+
+    /**
+     * A write that failed part way through and was then closed properly must leave nothing under
+     * the final name either. Closing is what a try-with-resources block does on the way out of an
+     * exception, so it cannot be the signal that the content is complete.
+     */
+    @Test
+    void aWriteThatFailedAndWasClosedLeavesNoFileUnderTheFinalName() throws IOException {
+        String runId = "run-failed";
+
+        try (PublishedOutputStream out = storage.openAnalyticsOutputStream(
+                runId, "population", "lod0", "000", "batch.parquet")) {
+            out.write("half a file".getBytes(StandardCharsets.UTF_8));
+            // as if the transfer threw here: the block is left without publishing
+        }
+
+        List<String> listed = storage.listAnalyticsFiles(runId, "");
+        assertTrue(listed.stream().noneMatch(f -> f.endsWith("batch.parquet")),
+                "an unpublished write must not appear under the final name: " + listed);
+        assertTrue(listed.isEmpty(), "and must leave nothing behind at all: " + listed);
+    }
+
+    @Test
+    void closingPublishesTheFileUnderItsFinalName() throws IOException {
+        String runId = "run-published";
+        try (PublishedOutputStream out = storage.openAnalyticsOutputStream(runId, "population", "lod0", "000", "batch.parquet")) {
+            out.write("complete".getBytes(StandardCharsets.UTF_8));
+            out.publish();
+        }
+
+        List<String> listed = storage.listAnalyticsFiles(runId, "");
+        assertEquals(1, listed.size(), "exactly the published file: " + listed);
+        assertTrue(listed.get(0).endsWith("batch.parquet"), listed.get(0));
+
+        try (InputStream in = storage.openAnalyticsInputStream(runId, listed.get(0))) {
+            assertEquals("complete", new String(in.readAllBytes(), StandardCharsets.UTF_8));
+        }
+    }
+
+    /**
+     * Rewriting a file must replace it, since a redelivered batch writes the same names again.
+     */
+    @Test
+    void writingTheSameFileTwiceReplacesIt() throws IOException {
+        String runId = "run-replaced";
+        for (String content : List.of("first", "second")) {
+            try (PublishedOutputStream out = storage.openAnalyticsOutputStream(runId, "population", "lod0", "000", "batch.parquet")) {
+                out.write(content.getBytes(StandardCharsets.UTF_8));
+                out.publish();
+            }
+        }
+
+        List<String> listed = storage.listAnalyticsFiles(runId, "");
+        assertEquals(1, listed.size(), "no leftovers: " + listed);
+        try (InputStream in = storage.openAnalyticsInputStream(runId, listed.get(0))) {
+            assertEquals("second", new String(in.readAllBytes(), StandardCharsets.UTF_8));
+        }
     }
 }

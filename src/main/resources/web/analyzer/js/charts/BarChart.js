@@ -1,5 +1,5 @@
 import * as ChartRegistry from './ChartRegistry.js';
-import { formatTickValue } from './ChartUtils.js';
+import { formatTickValue, axisTicks, tooltipTitle, tooltipValue } from './ChartUtils.js';
 
 /**
  * Bar Chart Implementation
@@ -72,7 +72,18 @@ export function render(canvas, data, config) {
                         titleColor: '#e0e0e0',
                         bodyColor: '#aaa',
                         borderColor: '#333',
-                        borderWidth: 1
+                        borderWidth: 1,
+                        callbacks: {
+                            // Only a tick axis has a tick to name; a category label speaks for
+                            // itself, and tooltipTitle passes it through
+                            title: tooltipTitle,
+                            // Counts, as the axis below states them
+                            label: context => {
+                                const name = context.dataset.label || '';
+                                return (name ? name + ': ' : '')
+                                    + tooltipValue(context.parsed.y, 'integer');
+                            }
+                        }
                     }
                 },
                 scales: {
@@ -90,15 +101,9 @@ export function render(canvas, data, config) {
                         grid: { color: '#333' }
                     },
                     y: {
-                        ticks: { 
+                        ticks: {
                             color: '#888',
-                            // Only show integer ticks
-                            callback: function(value) {
-                                if (Number.isInteger(value)) {
-                                    return value;
-                                }
-                                return null;
-                            }
+                            ...axisTicks('integer')
                         },
                         grid: { 
                             // Highlight zero line in white, others in dark gray

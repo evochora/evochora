@@ -110,7 +110,45 @@ public class EnvironmentProperties {
         }
         return targetPos;
     }
-    
+
+    /**
+     * Calculates the vector leading from one coordinate to another.
+     * <p>
+     * This is the inverse of {@link #getTargetCoordinate(int[], int[])}: applying the returned
+     * vector to {@code from} yields {@code to}.
+     * <p>
+     * On a toroidal world two positions are connected by infinitely many vectors, one per number
+     * of wraps. This method returns the shortest of them, with each component in
+     * {@code [-size/2, size/2)}. Without that normalization a position a few cells before the
+     * origin would be reported as nearly a full world away.
+     *
+     * @param from The starting coordinate
+     * @param to The coordinate to reach
+     * @return The vector from {@code from} to {@code to}, shortest across the wrap on a torus
+     * @throws IllegalArgumentException if a coordinate does not have one component per dimension
+     */
+    public int[] getRelativeVector(int[] from, int[] to) {
+        if (from.length != worldShape.length || to.length != worldShape.length) {
+            throw new IllegalArgumentException("A position in a " + worldShape.length
+                + "-dimensional world has " + worldShape.length + " coordinates, but got "
+                + from.length + " and " + to.length);
+        }
+
+        int[] relative = new int[from.length];
+        for (int i = 0; i < from.length; i++) {
+            int delta = to[i] - from[i];
+            if (isToroidal) {
+                int size = worldShape[i];
+                delta = ((delta % size) + size) % size;
+                if (delta >= (size + 1) / 2) {
+                    delta -= size;
+                }
+            }
+            relative[i] = delta;
+        }
+        return relative;
+    }
+
     /**
      * Calculates strides for flat index conversion.
      * <p>

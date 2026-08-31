@@ -14,6 +14,7 @@ import './charts/HeatmapChart.js';
 import './charts/StackedAreaChart.js';
 import './charts/StackedBarChart.js';
 import './charts/BandChart.js';
+import './charts/CladeAreaChart.js';
 
 // Import main application modules
 import * as AnalyzerController from './AnalyzerController.js';

@@ -279,11 +279,8 @@ class H2TopicIntegrationTest {
         var claimedMessage = reader1.poll(5, TimeUnit.SECONDS);
         assertThat(claimedMessage).isNotNull();
         
-        // Do NOT ack - let it timeout
-        // Use Awaitility to wait for claim timeout (1 second) + small buffer
-        await().pollDelay(1500, TimeUnit.MILLISECONDS).until(() -> true);
-        
-        // Then - reader2 should get the SAME message (reassigned)
+        // Do NOT ack - let it timeout. poll retries until the claim has expired and the
+        // message is handed out again, so it returns as soon as that happens.
         var reassignedMessage = reader2.poll(5, TimeUnit.SECONDS);
         
         assertThat(reassignedMessage).isNotNull();
@@ -332,9 +329,8 @@ class H2TopicIntegrationTest {
         var claimedByReader1 = reader1.poll(5, TimeUnit.SECONDS);
         assertThat(claimedByReader1).isNotNull();
         
-        // Wait for timeout, then reader2 claims it
-        // Use Awaitility to wait for claim timeout (1 second) + small buffer
-        await().pollDelay(1500, TimeUnit.MILLISECONDS).until(() -> true);
+        // poll retries until the claim has expired, so reader2 gets the message as soon as
+        // it is handed out again
         var reassignedToReader2 = reader2.poll(5, TimeUnit.SECONDS);
         assertThat(reassignedToReader2).isNotNull();
         assertThat(reassignedToReader2.messageId()).isEqualTo(claimedByReader1.messageId());

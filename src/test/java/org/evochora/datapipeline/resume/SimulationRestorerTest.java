@@ -220,6 +220,36 @@ class SimulationRestorerTest {
         assertThat(simulation.getEnvironment().getOwnerId(5, 10)).isEqualTo(7);
     }
 
+    @Test
+    void restore_RestoredCells_CountAsUnchanged() {
+        // What a restore lays down is the state as it was, not a change to it. Left marked as
+        // changed, every one of those cells would go into the first delta after the resume and,
+        // through the accumulated deltas, into every one of them until the next snapshot - a
+        // chunk far larger than the same stretch of an uninterrupted run, holding the same state.
+        SimulationMetadata metadata = createMinimalMetadata();
+
+        CellDataColumns cells = CellDataColumns.newBuilder()
+            .addFlatIndices(510).addMoleculeData(Config.TYPE_DATA | 42).addOwnerIds(7)
+            .addFlatIndices(511).addMoleculeData(Config.TYPE_DATA | 43).addOwnerIds(7)
+            .build();
+
+        TickData snapshot = TickData.newBuilder()
+            .setSimulationRunId(TEST_RUN_ID)
+            .setTickNumber(1000)
+            .setCaptureTimeMs(System.currentTimeMillis())
+            .setTotalOrganismsCreated(50)
+            .setCellColumns(cells)
+            .setRngState(validRngState())
+            .build();
+
+        ResumeCheckpoint checkpoint = new ResumeCheckpoint(metadata, snapshot);
+        SimulationRestorer.RestoredState state = SimulationRestorer.restore(checkpoint, randomProvider, 1);
+
+        assertThat(state.simulation().getEnvironment().getChangedIndices().cardinality())
+            .as("a restored cell is state, not a change to it")
+            .isZero();
+    }
+
     // ==================== Genome Hash Restoration ====================
 
     @Test

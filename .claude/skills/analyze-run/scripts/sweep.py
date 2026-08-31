@@ -1,4 +1,13 @@
-"""Clade membership and sweep statistics.
+"""Clade membership and sweep statistics for runs recorded before the exports existed.
+
+Everything here works on organism snapshots fetched from a node, which is the
+only way to reach the lineage of a run whose analytics carry no
+``genome_lineage`` table. Current runs need none of it: the lineage is exported,
+and the Analyzer's clade view groups the population by it.
+
+The module therefore lives and dies with those older runs. It sits on the
+snapshot JSON shape, which has changed before, and it is not part of the tested
+system exports.
 
 A sweep is measured as the share of living bodied organisms whose genome
 descends from a clade-founding genome in the run's lineage tree. Clade roots
@@ -8,7 +17,6 @@ bodies before shares are interpreted as genotype frequencies.
 """
 import math
 
-import numpy as np
 import pandas as pd
 
 _B62 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -75,19 +83,3 @@ def clade_shares(snapshots: dict, tree: dict, roots: dict) -> pd.DataFrame:
             row[f"share_{name}"] = c / n if n else math.nan
         rows.append(row)
     return pd.DataFrame(rows)
-
-def logistic_fit(ticks, shares):
-    """Least-squares line through logit(share) over ticks.
-
-    Returns (slope per tick, intercept, fitted shares). Only the polymorphic
-    phase (0.01 < share < 0.99) enters the fit: outside it the logit is
-    undefined or dominated by relict individuals, and the near-fixation tail
-    would flatten the slope without carrying information about selection.
-    """
-    t = np.asarray(ticks, dtype=float)
-    s = np.asarray(shares, dtype=float)
-    mask = (s > 0.01) & (s < 0.99)
-    logit = np.log(s[mask] / (1 - s[mask]))
-    slope, intercept = np.polyfit(t[mask], logit, 1)
-    fitted = 1 / (1 + np.exp(-(slope * t + intercept)))
-    return slope, intercept, fitted

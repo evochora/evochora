@@ -267,6 +267,36 @@ main.container {
     cursor: not-allowed;
 }
 
+/* --- Clade Path --- */
+/* Its own row under the chart: laid over the canvas it would cover the axis labels. */
+.clade-path {
+    display: flex;
+    align-items: center;
+    margin-top: 6px;
+    padding-left: 4px;
+    font-size: 0.7em;
+    color: var(--text-muted);
+}
+
+.clade-path-step {
+    background: transparent;
+    border: none;
+    padding: 0 2px;
+    font-family: inherit;
+    font-size: inherit;
+    color: var(--accent-blue);
+    cursor: pointer;
+}
+
+.clade-path-step:disabled {
+    color: var(--text-secondary);
+    cursor: default;
+}
+
+.clade-path-separator {
+    color: var(--text-muted);
+}
+
 /* --- Metric Card Chart Container --- */
 .metric-card-chart-container {
     position: relative;

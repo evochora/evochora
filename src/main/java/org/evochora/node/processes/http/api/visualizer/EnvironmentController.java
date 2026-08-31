@@ -2,6 +2,8 @@ package org.evochora.node.processes.http.api.visualizer;
 
 import java.sql.SQLException;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.evochora.datapipeline.api.contracts.CellHttpResponse;
 import org.evochora.datapipeline.api.contracts.EnvironmentHttpResponse;
@@ -12,12 +14,15 @@ import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.delta.ChunkCorruptedException;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.MetadataNotFoundException;
+import org.evochora.datapipeline.api.resources.database.PendingChunkRead;
+import org.evochora.datapipeline.api.resources.database.OrganismNotFoundException;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 import org.evochora.datapipeline.api.resources.database.dto.SpatialRegion;
 import org.evochora.datapipeline.api.resources.database.dto.TickRange;
 import org.evochora.datapipeline.utils.MetadataConfigHelper;
 import org.evochora.datapipeline.utils.delta.DeltaCodec;
 import org.evochora.node.processes.http.api.pipeline.dto.ErrorResponseDto;
+import org.evochora.node.processes.http.api.visualizer.dto.OrganismBodyResponseDto;
 import org.evochora.runtime.isa.Instruction;
 import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.Molecule;
@@ -76,10 +81,10 @@ public class EnvironmentController extends VisualizerBaseController {
     private static final Logger LOGGER = LoggerFactory.getLogger(EnvironmentController.class);
     
     /**
-     * LRU cache for TickDataChunks.
+     * Cache holding the one chunk most recently read.
      * <p>
      * Key format: "runId:firstTick" where firstTick is the snapshot tick number.
-     * Value: The raw TickDataChunk (compressed form).
+     * Value: The parsed TickDataChunk.
      */
     private final Cache<String, TickDataChunk> chunkCache;
     
@@ -100,29 +105,29 @@ public class EnvironmentController extends VisualizerBaseController {
      * <p>
      * Cache configuration is read from options:
      * <ul>
-     *   <li>{@code chunk-cache.maximum-size} - Maximum number of chunks to cache (default: 100)</li>
      *   <li>{@code chunk-cache.expire-after-access} - Expiration time in seconds (default: 300)</li>
      * </ul>
+     * <p>
+     * The cache holds exactly one chunk, and its size is not configurable. Stepping through
+     * consecutive ticks reads the ticks of one chunk, so one is what that costs; jumping lands in
+     * another chunk, where any number of held ones would miss just the same. What a second one
+     * would buy is jumping back and forth between a few chunks, which nobody does - and it would
+     * cost another chunk of heap, which is one of the largest objects this process handles.
      *
      * @param registry The central service registry for accessing shared services.
      * @param options  The HOCON configuration specific to this controller instance.
      */
     public EnvironmentController(final org.evochora.node.spi.ServiceRegistry registry, final Config options) {
         super(registry, options);
-        
-        // Read chunk cache configuration (server-side Caffeine cache)
-        int maxSize = options.hasPath("chunk-cache.maximum-size") 
-            ? options.getInt("chunk-cache.maximum-size") 
-            : 100;
+
         int expireAfterAccessSeconds = options.hasPath("chunk-cache.expire-after-access") 
             ? options.getInt("chunk-cache.expire-after-access") 
             : 300;
-        
-        // Build chunk cache
+
+        // Statistics are not recorded: nothing reads them, and Caffeine keeps counters for them.
         this.chunkCache = Caffeine.newBuilder()
-            .maximumSize(maxSize)
+            .maximumSize(1)
             .expireAfterAccess(Duration.ofSeconds(expireAfterAccessSeconds))
-            .recordStats()  // Enable stats for monitoring
             .build();
         
         // Build environment properties cache (small, long TTL)
@@ -138,21 +143,24 @@ public class EnvironmentController extends VisualizerBaseController {
         // Minimap aggregator is stateless and thread-safe
         this.minimapAggregator = new MinimapAggregator();
 
-        LOGGER.info("EnvironmentController chunk cache initialized: maxSize={}, expireAfterAccess={}s",
-            maxSize, expireAfterAccessSeconds);
+        LOGGER.info("EnvironmentController chunk cache initialized: one chunk, expireAfterAccess={}s",
+            expireAfterAccessSeconds);
     }
 
     @Override
     public void registerRoutes(final Javalin app, final String basePath) {
         final String tickPath = (basePath + "/{tick}").replaceAll("//", "/");
         final String ticksPath = (basePath + "/ticks").replaceAll("//", "/");
-        
-        LOGGER.debug("Registering environment endpoints: tick={}, ticks={}", tickPath, ticksPath);
-        
+        final String bodyPath = (basePath + "/{tick}/organism/{organismId}").replaceAll("//", "/");
+
+        LOGGER.debug("Registering environment endpoints: tick={}, ticks={}, body={}",
+            tickPath, ticksPath, bodyPath);
+
         // IMPORTANT: Register /ticks BEFORE /{tick} to avoid path parameter conflict
         // Javalin matches routes in registration order, so /ticks must come first
         app.get(ticksPath, this::getTicks);
         app.get(tickPath, this::getEnvironment);
+        app.get(bodyPath, this::getOrganismBody);
         
         // Setup common exception handlers from base class
         setupExceptionHandlers(app);
@@ -311,9 +319,175 @@ public class EnvironmentController extends VisualizerBaseController {
             // Return Protobuf binary
             ctx.contentType("application/x-protobuf");
             ctx.status(HttpStatus.OK).result(responseBytes);
-            
+
         } catch (RuntimeException e) {
             handleDatabaseException(e, runId);
+        }
+    }
+
+    /**
+     * Handles GET requests for the body of a single organism.
+     * <p>
+     * Route: GET /visualizer/api/environment/{tick}/organism/{organismId}?runId=...
+     * <p>
+     * The body is the set of cells the organism owns. Answering it directly saves a caller from
+     * guessing a bounding box around the organism and from separating its molecules from those of
+     * its neighbours afterwards - a body can share its box with a child that was placed on top of
+     * it. Cell coordinates are relative to the organism's initial position, so bodies of different
+     * organisms can be compared without shifting them first.
+     * <p>
+     * This endpoint lives with the environment rather than with the organisms because it reads
+     * environment cells: the chunk cache, the environment properties and the decoder are all here.
+     * <p>
+     * Response format:
+     * <pre>
+     * {
+     *   "tickNumber": 5000,
+     *   "organismId": 7,
+     *   "initialPosition": [120, 40],
+     *   "worldShape": [1000, 500],
+     *   "isToroidal": true,
+     *   "cellCount": 2,
+     *   "cells": [
+     *     {"relative": [0, 0], "moleculeType": 0, "moleculeValue": 42, "marker": 0}
+     *   ]
+     * }
+     * </pre>
+     *
+     * @param ctx The Javalin context containing request and response data.
+     * @throws IllegalArgumentException if the tick or organism parameter is invalid
+     * @throws VisualizerBaseController.NoRunIdException if no run ID is available
+     * @throws SQLException if database operation fails
+     * @throws TickNotFoundException if the tick does not exist
+     * @throws OrganismNotFoundException if the organism does not exist at that tick
+     */
+    @OpenApi(
+        path = "{tick}/organism/{organismId}",
+        methods = {HttpMethod.GET},
+        summary = "Get the body of a single organism at a specific tick",
+        description = "Returns the cells owned by one organism, in coordinates relative to its initial position",
+        tags = {"visualizer / environment"},
+        pathParams = {
+            @OpenApiParam(name = "tick", description = "The tick number", required = true, type = Long.class),
+            @OpenApiParam(name = "organismId", description = "The organism ID", required = true, type = Integer.class)
+        },
+        queryParams = {
+            @OpenApiParam(name = "runId", description = "Optional simulation run ID (defaults to latest run)", required = false)
+        },
+        responses = {
+            @OpenApiResponse(status = "200", description = "OK", content = @OpenApiContent(from = OrganismBodyResponseDto.class)),
+            @OpenApiResponse(status = "304", description = "Not Modified (cached response, ETag matches)"),
+            @OpenApiResponse(status = "400", description = "Bad request (invalid tick or organismId)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "404", description = "Not found (organism, tick, or run ID not found)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "429", description = "Too many requests (connection pool exhausted)", content = @OpenApiContent(from = ErrorResponseDto.class)),
+            @OpenApiResponse(status = "500", description = "Internal server error (database error)", content = @OpenApiContent(from = ErrorResponseDto.class))
+        }
+    )
+    void getOrganismBody(final Context ctx)
+            throws SQLException, TickNotFoundException, OrganismNotFoundException {
+        final long tickNumber = parseTickNumber(ctx.pathParam("tick"));
+        final int organismId = parseOrganismId(ctx.pathParam("organismId"));
+        final String runId = resolveRunId(ctx);
+
+        LOGGER.debug("Retrieving organism body: tick={}, organismId={}, runId={}",
+            tickNumber, organismId, runId);
+
+        final CacheConfig cacheConfig = CacheConfig.fromConfig(options, "environment");
+        final String etag = "\"" + runId + "_" + tickNumber + "_" + organismId + "\"";
+        if (applyCacheHeaders(ctx, cacheConfig, etag)) {
+            return;
+        }
+
+        try {
+            // Read the anchor first: it is a single row, and an unknown organism should fail
+            // before the chunk is loaded. The connection is released before that load.
+            final int[] initialPosition;
+            try (final IDatabaseReader reader = databaseProvider.createReader(runId)) {
+                initialPosition = reader.readOrganismDetails(tickNumber, organismId)
+                    .staticInfo.initialPosition;
+            } catch (SQLException e) {
+                if (isSchemaNotFound(e)) {
+                    throw new VisualizerBaseController.NoRunIdException("Run ID not found: " + runId);
+                }
+                throw e;
+            }
+
+            final EnvironmentProperties envProps = getOrLoadEnvProps(runId);
+            if (initialPosition == null || initialPosition.length != envProps.getDimensions()) {
+                throw new IllegalStateException("Organism " + organismId + " of run " + runId
+                    + " has no initial position in " + envProps.getDimensions() + " dimensions,"
+                    + " which the body coordinates are relative to");
+            }
+
+            final TickDataChunk chunk = getOrLoadChunk(runId, tickNumber);
+
+            final DeltaCodec.Decoder decoder = new DeltaCodec.Decoder(envProps);
+            final TickData tickData;
+            try {
+                tickData = decoder.decompressTick(chunk, tickNumber);
+            } catch (ChunkCorruptedException e) {
+                throw new SQLException("Corrupted chunk for tick " + tickNumber + ": " + e.getMessage(), e);
+            }
+
+            ctx.status(HttpStatus.OK).json(
+                collectBody(tickData, tickNumber, organismId, initialPosition, envProps));
+
+        } catch (RuntimeException e) {
+            handleDatabaseException(e, runId);
+        }
+    }
+
+    /**
+     * Collects the cells owned by one organism into the body response.
+     *
+     * @param tickData The reconstructed tick holding all cells of the world
+     * @param tickNumber The tick the body is read at
+     * @param organismId The organism whose cells are collected
+     * @param initialPosition The organism's initial position, origin of the relative coordinates
+     * @param envProps Environment properties for coordinate conversion
+     * @return The response for this organism's body
+     */
+    private OrganismBodyResponseDto collectBody(final TickData tickData,
+                                                 final long tickNumber,
+                                                 final int organismId,
+                                                 final int[] initialPosition,
+                                                 final EnvironmentProperties envProps) {
+        final var cellColumns = tickData.getCellColumns();
+        final int cellCount = cellColumns.getFlatIndicesCount();
+        final List<OrganismBodyResponseDto.BodyCell> cells = new ArrayList<>();
+
+        for (int i = 0; i < cellCount; i++) {
+            if (cellColumns.getOwnerIds(i) != organismId) {
+                continue;
+            }
+
+            final int[] absolute = envProps.flatIndexToCoordinates(cellColumns.getFlatIndices(i));
+            final int moleculeInt = cellColumns.getMoleculeData(i);
+
+            cells.add(new OrganismBodyResponseDto.BodyCell(
+                envProps.getRelativeVector(initialPosition, absolute),
+                moleculeInt & org.evochora.runtime.Config.TYPE_MASK,
+                Molecule.extractSignedValue(moleculeInt),
+                (moleculeInt & org.evochora.runtime.Config.MARKER_MASK)
+                    >>> org.evochora.runtime.Config.MARKER_SHIFT));
+        }
+
+        return new OrganismBodyResponseDto(tickNumber, organismId, initialPosition,
+            envProps.getWorldShape(), envProps.isToroidal(), cells.size(), cells);
+    }
+
+    private int parseOrganismId(final String organismParam) {
+        if (organismParam == null || organismParam.trim().isEmpty()) {
+            throw new IllegalArgumentException("OrganismId parameter is required");
+        }
+        try {
+            final int id = Integer.parseInt(organismParam.trim());
+            if (id < 0) {
+                throw new IllegalArgumentException("OrganismId must be non-negative");
+            }
+            return id;
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Invalid organismId: " + organismParam, e);
         }
     }
     
@@ -354,14 +528,23 @@ public class EnvironmentController extends VisualizerBaseController {
         // Cache miss - load from database
         LOGGER.debug("Chunk cache miss: runId={}, tick={}", runId, tickNumber);
         
-        try (final IDatabaseReader reader = databaseProvider.createReader(runId)) {
-            final TickDataChunk chunk = reader.readChunkContaining(tickNumber);
-            
+        try {
+            // The connection is held only while the database is asked where the chunk lies. The
+            // read that follows is hundreds of megabytes from disk and as much through the parser;
+            // holding a pooled connection across it starves the pool for as long as the storage
+            // takes, which is how one reader can exhaust it.
+            final PendingChunkRead pending;
+            try (final IDatabaseReader reader = databaseProvider.createReader(runId)) {
+                pending = reader.prepareChunkRead(tickNumber);
+            }
+
+            final TickDataChunk chunk = pending.read();
+
             // Cache with key "runId:firstTick"
             final long firstTick = chunk.getSnapshot().getTickNumber();
             final String cacheKey = runId + ":" + firstTick;
             chunkCache.put(cacheKey, chunk);
-            
+
             return chunk;
         } catch (RuntimeException e) {
             if (e.getCause() instanceof SQLException sqlEx) {

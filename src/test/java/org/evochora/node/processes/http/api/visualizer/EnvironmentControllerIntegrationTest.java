@@ -31,7 +31,10 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
+import org.evochora.datapipeline.api.contracts.OrganismState;
+import org.evochora.datapipeline.api.contracts.Vector;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReaderProvider;
+import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareOrganismDataWriter;
 import org.evochora.datapipeline.api.resources.storage.StoragePath;
 import org.evochora.datapipeline.api.resources.topics.ITopicWriter;
 import org.evochora.datapipeline.api.services.IService;
@@ -834,5 +837,142 @@ class EnvironmentControllerIntegrationTest {
         // Then: Should return 404
         resp.then()
             .statusCode(404);
+    }
+
+    @Test
+    void organismBody_returnsOnlyOwnedCellsInRelativeCoordinates() throws Exception {
+        // A toroidal 10x10 world; organism 7 started at (1,1) and owns four cells, one of them
+        // across the wrap. Organism 8 sits in the middle and must not appear.
+        String runId = "test-run-" + UUID.randomUUID();
+        indexMetadata(runId, createMetadata(runId, new int[]{10, 10}, true));
+
+        writeBatchAndNotify(runId, List.of(
+            TickData.newBuilder()
+                .setTickNumber(1L)
+                .setSimulationRunId(runId)
+                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                    CellStateTestHelper.createCellStateBuilder(0, 7, 1, 50, 0).build(),    // (0,0)
+                    CellStateTestHelper.createCellStateBuilder(11, 7, 1, 60, 0).build(),   // (1,1)
+                    CellStateTestHelper.createCellStateBuilder(12, 7, 2, 70, 3).build(),   // (1,2)
+                    CellStateTestHelper.createCellStateBuilder(55, 8, 1, 80, 0).build(),   // (5,5)
+                    CellStateTestHelper.createCellStateBuilder(99, 7, 1, 90, 0).build()    // (9,9)
+                )))
+                .build()));
+
+        writeOrganism(runId, 1L, organismAt(7, 1, 1));
+        startIndexer(runId);
+
+        int port = startControllerServer();
+
+        Response resp = given()
+            .port(port)
+            .basePath("/visualizer/api/environment")
+            .queryParam("runId", runId)
+            .get("/1/organism/7");
+
+        resp.then().statusCode(200).contentType(containsString("application/json"));
+
+        assertThat(resp.jsonPath().getInt("organismId")).isEqualTo(7);
+        assertThat(resp.jsonPath().getList("initialPosition", Integer.class)).containsExactly(1, 1);
+        assertThat(resp.jsonPath().getList("worldShape", Integer.class)).containsExactly(10, 10);
+        assertThat(resp.jsonPath().getBoolean("isToroidal")).isTrue();
+
+        // Four owned cells, the neighbour's cell is gone
+        assertThat(resp.jsonPath().getInt("cellCount")).isEqualTo(4);
+        assertThat(resp.jsonPath().getList("cells")).hasSize(4);
+
+        // (0,0) is one cell before the origin in both dimensions, (9,9) two - across the wrap,
+        // which without toroidal normalization would read as +8
+        assertThat(resp.jsonPath().getList("cells.relative"))
+            .containsExactly(List.of(-1, -1), List.of(0, 0), List.of(0, 1), List.of(-2, -2));
+
+        assertThat(resp.jsonPath().getList("cells.moleculeValue", Integer.class))
+            .containsExactly(50, 60, 70, 90);
+        assertThat(resp.jsonPath().getList("cells.marker", Integer.class))
+            .containsExactly(0, 0, 3, 0);
+    }
+
+    @Test
+    void organismBody_unknownOrganismIsNotFound() throws Exception {
+        String runId = "test-run-" + UUID.randomUUID();
+        indexMetadata(runId, createMetadata(runId, new int[]{10, 10}, false));
+
+        writeBatchAndNotify(runId, List.of(
+            TickData.newBuilder()
+                .setTickNumber(1L)
+                .setSimulationRunId(runId)
+                .setCellColumns(CellStateTestHelper.createColumnsFromCells(List.of(
+                    CellStateTestHelper.createCellStateBuilder(0, 7, 1, 50, 0).build()
+                )))
+                .build()));
+
+        writeOrganism(runId, 1L, organismAt(7, 0, 0));
+        startIndexer(runId);
+
+        int port = startControllerServer();
+
+        given()
+            .port(port)
+            .basePath("/visualizer/api/environment")
+            .queryParam("runId", runId)
+            .get("/1/organism/99")
+            .then().statusCode(404);
+    }
+
+    /** Starts the environment indexer for a run and waits until the single tick is indexed. */
+    private void startIndexer(String runId) throws Exception {
+        indexer = createEnvironmentIndexer("test-indexer", ConfigFactory.parseString("""
+            runId = "%s"
+            metadataPollIntervalMs = 100
+            metadataMaxPollDurationMs = 5000
+            topicPollTimeoutMs = 2000
+            insertBatchSize = 100
+            flushTimeoutMs = 1000
+            """.formatted(runId)));
+        indexer.start();
+
+        await().atMost(10, TimeUnit.SECONDS)
+            .until(() -> indexer.getMetrics().get("ticks_processed").longValue() >= 1);
+    }
+
+    /** Starts an HTTP server carrying the environment controller and returns its port. */
+    private int startControllerServer() {
+        app = Javalin.create().start(0);
+
+        ServiceRegistry registry = new ServiceRegistry();
+        registry.register(IDatabaseReaderProvider.class, testDatabase);
+
+        EnvironmentController controller = new EnvironmentController(registry, ConfigFactory.empty());
+        controller.registerRoutes(app, "/visualizer/api/environment");
+
+        return app.port();
+    }
+
+    /** Writes one organism into the run's H2 schema, the source of the body endpoint's anchor. */
+    private void writeOrganism(String runId, long tick, OrganismState organism) throws Exception {
+        ResourceContext context = new ResourceContext(
+            "test", "organism-port", "db-organism-write", "test-db", Map.of());
+        var writer = (IResourceSchemaAwareOrganismDataWriter) testDatabase.getWrappedResource(context);
+        writer.setSimulationRun(runId);
+        writer.createOrganismTables();
+        writer.writeOrganismTick(TickData.newBuilder()
+            .setTickNumber(tick)
+            .setSimulationRunId(runId)
+            .addOrganisms(organism)
+            .build());
+        writer.commitOrganismWrites();
+        ((AutoCloseable) writer).close();
+    }
+
+    private OrganismState organismAt(int id, int x, int y) {
+        return OrganismState.newBuilder()
+            .setOrganismId(id)
+            .setBirthTick(0)
+            .setProgramId("prog-" + id)
+            .setInitialPosition(Vector.newBuilder().addComponents(x).addComponents(y).build())
+            .setEnergy(42)
+            .setIp(Vector.newBuilder().addComponents(x).addComponents(y).build())
+            .setDv(Vector.newBuilder().addComponents(0).addComponents(1).build())
+            .build();
     }
 }

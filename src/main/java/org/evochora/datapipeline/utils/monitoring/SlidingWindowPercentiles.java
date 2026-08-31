@@ -70,9 +70,23 @@ public class SlidingWindowPercentiles {
      * @param value The value to record (e.g., latency in nanoseconds)
      */
     public void record(long value) {
-        long currentSecond = Instant.now().getEpochSecond();
-        buckets.computeIfAbsent(currentSecond, k -> new PercentileTracker()).record(value);
-        cleanupIfNeeded(currentSecond);
+        record(value, Instant.now().getEpochSecond());
+    }
+
+    /**
+     * Records a value in the bucket of the given second.
+     * <p>
+     * Every method that reads the window has a counterpart taking the moment to read at, and this
+     * is the one on the writing side. With both, a caller can describe a course of events over
+     * time without waiting for it - which is what a test of a sliding window has to do to say
+     * anything exact about it.
+     *
+     * @param value The value to record
+     * @param nowSeconds The second the value falls into, as epoch seconds
+     */
+    public void record(long value, long nowSeconds) {
+        buckets.computeIfAbsent(nowSeconds, k -> new PercentileTracker()).record(value);
+        cleanupIfNeeded(nowSeconds);
     }
 
     /**
@@ -87,11 +101,23 @@ public class SlidingWindowPercentiles {
      * @throws IllegalArgumentException if percentile is not in range [0, 100]
      */
     public long getPercentile(double percentile) {
+        return getPercentile(percentile, Instant.now().getEpochSecond());
+    }
+
+    /**
+     * Calculates the percentile across the window ending at the given second.
+     *
+     * @param percentile The percentile to calculate (0-100)
+     * @param nowSeconds The second the window ends at, as epoch seconds
+     * @return The estimated value at the percentile
+     * @throws IllegalArgumentException if percentile is not in range [0, 100]
+     */
+    public long getPercentile(double percentile, long nowSeconds) {
         if (percentile < 0 || percentile > 100) {
             throw new IllegalArgumentException("Percentile must be between 0 and 100, got: " + percentile);
         }
-        
-        long currentSecond = Instant.now().getEpochSecond();
+
+        long currentSecond = nowSeconds;
         
         // Merge counts from all trackers in the window
         long totalCount = 0;
@@ -155,7 +181,17 @@ public class SlidingWindowPercentiles {
      * @return The average value, or 0 if no values recorded
      */
     public double getAverage() {
-        long currentSecond = Instant.now().getEpochSecond();
+        return getAverage(Instant.now().getEpochSecond());
+    }
+
+    /**
+     * Calculates the average across the window ending at the given second.
+     *
+     * @param nowSeconds The second the window ends at, as epoch seconds
+     * @return The average value, or 0 if no values fall into the window
+     */
+    public double getAverage(long nowSeconds) {
+        long currentSecond = nowSeconds;
         long totalSum = 0;
         long totalCount = 0;
         
@@ -178,7 +214,17 @@ public class SlidingWindowPercentiles {
      * @return The total count
      */
     public long getCount() {
-        long currentSecond = Instant.now().getEpochSecond();
+        return getCount(Instant.now().getEpochSecond());
+    }
+
+    /**
+     * Returns the count of values in the window ending at the given second.
+     *
+     * @param nowSeconds The second the window ends at, as epoch seconds
+     * @return The total count
+     */
+    public long getCount(long nowSeconds) {
+        long currentSecond = nowSeconds;
         long total = 0;
         
         for (int i = 0; i < windowSeconds; i++) {
@@ -212,7 +258,17 @@ public class SlidingWindowPercentiles {
      */
     private void cleanupIfNeeded(long currentSecond) {
         if (buckets.size() > maxBuckets) {
-            long cutoffSecond = currentSecond - windowSeconds - 1;
+            // The window ends at the newest bucket, not at the second just recorded. A caller
+            // supplying its own timestamps may hand in one that lies before what is already here,
+            // and measuring from that would put the cutoff below every bucket held - nothing
+            // would be dropped, and the map would grow with every recording.
+            long newestSecond = currentSecond;
+            for (long second : buckets.keySet()) {
+                if (second > newestSecond) {
+                    newestSecond = second;
+                }
+            }
+            long cutoffSecond = newestSecond - windowSeconds - 1;
             buckets.keySet().removeIf(second -> second < cutoffSecond);
         }
     }

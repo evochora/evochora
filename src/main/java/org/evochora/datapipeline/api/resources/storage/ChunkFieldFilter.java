@@ -12,7 +12,15 @@ package org.evochora.datapipeline.api.resources.storage;
  * objects. For a 4000x3000 environment with ~580 organisms, skipping organisms saves ~730 MB
  * per chunk and skipping cells saves ~550 MB per snapshot.
  *
- * @see IBatchStorageRead#forEachChunk(StoragePath, ChunkFieldFilter, CheckedConsumer)
+ * <p>
+ * <strong>The other axis.</strong> A filter speaks for a whole chunk and only about categories:
+ * organisms or cells, never both. Which of the recorded ticks are worth materializing at all is a
+ * separate question, answered per tick by {@link ITickRelevance} within whatever the filter lets
+ * through. A reader that needs organisms at some ticks and cells at others therefore passes
+ * {@link #ALL} together with a relevance - there its saving comes from the ticks, not from the
+ * category.
+ *
+ * @see IBatchStorageRead#forEachChunk(StoragePath, ChunkFieldFilter, ITickRelevance, CheckedConsumer)
  */
 public enum ChunkFieldFilter {
 
@@ -25,7 +33,7 @@ public enum ChunkFieldFilter {
      * Skip organism data in both snapshots and deltas.
      * <p>
      * Use this for indexers that only need environment cell data (e.g., EnvironmentIndexer).
-     * Skips {@code TickData.organisms} (field 4) and {@code TickDelta.organisms} (field 5).
+     * Skips the organism list of the snapshot and of every delta.
      */
     SKIP_ORGANISMS,
 
@@ -33,7 +41,7 @@ public enum ChunkFieldFilter {
      * Skip cell/environment data in both snapshots and deltas.
      * <p>
      * Use this for indexers that only need organism data (e.g., OrganismIndexer).
-     * Skips {@code TickData.cell_columns} (field 5) and {@code TickDelta.changed_cells} (field 4).
+     * Skips the cell data of the snapshot and of every delta.
      */
     SKIP_CELLS,
 
@@ -41,8 +49,8 @@ public enum ChunkFieldFilter {
      * Skip all delta messages entirely. Only chunk metadata and the snapshot are parsed.
      * <p>
      * Use this for resume operations that only need the final snapshot from a batch.
-     * Skips {@code TickDataChunk.deltas} (field 3) at the wire level — delta bytes are
-     * discarded without deserialization.
+     * Skips {@code TickDataChunk.deltas} at the wire level — delta bytes are discarded without
+     * deserialization.
      */
     SNAPSHOT_ONLY
 }

@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
-import org.evochora.datapipeline.api.contracts.TickDataChunk;
+import org.evochora.datapipeline.api.resources.database.PendingChunkRead;
 import org.evochora.datapipeline.api.resources.database.IDatabaseReader;
 import org.evochora.datapipeline.api.resources.database.OrganismNotFoundException;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
@@ -62,14 +62,14 @@ public class H2DatabaseReader implements IDatabaseReader {
     }
     
     @Override
-    public TickDataChunk readChunkContaining(long tickNumber) throws SQLException, TickNotFoundException {
+    public PendingChunkRead prepareChunkRead(long tickNumber) throws SQLException, TickNotFoundException {
         ensureNotClosed();
         if (envStrategy == null) {
             throw new IllegalStateException(
                 "Environment storage strategy not configured. " +
                 "Add h2EnvironmentStrategy to database configuration.");
         }
-        return envStrategy.readChunkContaining(connection, tickNumber);
+        return envStrategy.prepareChunkRead(connection, tickNumber);
     }
     
     private EnvironmentProperties extractEnvironmentProperties(SimulationMetadata metadata) {
@@ -164,13 +164,15 @@ public class H2DatabaseReader implements IDatabaseReader {
     public Map<Long, Long> readGenomeAncestors(Collection<Long> genomeHashes) throws SQLException {
         ensureNotClosed();
 
+        // Each organism carries the genome its parent had, recorded at birth, so finding the
+        // organism in which a genome first arose is a lookup rather than a walk over parent ids:
+        // it is the one whose parent carried a different genome.
         String sql = """
-            SELECT p.genome_hash AS parent_genome_hash
-            FROM organisms c
-            LEFT JOIN organisms p ON c.parent_id = p.organism_id
-            WHERE c.genome_hash = ? AND c.genome_hash != 0
-              AND (p.genome_hash IS NULL OR p.genome_hash != c.genome_hash)
-            ORDER BY c.organism_id
+            SELECT parent_genome_hash
+            FROM organisms
+            WHERE genome_hash = ? AND genome_hash != 0
+              AND (parent_genome_hash IS NULL OR parent_genome_hash != genome_hash)
+            ORDER BY organism_id
             LIMIT 1
             """;
 
@@ -193,8 +195,8 @@ public class H2DatabaseReader implements IDatabaseReader {
                 try (ResultSet rs = stmt.executeQuery()) {
                     occurs = rs.next();
                     if (occurs) {
-                        // A parent carrying genome 0 passes the query's filter and becomes a
-                        // root here; a parent carrying the same genome is already excluded there.
+                        // NULL means the organism had no parent at all, 0 means its parent carried
+                        // no genome. Neither is a node of the lineage, so both end the walk here.
                         long parent = rs.getLong("parent_genome_hash");
                         if (!rs.wasNull() && parent != 0L) {
                             parentGenomeHash = parent;

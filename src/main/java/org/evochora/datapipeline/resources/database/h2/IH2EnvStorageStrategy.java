@@ -3,7 +3,7 @@ package org.evochora.datapipeline.resources.database.h2;
 import java.sql.Connection;
 import java.sql.SQLException;
 
-import org.evochora.datapipeline.api.contracts.TickDataChunk;
+import org.evochora.datapipeline.api.resources.database.PendingChunkRead;
 import org.evochora.datapipeline.api.resources.database.TickNotFoundException;
 
 /**
@@ -115,25 +115,18 @@ public interface IH2EnvStorageStrategy {
     void resetStreamingState(Connection conn);
 
     /**
-     * Reads the chunk containing the specified tick number.
+     * Takes from the connection whatever locating the chunk requires, and hands back a read that
+     * needs none.
      * <p>
-     * This method returns the raw TickDataChunk without decompression. The caller
-     * (typically EnvironmentController) is responsible for:
-     * <ol>
-     *   <li>Caching the chunk (optional, for sequential access optimization)</li>
-     *   <li>Decompressing using {@code DeltaCodec.Decoder.decompressTick(chunk, tickNumber)}</li>
-     *   <li>Filtering by region</li>
-     *   <li>Converting to response format (JSON/MessagePack)</li>
-     * </ol>
-     * <p>
-     * <strong>Query Strategy:</strong> Uses {@code first_tick <= ? AND last_tick >= ?} to find
-     * the chunk containing the requested tick.
+     * A strategy keeping chunks beside the database answers where the file lies; one keeping them
+     * inside it reads here and hands back what it already holds.
      *
      * @param conn Database connection (schema already set)
-     * @param tickNumber Tick number to find (chunk containing this tick will be returned)
-     * @return The TickDataChunk containing the requested tick
-     * @throws SQLException if database read fails
+     * @param tickNumber Tick number to find (chunk containing this tick will be read)
+     * @return A read that needs no connection
+     * @throws SQLException if the database read fails
      * @throws TickNotFoundException if no chunk contains the requested tick
      */
-    TickDataChunk readChunkContaining(Connection conn, long tickNumber) throws SQLException, TickNotFoundException;
+    PendingChunkRead prepareChunkRead(Connection conn, long tickNumber)
+            throws SQLException, TickNotFoundException;
 }

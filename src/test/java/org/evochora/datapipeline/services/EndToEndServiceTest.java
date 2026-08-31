@@ -1,8 +1,8 @@
 package org.evochora.datapipeline.services;
 
+import static org.awaitility.Awaitility.await;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-
+import java.util.concurrent.TimeUnit;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -26,7 +26,7 @@ import com.typesafe.config.ConfigFactory;
 public class EndToEndServiceTest {
 
     @Test
-    void testProducerToConsumerFlow() throws InterruptedException {
+    void testProducerToConsumerFlow() {
         Config producerConfig = ConfigFactory.parseString("maxMessages=20, intervalMs=10, messagePrefix=\"E2E\"");
         Config consumerConfig = ConfigFactory.parseString("maxMessages=20, processingDelayMs=5");
 
@@ -48,10 +48,9 @@ public class EndToEndServiceTest {
         consumer.start();
         producer.start();
 
-        long deadline = System.currentTimeMillis() + 2000;
-        while ((producer.getCurrentState() != IService.State.STOPPED || consumer.getCurrentState() != IService.State.STOPPED) && System.currentTimeMillis() < deadline) {
-            Thread.sleep(10);
-        }
+        await().atMost(2, TimeUnit.SECONDS).until(() ->
+            producer.getCurrentState() == IService.State.STOPPED
+                && consumer.getCurrentState() == IService.State.STOPPED);
 
         assertEquals(IService.State.STOPPED, producer.getCurrentState(), "Producer should have stopped on its own.");
         assertEquals(IService.State.STOPPED, consumer.getCurrentState(), "Consumer should have stopped on its own.");
@@ -64,7 +63,7 @@ public class EndToEndServiceTest {
     }
 
     @Test
-    void testPauseAndResume() throws InterruptedException {
+    void testPauseAndResume() {
         Config producerConfig = ConfigFactory.parseString("intervalMs=10, messagePrefix=\"PauseTest\"");
         Config consumerConfig = ConfigFactory.empty();
 
@@ -86,28 +85,38 @@ public class EndToEndServiceTest {
         consumer.start();
         producer.start();
 
-        Thread.sleep(50); // Let some messages flow
+        await().atMost(5, TimeUnit.SECONDS).until(() ->
+            ((Number) consumer.getMetrics().get("messages_received")).longValue() > 0);
 
         producer.pause();
         consumer.pause();
 
-        Thread.sleep(50);
+        await().atMost(5, TimeUnit.SECONDS).until(() ->
+            producer.getCurrentState() == IService.State.PAUSED
+                && consumer.getCurrentState() == IService.State.PAUSED);
 
         long messagesSentWhilePaused = ((Number) producer.getMetrics().get("messages_sent")).longValue();
         long messagesReceivedWhilePaused = ((Number) consumer.getMetrics().get("messages_received")).longValue();
 
-        Thread.sleep(100);
-
-        assertEquals(messagesSentWhilePaused, ((Number) producer.getMetrics().get("messages_sent")).longValue());
-        assertEquals(messagesReceivedWhilePaused, ((Number) consumer.getMetrics().get("messages_received")).longValue());
+        // The claim is that nothing happens, and only time can show that. The counters have to hold
+        // still for a stretch rather than merely match at its end, so they are read throughout it:
+        // a paused service that kept working would raise them within a fraction of it.
+        await().pollInterval(10, TimeUnit.MILLISECONDS)
+            .during(100, TimeUnit.MILLISECONDS)
+            .atMost(1, TimeUnit.SECONDS)
+            .untilAsserted(() -> {
+                assertEquals(messagesSentWhilePaused,
+                    ((Number) producer.getMetrics().get("messages_sent")).longValue());
+                assertEquals(messagesReceivedWhilePaused,
+                    ((Number) consumer.getMetrics().get("messages_received")).longValue());
+            });
 
         producer.resume();
         consumer.resume();
 
-        Thread.sleep(100);
-
-        assertTrue(((Number) producer.getMetrics().get("messages_sent")).longValue() > messagesSentWhilePaused);
-        assertTrue(((Number) consumer.getMetrics().get("messages_received")).longValue() > messagesReceivedWhilePaused);
+        await().atMost(5, TimeUnit.SECONDS).until(() ->
+            ((Number) producer.getMetrics().get("messages_sent")).longValue() > messagesSentWhilePaused
+                && ((Number) consumer.getMetrics().get("messages_received")).longValue() > messagesReceivedWhilePaused);
 
         producer.stop();
         consumer.stop();

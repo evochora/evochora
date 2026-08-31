@@ -9,6 +9,7 @@ import org.evochora.datapipeline.api.contracts.TickData;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
 import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.delta.ChunkCorruptedException;
+import org.evochora.datapipeline.api.delta.ICellStateSource;
 import org.evochora.runtime.model.Environment;
 import org.evochora.runtime.model.EnvironmentProperties;
 
@@ -18,6 +19,7 @@ import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.LongPredicate;
 
 /**
  * Central class for delta compression and decompression of tick data.
@@ -368,11 +370,31 @@ public final class DeltaCodec {
     public static final class Decoder {
         
         private final MutableCellState state;
-        
-        // State tracking for incremental decompression
+
+        /**
+         * The chunk {@link #state} was built from, compared by identity, or {@code null} before
+         * anything has been decompressed.
+         * <p>
+         * <strong>Invariant:</strong> while this is set, {@link #state} holds exactly the
+         * environment at {@link #currentTick}, reconstructed from this chunk's snapshot. The
+         * reconstruction relies on it - it advances the state it has rather than rebuilding, and
+         * applies an accumulated delta on top of it. Every place that touches the state updates
+         * both fields in the same step, and {@link #reset()} clears all three together; a change
+         * that separates them would make reconstructions silently wrong rather than fail.
+         * <p>
+         * <strong>Rests on a chunk holding one snapshot.</strong> An accumulated delta accumulates
+         * since the last snapshot, so applying it to a state from earlier in the chunk is only
+         * correct while no snapshot lies in between. A chunk cannot express one today - it has a
+         * single snapshot field and the delta types are incremental and accumulated - and giving it
+         * several would not compile against the calls to {@code getSnapshot()} here. Whoever makes
+         * that change has to give this shortcut a second condition: reuse the state only when no
+         * snapshot lies between where it stands and the target.
+         */
         private TickDataChunk currentChunk;
+
+        /** The tick {@link #state} holds, or -1 before anything has been decompressed. */
         private long currentTick;
-        
+
         /**
          * Creates a new Decoder for environments with the specified cell count.
          *
@@ -383,6 +405,27 @@ public final class DeltaCodec {
             this.state = new MutableCellState(totalCells);
             this.currentChunk = null;
             this.currentTick = -1;
+        }
+
+        /**
+         * Applies a delta's cells, refusing to continue if they were not read.
+         * <p>
+         * A chunk may be read with its cells built only for the deltas a reconstruction was
+         * expected to walk through. Should that expectation be wrong, the missing link would not
+         * announce itself - the reconstruction would simply produce a different world. The encoder
+         * always writes the field, so its absence means it was dropped while reading, and that is
+         * a reason to stop rather than to continue.
+         *
+         * @param delta the delta to apply
+         * @throws ChunkCorruptedException if the delta was read without its cells
+         */
+        private void applyDeltaCells(TickDelta delta) throws ChunkCorruptedException {
+            if (!delta.hasChangedCells()) {
+                throw new ChunkCorruptedException(
+                    "Delta at tick " + delta.getTickNumber() + " was read without its cells, but "
+                    + "the reconstruction needs it.");
+            }
+            state.applyDelta(delta.getChangedCells());
         }
         
         /**
@@ -429,13 +472,11 @@ public final class DeltaCodec {
          */
         public List<TickData> decompressChunk(TickDataChunk chunk) throws ChunkCorruptedException {
             validateChunk(chunk);
-            
-            // Reset state for full chunk decompression
-            reset();
-            
+
             List<TickData> result = new ArrayList<>(chunk.getTickCount());
-            
-            // First tick is the snapshot
+
+            // No reset here: applySnapshot clears both arrays before it writes, and the chunk
+            // identity is overwritten a line below
             TickData snapshot = chunk.getSnapshot();
             state.applySnapshot(snapshot.getCellColumns());
             result.add(snapshot);
@@ -445,7 +486,7 @@ public final class DeltaCodec {
             // Apply each delta and build TickData
             for (TickDelta delta : chunk.getDeltasList()) {
                 validateDelta(delta);
-                state.applyDelta(delta.getChangedCells());
+                applyDeltaCells(delta);
                 currentTick = delta.getTickNumber();
                 
                 TickData reconstructed = TickData.newBuilder()
@@ -470,32 +511,52 @@ public final class DeltaCodec {
         }
         
         /**
-         * Decompresses a single tick from a chunk to a full TickData.
+         * Reconstructs a tick but leaves its cells in the decoder's state instead of packing them
+         * into the returned {@link TickData}, whose cell columns stay empty. The chunk's snapshot
+         * is the exception: it already carries its cells and is handed back as it stands, with the
+         * state holding the same cells.
          * <p>
-         * <strong>Stateful Optimization:</strong> The decoder tracks its current position.
-         * For sequential forward access (e.g., tick 100 → 101 → 102), only the new deltas
-         * are applied. For backward jumps or chunk changes, the state is rebuilt from
-         * the best starting point (snapshot or accumulated delta).
-         * <p>
-         * <strong>Accumulated Delta Optimization:</strong> For larger forward jumps,
-         * the decoder finds the closest accumulated delta and uses it as a shortcut,
-         * skipping all incremental deltas before it.
+         * For consumers that only read the cells: building the columns walks the whole grid and
+         * allocates a message holding every occupied cell, which is wasted work when the result is
+         * read once and discarded. Reach the cells through {@link #getCellState()} afterwards; they
+         * stay valid until the next call on this decoder.
          *
-         * @param chunk the chunk containing the target tick
-         * @param targetTick the tick number to decompress
-         * @return the fully reconstructed TickData for the target tick
-         * @throws ChunkCorruptedException if the chunk is corrupt or target tick not found
+         * @param chunk      the chunk holding the tick
+         * @param targetTick the tick to reconstruct
+         * @return the tick's data without cell columns
+         * @throws ChunkCorruptedException if the chunk is corrupt or does not hold the tick
          */
-        public TickData decompressTick(TickDataChunk chunk, long targetTick) 
+        public TickData decompressTickCellsInState(TickDataChunk chunk, long targetTick)
+                throws ChunkCorruptedException {
+            return decompressTick(chunk, targetTick, false);
+        }
+
+        /**
+         * The cells of the tick reconstructed last, for use with
+         * {@link #decompressTickCellsInState(TickDataChunk, long)}.
+         *
+         * @return the decoder's cell state
+         */
+        public ICellStateSource getCellState() {
+            return state;
+        }
+
+        public TickData decompressTick(TickDataChunk chunk, long targetTick)
+                throws ChunkCorruptedException {
+            return decompressTick(chunk, targetTick, true);
+        }
+
+        private TickData decompressTick(TickDataChunk chunk, long targetTick, boolean includeCells)
                 throws ChunkCorruptedException {
             validateChunk(chunk);
             
             // Check if target is the snapshot
             TickData snapshot = chunk.getSnapshot();
             if (snapshot.getTickNumber() == targetTick) {
-                // Update state tracking even for snapshot returns
-                if (currentChunk != chunk) {
-                    state.reset();
+                // The state has to describe the tick that is returned. Standing anywhere else in
+                // this chunk means standing on a later tick, whose deltas are only undone by
+                // laying the snapshot down again.
+                if (currentChunk != chunk || currentTick != targetTick) {
                     state.applySnapshot(snapshot.getCellColumns());
                     currentChunk = chunk;
                     currentTick = targetTick;
@@ -520,7 +581,7 @@ public final class DeltaCodec {
                 rebuildStateForTick(chunk, snapshot, deltas, targetTick);
             } else if (currentTick < targetTick) {
                 // Same chunk, forward jump - check if accumulated delta shortcut is better
-                advanceStateToTick(chunk, snapshot, deltas, targetTick);
+                advanceStateToTick(deltas, targetTick);
             }
             // else: currentTick == targetTick, state is already correct
             
@@ -533,17 +594,19 @@ public final class DeltaCodec {
             
             currentTick = targetTick;
             
-            return TickData.newBuilder()
+            TickData.Builder builder = TickData.newBuilder()
                     .setSimulationRunId(chunk.getSimulationRunId())
                     .setTickNumber(targetDelta.getTickNumber())
                     .setCaptureTimeMs(targetDelta.getCaptureTimeMs())
-                    .setCellColumns(state.toCellDataColumns())
                     .addAllOrganisms(targetDelta.getOrganismsList())
                     .setTotalOrganismsCreated(targetDelta.getTotalOrganismsCreated())
                     .setTotalUniqueGenomes(targetDelta.getTotalUniqueGenomes())
                     .setRngState(targetDelta.getRngState())
-                    .addAllPluginStates(targetDelta.getPluginStatesList())
-                    .build();
+                    .addAllPluginStates(targetDelta.getPluginStatesList());
+            if (includeCells) {
+                builder.setCellColumns(state.toCellDataColumns());
+            }
+            return builder.build();
         }
         
         /**
@@ -551,8 +614,8 @@ public final class DeltaCodec {
          * Uses accumulated deltas as shortcuts when available.
          */
         private void rebuildStateForTick(TickDataChunk chunk, TickData snapshot,
-                                          List<TickDelta> deltas, long targetTick) {
-            state.reset();
+                                          List<TickDelta> deltas, long targetTick) throws ChunkCorruptedException {
+            // No reset here: applySnapshot below clears both arrays before it writes
             currentChunk = chunk;
             
             // Find best starting point (closest accumulated delta before target)
@@ -575,7 +638,7 @@ public final class DeltaCodec {
             
             if (bestAcc != null) {
                 // Use accumulated delta as shortcut
-                state.applyDelta(bestAcc.getChangedCells());
+                applyDeltaCells(bestAcc);
                 currentTick = bestAcc.getTickNumber();
                 
                 // Apply remaining incremental deltas
@@ -584,7 +647,7 @@ public final class DeltaCodec {
                     if (delta.getTickNumber() > targetTick) {
                         break;
                     }
-                    state.applyDelta(delta.getChangedCells());
+                    applyDeltaCells(delta);
                     currentTick = delta.getTickNumber();
                 }
             } else {
@@ -594,18 +657,22 @@ public final class DeltaCodec {
                     if (delta.getTickNumber() > targetTick) {
                         break;
                     }
-                    state.applyDelta(delta.getChangedCells());
+                    applyDeltaCells(delta);
                     currentTick = delta.getTickNumber();
                 }
             }
         }
         
         /**
-         * Advances state from current position to target tick.
-         * Checks if an accumulated delta shortcut is more efficient.
+         * Advances the state from where it stands to the target tick.
+         * <p>
+         * Only called while the state belongs to this chunk and lies at or before the target, so it
+         * builds on what is there instead of starting over. An accumulated delta in between is
+         * taken as a shortcut: it carries everything that changed since the snapshot, so applying
+         * it skips the incremental deltas it spans.
          */
-        private void advanceStateToTick(TickDataChunk chunk, TickData snapshot,
-                                         List<TickDelta> deltas, long targetTick) {
+        private void advanceStateToTick(List<TickDelta> deltas, long targetTick)
+                throws ChunkCorruptedException {
             // Find if there's an accumulated delta between currentTick and targetTick
             TickDelta bestAcc = null;
             int bestAccIndex = -1;
@@ -625,11 +692,12 @@ public final class DeltaCodec {
             }
             
             if (bestAcc != null) {
-                // Accumulated delta found - reset and use it as shortcut
-                // (accumulated contains all changes since snapshot, more efficient than incremental chain)
-                state.reset();
-                state.applySnapshot(snapshot.getCellColumns());
-                state.applyDelta(bestAcc.getChangedCells());
+                // An accumulated delta carries every cell that changed since the snapshot, with the
+                // values it has at that point. Applied to a state that already stands on an earlier
+                // recording of this chunk, it overwrites exactly those cells and leaves the rest -
+                // which never changed since the snapshot - as they are. The result is the state at
+                // the accumulated delta, so the snapshot does not have to be laid down again.
+                applyDeltaCells(bestAcc);
                 currentTick = bestAcc.getTickNumber();
                 
                 // Apply remaining incremental deltas after the accumulated
@@ -638,7 +706,7 @@ public final class DeltaCodec {
                     if (delta.getTickNumber() > targetTick) {
                         break;
                     }
-                    state.applyDelta(delta.getChangedCells());
+                    applyDeltaCells(delta);
                     currentTick = delta.getTickNumber();
                 }
             } else {
@@ -650,7 +718,7 @@ public final class DeltaCodec {
                     if (delta.getTickNumber() > targetTick) {
                         break;
                     }
-                    state.applyDelta(delta.getChangedCells());
+                    applyDeltaCells(delta);
                     currentTick = delta.getTickNumber();
                 }
             }
@@ -722,13 +790,55 @@ public final class DeltaCodec {
     }
     
     /**
-     * Creates a TickDataChunk from a snapshot and list of deltas.
+     * Determines which deltas of a chunk an environment reconstruction walks through.
+     * <p>
+     * The decoder reaches a tick by starting from the chunk's snapshot, jumping to the last
+     * accumulated delta at or before the tick, and applying the incremental deltas from there.
+     * Deltas outside those paths are never read, so their cells need not be built.
+     * <p>
+     * This is the same choice {@code Decoder.rebuildStateForTick} and
+     * {@code Decoder.advanceStateToTick} make, stated once so that a reader deciding what to
+     * materialize and the decoder consuming the result cannot drift apart.
      *
-     * @param simulationRunId the simulation run identifier
-     * @param snapshot the full TickData snapshot
-     * @param deltas list of DeltaCapture objects for subsequent ticks
-     * @return the constructed TickDataChunk protobuf message
+     * The snapshot is not among the positions this returns, and needs no say in them: its cells
+     * are built whatever a reader asks for, because every reconstruction starts from them.
+     *
+     * @param deltaTicks   tick number of every delta, in chunk order
+     * @param deltaTypes   type of every delta, in the same order
+     * @param readsCellsAt answers whether the environment is read at a given tick
+     * @return positions of the deltas whose cells a reconstruction touches
+     * @throws IllegalArgumentException if the two directory columns differ in length
      */
+    public static BitSet cellsNeededFor(List<Long> deltaTicks, List<DeltaType> deltaTypes,
+                                        LongPredicate readsCellsAt) {
+        if (deltaTicks.size() != deltaTypes.size()) {
+            throw new IllegalArgumentException(
+                "Delta directory is inconsistent: " + deltaTicks.size() + " ticks but "
+                + deltaTypes.size() + " types");
+        }
+        BitSet needed = new BitSet(deltaTicks.size());
+        int reached = -1;                  // last delta position the decoder stands on; -1 = snapshot
+
+        for (int target = 0; target < deltaTicks.size(); target++) {
+            if (!readsCellsAt.test(deltaTicks.get(target))) {
+                continue;
+            }
+            int from = reached;
+            for (int position = target; position > reached; position--) {
+                if (deltaTypes.get(position) == DeltaType.ACCUMULATED) {
+                    from = position;
+                    needed.set(position);
+                    break;
+                }
+            }
+            for (int position = from + 1; position <= target; position++) {
+                needed.set(position);
+            }
+            reached = target;
+        }
+        return needed;
+    }
+
     static TickDataChunk createChunk(
             String simulationRunId,
             TickData snapshot,
@@ -752,6 +862,12 @@ public final class DeltaCodec {
                 .setTickCount(tickCount)
                 .setSnapshot(snapshot);
         
+        // The directory precedes the deltas on the wire, so a reader knows which of them a
+        // reconstruction walks through before it decides whether to build their payload
+        for (DeltaCapture capture : deltas) {
+            builder.addDeltaTicks(capture.delta().getTickNumber());
+            builder.addDeltaTypes(capture.delta().getDeltaType());
+        }
         for (DeltaCapture capture : deltas) {
             builder.addDeltas(capture.delta());
         }

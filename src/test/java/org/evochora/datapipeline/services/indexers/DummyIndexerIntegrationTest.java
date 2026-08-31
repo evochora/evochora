@@ -23,7 +23,10 @@ import org.evochora.datapipeline.TestMetadataHelper;
 import org.evochora.datapipeline.api.contracts.BatchInfo;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import org.evochora.datapipeline.api.contracts.TickData;
+import org.evochora.datapipeline.api.contracts.CellDataColumns;
+import org.evochora.datapipeline.api.contracts.DeltaType;
 import org.evochora.datapipeline.api.contracts.TickDataChunk;
+import org.evochora.datapipeline.api.contracts.TickDelta;
 import org.evochora.datapipeline.api.resources.IResource;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.database.IResourceSchemaAwareMetadataWriter;
@@ -580,15 +583,27 @@ class DummyIndexerIntegrationTest {
             .setCaptureTimeMs(System.currentTimeMillis())
             .build();
         
-        TickDataChunk chunk = TickDataChunk.newBuilder()
+        TickDataChunk.Builder chunk = TickDataChunk.newBuilder()
             .setSimulationRunId(runId)
             .setFirstTick(startTick)
             .setLastTick(startTick + tickCount - 1)
             .setTickCount(tickCount)
-            .setSnapshot(snapshot)
-            .build();
-        
-        return List.of(chunk);
+            .setSnapshot(snapshot);
+
+        // One delta per announced tick beyond the snapshot: a chunk carrying fewer deltas than its
+        // header announces contradicts itself and is rejected on reading
+        for (long tick = startTick + 1; tick <= startTick + tickCount - 1; tick++) {
+            chunk.addDeltaTicks(tick);
+            chunk.addDeltaTypes(DeltaType.INCREMENTAL);
+            chunk.addDeltas(TickDelta.newBuilder()
+                .setTickNumber(tick)
+                .setCaptureTimeMs(System.currentTimeMillis())
+                .setDeltaType(DeltaType.INCREMENTAL)
+                .setChangedCells(CellDataColumns.getDefaultInstance())
+                .build());
+        }
+
+        return List.of(chunk.build());
     }
     
     private void sendBatchInfoToTopic(String runId, String storageKey, long tickStart, long tickEnd) throws Exception {

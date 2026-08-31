@@ -1,8 +1,8 @@
 package org.evochora.datapipeline.api.analytics;
 
+import org.evochora.datapipeline.api.resources.storage.PublishedOutputStream;
 import org.evochora.datapipeline.api.contracts.SimulationMetadata;
 import java.io.IOException;
-import java.io.OutputStream;
 
 /**
  * Context provided to plugins.
@@ -28,10 +28,11 @@ public interface IAnalyticsContext {
      * @param metricId The metric/plugin identifier
      * @param lodLevel The LOD level or null
      * @param filename The filename (e.g. "batch_1.parquet")
-     * @return Output stream to write to
+     * @return Output stream to write to; call {@code publish()} once the content is complete,
+     *         since a stream closed without it leaves nothing behind
      * @throws IOException if storage access fails
      */
-    OutputStream openArtifactStream(String metricId, String lodLevel, String filename) throws IOException;
+    PublishedOutputStream openArtifactStream(String metricId, String lodLevel, String filename) throws IOException;
     
     /**
      * Get the configured temporary directory for this indexer instance.

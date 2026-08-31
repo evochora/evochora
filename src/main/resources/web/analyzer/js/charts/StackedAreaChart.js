@@ -1,5 +1,5 @@
 import * as ChartRegistry from './ChartRegistry.js';
-import { formatTickValue } from './ChartUtils.js';
+import { formatTickValue, axisTicks, tooltipTitle, tooltipValue } from './ChartUtils.js';
 
 /**
  * Stacked Area Chart Implementation
@@ -193,7 +193,9 @@ function expandJsonColumn(data, xKey, jsonKey, maxGroups) {
      *
      * @param {HTMLCanvasElement} canvas - Canvas element
      * @param {Array<Object>} data - Data rows (array of objects)
-     * @param {Object} config - Visualization config with x, y, and optional groupBy
+     * @param {Object} config - Visualization config with x, y, and optional groupBy. {@code yMax}
+     *        fixes the top of the axis; without it the axis follows the data and rounds up, which
+     *        leaves a scale reaching past the largest value a series can take.
      * @returns {Chart} Chart.js instance
      */
 export function render(canvas, data, config) {
@@ -286,22 +288,17 @@ export function render(canvas, data, config) {
                         borderWidth: 1,
                         padding: 12,
                         callbacks: {
-                            title: items => `Tick ${items[0].label}`,
+                            title: tooltipTitle,
                             label: context => {
                                 let label = context.dataset.label || '';
                                 if (label) {
                                     label += ': ';
                                 }
-                                if (context.parsed.y !== null) {
-                                    if (isPercentage) {
-                                        label += context.parsed.y.toFixed(1) + '%';
-                                    } else if (yFormat === 'integer') {
-                                        label += Math.round(context.parsed.y);
-                                    } else {
-                                        label += context.parsed.y.toFixed(2);
-                                    }
-                                }
-                                return label;
+                                // Same derivation as the axis ticks below: how a value reads
+                                // follows from its format, and normalizing to percent implies
+                                // that format
+                                return label + tooltipValue(context.parsed.y,
+                                    isPercentage ? 'percent' : yFormat);
                             }
                         }
                     }
@@ -325,21 +322,11 @@ export function render(canvas, data, config) {
                     y: {
                         stacked: true,
                         min: 0, // Always start at 0
-                        max: (isPercentage && !hasExternalBase) ? 100 : undefined,
+                        max: (isPercentage && !hasExternalBase) ? 100 : config.yMax,
                         title: { display: false },
                         ticks: {
                             color: '#888',
-                            ...(isPercentage ? {
-                                callback: function(value) {
-                                    const max = this.max || 100;
-                                    const decimals = max < 10 ? 1 : 0;
-                                    return value.toFixed(decimals) + '%';
-                                }
-                            } : yFormat === 'integer' ? {
-                                callback: function(value) {
-                                    return Number.isInteger(value) ? value : null;
-                                }
-                            } : {})
+                            ...axisTicks(isPercentage ? 'percent' : yFormat)
                         },
                         grid: { color: '#333', drawBorder: false }
                     }

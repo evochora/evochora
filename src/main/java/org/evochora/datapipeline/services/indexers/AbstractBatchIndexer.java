@@ -76,6 +76,7 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
     private final AtomicLong batchesProcessed = new AtomicLong(0);
     private final AtomicLong ticksProcessed = new AtomicLong(0);
     private final AtomicLong batchesMovedToDlq = new AtomicLong(0);
+    private final AtomicLong batchesSkipped = new AtomicLong(0);
 
     // Streaming processing state
     private final StreamingAckTracker<ACK> streamingTracker;
@@ -376,6 +377,29 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
     }
 
     /**
+     * Decides whether a batch spanning the given tick range holds anything this indexer consumes.
+     * <p>
+     * A batch answered with {@code false} is acknowledged without being read at all: no storage
+     * access, no decompression, no deserialization. This is safe because every chunk carries its
+     * own full snapshot and its delta chain ends at the chunk boundary, so skipping a batch cannot
+     * leave a later one unable to reconstruct its state.
+     * <p>
+     * <strong>Default:</strong> every batch is processed. Override in indexers that consume only
+     * part of the recorded ticks.
+     * <p>
+     * The decision must depend on the tick range alone. Batches arrive in arbitrary order and are
+     * distributed across competing consumers, so an answer derived from anything else - a counter,
+     * a previously seen batch - would differ between instances and between runs.
+     *
+     * @param tickStart First tick in the batch
+     * @param tickEnd   Last tick in the batch
+     * @return {@code true} if the batch must be read, {@code false} if it can be acknowledged as-is
+     */
+    protected boolean batchRequiresProcessing(long tickStart, long tickEnd) {
+        return true;
+    }
+
+    /**
      * Processes a single batch notification message.
      * <p>
      * Reads TickDataChunks from storage one at a time, processes each via
@@ -404,6 +428,18 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
                 batchesProcessed.incrementAndGet();
                 return;
             }
+        }
+
+        // Relevance check: a batch holding no tick this indexer consumes is acknowledged without
+        // being read. The chunks it contains are self-contained, so nothing later depends on them
+        // having been parsed.
+        if (!batchRequiresProcessing(batch.getTickStart(), batch.getTickEnd())) {
+            log.debug("Skipping batch without relevant ticks: {}, ticks=[{}-{}]",
+                batchId, batch.getTickStart(), batch.getTickEnd());
+            topic.ack(msg);
+            batchesProcessed.incrementAndGet();
+            batchesSkipped.incrementAndGet();
+            return;
         }
 
         try {
@@ -682,9 +718,13 @@ public abstract class AbstractBatchIndexer<ACK> extends AbstractIndexer<BatchInf
     protected void addCustomMetrics(Map<String, Number> metrics) {
         super.addCustomMetrics(metrics);
 
+        // batches_processed counts every acknowledged batch, including those never read: the ones
+        // recognised as duplicates and the ones holding no relevant tick. batches_skipped is that
+        // second group, so the two must not be added up.
         metrics.put("batches_processed", batchesProcessed.get());
         metrics.put("ticks_processed", ticksProcessed.get());
         metrics.put("batches_moved_to_dlq", batchesMovedToDlq.get());
+        metrics.put("batches_skipped", batchesSkipped.get());
     }
 
     /**

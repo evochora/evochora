@@ -2,21 +2,15 @@ package org.evochora.datapipeline.services.analytics.plugins;
 
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 
 import org.evochora.datapipeline.api.analytics.AbstractAnalyticsPlugin;
 import org.evochora.datapipeline.api.analytics.ColumnType;
-import org.evochora.datapipeline.api.analytics.IAnalyticsContext;
 import org.evochora.datapipeline.api.analytics.ManifestEntry;
 import org.evochora.datapipeline.api.analytics.ParquetSchema;
 import org.evochora.datapipeline.api.analytics.VisualizationHint;
 import org.evochora.datapipeline.api.contracts.OrganismState;
 import org.evochora.datapipeline.api.contracts.TickData;
-import org.evochora.datapipeline.api.memory.MemoryEstimate;
-import org.evochora.datapipeline.api.memory.SimulationParameters;
 
 /**
  * Tracks the generation depth of organisms.
@@ -28,8 +22,14 @@ import org.evochora.datapipeline.api.memory.SimulationParameters;
  *   <li>{@code avg_depth} - Average lineage depth currently alive</li>
  * </ul>
  * <p>
- * This plugin is stateful: it maintains a map of {@code organismId -> generationDepth}.
- * To avoid unbounded memory growth, it prunes IDs of dead organisms from its state map on each tick.
+ * The depth is read from each organism, which carries it since birth. It is deliberately not
+ * derived from parent chains: a parent is removed from the simulation when it dies, so a consumer
+ * walking the chain would find its ancestors missing and count from wherever the chain breaks -
+ * which is what happened whenever the indexer restarted, and it happened silently.
+ * <p>
+ * Reading a recorded fact instead makes each row a function of its tick alone, so the values do
+ * not depend on how much of the stream this instance has seen, on the order the chunks arrived in,
+ * or on how many instances share the work.
  */
 public class GenerationDepthPlugin extends AbstractAnalyticsPlugin {
 
@@ -39,15 +39,6 @@ public class GenerationDepthPlugin extends AbstractAnalyticsPlugin {
         .column("avg_depth", ColumnType.DOUBLE)
         .build();
 
-    // Map: OrganismID -> Generation Depth
-    private Map<Integer, Integer> depthMap;
-
-    @Override
-    public void initialize(IAnalyticsContext context) {
-        super.initialize(context);
-        this.depthMap = new HashMap<>();
-    }
-
     @Override
     public ParquetSchema getSchema() {
         return SCHEMA;
@@ -55,40 +46,20 @@ public class GenerationDepthPlugin extends AbstractAnalyticsPlugin {
 
     @Override
     public List<Object[]> extractRows(TickData tick) {
-        Set<Integer> currentAliveIds = new HashSet<>();
         int maxDepth = 0;
         long sumDepth = 0;
         int count = 0;
-        
+
         for (OrganismState org : tick.getOrganismsList()) {
             if (org.getIsDead()) continue;
-            int id = org.getOrganismId();
-            currentAliveIds.add(id);
-            
-            // Determine depth, memoize it in the map
-            int depth = depthMap.computeIfAbsent(id, orgId -> {
-                if (org.hasParentId()) {
-                    // If parent is known, depth = parent + 1.
-                    // If parent is not in map (e.g., died before tracking started), default to 0.
-                    return depthMap.getOrDefault(org.getParentId(), 0) + 1;
-                }
-                // No parent = Generation 0
-                return 0;
-            });
-            
+            int depth = org.getGeneration();
             if (depth > maxDepth) maxDepth = depth;
             sumDepth += depth;
             count++;
         }
-        
-        // Memory Cleanup: Remove organisms that are no longer alive
-        // Crucial to prevent OOM in long runs
-        if (depthMap.size() > currentAliveIds.size()) {
-            depthMap.keySet().retainAll(currentAliveIds);
-        }
-        
+
         double avgDepth = count > 0 ? (double) sumDepth / count : 0.0;
-        
+
         return Collections.singletonList(new Object[] {
             tick.getTickNumber(),
             maxDepth,
@@ -118,21 +89,5 @@ public class GenerationDepthPlugin extends AbstractAnalyticsPlugin {
         return entry;
     }
 
-    @Override
-    public List<MemoryEstimate> estimateWorstCaseMemory(SimulationParameters params) {
-        // Estimate: maxOrganisms * (Integer key + Integer value + map entry overhead)
-        // A reasonable estimate is ~64 bytes per organism in the depthMap.
-        long mapBytes = params.maxOrganisms() * 64L;
-        
-        String explanation = String.format("%d max organisms × 64 bytes/organism (depthMap)",
-            params.maxOrganisms());
-            
-        return Collections.singletonList(new MemoryEstimate(
-            "Plugin: " + metricId,
-            mapBytes,
-            explanation,
-            MemoryEstimate.Category.SERVICE_BATCH
-        ));
-    }
 }
 

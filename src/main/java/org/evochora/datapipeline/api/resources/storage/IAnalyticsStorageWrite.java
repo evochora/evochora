@@ -1,7 +1,6 @@
 package org.evochora.datapipeline.api.resources.storage;
 
 import java.io.IOException;
-import java.io.OutputStream;
 
 import org.evochora.datapipeline.api.resources.IMonitorable;
 import org.evochora.datapipeline.api.resources.IResource;
@@ -33,10 +32,12 @@ public interface IAnalyticsStorageWrite extends IResource, IMonitorable {
      * @param lodLevel The LOD level ("lod0", "lod1", etc.) or null for metadata/root files
      * @param subPath Hierarchical subfolder path (e.g. "000/001") or null for flat structure
      * @param filename Filename (e.g. "batch_0001000_0001999.parquet")
-     * @return Stream to write data to. Caller must close it.
+     * @return Stream to write data to. The caller closes it, and calls
+     *         {@link PublishedOutputStream#publish()} once the content is complete - a stream
+     *         closed without that leaves nothing under the destination name.
      * @throws IOException If storage is not writable.
      */
-    OutputStream openAnalyticsOutputStream(String runId, String metricId, String lodLevel, String subPath, String filename) throws IOException;
+    PublishedOutputStream openAnalyticsOutputStream(String runId, String metricId, String lodLevel, String subPath, String filename) throws IOException;
     
     /**
      * Opens an output stream to write an analysis artifact (flat structure, no subPath).
@@ -47,10 +48,12 @@ public interface IAnalyticsStorageWrite extends IResource, IMonitorable {
      * @param metricId The metric/plugin identifier (e.g. "population")
      * @param lodLevel The LOD level ("lod0", "lod1", etc.) or null for metadata/root files
      * @param filename Filename (e.g. "metadata.json")
-     * @return Stream to write data to. Caller must close it.
+     * @return Stream to write data to. The caller closes it, and calls
+     *         {@link PublishedOutputStream#publish()} once the content is complete - a stream
+     *         closed without that leaves nothing under the destination name.
      * @throws IOException If storage is not writable.
      */
-    default OutputStream openAnalyticsOutputStream(String runId, String metricId, String lodLevel, String filename) throws IOException {
+    default PublishedOutputStream openAnalyticsOutputStream(String runId, String metricId, String lodLevel, String filename) throws IOException {
         return openAnalyticsOutputStream(runId, metricId, lodLevel, null, filename);
     }
 
@@ -65,8 +68,11 @@ public interface IAnalyticsStorageWrite extends IResource, IMonitorable {
      * @throws IOException If write fails
      */
     default void writeAnalyticsBlob(String runId, String metricId, String lodLevel, String filename, byte[] data) throws IOException {
-        try (OutputStream out = openAnalyticsOutputStream(runId, metricId, lodLevel, null, filename)) {
+        try (PublishedOutputStream out = openAnalyticsOutputStream(runId, metricId, lodLevel, null, filename)) {
             out.write(data);
+            // The content was complete before the write began; a failure part way through leaves
+            // the block through the exception and publishes nothing
+            out.publish();
         }
     }
 }

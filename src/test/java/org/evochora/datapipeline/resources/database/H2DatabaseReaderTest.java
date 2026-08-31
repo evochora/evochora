@@ -302,14 +302,36 @@ class H2DatabaseReaderTest {
     // --- readGenomeAncestors tests ---
 
     /**
-     * Inserts a row into the organisms table with minimal required fields.
+     * Inserts an organism, taking the parent's genome from the parent's row the way the indexer
+     * takes it from the parent at birth. Without a parent the column stays NULL.
      */
     private void insertOrganism(Connection conn, int organismId, Integer parentId,
                                 long birthTick, long genomeHash) throws Exception {
+        String parentGenomeSql = parentId != null
+            ? "(SELECT genome_hash FROM organisms WHERE organism_id = " + parentId + ")"
+            : "NULL";
+        insertOrganismWithParentGenome(conn, organismId, parentId, birthTick, genomeHash, parentGenomeSql);
+    }
+
+    /**
+     * Inserts an organism with the parent's genome stated outright, for the cases where the
+     * parent's own row is not there to take it from.
+     */
+    private void insertOrganism(Connection conn, int organismId, Integer parentId,
+                                long birthTick, long genomeHash, long parentGenomeHash) throws Exception {
+        insertOrganismWithParentGenome(conn, organismId, parentId, birthTick, genomeHash,
+            String.valueOf(parentGenomeHash));
+    }
+
+    private void insertOrganismWithParentGenome(Connection conn, int organismId, Integer parentId,
+                                                long birthTick, long genomeHash, String parentGenomeSql)
+            throws Exception {
         String parentSql = parentId != null ? String.valueOf(parentId) : "NULL";
         conn.createStatement().execute(
-            "INSERT INTO organisms (organism_id, parent_id, birth_tick, program_id, initial_position, genome_hash) " +
-            "VALUES (" + organismId + ", " + parentSql + ", " + birthTick + ", 'prog', X'0000', " + genomeHash + ")");
+            "INSERT INTO organisms (organism_id, parent_id, birth_tick, program_id, initial_position, "
+            + "genome_hash, generation, parent_genome_hash) VALUES ("
+            + organismId + ", " + parentSql + ", " + birthTick + ", 'prog', X'0000', "
+            + genomeHash + ", 0, " + parentGenomeSql + ")");
     }
 
     /**
@@ -378,18 +400,20 @@ class H2DatabaseReaderTest {
     }
 
     @Test
-    void readGenomeAncestors_missingParentRowIsARoot() throws Exception {
-        // While a run is still being indexed the parent's row can be absent
+    void readGenomeAncestors_missingParentRowDoesNotBreakTheChain() throws Exception {
+        // While a run is still being indexed the parent's row can be absent. The child carries the
+        // genome its parent had, recorded at birth, so the chain continues past the gap - it names
+        // the ancestor genome even though no row for that ancestor exists yet.
         try (Connection conn = setupOrganismSchema()) {
-            insertOrganism(conn, 2, 1, 10, 2000L);     // parent 1 is not indexed
+            insertOrganism(conn, 2, 1, 10, 2000L, 1000L);   // parent 1 is not indexed
             conn.commit();
         }
 
         try (IDatabaseReader reader = provider.createReader(runId)) {
             Map<Long, Long> ancestors = reader.readGenomeAncestors(List.of(2000L));
 
-            assertThat(ancestors).hasSize(1);
-            assertThat(ancestors.get(2000L)).isNull();
+            assertThat(ancestors).containsEntry(2000L, 1000L);
+            assertThat(ancestors).doesNotContainKey(1000L);   // no carrier of it in the run yet
         }
     }
 
@@ -511,8 +535,9 @@ class H2DatabaseReaderTest {
         // Organism ids make a cycle impossible in data the pipeline writes, because a parent is
         // always created before its child. The walk must terminate even if that does not hold.
         try (Connection conn = setupOrganismSchema()) {
-            insertOrganism(conn, 1, 2, 0, 1000L);
-            insertOrganism(conn, 2, 1, 0, 2000L);
+            // Stated outright: neither parent row exists yet when its child is written
+            insertOrganism(conn, 1, 2, 0, 1000L, 2000L);
+            insertOrganism(conn, 2, 1, 0, 2000L, 1000L);
             conn.commit();
         }
 
