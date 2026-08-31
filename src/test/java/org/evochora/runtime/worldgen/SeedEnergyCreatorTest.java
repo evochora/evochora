@@ -1,6 +1,7 @@
 package org.evochora.runtime.worldgen;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -45,7 +46,7 @@ public class SeedEnergyCreatorTest {
 
     @Test
     @Tag("unit")
-    void seedsCorrectPercentageOfEmptyCells() {
+    void seedsTheConfiguredPercentageOfTheEnvironment() {
         Environment env = new Environment(new int[]{10, 10}, false); // 100 cells
         Map<String, Object> configMap = new HashMap<>();
         configMap.put("percentage", 0.5); // 50%
@@ -113,11 +114,11 @@ public class SeedEnergyCreatorTest {
         creator.execute(sim);
 
         Molecule molecule = env.getMolecule(0, 0);
-        // With a constant seed, the "random" variance is deterministic.
-        // The formula is: amount * (1.0 + (random.nextDouble() * 2.0 - 1.0) * amountVariance)
-        // With a seed of 42L, the first double from new Random(42L) is ~0.730878
-        // 100 * (1.0 + (0.730878 * 2.0 - 1.0) * 0.2) = 100 * (1.0 + 0.461756 * 0.2) = 100 * 1.09235 = 109
-        assertThat(molecule.toScalarValue()).isEqualTo(109);
+        // With a constant seed the variance is deterministic. The cell is drawn before its
+        // amount, so the draw that decides the variance is the second one taken from the seeded
+        // source, following the one that picked the cell:
+        // amount * (1.0 + (random.nextDouble() * 2.0 - 1.0) * amountVariance)
+        assertThat(molecule.toScalarValue()).isEqualTo(82);
     }
 
     @Test
@@ -127,7 +128,9 @@ public class SeedEnergyCreatorTest {
         env.setMolecule(new Molecule(org.evochora.runtime.Config.TYPE_CODE, 123), new int[]{0, 0});
 
         Map<String, Object> configMap = new HashMap<>();
-        configMap.put("percentage", 1.0); // Try to fill 100% of empty cells
+        // Half of the two cells, so exactly one is asked for - and the only empty one is where
+        // it has to land.
+        configMap.put("percentage", 0.5);
         configMap.put("amount", 100);
 
         SeedEnergyCreator creator = new SeedEnergyCreator(createDeterministicRandomProvider(42L), ConfigFactory.parseMap(configMap));
@@ -142,6 +145,32 @@ public class SeedEnergyCreatorTest {
         assertThat(env.getMolecule(0, 0).type()).isEqualTo(org.evochora.runtime.Config.TYPE_CODE);
         assertThat(env.getMolecule(1, 0).type()).isEqualTo(org.evochora.runtime.Config.TYPE_ENERGY);
         assertThat(countEnergyCells(env)).isEqualTo(1); // Only the one empty cell should be filled
+    }
+
+    @Test
+    @Tag("unit")
+    void failsWhenTheEnvironmentHasTooFewEmptyCells() {
+        // Every cell is taken, so no draw can ever succeed and the requested amount is
+        // unreachable. The search has to end in a statement about that, not in a hanging loop.
+        Environment env = new Environment(new int[]{4, 1}, false);
+        for (int x = 0; x < 4; x++) {
+            env.setMolecule(new Molecule(org.evochora.runtime.Config.TYPE_CODE, 123), new int[]{x, 0});
+        }
+
+        Map<String, Object> configMap = new HashMap<>();
+        configMap.put("percentage", 0.5);
+        configMap.put("amount", 100);
+
+        SeedEnergyCreator creator = new SeedEnergyCreator(
+                createDeterministicRandomProvider(42L), ConfigFactory.parseMap(configMap));
+
+        Simulation sim = mock(Simulation.class);
+        when(sim.getEnvironment()).thenReturn(env);
+        when(sim.getCurrentTick()).thenReturn(0L);
+
+        assertThatThrownBy(() -> creator.execute(sim))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("too few empty cells");
     }
 
     private long countEnergyCells(Environment env) {

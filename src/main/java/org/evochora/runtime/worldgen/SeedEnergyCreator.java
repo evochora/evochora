@@ -1,8 +1,5 @@
 package org.evochora.runtime.worldgen;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
 import java.util.Random;
 
 import org.evochora.runtime.Simulation;
@@ -14,12 +11,14 @@ import org.evochora.runtime.spi.ITickPlugin;
 import com.typesafe.config.Config;
 
 /**
- * A tick plugin that seeds a percentage of empty cells with a specified amount
+ * A tick plugin that seeds a percentage of the environment's cells with a specified amount
  * of energy at the beginning of the simulation (tick 0).
  * <p>
- * This plugin runs only once and is stateless.
+ * The cells are drawn at random and an occupied one is passed over, so the requested number is
+ * placed on empty cells without the world ever being listed. This plugin runs only once and is
+ * stateless.
  * <ul>
- *   <li><b>percentage:</b> The percentage of empty cells to fill with energy.</li>
+ *   <li><b>percentage:</b> The percentage of the environment's cells to fill with energy.</li>
  *   <li><b>amount:</b> The base amount of energy for each seeded molecule.</li>
  *   <li><b>amountVariance:</b> A factor to vary the energy amount randomly. For
  *   example, 0.2 with an amount of 100 will result in energy values between 80
@@ -27,6 +26,14 @@ import com.typesafe.config.Config;
  * </ul>
  */
 public class SeedEnergyCreator implements ITickPlugin {
+
+    /**
+     * Draw attempts per cell to be seeded before the search is abandoned. Every draw but a
+     * vanishing few hits an empty cell in a world that is empty except for its founding
+     * organisms, so the limit is never approached; it exists so that a world too full to hold the
+     * requested amount fails instead of looping forever.
+     */
+    private static final int MAX_ATTEMPTS_PER_CELL = 100;
 
     private final Random random;
     private final double percentage;
@@ -60,55 +67,42 @@ public class SeedEnergyCreator implements ITickPlugin {
         }
 
         Environment environment = simulation.getEnvironment();
-        final List<int[]> emptyCells = new ArrayList<>();
-        final int[] shape = environment.getShape();
-        final int dims = shape.length;
-        int[] currentCoord = new int[dims];
+        int totalCells = environment.getTotalCells();
+        int cellsToSeed = (int) (totalCells * percentage);
 
-        // Manually iterate over all coordinates in the N-dimensional space
-        iterateCoordinates(shape, currentCoord, 0, () -> {
-            if (environment.getMolecule(currentCoord).isEmpty()) {
-                emptyCells.add(currentCoord.clone());
+        // Cells are drawn rather than collected: listing the world to sample a fraction of a
+        // percent of it costs memory proportional to the world, and the draw costs none. A cell
+        // that is already taken is skipped and the next one drawn, so a cell seeded a moment ago
+        // is passed over the same way an organism's cell is - the environment holds that
+        // knowledge, and nothing here has to repeat it.
+        long attemptsLeft = (long) cellsToSeed * MAX_ATTEMPTS_PER_CELL;
+        int seeded = 0;
+        while (seeded < cellsToSeed) {
+            if (attemptsLeft-- <= 0) {
+                throw new IllegalStateException(
+                        "Seeding stopped after " + ((long) cellsToSeed * MAX_ATTEMPTS_PER_CELL)
+                        + " attempts with " + seeded + " of " + cellsToSeed
+                        + " cells placed: the environment holds too few empty cells");
             }
-        });
 
-        Collections.shuffle(emptyCells, random);
+            int flatIndex = random.nextInt(totalCells);
+            if (environment.getMoleculeInt(flatIndex) != 0) {
+                continue;
+            }
 
-        int cellsToSeed = (int) (emptyCells.size() * percentage);
-
-        for (int i = 0; i < cellsToSeed; i++) {
-            int[] coord = emptyCells.get(i);
             int finalAmount = amount;
             if (amountVariance > 0.0) {
                 double variance = (random.nextDouble() * 2.0 - 1.0) * amountVariance; // -1.0 to 1.0
                 finalAmount = (int) (amount * (1.0 + variance));
             }
             if (finalAmount > 0) {
-                environment.setMolecule(new Molecule(org.evochora.runtime.Config.TYPE_ENERGY, finalAmount), coord);
+                environment.setMoleculeByIndex(flatIndex,
+                        new Molecule(org.evochora.runtime.Config.TYPE_ENERGY, finalAmount));
             }
+            seeded++;
         }
 
         this.hasRun = true;
-    }
-
-    /**
-     * Recursively iterates through all coordinates of an N-dimensional space.
-     *
-     * @param shape The shape of the space (dimensions).
-     * @param coord The current coordinate being built.
-     * @param dim The current dimension to iterate.
-     * @param action The action to perform for each complete coordinate.
-     */
-    private void iterateCoordinates(int[] shape, int[] coord, int dim, Runnable action) {
-        if (dim == shape.length) {
-            action.run();
-            return;
-        }
-
-        for (int i = 0; i < shape[dim]; i++) {
-            coord[dim] = i;
-            iterateCoordinates(shape, coord, dim + 1, action);
-        }
     }
 
     @Override
