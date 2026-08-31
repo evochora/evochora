@@ -108,8 +108,9 @@ public final class DependencyScanner {
     }
 
     /**
-     * Scans a .SOURCE file for nested directives. Only .SOURCE is valid;
-     * any other directive match is reported as an error.
+     * Scans a .SOURCE file for nested directives. Every dependency found is asked whether it may
+     * appear in a source file, and one that says no is reported as an error. Today .IMPORT and
+     * .REQUIRE say no while .SOURCE inherits the permissive default.
      */
     private void scanSourceFile(String sourcePath, String content) {
         scanLines(sourcePath, content, true);
@@ -117,7 +118,9 @@ public final class DependencyScanner {
 
     /**
      * Core line-by-line scanning with generic handler dispatch.
-     * @param sourceFileMode If true, only SourceDependencyInfo is valid — other dependencies trigger errors.
+     * @param sourceFileMode If true, every collected dependency is checked against
+     *                        {@link IDependencyInfo#allowedInSourceFile()} and reported as an error
+     *                        when it is not allowed there.
      */
     private List<IDependencyInfo> scanLines(String sourcePath, String content, boolean sourceFileMode) {
         List<IDependencyInfo> dependencies = new ArrayList<>();

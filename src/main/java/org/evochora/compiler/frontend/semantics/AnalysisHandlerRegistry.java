@@ -10,7 +10,11 @@ import java.util.Optional;
 
 /**
  * Registry mapping AST node classes to analysis handlers (pass 2) and symbol collectors (pass 1).
- * Follows the same pattern as {@link org.evochora.compiler.frontend.irgen.IrConverterRegistry}.
+ * <p>
+ * Lookup is by exact node class and there is no fallback: a node type without its own registration
+ * simply has none. This differs from
+ * {@link org.evochora.compiler.frontend.irgen.IrConverterRegistry}, which walks superclasses and
+ * interfaces and ends at a default converter.
  */
 public final class AnalysisHandlerRegistry {
 

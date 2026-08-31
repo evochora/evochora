@@ -25,7 +25,6 @@ import java.util.stream.Collectors;
 /**
  * The Emitter is the final stage of the compiler backend. It takes the linked
  * Intermediate Representation (IR) and the layout information to produce the
-
  * final, self-contained {@link ProgramArtifact}. This includes generating the
  * machine code, source maps, and other metadata needed by the runtime.
  */
