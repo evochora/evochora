@@ -6,6 +6,7 @@ import org.evochora.compiler.model.ast.AstNode;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -58,7 +59,9 @@ public class SymbolTable {
     private Scope currentScope;
 
     // --- Node-to-scope mapping (populated by ProcedureSymbolCollector, consumed by TokenMapGenerator) ---
-    private final Map<AstNode, Scope> nodeScopeMap = new HashMap<>();
+    // Keyed by node identity: AST nodes are records, so two structurally equal nodes would
+    // otherwise share one entry and therefore one scope.
+    private final Map<AstNode, Scope> nodeScopeMap = new IdentityHashMap<>();
 
     private final DiagnosticsEngine diagnostics;
     private boolean frozen = false;
