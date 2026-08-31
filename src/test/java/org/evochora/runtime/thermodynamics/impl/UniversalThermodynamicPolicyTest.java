@@ -201,4 +201,67 @@ class UniversalThermodynamicPolicyTest {
         ThermodynamicContext ctx42 = writeContext(new Molecule(Config.TYPE_CODE, 42, 0));
         assertThat(policy.getEnergyCost(ctx42)).isEqualTo(5);
     }
+
+    /**
+     * Creates a ThermodynamicContext for a write whose target cell already holds a molecule.
+     * The instruction's full opcode id is wired to the registry's id for the given name when
+     * the registry is initialized, so the policy's PPK detection works in both modes.
+     */
+    private ThermodynamicContext writeContextWithOccupiedTarget(Molecule toWrite, String instructionName) {
+        Instruction instruction = mock(Instruction.class);
+        when(instruction.getConflictStatus()).thenReturn(ConflictResolutionStatus.NOT_APPLICABLE);
+        when(instruction.getName()).thenReturn(instructionName);
+        Integer opcodeId = Instruction.getInstructionIdByName(instructionName);
+        when(instruction.getFullOpcodeId()).thenReturn(opcodeId != null ? opcodeId : -1);
+
+        Organism organism = mock(Organism.class);
+        when(organism.getId()).thenReturn(1);
+
+        List<Operand> operands = List.of(new Operand(toWrite.toInt(), 0));
+        Molecule occupied = new Molecule(Config.TYPE_DATA, 7, 0);
+        var targetInfo = new ThermodynamicContext.TargetInfo(new int[]{0, 0}, occupied, 0);
+        return new ThermodynamicContext(instruction, organism, null, operands, Optional.of(targetInfo));
+    }
+
+    @Test
+    void writeOnOccupiedTargetChargesNeitherWriteEnergyNorWriteEntropy() {
+        var policy = new UniversalThermodynamicPolicy();
+        policy.initialize(ConfigFactory.parseString("""
+            base-energy = 0
+            base-entropy = 0
+            write-rules: {
+              CODE: { energy = 5, entropy = -500 }
+            }
+            """));
+
+        // A POKE onto an occupied cell fails in execution and must not book any write
+        // thermodynamics - neither the energy cost nor the entropy dissipation.
+        ThermodynamicContext ctx = writeContextWithOccupiedTarget(new Molecule(Config.TYPE_CODE, 42, 0), "POKE");
+        assertThat(policy.getEnergyCost(ctx)).isEqualTo(0);
+        assertThat(policy.getEntropyDelta(ctx)).isEqualTo(0);
+        var combined = policy.getThermodynamics(ctx);
+        assertThat(combined.energyCost()).isEqualTo(0);
+        assertThat(combined.entropyDelta()).isEqualTo(0);
+    }
+
+    @Test
+    void ppkWriteOnOccupiedTargetIsStillCharged() {
+        var policy = new UniversalThermodynamicPolicy();
+        policy.initialize(ConfigFactory.parseString("""
+            base-energy = 0
+            base-entropy = 0
+            write-rules: {
+              CODE: { energy = 5, entropy = -500 }
+            }
+            """));
+
+        // PPK instructions peek first, which empties the cell, so their write succeeds
+        // even when the target currently holds a molecule - the write costs apply.
+        ThermodynamicContext ctx = writeContextWithOccupiedTarget(new Molecule(Config.TYPE_CODE, 42, 0), "PPKR");
+        assertThat(policy.getEnergyCost(ctx)).isEqualTo(5);
+        assertThat(policy.getEntropyDelta(ctx)).isEqualTo(-500);
+        var combined = policy.getThermodynamics(ctx);
+        assertThat(combined.energyCost()).isEqualTo(5);
+        assertThat(combined.entropyDelta()).isEqualTo(-500);
+    }
 }
