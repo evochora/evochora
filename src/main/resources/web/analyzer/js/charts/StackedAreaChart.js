@@ -295,9 +295,13 @@ export function render(canvas, data, config) {
                                     label += ': ';
                                 }
                                 if (context.parsed.y !== null) {
-                                    if (isPercentage) {
+                                    // Same derivation as the axis ticks below: how a value reads
+                                    // follows from its format, and normalizing to percent implies
+                                    // that format
+                                    const format = isPercentage ? 'percent' : yFormat;
+                                    if (format === 'percent') {
                                         label += context.parsed.y.toFixed(1) + '%';
-                                    } else if (yFormat === 'integer') {
+                                    } else if (format === 'integer') {
                                         label += Math.round(context.parsed.y);
                                     } else {
                                         label += context.parsed.y.toFixed(2);
