@@ -400,3 +400,15 @@ tasks.withType<Pmd>().configureEach {
     // Generated protobuf sources: nobody edits them, and the generator will not follow these rules.
     exclude("**/org/evochora/datapipeline/api/contracts/**")
 }
+
+// Javadoc that no longer resolves — a link to a method that was renamed, markup that does not
+// parse — compiles without complaint and is only noticed by whoever reads the generated
+// documentation. Running the task as part of check turns it into a build failure instead.
+tasks.withType<Javadoc>().configureEach {
+    // Generated protobuf sources, excluded for the same reason as above.
+    exclude("org/evochora/datapipeline/api/contracts/**")
+}
+
+tasks.named("check") {
+    dependsOn(tasks.named("javadoc"))
+}
