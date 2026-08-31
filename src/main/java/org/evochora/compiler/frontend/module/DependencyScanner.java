@@ -29,6 +29,7 @@ public final class DependencyScanner {
     private final Map<ModuleId, ModuleDescriptor> descriptors = new LinkedHashMap<>();
     private final Set<ModuleId> visiting = new LinkedHashSet<>();
     private final Map<String, String> sourceContents = new LinkedHashMap<>();
+    private boolean used;
 
     public DependencyScanner(DiagnosticsEngine diagnostics, SourceRootResolver resolver, List<IDependencyScanHandler> handlers) {
         this.diagnostics = diagnostics;
@@ -38,8 +39,18 @@ public final class DependencyScanner {
 
     /**
      * Scans the main file and all its transitive dependencies, building a dependency graph.
+     *
+     * @throws IllegalStateException if this scanner has already been used
      */
     public DependencyGraph scan(String mainContent, String mainPath) {
+        if (used) {
+            throw new IllegalStateException(
+                "This DependencyScanner has already scanned. The modules and source contents it "
+                + "found are kept, so a second scan would skip them and return a graph holding "
+                + "both runs. Create one scanner per compilation.");
+        }
+        used = true;
+
         ModuleId mainId = new ModuleId(mainPath);
         scanModule(mainId, mainPath, mainContent);
 
