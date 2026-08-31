@@ -234,7 +234,7 @@ public final class LayoutContext {
 
     /**
      * Places a label at the current position.
-     * Labels now occupy space in the grid (like Tierra/Avida templates).
+     * Labels occupy space in the grid, like Tierra and Avida templates do.
      *
      * @param src The source information for error reporting.
      * @throws CompilationException if the position is already occupied.
