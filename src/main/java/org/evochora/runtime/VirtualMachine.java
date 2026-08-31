@@ -110,14 +110,6 @@ public class VirtualMachine {
             // record, so the argument and register capture below is skipped for it.
             boolean lostConflict = instruction.getConflictStatus() == Instruction.ConflictResolutionStatus.LOST_PRIORITY;
 
-            int[] rawArgs = null;
-            Map<Integer, Object> registerValuesBefore = null;
-            if (!lostConflict) {
-                rawArgs = organism.getRawArgumentsFromEnvironment(instruction.getLength(this.environment), this.environment);
-                // Collect register values BEFORE execution (for annotation display)
-                registerValuesBefore = collectRegisterValues(organism, instruction.getFullOpcodeId(), rawArgs);
-            }
-
             // Track energy and entropy before execution to calculate total changes
             int energyBefore = organism.getEr();
             int entropyBefore = organism.getSr();
@@ -127,6 +119,16 @@ public class VirtualMachine {
             // 1. Resolve operands (idempotent - can be called multiple times safely)
             // Note: resolveOperands only PEEKs stack values, actual POPs happen in commitStackReads()
             List<Instruction.Operand> resolvedOperands = instruction.resolveOperands(this.environment);
+
+            int[] rawArgs = null;
+            Map<Integer, Object> registerValuesBefore = null;
+            if (!lostConflict) {
+                // The argument cells were read when the operands were resolved; the record
+                // reuses that array instead of walking the same cells again.
+                rawArgs = instruction.getRawArguments();
+                // Collect register values BEFORE execution (for annotation display)
+                registerValuesBefore = collectRegisterValues(organism, instruction.getFullOpcodeId(), rawArgs);
+            }
 
             // 2. Commit the stack reads now that we know this instruction will execute. A conflict
             //    loser consumes nothing: it retries with the same operands next tick.
