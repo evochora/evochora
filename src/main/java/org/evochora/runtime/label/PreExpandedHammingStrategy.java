@@ -3,9 +3,11 @@ package org.evochora.runtime.label;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import org.evochora.runtime.Config;
 import org.evochora.runtime.model.Environment;
+import org.evochora.runtime.model.EnvironmentProperties;
 import org.evochora.runtime.model.OrganismRandom;
 
 import java.util.ArrayList;
+import java.util.BitSet;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
@@ -93,6 +95,16 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
      * Query-expansion at search time checks neighbor values via Hamming distance iteration.
      */
     private final Int2ObjectOpenHashMap<List<LabelEntry>> valueToLabels;
+
+    /**
+     * One bit per label value currently present in the index (2^20 bits = 128 KB). The
+     * Hamming stages test a neighbor value here before touching the map, so the hundreds
+     * of probes for unoccupied neighbor values cost one bit read instead of a hash lookup.
+     * A bit is set with the first entry of its value and cleared when the value's last
+     * entry is removed. Like {@link #valueToLabels}, it is mutated only from the
+     * simulation thread outside the parallel wave and read concurrently inside it.
+     */
+    private final BitSet occupiedValues = new BitSet(1 << VALUE_BITS);
 
     /** Default Hamming distance tolerance. */
     public static final int DEFAULT_TOLERANCE = 2;
@@ -182,7 +194,7 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
     @Override
     public int findTarget(int searchValue, int codeOwner, int[] callerCoords, Environment environment,
                           OrganismRandom random) {
-        int[] shape = environment.getShape();
+        EnvironmentProperties props = environment.properties;
 
         int bestScore = Integer.MAX_VALUE;
         int bestFlatIndex = -1;
@@ -202,8 +214,7 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
 
             for (int i = 0; i < exactList.size(); i++) {
                 LabelEntry entry = exactList.get(i);
-                int[] labelCoords = environment.getCoordinateFromIndex(entry.flatIndex());
-                int distance = toroidalManhattanDistance(callerCoords, labelCoords, shape);
+                int distance = toroidalManhattanDistanceToFlat(callerCoords, entry.flatIndex(), props);
 
                 if (!entry.isForeign(codeOwner)) {
                     if (selectionSpread > 0) {
@@ -241,12 +252,15 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
         if (tolerance >= 1 && bestScore >= hammingWeight) {
             int stageBaseScore = hammingWeight;
             for (int mask : SINGLE_BIT_MASKS) {
-                List<LabelEntry> bucket = valueToLabels.get(searchValue ^ mask);
+                int neighborValue = searchValue ^ mask;
+                if (!occupiedValues.get(neighborValue)) {
+                    continue;
+                }
+                List<LabelEntry> bucket = valueToLabels.get(neighborValue);
                 if (bucket != null) {
                     for (int i = 0; i < bucket.size(); i++) {
                         LabelEntry entry = bucket.get(i);
-                        int[] labelCoords = environment.getCoordinateFromIndex(entry.flatIndex());
-                        int distance = toroidalManhattanDistance(callerCoords, labelCoords, shape);
+                        int distance = toroidalManhattanDistanceToFlat(callerCoords, entry.flatIndex(), props);
                         int score = stageBaseScore + distance + (entry.isForeign(codeOwner) ? foreignPenalty : 0);
                         if (score < bestScore || (score == bestScore && entry.owner() < bestOwner)) {
                             bestScore = score;
@@ -262,12 +276,15 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
         if (tolerance >= 2 && bestScore >= 2 * hammingWeight) {
             int stageBaseScore = 2 * hammingWeight;
             for (int mask : DOUBLE_BIT_MASKS) {
-                List<LabelEntry> bucket = valueToLabels.get(searchValue ^ mask);
+                int neighborValue = searchValue ^ mask;
+                if (!occupiedValues.get(neighborValue)) {
+                    continue;
+                }
+                List<LabelEntry> bucket = valueToLabels.get(neighborValue);
                 if (bucket != null) {
                     for (int i = 0; i < bucket.size(); i++) {
                         LabelEntry entry = bucket.get(i);
-                        int[] labelCoords = environment.getCoordinateFromIndex(entry.flatIndex());
-                        int distance = toroidalManhattanDistance(callerCoords, labelCoords, shape);
+                        int distance = toroidalManhattanDistanceToFlat(callerCoords, entry.flatIndex(), props);
                         int score = stageBaseScore + distance + (entry.isForeign(codeOwner) ? foreignPenalty : 0);
                         if (score < bestScore || (score == bestScore && entry.owner() < bestOwner)) {
                             bestScore = score;
@@ -283,12 +300,15 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
         if (tolerance >= 3 && bestScore >= 3 * hammingWeight) {
             int stageBaseScore = 3 * hammingWeight;
             for (int mask : TRIPLE_BIT_MASKS) {
-                List<LabelEntry> bucket = valueToLabels.get(searchValue ^ mask);
+                int neighborValue = searchValue ^ mask;
+                if (!occupiedValues.get(neighborValue)) {
+                    continue;
+                }
+                List<LabelEntry> bucket = valueToLabels.get(neighborValue);
                 if (bucket != null) {
                     for (int i = 0; i < bucket.size(); i++) {
                         LabelEntry entry = bucket.get(i);
-                        int[] labelCoords = environment.getCoordinateFromIndex(entry.flatIndex());
-                        int distance = toroidalManhattanDistance(callerCoords, labelCoords, shape);
+                        int distance = toroidalManhattanDistanceToFlat(callerCoords, entry.flatIndex(), props);
                         int score = stageBaseScore + distance + (entry.isForeign(codeOwner) ? foreignPenalty : 0);
                         if (score < bestScore || (score == bestScore && entry.owner() < bestOwner)) {
                             bestScore = score;
@@ -313,6 +333,25 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
      * @param shape The environment shape (for wrap-around calculation)
      * @return The toroidal Manhattan distance
      */
+    /**
+     * Toroidal Manhattan distance between the caller's coordinates and a label's flat
+     * index, computed dimension-wise from the index and the world's strides without
+     * materializing a coordinate array. Yields the same value as
+     * {@link #toroidalManhattanDistance(int[], int[], int[])} over the decoded coordinate.
+     */
+    private static int toroidalManhattanDistanceToFlat(int[] caller, int flatIndex, EnvironmentProperties props) {
+        int distance = 0;
+        int remaining = flatIndex;
+        for (int i = 0; i < caller.length; i++) {
+            int stride = props.getStride(i);
+            int labelCoord = remaining / stride;
+            remaining -= labelCoord * stride;
+            int diff = Math.abs(caller[i] - labelCoord);
+            distance += Math.min(diff, props.getDimensionSize(i) - diff);
+        }
+        return distance;
+    }
+
     private static int toroidalManhattanDistance(int[] a, int[] b, int[] shape) {
         int distance = 0;
         for (int i = 0; i < a.length; i++) {
@@ -340,6 +379,7 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
             }
         }
         entries.add(low, entry);
+        occupiedValues.set(labelValue);
     }
 
     @Override
@@ -349,6 +389,7 @@ public class PreExpandedHammingStrategy implements ILabelMatchingStrategy {
             list.removeIf(e -> e.flatIndex() == flatIndex);
             if (list.isEmpty()) {
                 valueToLabels.remove(labelValue);
+                occupiedValues.clear(labelValue);
             }
         }
     }

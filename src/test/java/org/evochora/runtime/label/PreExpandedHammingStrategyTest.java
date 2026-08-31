@@ -464,4 +464,40 @@ class PreExpandedHammingStrategyTest {
         PreExpandedHammingStrategy strat = new PreExpandedHammingStrategy(config);
         assertThat(strat.getSelectionSpread()).isEqualTo(0);
     }
+
+    @Test
+    void hammingMatchSurvivesRemovalOfOneOfTwoEntries() {
+        int labelValue = 0b10101010101010101010;
+        int searchValue = labelValue ^ 1; // Hamming distance 1
+        strategy.addLabel(labelValue, new LabelEntry(100, 1, 0));
+        strategy.addLabel(labelValue, new LabelEntry(200, 1, 0));
+
+        // Removing one of two entries must keep the value visible to the Hamming stages
+        strategy.removeLabel(labelValue, 100);
+        int result = strategy.findTarget(searchValue, 1, callerCoords, environment, random);
+        assertThat(result).isEqualTo(200);
+    }
+
+    @Test
+    void hammingMatchDisappearsWhenLastEntryOfValueIsRemoved() {
+        int labelValue = 0b10101010101010101010;
+        int searchValue = labelValue ^ 1; // Hamming distance 1
+        strategy.addLabel(labelValue, new LabelEntry(100, 1, 0));
+        strategy.removeLabel(labelValue, 100);
+
+        int result = strategy.findTarget(searchValue, 1, callerCoords, environment, random);
+        assertThat(result).isEqualTo(-1);
+    }
+
+    @Test
+    void hammingMatchIsFoundAgainAfterRemoveAndReAdd() {
+        int labelValue = 0b10101010101010101010;
+        int searchValue = labelValue ^ 1; // Hamming distance 1
+        strategy.addLabel(labelValue, new LabelEntry(100, 1, 0));
+        strategy.removeLabel(labelValue, 100);
+        strategy.addLabel(labelValue, new LabelEntry(300, 1, 0));
+
+        int result = strategy.findTarget(searchValue, 1, callerCoords, environment, random);
+        assertThat(result).isEqualTo(300);
+    }
 }
