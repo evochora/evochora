@@ -79,7 +79,7 @@ class DeltaCodecCellsNeededTest {
     @Test
     void anInconsistentDirectoryIsRejected() {
         assertThatThrownBy(() -> DeltaCodec.cellsNeededFor(
-                List.of(100L, 200L), List.of(DeltaType.INCREMENTAL), 0, tick -> true))
+                List.of(100L, 200L), List.of(DeltaType.INCREMENTAL), tick -> true))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("inconsistent");
     }
@@ -124,7 +124,7 @@ class DeltaCodecCellsNeededTest {
 
     private BitSet neededFor(TickDataChunk chunk, LongPredicate readsCellsAt) {
         return DeltaCodec.cellsNeededFor(chunk.getDeltaTicksList(), chunk.getDeltaTypesList(),
-            chunk.getSnapshot().getTickNumber(), readsCellsAt);
+            readsCellsAt);
     }
 
     /**

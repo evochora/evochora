@@ -800,15 +800,17 @@ public final class DeltaCodec {
      * {@code Decoder.advanceStateToTick} make, stated once so that a reader deciding what to
      * materialize and the decoder consuming the result cannot drift apart.
      *
+     * The snapshot is not among the positions this returns, and needs no say in them: its cells
+     * are built whatever a reader asks for, because every reconstruction starts from them.
+     *
      * @param deltaTicks   tick number of every delta, in chunk order
      * @param deltaTypes   type of every delta, in the same order
-     * @param snapshotTick tick of the chunk's snapshot, where reconstruction starts
      * @param readsCellsAt answers whether the environment is read at a given tick
      * @return positions of the deltas whose cells a reconstruction touches
      * @throws IllegalArgumentException if the two directory columns differ in length
      */
     public static BitSet cellsNeededFor(List<Long> deltaTicks, List<DeltaType> deltaTypes,
-                                        long snapshotTick, LongPredicate readsCellsAt) {
+                                        LongPredicate readsCellsAt) {
         if (deltaTicks.size() != deltaTypes.size()) {
             throw new IllegalArgumentException(
                 "Delta directory is inconsistent: " + deltaTicks.size() + " ticks but "

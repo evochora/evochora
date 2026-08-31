@@ -544,7 +544,6 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
         return DeltaCodec.cellsNeededFor(
             builder.getDeltaTicksList(),
             builder.getDeltaTypesList(),
-            builder.getSnapshot().getTickNumber(),
             relevance::readsCellsAt);
     }
 
