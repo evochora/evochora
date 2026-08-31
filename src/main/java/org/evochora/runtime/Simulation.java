@@ -62,6 +62,15 @@ public class Simulation {
     private int[] scalingMaxThreads = {};
     private int nextOrganismId = 1;
     private int organismsSinceYield = 0;
+
+    /**
+     * When set, the virtual machine records each executed instruction's raw arguments and
+     * pre-execution register values on the organism. This capture exists solely for
+     * observers of sampled ticks (state serialization reads it, nothing else does); on
+     * every other tick it would cost a map of boxed register values per instruction for
+     * nothing. Defaults to on, so callers that never sample keep the full record.
+     */
+    private boolean captureExecutionDetails = true;
     private final LongOpenHashSet allGenomesEverSeen = new LongOpenHashSet();
     private IRandomProvider randomProvider;
 
@@ -189,6 +198,29 @@ public class Simulation {
      */
     public long getTickSeed() {
         return this.tickSeed;
+    }
+
+    /**
+     * Chooses whether the next ticks record per-instruction execution details (raw
+     * arguments and pre-execution register values) on the organisms. Samplers enable
+     * this for the tick they are about to capture and disable it otherwise.
+     * <p>
+     * Must be called between ticks, never while a tick runs: the flag is read from
+     * every thread of the parallel wave.
+     *
+     * @param capture whether executed instructions leave an execution record
+     */
+    public void setCaptureExecutionDetails(boolean capture) {
+        this.captureExecutionDetails = capture;
+    }
+
+    /**
+     * Reports whether executed instructions currently leave an execution record.
+     *
+     * @return {@code true} when execution details are recorded
+     */
+    public boolean isCaptureExecutionDetails() {
+        return this.captureExecutionDetails;
     }
 
     /**

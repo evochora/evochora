@@ -120,9 +120,13 @@ public class VirtualMachine {
             // Note: resolveOperands only PEEKs stack values, actual POPs happen in commitStackReads()
             List<Instruction.Operand> resolvedOperands = instruction.resolveOperands(this.environment);
 
+            // The execution record is consumed only by observers of sampled ticks; the
+            // capture flag spares all other ticks the boxed register map per instruction.
+            boolean captureDetails = !lostConflict && this.simulation.isCaptureExecutionDetails();
+
             int[] rawArgs = null;
             Map<Integer, Object> registerValuesBefore = null;
-            if (!lostConflict) {
+            if (captureDetails) {
                 // Shares the array resolveOperands filled: an instruction's argument
                 // cells are read once, and every consumer works from that one read.
                 rawArgs = instruction.getRawArguments();
@@ -193,7 +197,7 @@ public class VirtualMachine {
 
             // Store instruction execution data for history tracking. A conflict loser was not
             // executed, so it leaves no execution record; its failure reason is the trace.
-            if (!lostConflict) {
+            if (captureDetails) {
                 Organism.InstructionExecutionData executionData = new Organism.InstructionExecutionData(
                     instruction.getFullOpcodeId(),
                     rawArgs,
