@@ -43,7 +43,7 @@ public final class LayoutEngine {
 
             if (item instanceof IrLabelDef lbl) {
                 labelToAddress.put(lbl.name(), ctx.linearAddress());
-                ctx.placeLabel(src);  // Labels now occupy 1 cell in the grid
+                ctx.placeLabel(src);  // a label occupies one cell, like an opcode or an operand
                 continue;
             }
 
