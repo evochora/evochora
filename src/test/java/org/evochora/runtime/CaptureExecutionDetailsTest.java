@@ -19,8 +19,8 @@ import com.typesafe.config.ConfigFactory;
 
 /**
  * Unit tests for {@link Simulation#setCaptureExecutionDetails(boolean)}: executed
- * instructions leave an execution record on the organism exactly when the capture
- * is enabled, which is the default.
+ * instructions always leave an execution record on the organism; the register-value
+ * annotation is collected exactly when the capture is enabled, which is the default.
  */
 @Tag("unit")
 class CaptureExecutionDetailsTest {
@@ -60,25 +60,31 @@ class CaptureExecutionDetailsTest {
     }
 
     @Test
-    void executionRecordIsPresentByDefault() {
+    void executionRecordWithRegisterValuesIsPresentByDefault() {
         simulation.tick();
-        assertThat(organism.getLastInstructionExecution()).isNotNull();
+        Organism.InstructionExecutionData record = organism.getLastInstructionExecution();
+        assertThat(record).isNotNull();
+        assertThat(record.registerValuesBefore()).isNotNull();
     }
 
     @Test
-    void executionRecordIsSkippedWhenCaptureIsOff() {
+    void registerValuesAreSkippedWhenCaptureIsOff() {
         simulation.setCaptureExecutionDetails(false);
         simulation.tick();
-        assertThat(organism.getLastInstructionExecution()).isNull();
+        Organism.InstructionExecutionData record = organism.getLastInstructionExecution();
+        assertThat(record).isNotNull();
+        assertThat(record.registerValuesBefore()).isNull();
     }
 
     @Test
-    void executionRecordReturnsWhenCaptureIsReEnabled() {
+    void registerValuesReturnWhenCaptureIsReEnabled() {
         simulation.setCaptureExecutionDetails(false);
         simulation.tick();
         simulation.setCaptureExecutionDetails(true);
         simulation.tick();
-        assertThat(organism.getLastInstructionExecution()).isNotNull();
+        Organism.InstructionExecutionData record = organism.getLastInstructionExecution();
+        assertThat(record).isNotNull();
+        assertThat(record.registerValuesBefore()).isNotNull();
     }
 
     /**

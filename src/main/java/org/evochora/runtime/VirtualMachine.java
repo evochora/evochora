@@ -113,9 +113,11 @@ public class VirtualMachine {
         int energyBefore = organism.getEr();
         int entropyBefore = organism.getSr();
 
-        // The execution record is consumed only by observers of sampled ticks; the
-        // capture flag spares all other ticks the boxed register map per instruction.
-        boolean captureDetails = !lostConflict && this.simulation.isCaptureExecutionDetails();
+        // The register map is consumed only by observers of sampled ticks; the capture
+        // flag spares all other ticks its per-instruction boxing. The rest of the record
+        // is kept every tick, so an organism dying between two samples still shows the
+        // instruction it died of.
+        boolean captureRegisterValues = !lostConflict && this.simulation.isCaptureExecutionDetails();
 
         int[] rawArgs = null;
         Map<Integer, Object> registerValuesBefore = null;
@@ -127,10 +129,12 @@ public class VirtualMachine {
             // Note: resolveOperands only PEEKs stack values, actual POPs happen in commitStackReads()
             List<Instruction.Operand> resolvedOperands = instruction.resolveOperands(this.environment);
 
-            if (captureDetails) {
+            if (!lostConflict) {
                 // Shares the array resolveOperands filled: an instruction's argument
                 // cells are read once, and every consumer works from that one read.
                 rawArgs = instruction.getRawArguments();
+            }
+            if (captureRegisterValues) {
                 // Collect register values BEFORE execution (for annotation display)
                 registerValuesBefore = collectRegisterValues(organism, instruction.getFullOpcodeId(), rawArgs);
             }
@@ -198,7 +202,7 @@ public class VirtualMachine {
 
             // Store instruction execution data for history tracking. A conflict loser was not
             // executed, so it leaves no execution record; its failure reason is the trace.
-            if (captureDetails) {
+            if (!lostConflict) {
                 Organism.InstructionExecutionData executionData = new Organism.InstructionExecutionData(
                     instruction.getFullOpcodeId(),
                     rawArgs,
@@ -232,7 +236,7 @@ public class VirtualMachine {
 
             // A throwing instruction still leaves an execution record: what ran and what it
             // cost (penalty included) stays observable, even if the organism dies of it.
-            if (captureDetails) {
+            if (!lostConflict) {
                 organism.setLastInstructionExecution(new Organism.InstructionExecutionData(
                     instruction.getFullOpcodeId(),
                     rawArgs,
