@@ -217,7 +217,10 @@ message OrganismState {
   // Maps register ID to RegisterValue (only for registers used as arguments)
   // Key: register ID (int32), Value: RegisterValue
   // Source: InstructionExecutionData.registerValuesBefore
-  // Only present if an instruction was executed in this tick
+  // Only present if an instruction was executed in this tick AND the tick was
+  // sampled: the runtime collects these values only on sampled ticks, so an
+  // organism that died between two samples carries its dying instruction
+  // (opcode, arguments, costs) without these values.
   map<int32, RegisterValue> instruction_register_values_before = 25;
 
   // ===== Special Registers =====
@@ -318,6 +321,8 @@ message OrganismRuntimeState {
   optional int32 instruction_entropy_delta = 11;
   optional Vector instruction_ip_before_fetch = 12;
   optional Vector instruction_dv_before_fetch = 13;
+  // Collected only on sampled ticks: an organism that died between two samples
+  // carries its dying instruction without these values.
   map<int32, RegisterValue> instruction_register_values_before = 14;
 
   // ===== Special Registers =====

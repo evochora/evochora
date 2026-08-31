@@ -114,9 +114,14 @@ public class VirtualMachine {
         int entropyBefore = organism.getSr();
 
         // The register map is consumed only by observers of sampled ticks; the capture
-        // flag spares all other ticks its per-instruction boxing. The rest of the record
-        // is kept every tick, so an organism dying between two samples still shows the
-        // instruction it died of.
+        // flag spares all other ticks its per-instruction boxing (signature lookup,
+        // register reads, boxed map). The rest of the record is kept every tick, so an
+        // organism dying between two samples still shows the instruction it died of —
+        // deliberately without its register values, which were not collected on that
+        // tick. This gap could be closed without per-tick boxing by copying the argument
+        // register values into a reusable per-organism buffer on every tick and building
+        // the map only on sampled ticks and on death, at the price of the per-tick
+        // signature lookup, register reads and copies.
         boolean captureRegisterValues = !lostConflict && this.simulation.isCaptureExecutionDetails();
 
         int[] rawArgs = null;
