@@ -168,8 +168,13 @@ public class UniversalThermodynamicPolicy implements IThermodynamicPolicy {
     /** Write rules compiled per molecule-type slot, defaults pre-filled; {@code null} when absent. */
     private TypeRule[] writeTable;
 
-    /** Opcode ids of PPKR/PPKI/PPKS once resolved from the instruction registry. */
-    private int[] ppkOpcodes;
+    /**
+     * Opcode ids of PPKR/PPKI/PPKS once resolved from the instruction registry.
+     * Volatile so that the lazily created array is published safely: concurrent readers
+     * (cost calculation may run on worker threads for organism-local instructions) see
+     * either {@code null} or the fully initialized array, never a partial state.
+     */
+    private volatile int[] ppkOpcodes;
 
     @Override
     public void initialize(Config options) {
@@ -269,7 +274,7 @@ public class UniversalThermodynamicPolicy implements IThermodynamicPolicy {
      * The opcode ids are resolved from the instruction registry on first use; when the
      * registry is not initialized, the names are compared instead.
      */
-    private boolean isPpk(org.evochora.runtime.isa.Instruction instruction) {
+    private boolean isPpk(Instruction instruction) {
         int[] ids = this.ppkOpcodes;
         if (ids == null) {
             Integer r = Instruction.getInstructionIdByName("PPKR");
@@ -335,9 +340,9 @@ public class UniversalThermodynamicPolicy implements IThermodynamicPolicy {
             entropy += readRule.calculateEntropy(molecule);
         }
 
-        if (this.writeTable != null) {
+        if (this.writeTable != null && writeCharged(context)) {
             Molecule toWrite = getMoleculeToWrite(context.resolvedOperands());
-            if (toWrite != null && writeCharged(context)) {
+            if (toWrite != null) {
                 Rule writeRule = writeRuleFor(toWrite);
                 if (writeRule != null) {
                     energy += writeRule.calculateEnergy(toWrite);
@@ -348,52 +353,24 @@ public class UniversalThermodynamicPolicy implements IThermodynamicPolicy {
         return new Thermodynamics(energy, entropy);
     }
 
+    /**
+     * In this policy, energy and entropy are two results of the same rule resolution,
+     * so the individual getters derive their value from
+     * {@link #getThermodynamics(ThermodynamicContext)} instead of resolving again.
+     */
     @Override
     public int getEnergyCost(ThermodynamicContext context) {
-        ConflictResolutionStatus status = context.instruction().getConflictStatus();
-        if (status != ConflictResolutionStatus.WON_EXECUTION && status != ConflictResolutionStatus.NOT_APPLICABLE) {
-            // Instruction lost conflict or failed - only return base energy (if any)
-            return baseEnergy;
-        }
-        int total = baseEnergy;
-        Rule readRule = readRuleFor(context);
-        if (readRule != null) {
-            total += readRule.calculateEnergy(context.targetInfo().get().molecule());
-        }
-        if (this.writeTable != null) {
-            Molecule toWrite = getMoleculeToWrite(context.resolvedOperands());
-            if (toWrite != null && writeCharged(context)) {
-                Rule writeRule = writeRuleFor(toWrite);
-                if (writeRule != null) {
-                    total += writeRule.calculateEnergy(toWrite);
-                }
-            }
-        }
-        return total;
+        return getThermodynamics(context).energyCost();
     }
 
+    /**
+     * In this policy, energy and entropy are two results of the same rule resolution,
+     * so the individual getters derive their value from
+     * {@link #getThermodynamics(ThermodynamicContext)} instead of resolving again.
+     */
     @Override
     public int getEntropyDelta(ThermodynamicContext context) {
-        ConflictResolutionStatus status = context.instruction().getConflictStatus();
-        if (status != ConflictResolutionStatus.WON_EXECUTION && status != ConflictResolutionStatus.NOT_APPLICABLE) {
-            // Instruction lost conflict or failed - only return base entropy (if any)
-            return baseEntropy;
-        }
-        int total = baseEntropy;
-        Rule readRule = readRuleFor(context);
-        if (readRule != null) {
-            total += readRule.calculateEntropy(context.targetInfo().get().molecule());
-        }
-        if (this.writeTable != null) {
-            Molecule toWrite = getMoleculeToWrite(context.resolvedOperands());
-            if (toWrite != null && writeCharged(context)) {
-                Rule writeRule = writeRuleFor(toWrite);
-                if (writeRule != null) {
-                    total += writeRule.calculateEntropy(toWrite);
-                }
-            }
-        }
-        return total;
+        return getThermodynamics(context).entropyDelta();
     }
 
     /**
