@@ -54,10 +54,14 @@ public abstract class AbstractTopicDelegateWriter<P extends AbstractTopicResourc
     protected AbstractTopicDelegateWriter(P parent, ResourceContext context) {
         super(parent, context);
         
-        // Initialize throughput metric with configurable window
-        int metricsWindow = parent.getOptions().hasPath("metricsWindowSeconds")
-            ? parent.getOptions().getInt("metricsWindowSeconds")
-            : 30;  // Default: 30 seconds
+        // Configuration hierarchy: URI parameter > resource option > default, as for the other
+        // monitored wrappers. Allows a per-service override:
+        // output = "topic-write:tick-topic?metricsWindowSeconds=10"
+        int metricsWindow = context.parameters().containsKey("metricsWindowSeconds")
+            ? Integer.parseInt(context.parameters().get("metricsWindowSeconds"))
+            : (parent.getOptions().hasPath("metricsWindowSeconds")
+                ? parent.getOptions().getInt("metricsWindowSeconds")
+                : 30);
         this.writeThroughput = new SlidingWindowCounter(metricsWindow);
     }
     
