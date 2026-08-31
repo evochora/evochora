@@ -500,6 +500,12 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
      * The directory decides which payloads are built, so a directory that does not describe the
      * deltas would silently produce a wrong environment. Comparing both makes that a parse failure
      * instead. One of the two values is passed per call, whichever has just been read.
+     * <p>
+     * This is also where a chunk whose fields arrive in an unsupported order ends up. Reading the
+     * directory before the deltas is what lets a payload be skipped before it is built, and the
+     * field numbers are chosen so that a writer emitting them in ascending order - as protobuf
+     * does - delivers it first. Bytes ordered otherwise are refused rather than read with an empty
+     * directory.
      *
      * @param chunk    the chunk parsed so far, holding the directory
      * @param position the delta's position in the chunk
@@ -510,8 +516,15 @@ public abstract class AbstractBatchStorageResource extends AbstractResource
     private static void verifyAgainstDirectory(TickDataChunk.Builder chunk, int position,
                                                Long tick, DeltaType type) throws IOException {
         if (position >= chunk.getDeltaTicksCount()) {
+            // An empty directory at the first delta means it has not been read yet: the format
+            // permits any field order, this reader needs the directory first, and the writer puts
+            // it there by giving it the lower field numbers
+            String cause = chunk.getDeltaTicksCount() == 0
+                ? " - the directory is empty here, so either the chunk carries none or its fields"
+                  + " arrive in an order this reader does not support, deltas before directory"
+                : "";
             throw new IOException("Chunk holds more deltas than its directory announces: position "
-                + position + ", directory has " + chunk.getDeltaTicksCount());
+                + position + ", directory has " + chunk.getDeltaTicksCount() + cause);
         }
         if (tick != null && chunk.getDeltaTicks(position) != tick) {
             throw new IOException("Delta at position " + position + " states tick " + tick
