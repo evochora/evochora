@@ -5,7 +5,6 @@ import com.google.protobuf.Message;
 import org.evochora.datapipeline.api.contracts.TopicEnvelope;
 import org.evochora.datapipeline.api.resources.ResourceContext;
 import org.evochora.datapipeline.api.resources.topics.IResourceTopicReader;
-import org.evochora.datapipeline.api.resources.topics.ITopicReader;
 import org.evochora.datapipeline.api.resources.topics.TopicMessage;
 import org.evochora.datapipeline.utils.monitoring.SlidingWindowCounter;
 import org.slf4j.Logger;
@@ -18,7 +17,8 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * Abstract base class for topic reader delegates.
  * <p>
- * This class implements {@link ITopicReader#receive()} and {@link ITopicReader#poll(long, TimeUnit)}
+ * This class implements {@link org.evochora.datapipeline.api.resources.topics.ITopicReader#receive()} and
+ * {@link org.evochora.datapipeline.api.resources.topics.ITopicReader#poll(long, TimeUnit)}
  * to automatically unwrap {@link TopicEnvelope} before returning to the service.
  * <p>
  * <strong>Message Unwrapping:</strong>

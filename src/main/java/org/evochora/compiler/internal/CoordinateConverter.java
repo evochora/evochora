@@ -3,7 +3,6 @@ package org.evochora.compiler.internal;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
-import org.evochora.compiler.api.ProgramArtifact;
 import org.evochora.runtime.model.EnvironmentProperties;
 
 /**
