@@ -2,8 +2,8 @@ package org.evochora.compiler.model.ast;
 
 import org.evochora.compiler.api.SourceInfo;
 
-import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * An AST node that represents a single generic machine instruction.
@@ -19,9 +19,7 @@ public record InstructionNode(
 ) implements AstNode, ISourceLocatable {
 
     public InstructionNode {
-        if (arguments == null) {
-            arguments = Collections.emptyList();
-        }
+        Objects.requireNonNull(arguments, "arguments");
     }
 
     @Override

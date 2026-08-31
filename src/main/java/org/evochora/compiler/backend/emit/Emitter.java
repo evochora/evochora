@@ -122,30 +122,27 @@ public class Emitter {
                     sourceLineToInstructions.computeIfAbsent(sourceLineKey, k -> new ArrayList<>()).add(machineInfo);
                 }
 
-                List<IrOperand> ops = ins.operands();
-                if (ops != null) {
-                    for (IrOperand op : ops) {
-                        if (op instanceof IrVec vec) {
-                            int[] comps = vec.components();
-                            for (int c : comps) {
-                                int[] coord = linearToCoord.get(address);
-                                if (coord == null) throw new CompilationException(formatSource(ins.source(), "Missing coord for address " + address));
-                                machineCodeLayout.put(coord, new Molecule(Config.TYPE_DATA, c).toInt());
-                                address++;
-                            }
-                        } else if (op instanceof IrLabelRef ref) {
-                            // IrLabelRef should have been converted to IrImm by LabelRefLinkingRule
-                            // If we reach here, something is wrong in the linking phase
-                            throw new CompilationException(formatSource(ins.source(),
-                                "Internal error: IrLabelRef '" + ref.labelName() + "' was not resolved during linking. " +
-                                "This indicates a bug in LabelRefLinkingRule or a missing label definition."));
-                        } else {
+                for (IrOperand op : ins.operands()) {
+                    if (op instanceof IrVec vec) {
+                        int[] comps = vec.components();
+                        for (int c : comps) {
                             int[] coord = linearToCoord.get(address);
                             if (coord == null) throw new CompilationException(formatSource(ins.source(), "Missing coord for address " + address));
-                            Integer value = encodeOperand(op, isa, ins.source());
-                            machineCodeLayout.put(coord, value);
+                            machineCodeLayout.put(coord, new Molecule(Config.TYPE_DATA, c).toInt());
                             address++;
                         }
+                    } else if (op instanceof IrLabelRef ref) {
+                        // IrLabelRef should have been converted to IrImm by LabelRefLinkingRule
+                        // If we reach here, something is wrong in the linking phase
+                        throw new CompilationException(formatSource(ins.source(),
+                            "Internal error: IrLabelRef '" + ref.labelName() + "' was not resolved during linking. " +
+                            "This indicates a bug in LabelRefLinkingRule or a missing label definition."));
+                    } else {
+                        int[] coord = linearToCoord.get(address);
+                        if (coord == null) throw new CompilationException(formatSource(ins.source(), "Missing coord for address " + address));
+                        Integer value = encodeOperand(op, isa, ins.source());
+                        machineCodeLayout.put(coord, value);
+                        address++;
                     }
                 }
             }
