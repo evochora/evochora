@@ -114,3 +114,63 @@ export function axisTicks(format) {
         }
     };
 }
+
+/**
+ * The title line of a tooltip: the tick the hovered point belongs to.
+ *
+ * Written out in full, unlike the axis below it. An axis carries ten labels side by side and
+ * shortens them to "7.7M"; a tooltip describes one point and can be exact - but seven digits in a
+ * row cannot be read, so they are grouped.
+ *
+ * @param {Array<{label: string}>} items - The hovered items, as Chart.js passes them
+ * @returns {string} The title line
+ */
+export function tooltipTitle(items) {
+    const tick = Number(items[0].label);
+    return 'Tick ' + (Number.isFinite(tick) ? tick.toLocaleString('en-US') : items[0].label);
+}
+
+/**
+ * A value as a tooltip states it.
+ *
+ * Follows the same format the axis was given, so a point reads the way the scale beside it does.
+ * Where the axis shortens for want of room, this is exact; the digits are grouped either way,
+ * because a bare seven-digit number is a wall.
+ *
+ * The grouping is fixed to one locale rather than the reader's: the same chart then reads the same
+ * way for everyone looking at a run, and a number in a screenshot means what it says.
+ *
+ * @param {number} value - The value at the hovered point
+ * @param {string|null} format - "percent", "integer", "decimal", or anything else for a plain number
+ * @returns {string} The formatted value
+ */
+export function tooltipValue(value, format) {
+    if (value === null || value === undefined || !Number.isFinite(value)) {
+        return '';
+    }
+    if (format === 'percent') {
+        return group(value, 1, 1) + '%';
+    }
+    if (format === 'integer') {
+        return group(Math.round(value), 0, 0);
+    }
+    if (format === 'decimal') {
+        return group(value, 2, 2);
+    }
+    return group(value, 0, 2);
+}
+
+/**
+ * Groups a number's digits, with the given range of decimals.
+ *
+ * @param {number} value - The number to write
+ * @param {number} min - Decimals always written
+ * @param {number} max - Decimals written when they carry something
+ * @returns {string} The grouped number
+ */
+function group(value, min, max) {
+    return value.toLocaleString('en-US', {
+        minimumFractionDigits: min,
+        maximumFractionDigits: max
+    });
+}

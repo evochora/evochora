@@ -1,5 +1,5 @@
 import * as ChartRegistry from './ChartRegistry.js';
-import { formatTickValue, axisTicks } from './ChartUtils.js';
+import { formatTickValue, axisTicks, tooltipTitle, tooltipValue } from './ChartUtils.js';
 
 /**
  * Line Chart Implementation
@@ -151,24 +151,13 @@ export function render(canvas, data, config) {
                         padding: 12,
                         displayColors: true,
                         callbacks: {
-                            title: function(items) {
-                                return `Tick ${items[0].label}`;
-                            },
+                            title: tooltipTitle,
                             label: function(context) {
                                 let label = context.dataset.label || '';
                                 if (label) label += ': ';
                                 if (context.parsed.y == null) return label;
                                 const format = context.dataset.yAxisID === 'y2' ? y2Format : yFormat;
-                                if (format === 'percent') {
-                                    label += context.parsed.y.toFixed(1) + '%';
-                                } else if (format === 'integer') {
-                                    label += Math.round(context.parsed.y);
-                                } else if (format === 'decimal') {
-                                    label += context.parsed.y.toFixed(2);
-                                } else {
-                                    label += context.parsed.y.toLocaleString();
-                                }
-                                return label;
+                                return label + tooltipValue(context.parsed.y, format);
                             }
                         }
                     }

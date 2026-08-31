@@ -1,5 +1,5 @@
 import * as ChartRegistry from './ChartRegistry.js';
-import { formatTickValue, axisTicks } from './ChartUtils.js';
+import { formatTickValue, axisTicks, tooltipTitle, tooltipValue } from './ChartUtils.js';
 
 /**
  * Bar Chart Implementation
@@ -72,7 +72,16 @@ export function render(canvas, data, config) {
                         titleColor: '#e0e0e0',
                         bodyColor: '#aaa',
                         borderColor: '#333',
-                        borderWidth: 1
+                        borderWidth: 1,
+                        callbacks: {
+                            title: tooltipTitle,
+                            // Counts, as the axis below states them
+                            label: context => {
+                                const name = context.dataset.label || '';
+                                return (name ? name + ': ' : '')
+                                    + tooltipValue(context.parsed.y, 'integer');
+                            }
+                        }
                     }
                 },
                 scales: {

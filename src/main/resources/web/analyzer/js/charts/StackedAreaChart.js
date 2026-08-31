@@ -1,5 +1,5 @@
 import * as ChartRegistry from './ChartRegistry.js';
-import { formatTickValue, axisTicks } from './ChartUtils.js';
+import { formatTickValue, axisTicks, tooltipTitle, tooltipValue } from './ChartUtils.js';
 
 /**
  * Stacked Area Chart Implementation
@@ -288,26 +288,17 @@ export function render(canvas, data, config) {
                         borderWidth: 1,
                         padding: 12,
                         callbacks: {
-                            title: items => `Tick ${items[0].label}`,
+                            title: tooltipTitle,
                             label: context => {
                                 let label = context.dataset.label || '';
                                 if (label) {
                                     label += ': ';
                                 }
-                                if (context.parsed.y !== null) {
-                                    // Same derivation as the axis ticks below: how a value reads
-                                    // follows from its format, and normalizing to percent implies
-                                    // that format
-                                    const format = isPercentage ? 'percent' : yFormat;
-                                    if (format === 'percent') {
-                                        label += context.parsed.y.toFixed(1) + '%';
-                                    } else if (format === 'integer') {
-                                        label += Math.round(context.parsed.y);
-                                    } else {
-                                        label += context.parsed.y.toFixed(2);
-                                    }
-                                }
-                                return label;
+                                // Same derivation as the axis ticks below: how a value reads
+                                // follows from its format, and normalizing to percent implies
+                                // that format
+                                return label + tooltipValue(context.parsed.y,
+                                    isPercentage ? 'percent' : yFormat);
                             }
                         }
                     }

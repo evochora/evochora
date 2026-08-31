@@ -1,5 +1,5 @@
 import * as ChartRegistry from './ChartRegistry.js';
-import { formatTickValue, axisTicks } from './ChartUtils.js';
+import { formatTickValue, axisTicks, tooltipTitle, tooltipValue } from './ChartUtils.js';
 
 /**
  * Stacked Bar Chart Implementation
@@ -243,23 +243,21 @@ export function render(canvas, data, config) {
                         borderWidth: 1,
                         padding: 12,
                         callbacks: {
-                            title: items => `Tick ${items[0].label}`,
+                            title: tooltipTitle,
                             label: context => {
                                 let label = context.dataset.label || '';
                                 if (label) {
                                     label += ': ';
                                 }
                                 if (context.parsed.y !== null) {
-                                    label += context.parsed.y.toFixed(1);
-                                    // Add % for percentage mode or y2 axis (failure rate)
-                                    if (isPercentage || context.dataset.yAxisID === 'y2') {
-                                        label += '%';
-                                    }
-                                    // Add peak tick for y2 (exact number, no k/M)
+                                    // The second axis carries a rate whatever the bars show
+                                    const percent = isPercentage || context.dataset.yAxisID === 'y2';
+                                    label += tooltipValue(context.parsed.y, percent ? 'percent' : null);
+                                    // Where a rate peaked, spelled out rather than shortened
                                     if (context.dataset.yAxisID === 'y2' && context.dataset.peakTicks) {
                                         const peakTick = context.dataset.peakTicks[context.dataIndex];
                                         if (peakTick != null) {
-                                            label += ` (at tick ${peakTick})`;
+                                            label += ` (at tick ${tooltipValue(Number(peakTick), 'integer')})`;
                                         }
                                     }
                                 }

@@ -1,5 +1,5 @@
 import * as ChartRegistry from './ChartRegistry.js';
-import { formatTickValue, axisTicks } from './ChartUtils.js';
+import { formatTickValue, axisTicks, tooltipTitle, tooltipValue } from './ChartUtils.js';
 
 /**
  * Band Chart Implementation
@@ -163,7 +163,12 @@ export function render(canvas, data, config) {
                         borderWidth: 1,
                         padding: 12,
                         callbacks: {
-                            title: items => `Tick ${items[0].label}`,
+                            title: tooltipTitle,
+                            label: context => {
+                                const name = context.dataset.label || '';
+                                return (name ? name + ': ' : '')
+                                    + tooltipValue(context.parsed.y, config.yFormat);
+                            },
                             // Hide tooltips for boundary lines
                             filter: item => !item.dataset.label.startsWith('_')
                         }
